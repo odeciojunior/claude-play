@@ -155,7 +155,7 @@ describe('Queen Coordinator', () => {
     );
 
     expect(row).toBeDefined();
-    const allocation = JSON.parse(row.value);
+    const allocation = JSON.parse((row as any).value);
     expect(allocation.computeUnits.workers).toBe(50);
   });
 });
@@ -197,7 +197,8 @@ describe('Worker Agent', () => {
 
     expect(result.taskId).toBe('test-task-1');
     expect(result.workerId).toBe(worker.getState().id);
-    expect(['success', 'failure']).toContain(result.success.toString());
+    expect(result.success).toBeDefined();
+    expect(typeof result.success).toBe('boolean');
   });
 
   it('should learn patterns', async () => {
@@ -305,6 +306,10 @@ describe('Pattern Aggregation', () => {
       id: 'test-pattern-1',
       type: 'coordination',
       name: 'Test Pattern',
+      description: 'Test pattern for aggregation',
+      conditions: { test: true },
+      actions: [],
+      successCriteria: { minCompletionRate: 0.8, maxErrorRate: 0.2 },
       confidence: 0.8,
       usageCount: 5,
       createdAt: new Date().toISOString(),
@@ -312,7 +317,8 @@ describe('Pattern Aggregation', () => {
         successCount: 4,
         failureCount: 1,
         partialCount: 0,
-        avgDurationMs: 1000
+        avgDurationMs: 1000,
+        avgImprovement: 0
       }
     };
 
@@ -335,6 +341,10 @@ describe('Pattern Aggregation', () => {
       id: 'multi-contrib-pattern',
       type: 'coordination',
       name: 'Multi Contributor Pattern',
+      description: 'Pattern with multiple contributors',
+      conditions: { multi: true },
+      actions: [],
+      successCriteria: { minCompletionRate: 0.7, maxErrorRate: 0.3 },
       confidence: 0.7,
       usageCount: 10,
       createdAt: new Date().toISOString(),
@@ -342,7 +352,8 @@ describe('Pattern Aggregation', () => {
         successCount: 7,
         failureCount: 3,
         partialCount: 0,
-        avgDurationMs: 1500
+        avgDurationMs: 1500,
+        avgImprovement: 0
       }
     };
 
@@ -550,6 +561,10 @@ describe('Performance', () => {
           id: `perf-pattern-${i}`,
           type: 'optimization',
           name: `Performance Pattern ${i}`,
+          description: 'Performance test pattern',
+          conditions: { perf: true },
+          actions: [],
+          successCriteria: { minCompletionRate: 0.8, maxErrorRate: 0.2 },
           confidence: 0.7,
           usageCount: 5,
           createdAt: new Date().toISOString(),
@@ -557,7 +572,8 @@ describe('Performance', () => {
             successCount: 4,
             failureCount: 1,
             partialCount: 0,
-            avgDurationMs: 1000
+            avgDurationMs: 1000,
+            avgImprovement: 0
           }
         },
         contributorId: `worker-${i % 5}`,

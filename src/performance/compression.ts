@@ -422,7 +422,7 @@ export class CompressionManager {
 
     // Limit cache size
     if (this.dedupCache.size > 10000) {
-      const firstKey = this.dedupCache.keys().next().value;
+      const firstKey = this.dedupCache.keys().next().value as string;
       this.dedupCache.delete(firstKey);
     }
 

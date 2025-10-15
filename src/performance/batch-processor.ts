@@ -157,7 +157,7 @@ export class BatchProcessor<T> {
 
       // Handle callbacks
       if (result.success) {
-        batch.forEach(item => item.callback?.());
+        batch.forEach(item => item.callback?.(result));
       } else {
         // Handle partial failures
         result.errors.forEach(({ index, error }) => {

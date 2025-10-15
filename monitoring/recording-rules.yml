@@ -1,0 +1,179 @@
+# Recording Rules for Pre-computed Aggregations
+# These rules create new time series from existing metrics for faster queries
+
+groups:
+  # ============================================================================
+  # PERFORMANCE METRICS AGGREGATIONS
+  # ============================================================================
+  - name: performance_aggregations
+    interval: 30s
+    rules:
+      # Neural operations per second (5m average)
+      - record: neural:operations_per_second:rate5m
+        expr: rate(neural_operations_total[5m])
+
+      # Neural operations per second (1h average)
+      - record: neural:operations_per_second:rate1h
+        expr: rate(neural_operations_total[1h])
+
+      # Cache hit rate calculation
+      - record: cache:hit_rate:ratio
+        expr: |
+          rate(cache_hits_total[5m])
+          /
+          (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))
+
+      # Database query duration by quantile
+      - record: db:query_duration_seconds:p50
+        expr: histogram_quantile(0.50, rate(db_query_duration_seconds_bucket[5m]))
+
+      - record: db:query_duration_seconds:p95
+        expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m]))
+
+      - record: db:query_duration_seconds:p99
+        expr: histogram_quantile(0.99, rate(db_query_duration_seconds_bucket[5m]))
+
+  # ============================================================================
+  # QUALITY METRICS AGGREGATIONS
+  # ============================================================================
+  - name: quality_aggregations
+    interval: 1m
+    rules:
+      # Truth score percentiles
+      - record: verification:truth_score:p50
+        expr: histogram_quantile(0.50, rate(truth_score_bucket[5m]))
+
+      - record: verification:truth_score:p95
+        expr: histogram_quantile(0.95, rate(truth_score_bucket[5m]))
+
+      - record: verification:truth_score:p99
+        expr: histogram_quantile(0.99, rate(truth_score_bucket[5m]))
+
+      # Pattern confidence average
+      - record: neural:pattern_confidence:avg
+        expr: avg(pattern_confidence)
+
+      # Pattern confidence by type
+      - record: neural:pattern_confidence:avg_by_type
+        expr: avg(pattern_confidence) by (pattern_type)
+
+      # Verification success rate
+      - record: verification:success_rate:ratio
+        expr: |
+          rate(verification_success_total[5m])
+          /
+          (rate(verification_success_total[5m]) + rate(verification_failures_total[5m]))
+
+  # ============================================================================
+  # RESOURCE USAGE AGGREGATIONS
+  # ============================================================================
+  - name: resource_aggregations
+    interval: 1m
+    rules:
+      # Memory usage in MB
+      - record: process:memory_mb
+        expr: process_resident_memory_bytes / 1048576
+
+      # CPU usage percentage
+      - record: process:cpu_usage:rate5m
+        expr: rate(process_cpu_seconds_total[5m]) * 100
+
+      # Pattern memory size in MB
+      - record: neural:pattern_memory_mb
+        expr: pattern_memory_bytes / 1048576
+
+      # Memory compression ratio
+      - record: neural:compression_ratio
+        expr: memory_compression_ratio
+
+  # ============================================================================
+  # COORDINATION & PLANNING AGGREGATIONS
+  # ============================================================================
+  - name: coordination_aggregations
+    interval: 1m
+    rules:
+      # Coordination efficiency
+      - record: swarm:coordination_efficiency
+        expr: coordination_efficiency
+
+      # GOAP planning duration percentiles
+      - record: goap:planning_duration_seconds:p50
+        expr: histogram_quantile(0.50, rate(goap_planning_duration_seconds_bucket[5m]))
+
+      - record: goap:planning_duration_seconds:p95
+        expr: histogram_quantile(0.95, rate(goap_planning_duration_seconds_bucket[5m]))
+
+      # Pattern reuse rate
+      - record: neural:pattern_reuse_rate:ratio
+        expr: |
+          rate(pattern_reused_total[5m])
+          /
+          rate(pattern_applied_total[5m])
+
+      # Task completion rate
+      - record: task:completion_rate:rate5m
+        expr: rate(task_completed_total[5m])
+
+  # ============================================================================
+  # AVAILABILITY & ERROR AGGREGATIONS
+  # ============================================================================
+  - name: availability_aggregations
+    interval: 30s
+    rules:
+      # Service availability
+      - record: service:availability
+        expr: avg(up{job="claude-code-app"})
+
+      # Error rate by type
+      - record: errors:rate5m_by_type
+        expr: rate(errors_total[5m]) by (error_type)
+
+      # Database connection error rate
+      - record: db:connection_errors:rate5m
+        expr: rate(database_connection_errors_total[5m])
+
+      # Pattern extraction error rate
+      - record: neural:extraction_errors:rate5m
+        expr: rate(pattern_extraction_errors_total[5m])
+
+  # ============================================================================
+  # LEARNING SYSTEM AGGREGATIONS
+  # ============================================================================
+  - name: learning_aggregations
+    interval: 1m
+    rules:
+      # Feedback loop cycle rate
+      - record: neural:feedback_cycles:rate5m
+        expr: rate(feedback_loop_cycles_total[5m])
+
+      # Pattern learned rate
+      - record: neural:patterns_learned:rate5m
+        expr: rate(patterns_learned_total[5m])
+
+      # Pattern retrieval duration
+      - record: neural:retrieval_duration_seconds:p95
+        expr: histogram_quantile(0.95, rate(pattern_retrieval_duration_seconds_bucket[5m]))
+
+      # Active patterns count
+      - record: neural:active_patterns:count
+        expr: count(pattern_confidence > 0.5)
+
+  # ============================================================================
+  # AGENT PERFORMANCE AGGREGATIONS
+  # ============================================================================
+  - name: agent_aggregations
+    interval: 1m
+    rules:
+      # Agent truth scores
+      - record: agent:truth_score:avg_by_agent
+        expr: avg(agent_truth_score) by (agent_id)
+
+      # Agent task completion time
+      - record: agent:task_duration_seconds:p95_by_agent
+        expr: |
+          histogram_quantile(0.95, rate(agent_task_duration_seconds_bucket[5m]))
+          by (agent_id)
+
+      # Agent reliability
+      - record: agent:reliability:avg
+        expr: avg(agent_truth_score)

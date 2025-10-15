@@ -59,7 +59,7 @@ export class SPARCHookManager {
     for (const [phase, patterns] of Object.entries(allPatternLibraries)) {
       for (const pattern of patterns) {
         try {
-          this.engine.storePattern(pattern);
+          this.engine.storePattern({ ...pattern, last_used: null });
           totalLoaded++;
         } catch (error) {
           console.warn(`Failed to load pattern for ${phase}:`, error);

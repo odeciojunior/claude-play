@@ -10,6 +10,31 @@ import { createTestPerformanceSystem } from '../../src/performance/utils';
 import PerformanceBenchmarks from '../../src/performance/benchmarks';
 import { Pattern } from '../../src/neural/pattern-extraction';
 
+// Helper to create test patterns
+function createTestPattern(id: string, data: any = {}): Pattern {
+  return {
+    id,
+    type: 'testing',
+    name: `Test Pattern ${id}`,
+    description: 'Performance test pattern',
+    conditions: {},
+    actions: [],
+    successCriteria: { minCompletionRate: 0.8, maxErrorRate: 0.2 },
+    metrics: {
+      successCount: 0,
+      failureCount: 0,
+      partialCount: 0,
+      avgDurationMs: 0,
+      avgImprovement: 0
+    },
+    confidence: 0.8,
+    usageCount: 0,
+    createdAt: new Date().toISOString(),
+    lastUsed: new Date().toISOString(),
+    ...data
+  };
+}
+
 describe('Performance System', () => {
   let perfSystem: PerformanceSystem;
 
@@ -24,15 +49,7 @@ describe('Performance System', () => {
 
   describe('Pattern Operations', () => {
     it('should store and retrieve patterns', async () => {
-      const pattern: Pattern = {
-        id: 'test-pattern-1',
-        type: 'testing',
-        patternData: { test: 'data' },
-        confidence: 0.8,
-        usageCount: 0,
-        createdAt: new Date().toISOString(),
-        lastUsed: new Date().toISOString()
-      };
+      const pattern = createTestPattern('test-pattern-1');
 
       const storeResult = await perfSystem.storePattern(pattern);
       expect(storeResult.success).toBe(true);
@@ -43,15 +60,10 @@ describe('Performance System', () => {
     });
 
     it('should retrieve patterns from cache', async () => {
-      const pattern: Pattern = {
-        id: 'cached-pattern',
-        type: 'testing',
-        patternData: { cached: true },
+      const pattern = createTestPattern('cached-pattern', {
         confidence: 0.9,
-        usageCount: 10,
-        createdAt: new Date().toISOString(),
-        lastUsed: new Date().toISOString()
-      };
+        usageCount: 10
+      });
 
       await perfSystem.storePattern(pattern);
 
@@ -69,15 +81,10 @@ describe('Performance System', () => {
     it('should handle batch pattern retrieval', async () => {
       const patterns: Pattern[] = [];
       for (let i = 0; i < 10; i++) {
-        patterns.push({
-          id: `batch-pattern-${i}`,
-          type: 'testing',
-          patternData: { index: i },
+        patterns.push(createTestPattern(`batch-pattern-${i}`, {
           confidence: 0.7,
-          usageCount: i,
-          createdAt: new Date().toISOString(),
-          lastUsed: new Date().toISOString()
-        });
+          usageCount: i
+        }));
       }
 
       // Store patterns
@@ -96,15 +103,9 @@ describe('Performance System', () => {
 
   describe('Confidence Updates', () => {
     it('should update confidence scores', async () => {
-      const pattern: Pattern = {
-        id: 'confidence-pattern',
-        type: 'testing',
-        patternData: {},
-        confidence: 0.5,
-        usageCount: 0,
-        createdAt: new Date().toISOString(),
-        lastUsed: new Date().toISOString()
-      };
+      const pattern = createTestPattern('confidence-pattern', {
+        confidence: 0.5
+      });
 
       await perfSystem.storePattern(pattern);
 
@@ -203,15 +204,16 @@ describe('Performance System', () => {
     });
 
     it('should handle invalid pattern data', async () => {
-      const result = await perfSystem.storePattern({
+      const invalidPattern = createTestPattern('', {
         id: '',
-        type: 'testing',
-        patternData: null as any,
         confidence: 0,
-        usageCount: 0,
         createdAt: '',
-        lastUsed: ''
+        lastUsed: '',
+        name: null as any,  // Invalid name
+        description: null as any  // Invalid description
       });
+
+      const result = await perfSystem.storePattern(invalidPattern);
 
       expect(result.success).toBe(false);
     });
@@ -320,15 +322,10 @@ describe('Cache System', () => {
   });
 
   it('should hit L1 cache for hot patterns', async () => {
-    const pattern: Pattern = {
-      id: 'hot-pattern',
-      type: 'testing',
-      patternData: { hot: true },
+    const pattern = createTestPattern('hot-pattern', {
       confidence: 0.95,
-      usageCount: 1000,
-      createdAt: new Date().toISOString(),
-      lastUsed: new Date().toISOString()
-    };
+      usageCount: 1000
+    });
 
     await perfSystem.storePattern(pattern);
 
@@ -344,15 +341,7 @@ describe('Cache System', () => {
   });
 
   it('should promote patterns to faster cache levels', async () => {
-    const pattern: Pattern = {
-      id: 'promoted-pattern',
-      type: 'testing',
-      patternData: {},
-      confidence: 0.8,
-      usageCount: 0,
-      createdAt: new Date().toISOString(),
-      lastUsed: new Date().toISOString()
-    };
+    const pattern = createTestPattern('promoted-pattern');
 
     await perfSystem.storePattern(pattern);
 
@@ -373,17 +362,11 @@ describe('Compression System', () => {
     const perfSystem = createTestPerformanceSystem();
     await perfSystem.initialize();
 
-    const largePattern: Pattern = {
-      id: 'large-pattern',
-      type: 'testing',
-      patternData: {
-        data: 'x'.repeat(10000) // 10KB of data
-      },
-      confidence: 0.8,
-      usageCount: 0,
-      createdAt: new Date().toISOString(),
-      lastUsed: new Date().toISOString()
-    };
+    // Create pattern with large description for compression testing
+    const largePattern = createTestPattern('large-pattern', {
+      description: 'x'.repeat(10000),  // 10KB of data
+      conditions: { largeData: 'y'.repeat(5000) }  // Additional 5KB
+    });
 
     await perfSystem.storePattern(largePattern);
     await perfSystem.flush();

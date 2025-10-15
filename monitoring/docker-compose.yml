@@ -1,0 +1,203 @@
+# Docker Compose for Claude Code Monitoring Stack
+# Includes Prometheus, Grafana, and Alertmanager with pre-configured dashboards
+
+version: '3.8'
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  alertmanager-data:
+    driver: local
+
+services:
+  # ==========================================================================
+  # PROMETHEUS - Metrics Collection & Storage
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: claude-code-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./recording-rules.yml:/etc/prometheus/recording-rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.claudecode.service=prometheus"
+      - "com.claudecode.description=Metrics collection and storage"
+
+  # ==========================================================================
+  # GRAFANA - Visualization & Dashboards
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: claude-code-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      # Admin credentials
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+
+      # Server settings
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+
+      # Anonymous access (disable in production)
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+
+      # Data source provisioning
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+
+      # Plugin installation
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+
+      # SMTP settings (for alerts)
+      - GF_SMTP_ENABLED=${GF_SMTP_ENABLED:-false}
+      - GF_SMTP_HOST=${GF_SMTP_HOST:-smtp.gmail.com:587}
+      - GF_SMTP_USER=${GF_SMTP_USER}
+      - GF_SMTP_PASSWORD=${GF_SMTP_PASSWORD}
+      - GF_SMTP_FROM_ADDRESS=${GF_SMTP_FROM_ADDRESS:-alerts@claudecode.io}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/claude-code-main.json:ro
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.claudecode.service=grafana"
+      - "com.claudecode.description=Metrics visualization and dashboards"
+
+  # ==========================================================================
+  # ALERTMANAGER - Alert Routing & Notifications
+  # ==========================================================================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: claude-code-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    environment:
+      # Notification credentials (set via .env file)
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - PAGERDUTY_SERVICE_KEY=${PAGERDUTY_SERVICE_KEY}
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.claudecode.service=alertmanager"
+      - "com.claudecode.description=Alert routing and notifications"
+
+  # ==========================================================================
+  # NODE EXPORTER - System Metrics (Optional)
+  # ==========================================================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: claude-code-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - monitoring
+    labels:
+      - "com.claudecode.service=node-exporter"
+      - "com.claudecode.description=System metrics collection"
+
+  # ==========================================================================
+  # POSTGRES EXPORTER - Database Metrics (Optional)
+  # ==========================================================================
+  # Uncomment if using PostgreSQL for memory.db
+  # postgres-exporter:
+  #   image: prometheuscommunity/postgres-exporter:latest
+  #   container_name: claude-code-postgres-exporter
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9187:9187"
+  #   environment:
+  #     - DATA_SOURCE_NAME=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=disable
+  #   networks:
+  #     - monitoring
+  #   labels:
+  #     - "com.claudecode.service=postgres-exporter"
+  #     - "com.claudecode.description=PostgreSQL metrics collection"
+
+  # ==========================================================================
+  # WEBHOOK RECEIVER - Custom Alert Handling (Optional)
+  # ==========================================================================
+  webhook-receiver:
+    image: node:18-alpine
+    container_name: claude-code-webhook-receiver
+    restart: unless-stopped
+    ports:
+      - "9095:9095"
+    working_dir: /app
+    command: node webhook-server.js
+    volumes:
+      - ./webhook-server.js:/app/webhook-server.js:ro
+    networks:
+      - monitoring
+    environment:
+      - PORT=9095
+      - LOG_LEVEL=info
+    labels:
+      - "com.claudecode.service=webhook-receiver"
+      - "com.claudecode.description=Custom webhook handler for alerts"

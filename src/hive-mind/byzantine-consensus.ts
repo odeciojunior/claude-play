@@ -176,12 +176,12 @@ export class ByzantineConsensus extends EventEmitter {
     // Wait for votes or timeout
     const voteResults = await Promise.race([
       Promise.all(votingPromises),
-      new Promise<Vote[]>(resolve =>
+      new Promise<(Vote | null)[]>(resolve =>
         setTimeout(() => resolve([]), proposal.timeout)
       )
     ]);
 
-    round.votes = voteResults.filter(v => v !== null);
+    round.votes = voteResults.filter((v): v is Vote => v !== null);
 
     // Check quorum
     const participationRate = round.votes.length / this.nodes.size;

@@ -1,0 +1,693 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "claude-code-main",
+    "title": "Claude Code - System Performance & Health",
+    "description": "Comprehensive monitoring dashboard for Claude Code neural learning, verification, and performance metrics",
+    "tags": ["claude-code", "neural", "verification", "goap", "safla"],
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus",
+          "current": {
+            "text": "Prometheus",
+            "value": "Prometheus"
+          }
+        },
+        {
+          "name": "instance",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(up{job=\"claude-code-app\"}, instance)",
+          "refresh": 1,
+          "multi": false,
+          "includeAll": false
+        },
+        {
+          "name": "agent",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(agent_truth_score, agent_id)",
+          "refresh": 1,
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Overview",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Service Status",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+        "targets": [
+          {
+            "expr": "up{job=\"claude-code-app\", instance=\"$instance\"}",
+            "legendFormat": "Status"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 1, "color": "green" }
+              ]
+            },
+            "mappings": [
+              { "value": 0, "text": "DOWN" },
+              { "value": 1, "text": "UP" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Neural Operations/sec",
+        "type": "stat",
+        "gridPos": { "x": 4, "y": 1, "w": 5, "h": 4 },
+        "targets": [
+          {
+            "expr": "neural:operations_per_second:rate5m",
+            "legendFormat": "Ops/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 100000, "color": "yellow" },
+                { "value": 150000, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Cache Hit Rate",
+        "type": "gauge",
+        "gridPos": { "x": 9, "y": 1, "w": 5, "h": 4 },
+        "targets": [
+          {
+            "expr": "cache:hit_rate:ratio",
+            "legendFormat": "Hit Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.6, "color": "yellow" },
+                { "value": 0.8, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Truth Score (P95)",
+        "type": "gauge",
+        "gridPos": { "x": 14, "y": 1, "w": 5, "h": 4 },
+        "targets": [
+          {
+            "expr": "verification:truth_score:p95",
+            "legendFormat": "P95 Score"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.85, "color": "yellow" },
+                { "value": 0.95, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Memory Usage",
+        "type": "stat",
+        "gridPos": { "x": 19, "y": 1, "w": 5, "h": 4 },
+        "targets": [
+          {
+            "expr": "process:memory_mb",
+            "legendFormat": "Memory"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 80, "color": "yellow" },
+                { "value": 100, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Neural System Performance",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 11,
+        "title": "Neural Operations Rate",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:operations_per_second:rate5m",
+            "legendFormat": "5m avg"
+          },
+          {
+            "expr": "neural:operations_per_second:rate1h",
+            "legendFormat": "1h avg"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Operations/sec"
+          }
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [150000],
+                "type": "lt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "reducer": {
+                "type": "avg"
+              },
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "name": "Neural Operations Rate alert",
+          "noDataState": "no_data",
+          "notifications": []
+        }
+      },
+      {
+        "id": 12,
+        "title": "Pattern Confidence Distribution",
+        "type": "heatmap",
+        "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(pattern_confidence_bucket[5m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}"
+          }
+        ],
+        "dataFormat": "tsbuckets"
+      },
+      {
+        "id": 13,
+        "title": "Feedback Loop Cycles",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:feedback_cycles:rate5m",
+            "legendFormat": "Cycles/sec"
+          },
+          {
+            "expr": "neural:patterns_learned:rate5m",
+            "legendFormat": "Patterns learned/sec"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Rate"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Pattern Memory Size",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:pattern_memory_mb",
+            "legendFormat": "Pattern memory"
+          },
+          {
+            "expr": "process:memory_mb",
+            "legendFormat": "Total memory"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "decmbytes",
+            "label": "Memory"
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "title": "Verification & Truth System",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Truth Score Percentiles",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 23, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "verification:truth_score:p50",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "verification:truth_score:p95",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "verification:truth_score:p99",
+            "legendFormat": "P99"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Truth Score",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "title": "Verification Success Rate",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 23, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "verification:success_rate:ratio",
+            "legendFormat": "Success rate"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Success Rate",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "title": "Auto Rollbacks",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 31, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "increase(auto_rollback_total[1h])",
+            "legendFormat": "Rollbacks (1h)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "yellow" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 24,
+        "title": "Agent Reliability (by Agent)",
+        "type": "bargauge",
+        "gridPos": { "x": 6, "y": 31, "w": 18, "h": 8 },
+        "targets": [
+          {
+            "expr": "agent:truth_score:avg_by_agent{agent_id=~\"$agent\"}",
+            "legendFormat": "{{agent_id}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.85, "color": "yellow" },
+                { "value": 0.95, "color": "green" }
+              ]
+            }
+          }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient"
+        }
+      },
+      {
+        "id": 30,
+        "title": "Database & Caching",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 31,
+        "title": "Database Query Duration",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "db:query_duration_seconds:p50",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "db:query_duration_seconds:p95",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "db:query_duration_seconds:p99",
+            "legendFormat": "P99"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration"
+          }
+        ]
+      },
+      {
+        "id": 32,
+        "title": "Cache Performance",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total[5m])",
+            "legendFormat": "Hits/sec"
+          },
+          {
+            "expr": "rate(cache_misses_total[5m])",
+            "legendFormat": "Misses/sec"
+          },
+          {
+            "expr": "cache:hit_rate:ratio",
+            "legendFormat": "Hit rate",
+            "yAxisIndex": 1
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Operations/sec"
+          },
+          {
+            "format": "percentunit",
+            "label": "Hit Rate"
+          }
+        ]
+      },
+      {
+        "id": 33,
+        "title": "Database Connection Errors",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "db:connection_errors:rate5m",
+            "legendFormat": "Errors/sec"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Errors/sec"
+          }
+        ]
+      },
+      {
+        "id": 34,
+        "title": "Pattern Retrieval Performance",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:retrieval_duration_seconds:p95",
+            "legendFormat": "P95 retrieval time"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration"
+          }
+        ]
+      },
+      {
+        "id": 40,
+        "title": "GOAP Planning & Coordination",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 56, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 41,
+        "title": "GOAP Planning Duration",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 57, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "goap:planning_duration_seconds:p50",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "goap:planning_duration_seconds:p95",
+            "legendFormat": "P95"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration"
+          }
+        ]
+      },
+      {
+        "id": 42,
+        "title": "Coordination Efficiency",
+        "type": "gauge",
+        "gridPos": { "x": 12, "y": 57, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "swarm:coordination_efficiency",
+            "legendFormat": "Efficiency"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.8, "color": "yellow" },
+                { "value": 0.95, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 43,
+        "title": "Pattern Reuse Rate",
+        "type": "gauge",
+        "gridPos": { "x": 18, "y": 57, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:pattern_reuse_rate:ratio",
+            "legendFormat": "Reuse Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.6, "color": "yellow" },
+                { "value": 0.8, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 44,
+        "title": "Task Completion Rate",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 65, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "task:completion_rate:rate5m",
+            "legendFormat": "Tasks/sec"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Tasks/sec"
+          }
+        ]
+      },
+      {
+        "id": 45,
+        "title": "Active Patterns Count",
+        "type": "stat",
+        "gridPos": { "x": 12, "y": 65, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "neural:active_patterns:count",
+            "legendFormat": "Active patterns"
+          }
+        ]
+      },
+      {
+        "id": 50,
+        "title": "System Resources",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 73, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 51,
+        "title": "CPU Usage",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 74, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "process:cpu_usage:rate5m",
+            "legendFormat": "CPU %"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percent",
+            "label": "CPU Usage",
+            "min": 0,
+            "max": 100
+          }
+        ]
+      },
+      {
+        "id": 52,
+        "title": "Memory Usage Over Time",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 74, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "process:memory_mb",
+            "legendFormat": "Memory MB"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "decmbytes",
+            "label": "Memory"
+          }
+        ]
+      },
+      {
+        "id": 53,
+        "title": "Error Rates by Type",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 82, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "expr": "errors:rate5m_by_type",
+            "legendFormat": "{{error_type}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ops",
+            "label": "Errors/sec"
+          }
+        ]
+      }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 1
+  }
+}

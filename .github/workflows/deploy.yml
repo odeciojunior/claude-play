@@ -1,0 +1,400 @@
+name: Deploy to Staging and Production
+
+on:
+  push:
+    branches:
+      - develop  # Trigger staging deployment
+      - main     # Trigger production deployment
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip tests (not recommended)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '24'
+  REQUIRED_NODE_VERSION: 24
+
+jobs:
+  ###############################################################################
+  # Pre-Deployment Checks
+  ###############################################################################
+  pre-checks:
+    name: Pre-Deployment Validation
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy-staging: ${{ steps.determine.outputs.staging }}
+      should-deploy-production: ${{ steps.determine.outputs.production }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git checks
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Check Node.js version
+        run: |
+          node_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+          if [ "$node_version" -lt "$REQUIRED_NODE_VERSION" ]; then
+            echo "::error::Node.js version $node_version is too old (required: $REQUIRED_NODE_VERSION+)"
+            exit 1
+          fi
+          echo "✓ Node.js version: v$node_version"
+
+      - name: Determine deployment target
+        id: determine
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.event.inputs.environment }}" == "staging" ]]; then
+              echo "staging=true" >> $GITHUB_OUTPUT
+              echo "production=false" >> $GITHUB_OUTPUT
+            else
+              echo "staging=false" >> $GITHUB_OUTPUT
+              echo "production=true" >> $GITHUB_OUTPUT
+            fi
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "staging=true" >> $GITHUB_OUTPUT
+            echo "production=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "staging=false" >> $GITHUB_OUTPUT
+            echo "production=true" >> $GITHUB_OUTPUT
+          else
+            echo "staging=false" >> $GITHUB_OUTPUT
+            echo "production=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate git status
+        run: |
+          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "Current SHA: $(git rev-parse HEAD)"
+          echo "Commit message: $(git log -1 --format=%s)"
+
+  ###############################################################################
+  # Build and Test
+  ###############################################################################
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    needs: pre-checks
+    if: needs.pre-checks.outputs.should-deploy-staging == 'true' || needs.pre-checks.outputs.should-deploy-production == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci --production=false
+
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run type checker
+        run: npm run typecheck
+
+      - name: Build application
+        run: |
+          echo "Starting build..."
+          npm run build
+          echo "Build completed!"
+
+          # Verify build artifacts
+          if [ ! -d "dist" ]; then
+            echo "::error::Build directory not found"
+            exit 1
+          fi
+
+          build_files=$(find dist -type f -name "*.js" | wc -l)
+          echo "✓ Build artifacts: $build_files files"
+
+      - name: Run tests
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          echo "Running test suite..."
+          npm test
+          echo "✓ All tests passed"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            package.json
+            package-lock.json
+          retention-days: 7
+
+      - name: Generate test report
+        if: always()
+        run: |
+          mkdir -p test-reports
+          echo "Build Status: ${{ job.status }}" > test-reports/summary.txt
+          echo "Git SHA: ${{ github.sha }}" >> test-reports/summary.txt
+          echo "Timestamp: $(date -Iseconds)" >> test-reports/summary.txt
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: test-reports/
+          retention-days: 30
+
+  ###############################################################################
+  # Deploy to Staging
+  ###############################################################################
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [pre-checks, build-and-test]
+    if: needs.pre-checks.outputs.should-deploy-staging == 'true'
+    environment:
+      name: staging
+      url: https://staging.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deployment-package
+          cp -r dist deployment-package/
+          cp package.json package-lock.json deployment-package/
+          tar -czf deployment-staging-${{ github.sha }}.tar.gz deployment-package/
+
+      - name: Run deployment script
+        run: |
+          chmod +x scripts/deploy-staging.sh
+          ./scripts/deploy-staging.sh
+
+      - name: Run health checks
+        run: |
+          chmod +x scripts/health-check.sh
+          ./scripts/health-check.sh
+
+      - name: Run smoke tests
+        run: |
+          chmod +x scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-deployment-report
+          path: .swarm/deployment-report-*.json
+          retention-days: 90
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Staging deployment successful!\n\n**SHA:** \`${{ github.sha }}\`\n**Environment:** staging\n**URL:** https://staging.example.com`
+            })
+
+  ###############################################################################
+  # Deploy to Production (with approval)
+  ###############################################################################
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [pre-checks, build-and-test]
+    if: needs.pre-checks.outputs.should-deploy-production == 'true'
+    environment:
+      name: production
+      url: https://example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Validate production prerequisites
+        run: |
+          # Ensure we're deploying from main branch
+          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            echo "::error::Production must be deployed from main branch"
+            exit 1
+          fi
+
+          # Check for required environment variables
+          if [[ -z "${{ secrets.PRODUCTION_DEPLOY_KEY }}" ]]; then
+            echo "::warning::PRODUCTION_DEPLOY_KEY not set"
+          fi
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deployment-package
+          cp -r dist deployment-package/
+          cp package.json package-lock.json deployment-package/
+          tar -czf deployment-production-${{ github.sha }}.tar.gz deployment-package/
+
+      - name: Pre-deployment backup
+        run: |
+          echo "Creating pre-deployment backup..."
+          mkdir -p .swarm/backups
+          # Backup logic here
+
+      - name: Run production deployment
+        env:
+          ENVIRONMENT: production
+        run: |
+          chmod +x scripts/deploy-production.sh
+          ./scripts/deploy-production.sh --skip-approval
+
+      - name: Run health checks
+        run: |
+          chmod +x scripts/health-check.sh
+          for i in {1..3}; do
+            echo "Health check attempt $i/3..."
+            if ./scripts/health-check.sh; then
+              echo "✓ Health check passed"
+              break
+            else
+              if [ $i -eq 3 ]; then
+                echo "::error::Health check failed after 3 attempts"
+                exit 1
+              fi
+              echo "Retrying in 10s..."
+              sleep 10
+            fi
+          done
+
+      - name: Run smoke tests
+        run: |
+          chmod +x scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-report
+          path: .swarm/deployment-report-*.json
+          retention-days: 365
+
+      - name: Create GitHub Release
+        if: success()
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: production-${{ github.sha }}
+          release_name: Production Release ${{ github.sha }}
+          body: |
+            Production deployment completed successfully.
+
+            **SHA:** ${{ github.sha }}
+            **Deployer:** ${{ github.actor }}
+            **Timestamp:** ${{ github.event.head_commit.timestamp }}
+            **Commit:** ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+
+      - name: Send deployment notification
+        if: always()
+        run: |
+          status="${{ job.status }}"
+          if [ "$status" == "success" ]; then
+            echo "✓ Production deployment successful"
+            # Send success notification (Slack, email, etc.)
+          else
+            echo "✗ Production deployment failed"
+            # Send failure alert
+          fi
+
+  ###############################################################################
+  # Rollback Job (Manual Trigger)
+  ###############################################################################
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: ${{ failure() && (needs.deploy-staging.result == 'failure' || needs.deploy-production.result == 'failure') }}
+    needs: [deploy-staging, deploy-production]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run rollback script
+        run: |
+          chmod +x scripts/rollback.sh
+          ./scripts/rollback.sh --force
+
+      - name: Verify rollback
+        run: |
+          chmod +x scripts/health-check.sh
+          ./scripts/health-check.sh
+
+      - name: Send rollback notification
+        run: |
+          echo "Rollback completed. Manual investigation required."
+          # Send critical alert

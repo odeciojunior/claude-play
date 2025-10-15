@@ -1,0 +1,344 @@
+# Alertmanager Configuration for Claude Code
+# Production-ready routing, notifications, and alert management
+
+global:
+  # Global timeout and resolution settings
+  resolve_timeout: 5m
+
+  # SMTP configuration for email alerts
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@claudecode.io'
+  smtp_auth_username: '${SMTP_USERNAME}'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+  # Slack webhook URL (set via environment variable)
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+  # PagerDuty integration key
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Templates for notification formatting
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route tree for alert routing
+route:
+  # Default receiver for all alerts
+  receiver: 'default-receiver'
+
+  # Group alerts by these labels
+  group_by: ['alertname', 'severity', 'service']
+
+  # Wait time before sending first notification
+  group_wait: 30s
+
+  # Wait time before sending subsequent notifications for same group
+  group_interval: 5m
+
+  # Wait time before repeating notifications
+  repeat_interval: 4h
+
+  # Routes for different severity levels
+  routes:
+    # ========================================================================
+    # P0 CRITICAL ALERTS - Immediate Response Required
+    # ========================================================================
+    - match:
+        severity: P0
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 5m
+      continue: true
+      routes:
+        # Service down alerts go to on-call via PagerDuty
+        - match:
+            alertname: ServiceDown
+          receiver: 'pagerduty-oncall'
+          group_wait: 0s
+          repeat_interval: 5m
+
+        # Database failures also trigger PagerDuty
+        - match:
+            alertname: DatabaseConnectionFailure
+          receiver: 'pagerduty-oncall'
+          group_wait: 0s
+          repeat_interval: 5m
+
+        # Critical truth score issues
+        - match:
+            alertname: TruthScoreCriticallyLow
+          receiver: 'critical-alerts'
+          group_wait: 10s
+          repeat_interval: 10m
+
+    # ========================================================================
+    # P1 HIGH PRIORITY ALERTS - Fast Response Needed
+    # ========================================================================
+    - match:
+        severity: P1
+      receiver: 'high-priority-alerts'
+      group_wait: 30s
+      group_interval: 2m
+      repeat_interval: 30m
+      routes:
+        # Neural system performance issues
+        - match_re:
+            alertname: '(NeuralOperationsDegraded|FeedbackLoopStalled|PatternRetrievalSlow)'
+          receiver: 'neural-team'
+          repeat_interval: 15m
+
+        # Database performance issues
+        - match:
+            alertname: DatabaseSlowQueries
+          receiver: 'database-team'
+          repeat_interval: 15m
+
+        # Cache issues
+        - match:
+            alertname: CacheHitRateLow
+          receiver: 'performance-team'
+          repeat_interval: 30m
+
+    # ========================================================================
+    # P2 MEDIUM PRIORITY ALERTS - Normal Response
+    # ========================================================================
+    - match:
+        severity: P2
+      receiver: 'medium-priority-alerts'
+      group_wait: 1m
+      group_interval: 5m
+      repeat_interval: 2h
+      routes:
+        # Verification system issues
+        - match_re:
+            service: verification
+          receiver: 'verification-team'
+          repeat_interval: 1h
+
+        # GOAP planning issues
+        - match_re:
+            service: goap
+          receiver: 'planning-team'
+          repeat_interval: 2h
+
+        # Agent coordination issues
+        - match_re:
+            service: swarm
+          receiver: 'coordination-team'
+          repeat_interval: 2h
+
+    # ========================================================================
+    # P3 LOW PRIORITY ALERTS - Informational
+    # ========================================================================
+    - match:
+        severity: P3
+      receiver: 'low-priority-alerts'
+      group_wait: 5m
+      group_interval: 15m
+      repeat_interval: 12h
+      routes:
+        # Capacity planning alerts
+        - match_re:
+            category: capacity
+          receiver: 'capacity-planning-team'
+          repeat_interval: 24h
+
+        # Maintenance alerts
+        - match_re:
+            category: maintenance
+          receiver: 'maintenance-team'
+          repeat_interval: 24h
+
+# Inhibition rules - prevent alert storms
+inhibit_rules:
+  # If service is down, don't alert on performance metrics
+  - source_match:
+      alertname: ServiceDown
+    target_match_re:
+      alertname: '(NeuralOperationsDegraded|CacheHitRateLow|DatabaseSlowQueries)'
+    equal: ['instance']
+
+  # If database connection is failing, don't alert on slow queries
+  - source_match:
+      alertname: DatabaseConnectionFailure
+    target_match:
+      alertname: DatabaseSlowQueries
+    equal: ['instance']
+
+  # If feedback loop stalled, don't alert on pattern learning issues
+  - source_match:
+      alertname: FeedbackLoopStalled
+    target_match_re:
+      alertname: '(PatternExtractionErrors|PatternConfidenceDeclining)'
+    equal: ['instance']
+
+  # Higher severity inhibits lower severity for same alert
+  - source_match:
+      severity: P0
+    target_match:
+      severity: P1
+    equal: ['alertname', 'instance']
+
+  - source_match:
+      severity: P1
+    target_match:
+      severity: P2
+    equal: ['alertname', 'instance']
+
+  - source_match:
+      severity: P2
+    target_match:
+      severity: P3
+    equal: ['alertname', 'instance']
+
+# Receiver definitions
+receivers:
+  # Default receiver - logs only
+  - name: 'default-receiver'
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/default'
+        send_resolved: true
+
+  # ========================================================================
+  # CRITICAL ALERTS - P0
+  # ========================================================================
+  - name: 'critical-alerts'
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          *Alert:* {{ .GroupLabels.alertname }}
+          *Severity:* {{ .GroupLabels.severity }}
+          *Service:* {{ .GroupLabels.service }}
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+          *Impact:* {{ .CommonAnnotations.impact }}
+          *Dashboard:* {{ .CommonAnnotations.dashboard }}
+        send_resolved: true
+        color: 'danger'
+    email_configs:
+      - to: 'oncall@claudecode.io,engineering-leads@claudecode.io'
+        headers:
+          Subject: '[P0 CRITICAL] {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    webhook_configs:
+      - url: 'http://localhost:9095/webhook/critical'
+        send_resolved: true
+
+  # PagerDuty for immediate on-call response
+  - name: 'pagerduty-oncall'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+        severity: 'critical'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          description: '{{ .CommonAnnotations.description }}'
+          impact: '{{ .CommonAnnotations.impact }}'
+    slack_configs:
+      - channel: '#alerts-critical'
+        title: '📟 PAGERDUTY: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+        color: 'danger'
+
+  # ========================================================================
+  # HIGH PRIORITY ALERTS - P1
+  # ========================================================================
+  - name: 'high-priority-alerts'
+    slack_configs:
+      - channel: '#alerts-high'
+        title: '⚠️ HIGH: {{ .GroupLabels.alertname }}'
+        text: |
+          *Alert:* {{ .GroupLabels.alertname }}
+          *Severity:* {{ .GroupLabels.severity }}
+          *Service:* {{ .GroupLabels.service }}
+          *Summary:* {{ .CommonAnnotations.summary }}
+          *Description:* {{ .CommonAnnotations.description }}
+        send_resolved: true
+        color: 'warning'
+    email_configs:
+      - to: 'engineering@claudecode.io'
+        headers:
+          Subject: '[P1 HIGH] {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  # Neural system team
+  - name: 'neural-team'
+    slack_configs:
+      - channel: '#team-neural'
+        title: '🧠 Neural System: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    email_configs:
+      - to: 'neural-team@claudecode.io'
+        send_resolved: true
+
+  # Database team
+  - name: 'database-team'
+    slack_configs:
+      - channel: '#team-database'
+        title: '💾 Database: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    email_configs:
+      - to: 'database-team@claudecode.io'
+        send_resolved: true
+
+  # Performance team
+  - name: 'performance-team'
+    slack_configs:
+      - channel: '#team-performance'
+        title: '⚡ Performance: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  # ========================================================================
+  # MEDIUM PRIORITY ALERTS - P2
+  # ========================================================================
+  - name: 'medium-priority-alerts'
+    slack_configs:
+      - channel: '#alerts-medium'
+        title: 'ℹ️ MEDIUM: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+        color: 'good'
+
+  - name: 'verification-team'
+    slack_configs:
+      - channel: '#team-verification'
+        title: '✅ Verification: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  - name: 'planning-team'
+    slack_configs:
+      - channel: '#team-planning'
+        title: '🎯 GOAP: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  - name: 'coordination-team'
+    slack_configs:
+      - channel: '#team-coordination'
+        title: '🐝 Swarm: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  # ========================================================================
+  # LOW PRIORITY ALERTS - P3
+  # ========================================================================
+  - name: 'low-priority-alerts'
+    slack_configs:
+      - channel: '#alerts-low'
+        title: '📊 INFO: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  - name: 'capacity-planning-team'
+    email_configs:
+      - to: 'capacity-planning@claudecode.io'
+        headers:
+          Subject: '[P3 INFO] {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+  - name: 'maintenance-team'
+    email_configs:
+      - to: 'maintenance@claudecode.io'
+        headers:
+          Subject: '[P3 MAINTENANCE] {{ .GroupLabels.alertname }}'
+        send_resolved: true

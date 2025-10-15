@@ -1037,7 +1037,7 @@ class AgentReliabilityTracker {
   }
 
   private rowToReliability(row: any): AgentReliability {
-    const performanceByFileType = new Map(JSON.parse(row.performance_by_file_type || '[]'));
+    const performanceByFileType = new Map<string, number>(JSON.parse(row.performance_by_file_type || '[]'));
 
     return {
       agentId: row.agent_id,

@@ -440,7 +440,7 @@ export class VectorMemoryManager {
     // Enforce max cache size (LRU eviction)
     if (this.cache.size >= 1000) {
       // Remove oldest entry
-      const oldestId = this.cache.keys().next().value;
+      const oldestId = this.cache.keys().next().value as string;
       this.cache.delete(oldestId);
       this.cacheExpiry.delete(oldestId);
     }

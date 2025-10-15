@@ -94,7 +94,7 @@ export class PerformanceBenchmarks {
    * Benchmark 1: Operations Throughput
    * Target: 172,000+ ops/sec
    */
-  private async benchmarkOperationsThroughput(): Promise<BenchmarkResult> {
+  async benchmarkOperationsThroughput(): Promise<BenchmarkResult> {
     console.log('⚡ Benchmarking operations throughput...');
     const startTime = performance.now();
 
@@ -146,7 +146,7 @@ export class PerformanceBenchmarks {
    * Benchmark 2: Pattern Retrieval Speed
    * Target: <10ms average
    */
-  private async benchmarkPatternRetrieval(): Promise<BenchmarkResult> {
+  async benchmarkPatternRetrieval(): Promise<BenchmarkResult> {
     console.log('🔍 Benchmarking pattern retrieval speed...');
     const startTime = performance.now();
 
@@ -187,7 +187,7 @@ export class PerformanceBenchmarks {
    * Benchmark 3: Cache Hit Rate
    * Target: 80%+
    */
-  private async benchmarkCacheHitRate(): Promise<BenchmarkResult> {
+  async benchmarkCacheHitRate(): Promise<BenchmarkResult> {
     console.log('💾 Benchmarking cache hit rate...');
     const startTime = performance.now();
 
@@ -230,7 +230,7 @@ export class PerformanceBenchmarks {
    * Benchmark 4: Batch Processing
    * Target: 10x improvement over single operations
    */
-  private async benchmarkBatchProcessing(): Promise<BenchmarkResult> {
+  async benchmarkBatchProcessing(): Promise<BenchmarkResult> {
     console.log('📦 Benchmarking batch processing...');
     const startTime = performance.now();
 
@@ -274,7 +274,7 @@ export class PerformanceBenchmarks {
    * Benchmark 5: Compression Ratio
    * Target: 60% compression
    */
-  private async benchmarkCompressionRatio(): Promise<BenchmarkResult> {
+  async benchmarkCompressionRatio(): Promise<BenchmarkResult> {
     console.log('🗜️  Benchmarking compression ratio...');
     const startTime = performance.now();
 
@@ -312,7 +312,7 @@ export class PerformanceBenchmarks {
    * Benchmark 6: Learning Overhead
    * Target: <10% overhead
    */
-  private async benchmarkLearningOverhead(): Promise<BenchmarkResult> {
+  async benchmarkLearningOverhead(): Promise<BenchmarkResult> {
     console.log('🧠 Benchmarking learning overhead...');
     const startTime = performance.now();
 
@@ -478,13 +478,25 @@ export class PerformanceBenchmarks {
       patterns.push({
         id: `pattern_${i}`,
         type: 'testing',
-        patternData: {
-          name: `Test Pattern ${i}`,
-          description: 'Benchmark test pattern with some data',
-          operations: Array.from({ length: 10 }, (_, j) => ({
-            tool: 'test',
-            params: { index: j }
-          }))
+        name: `Test Pattern ${i}`,
+        description: 'Benchmark test pattern with some data',
+        conditions: { test: true },
+        actions: Array.from({ length: 10 }, (_, j) => ({
+          step: j,
+          type: 'test',
+          tool: 'test',
+          parameters: { index: j }
+        })),
+        successCriteria: {
+          minCompletionRate: 0.9,
+          maxErrorRate: 0.1
+        },
+        metrics: {
+          successCount: 0,
+          failureCount: 0,
+          partialCount: 0,
+          avgDurationMs: 0,
+          avgImprovement: 0
         },
         confidence: 0.5 + Math.random() * 0.5,
         usageCount: Math.floor(Math.random() * 100),

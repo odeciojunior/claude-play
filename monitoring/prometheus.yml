@@ -1,0 +1,107 @@
+# Prometheus Configuration for Claude Code Monitoring
+# Production-ready configuration for neural system, verification, and performance metrics
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'claude-code-production'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+      timeout: 10s
+
+# Load alert rules
+rule_files:
+  - 'alerts.yml'
+  - 'recording-rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Claude Code Application Metrics
+  - job_name: 'claude-code-app'
+    scrape_interval: 10s
+    scrape_timeout: 8s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'localhost:3000'  # Adjust to your app port
+        labels:
+          service: 'claude-code'
+          tier: 'application'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 'localhost:3000'
+
+  # Node.js Process Metrics
+  - job_name: 'node-metrics'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'localhost:3000'
+        labels:
+          service: 'nodejs'
+          tier: 'runtime'
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'localhost:9090'
+        labels:
+          service: 'prometheus'
+          tier: 'monitoring'
+
+  # Grafana Metrics
+  - job_name: 'grafana'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'grafana:3001'
+        labels:
+          service: 'grafana'
+          tier: 'monitoring'
+
+  # Alertmanager Metrics
+  - job_name: 'alertmanager'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'alertmanager:9093'
+        labels:
+          service: 'alertmanager'
+          tier: 'monitoring'
+
+  # Database Metrics (if using PostgreSQL exporter)
+  - job_name: 'database'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - 'postgres-exporter:9187'
+        labels:
+          service: 'postgresql'
+          tier: 'database'
+
+  # Node Exporter (System Metrics)
+  - job_name: 'node-exporter'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'node-exporter:9100'
+        labels:
+          service: 'system'
+          tier: 'infrastructure'
+
+# Recording Rules for Aggregated Metrics
+# Additional file: recording-rules.yml

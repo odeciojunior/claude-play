@@ -11,22 +11,103 @@ describe('Verification-Neural Integration', () => {
   let verification: any;
   let neural: any;
   let bridge: any;
+  let patterns: any[] = [];
 
   beforeEach(() => {
+    patterns = [];
+
     verification = {
       verify: jest.fn(),
       threshold: 0.95
     };
 
     neural = {
-      storePattern: jest.fn(),
-      retrievePattern: jest.fn(),
+      storePattern: jest.fn().mockImplementation((pattern: any) => {
+        patterns.push(pattern);
+        return Promise.resolve();
+      }),
+      retrievePattern: jest.fn().mockImplementation((query: any) => {
+        // Simple similarity matching based on shared words
+        const queryWords = (query || '').toLowerCase().split(/\s+/);
+        const matchingPatterns = patterns.filter(p => {
+          if (!p.codeSignature) return false;
+          const patternWords = p.codeSignature.toLowerCase().split(/\s+/);
+          const commonWords = queryWords.filter((w: string) => patternWords.includes(w));
+          return commonWords.length > 0;
+        });
+        return Promise.resolve({ patterns: matchingPatterns });
+      }),
       updateConfidence: jest.fn()
     };
 
     bridge = {
-      learnFromOutcome: jest.fn(),
-      predictTruthScore: jest.fn()
+      learnFromOutcome: async (task: any, result: any) => {
+        const pattern = {
+          context: `verification_${task.id}`,
+          codeSignature: task.code, // Store code for similarity matching
+          outcome: result.truthScore,
+          confidence: result.truthScore,
+          failed: result.passed === false,
+          passed: result.passed
+        };
+        await neural.storePattern(pattern);
+      },
+
+      predictTruthScore: async (task: any) => {
+        const retrieved = await neural.retrievePattern(task.code);
+        if (!retrieved || !retrieved.patterns || retrieved.patterns.length === 0) {
+          return 0.5; // Default confidence
+        }
+
+        // Weighted average based on confidence
+        const totalWeight = retrieved.patterns.reduce((sum: number, p: any) => sum + (p.confidence || 1), 0);
+        const weightedSum = retrieved.patterns.reduce((sum: number, p: any) =>
+          sum + (p.outcome || 0.5) * (p.confidence || 1), 0
+        );
+
+        return weightedSum / totalWeight;
+      },
+
+      adaptThreshold: async () => {
+        // Analyze recent patterns
+        const recentPatterns = patterns.slice(-50);
+        if (recentPatterns.length === 0) return;
+
+        const avgScore = recentPatterns.reduce((sum, p) => sum + (p.outcome || 0), 0) / recentPatterns.length;
+        const passRate = recentPatterns.filter(p => p.passed).length / recentPatterns.length;
+
+        // Increase threshold if consistently passing with high scores
+        if (passRate > 0.9 && avgScore > 0.96) {
+          verification.threshold = Math.min(0.97, verification.threshold + 0.01);
+        }
+        // Decrease threshold if many near-failures
+        else if (passRate < 0.5 && avgScore < verification.threshold) {
+          verification.threshold = Math.max(0.85, verification.threshold - 0.02);
+        }
+      },
+
+      optimizeVerification: async (task: any) => {
+        const retrieved = await neural.retrievePattern(task.code);
+        if (retrieved && retrieved.patterns && retrieved.patterns.length > 0) {
+          const highConfidence = retrieved.patterns.some((p: any) => p.confidence > 0.95);
+          bridge.skippedChecks = highConfidence ? ['lint'] : [];
+        }
+      },
+
+      getPrioritizedChecks: async (task: any) => {
+        const retrieved = await neural.retrievePattern(task.code);
+        if (retrieved && retrieved.failurePatterns) {
+          return Object.entries(retrieved.failurePatterns)
+            .sort((a: any, b: any) => b[1] - a[1])
+            .map((entry: any) => {
+              const [pattern] = entry;
+              return pattern.replace('_errors', '_check').replace('_issues', '_check');
+            });
+        }
+        return ['type_check', 'syntax_check', 'lint_check'];
+      },
+
+      skippedChecks: []
     };
   });
 

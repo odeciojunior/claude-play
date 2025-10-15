@@ -704,12 +704,18 @@ class BayesianConfidenceUpdater {
 // ============================================================================
 
 class PatternStorage {
-  constructor(private db: Database) {}
+  private dbRun: (sql: string, params: any[]) => Promise<any>;
+  private dbGet: (sql: string, params: any[]) => Promise<any>;
+
+  constructor(private db: Database) {
+    this.dbRun = promisify(db.run.bind(db)) as (sql: string, params: any[]) => Promise<any>;
+    this.dbGet = promisify(db.get.bind(db)) as (sql: string, params: any[]) => Promise<any>;
+  }
 
   async store(pattern: Pattern): Promise<void> {
     const compressed = await this.compressPattern(pattern);
 
-    await this.db.run(
+    await this.dbRun(
       `INSERT INTO patterns (id, type, pattern_data, confidence, usage_count, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
@@ -724,7 +730,7 @@ class PatternStorage {
   }
 
   async get(patternId: string): Promise<Pattern | null> {
-    const row = await this.db.get(
+    const row = await this.dbGet(
       'SELECT * FROM patterns WHERE id = ?',
       [patternId]
     );
@@ -803,7 +809,7 @@ class PatternStorage {
   async update(pattern: Pattern): Promise<void> {
     const compressed = await this.compressPattern(pattern);
 
-    await this.db.run(
+    await this.dbRun(
       `UPDATE patterns
        SET pattern_data = ?, confidence = ?, usage_count = ?, last_used = ?
        WHERE id = ?`,
@@ -812,7 +818,7 @@ class PatternStorage {
   }
 
   async updateConfidence(patternId: string, confidence: number): Promise<void> {
-    await this.db.run(
+    await this.dbRun(
       'UPDATE patterns SET confidence = ? WHERE id = ?',
       [confidence, patternId]
     );
@@ -874,7 +880,7 @@ class PatternStorage {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - options.pruneAgeDays);
 
-    const pruneResults: any = await this.db.run(
+    const pruneResults: any = await this.dbRun(
       `DELETE FROM patterns
        WHERE confidence < ?
          AND usage_count < ?
@@ -892,7 +898,7 @@ class PatternStorage {
   }
 
   async delete(patternId: string): Promise<void> {
-    await this.db.run('DELETE FROM patterns WHERE id = ?', [patternId]);
+    await this.dbRun('DELETE FROM patterns WHERE id = ?', [patternId]);
   }
 
   private async compressPattern(pattern: Pattern): Promise<string> {

@@ -356,12 +356,12 @@ describe('Database Migration System', () => {
     });
 
     it('should verify foreign key constraints', () => {
-      const fkCheck = db.pragma('foreign_key_check');
+      const fkCheck = db.pragma('foreign_key_check') as Array<any>;
       expect(fkCheck.length).toBe(0);
     });
 
     it('should pass SQLite integrity check', () => {
-      const integrity = db.pragma('integrity_check');
+      const integrity = db.pragma('integrity_check') as Array<{ integrity_check: string }>;
       expect(integrity).toHaveLength(1);
       expect(integrity[0]).toHaveProperty('integrity_check', 'ok');
     });

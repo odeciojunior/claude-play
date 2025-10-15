@@ -312,7 +312,7 @@ class DatabaseMigrator {
 
       // Run PRAGMA integrity_check
       console.log('\n   Running SQLite integrity check...');
-      const integrity = this.db.pragma('integrity_check');
+      const integrity = this.db.pragma('integrity_check') as Array<{ integrity_check: string }>;
       if (integrity.length === 1 && integrity[0].integrity_check === 'ok') {
         console.log('      ✅ Database integrity check passed');
       } else {
@@ -321,7 +321,7 @@ class DatabaseMigrator {
 
       // Check foreign key integrity
       console.log('   Checking foreign key constraints...');
-      const fkCheck = this.db.pragma('foreign_key_check');
+      const fkCheck = this.db.pragma('foreign_key_check') as Array<any>;
       if (fkCheck.length === 0) {
         console.log('      ✅ Foreign key constraints valid');
       } else {

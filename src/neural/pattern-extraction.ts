@@ -254,7 +254,7 @@ export class PatternExtractor {
     const avgDuration =
       durations.reduce((a, b) => a + b, 0) / durations.length;
     const avgPerformance =
-      performances.reduce((a, b) => a + b, 0) / performances.length;
+      performances.reduce((a: number, b) => a + b, 0) / performances.length;
 
     const variance =
       durations

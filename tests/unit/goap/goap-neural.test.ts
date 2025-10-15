@@ -25,9 +25,15 @@ describe('GOAP-Neural Integration', () => {
   beforeEach(() => {
     // Mock database
     mockDb = {
-      run: jest.fn((sql, params, callback) => callback?.(null)),
-      get: jest.fn((sql, params, callback) => callback?.(null, null)),
-      all: jest.fn((sql, params, callback) => callback?.(null, []))
+      run: jest.fn().mockImplementation((sql: any, params: any, callback: any) => {
+        if (callback) callback(null);
+      }),
+      get: jest.fn().mockImplementation((sql: any, params: any, callback: any) => {
+        if (callback) callback(null, null);
+      }),
+      all: jest.fn().mockImplementation((sql: any, params: any, callback: any) => {
+        if (callback) callback(null, []);
+      })
     };
 
     // Default config
@@ -61,7 +67,8 @@ describe('GOAP-Neural Integration', () => {
         priority: 'high',
         preconditions: { code: 'ready' },
         effects: { deployed: true },
-        cost: { development_hours: 2, complexity: 'medium', risk: 'low', total_cost: 2 }
+        cost: { development_hours: 2, complexity: 'medium', risk: 'low', total_cost: 2 },
+        value: { blocks: [], unblocks: [], enables_learning: false, foundation_layer: false }
       }];
 
       mockDb.all.mockImplementation((sql: string, params: any, callback: any) => {
@@ -121,7 +128,8 @@ describe('GOAP-Neural Integration', () => {
         priority: 'medium',
         preconditions: { status: 'initial' },
         effects: { status: 'final' },
-        cost: { development_hours: 1, complexity: 'low', risk: 'low', total_cost: 1 }
+        cost: { development_hours: 1, complexity: 'low', risk: 'low', total_cost: 1 },
+        value: { blocks: [], unblocks: [], enables_learning: false, foundation_layer: false }
       }];
 
       mockDb.all.mockImplementation((sql: string, params: any, callback: any) => {
@@ -147,7 +155,8 @@ describe('GOAP-Neural Integration', () => {
           priority: 'medium',
           preconditions: {},
           effects: { x: 1 },
-          cost: { development_hours: 1, complexity: 'low', risk: 'low', total_cost: 1 }
+          cost: { development_hours: 1, complexity: 'low', risk: 'low', total_cost: 1 },
+          value: { blocks: [], unblocks: [], enables_learning: false, foundation_layer: false }
         }
       ];
 
@@ -171,7 +180,8 @@ describe('GOAP-Neural Integration', () => {
         priority: 'high',
         preconditions: { resource: 10 },
         effects: { resource: 0, built: true },
-        cost: { development_hours: 5, complexity: 'high', risk: 'medium', total_cost: 10 }
+        cost: { development_hours: 5, complexity: 'high', risk: 'medium', total_cost: 10 },
+        value: { blocks: [], unblocks: [], enables_learning: false, foundation_layer: false }
       }];
 
       mockDb.all.mockImplementation((sql: string, params: any, callback: any) => {

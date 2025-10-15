@@ -1,0 +1,334 @@
+# Alert Rules for Claude Code Monitoring System
+# Severity Levels: P0 (Critical - 5min), P1 (High - 15min), P2 (Medium - 1hr), P3 (Low - 4hr)
+
+groups:
+  # ============================================================================
+  # P0 CRITICAL ALERTS - Service Down or Data Loss Risk
+  # ============================================================================
+  - name: critical_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job="claude-code-app"} == 0
+        for: 5m
+        labels:
+          severity: P0
+          service: claude-code
+          category: availability
+        annotations:
+          summary: "Claude Code service is down"
+          description: "Service {{ $labels.instance }} has been down for more than 5 minutes"
+          runbook_url: "https://wiki.internal/runbooks/service-down"
+          dashboard: "https://grafana.internal/d/claude-code"
+
+      - alert: DatabaseConnectionFailure
+        expr: |
+          rate(database_connection_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: P0
+          service: database
+          category: connectivity
+        annotations:
+          summary: "Database connection failures detected"
+          description: "Database connection error rate is {{ $value | humanize }} errors/sec"
+          impact: "Neural learning and verification system unavailable"
+
+      - alert: TruthScoreCriticallyLow
+        expr: |
+          histogram_quantile(0.95, rate(truth_score_bucket[5m])) < 0.70
+        for: 5m
+        labels:
+          severity: P0
+          service: verification
+          category: accuracy
+        annotations:
+          summary: "Truth score critically low"
+          description: "95th percentile truth score is {{ $value | humanizePercentage }} (threshold: 95%)"
+          impact: "Verification system failing, automatic rollback engaged"
+          action: "Investigate recent verification failures and agent reliability"
+
+  # ============================================================================
+  # P1 HIGH PRIORITY ALERTS - Performance Degradation
+  # ============================================================================
+  - name: high_priority_alerts
+    interval: 1m
+    rules:
+      - alert: NeuralOperationsDegraded
+        expr: |
+          rate(neural_operations_total[5m]) < 150000
+        for: 15m
+        labels:
+          severity: P1
+          service: neural
+          category: performance
+        annotations:
+          summary: "Neural operations/sec below target"
+          description: "Current rate: {{ $value | humanize }} ops/sec (target: 150K+)"
+          impact: "Learning system performance degraded by {{ $value | humanizePercentage }}%"
+          dashboard: "https://grafana.internal/d/neural-performance"
+
+      - alert: CacheHitRateLow
+        expr: |
+          cache_hit_rate < 0.80
+        for: 15m
+        labels:
+          severity: P1
+          service: caching
+          category: performance
+        annotations:
+          summary: "Cache hit rate below target"
+          description: "Current hit rate: {{ $value | humanizePercentage }} (target: 80%+)"
+          impact: "Increased database load and slower pattern retrieval"
+          action: "Check cache configuration and memory pressure"
+
+      - alert: DatabaseSlowQueries
+        expr: |
+          histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 0.010
+        for: 15m
+        labels:
+          severity: P1
+          service: database
+          category: performance
+        annotations:
+          summary: "Database queries are slow"
+          description: "95th percentile query time: {{ $value | humanizeDuration }} (threshold: <10ms)"
+          impact: "Pattern retrieval and learning pipeline degraded"
+
+      - alert: PatternConfidenceDeclining
+        expr: |
+          avg(pattern_confidence) < 0.70
+        for: 15m
+        labels:
+          severity: P1
+          service: neural
+          category: learning
+        annotations:
+          summary: "Pattern confidence declining"
+          description: "Average pattern confidence: {{ $value | humanize }} (target: 0.7-0.9)"
+          impact: "Learning quality degraded, may affect GOAP planning accuracy"
+          action: "Review recent pattern learning outcomes and verification results"
+
+      - alert: HighMemoryUsage
+        expr: |
+          process_resident_memory_bytes > 104857600
+        for: 15m
+        labels:
+          severity: P1
+          service: system
+          category: resources
+        annotations:
+          summary: "Memory usage above target"
+          description: "Current memory: {{ $value | humanize1024 }} (target: <100MB)"
+          impact: "Risk of OOM, performance degradation likely"
+
+  # ============================================================================
+  # P2 MEDIUM PRIORITY ALERTS - Quality Issues
+  # ============================================================================
+  - name: medium_priority_alerts
+    interval: 5m
+    rules:
+      - alert: VerificationFailureRate
+        expr: |
+          rate(verification_failures_total[1h]) > 0.05
+        for: 1h
+        labels:
+          severity: P2
+          service: verification
+          category: quality
+        annotations:
+          summary: "Verification failure rate elevated"
+          description: "Current failure rate: {{ $value | humanizePercentage }} (threshold: <5%)"
+          impact: "Truth accuracy may decline, more rollbacks occurring"
+
+      - alert: PatternExtractionErrors
+        expr: |
+          rate(pattern_extraction_errors_total[1h]) > 0.01
+        for: 1h
+        labels:
+          severity: P2
+          service: neural
+          category: learning
+        annotations:
+          summary: "Pattern extraction errors detected"
+          description: "Error rate: {{ $value | humanize }} errors/sec"
+          impact: "Learning pipeline partially degraded"
+
+      - alert: GOAPPlanningSlowdown
+        expr: |
+          histogram_quantile(0.95, rate(goap_planning_duration_seconds_bucket[30m])) > 5.0
+        for: 1h
+        labels:
+          severity: P2
+          service: goap
+          category: performance
+        annotations:
+          summary: "GOAP planning taking longer than expected"
+          description: "95th percentile planning time: {{ $value | humanizeDuration }} (threshold: <5s)"
+          impact: "Task orchestration delays, longer wait times for users"
+
+      - alert: AgentCoordinationEfficiency
+        expr: |
+          coordination_efficiency < 0.95
+        for: 1h
+        labels:
+          severity: P2
+          service: swarm
+          category: efficiency
+        annotations:
+          summary: "Agent coordination efficiency below target"
+          description: "Current efficiency: {{ $value | humanizePercentage }} (target: 95%+)"
+          impact: "Increased task completion time, suboptimal resource usage"
+
+      - alert: CPUUsageHigh
+        expr: |
+          rate(process_cpu_seconds_total[5m]) > 0.80
+        for: 1h
+        labels:
+          severity: P2
+          service: system
+          category: resources
+        annotations:
+          summary: "CPU usage consistently high"
+          description: "CPU usage: {{ $value | humanizePercentage }}"
+          impact: "Performance degradation, slower response times"
+
+  # ============================================================================
+  # P3 LOW PRIORITY ALERTS - Minor Issues & Trends
+  # ============================================================================
+  - name: low_priority_alerts
+    interval: 10m
+    rules:
+      - alert: PatternMemoryGrowth
+        expr: |
+          rate(pattern_memory_bytes[24h]) > 10485760
+        for: 4h
+        labels:
+          severity: P3
+          service: neural
+          category: capacity
+        annotations:
+          summary: "Pattern memory growing faster than expected"
+          description: "Growth rate: {{ $value | humanize1024 }}/day (threshold: <10MB/day)"
+          impact: "May require memory optimization or cleanup soon"
+
+      - alert: BackgroundTaskQueueLength
+        expr: |
+          background_task_queue_length > 100
+        for: 4h
+        labels:
+          severity: P3
+          service: system
+          category: capacity
+        annotations:
+          summary: "Background task queue growing"
+          description: "Queue length: {{ $value }} tasks (threshold: <100)"
+          impact: "Increased task latency for non-critical operations"
+
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.20
+        for: 4h
+        labels:
+          severity: P3
+          service: system
+          category: capacity
+        annotations:
+          summary: "Disk space running low"
+          description: "Available disk: {{ $value | humanizePercentage }}"
+          impact: "May affect logging and memory persistence"
+
+      - alert: UnusedPatternsAccumulating
+        expr: |
+          count(pattern_last_used_timestamp < (time() - 7776000))
+          > 1000
+        for: 4h
+        labels:
+          severity: P3
+          service: neural
+          category: maintenance
+        annotations:
+          summary: "Many unused patterns in memory"
+          description: "{{ $value }} patterns unused for >90 days"
+          impact: "Memory inefficiency, consider cleanup"
+          action: "Schedule pattern consolidation task"
+
+  # ============================================================================
+  # NEURAL SYSTEM SPECIFIC ALERTS
+  # ============================================================================
+  - name: neural_system_alerts
+    interval: 1m
+    rules:
+      - alert: FeedbackLoopStalled
+        expr: |
+          rate(feedback_loop_cycles_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: P1
+          service: neural
+          category: learning
+        annotations:
+          summary: "Neural feedback loop has stalled"
+          description: "No feedback loop cycles in the last 10 minutes"
+          impact: "Learning system not processing new patterns"
+          action: "Check learning pipeline and pattern extraction services"
+
+      - alert: MemoryCompressionRateLow
+        expr: |
+          memory_compression_ratio < 0.60
+        for: 1h
+        labels:
+          severity: P2
+          service: neural
+          category: efficiency
+        annotations:
+          summary: "Memory compression below target"
+          description: "Compression ratio: {{ $value | humanizePercentage }} (target: 60%+)"
+          impact: "Higher memory usage than expected"
+
+      - alert: PatternRetrievalSlow
+        expr: |
+          histogram_quantile(0.95, rate(pattern_retrieval_duration_seconds_bucket[5m])) > 0.010
+        for: 15m
+        labels:
+          severity: P1
+          service: neural
+          category: performance
+        annotations:
+          summary: "Pattern retrieval slower than target"
+          description: "95th percentile retrieval: {{ $value | humanizeDuration }} (target: <10ms)"
+          impact: "Agent decision-making delayed"
+
+  # ============================================================================
+  # VERIFICATION SYSTEM ALERTS
+  # ============================================================================
+  - name: verification_alerts
+    interval: 1m
+    rules:
+      - alert: AutoRollbackTriggered
+        expr: |
+          rate(auto_rollback_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: P1
+          service: verification
+          category: quality
+        annotations:
+          summary: "Automatic rollback triggered"
+          description: "{{ $value }} rollbacks in the last 5 minutes"
+          impact: "Code quality issues detected, changes reverted"
+          action: "Review recent commits and agent reliability scores"
+
+      - alert: AgentReliabilityLow
+        expr: |
+          agent_truth_score < 0.85
+        for: 1h
+        labels:
+          severity: P2
+          service: verification
+          category: quality
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} reliability below threshold"
+          description: "Truth score: {{ $value | humanizePercentage }} (threshold: 85%+)"
+          impact: "Agent may be producing unreliable outputs"
+          action: "Review agent recent tasks and consider retraining"
