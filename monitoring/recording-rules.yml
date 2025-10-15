@@ -124,9 +124,9 @@ groups:
       - record: service:availability
         expr: avg(up{job="claude-code-app"})
 
-      # Error rate by type
-      - record: errors:rate5m_by_type
-        expr: rate(errors_total[5m]) by (error_type)
+      # Error rate (total across all types)
+      - record: errors:rate5m
+        expr: rate(errors_total[5m])
 
       # Database connection error rate
       - record: db:connection_errors:rate5m
@@ -168,11 +168,9 @@ groups:
       - record: agent:truth_score:avg_by_agent
         expr: avg(agent_truth_score) by (agent_id)
 
-      # Agent task completion time
-      - record: agent:task_duration_seconds:p95_by_agent
-        expr: |
-          histogram_quantile(0.95, rate(agent_task_duration_seconds_bucket[5m]))
-          by (agent_id)
+      # Agent task completion time (p95)
+      - record: agent:task_duration_seconds:p95
+        expr: histogram_quantile(0.95, rate(agent_task_duration_seconds_bucket[5m]))
 
       # Agent reliability
       - record: agent:reliability:avg

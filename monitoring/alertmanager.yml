@@ -12,8 +12,8 @@ global:
   smtp_auth_password: '${SMTP_PASSWORD}'
   smtp_require_tls: true
 
-  # Slack webhook URL (set via environment variable)
-  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  # Slack webhook URL (disabled for staging - enable in production)
+  # slack_api_url: '${SLACK_WEBHOOK_URL}'
 
   # PagerDuty integration key
   pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
