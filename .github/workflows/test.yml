@@ -1,0 +1,173 @@
+name: Comprehensive Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit -- --coverage
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(npm run test:coverage:report | grep 'TOTAL' | awk '{print $4}' | sed 's/%//')
+          if [ $(echo "$COVERAGE < 95" | bc) -eq 1 ]; then
+            echo "Unit test coverage is below 95%: $COVERAGE%"
+            exit 1
+          fi
+          echo "Unit test coverage: $COVERAGE%"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: unit-tests-${{ matrix.node-version }}
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      - name: Check integration coverage
+        run: |
+          COVERAGE=$(npm run test:integration:coverage | grep 'TOTAL' | awk '{print $4}' | sed 's/%//')
+          if [ $(echo "$COVERAGE < 85" | bc) -eq 1 ]; then
+            echo "Integration test coverage is below 85%: $COVERAGE%"
+            exit 1
+          fi
+
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run performance benchmarks
+        run: npm run test:performance
+
+      - name: Validate performance metrics
+        run: |
+          node -e "
+          const results = require('./test-results/performance.json');
+          if (results.opsPerSecond < 172000) {
+            console.error('Performance below target: ' + results.opsPerSecond);
+            process.exit(1);
+          }
+          console.log('Performance: ' + results.opsPerSecond + ' ops/sec');
+          "
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run OWASP security tests
+        run: npm run test:security
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, performance-tests, security-tests, e2e-tests]
+
+    steps:
+      - name: Quality Gate Check
+        run: |
+          echo "✅ All tests passed"
+          echo "✅ Coverage thresholds met"
+          echo "✅ Performance benchmarks passed"
+          echo "✅ Security scans passed"
+          echo "🎉 Quality Gate: PASSED"
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "All quality checks passed! Ready for deployment."
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Quality gate failed. Please review test results."
+          exit 1

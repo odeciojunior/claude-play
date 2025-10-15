@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:performance": "jest tests/performance",
+    "test:security": "jest tests/security",
+    "test:e2e": "jest tests/e2e",
+    "test:coverage": "jest --coverage",
+    "test:coverage:report": "jest --coverage --coverageReporters=json-summary && cat coverage/coverage-summary.json",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage --maxWorkers=2",
+    "test:integration:coverage": "jest tests/integration --coverage",
+    "test:unit:watch": "jest tests/unit --watch",
+    "test:specific": "jest",
+    "test:verbose": "jest --verbose",
+    "test:silent": "jest --silent"
+  }
+}
