@@ -400,10 +400,10 @@ export function recordCacheAccess(cacheType: string, hit: boolean): void {
 
 /**
  * Update cache hit rate
+ * Note: Counter values cannot be read directly in prom-client.
+ * This function updates the gauge based on externally tracked values.
  */
-export function updateCacheHitRate(cacheType: string): void {
-  const hits = cacheHitsTotal['hashMap']?.[`cache_type:${cacheType}`]?.value || 0;
-  const misses = cacheMissesTotal['hashMap']?.[`cache_type:${cacheType}`]?.value || 0;
+export function updateCacheHitRate(cacheType: string, hits: number, misses: number): void {
   const total = hits + misses;
 
   if (total > 0) {
@@ -497,12 +497,8 @@ export function requestDurationMiddleware(
  * Call this on application startup
  */
 export function startMetricCollection(): void {
-  // Update cache hit rates every 10 seconds
-  setInterval(() => {
-    updateCacheHitRate('pattern');
-    updateCacheHitRate('vector');
-  }, 10000);
-
+  // Note: Cache hit rate updates require external tracking
+  // Call updateCacheHitRate(type, hits, misses) from your cache implementation
   console.log('[Metrics] Periodic metric collection started');
 }
 
