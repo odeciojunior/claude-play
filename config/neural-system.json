@@ -1,0 +1,327 @@
+{
+  "system": {
+    "name": "SAFLA Neural",
+    "version": "1.0.0",
+    "description": "Self-Adaptive Feedback Learning Architecture for continuous improvement",
+    "enabled": true
+  },
+
+  "performance": {
+    "targetOperationsPerSecond": 172000,
+    "memoryCompressionRatio": 0.6,
+    "cacheHitRateTarget": 0.8,
+    "maxMemoryUsageMb": 100
+  },
+
+  "learning": {
+    "autoLearning": true,
+    "observationBufferSize": 100,
+    "observationFlushInterval": 60000,
+    "extractionBatchSize": 50,
+    "minPatternQuality": 0.6,
+    "minConfidenceThreshold": 0.7,
+    "learningRate": 0.1,
+    "decayFactor": 0.95
+  },
+
+  "memory": {
+    "vector": {
+      "enabled": true,
+      "embeddingModel": "text-embedding-3-small",
+      "dimensions": 1536,
+      "compressionEnabled": true,
+      "quantization": "int8",
+      "maxVectors": 10000
+    },
+
+    "episodic": {
+      "enabled": true,
+      "retentionDays": {
+        "success": 90,
+        "failure": 30,
+        "partial": 60
+      },
+      "compressionEnabled": true,
+      "maxTrajectories": 50000
+    },
+
+    "semantic": {
+      "enabled": true,
+      "maxPatternsPerType": {
+        "coordination": 1000,
+        "optimization": 1000,
+        "error-handling": 500,
+        "domain-specific": 2000,
+        "refactoring": 500,
+        "testing": 500
+      },
+      "pruneThreshold": {
+        "confidence": 0.3,
+        "usageCount": 5,
+        "ageDays": 30
+      }
+    },
+
+    "working": {
+      "enabled": true,
+      "patternCacheSize": 1000,
+      "embeddingCacheSize": 500,
+      "contextTtlSeconds": 1800,
+      "cacheTtlSeconds": 300
+    }
+  },
+
+  "patternExtraction": {
+    "minSupport": 3,
+    "minConfidence": 0.7,
+    "numClusters": 5,
+    "ngramSizes": [2, 3, 4],
+    "qualityWeights": {
+      "consistency": 0.4,
+      "impact": 0.3,
+      "generalizability": 0.2,
+      "frequency": 0.1
+    }
+  },
+
+  "confidenceScoring": {
+    "method": "bayesian",
+    "learningRate": 0.1,
+    "decayFactor": 0.95,
+    "decayPeriodDays": 30,
+    "calibrationInterval": 86400000,
+    "thresholds": {
+      "experimental": 0.3,
+      "lowRisk": 0.5,
+      "moderateRisk": 0.7,
+      "highRisk": 0.8,
+      "criticalOperation": 0.9
+    }
+  },
+
+  "consolidation": {
+    "schedule": "daily",
+    "scheduleCron": "0 3 * * *",
+    "mergeSimilarityThreshold": 0.95,
+    "pruneConfidenceThreshold": 0.3,
+    "pruneUsageThreshold": 5,
+    "pruneAgeDays": 30,
+    "maxDurationMs": 300000
+  },
+
+  "safety": {
+    "rollbackEnabled": true,
+    "snapshotBeforeApplication": true,
+    "validationEnabled": true,
+    "anomalyDetectionEnabled": true,
+    "anomalyThresholdSigma": 3.0,
+    "rateLimits": {
+      "patternApplicationsPerMinute": 60,
+      "newPatternsPerHour": 100,
+      "embeddingsPerMinute": 1000,
+      "dbWritesPerSecond": 1000
+    }
+  },
+
+  "swarmLearning": {
+    "enabled": true,
+    "shareHighConfidencePatterns": true,
+    "shareConfidenceThreshold": 0.8,
+    "shareUsageThreshold": 10,
+    "syncIntervalSeconds": 3600,
+    "receiveExternalPatterns": true,
+    "externalPatternConfidenceMultiplier": 0.7,
+    "externalPatternInitialConfidence": 0.5
+  },
+
+  "database": {
+    "path": ".swarm/memory.db",
+    "journalMode": "WAL",
+    "synchronous": "NORMAL",
+    "cacheSize": -64000,
+    "tempStore": "MEMORY",
+    "mmapSize": 268435456,
+    "pageSize": 4096,
+    "autoVacuum": "INCREMENTAL",
+    "busyTimeout": 5000
+  },
+
+  "monitoring": {
+    "enabled": true,
+    "metricsBufferSize": 1000,
+    "metricsFlushInterval": 60000,
+    "slowQueryThresholdMs": 100,
+    "logLevel": "info",
+    "enableDebugMode": false,
+    "collectDetailedMetrics": true
+  },
+
+  "mcp": {
+    "enabled": true,
+    "tools": {
+      "neural_train": {
+        "enabled": true,
+        "requireValidation": true,
+        "validationMode": "normal"
+      },
+      "neural_status": {
+        "enabled": true,
+        "includeDetailedMetrics": true
+      },
+      "neural_patterns": {
+        "enabled": true,
+        "maxResults": 100,
+        "enableSemanticSearch": true
+      },
+      "neural_consolidate": {
+        "enabled": true,
+        "requireConfirmation": false
+      },
+      "neural_export": {
+        "enabled": true,
+        "includeEmbeddings": true
+      },
+      "neural_import": {
+        "enabled": true,
+        "validateBeforeImport": true,
+        "mergeStrategy": "confidence"
+      }
+    }
+  },
+
+  "hooks": {
+    "enabled": true,
+    "preToolExecution": {
+      "enabled": true,
+      "command": "neural_observe_start",
+      "async": true
+    },
+    "postToolExecution": {
+      "enabled": true,
+      "command": "neural_observe_complete",
+      "async": true
+    },
+    "preCoordination": {
+      "enabled": true,
+      "command": "neural_context_capture",
+      "async": false
+    },
+    "postCoordination": {
+      "enabled": true,
+      "command": "neural_outcome_track",
+      "async": true
+    },
+    "idle": {
+      "enabled": true,
+      "command": "neural_consolidate",
+      "async": true,
+      "interval": 3600
+    }
+  },
+
+  "verification": {
+    "enabled": true,
+    "checks": [
+      "code_quality",
+      "test_coverage",
+      "performance",
+      "security"
+    ],
+    "confidenceAdjustment": {
+      "allPassedBonus": 0.1,
+      "criticalFailedPenalty": -0.3
+    }
+  },
+
+  "features": {
+    "adaptiveStrategies": {
+      "enabled": true,
+      "checkIntervalSeconds": 3600,
+      "rules": [
+        {
+          "name": "increase_confidence_threshold",
+          "condition": "patternSuccessRate < 0.6",
+          "action": "minConfidenceThreshold += 0.1",
+          "priority": 1
+        },
+        {
+          "name": "increase_consolidation_frequency",
+          "condition": "memoryUsage > 0.8",
+          "action": "consolidationSchedule = 'daily'",
+          "priority": 2
+        },
+        {
+          "name": "raise_quality_threshold",
+          "condition": "learningRate > 100",
+          "action": "minPatternQuality += 0.1",
+          "priority": 3
+        },
+        {
+          "name": "expand_cache",
+          "condition": "cacheHitRate < 0.6",
+          "action": "cacheSize *= 1.5",
+          "priority": 2
+        }
+      ]
+    },
+
+    "metaLearning": {
+      "enabled": false,
+      "learnLearningStrategies": false,
+      "optimizeHyperparameters": false
+    },
+
+    "transferLearning": {
+      "enabled": false,
+      "crossDomainPatterns": false
+    },
+
+    "curriculumLearning": {
+      "enabled": false,
+      "progressiveDifficulty": false
+    },
+
+    "activeLearning": {
+      "enabled": false,
+      "queryUser": false
+    }
+  },
+
+  "experimental": {
+    "wasmOptimization": {
+      "enabled": false,
+      "operations": ["vector_similarity", "pattern_matching"]
+    },
+
+    "distributedLearning": {
+      "enabled": false,
+      "federatedLearning": false,
+      "consensusProtocol": "raft"
+    },
+
+    "advancedPatterns": {
+      "temporalPatterns": false,
+      "hierarchicalPatterns": false,
+      "conditionalPatterns": false,
+      "adaptivePatterns": false
+    }
+  },
+
+  "debug": {
+    "observationReplay": false,
+    "patternVisualization": false,
+    "confidenceTimeline": false,
+    "performanceProfiler": false,
+    "dumpPatternsOnShutdown": false,
+    "verboseLogging": false
+  },
+
+  "limits": {
+    "maxObservationsPerSecond": 10000,
+    "maxPatternsTotal": 50000,
+    "maxTrajectorySize": 1000,
+    "maxPatternSize": 100000,
+    "maxEmbeddingDimensions": 3072,
+    "maxConcurrentExtractions": 5
+  }
+}
