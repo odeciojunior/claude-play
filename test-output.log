@@ -1,0 +1,1661 @@
+
+> claude-play-neural-system@2.0.0 test
+> jest
+
+FAIL tests/integration/full-system.test.ts
+  ● Full System Integration › Complete Task Workflow › should execute complete task with all systems
+
+    TypeError: Cannot read properties of undefined (reading 'length')
+
+      43 |       // Verify learning occurred
+      44 |       const patterns = await neural.retrievePattern('implement_user_authentication');
+    > 45 |       expect(patterns.length).toBeGreaterThan(0);
+         |                       ^
+      46 |       expect(patterns[0].confidence).toBeGreaterThan(0.8);
+      47 |     });
+      48 |
+
+      at Object.<anonymous> (tests/integration/full-system.test.ts:45:23)
+
+  ● Full System Integration › Complete Task Workflow › should reuse learned patterns on second execution
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      56 |       const duration2 = result2.duration;
+      57 |
+    > 58 |       expect(result2.patternUsed).toBe(true);
+         |                                   ^
+      59 |       expect(duration2).toBeLessThan(duration1 * 0.6); // 40%+ faster
+      60 |     });
+      61 |
+
+      at Object.<anonymous> (tests/integration/full-system.test.ts:58:35)
+
+FAIL tests/integration/neural/verification-neural.test.ts
+  ● Verification-Neural Integration › Learning from Verification Outcomes › should store successful verification patterns
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: ObjectContaining {"confidence": Any<Number>, "context": "verification_task-1", "outcome": 0.97}
+
+    Number of calls: 0
+
+      38 |       await bridge.learnFromOutcome(task, result);
+      39 |
+    > 40 |       expect(neural.storePattern).toHaveBeenCalledWith(
+         |                                   ^
+      41 |         expect.objectContaining({
+      42 |           context: 'verification_task-1',
+      43 |           outcome: 0.97,
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:40:35)
+
+  ● Verification-Neural Integration › Learning from Verification Outcomes › should store failed verification patterns
+
+    expect(jest.fn()).toHaveBeenCalledWith(...expected)
+
+    Expected: ObjectContaining {"failed": true, "outcome": 0.45}
+
+    Number of calls: 0
+
+      53 |       await bridge.learnFromOutcome(task, result);
+      54 |
+    > 55 |       expect(neural.storePattern).toHaveBeenCalledWith(
+         |                                   ^
+      56 |         expect.objectContaining({
+      57 |           outcome: 0.45,
+      58 |           failed: true
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:55:35)
+
+  ● Verification-Neural Integration › Learning from Verification Outcomes › should learn from 100+ verification outcomes
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 100
+    Received number of calls: 0
+
+      72 |       }
+      73 |
+    > 74 |       expect(neural.storePattern).toHaveBeenCalledTimes(100);
+         |                                   ^
+      75 |     });
+      76 |
+      77 |     it('should improve prediction accuracy over time', async () => {
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:74:35)
+
+  ● Verification-Neural Integration › Learning from Verification Outcomes › should improve prediction accuracy over time
+
+    expect(received).toBeGreaterThan(expected)
+
+    Matcher error: received value must be a number or bigint
+
+    Received has value: undefined
+
+      89 |       const predicted = await bridge.predictTruthScore(testTask);
+      90 |
+    > 91 |       expect(predicted).toBeGreaterThan(0.5);
+         |                         ^
+      92 |       expect(predicted).toBeLessThan(1.0);
+      93 |     });
+      94 |   });
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:91:25)
+
+  ● Verification-Neural Integration › Truth Score Prediction › should predict truth scores accurately
+
+    expect(received).toBeGreaterThan(expected)
+
+    Matcher error: received value must be a number or bigint
+
+    Received has value: undefined
+
+      106 |       const predicted = await bridge.predictTruthScore(task);
+      107 |
+    > 108 |       expect(predicted).toBeGreaterThan(0.9);
+          |                         ^
+      109 |       expect(predicted).toBeLessThan(0.96);
+      110 |     });
+      111 |
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:108:25)
+
+  ● Verification-Neural Integration › Truth Score Prediction › should predict within 10% of actual score
+
+    expect(received).toBeLessThan(expected)
+
+    Expected: < 0.1
+    Received:   NaN
+
+      123 |       const actual = 0.95;
+      124 |
+    > 125 |       expect(Math.abs(predicted - actual)).toBeLessThan(0.1);
+          |                                            ^
+      126 |     });
+      127 |
+      128 |     it('should handle unknown code patterns', async () => {
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:125:44)
+
+  ● Verification-Neural Integration › Truth Score Prediction › should handle unknown code patterns
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0.5
+    Received: undefined
+
+      132 |       const predicted = await bridge.predictTruthScore(task);
+      133 |
+    > 134 |       expect(predicted).toBe(0.5); // Default confidence
+          |                         ^
+      135 |     });
+      136 |   });
+      137 |
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:134:25)
+
+  ● Verification-Neural Integration › Adaptive Threshold Tuning › should increase threshold after consistent passes
+
+    TypeError: bridge.adaptThreshold is not a function
+
+      147 |       }
+      148 |
+    > 149 |       await bridge.adaptThreshold();
+          |                    ^
+      150 |
+      151 |       expect(verification.threshold).toBeGreaterThan(initialThreshold);
+      152 |       expect(verification.threshold).toBeLessThanOrEqual(0.97);
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:149:20)
+
+  ● Verification-Neural Integration › Adaptive Threshold Tuning › should decrease threshold after consistent near-failures
+
+    TypeError: bridge.adaptThreshold is not a function
+
+      163 |       }
+      164 |
+    > 165 |       await bridge.adaptThreshold();
+          |                    ^
+      166 |
+      167 |       expect(verification.threshold).toBeLessThan(0.95);
+      168 |       expect(verification.threshold).toBeGreaterThanOrEqual(0.85);
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:165:20)
+
+  ● Verification-Neural Integration › Adaptive Threshold Tuning › should maintain threshold stability
+
+    TypeError: bridge.adaptThreshold is not a function
+
+      181 |       }
+      182 |
+    > 183 |       await bridge.adaptThreshold();
+          |                    ^
+      184 |
+      185 |       expect(Math.abs(verification.threshold - threshold)).toBeLessThan(0.05);
+      186 |     });
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:183:20)
+
+  ● Verification-Neural Integration › Pattern-Based Verification Optimization › should skip redundant checks for known patterns
+
+    TypeError: bridge.optimizeVerification is not a function
+
+      197 |       const task = { id: 'known', code: 'well-known pattern' };
+      198 |
+    > 199 |       await bridge.optimizeVerification(task);
+          |                    ^
+      200 |
+      201 |       expect(bridge.skippedChecks).toContain('lint'); // Non-essential check
+      202 |     });
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:199:20)
+
+  ● Verification-Neural Integration › Pattern-Based Verification Optimization › should prioritize checks based on failure patterns
+
+    TypeError: bridge.getPrioritizedChecks is not a function
+
+      212 |
+      213 |       const task = { id: 'prioritize', code: 'check priority' };
+    > 214 |       const checks = await bridge.getPrioritizedChecks(task);
+          |                                   ^
+      215 |
+      216 |       expect(checks[0]).toBe('type_check');
+      217 |       expect(checks[1]).toBe('syntax_check');
+
+      at Object.<anonymous> (tests/integration/neural/verification-neural.test.ts:214:35)
+
+FAIL tests/security/owasp.test.ts
+  ● Security Testing (OWASP) › SQL Injection Protection › should prevent SQL injection in pattern storage
+
+    expect(received).resolves.not.toThrow()
+
+    Matcher error: received value must be a promise
+
+    Received has value: undefined
+
+      21 |           confidence: 0.8
+      22 |         })
+    > 23 |       ).resolves.not.toThrow();
+         |                      ^
+      24 |
+      25 |       // Verify tables still exist
+      26 |       const patterns = await neural.listPatterns();
+
+      at Object.toThrow (node_modules/expect/build/index.js:162:13)
+      at Object.<anonymous> (tests/security/owasp.test.ts:23:22)
+
+  ● Security Testing (OWASP) › SQL Injection Protection › should sanitize user input in queries
+
+    expect(received).not.toContain(expected) // indexOf
+
+    Matcher error: received value must not be null nor undefined
+
+    Received has value: undefined
+
+      34 |       const result = await neural.retrievePattern(injection);
+      35 |
+    > 36 |       expect(result).not.toContain('OR');
+         |                          ^
+      37 |     });
+      38 |   });
+      39 |
+
+      at Object.<anonymous> (tests/security/owasp.test.ts:36:26)
+
+  ● Security Testing (OWASP) › XSS Protection › should escape script tags in pattern data
+
+    TypeError: Cannot read properties of undefined (reading 'context')
+
+      50 |
+      51 |       const retrieved = await neural.getPattern('xss-test');
+    > 52 |       expect(retrieved.context).not.toContain('<script>');
+         |                        ^
+      53 |       expect(retrieved.context).toContain('&lt;script&gt;');
+      54 |     });
+      55 |
+
+      at Object.<anonymous> (tests/security/owasp.test.ts:52:24)
+
+  ● Security Testing (OWASP) › XSS Protection › should sanitize event handlers
+
+    expect(received).not.toContain(expected) // indexOf
+
+    Expected substring: not "onerror"
+    Received string:        "&lt;img src=x onerror=alert(1)&gt;"
+
+      58 |       const sanitized = sanitizeInput(malicious);
+      59 |
+    > 60 |       expect(sanitized).not.toContain('onerror');
+         |                             ^
+      61 |     });
+      62 |   });
+      63 |
+
+      at Object.<anonymous> (tests/security/owasp.test.ts:60:29)
+
+  ● Security Testing (OWASP) › Input Validation › should validate confidence bounds
+
+    expect(received).rejects.toThrow()
+
+    Matcher error: received value must be a promise or a function returning a promise
+
+    Received has value: undefined
+
+      68 |       await expect(
+      69 |         neural.storePattern({ id: 'test', confidence: 1.5 })
+    > 70 |       ).rejects.toThrow();
+         |                 ^
+      71 |
+      72 |       await expect(
+      73 |         neural.storePattern({ id: 'test', confidence: -0.5 })
+
+      at Object.toThrow (node_modules/expect/build/index.js:204:13)
+      at Object.<anonymous> (tests/security/owasp.test.ts:70:17)
+
+  ● Security Testing (OWASP) › Input Validation › should validate pattern structure
+
+    expect(received).rejects.toThrow()
+
+    Matcher error: received value must be a promise or a function returning a promise
+
+    Received has value: undefined
+
+      80 |       await expect(
+      81 |         neural.storePattern({ invalid: 'structure' })
+    > 82 |       ).rejects.toThrow();
+         |                 ^
+      83 |     });
+      84 |
+      85 |     it('should limit input sizes', async () => {
+
+      at Object.toThrow (node_modules/expect/build/index.js:204:13)
+      at Object.<anonymous> (tests/security/owasp.test.ts:82:17)
+
+  ● Security Testing (OWASP) › Input Validation › should limit input sizes
+
+    expect(received).rejects.toThrow()
+
+    Matcher error: received value must be a promise or a function returning a promise
+
+    Received has value: undefined
+
+      90 |       await expect(
+      91 |         neural.storePattern({ id: 'huge', context: hugeInput })
+    > 92 |       ).rejects.toThrow();
+         |                 ^
+      93 |     });
+      94 |   });
+      95 |
+
+      at Object.toThrow (node_modules/expect/build/index.js:204:13)
+      at Object.<anonymous> (tests/security/owasp.test.ts:92:17)
+
+  ● Security Testing (OWASP) › Access Control › should enforce pattern visibility
+
+    expect(received).toBeNull()
+
+    Received: undefined
+
+      108 |       });
+      109 |
+    > 110 |       expect(retrieved).toBeNull();
+          |                         ^
+      111 |     });
+      112 |
+      113 |     it('should validate user permissions', async () => {
+
+      at Object.<anonymous> (tests/security/owasp.test.ts:110:25)
+
+  ● Security Testing (OWASP) › Access Control › should validate user permissions
+
+    expect(received).rejects.toThrow()
+
+    Matcher error: received value must be a promise or a function returning a promise
+
+    Received has value: undefined
+
+      116 |       await expect(
+      117 |         neural.deletePattern('pattern-1', { user: 'unauthorized' })
+    > 118 |       ).rejects.toThrow('Permission denied');
+          |                 ^
+      119 |     });
+      120 |   });
+      121 |
+
+      at Object.toThrow (node_modules/expect/build/index.js:204:13)
+      at Object.<anonymous> (tests/security/owasp.test.ts:118:17)
+
+  ● Security Testing (OWASP) › Rate Limiting › should enforce rate limits on pattern application
+
+    expect(received).rejects.toThrow()
+
+    Received promise resolved instead of rejected
+    Resolved to value: [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, …]
+
+      156 |       );
+      157 |
+    > 158 |       await expect(Promise.all(requests)).rejects.toThrow('Rate limit exceeded');
+          |                   ^
+      159 |     });
+      160 |   });
+      161 | });
+
+      at expect (node_modules/expect/build/index.js:113:15)
+      at Object.<anonymous> (tests/security/owasp.test.ts:158:19)
+
+FAIL tests/unit/goap/goap-neural.test.ts
+  ● Test suite failed to run
+
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m10[0m:[93m3[0m - [91merror[0m[90m TS2305: [0mModule '"../../../src/goap/types"' has no exported member 'GOAPPlanner'.
+
+    [7m10[0m   GOAPPlanner,
+    [7m  [0m [91m  ~~~~~~~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m11[0m:[93m3[0m - [91merror[0m[90m TS2305: [0mModule '"../../../src/goap/types"' has no exported member 'State'.
+
+    [7m11[0m   State,
+    [7m  [0m [91m  ~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m14[0m:[93m3[0m - [91merror[0m[90m TS2305: [0mModule '"../../../src/goap/types"' has no exported member 'Heuristic'.
+
+    [7m14[0m   Heuristic
+    [7m  [0m [91m  ~~~~~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m201[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty 'lessThan' does not exist on type 'JestExpect'.
+
+    [7m201[0m         expect.lessThan(0.8)
+    [7m   [0m [91m               ~~~~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m259[0m:[93m26[0m - [91merror[0m[90m TS2693: [0m'Action' only refers to a type, but is being used as a value here.
+
+    [7m259[0m       const action = new Action('deploy', { duration: 1000, complexity: 5 });
+    [7m   [0m [91m                         ~~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m274[0m:[93m30[0m - [91merror[0m[90m TS2693: [0m'Action' only refers to a type, but is being used as a value here.
+
+    [7m274[0m       const slowAction = new Action('slow_action');
+    [7m   [0m [91m                             ~~~~~~[0m
+    [96mtests/unit/goap/goap-neural.test.ts[0m:[93m275[0m:[93m30[0m - [91merror[0m[90m TS2693: [0m'Action' only refers to a type, but is being used as a value here.
+
+    [7m275[0m       const fastAction = new Action('fast_action');
+    [7m   [0m [91m                             ~~~~~~[0m
+
+FAIL tests/performance/performance-system.test.ts
+  ● Test suite failed to run
+
+    [96mtests/performance/performance-system.test.ts[0m:[93m29[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m29[0m         type: 'test',
+    [7m  [0m [91m        ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m48[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m48[0m         type: 'test',
+    [7m  [0m [91m        ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m74[0m:[93m11[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m74[0m           type: 'test',
+    [7m  [0m [91m          ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m101[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m101[0m         type: 'test',
+    [7m   [0m [91m        ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m208[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '""' is not assignable to type 'PatternType'.
+
+    [7m208[0m         type: '',
+    [7m   [0m [91m        ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m237[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkOperationsThroughput' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m237[0m       const result = await benchmarks.benchmarkOperationsThroughput();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m246[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkPatternRetrieval' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m246[0m       const result = await benchmarks.benchmarkPatternRetrieval();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m254[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkCacheHitRate' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m254[0m       const result = await benchmarks.benchmarkCacheHitRate();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m263[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkBatchProcessing' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m263[0m       const result = await benchmarks.benchmarkBatchProcessing();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m271[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkCompressionRatio' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m271[0m       const result = await benchmarks.benchmarkCompressionRatio();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m280[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'benchmarkLearningOverhead' is private and only accessible within class 'PerformanceBenchmarks'.
+
+    [7m280[0m       const result = await benchmarks.benchmarkLearningOverhead();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/performance/performance-system.test.ts[0m:[93m325[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m325[0m       type: 'test',
+    [7m   [0m [91m      ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m349[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m349[0m       type: 'test',
+    [7m   [0m [91m      ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/performance/performance-system.test.ts[0m:[93m378[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '"test"' is not assignable to type 'PatternType'.
+
+    [7m378[0m       type: 'test',
+    [7m   [0m [91m      ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+
+FAIL tests/unit/neural/pattern-extraction.test.ts
+  ● Test suite failed to run
+
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m15[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/pattern-extraction"' has no exported member 'ExtractorConfig'. Did you mean to use 'import ExtractorConfig from "../../../src/neural/pattern-extraction"' instead?
+
+    [7m15[0m   ExtractorConfig
+    [7m  [0m [91m  ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m102[0m:[93m24[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'PatternExtractor'.
+
+    [7m102[0m       expect(extractor.config).toBeDefined();
+    [7m   [0m [91m                       ~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m103[0m:[93m24[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'PatternExtractor'.
+
+    [7m103[0m       expect(extractor.config.minSupport).toBeGreaterThan(0);
+    [7m   [0m [91m                       ~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m115[0m:[93m30[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'PatternExtractor'.
+
+    [7m115[0m       expect(customExtractor.config.minSupport).toBe(5);
+    [7m   [0m [91m                             ~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m116[0m:[93m30[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'PatternExtractor'.
+
+    [7m116[0m       expect(customExtractor.config.minConfidence).toBe(0.8);
+    [7m   [0m [91m                             ~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m117[0m:[93m30[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'PatternExtractor'.
+
+    [7m117[0m       expect(customExtractor.config.maxPatternLength).toBe(10);
+    [7m   [0m [91m                             ~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m117[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'maxPatternLength' does not exist on type 'ExtractorConfig'.
+
+    [7m117[0m       expect(customExtractor.config.maxPatternLength).toBe(10);
+    [7m   [0m [91m                                    ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m187[0m:[93m52[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'maxPatternLength' does not exist in type 'ExtractorConfig'.
+
+    [7m187[0m       const extractor = new PatternExtractor(db, { maxPatternLength: 5 });
+    [7m   [0m [91m                                                   ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m208[0m:[93m52[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'maxPatternLength' does not exist in type 'ExtractorConfig'.
+
+    [7m208[0m       const extractor = new PatternExtractor(db, { maxPatternLength: 5 });
+    [7m   [0m [91m                                                   ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m554[0m:[93m25[0m - [91merror[0m[90m TS2339: [0mProperty 'storePattern' does not exist on type 'PatternExtractor'.
+
+    [7m554[0m         await extractor.storePattern(pattern);
+    [7m   [0m [91m                        ~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m589[0m:[93m23[0m - [91merror[0m[90m TS2339: [0mProperty 'storePattern' does not exist on type 'PatternExtractor'.
+
+    [7m589[0m       await extractor.storePattern(pattern);
+    [7m   [0m [91m                      ~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m592[0m:[93m71[0m - [91merror[0m[90m TS2554: [0mExpected 1 arguments, but got 2.
+
+    [7m592[0m       const stored = await get('SELECT * FROM patterns WHERE id = ?', pattern.id);
+    [7m   [0m [91m                                                                      ~~~~~~~~~~[0m
+    [96mtests/unit/neural/pattern-extraction.test.ts[0m:[93m594[0m:[93m37[0m - [91merror[0m[90m TS18046: [0m'stored' is of type 'unknown'.
+
+    [7m594[0m       const storedData = JSON.parse(stored.pattern_data);
+    [7m   [0m [91m                                    ~~~~~~[0m
+
+FAIL tests/hive-mind/hive-mind.test.ts
+  ● Test suite failed to run
+
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m158[0m:[93m35[0m - [91merror[0m[90m TS18046: [0m'row' is of type 'unknown'.
+
+    [7m158[0m     const allocation = JSON.parse(row.value);
+    [7m   [0m [91m                                  ~~~[0m
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m311[0m:[93m7[0m - [91merror[0m[90m TS2741: [0mProperty 'avgImprovement' is missing in type '{ successCount: number; failureCount: number; partialCount: number; avgDurationMs: number; }' but required in type 'PatternMetrics'.
+
+    [7m311[0m       metrics: {
+    [7m   [0m [91m      ~~~~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m83[0m:[93m3[0m
+        [7m83[0m   avgImprovement: number;
+        [7m  [0m [96m  ~~~~~~~~~~~~~~[0m
+        'avgImprovement' is declared here.
+      [96msrc/neural/pattern-extraction.ts[0m:[93m45[0m:[93m3[0m
+        [7m45[0m   metrics: PatternMetrics;
+        [7m  [0m [96m  ~~~~~~~[0m
+        The expected type comes from property 'metrics' which is declared here on type 'Pattern'
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m336[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '"implementation"' is not assignable to type 'PatternType'.
+
+    [7m336[0m       type: 'implementation',
+    [7m   [0m [91m      ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m341[0m:[93m7[0m - [91merror[0m[90m TS2741: [0mProperty 'avgImprovement' is missing in type '{ successCount: number; failureCount: number; partialCount: number; avgDurationMs: number; }' but required in type 'PatternMetrics'.
+
+    [7m341[0m       metrics: {
+    [7m   [0m [91m      ~~~~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m83[0m:[93m3[0m
+        [7m83[0m   avgImprovement: number;
+        [7m  [0m [96m  ~~~~~~~~~~~~~~[0m
+        'avgImprovement' is declared here.
+      [96msrc/neural/pattern-extraction.ts[0m:[93m45[0m:[93m3[0m
+        [7m45[0m   metrics: PatternMetrics;
+        [7m  [0m [96m  ~~~~~~~[0m
+        The expected type comes from property 'metrics' which is declared here on type 'Pattern'
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m551[0m:[93m11[0m - [91merror[0m[90m TS2322: [0mType '"performance"' is not assignable to type 'PatternType'.
+
+    [7m551[0m           type: 'performance',
+    [7m   [0m [91m          ~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m39[0m:[93m3[0m
+        [7m39[0m   type: PatternType;
+        [7m  [0m [96m  ~~~~[0m
+        The expected type comes from property 'type' which is declared here on type 'Pattern'
+    [96mtests/hive-mind/hive-mind.test.ts[0m:[93m556[0m:[93m11[0m - [91merror[0m[90m TS2741: [0mProperty 'avgImprovement' is missing in type '{ successCount: number; failureCount: number; partialCount: number; avgDurationMs: number; }' but required in type 'PatternMetrics'.
+
+    [7m556[0m           metrics: {
+    [7m   [0m [91m          ~~~~~~~[0m
+
+      [96msrc/neural/pattern-extraction.ts[0m:[93m83[0m:[93m3[0m
+        [7m83[0m   avgImprovement: number;
+        [7m  [0m [96m  ~~~~~~~~~~~~~~[0m
+        'avgImprovement' is declared here.
+      [96msrc/neural/pattern-extraction.ts[0m:[93m45[0m:[93m3[0m
+        [7m45[0m   metrics: PatternMetrics;
+        [7m  [0m [96m  ~~~~~~~[0m
+        The expected type comes from property 'metrics' which is declared here on type 'Pattern'
+
+FAIL tests/neural/agent-learning-system.test.ts
+  ● Test suite failed to run
+
+    [96mtests/neural/agent-learning-system.test.ts[0m:[93m12[0m:[93m61[0m - [91merror[0m[90m TS2307: [0mCannot find module 'vitest' or its corresponding type declarations.
+
+    [7m12[0m import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+    [7m  [0m [91m                                                            ~~~~~~~~[0m
+
+FAIL tests/unit/neural/vector-memory.test.ts
+  ● Test suite failed to run
+
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m10[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/vector-memory"' has no exported member 'VectorConfig'. Did you mean to use 'import VectorConfig from "../../../src/neural/vector-memory"' instead?
+
+    [7m10[0m   VectorConfig,
+    [7m  [0m [91m  ~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m11[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/vector-memory"' has no exported member 'Embedding'. Did you mean to use 'import Embedding from "../../../src/neural/vector-memory"' instead?
+
+    [7m11[0m   Embedding,
+    [7m  [0m [91m  ~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m12[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/vector-memory"' has no exported member 'SimilarityResult'. Did you mean to use 'import SimilarityResult from "../../../src/neural/vector-memory"' instead?
+
+    [7m12[0m   SimilarityResult
+    [7m  [0m [91m  ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m23[0m:[93m20[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m 23[0m     vectorMemory = new VectorMemory({
+    [7m   [0m [91m                   ~~~~~~~~~~~~~~~~~~[0m
+    [7m 24[0m       dimensions: 384,
+    [7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~[0m
+    [7m...[0m 
+    [7m 26[0m       maxResults: 10
+    [7m   [0m [91m~~~~~~~~~~~~~~~~~~~~[0m
+    [7m 27[0m     });
+    [7m   [0m [91m~~~~~~[0m
+
+      [96msrc/neural/vector-memory.ts[0m:[93m60[0m:[93m5[0m
+        [7m60[0m     private config: EmbeddingConfig
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'config' was not provided.
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m31[0m:[93m24[0m - [91merror[0m[90m TS2339: [0mProperty 'clear' does not exist on type 'VectorMemoryManager'.
+
+    [7m31[0m     await vectorMemory.clear();
+    [7m  [0m [91m                       ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m41[0m:[93m27[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m41[0m       expect(vectorMemory.config.dimensions).toBe(384);
+    [7m  [0m [91m                          ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m45[0m:[93m22[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m 45[0m       const custom = new VectorMemory({
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~~~~[0m
+    [7m 46[0m         dimensions: 768,
+    [7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [7m...[0m 
+    [7m 48[0m         maxResults: 20
+    [7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~[0m
+    [7m 49[0m       });
+    [7m   [0m [91m~~~~~~~~[0m
+
+      [96msrc/neural/vector-memory.ts[0m:[93m60[0m:[93m5[0m
+        [7m60[0m     private config: EmbeddingConfig
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'config' was not provided.
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m51[0m:[93m21[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m51[0m       expect(custom.config.dimensions).toBe(768);
+    [7m  [0m [91m                    ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m52[0m:[93m21[0m - [91merror[0m[90m TS2341: [0mProperty 'config' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m52[0m       expect(custom.config.similarityThreshold).toBe(0.9);
+    [7m  [0m [91m                    ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m52[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'similarityThreshold' does not exist on type 'EmbeddingConfig'.
+
+    [7m52[0m       expect(custom.config.similarityThreshold).toBe(0.9);
+    [7m  [0m [91m                           ~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m57[0m:[93m9[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m57[0m         new VectorMemory({ dimensions: -1, similarityThreshold: 0.5, maxResults: 10 });
+    [7m  [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/neural/vector-memory.ts[0m:[93m60[0m:[93m5[0m
+        [7m60[0m     private config: EmbeddingConfig
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'config' was not provided.
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m61[0m:[93m9[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 1.
+
+    [7m61[0m         new VectorMemory({ dimensions: 384, similarityThreshold: 1.5, maxResults: 10 });
+    [7m  [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/neural/vector-memory.ts[0m:[93m60[0m:[93m5[0m
+        [7m60[0m     private config: EmbeddingConfig
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'config' was not provided.
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m73[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m73[0m       const embedding = await vectorMemory.embed(text);
+    [7m  [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m77[0m:[93m30[0m - [91merror[0m[90m TS7006: [0mParameter 'x' implicitly has an 'any' type.
+
+    [7m77[0m       expect(embedding.every(x => typeof x === 'number')).toBe(true);
+    [7m  [0m [91m                             ~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m82[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m82[0m       const embedding = await vectorMemory.embed(text);
+    [7m  [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m86[0m:[93m27[0m - [91merror[0m[90m TS7006: [0mParameter 'sum' implicitly has an 'any' type.
+
+    [7m86[0m         embedding.reduce((sum, x) => sum + x * x, 0)
+    [7m  [0m [91m                          ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m86[0m:[93m32[0m - [91merror[0m[90m TS7006: [0mParameter 'x' implicitly has an 'any' type.
+
+    [7m86[0m         embedding.reduce((sum, x) => sum + x * x, 0)
+    [7m  [0m [91m                               ~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m93[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m93[0m       const embedding = await vectorMemory.embed('');
+    [7m  [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m101[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m101[0m       const embedding = await vectorMemory.embed(longText);
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m109[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m109[0m       const embedding = await vectorMemory.embed(special);
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m119[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m119[0m       const emb1 = await vectorMemory.embed(text1);
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m120[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m120[0m       const emb2 = await vectorMemory.embed(text2);
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m122[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m122[0m       const similarity = vectorMemory.cosineSimilarity(emb1, emb2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m131[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m131[0m       const emb1 = await vectorMemory.embed(text1);
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m132[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m132[0m       const emb2 = await vectorMemory.embed(text2);
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m134[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m134[0m       const similarity = vectorMemory.cosineSimilarity(emb1, emb2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m148[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m148[0m       const embedding = await vectorMemory.embed(text);
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m150[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m150[0m       await vectorMemory.store(id, embedding, { text });
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m152[0m:[93m41[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m152[0m       const stored = await vectorMemory.get(id);
+    [7m   [0m [91m                                        ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m159[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m159[0m       const embedding = await vectorMemory.embed('retrieval test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m161[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m161[0m       await vectorMemory.store(id, embedding);
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m163[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m163[0m       const retrieved = await vectorMemory.get(id);
+    [7m   [0m [91m                                           ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m169[0m:[93m41[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m169[0m       const result = await vectorMemory.get('non-existent');
+    [7m   [0m [91m                                        ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m175[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m175[0m       const emb1 = await vectorMemory.embed('original');
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m176[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m176[0m       const emb2 = await vectorMemory.embed('updated');
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m178[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m178[0m       await vectorMemory.store(id, emb1);
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m179[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m179[0m       await vectorMemory.store(id, emb2);
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m181[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m181[0m       const retrieved = await vectorMemory.get(id);
+    [7m   [0m [91m                                           ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m187[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m187[0m       const embedding = await vectorMemory.embed('metadata test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m194[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m194[0m       await vectorMemory.store(id, embedding, metadata);
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m196[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m196[0m       const retrieved = await vectorMemory.get(id);
+    [7m   [0m [91m                                           ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m202[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m202[0m       const embedding = await vectorMemory.embed('large metadata');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m208[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m208[0m       await vectorMemory.store(id, embedding, largeMetadata);
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m210[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m210[0m       const retrieved = await vectorMemory.get(id);
+    [7m   [0m [91m                                           ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m233[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m233[0m         const embedding = await vectorMemory.embed(item.text);
+    [7m   [0m [91m                                             ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m234[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m234[0m         await vectorMemory.store(item.id, embedding, { text: item.text });
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m240[0m:[93m49[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m240[0m       const queryEmbedding = await vectorMemory.embed(query);
+    [7m   [0m [91m                                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m242[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m242[0m       const results = await vectorMemory.findSimilar(queryEmbedding);
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m250[0m:[93m49[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m250[0m       const queryEmbedding = await vectorMemory.embed(query);
+    [7m   [0m [91m                                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m252[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m252[0m       const results = await vectorMemory.findSimilar(queryEmbedding, {
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m261[0m:[93m49[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m261[0m       const queryEmbedding = await vectorMemory.embed(query);
+    [7m   [0m [91m                                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m263[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m263[0m       const results = await vectorMemory.findSimilar(queryEmbedding, {
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m267[0m:[93m23[0m - [91merror[0m[90m TS7006: [0mParameter 'result' implicitly has an 'any' type.
+
+    [7m267[0m       results.forEach(result => {
+    [7m   [0m [91m                      ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m274[0m:[93m49[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m274[0m       const queryEmbedding = await vectorMemory.embed(query);
+    [7m   [0m [91m                                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m276[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m276[0m       const results = await vectorMemory.findSimilar(queryEmbedding);
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m286[0m:[93m49[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m286[0m       const queryEmbedding = await vectorMemory.embed(query);
+    [7m   [0m [91m                                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m288[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m288[0m       const results = await vectorMemory.findSimilar(queryEmbedding, {
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m297[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m297[0m       await vectorMemory.store('pattern-a', await vectorMemory.embed('test a'), {
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m297[0m:[93m64[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m297[0m       await vectorMemory.store('pattern-a', await vectorMemory.embed('test a'), {
+    [7m   [0m [91m                                                               ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m300[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m300[0m       await vectorMemory.store('pattern-b', await vectorMemory.embed('test b'), {
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m300[0m:[93m64[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m300[0m       await vectorMemory.store('pattern-b', await vectorMemory.embed('test b'), {
+    [7m   [0m [91m                                                               ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m304[0m:[93m40[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m304[0m       const query = await vectorMemory.embed('test');
+    [7m   [0m [91m                                       ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m306[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m306[0m       const results = await vectorMemory.findSimilar(query, {
+    [7m   [0m [91m                                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m310[0m:[93m28[0m - [91merror[0m[90m TS7006: [0mParameter 'r' implicitly has an 'any' type.
+
+    [7m310[0m       expect(results.every(r => r.metadata?.type === 'coordination')).toBe(true);
+    [7m   [0m [91m                           ~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m323[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m323[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m323[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m323[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m332[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m332[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m332[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m332[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m341[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m341[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m341[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m341[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m350[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m350[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m350[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m350[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m359[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m359[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m359[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m359[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m368[0m:[93m39[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m368[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m368[0m:[93m56[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number[]' is not assignable to parameter of type 'Float32Array<ArrayBufferLike>'.
+      Type 'number[]' is missing the following properties from type 'Float32Array<ArrayBufferLike>': BYTES_PER_ELEMENT, buffer, byteLength, byteOffset, and 3 more.
+
+    [7m368[0m       const similarity = vectorMemory.cosineSimilarity(vec1, vec2);
+    [7m   [0m [91m                                                       ~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m387[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'storeBatch' does not exist on type 'VectorMemoryManager'.
+
+    [7m387[0m       await vectorMemory.storeBatch(
+    [7m   [0m [91m                         ~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m390[0m:[93m41[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m390[0m           embedding: await vectorMemory.embed(item.text),
+    [7m   [0m [91m                                        ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m404[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m404[0m         const embedding = await vectorMemory.embed(`text for ${id}`);
+    [7m   [0m [91m                                             ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m405[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m405[0m         await vectorMemory.store(id, embedding);
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m408[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'getBatch' does not exist on type 'VectorMemoryManager'.
+
+    [7m408[0m       const results = await vectorMemory.getBatch(ids);
+    [7m   [0m [91m                                         ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m411[0m:[93m28[0m - [91merror[0m[90m TS7006: [0mParameter 'r' implicitly has an 'any' type.
+
+    [7m411[0m       expect(results.every(r => r !== null)).toBe(true);
+    [7m   [0m [91m                           ~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m415[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m415[0m       await vectorMemory.store('exists-1', await vectorMemory.embed('test'));
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m415[0m:[93m63[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m415[0m       await vectorMemory.store('exists-1', await vectorMemory.embed('test'));
+    [7m   [0m [91m                                                              ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m417[0m:[93m42[0m - [91merror[0m[90m TS2339: [0mProperty 'getBatch' does not exist on type 'VectorMemoryManager'.
+
+    [7m417[0m       const results = await vectorMemory.getBatch([
+    [7m   [0m [91m                                         ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m423[0m:[93m29[0m - [91merror[0m[90m TS7006: [0mParameter 'r' implicitly has an 'any' type.
+
+    [7m423[0m       expect(results.filter(r => r !== null).length).toBe(1);
+    [7m   [0m [91m                            ~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m434[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m434[0m       await vectorMemory.store(id, await vectorMemory.embed('test'));
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m434[0m:[93m55[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m434[0m       await vectorMemory.store(id, await vectorMemory.embed('test'));
+    [7m   [0m [91m                                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m436[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'delete' does not exist on type 'VectorMemoryManager'.
+
+    [7m436[0m       await vectorMemory.delete(id);
+    [7m   [0m [91m                         ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m438[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'get' does not exist on type 'VectorMemoryManager'.
+
+    [7m438[0m       const retrieved = await vectorMemory.get(id);
+    [7m   [0m [91m                                           ~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m444[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m444[0m         await vectorMemory.store(`clear-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m444[0m:[93m67[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m444[0m         await vectorMemory.store(`clear-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                                                                  ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m447[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'clear' does not exist on type 'VectorMemoryManager'.
+
+    [7m447[0m       await vectorMemory.clear();
+    [7m   [0m [91m                         ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m457[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m457[0m         await vectorMemory.store(`count-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m457[0m:[93m67[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m457[0m         await vectorMemory.store(`count-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                                                                  ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m468[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m468[0m         await vectorMemory.store(id, await vectorMemory.embed('test'));
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m468[0m:[93m57[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m468[0m         await vectorMemory.store(id, await vectorMemory.embed('test'));
+    [7m   [0m [91m                                                        ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m471[0m:[93m41[0m - [91merror[0m[90m TS2339: [0mProperty 'listIds' does not exist on type 'VectorMemoryManager'.
+
+    [7m471[0m       const stored = await vectorMemory.listIds();
+    [7m   [0m [91m                                        ~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m481[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m481[0m         await vectorMemory.store(`compact-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m481[0m:[93m69[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m481[0m         await vectorMemory.store(`compact-${i}`, await vectorMemory.embed(`test ${i}`));
+    [7m   [0m [91m                                                                    ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m486[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'delete' does not exist on type 'VectorMemoryManager'.
+
+    [7m486[0m         await vectorMemory.delete(`compact-${i}`);
+    [7m   [0m [91m                           ~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m490[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'compact' does not exist on type 'VectorMemoryManager'.
+
+    [7m490[0m       await vectorMemory.compact();
+    [7m   [0m [91m                         ~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m507[0m:[93m56[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m507[0m       await Promise.all(texts.map(text => vectorMemory.embed(text)));
+    [7m   [0m [91m                                                       ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m517[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m517[0m         const embedding = await vectorMemory.embed(`pattern ${i}`);
+    [7m   [0m [91m                                             ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m518[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m518[0m         await vectorMemory.store(`perf-${i}`, embedding);
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m521[0m:[93m40[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m521[0m       const query = await vectorMemory.embed('test query');
+    [7m   [0m [91m                                       ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m524[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'findSimilar' does not exist on type 'VectorMemoryManager'.
+
+    [7m524[0m       await vectorMemory.findSimilar(query, { limit: 10 });
+    [7m   [0m [91m                         ~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m535[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m535[0m         const embedding = await vectorMemory.embed(`memory test ${i}`);
+    [7m   [0m [91m                                             ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m536[0m:[93m28[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m536[0m         await vectorMemory.store(`mem-${i}`, embedding);
+    [7m   [0m [91m                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m550[0m:[93m24[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m550[0m           vectorMemory.store(
+    [7m   [0m [91m                       ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m552[0m:[93m32[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m552[0m             await vectorMemory.embed(`test ${i}`)
+    [7m   [0m [91m                               ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m568[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m568[0m         vectorMemory.store('invalid', [1, 2, 3]) // Wrong dimensions
+    [7m   [0m [91m                     ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m574[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m574[0m         vectorMemory.store('invalid', ['a', 'b', 'c'] as any)
+    [7m   [0m [91m                     ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m581[0m:[93m33[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m581[0m       await expect(vectorMemory.store('nan', embedding)).rejects.toThrow();
+    [7m   [0m [91m                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m587[0m:[93m33[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m587[0m       await expect(vectorMemory.store('infinity', embedding)).rejects.toThrow();
+    [7m   [0m [91m                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m591[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m591[0m       const embedding = await vectorMemory.embed('test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m593[0m:[93m33[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m593[0m       await expect(vectorMemory.store('', embedding)).rejects.toThrow();
+    [7m   [0m [91m                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m598[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m598[0m       const embedding = await vectorMemory.embed('test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m600[0m:[93m33[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m600[0m       await expect(vectorMemory.store(longId, embedding)).resolves.toBeDefined();
+    [7m   [0m [91m                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m605[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m605[0m       const embedding = await vectorMemory.embed('test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m607[0m:[93m33[0m - [91merror[0m[90m TS2339: [0mProperty 'store' does not exist on type 'VectorMemoryManager'.
+
+    [7m607[0m       await expect(vectorMemory.store(specialId, embedding)).resolves.toBeDefined();
+    [7m   [0m [91m                                ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m618[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m618[0m       const embedding = await vectorMemory.embed(text);
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m621[0m:[93m45[0m - [91merror[0m[90m TS2339: [0mProperty 'compress' does not exist on type 'VectorMemoryManager'.
+
+    [7m621[0m       const compressed = await vectorMemory.compress(embedding);
+    [7m   [0m [91m                                            ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m630[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m630[0m       const embedding = await vectorMemory.embed('test');
+    [7m   [0m [91m                                           ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m632[0m:[93m45[0m - [91merror[0m[90m TS2339: [0mProperty 'compress' does not exist on type 'VectorMemoryManager'.
+
+    [7m632[0m       const compressed = await vectorMemory.compress(embedding);
+    [7m   [0m [91m                                            ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m633[0m:[93m47[0m - [91merror[0m[90m TS2339: [0mProperty 'decompress' does not exist on type 'VectorMemoryManager'.
+
+    [7m633[0m       const decompressed = await vectorMemory.decompress(compressed);
+    [7m   [0m [91m                                              ~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m639[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m639[0m       const emb1 = await vectorMemory.embed('test one');
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m640[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'embed' does not exist on type 'VectorMemoryManager'.
+
+    [7m640[0m       const emb2 = await vectorMemory.embed('test two');
+    [7m   [0m [91m                                      ~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m642[0m:[93m47[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m642[0m       const originalSimilarity = vectorMemory.cosineSimilarity(emb1, emb2);
+    [7m   [0m [91m                                              ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m644[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'compress' does not exist on type 'VectorMemoryManager'.
+
+    [7m644[0m       const compressed1 = await vectorMemory.compress(emb1);
+    [7m   [0m [91m                                             ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m645[0m:[93m46[0m - [91merror[0m[90m TS2339: [0mProperty 'compress' does not exist on type 'VectorMemoryManager'.
+
+    [7m645[0m       const compressed2 = await vectorMemory.compress(emb2);
+    [7m   [0m [91m                                             ~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m647[0m:[93m48[0m - [91merror[0m[90m TS2339: [0mProperty 'decompress' does not exist on type 'VectorMemoryManager'.
+
+    [7m647[0m       const decompressed1 = await vectorMemory.decompress(compressed1);
+    [7m   [0m [91m                                               ~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m648[0m:[93m48[0m - [91merror[0m[90m TS2339: [0mProperty 'decompress' does not exist on type 'VectorMemoryManager'.
+
+    [7m648[0m       const decompressed2 = await vectorMemory.decompress(compressed2);
+    [7m   [0m [91m                                               ~~~~~~~~~~[0m
+    [96mtests/unit/neural/vector-memory.test.ts[0m:[93m650[0m:[93m49[0m - [91merror[0m[90m TS2341: [0mProperty 'cosineSimilarity' is private and only accessible within class 'VectorMemoryManager'.
+
+    [7m650[0m       const compressedSimilarity = vectorMemory.cosineSimilarity(
+    [7m   [0m [91m                                                ~~~~~~~~~~~~~~~~[0m
+
+FAIL tests/unit/neural/learning-pipeline.test.ts
+  ● Test suite failed to run
+
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m13[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/learning-pipeline"' has no exported member 'PipelineMetrics'. Did you mean to use 'import PipelineMetrics from "../../../src/neural/learning-pipeline"' instead?
+
+    [7m13[0m   PipelineMetrics,
+    [7m  [0m [91m  ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m14[0m:[93m3[0m - [91merror[0m[90m TS2614: [0mModule '"../../../src/neural/learning-pipeline"' has no exported member 'OutcomeReport'. Did you mean to use 'import OutcomeReport from "../../../src/neural/learning-pipeline"' instead?
+
+    [7m14[0m   OutcomeReport
+    [7m  [0m [91m  ~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m111[0m:[93m23[0m - [91merror[0m[90m TS2339: [0mProperty 'extractionPhase' does not exist on type 'LearningPipeline'.
+
+    [7m111[0m       expect(pipeline.extractionPhase).toBeDefined();
+    [7m   [0m [91m                      ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m112[0m:[93m23[0m - [91merror[0m[90m TS2339: [0mProperty 'trainingPhase' does not exist on type 'LearningPipeline'.
+
+    [7m112[0m       expect(pipeline.trainingPhase).toBeDefined();
+    [7m   [0m [91m                      ~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m113[0m:[93m23[0m - [91merror[0m[90m TS2339: [0mProperty 'applicationPhase' does not exist on type 'LearningPipeline'.
+
+    [7m113[0m       expect(pipeline.applicationPhase).toBeDefined();
+    [7m   [0m [91m                      ~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m231[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty 'setContextProvider' does not exist on type 'LearningPipeline'.
+
+    [7m231[0m       pipeline.setContextProvider(() => context);
+    [7m   [0m [91m               ~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m254[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m254[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m266[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m266[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m268[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'getExtractedPatterns' does not exist on type 'LearningPipeline'.
+
+    [7m268[0m       const patterns = await pipeline.getExtractedPatterns();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m286[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m286[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m288[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'getExtractedPatterns' does not exist on type 'LearningPipeline'.
+
+    [7m288[0m       const patterns = await pipeline.getExtractedPatterns();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m290[0m:[93m29[0m - [91merror[0m[90m TS7006: [0mParameter 'p' implicitly has an 'any' type.
+
+    [7m290[0m       expect(patterns.every(p => p.confidence >= 0.5)).toBe(true);
+    [7m   [0m [91m                            ~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m300[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m300[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m302[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'getExtractedPatterns' does not exist on type 'LearningPipeline'.
+
+    [7m302[0m       const patterns = await pipeline.getExtractedPatterns();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m303[0m:[93m28[0m - [91merror[0m[90m TS7006: [0mParameter 'p' implicitly has an 'any' type.
+
+    [7m303[0m       expect(patterns.some(p => p.type === 'coordination')).toBe(true);
+    [7m   [0m [91m                           ~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m318[0m:[93m18[0m - [91merror[0m[90m TS2341: [0mProperty 'extractPatternsFromObservations' is private and only accessible within class 'LearningPipeline'.
+
+    [7m318[0m         pipeline.extractPatternsFromObservations([malformed as any])
+    [7m   [0m [91m                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m394[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m394[0m       const stored = await pipeline.getPattern('pattern-2');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m436[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m436[0m       const stored = await pipeline.getPattern('pattern-3');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m487[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m487[0m       const stored = await pipeline.getPattern('pattern-bayes');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m539[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m539[0m       const stored = await pipeline.getPattern('pattern-rapid');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m721[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m721[0m       const stored = await pipeline.getPattern('pattern-usage');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m775[0m:[93m22[0m - [91merror[0m[90m TS2341: [0mProperty 'consolidatePatterns' is private and only accessible within class 'LearningPipeline'.
+
+    [7m775[0m       await pipeline.consolidatePatterns();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m778[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'getExtractedPatterns' does not exist on type 'LearningPipeline'.
+
+    [7m778[0m       const patterns = await pipeline.getExtractedPatterns();
+    [7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m779[0m:[93m39[0m - [91merror[0m[90m TS7006: [0mParameter 'p' implicitly has an 'any' type.
+
+    [7m779[0m       const similar = patterns.filter(p => p.name === 'similar');
+    [7m   [0m [91m                                      ~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m807[0m:[93m22[0m - [91merror[0m[90m TS2341: [0mProperty 'consolidatePatterns' is private and only accessible within class 'LearningPipeline'.
+
+    [7m807[0m       await pipeline.consolidatePatterns();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m810[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m810[0m       const stored = await pipeline.getPattern('pattern-prune');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m840[0m:[93m22[0m - [91merror[0m[90m TS2341: [0mProperty 'consolidatePatterns' is private and only accessible within class 'LearningPipeline'.
+
+    [7m840[0m       await pipeline.consolidatePatterns();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m842[0m:[93m37[0m - [91merror[0m[90m TS2339: [0mProperty 'getPattern' does not exist on type 'LearningPipeline'.
+
+    [7m842[0m       const stored = await pipeline.getPattern('pattern-old');
+    [7m   [0m [91m                                    ~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m869[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m869[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m995[0m:[93m22[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m995[0m       await pipeline.forceExtraction();
+    [7m   [0m [91m                     ~~~~~~~~~~~~~~~[0m
+    [96mtests/unit/neural/learning-pipeline.test.ts[0m:[93m1042[0m:[93m29[0m - [91merror[0m[90m TS2339: [0mProperty 'forceExtraction' does not exist on type 'LearningPipeline'.
+
+    [7m1042[0m       await expect(pipeline.forceExtraction()).resolves.toBeDefined();
+    [7m    [0m [91m                            ~~~~~~~~~~~~~~~[0m
+
+FAIL tests/neural/sparc-integration.test.ts
+  ● Test suite failed to run
+
+    [96msrc/neural/sparc-integration.ts[0m:[93m17[0m:[93m26[0m - [91merror[0m[90m TS2307: [0mCannot find module 'better-sqlite3' or its corresponding type declarations.
+
+    [7m17[0m import { Database } from 'better-sqlite3';
+    [7m  [0m [91m                         ~~~~~~~~~~~~~~~~[0m
+
+FAIL tests/neural/verification-learning.test.ts
+  ● Test suite failed to run
+
+    [96msrc/neural/verification-learning.ts[0m:[93m504[0m:[93m17[0m - [91merror[0m[90m TS2339: [0mProperty 'reliability' does not exist on type 'Database'.
+
+    [7m504[0m     return row?.reliability || 0.5;
+    [7m   [0m [91m                ~~~~~~~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m520[0m:[93m17[0m - [91merror[0m[90m TS2339: [0mProperty 'avg_score' does not exist on type 'Database'.
+
+    [7m520[0m     return row?.avg_score || 0.5;
+    [7m   [0m [91m                ~~~~~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m552[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'length' does not exist on type 'Database'.
+
+    [7m552[0m     if (rows.length < 3) return 0.5;
+    [7m   [0m [91m             ~~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m555[0m:[93m25[0m - [91merror[0m[90m TS2339: [0mProperty 'map' does not exist on type 'Database'.
+
+    [7m555[0m     const scores = rows.map((r: any) => r.truth_score);
+    [7m   [0m [91m                        ~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m556[0m:[93m47[0m - [91merror[0m[90m TS7006: [0mParameter 'a' implicitly has an 'any' type.
+
+    [7m556[0m     const recent = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+    [7m   [0m [91m                                              ~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m556[0m:[93m50[0m - [91merror[0m[90m TS7006: [0mParameter 'b' implicitly has an 'any' type.
+
+    [7m556[0m     const recent = scores.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+    [7m   [0m [91m                                                 ~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m557[0m:[93m43[0m - [91merror[0m[90m TS7006: [0mParameter 'a' implicitly has an 'any' type.
+
+    [7m557[0m     const older = scores.slice(5).reduce((a, b) => a + b, 0) / (scores.length - 5);
+    [7m   [0m [91m                                          ~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m557[0m:[93m46[0m - [91merror[0m[90m TS7006: [0mParameter 'b' implicitly has an 'any' type.
+
+    [7m557[0m     const older = scores.slice(5).reduce((a, b) => a + b, 0) / (scores.length - 5);
+    [7m   [0m [91m                                             ~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m608[0m:[93m23[0m - [91merror[0m[90m TS2488: [0mType 'Database' must have a '[Symbol.iterator]()' method that returns an iterator.
+
+    [7m608[0m     for (const row of rows) {
+    [7m   [0m [91m                      ~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m732[0m:[93m23[0m - [91merror[0m[90m TS2488: [0mType 'Database' must have a '[Symbol.iterator]()' method that returns an iterator.
+
+    [7m732[0m     for (const row of rows) {
+    [7m   [0m [91m                      ~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m902[0m:[93m23[0m - [91merror[0m[90m TS2488: [0mType 'Database' must have a '[Symbol.iterator]()' method that returns an iterator.
+
+    [7m902[0m     for (const row of rows) {
+    [7m   [0m [91m                      ~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m990[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'length' does not exist on type 'Database'.
+
+    [7m990[0m     if (rows.length < 10) return 'stable';
+    [7m   [0m [91m             ~~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m992[0m:[93m25[0m - [91merror[0m[90m TS2339: [0mProperty 'slice' does not exist on type 'Database'.
+
+    [7m992[0m     const recent = rows.slice(0, 10).reduce((sum: number, r: any) => sum + r.truth_score, 0) / 10;
+    [7m   [0m [91m                        ~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m993[0m:[93m24[0m - [91merror[0m[90m TS2339: [0mProperty 'slice' does not exist on type 'Database'.
+
+    [7m993[0m     const older = rows.slice(10).reduce((sum: number, r: any) => sum + r.truth_score, 0) / (rows.length - 10);
+    [7m   [0m [91m                       ~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m993[0m:[93m98[0m - [91merror[0m[90m TS2339: [0mProperty 'length' does not exist on type 'Database'.
+
+    [7m993[0m     const older = rows.slice(10).reduce((sum: number, r: any) => sum + r.truth_score, 0) / (rows.length - 10);
+    [7m   [0m [91m                                                                                                 ~~~~~~[0m
+    [96msrc/neural/verification-learning.ts[0m:[93m1038[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType 'Map<unknown, unknown>' is not assignable to type 'Map<string, number>'.
+      Type 'unknown' is not assignable to type 'string'.
+
+    [7m1038[0m       performanceByFileType,
+    [7m    [0m [91m      ~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/neural/verification-learning.ts[0m:[93m128[0m:[93m3[0m
+        [7m128[0m   performanceByFileType: Map<string, number>;
+        [7m   [0m [96m  ~~~~~~~~~~~~~~~~~~~~~[0m
+        The expected type comes from property 'performanceByFileType' which is declared here on type 'AgentReliability'
+
+FAIL tests/neural/learning-system.test.ts
+  ● Test suite failed to run
+
+    [96msrc/neural/learning-pipeline.ts[0m:[93m693[0m:[93m29[0m - [91merror[0m[90m TS2339: [0mProperty 'map' does not exist on type 'Database'.
+
+    [7m693[0m     return Promise.all(rows.map(row => this.decompressPattern(row)));
+    [7m   [0m [91m                            ~~~[0m
+    [96msrc/neural/learning-pipeline.ts[0m:[93m693[0m:[93m33[0m - [91merror[0m[90m TS7006: [0mParameter 'row' implicitly has an 'any' type.
+
+    [7m693[0m     return Promise.all(rows.map(row => this.decompressPattern(row)));
+    [7m   [0m [91m                                ~~~[0m
+    [96msrc/neural/learning-pipeline.ts[0m:[93m816[0m:[93m27[0m - [91merror[0m[90m TS2339: [0mProperty 'changes' does not exist on type 'Database'.
+
+    [7m816[0m     pruned = pruneResults.changes || 0;
+    [7m   [0m [91m                          ~~~~~~~[0m
+
+FAIL tests/risk-management/risk-monitor.test.ts
+  ● Risk Management System › Initialization › should initialize all 12 risks
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 12
+    Received: 10
+
+      26 |     it('should initialize all 12 risks', () => {
+      27 |       const risks = monitor.getAllRisks();
+    > 28 |       expect(risks.length).toBe(12);
+         |                            ^
+      29 |     });
+      30 |
+      31 |     it('should have correct risk categories', () => {
+
+      at Object.<anonymous> (tests/risk-management/risk-monitor.test.ts:28:28)
+
+  ● Risk Management System › Initialization › should have correct risk categories
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 6
+    Received: 4
+
+      39 |       expect(criticalCount).toBe(3); // C1, C2, C3
+      40 |       expect(highCount).toBe(3);     // H1, H2, H3
+    > 41 |       expect(mediumCount).toBe(6);   // M1-M4 (M4 might have lower actual count)
+         |                           ^
+      42 |     });
+      43 |
+      44 |     it('should initialize all risks with monitoring status', () => {
+
+      at Object.<anonymous> (tests/risk-management/risk-monitor.test.ts:41:27)
+
+  ● Risk Management System › Dashboard Generation › should generate dashboard data
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 12
+    Received: 10
+
+      239 |
+      240 |       expect(dashboard.summary).toBeDefined();
+    > 241 |       expect(dashboard.summary.totalRisks).toBe(12);
+          |                                            ^
+      242 |       expect(dashboard.criticalRisks).toBeDefined();
+      243 |       expect(dashboard.highRisks).toBeDefined();
+      244 |     });
+
+      at Object.<anonymous> (tests/risk-management/risk-monitor.test.ts:241:44)
+
+FAIL tests/goap/neural-integration.test.ts
+  ● Console
+
+    console.error
+      Planning failed: [Error: SQLITE_ERROR: no such table: goap_patterns] {
+        errno: 1,
+        code: 'SQLITE_ERROR'
+      }
+
+      109 |
+      110 |     } catch (error) {
+    > 111 |       console.error('Planning failed:', error);
+          |               ^
+      112 |       throw error;
+      113 |     }
+      114 |   }
+
+      at NeuralGOAPPlanner.plan (src/goap/neural-integration.ts:111:15)
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:646:7)
+
+  ● NeuralGOAPPlanner › Pattern Learning › should reuse learned patterns
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      300 |
+      301 |       const stats = planner.getStats();
+    > 302 |       expect(stats.pattern_based_plans).toBeGreaterThan(0);
+          |                                         ^
+      303 |       expect(stats.pattern_reuse_rate).toBeGreaterThan(0);
+      304 |     });
+      305 |
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:302:41)
+
+  ● NeuralGOAPPlanner › Pattern Learning › should update pattern confidence from outcomes
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0.5
+    Received:   0.5
+
+      331 |
+      332 |       const statsAfter = await planner.getPatternLibraryStats();
+    > 333 |       expect(statsAfter.average_confidence).toBeGreaterThan(0.5);
+          |                                             ^
+      334 |     });
+      335 |   });
+      336 |
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:333:45)
+
+  ● NeuralGOAPPlanner › Performance Optimization › should cache frequently-used patterns
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 1
+    Received:   0
+
+      417 |
+      418 |       const stats = await planner.getPatternLibraryStats();
+    > 419 |       expect(stats.average_usage).toBeGreaterThan(1);
+          |                                   ^
+      420 |     });
+      421 |   });
+      422 |
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:419:35)
+
+  ● NeuralGOAPPlanner › Pattern Quality › should maintain patterns with high confidence
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      516 |
+      517 |       const stats = await planner.getPatternLibraryStats();
+    > 518 |       expect(stats.high_confidence_patterns).toBeGreaterThan(0);
+          |                                              ^
+      519 |       expect(stats.average_confidence).toBeGreaterThan(0.7);
+      520 |     });
+      521 |
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:518:46)
+
+  ● NeuralGOAPPlanner › Pattern Quality › should identify low-usage patterns
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      542 |
+      543 |       const stats = await planner.getPatternLibraryStats();
+    > 544 |       expect(stats.low_usage_patterns).toBeGreaterThan(0);
+          |                                        ^
+      545 |     });
+      546 |   });
+      547 |
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:544:40)
+
+  ● NeuralGOAPPlanner › Statistics and Metrics › should calculate pattern reuse rate
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      598 |
+      599 |       const stats = planner.getStats();
+    > 600 |       expect(stats.pattern_reuse_rate).toBeGreaterThan(0);
+          |                                        ^
+      601 |       expect(stats.pattern_reuse_rate).toBeLessThanOrEqual(1);
+      602 |     });
+      603 |   });
+
+      at Object.<anonymous> (tests/goap/neural-integration.test.ts:600:40)
+
+  ● Performance Benchmarks › should benchmark A* vs Pattern-based planning
+
+    SQLITE_ERROR: no such table: goap_patterns
+
+
+
+Test Suites: 15 failed, 15 total
+Tests:       34 failed, 44 passed, 78 total
+Snapshots:   0 total
+Time:        2.221 s
+Ran all test suites.

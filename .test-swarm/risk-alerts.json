@@ -1,0 +1,18 @@
+{
+  "lastUpdated": "2025-10-15T06:07:44.864Z",
+  "alerts": [
+    {
+      "alertId": "ALERT-H1-1760508464863",
+      "riskId": "H1",
+      "timestamp": "2025-10-15T06:07:44.863Z",
+      "severity": "warning",
+      "message": "Risk H1 (Learning Divergence): Indicator \"Task Success Rate Decline %\" triggered",
+      "indicators": [
+        "Task Success Rate Decline %: 6 > 5"
+      ],
+      "recommendedAction": "Execute mitigation: Implement validation layers (confidence >0.80)",
+      "acknowledged": false,
+      "escalated": false
+    }
+  ]
+}

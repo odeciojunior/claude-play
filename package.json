@@ -1,0 +1,60 @@
+{
+  "name": "claude-play-neural-system",
+  "version": "2.0.0",
+  "description": "Self-Learning AI Development Environment with SAFLA Neural Learning, GOAP Planning, and Truth Verification",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:performance": "jest tests/performance",
+    "test:security": "jest tests/security",
+    "test:hive-mind": "jest tests/hive-mind",
+    "test:e2e": "jest tests/e2e",
+    "test:coverage": "jest --coverage",
+    "test:coverage:report": "jest --coverage --coverageReporters=json-summary && cat coverage/coverage-summary.json",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage --maxWorkers=2",
+    "test:integration:coverage": "jest tests/integration --coverage",
+    "test:unit:watch": "jest tests/unit --watch",
+    "test:specific": "jest",
+    "test:verbose": "jest --verbose",
+    "test:silent": "jest --silent",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "lint": "eslint src tests --ext .ts",
+    "lint:fix": "eslint src tests --ext .ts --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist coverage .tsbuildinfo"
+  },
+  "keywords": [
+    "ai",
+    "neural-learning",
+    "safla",
+    "goap",
+    "verification",
+    "hive-mind",
+    "self-learning",
+    "swarm-intelligence"
+  ],
+  "author": "Claude Flow Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.30",
+    "@typescript-eslint/eslint-plugin": "^7.3.1",
+    "@typescript-eslint/parser": "^7.3.1",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

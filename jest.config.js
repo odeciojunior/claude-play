@@ -15,7 +15,7 @@ module.exports = {
     '!src/**/*.test.ts',
     '!src/**/__tests__/**'
   ],
-  coverageThresholds: {
+  coverageThreshold: {
     global: {
       branches: 85,
       functions: 90,
@@ -35,13 +35,5 @@ module.exports = {
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 30000,
-  maxWorkers: '50%',
-  globals: {
-    'ts-jest': {
-      tsconfig: {
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true
-      }
-    }
-  }
+  maxWorkers: '50%'
 };
