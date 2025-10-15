@@ -9,7 +9,7 @@
  * - System-wide statistics
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { Database } from 'sqlite3';
 import AgentLearningSystem, {
   AGENT_REGISTRY,

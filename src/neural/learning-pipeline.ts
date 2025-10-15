@@ -92,6 +92,12 @@ export class LearningPipeline {
   private flushTimer?: NodeJS.Timeout;
   private consolidationTimer?: NodeJS.Timeout;
   private metrics: LearningMetrics;
+  private contextProvider?: () => ExecutionContext;
+
+  // Public properties for testing
+  public readonly extractionPhase = 'extraction';
+  public readonly trainingPhase = 'training';
+  public readonly applicationPhase = 'application';
 
   constructor(
     private db: Database,
@@ -225,11 +231,11 @@ export class LearningPipeline {
   }
 
   /**
-   * Extract patterns from observations
+   * Extract patterns from observations (public version for testing)
    */
-  private async extractPatternsFromObservations(
+  async extractPatternsFromObservations(
     observations: ExecutionObservation[]
-  ) {
+  ): Promise<Pattern[]> {
     try {
       const patterns = await this.patternExtractor.extractPatterns(observations);
       this.metrics.patternsExtracted += patterns.length;
@@ -237,8 +243,10 @@ export class LearningPipeline {
       console.log(`Extracted ${patterns.length} patterns`);
 
       // Patterns will be handled by the event listener
+      return patterns;
     } catch (error) {
       console.error('Pattern extraction failed:', error);
+      return [];
     }
   }
 
@@ -401,9 +409,9 @@ export class LearningPipeline {
   }
 
   /**
-   * Consolidate patterns (merge duplicates, prune low-value)
+   * Consolidate patterns (merge duplicates, prune low-value) - public version
    */
-  private async consolidatePatterns() {
+  async consolidatePatterns(): Promise<ConsolidationResult> {
     console.log('Starting pattern consolidation...');
 
     try {
@@ -425,8 +433,22 @@ export class LearningPipeline {
 
       // Emit event
       this.eventEmitter.emit('consolidation_complete', stats);
+
+      return {
+        merged: stats.merged,
+        pruned: stats.pruned,
+        duration,
+        success: true
+      };
     } catch (error) {
       console.error('Consolidation failed:', error);
+      return {
+        merged: 0,
+        pruned: 0,
+        duration: 0,
+        success: false,
+        error: (error as Error).message
+      };
     }
   }
 
@@ -457,6 +479,50 @@ export class LearningPipeline {
   }
 
   /**
+   * Force extraction of patterns from buffered observations
+   */
+  async forceExtraction(): Promise<void> {
+    if (this.observationBuffer.length === 0) {
+      console.log('No observations to extract patterns from');
+      return;
+    }
+
+    console.log(`Force extracting patterns from ${this.observationBuffer.length} observations`);
+
+    const observations = this.observationBuffer.splice(0);
+    await this.extractPatternsFromObservations(observations);
+  }
+
+  /**
+   * Get extracted patterns from storage
+   */
+  async getExtractedPatterns(options?: {
+    type?: PatternType;
+    minConfidence?: number;
+    limit?: number;
+  }): Promise<Pattern[]> {
+    return await this.patternStorage.search({
+      type: options?.type,
+      minConfidence: options?.minConfidence || 0,
+      limit: options?.limit || 100
+    });
+  }
+
+  /**
+   * Get a specific pattern by ID
+   */
+  async getPattern(patternId: string): Promise<Pattern | null> {
+    return await this.patternStorage.get(patternId);
+  }
+
+  /**
+   * Set context provider for capturing execution context
+   */
+  setContextProvider(provider: () => ExecutionContext): void {
+    this.contextProvider = provider;
+  }
+
+  /**
    * Shutdown pipeline
    */
   async shutdown() {
@@ -477,6 +543,12 @@ export class LearningPipeline {
   // Helper methods
 
   private async captureContext(): Promise<ExecutionContext> {
+    // Use custom context provider if set
+    if (this.contextProvider) {
+      return this.contextProvider();
+    }
+
+    // Default context
     return {
       taskId: this.workingMemory.getCurrentTaskId(),
       agentId: process.env.AGENT_ID || 'default',
@@ -688,7 +760,8 @@ class PatternStorage {
       params.push(options.limit);
     }
 
-    const rows = await this.db.all(sql, params);
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows: any[] = await dbAll(sql, params);
 
     return Promise.all(rows.map(row => this.decompressPattern(row)));
   }
@@ -801,7 +874,7 @@ class PatternStorage {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - options.pruneAgeDays);
 
-    const pruneResults = await this.db.run(
+    const pruneResults: any = await this.db.run(
       `DELETE FROM patterns
        WHERE confidence < ?
          AND usage_count < ?
@@ -813,7 +886,7 @@ class PatternStorage {
       ]
     );
 
-    pruned = pruneResults.changes || 0;
+    pruned = pruneResults?.changes || 0;
 
     return { merged, pruned };
   }
@@ -942,6 +1015,31 @@ export interface PatternApplication {
   confidence?: number;
   reason?: string;
   error?: string;
+}
+
+export interface ConsolidationResult {
+  merged: number;
+  pruned: number;
+  duration: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface OutcomeReport {
+  taskId: string;
+  outcomes: Outcome[];
+  avgConfidence: number;
+  successRate: number;
+  totalDuration: number;
+}
+
+export interface PipelineMetrics {
+  observationsCollected: number;
+  patternsExtracted: number;
+  patternsStored: number;
+  patternsApplied: number;
+  averageExtractionTimeMs: number;
+  averageConfidenceScore: number;
 }
 
 // ============================================================================

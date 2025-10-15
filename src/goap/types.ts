@@ -237,3 +237,12 @@ export interface PatternLibraryStats {
   high_confidence_patterns: number;  // confidence > 0.8
   low_usage_patterns: number;  // used < 3 times
 }
+
+// ============================================================================
+// Type Aliases for Backward Compatibility
+// ============================================================================
+
+export type State = WorldState;
+export type Heuristic = HeuristicFunction;
+// Note: GOAPPlanner implementation is in neural-integration.ts as NeuralGOAPPlanner
+export type GOAPPlanner = any;

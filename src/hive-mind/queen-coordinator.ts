@@ -213,7 +213,7 @@ export class QueenCoordinator extends EventEmitter {
    * Establish sovereign presence in memory
    */
   private async establishSovereignty() {
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -237,7 +237,7 @@ export class QueenCoordinator extends EventEmitter {
    * Issue royal directives
    */
   private async issueRoyalDirectives(directives: RoyalDirective[]) {
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     this.status.royalDirectives.push(...directives);
 
@@ -277,7 +277,7 @@ export class QueenCoordinator extends EventEmitter {
       lastUpdate: new Date().toISOString()
     };
 
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -438,7 +438,7 @@ export class QueenCoordinator extends EventEmitter {
       lastHealthCheck: new Date().toISOString()
     };
 
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -476,7 +476,7 @@ export class QueenCoordinator extends EventEmitter {
       nextReview: Date.now() + 120000 // 2 minutes
     };
 
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(

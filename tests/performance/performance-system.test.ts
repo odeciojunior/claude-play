@@ -26,7 +26,7 @@ describe('Performance System', () => {
     it('should store and retrieve patterns', async () => {
       const pattern: Pattern = {
         id: 'test-pattern-1',
-        type: 'test',
+        type: 'testing',
         patternData: { test: 'data' },
         confidence: 0.8,
         usageCount: 0,
@@ -45,7 +45,7 @@ describe('Performance System', () => {
     it('should retrieve patterns from cache', async () => {
       const pattern: Pattern = {
         id: 'cached-pattern',
-        type: 'test',
+        type: 'testing',
         patternData: { cached: true },
         confidence: 0.9,
         usageCount: 10,
@@ -71,7 +71,7 @@ describe('Performance System', () => {
       for (let i = 0; i < 10; i++) {
         patterns.push({
           id: `batch-pattern-${i}`,
-          type: 'test',
+          type: 'testing',
           patternData: { index: i },
           confidence: 0.7,
           usageCount: i,
@@ -98,7 +98,7 @@ describe('Performance System', () => {
     it('should update confidence scores', async () => {
       const pattern: Pattern = {
         id: 'confidence-pattern',
-        type: 'test',
+        type: 'testing',
         patternData: {},
         confidence: 0.5,
         usageCount: 0,
@@ -205,7 +205,7 @@ describe('Performance System', () => {
     it('should handle invalid pattern data', async () => {
       const result = await perfSystem.storePattern({
         id: '',
-        type: '',
+        type: 'testing',
         patternData: null as any,
         confidence: 0,
         usageCount: 0,
@@ -322,7 +322,7 @@ describe('Cache System', () => {
   it('should hit L1 cache for hot patterns', async () => {
     const pattern: Pattern = {
       id: 'hot-pattern',
-      type: 'test',
+      type: 'testing',
       patternData: { hot: true },
       confidence: 0.95,
       usageCount: 1000,
@@ -346,7 +346,7 @@ describe('Cache System', () => {
   it('should promote patterns to faster cache levels', async () => {
     const pattern: Pattern = {
       id: 'promoted-pattern',
-      type: 'test',
+      type: 'testing',
       patternData: {},
       confidence: 0.8,
       usageCount: 0,
@@ -375,7 +375,7 @@ describe('Compression System', () => {
 
     const largePattern: Pattern = {
       id: 'large-pattern',
-      type: 'test',
+      type: 'testing',
       patternData: {
         data: 'x'.repeat(10000) // 10KB of data
       },

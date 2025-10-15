@@ -25,7 +25,12 @@
     "lint": "eslint src tests --ext .ts",
     "lint:fix": "eslint src tests --ext .ts --fix",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist coverage .tsbuildinfo"
+    "clean": "rm -rf dist coverage .tsbuildinfo",
+    "db:migrate": "ts-node src/database/migrations/migrate.ts",
+    "db:migrate:reset": "ts-node src/database/migrations/migrate.ts --reset",
+    "db:migrate:verify": "ts-node src/database/migrations/migrate.ts --verify",
+    "db:migrate:stats": "ts-node src/database/migrations/migrate.ts --stats",
+    "db:migrate:force": "ts-node src/database/migrations/migrate.ts --force"
   },
   "keywords": [
     "ai",
@@ -40,6 +45,7 @@
   "author": "Claude Flow Team",
   "license": "MIT",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.30",
     "@typescript-eslint/eslint-plugin": "^7.3.1",
@@ -51,6 +57,7 @@
     "typescript": "^5.4.2"
   },
   "dependencies": {
+    "better-sqlite3": "^12.4.1",
     "sqlite3": "^5.1.7"
   },
   "engines": {

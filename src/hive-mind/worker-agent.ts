@@ -129,7 +129,7 @@ export class WorkerAgent extends EventEmitter {
    * Register with hive collective memory
    */
   private async registerWithHive() {
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -307,7 +307,7 @@ export class WorkerAgent extends EventEmitter {
    * Share pattern with collective memory
    */
   private async sharePatternWithCollective(pattern: Pattern) {
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -339,7 +339,7 @@ export class WorkerAgent extends EventEmitter {
   async learnFromCollective(): Promise<number> {
     console.log(`🐝 ${this.config.id}: Learning from collective...`);
 
-    const dbAll = promisify(this.db.all.bind(this.db));
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
 
     try {
       const rows = await dbAll(
@@ -439,7 +439,7 @@ export class WorkerAgent extends EventEmitter {
   private async updateStatus() {
     this.state.lastActive = new Date().toISOString();
 
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(

@@ -866,7 +866,7 @@ class PatternQualityScorer {
 // Supporting Types
 // ============================================================================
 
-interface ExtractorConfig {
+export interface ExtractorConfig {
   minSupport?: number;
   minConfidence?: number;
   numClusters?: number;

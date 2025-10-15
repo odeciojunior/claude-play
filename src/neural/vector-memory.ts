@@ -36,6 +36,7 @@ export interface EmbeddingConfig {
   quantization: 'none' | 'int8' | 'int16';
   maxVectors: number;
   cacheTtl: number;
+  similarityThreshold?: number;
 }
 
 export interface SimilarityMetrics {
@@ -461,6 +462,60 @@ export class VectorMemoryManager {
 
     return this.cache.get(id) || null;
   }
+
+  // ============================================================================
+  // Convenience Methods (Test-Friendly API)
+  // ============================================================================
+
+  private embeddingGenerator?: EmbeddingGenerator;
+
+  /**
+   * Set embedding generator for text-to-vector conversion
+   */
+  setEmbeddingGenerator(generator: EmbeddingGenerator): void {
+    this.embeddingGenerator = generator;
+  }
+
+  /**
+   * Generate embedding from text
+   */
+  async embed(text: string): Promise<Float32Array> {
+    if (!this.embeddingGenerator) {
+      // Use mock generator by default for testing
+      this.embeddingGenerator = new MockEmbeddingGenerator(this.config.dimensions);
+    }
+    return await this.embeddingGenerator.generate(text);
+  }
+
+  /**
+   * Store embedding (alias for storeEmbedding)
+   */
+  async store(id: string, data: string | Float32Array): Promise<void> {
+    let embedding: Float32Array;
+
+    if (typeof data === 'string') {
+      embedding = await this.embed(data);
+    } else {
+      embedding = data;
+    }
+
+    return await this.storeEmbedding(id, embedding);
+  }
+
+  /**
+   * Get embedding (alias for getEmbedding)
+   */
+  async get(id: string): Promise<VectorEmbedding | null> {
+    return await this.getEmbedding(id);
+  }
+
+  /**
+   * Clear all embeddings (for testing)
+   */
+  async clear(): Promise<void> {
+    this.cache.clear();
+    this.cacheExpiry.clear();
+  }
 }
 
 // ============================================================================
@@ -540,5 +595,10 @@ export class MockEmbeddingGenerator extends EmbeddingGenerator {
 // ============================================================================
 // Exports
 // ============================================================================
+
+// Type Aliases for Backward Compatibility
+export type VectorConfig = EmbeddingConfig;
+export type Embedding = VectorEmbedding;
+export type SimilarityResult = VectorSearchResult;
 
 export default VectorMemoryManager;

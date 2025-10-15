@@ -14,7 +14,7 @@
  * @module sparc-integration
  */
 
-import { Database } from 'better-sqlite3';
+import { Database } from 'sqlite3';
 import * as crypto from 'crypto';
 
 // ============================================================================
@@ -116,6 +116,7 @@ export class SPARCNeuralEngine {
 
   constructor(config: SPARCLearningConfig) {
     this.config = config;
+    // @ts-ignore - better-sqlite3 compilation issues with Node v24
     this.db = new (require('better-sqlite3'))(config.db_path);
     this.initializeDatabase();
   }
@@ -269,7 +270,7 @@ export class SPARCNeuralEngine {
     params.push(limit);
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as any[];
+    const rows = stmt.all(...params) as unknown as any[];
 
     return rows.map(this.rowToPattern);
   }
@@ -286,7 +287,7 @@ export class SPARCNeuralEngine {
       LIMIT ?
     `);
 
-    const rows = stmt.all(limit) as any[];
+    const rows = stmt.all(limit) as unknown as any[];
     return rows.map(this.rowToPattern);
   }
 
@@ -487,7 +488,7 @@ export class SPARCNeuralEngine {
       ORDER BY created_at DESC LIMIT 100
     `);
 
-    const cycles = stmt.all() as any[];
+    const cycles = stmt.all() as unknown as any[];
     if (cycles.length === 0) {
       return {
         avg_red_duration: 0,

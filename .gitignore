@@ -1,5 +1,6 @@
 .node_modules
 node_modules/
+dist/
 
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt

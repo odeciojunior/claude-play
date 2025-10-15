@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2025-10-15T06:07:44.865Z",
+  "lastUpdated": "2025-10-15T07:26:13.579Z",
   "risks": [
     {
       "riskId": "C1",
@@ -9,7 +9,7 @@
       "impact": 8,
       "score": 8,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "daily",
       "indicators": [
         {
@@ -67,7 +67,7 @@
       "impact": 7,
       "score": 7,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "daily",
       "indicators": [
         {
@@ -125,7 +125,7 @@
       "impact": 6,
       "score": 6,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "daily",
       "indicators": [
         {
@@ -191,7 +191,7 @@
       "impact": 6,
       "score": 6,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.864Z",
+      "lastChecked": "2025-10-15T07:26:13.579Z",
       "checkFrequency": "weekly",
       "indicators": [
         {
@@ -201,7 +201,7 @@
           "operator": ">",
           "severity": "warning",
           "triggered": false,
-          "lastTriggered": "2025-10-15T06:07:44.863Z"
+          "lastTriggered": "2025-10-15T07:26:13.578Z"
         },
         {
           "name": "Pattern Quality Score",
@@ -226,8 +226,8 @@
           "owner": "Neural Specialist",
           "status": "completed",
           "timeline": "Phase 1",
-          "startDate": "2025-10-15T06:07:44.864Z",
-          "completionDate": "2025-10-15T06:07:44.865Z",
+          "startDate": "2025-10-15T07:26:13.579Z",
+          "completionDate": "2025-10-15T07:26:13.579Z",
           "effectiveness": 0.9
         },
         {
@@ -247,7 +247,7 @@
       "impact": 5,
       "score": 5,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "weekly",
       "indicators": [
         {
@@ -299,7 +299,7 @@
       "impact": 5,
       "score": 5,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "weekly",
       "indicators": [
         {
@@ -351,7 +351,7 @@
       "impact": 4,
       "score": 4,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "bi-weekly",
       "indicators": [
         {
@@ -395,7 +395,7 @@
       "impact": 5,
       "score": 5,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "bi-weekly",
       "indicators": [
         {
@@ -439,7 +439,7 @@
       "impact": 4,
       "score": 4,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "bi-weekly",
       "indicators": [
         {
@@ -483,7 +483,7 @@
       "impact": 3,
       "score": 3,
       "status": "Monitoring",
-      "lastChecked": "2025-10-15T06:07:44.863Z",
+      "lastChecked": "2025-10-15T07:26:13.578Z",
       "checkFrequency": "bi-weekly",
       "indicators": [
         {

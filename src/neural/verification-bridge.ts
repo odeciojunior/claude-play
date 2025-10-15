@@ -69,15 +69,13 @@ export class VerificationBridge {
       const sqlite3 = require('sqlite3').verbose();
       this.db = new sqlite3.Database(this.dbPath);
 
-      // Promisify database methods
-      this.db.run = promisify(this.db.run.bind(this.db)) as any;
-      this.db.get = promisify(this.db.get.bind(this.db)) as any;
-      this.db.all = promisify(this.db.all.bind(this.db)) as any;
-
       // Load schema
       await this.loadSchema();
 
       // Initialize learning system
+      if (!this.db) {
+        throw new Error('Database initialization failed');
+      }
       this.system = new VerificationLearningSystem(this.db, this.config);
 
       this.initialized = true;
@@ -92,6 +90,11 @@ export class VerificationBridge {
    * Load database schema
    */
   private async loadSchema(): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
     const schemaPath = path.join(__dirname, 'verification-schema.sql');
 
     if (fs.existsSync(schemaPath)) {
@@ -100,7 +103,7 @@ export class VerificationBridge {
 
       for (const statement of statements) {
         if (statement.trim()) {
-          await this.db!.run(statement);
+          await dbRun(statement);
         }
       }
 
@@ -197,6 +200,34 @@ export class VerificationBridge {
     } catch (error) {
       console.error('Failed to get agent reliability:', error);
       return null;
+    }
+  }
+
+  /**
+   * Get all agent reliability data
+   */
+  async getAllAgentReliability(): Promise<any[]> {
+    this.ensureInitialized();
+
+    try {
+      return await this.system!.getAllAgentReliability();
+    } catch (error) {
+      console.error('Failed to get all agent reliability:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all adaptive thresholds
+   */
+  async getAllThresholds(): Promise<any[]> {
+    this.ensureInitialized();
+
+    try {
+      return await this.system!.getAllThresholds();
+    } catch (error) {
+      console.error('Failed to get all thresholds:', error);
+      return [];
     }
   }
 
@@ -335,7 +366,12 @@ export class VerificationBridge {
   }
 
   private async storeOutcome(outcome: VerificationOutcome): Promise<void> {
-    await this.db!.run(
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
+    await dbRun(
       `INSERT INTO verification_outcomes
        (id, task_id, agent_id, agent_type, timestamp, passed, truth_score, threshold,
         component_scores, file_type, complexity, lines_changed, tests_run, duration,
@@ -363,7 +399,12 @@ export class VerificationBridge {
   }
 
   private async storePrediction(prediction: TruthScorePrediction): Promise<void> {
-    await this.db!.run(
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
+    await dbRun(
       `INSERT INTO truth_score_predictions
        (id, task_id, agent_id, timestamp, predicted_score, confidence,
         recommended_threshold, risk_level, factors)
@@ -383,7 +424,12 @@ export class VerificationBridge {
   }
 
   private async updatePredictionActual(outcome: VerificationOutcome): Promise<void> {
-    await this.db!.run(
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
+    await dbRun(
       `UPDATE truth_score_predictions
        SET actual_score = ?, prediction_error = ABS(actual_score - predicted_score)
        WHERE task_id = ?`,
@@ -392,7 +438,12 @@ export class VerificationBridge {
   }
 
   private async getPredictionStats(): Promise<{ accuracy: number; avgError: number; total: number }> {
-    const row = await this.db!.get(`
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    const dbGet = promisify(this.db.get.bind(this.db)) as (sql: string, params?: any[]) => Promise<any>;
+    const row = await dbGet(`
       SELECT
         COUNT(*) as total,
         AVG(CASE WHEN prediction_error < 0.1 THEN 1.0 ELSE 0.0 END) as accuracy,

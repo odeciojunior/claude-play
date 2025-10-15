@@ -371,6 +371,10 @@ export class PatternAggregator extends EventEmitter {
       avgDurationMs: contributions.reduce(
         (sum, c) => sum + c.pattern.metrics.avgDurationMs,
         0
+      ) / contributions.length,
+      avgImprovement: contributions.reduce(
+        (sum, c) => sum + c.pattern.metrics.avgImprovement,
+        0
       ) / contributions.length
     };
 
@@ -409,7 +413,7 @@ export class PatternAggregator extends EventEmitter {
   private async storeAggregatedPattern(aggregated: AggregatedPattern) {
     this.aggregatedPatterns.set(aggregated.basePattern.id, aggregated);
 
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -433,7 +437,7 @@ export class PatternAggregator extends EventEmitter {
    * Store conflict resolution
    */
   private async storeConflictResolution(resolution: ConflictResolution) {
-    const dbRun = promisify(this.db.run.bind(this.db));
+    const dbRun = promisify(this.db.run.bind(this.db)) as (sql: string, params?: any[]) => Promise<void>;
 
     try {
       await dbRun(
@@ -455,7 +459,7 @@ export class PatternAggregator extends EventEmitter {
    * Load existing aggregated patterns
    */
   private async loadAggregatedPatterns() {
-    const dbAll = promisify(this.db.all.bind(this.db));
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
 
     try {
       const rows = await dbAll(

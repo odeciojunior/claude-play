@@ -497,7 +497,9 @@ class TruthScorePredictor {
   // Helper methods
 
   private async getAgentReliability(agentId: string): Promise<number> {
-    const row = await this.db.get(
+    const { promisify } = require('util');
+    const dbGet = promisify(this.db.get.bind(this.db)) as (sql: string, params?: any[]) => Promise<any>;
+    const row = await dbGet(
       'SELECT reliability FROM agent_reliability WHERE agent_id = ?',
       [agentId]
     );
@@ -508,6 +510,8 @@ class TruthScorePredictor {
     agentType: string,
     context: Partial<VerificationOutcome>
   ): Promise<number> {
+    const { promisify } = require('util');
+    const dbGet = promisify(this.db.get.bind(this.db)) as (sql: string, params?: any[]) => Promise<any>;
     let sql = 'SELECT AVG(truth_score) as avg_score FROM verification_outcomes WHERE agent_type = ?';
     const params: any[] = [agentType];
 
@@ -516,7 +520,7 @@ class TruthScorePredictor {
       params.push(context.fileType);
     }
 
-    const row = await this.db.get(sql, params);
+    const row = await dbGet(sql, params);
     return row?.avg_score || 0.5;
   }
 
@@ -541,7 +545,9 @@ class TruthScorePredictor {
   }
 
   private async getRecentTrend(agentId: string): Promise<number> {
-    const rows = await this.db.all(
+    const { promisify } = require('util');
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows = await dbAll(
       `SELECT truth_score FROM verification_outcomes
        WHERE agent_id = ?
        ORDER BY timestamp DESC
@@ -604,7 +610,9 @@ class AdaptiveThresholdManager {
   }
 
   private async loadThresholds() {
-    const rows = await this.db.all('SELECT * FROM adaptive_thresholds');
+    const { promisify } = require('util');
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows = await dbAll('SELECT * FROM adaptive_thresholds');
     for (const row of rows) {
       const key = this.getKey(row.agent_type, row.file_type);
       this.thresholds.set(key, this.rowToThreshold(row));
@@ -728,7 +736,9 @@ class VerificationPatternLibrary {
   }
 
   private async loadPatterns() {
-    const rows = await this.db.all('SELECT * FROM verification_patterns');
+    const { promisify } = require('util');
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows = await dbAll('SELECT * FROM verification_patterns');
     for (const row of rows) {
       this.patterns.set(row.id, this.rowToPattern(row));
     }
@@ -898,7 +908,9 @@ class AgentReliabilityTracker {
   }
 
   private async loadReliability() {
-    const rows = await this.db.all('SELECT * FROM agent_reliability');
+    const { promisify } = require('util');
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows = await dbAll('SELECT * FROM agent_reliability');
     for (const row of rows) {
       this.reliability.set(row.agent_id, this.rowToReliability(row));
     }
@@ -979,7 +991,9 @@ class AgentReliabilityTracker {
   }
 
   private async calculateTrend(agentId: string): Promise<'improving' | 'stable' | 'declining'> {
-    const rows = await this.db.all(
+    const { promisify } = require('util');
+    const dbAll = promisify(this.db.all.bind(this.db)) as (sql: string, params?: any[]) => Promise<any[]>;
+    const rows = await dbAll(
       `SELECT truth_score FROM verification_outcomes
        WHERE agent_id = ?
        ORDER BY timestamp DESC

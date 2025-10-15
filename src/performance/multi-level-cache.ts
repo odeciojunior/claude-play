@@ -24,7 +24,7 @@ interface CacheEntry<T> {
   lastAccessed: number;
 }
 
-interface CacheStats {
+export interface CacheStats {
   hits: number;
   misses: number;
   evictions: number;
@@ -33,7 +33,7 @@ interface CacheStats {
   avgAccessTime: number;
 }
 
-interface CacheConfig {
+export interface CacheConfig {
   maxSize: number;
   maxMemoryMb: number;
   ttlMs: number;

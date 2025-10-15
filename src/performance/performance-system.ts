@@ -21,6 +21,17 @@ import { Pattern } from '../neural/pattern-extraction';
 // Types and Interfaces
 // ============================================================================
 
+interface PatternRow {
+  id: string;
+  type: string;
+  pattern_data: string;
+  compressed: number;
+  confidence: number;
+  usage_count: number;
+  created_at: string;
+  last_used: string | null;
+}
+
 export interface PerformanceConfig {
   cache: {
     l1MaxSize: number;
@@ -210,10 +221,10 @@ export class PerformanceSystem {
     console.log('🔥 Warming cache with high-confidence patterns...');
 
     const db = this.dbOptimizer.getDatabase();
-    const patterns = await new Promise<any[]>((resolve, reject) => {
+    const patterns = await new Promise<PatternRow[]>((resolve, reject) => {
       db.all(
         'SELECT * FROM patterns WHERE confidence >= 0.7 ORDER BY usage_count DESC LIMIT 1000',
-        (err, rows) => {
+        (err, rows: PatternRow[]) => {
           if (err) reject(err);
           else resolve(rows || []);
         }
@@ -277,7 +288,7 @@ export class PerformanceSystem {
   private async loadPatternFromDb(id: string): Promise<Pattern | null> {
     return this.dbPool.execute(async (db) => {
       return new Promise<Pattern | null>((resolve, reject) => {
-        db.get('SELECT * FROM patterns WHERE id = ?', [id], async (err, row) => {
+        db.get('SELECT * FROM patterns WHERE id = ?', [id], async (err, row: PatternRow) => {
           if (err) {
             reject(err);
           } else if (row) {
@@ -291,14 +302,20 @@ export class PerformanceSystem {
               patternData = decompressed.data;
             }
 
+            const data = JSON.parse(patternData);
             resolve({
               id: row.id,
-              type: row.type,
-              patternData: JSON.parse(patternData),
+              type: data.type,
+              name: data.name,
+              description: data.description,
+              conditions: data.conditions,
+              actions: data.actions,
+              successCriteria: data.successCriteria,
+              metrics: data.metrics,
               confidence: row.confidence,
               usageCount: row.usage_count,
               createdAt: row.created_at,
-              lastUsed: row.last_used
+              lastUsed: row.last_used ?? undefined
             });
           } else {
             resolve(null);
@@ -315,9 +332,20 @@ export class PerformanceSystem {
     const startTime = performance.now();
 
     try {
+      // Serialize pattern excluding id and metadata
+      const patternData = JSON.stringify({
+        type: pattern.type,
+        name: pattern.name,
+        description: pattern.description,
+        conditions: pattern.conditions,
+        actions: pattern.actions,
+        successCriteria: pattern.successCriteria,
+        metrics: pattern.metrics
+      });
+
       // Compress pattern data
       const compressed = await this.compressor.compress(
-        pattern.patternData,
+        patternData,
         'text'
       );
 
@@ -572,15 +600,21 @@ ${compressionReport}
   /**
    * Deserialize pattern from database row
    */
-  private deserializePattern(row: any): Pattern {
+  private deserializePattern(row: PatternRow): Pattern {
+    const data = JSON.parse(row.pattern_data);
     return {
       id: row.id,
-      type: row.type,
-      patternData: JSON.parse(row.pattern_data),
+      type: data.type,
+      name: data.name,
+      description: data.description,
+      conditions: data.conditions,
+      actions: data.actions,
+      successCriteria: data.successCriteria,
+      metrics: data.metrics,
       confidence: row.confidence,
       usageCount: row.usage_count,
       createdAt: row.created_at,
-      lastUsed: row.last_used
+      lastUsed: row.last_used ?? undefined
     };
   }
 

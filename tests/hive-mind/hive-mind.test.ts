@@ -333,7 +333,7 @@ describe('Pattern Aggregation', () => {
 
     const basePattern: Pattern = {
       id: 'multi-contrib-pattern',
-      type: 'implementation',
+      type: 'coordination',
       name: 'Multi Contributor Pattern',
       confidence: 0.7,
       usageCount: 10,
@@ -548,7 +548,7 @@ describe('Performance', () => {
       await aggregator.submitPattern({
         pattern: {
           id: `perf-pattern-${i}`,
-          type: 'performance',
+          type: 'optimization',
           name: `Performance Pattern ${i}`,
           confidence: 0.7,
           usageCount: 5,

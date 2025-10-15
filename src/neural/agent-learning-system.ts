@@ -1477,7 +1477,7 @@ export class AgentLearningSystem {
 
     // If highly generalizable, share across categories
     if (crossAgentPattern.generalizability > 0.8) {
-      await this.sharePatternAcrossCa tegories(crossAgentPattern);
+      await this.sharePatternAcrossCategories(crossAgentPattern);
     }
 
     console.log(`✅ Pattern shared across ${category} category: ${pattern.name}`);
@@ -1486,7 +1486,7 @@ export class AgentLearningSystem {
   /**
    * Share pattern across multiple categories
    */
-  private async sharePatternAcrossCa tegories(
+  private async sharePatternAcrossCategories(
     crossAgentPattern: CrossAgentPattern
   ): Promise<void> {
     // Determine applicable categories based on pattern type

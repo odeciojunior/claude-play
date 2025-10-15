@@ -10,7 +10,7 @@ import VectorMemory, {
   VectorConfig,
   Embedding,
   SimilarityResult
-} from '../../../src/neural/vector-memory';
+} from '../../../src/neural/vector-memory-wrapper';
 
 // ============================================================================
 // Vector Memory Tests

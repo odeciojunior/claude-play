@@ -477,7 +477,7 @@ export class PerformanceBenchmarks {
     for (let i = 0; i < count; i++) {
       patterns.push({
         id: `pattern_${i}`,
-        type: 'test',
+        type: 'testing',
         patternData: {
           name: `Test Pattern ${i}`,
           description: 'Benchmark test pattern with some data',

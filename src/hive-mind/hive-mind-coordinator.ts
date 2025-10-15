@@ -70,7 +70,7 @@ export class HiveMindCoordinator extends EventEmitter {
     super();
 
     // Initialize Byzantine consensus
-    this.consensus = new ByzantineConsensus(db, {
+    this.consensus = new ByzantineConsensus({
       minNodes: 3,
       defaultQuorum: 0.6,
       defaultConsensus: config.consensusThreshold,
