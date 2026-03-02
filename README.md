@@ -1,0 +1,34 @@
+# claude-play
+
+Community-driven plugin marketplace for [Claude Code](https://claude.ai/code).
+
+## Quick Start
+
+```bash
+# Add the marketplace (one-time)
+claude plugin marketplace add odeciojunior/claude-play
+
+# Install a plugin
+claude plugin install system-health-check@claude-play
+```
+
+## Available Plugins
+
+| Plugin | Description | Category | Version |
+|--------|-------------|----------|---------|
+| [system-health-check](plugins/system-health-check/) | On-demand WSL system health check with OK/WARN/CRITICAL status summaries | system | 1.0.0 |
+
+## Contributing
+
+We welcome plugin contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+**Quick version:**
+
+1. Fork this repo
+2. Copy `plugins/_template` to `plugins/your-plugin-name`
+3. Add your skills, hooks, or agents
+4. Open a PR
+
+## License
+
+[MIT](LICENSE)
