@@ -1,0 +1,28 @@
+{
+  "name": "claude-play",
+  "owner": {
+    "name": "Odecio Machado",
+    "email": "odeciojunior@gmail.com"
+  },
+  "metadata": {
+    "description": "Community-driven Claude Code plugin marketplace",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "system-health-check",
+      "source": "./system-health-check",
+      "description": "On-demand WSL system health check with OK/WARN/CRITICAL status summaries",
+      "version": "1.0.0",
+      "author": {
+        "name": "Odecio Machado",
+        "email": "odeciojunior@gmail.com"
+      },
+      "license": "MIT",
+      "keywords": ["health", "system", "wsl", "monitoring", "diagnostics"],
+      "category": "system",
+      "tags": ["wsl", "devops"]
+    }
+  ]
+}
