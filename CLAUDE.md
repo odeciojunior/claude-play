@@ -1,20 +1,43 @@
 # CLAUDE.md
 
-Local Claude Code plugins repository. Each plugin under `plugins/` has its own `.claude-plugin/plugin.json` and `skills/` directory.
+Community-driven Claude Code plugin marketplace. Users register this repo as a marketplace source and install plugins via the standard Claude Code CLI.
+
+## Quick Reference
+
+```bash
+# Add marketplace
+claude plugin marketplace add odeciojunior/claude-play
+
+# Install a plugin
+claude plugin install <plugin-name>@claude-play
+```
 
 ## Structure
 
 ```
+.claude-plugin/
+  marketplace.json          # Plugin catalog (Claude Code reads this)
 plugins/
   <plugin-name>/
     .claude-plugin/plugin.json
     skills/
-      <skill-name>/
-        SKILL.md
+      <skill-name>/SKILL.md
+    README.md
+  _template/                # Starter template for contributors
 docs/
-  plans/           # Design docs and implementation plans
+  plans/                    # Design docs and implementation plans
 ```
 
 ## Plugins
 
-- **system-health-check**: On-demand WSL system health check wrapping `~/health-report.sh`
+| Plugin | Description | Category |
+|--------|-------------|----------|
+| system-health-check | On-demand WSL system health check with OK/WARN/CRITICAL status | system |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors copy `plugins/_template/`, add their plugin, and open a PR.
+
+## Marketplace Name
+
+`claude-play` — used in install commands: `claude plugin install <name>@claude-play`
