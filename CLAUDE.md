@@ -34,6 +34,20 @@ docs/
 |--------|-------------|----------|
 | system-health-check | On-demand WSL system health check with OK/WARN/CRITICAL status | system |
 
+## Design Docs
+
+Plans and research in `docs/plans/`:
+- `2026-03-02-plugin-marketplace-design.md` — Marketplace architecture research (trust tiers, security, registry API)
+- `2026-03-02-plugin-marketplace-plan.md` — Implementation plan (v1.0 → v2.0 roadmap)
+- `2026-03-02-system-health-check-*.md` — First plugin design & baseline
+
+## Plugin Conventions
+
+- Plugin dir name = `plugin.json` `name` field (kebab-case)
+- Required `plugin.json` fields: `name`, `description`, `version`, `author`, `license`, `keywords`
+- Skills live at `plugins/<name>/skills/<skill-name>/SKILL.md`
+- Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors copy `plugins/_template/`, add their plugin, and open a PR.
