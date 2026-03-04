@@ -1,7 +1,7 @@
 ---
 name: validate-plugin
 description: "Validate a plugin directory against claude-play marketplace quality standards. Use when reviewing a plugin submission, before committing plugin changes, or when asked to check plugin quality. Checks plugin.json fields, SKILL.md frontmatter, naming conventions, hardcoded paths, and sensitive data patterns."
-allowed-tools: Read, Glob, Grep, Bash, AskUserQuestion
+allowed-tools: Read, Glob, Grep, AskUserQuestion
 ---
 
 You are a plugin quality validator for the claude-play marketplace.
