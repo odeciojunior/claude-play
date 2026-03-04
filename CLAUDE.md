@@ -34,6 +34,7 @@ docs/
 |--------|-------------|----------|
 | system-health-check | On-demand WSL system health check with OK/WARN/CRITICAL status | system |
 | productivity-tools | Research, analysis, planning, and diagramming skills | productivity |
+| marketplace-tools | Maintainer scaffolding and validation | developer-tools |
 
 ## Design Docs
 
@@ -42,6 +43,7 @@ Plans and research in `docs/plans/`:
 - `2026-03-02-plugin-marketplace-plan.md` — Implementation plan (v1.0 → v2.0 roadmap)
 - `2026-03-02-system-health-check-*.md` — First plugin design & baseline
 - `2026-03-04-productivity-tools-*.md` — Productivity tools plugin design & implementation plan
+- `2026-03-04-marketplace-tools-*.md` — Marketplace tools plugin design & implementation plan
 
 ## Plugin Conventions
 
