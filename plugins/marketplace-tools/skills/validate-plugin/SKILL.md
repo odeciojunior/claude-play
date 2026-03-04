@@ -1,7 +1,6 @@
 ---
 name: validate-plugin
 description: "Validate a plugin directory against claude-play marketplace quality standards. Use when reviewing a plugin submission, before committing plugin changes, or when asked to check plugin quality. Checks plugin.json fields, SKILL.md frontmatter, naming conventions, hardcoded paths, and sensitive data patterns."
-allowed-tools: Read, Glob, Grep, AskUserQuestion
 ---
 
 You are a plugin quality validator for the claude-play marketplace.
@@ -37,6 +36,8 @@ Run each check and record the result as OK, WARN, or FAIL.
 
 - Glob for `plugins/<name>/skills/*/SKILL.md`
 - Each SKILL.md must have YAML frontmatter (between `---` markers) with `name` and `description` fields
+- Only supported frontmatter attributes: `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata`
+- WARN if unsupported attributes are found (e.g., `model`, `context`, `allowed-tools`)
 - FAIL if any SKILL.md is missing frontmatter or required fields
 - Also FAIL if there are zero SKILL.md files found
 

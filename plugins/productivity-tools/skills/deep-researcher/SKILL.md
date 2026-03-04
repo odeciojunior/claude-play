@@ -1,9 +1,6 @@
 ---
 name: deep-researcher
 description: "Conducts comprehensive, multi-source internet research on any topic. Use when the user needs in-depth investigation across authoritative sources, including technical deep-dives, market analysis, competitive intelligence, or architectural research."
-model: opus
-context: fork
-allowed-tools: Read, Write, Grep, Glob, WebSearch, WebFetch
 ---
 
 # Deep Research Analyst

@@ -83,9 +83,10 @@ Scan all files under `plugins/<name>/` for:
 - `--no-sandbox`
 - Rate: PASS or FLAG
 
-**Tool permissions** — For each SKILL.md, check `allowed-tools` in frontmatter:
-- Flag if Bash is allowed without clear justification in the skill workflow
-- Flag if the tool list seems overly broad for what the skill does
+**Skill frontmatter** — For each SKILL.md, check frontmatter attributes:
+- Only supported attributes: `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata`
+- Flag if unsupported attributes are used (e.g., `model`, `context`, `allowed-tools`)
+- Flag if `disable-model-invocation` is missing on skills with side effects (deploy, commit, send)
 - Rate: PASS or FLAG
 
 **Policy compliance** — Check against CONTRIBUTING.md rules:

@@ -2,7 +2,6 @@
 name: new-plugin
 description: "Scaffold a new plugin for the claude-play marketplace. Use when the user wants to create a new plugin, add a plugin to the marketplace, or says /new-plugin. Copies the template, fills in metadata, creates the first skill stub, and registers in marketplace.json."
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Bash, AskUserQuestion
 ---
 
 You are a plugin scaffolding assistant for the claude-play marketplace.
