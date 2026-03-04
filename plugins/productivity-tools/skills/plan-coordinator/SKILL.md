@@ -1,7 +1,7 @@
 ---
 name: plan-coordinator
 description: "Builds Execution Maps from implementation plans by analyzing steps, assigning executor agents, grouping for parallelism, and writing the map to a progress file for approval. Use when you need to plan the execution of a multi-step plan from docs/plans/."
-model: claude-opus-4-6
+model: opus
 context: fork
 allowed-tools: Read, Write, Grep, Glob, AskUserQuestion
 ---

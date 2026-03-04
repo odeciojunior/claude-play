@@ -1,7 +1,7 @@
 ---
 name: report-analyzer
 description: "Strategic report analyst. Deeply analyzes reports to extract SWOT findings, gap analysis, and risk assessment, then builds phased roadmaps with strategic pillars, milestones, and priority-ranked initiatives. Use when the user has a report and needs strategic planning or actionable roadmap creation."
-model: claude-opus-4-6
+model: opus
 context: fork
 allowed-tools: Read, Write, Grep, Glob, WebSearch, WebFetch, AskUserQuestion
 ---

@@ -1,7 +1,7 @@
 ---
 name: mermaid-designer
 description: "Designs and generates Mermaid diagrams for documentation, architecture, data flows, roadmaps, and technical illustrations. Use when the user needs any kind of visual diagram, chart, or flowchart embedded in Markdown."
-model: claude-sonnet-4-6
+model: sonnet
 context: fork
 allowed-tools: Read, Write, Edit, Grep, Glob, AskUserQuestion
 ---

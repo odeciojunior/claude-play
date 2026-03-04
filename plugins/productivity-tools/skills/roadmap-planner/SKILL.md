@@ -1,7 +1,7 @@
 ---
 name: roadmap-planner
 description: "Decomposes strategic roadmaps and initiatives into structured deliverables with clear acceptance criteria. Use when the user needs to break down a roadmap, plan, or strategic goal into actionable work packages that stakeholders can verify."
-model: claude-opus-4-6
+model: opus
 context: fork
 allowed-tools: Read, Write, Grep, Glob, WebSearch, WebFetch, AskUserQuestion
 ---
