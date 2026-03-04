@@ -61,6 +61,12 @@ Configured in `.claude/settings.json`:
 | protect-template | PreToolUse | Edit\|Write | Blocks modifications to `plugins/_template/` |
 | validate-marketplace-json | PostToolUse | Edit\|Write | Validates marketplace.json schema after edits |
 
+## Agents
+
+| Agent | Trigger | Description |
+|-------|---------|-------------|
+| plugin-reviewer | "review plugin X" | 3-phase plugin review: structural, content quality, security/policy |
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors copy `plugins/_template/`, add their plugin, and open a PR.
