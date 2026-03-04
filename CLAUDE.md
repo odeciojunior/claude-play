@@ -52,6 +52,15 @@ Plans and research in `docs/plans/`:
 - Skills live at `plugins/<name>/skills/<skill-name>/SKILL.md`
 - Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
 
+## Hooks
+
+Configured in `.claude/settings.json`:
+
+| Hook | Type | Trigger | Description |
+|------|------|---------|-------------|
+| protect-template | PreToolUse | Edit\|Write | Blocks modifications to `plugins/_template/` |
+| validate-marketplace-json | PostToolUse | Edit\|Write | Validates marketplace.json schema after edits |
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors copy `plugins/_template/`, add their plugin, and open a PR.
