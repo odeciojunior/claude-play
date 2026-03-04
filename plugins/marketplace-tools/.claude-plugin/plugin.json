@@ -1,0 +1,11 @@
+{
+  "name": "marketplace-tools",
+  "description": "Maintainer tools for the claude-play marketplace: scaffold new plugins and validate plugin quality",
+  "version": "1.0.0",
+  "author": {
+    "name": "Odecio Machado",
+    "email": "odeciojunior@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": ["scaffold", "validation", "marketplace", "maintainer", "quality"]
+}
