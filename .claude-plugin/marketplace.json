@@ -20,6 +20,20 @@
       "keywords": ["health", "system", "wsl", "monitoring", "diagnostics"],
       "category": "system",
       "tags": ["wsl", "devops"]
+    },
+    {
+      "name": "productivity-tools",
+      "source": "./plugins/productivity-tools",
+      "description": "Research, analysis, planning, and diagramming skills for strategic work",
+      "version": "1.0.0",
+      "author": {
+        "name": "Odecio Machado",
+        "email": "odeciojunior@gmail.com"
+      },
+      "license": "MIT",
+      "keywords": ["research", "analysis", "planning", "roadmap", "mermaid", "diagrams"],
+      "category": "productivity",
+      "tags": ["strategy", "documentation"]
     }
   ]
 }
