@@ -1,6 +1,6 @@
 # Productivity Tools
 
-Research, analysis, planning, and diagramming skills for strategic work.
+Research, analysis, planning, diagramming, and visual whiteboarding skills for strategic work.
 
 ## Installation
 
@@ -18,6 +18,7 @@ claude plugin install productivity-tools@claude-play
 | report-analyzer | "analyze this report", "build roadmap from report" | SWOT analysis and strategic roadmap from reports |
 | roadmap-planner | "break down this roadmap", "create deliverables" | Decomposes roadmaps into deliverables with acceptance criteria |
 | mermaid-designer | "create a diagram", "draw a flowchart" | Mermaid diagram generation for documentation |
+| excalidraw-designer | "create an excalidraw diagram", "draw a whiteboard" | Hand-drawn style diagrams and visual whiteboards (.excalidraw files) |
 
 ## Pipeline
 
@@ -34,6 +35,8 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator
 
 `mermaid-designer` is a cross-cutting utility for adding diagrams to any document.
 
+`excalidraw-designer` creates standalone `.excalidraw` diagram files for richer visual whiteboarding.
+
 ## Output Directories
 
 | Skill | Output Path |
@@ -43,6 +46,7 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator
 | roadmap-planner | `docs/roadmaps/deliverables-<topic>-YYYY-MM-DD.md` |
 | plan-coordinator | `docs/plans/<topic>/progress-<plan>.md` |
 | mermaid-designer | Inline or `docs/diagrams/<topic>.md` |
+| excalidraw-designer | `docs/diagrams/<name>.excalidraw` |
 
 ## Prerequisites
 
