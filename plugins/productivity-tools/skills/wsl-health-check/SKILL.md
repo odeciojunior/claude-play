@@ -1,5 +1,5 @@
 ---
-name: system-health-check
+name: wsl-health-check
 description: "Use when the user asks to check system health, run a health report, diagnose system status, or check if the machine is healthy."
 ---
 

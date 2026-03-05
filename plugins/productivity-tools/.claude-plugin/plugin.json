@@ -1,11 +1,11 @@
 {
   "name": "productivity-tools",
-  "description": "Research, analysis, planning, and diagramming skills for strategic work",
+  "description": "Research, analysis, planning, diagramming, and system health skills for strategic work",
   "version": "1.0.0",
   "author": {
     "name": "Odecio Machado",
     "email": "odeciojunior@gmail.com"
   },
   "license": "MIT",
-  "keywords": ["research", "analysis", "planning", "roadmap", "mermaid", "diagrams"]
+  "keywords": ["research", "analysis", "planning", "roadmap", "mermaid", "diagrams", "health", "wsl", "monitoring"]
 }

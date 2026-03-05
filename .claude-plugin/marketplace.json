@@ -7,21 +7,7 @@
     "email": "odeciojunior@gmail.com"
   },
   "plugins": [
-    {
-      "name": "system-health-check",
-      "source": "./plugins/system-health-check",
-      "description": "On-demand WSL system health check with OK/WARN/CRITICAL status summaries",
-      "version": "1.0.0",
-      "author": {
-        "name": "Odecio Machado",
-        "email": "odeciojunior@gmail.com"
-      },
-      "license": "MIT",
-      "keywords": ["health", "system", "wsl", "monitoring", "diagnostics"],
-      "category": "system",
-      "tags": ["wsl", "devops"]
-    },
-    {
+{
       "name": "productivity-tools",
       "source": "./plugins/productivity-tools",
       "description": "Research, analysis, planning, and diagramming skills for strategic work",

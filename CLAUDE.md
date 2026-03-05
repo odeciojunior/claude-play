@@ -32,8 +32,7 @@ docs/
 
 | Plugin | Description | Category |
 |--------|-------------|----------|
-| system-health-check | On-demand WSL system health check with OK/WARN/CRITICAL status | system |
-| productivity-tools | Research, analysis, planning, and diagramming skills | productivity |
+| productivity-tools | Research, analysis, planning, diagramming, and system health skills | productivity |
 | marketplace-tools | Maintainer scaffolding and validation | developer-tools |
 
 ## Design Docs

@@ -9,14 +9,14 @@ Community-driven plugin marketplace for [Claude Code](https://claude.ai/code).
 claude plugin marketplace add odeciojunior/claude-play
 
 # Install a plugin
-claude plugin install system-health-check@claude-play
+claude plugin install productivity-tools@claude-play
 ```
 
 ## Available Plugins
 
 | Plugin | Description | Category | Version |
 |--------|-------------|----------|---------|
-| [system-health-check](plugins/system-health-check/) | On-demand WSL system health check with OK/WARN/CRITICAL status summaries | system | 1.0.0 |
+| [productivity-tools](plugins/productivity-tools/) | Research, analysis, planning, diagramming, and system health skills | productivity | 1.0.0 |
 
 ## Contributing
 
