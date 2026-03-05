@@ -26,13 +26,14 @@ plugins/
   _template/                # Starter template for contributors
 docs/
   plans/                    # Design docs and implementation plans
+  reports/                  # Deep research reports
 ```
 
 ## Plugins
 
 | Plugin | Description | Category |
 |--------|-------------|----------|
-| productivity-tools | Research, analysis, planning, diagramming, and system health skills | productivity |
+| productivity-tools | Research, analysis, planning, diagramming, visual whiteboarding, and system health skills | productivity |
 | marketplace-tools | Maintainer scaffolding and validation | developer-tools |
 
 ## Design Docs
@@ -43,6 +44,7 @@ Plans and research in `docs/plans/`:
 - `2026-03-02-system-health-check-*.md` — First plugin design & baseline
 - `2026-03-04-productivity-tools-*.md` — Productivity tools plugin design & implementation plan
 - `2026-03-04-marketplace-tools-*.md` — Marketplace tools plugin design & implementation plan
+- `2026-03-04-excalidraw-skill-*.md` — Excalidraw designer skill design, research & implementation plan
 
 ## Plugin Conventions
 
