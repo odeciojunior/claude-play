@@ -421,7 +421,7 @@ A complete 3-node vertical diagram: **Client -> API Gateway -> Database**.
       "groupIds": [],
       "boundElements": [],
       "locked": false,
-      "roundness": { "type": 3 },
+      "roundness": null,
       "points": [[0, 0], [0, 100]],
       "startBinding": { "elementId": "rect-client", "focus": 0, "gap": 5 },
       "endBinding": { "elementId": "rect-api", "focus": 0, "gap": 5 },
@@ -450,7 +450,7 @@ A complete 3-node vertical diagram: **Client -> API Gateway -> Database**.
       "groupIds": [],
       "boundElements": [],
       "locked": false,
-      "roundness": { "type": 3 },
+      "roundness": null,
       "points": [[0, 0], [0, 100]],
       "startBinding": { "elementId": "rect-api", "focus": 0, "gap": 5 },
       "endBinding": { "elementId": "rect-db", "focus": 0, "gap": 5 },
@@ -471,6 +471,15 @@ Key things to notice in this example:
 - All `id` values are unique across the entire diagram.
 - All `seed` values are unique across the entire diagram.
 - Arrow `points` always start with `[0, 0]`.
+
+## Opening the Output
+
+Users can open `.excalidraw` files with:
+- **VS Code** — install the [Excalidraw extension](https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor) (`pomdtr.excalidraw-editor`)
+- **Excalidraw web** — drag and drop the file onto [excalidraw.com](https://excalidraw.com/)
+- **Obsidian** — with the Excalidraw community plugin
+
+Since `.excalidraw` files are purely visual (not rendered in Markdown), always add a brief text description in the surrounding document explaining what the diagram shows.
 
 ## Validation Checklist
 
