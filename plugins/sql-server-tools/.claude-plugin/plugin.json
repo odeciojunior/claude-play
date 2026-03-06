@@ -1,0 +1,11 @@
+{
+  "name": "sql-server-tools",
+  "description": "SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents",
+  "version": "1.0.0",
+  "author": {
+    "name": "Odecio Machado",
+    "email": "odeciojunior@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": ["sql-server", "tsql", "performance", "database", "schema", "monitoring", "review"]
+}
