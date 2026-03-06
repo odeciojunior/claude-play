@@ -175,7 +175,7 @@ Use this mapping to quickly identify the bottleneck area:
 
 ## Benign Waits Exclusion List
 
-When analyzing wait statistics, always exclude these idle/benign waits (based on Paul Randal's SQLskills methodology):
+When analyzing wait statistics, always exclude these idle/benign waits (based on Paul Randal's SQLskills methodology). This list covers through SQL Server 2022; check for new benign waits on newer versions:
 
 ```
 BROKER_EVENTHANDLER, BROKER_RECEIVE_WAITFOR, BROKER_TASK_STOP, BROKER_TO_FLUSH,

@@ -86,20 +86,31 @@ When invoked:
 
 ## Common SQL Anti-Patterns to Flag
 
+### Performance Anti-Patterns
 | Anti-Pattern | Severity | Fix |
 |-------------|----------|-----|
 | Scalar UDF in SELECT/WHERE on large sets | HIGH | Replace with inline TVF or CROSS APPLY |
 | FORMAT() instead of CONVERT() | MEDIUM | Use CONVERT() with style codes |
 | Implicit type conversion in WHERE | HIGH | Match data types; CAST the variable, not the column |
-| CTE referenced multiple times | MEDIUM | Use temp table for multiple references |
-| Missing NOCOUNT in stored procedures | LOW | Add SET NOCOUNT ON |
-| No error handling in stored procedures | HIGH | Add TRY/CATCH with XACT_ABORT |
-| SELECT * in production code | MEDIUM | Specify columns explicitly |
-| Missing NULL handling | HIGH | Use IS NULL, ISNULL(), COALESCE() appropriately |
 | Non-SARGable WHERE clause | HIGH | Remove functions from indexed columns |
-| Missing Unicode prefix | MEDIUM | Use N'' for NVARCHAR columns |
+| CTE referenced multiple times | MEDIUM | Use temp table for multiple references |
 | WHILE loop instead of set-based | MEDIUM | Rewrite as set-based operation |
+
+### Review-Specific Anti-Patterns
+| Anti-Pattern | Severity | Fix |
+|-------------|----------|-----|
+| Multi-statement procedure without TRY/CATCH | HIGH | Wrap in TRY/CATCH with XACT_ABORT ON |
+| Missing ROLLBACK in CATCH block | CRITICAL | Add IF @@TRANCOUNT > 0 ROLLBACK in every CATCH |
+| Inconsistent naming conventions | MEDIUM | Follow project-established patterns (check CLAUDE.md) |
+| View without SCHEMABINDING | LOW | Add WITH SCHEMABINDING to prevent silent breakage from underlying changes |
+| Missing SET NOCOUNT ON | LOW | Add to all stored procedures |
+| SELECT * in production code | MEDIUM | Specify columns explicitly — prevents silent breakage on schema changes |
 | NOLOCK on write operations | CRITICAL | NOLOCK is only for reads |
+| Missing NULL handling in JOINs or WHERE | HIGH | Use IS NULL, ISNULL(), COALESCE() appropriately |
+| Missing Unicode prefix for NVARCHAR | MEDIUM | Use N'' for all string literals assigned to NVARCHAR columns |
+| Trigger without inserted/deleted check | HIGH | Always check IF EXISTS (SELECT 1 FROM inserted) for multi-row safety |
+| Procedure modifies data without explicit transaction | MEDIUM | Wrap multi-statement DML in explicit BEGIN TRAN / COMMIT |
+| Hard-coded magic numbers | MEDIUM | Use named constants, config tables, or comments explaining the value |
 
 ## Output Format
 

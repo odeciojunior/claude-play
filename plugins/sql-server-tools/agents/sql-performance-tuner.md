@@ -105,6 +105,10 @@ When you have wait statistics from sql-performance-monitor, correlate them:
 | CXPACKET | Parallelism skew — uneven data distribution, bad cardinality estimates |
 | RESOURCE_SEMAPHORE | Large memory grants — big sorts/hashes, consider reducing data before sort |
 | ASYNC_NETWORK_IO | Client consuming results slowly — reduce result set size, pagination |
+| WRITELOG | Transaction log-bound queries — frequent small commits, consider batching writes |
+| PAGELATCH_EX/UP | TempDB-intensive queries — excessive temp table/variable usage, spills from sorts/hashes |
+| OLEDB | Linked server queries — network latency, remote query plan issues |
+| THREADPOOL | Worker thread exhaustion — too many concurrent queries, long-running sessions holding threads |
 
 ## Output Format
 

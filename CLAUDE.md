@@ -20,6 +20,8 @@ claude plugin install <plugin-name>@claude-play
 plugins/
   <plugin-name>/
     .claude-plugin/plugin.json
+    agents/
+      <agent-name>.md            # Subagent definitions (optional)
     skills/
       <skill-name>/SKILL.md
     README.md
@@ -46,6 +48,7 @@ Plans and research in `docs/plans/`:
 - `2026-03-04-productivity-tools-*.md` — Productivity tools plugin design & implementation plan
 - `2026-03-04-marketplace-tools-*.md` — Marketplace tools plugin design & implementation plan
 - `2026-03-04-excalidraw-skill-*.md` — Excalidraw designer skill design, research & implementation plan
+- `2026-03-06-sql-server-tools-*.md` — SQL Server tools plugin design, implementation plan & validation
 
 ## Plugin Conventions
 
