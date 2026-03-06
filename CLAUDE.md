@@ -35,6 +35,7 @@ docs/
 |--------|-------------|----------|
 | productivity-tools | Research, analysis, planning, diagramming, visual whiteboarding, and system health skills | productivity |
 | marketplace-tools | Maintainer scaffolding and validation | developer-tools |
+| sql-server-tools | SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents | developer-tools |
 
 ## Design Docs
 
