@@ -63,6 +63,7 @@ Plans and research in `docs/plans/`:
 - Skills live at `plugins/<name>/skills/<skill-name>/SKILL.md`
 - Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
 - When adding a plugin, also update: repo `README.md` (plugins table) and repo `CLAUDE.md` (plugins table, design docs)
+- Architecture diagrams at `docs/diagrams/repo-architecture.{md,excalidraw}` — update when adding/removing plugins
 
 ## Hooks
 
