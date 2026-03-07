@@ -24,6 +24,8 @@ plugins/
       <agent-name>.md            # Subagent definitions (optional)
     skills/
       <skill-name>/SKILL.md
+    scripts/
+      <script>.sh                # Setup/utility scripts (optional)
     README.md
   _template/                # Starter template for contributors
 docs/
@@ -49,7 +51,10 @@ Plans and research in `docs/plans/`:
 - `2026-03-04-productivity-tools-*.md` — Productivity tools plugin design & implementation plan
 - `2026-03-04-marketplace-tools-*.md` — Marketplace tools plugin design & implementation plan
 - `2026-03-04-excalidraw-skill-*.md` — Excalidraw designer skill design, research & implementation plan
+- `2026-03-04-hooks-*.md` — Hook system design & implementation plan (protect-template, validate-marketplace-json)
+- `2026-03-04-plugin-reviewer-*.md` — Plugin reviewer agent design & implementation plan
 - `2026-03-06-sql-server-tools-*.md` — SQL Server tools plugin design, implementation plan & validation
+- `2026-03-06-mcp-sql-server-*.md` — MCP SQL Server plugin design & implementation plan
 
 ## Plugin Conventions
 
@@ -57,6 +62,7 @@ Plans and research in `docs/plans/`:
 - Required `plugin.json` fields: `name`, `description`, `version`, `author`, `license`, `keywords`
 - Skills live at `plugins/<name>/skills/<skill-name>/SKILL.md`
 - Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
+- When adding a plugin, also update: repo `README.md` (plugins table) and repo `CLAUDE.md` (plugins table, design docs)
 
 ## Hooks
 
