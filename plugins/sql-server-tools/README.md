@@ -24,7 +24,15 @@ The `sql-server-toolkit` skill automatically routes SQL Server tasks to the righ
 
 ## MCP Server Setup
 
-For live database interaction, configure an MCP server:
+For live database interaction, install the companion MCP server plugin:
+
+```bash
+claude plugin install mcp-sql-server@claude-play
+```
+
+Then invoke the setup skill to configure your SQL Server connection. The setup wizard handles Python environment creation, package installation, and MCP registration automatically.
+
+Alternatively, configure any MCP server manually:
 
 ```bash
 claude mcp add --transport stdio sql-server -- <your-mcp-server-command>
