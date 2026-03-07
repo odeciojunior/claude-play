@@ -18,6 +18,7 @@ claude plugin install productivity-tools@claude-play
 |--------|-------------|----------|---------|
 | [productivity-tools](plugins/productivity-tools/) | Research, analysis, planning, diagramming, and system health skills | productivity | 1.0.0 |
 | [sql-server-tools](plugins/sql-server-tools/) | SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents | developer-tools | 1.0.0 |
+| [mcp-sql-server](plugins/mcp-sql-server/) | Automated MCP SQL Server setup — connects Claude Code to SQL Server databases | developer-tools | 1.0.0 |
 
 ## Contributing
 
