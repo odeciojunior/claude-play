@@ -21,6 +21,16 @@ mindmap
       marketplace-tools
         new-plugin
         validate-plugin
+      sql-server-tools
+        sql-performance-monitor
+        sql-schema-discovery
+        sql-performance-tuner
+        tsql-specialist
+        sql-code-reviewer
+        sql-server-toolkit
+      mcp-sql-server
+        mcp-sql-server-setup
+        setup.sh
       _template
         example-skill
     Automation
@@ -36,7 +46,7 @@ mindmap
       Research Reports
 ```
 
-**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Two plugins ship with the repo: `productivity-tools` (7 skills for research, analysis, planning, and diagramming) and `marketplace-tools` (2 skills for scaffolding and validation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
+**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Four plugins ship with the repo: `productivity-tools` (7 skills for research, analysis, planning, and diagramming), `marketplace-tools` (2 skills for scaffolding and validation), `sql-server-tools` (5 specialized agents + 1 routing skill for SQL Server work), and `mcp-sql-server` (setup skill + bash script for automated MCP server installation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
 
 ---
 
@@ -72,6 +82,22 @@ flowchart TB
     vp["validate-plugin"]
   end
 
+  subgraph Sql["sql-server-tools plugin"]
+    sql_pj["plugin.json"]
+    spm["sql-performance-monitor"]
+    ssd["sql-schema-discovery"]
+    spt["sql-performance-tuner"]
+    ts["tsql-specialist"]
+    scr["sql-code-reviewer"]
+    stk["sql-server-toolkit"]
+  end
+
+  subgraph Mcp["mcp-sql-server plugin"]
+    mcp_pj["plugin.json"]
+    mss["mcp-sql-server-setup"]
+    sh["setup.sh"]
+  end
+
   subgraph Hooks["Safety Hooks"]
     pt["protect-template<br/>PreToolUse"]
     vm["validate-marketplace-json<br/>PostToolUse"]
@@ -83,16 +109,22 @@ flowchart TB
 
   mktjson -->|"registers"| Prod
   mktjson -->|"registers"| Mkt
+  mktjson -->|"registers"| Sql
+  mktjson -->|"registers"| Mcp
 
   prod_pj --- dr & ra & rp & pc & md & ed & wh
   mkt_pj --- np & vp
+  sql_pj --- spm & ssd & spt & ts & scr & stk
+  mcp_pj --- mss & sh
+
+  Mcp -.->|"companion"| Sql
 
   vm -.->|"validates on edit"| mktjson
   pt -.->|"blocks edits to"| Template["_template/"]
-  pr -.->|"reviews"| Prod & Mkt
+  pr -.->|"reviews"| Prod & Mkt & Sql & Mcp
 ```
 
-**Description:** The marketplace registry (`marketplace.json`) is the central catalog that registers both plugins. Each plugin has a `plugin.json` manifest and a set of SKILL.md files defining individual skills. Two hooks enforce quality: `protect-template` (PreToolUse) prevents modifications to the contributor template, and `validate-marketplace-json` (PostToolUse) validates the catalog schema after every edit. The `plugin-reviewer` agent can perform structured reviews on any plugin.
+**Description:** The marketplace registry (`marketplace.json`) is the central catalog that registers all four plugins. Each plugin has a `plugin.json` manifest and skill/agent definitions. `sql-server-tools` provides 5 specialized agents routed by a single skill, while `mcp-sql-server` uses a setup skill that orchestrates a bash script for MCP server installation — the two plugins are companions (mcp-sql-server provides database connectivity, sql-server-tools provides expert agents that use it). Two hooks enforce quality: `protect-template` (PreToolUse) prevents modifications to the contributor template, and `validate-marketplace-json` (PostToolUse) validates the catalog schema after every edit. The `plugin-reviewer` agent can perform structured reviews on any plugin.
 
 ---
 
