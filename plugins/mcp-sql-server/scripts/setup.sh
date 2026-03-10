@@ -180,7 +180,7 @@ detect_env() {
     local search_path
     search_path=$(cd "${1:-.}" && pwd)
     local env_file=""
-    local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_NAME" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
+    local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_DATABASE" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
 
     # Search up to 3 parent directories
     local dir="$search_path"

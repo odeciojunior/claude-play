@@ -76,7 +76,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" detect-env .
   1. "What is the SQL Server hostname or IP?" (DB_HOST)
   2. "What is the database username?" (DB_USER)
   3. "What is the database password?" (DB_PASSWORD)
-  4. "What is the database name?" (DB_NAME)
+  4. "What is the database name?" (DB_DATABASE)
 - Then ask about optional settings:
   5. "Port? (default: 1433)" (DB_PORT)
   6. "Enable encrypted connection? (default: no)" (DB_ENCRYPT)
@@ -91,14 +91,16 @@ First determine the correct Python interpreter path for the platform:
 
 Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
 
-Then build and run the `claude mcp add` command with the collected credentials:
+**Password special characters warning:** If the password contains `%`, `!`, `^`, `&`, `(`, `)` or spaces, `claude mcp add` may fail due to shell expansion (especially on Windows/Git Bash). In that case, skip this step and use the `.mcp.json` direct-edit fallback below.
+
+Build and run the `claude mcp add` command with the collected credentials:
 
 ```bash
 claude mcp add --transport stdio \
   -e DB_HOST=<host> \
   -e DB_USER=<user> \
   -e DB_PASSWORD=<password> \
-  -e DB_NAME=<database> \
+  -e DB_DATABASE=<database> \
   [-e DB_PORT=<port>] \
   [-e DB_ENCRYPT=<true/false>] \
   [-e DB_TRUST_CERT=<true/false>] \
@@ -108,9 +110,29 @@ claude mcp add --transport stdio \
 
 Only include optional `-e` flags if the user provided non-default values.
 
+**Fallback (passwords with special characters):** Edit `.mcp.json` directly instead:
+
+```json
+"mcp-sql-server": {
+  "command": "<python-path>",
+  "args": ["-m", "mcp_sql_server.server"],
+  "env": {
+    "DB_HOST": "<host>",
+    "DB_USER": "<user>",
+    "DB_PASSWORD": "<password>",
+    "DB_DATABASE": "<database>",
+    "DB_PORT": "<port>",
+    "DB_ENCRYPT": "<true/false>",
+    "DB_TRUST_CERT": "<true/false>"
+  }
+}
+```
+
+Or use env var references if credentials are already in a `.env` / settings file (e.g. `"DB_PASSWORD": "${MY_SQL_PASSWORD}"`).
+
 Ask the user: "Register for this project only, or for all projects? (project/user)"
-- project (default): no extra flags
-- user: add `--scope user` flag
+- project (default): edit `.mcp.json` in the project root, or use `claude mcp add` without extra flags
+- user: use `claude mcp add --scope user` (only if password has no special chars, otherwise add to user-level `.mcp.json`)
 
 ### Step 7: Verify Registration
 
@@ -128,7 +150,7 @@ Print a summary:
 MCP SQL Server setup complete!
 
 Server: mcp-sql-server
-Database: <DB_NAME> on <DB_HOST>
+Database: <DB_DATABASE> on <DB_HOST>
 Scope: project | user
 
 Available tools (10):
