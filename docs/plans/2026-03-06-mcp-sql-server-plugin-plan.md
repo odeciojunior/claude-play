@@ -1,5 +1,7 @@
 # mcp-sql-server Plugin Implementation Plan
 
+> **Note (v1.0.1):** `DB_NAME` was renamed to `DB_DATABASE` in the implementation. References to `DB_NAME` below are historical.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Create the `mcp-sql-server` plugin with a setup skill and bash script that auto-installs and configures the mcp-sql-server MCP server for Claude Code.

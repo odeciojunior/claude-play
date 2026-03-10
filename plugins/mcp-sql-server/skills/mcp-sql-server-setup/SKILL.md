@@ -91,7 +91,7 @@ First determine the correct Python interpreter path for the platform:
 
 Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
 
-**Password special characters warning:** If the password contains `%`, `!`, `^`, `&`, `(`, `)` or spaces, `claude mcp add` may fail due to shell expansion (especially on Windows/Git Bash). In that case, skip this step and use the `.mcp.json` direct-edit fallback below.
+**Password special characters warning:** If the password contains `%`, `!`, `^`, `&`, `(`, `)`, `` ` ``, `'`, `"`, `<`, `>`, or spaces, `claude mcp add` may fail due to shell expansion (especially on Windows/Git Bash). In that case, skip this step and use the `.mcp.json` direct-edit fallback below.
 
 Build and run the `claude mcp add` command with the collected credentials:
 
@@ -113,26 +113,32 @@ Only include optional `-e` flags if the user provided non-default values.
 **Fallback (passwords with special characters):** Edit `.mcp.json` directly instead:
 
 ```json
-"mcp-sql-server": {
-  "command": "<python-path>",
-  "args": ["-m", "mcp_sql_server.server"],
-  "env": {
-    "DB_HOST": "<host>",
-    "DB_USER": "<user>",
-    "DB_PASSWORD": "<password>",
-    "DB_DATABASE": "<database>",
-    "DB_PORT": "<port>",
-    "DB_ENCRYPT": "<true/false>",
-    "DB_TRUST_CERT": "<true/false>"
+{
+  "mcpServers": {
+    "mcp-sql-server": {
+      "command": "<python-path>",
+      "args": ["-m", "mcp_sql_server.server"],
+      "env": {
+        "DB_HOST": "<host>",
+        "DB_USER": "<user>",
+        "DB_PASSWORD": "<password>",
+        "DB_DATABASE": "<database>",
+        "DB_PORT": "<port>",
+        "DB_ENCRYPT": "<true/false>",
+        "DB_TRUST_CERT": "<true/false>"
+      }
+    }
   }
 }
 ```
+
+If a `.mcp.json` already exists, merge the `"mcp-sql-server"` entry into the existing `"mcpServers"` object.
 
 Or use env var references if credentials are already in a `.env` / settings file (e.g. `"DB_PASSWORD": "${MY_SQL_PASSWORD}"`).
 
 Ask the user: "Register for this project only, or for all projects? (project/user)"
 - project (default): edit `.mcp.json` in the project root, or use `claude mcp add` without extra flags
-- user: use `claude mcp add --scope user` (only if password has no special chars, otherwise add to user-level `.mcp.json`)
+- user: use `claude mcp add --scope user` (only if password has no special chars); otherwise edit `~/.claude/.mcp.json` directly using the same JSON structure above
 
 ### Step 7: Verify Registration
 

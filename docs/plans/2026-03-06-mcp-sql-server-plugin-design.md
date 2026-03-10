@@ -3,6 +3,8 @@
 **Automated MCP SQL Server setup for Claude Code, distributed as a marketplace plugin**
 
 **Status**: Approved
+
+> **Note (v1.0.1):** `DB_NAME` was renamed to `DB_DATABASE` in the implementation. References to `DB_NAME` below are historical.
 **Date**: 2026-03-06
 
 ---
