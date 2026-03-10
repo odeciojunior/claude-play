@@ -53,18 +53,34 @@ check_odbc() {
         fi
 
         # Check Windows Registry for installed ODBC drivers
+        # tr -d '\r' strips CRLF from reg.exe output before piping to grep
         driver=$(reg query "HKLM\\SOFTWARE\\ODBC\\ODBCINST.INI\\ODBC Drivers" 2>/dev/null \
-            | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
+            | tr -d '\r' | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
         if [[ -n "$driver" ]]; then
             echo "$driver"
             exit 0
         fi
         # Also check 32-bit registry on 64-bit Windows
         driver=$(reg query "HKLM\\SOFTWARE\\WOW6432Node\\ODBC\\ODBCINST.INI\\ODBC Drivers" 2>/dev/null \
-            | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
+            | tr -d '\r' | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
         if [[ -n "$driver" ]]; then
             echo "$driver"
             exit 0
+        fi
+        # Fallback: check specific driver subkeys directly (more reliable than parsing list)
+        for ver in 18 17 13; do
+            if reg query "HKLM\\SOFTWARE\\ODBC\\ODBCINST.INI\\ODBC Driver $ver for SQL Server" 2>/dev/null | tr -d '\r' | grep -qi "REG_SZ"; then
+                echo "ODBC Driver $ver for SQL Server"
+                exit 0
+            fi
+        done
+        # Fallback: PowerShell Get-OdbcDriver
+        if command -v powershell.exe &>/dev/null; then
+            driver=$(powershell.exe -NoProfile -Command "Get-OdbcDriver | Where-Object { \$_.Name -match 'ODBC Driver \d+ for SQL Server' } | Select-Object -ExpandProperty Name | Sort-Object -Descending | Select-Object -First 1" 2>/dev/null | tr -d '\r')
+            if [[ -n "$driver" ]]; then
+                echo "$driver"
+                exit 0
+            fi
         fi
 
         echo "ERROR: Microsoft ODBC Driver for SQL Server not found."
