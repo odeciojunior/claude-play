@@ -84,7 +84,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" detect-env .
 
 ### Step 6: Register MCP Server
 
-Build and run the `claude mcp add` command with the collected credentials:
+First determine the correct Python interpreter path for the platform:
+
+- **Linux / macOS:** `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/python`
+- **Windows (Git Bash / MSYS2):** `~/.claude/mcp-servers/mcp-sql-server/.venv/Scripts/python.exe`
+
+Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
+
+Then build and run the `claude mcp add` command with the collected credentials:
 
 ```bash
 claude mcp add --transport stdio \
@@ -96,7 +103,7 @@ claude mcp add --transport stdio \
   [-e DB_ENCRYPT=<true/false>] \
   [-e DB_TRUST_CERT=<true/false>] \
   mcp-sql-server -- \
-  ~/.claude/mcp-servers/mcp-sql-server/.venv/bin/python -m mcp_sql_server.server
+  <python-path> -m mcp_sql_server.server
 ```
 
 Only include optional `-e` flags if the user provided non-default values.

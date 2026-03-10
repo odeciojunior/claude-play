@@ -39,7 +39,44 @@ check_python() {
 check_odbc() {
     local driver=""
 
-    # Check odbcinst.ini locations
+    # Detect Windows (Git Bash / MSYS2 / Cygwin)
+    local is_windows=false
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) is_windows=true ;;
+    esac
+
+    if $is_windows; then
+        if ! command -v reg &>/dev/null; then
+            echo "ERROR: reg.exe not found in PATH — cannot detect ODBC drivers."
+            echo "       Ensure %SystemRoot%\\System32 is in your PATH and retry."
+            exit 1
+        fi
+
+        # Check Windows Registry for installed ODBC drivers
+        driver=$(reg query "HKLM\\SOFTWARE\\ODBC\\ODBCINST.INI\\ODBC Drivers" 2>/dev/null \
+            | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
+        if [[ -n "$driver" ]]; then
+            echo "$driver"
+            exit 0
+        fi
+        # Also check 32-bit registry on 64-bit Windows
+        driver=$(reg query "HKLM\\SOFTWARE\\WOW6432Node\\ODBC\\ODBCINST.INI\\ODBC Drivers" 2>/dev/null \
+            | grep -oiE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
+        if [[ -n "$driver" ]]; then
+            echo "$driver"
+            exit 0
+        fi
+
+        echo "ERROR: Microsoft ODBC Driver for SQL Server not found."
+        echo ""
+        echo "Install instructions:"
+        echo "  https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server"
+        echo ""
+        echo "Recommended: ODBC Driver 18 for SQL Server (17 also supported)"
+        exit 1
+    fi
+
+    # Linux / macOS: check odbcinst.ini files
     for ini_file in /etc/odbcinst.ini /usr/local/etc/odbcinst.ini; do
         if [[ -f "$ini_file" ]]; then
             driver=$(grep -oP "ODBC Driver \d+ for SQL Server" "$ini_file" | tail -1)
@@ -87,6 +124,17 @@ install_venv() {
         fi
     done
 
+    if [[ -z "$python_cmd" ]]; then
+        echo "ERROR: Python not found. Run check-python first."
+        exit 1
+    fi
+
+    # Resolve venv bin dir (Scripts on Windows, bin on Unix)
+    local venv_bin="$VENV_DIR/bin"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) venv_bin="$VENV_DIR/Scripts" ;;
+    esac
+
     mkdir -p "$(dirname "$VENV_DIR")"
 
     if [[ ! -d "$VENV_DIR" ]]; then
@@ -96,21 +144,30 @@ install_venv() {
         echo "Virtual environment exists at $VENV_DIR, upgrading..."
     fi
 
-    "$VENV_DIR/bin/pip" install --upgrade pip --quiet
+    "$venv_bin/pip" install --upgrade pip --quiet
     echo "Installing mcp-sql-server from GitHub..."
-    "$VENV_DIR/bin/pip" install "git+${REPO_URL}" --quiet
+    "$venv_bin/pip" install "git+${REPO_URL}" --quiet
     echo "Installed mcp-sql-server to $VENV_DIR"
     exit 0
 }
 
 verify_install() {
-    if [[ ! -f "$VENV_DIR/bin/python" ]]; then
+    # Resolve venv bin dir (Scripts on Windows, bin on Unix)
+    local venv_bin="$VENV_DIR/bin"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) venv_bin="$VENV_DIR/Scripts" ;;
+    esac
+
+    if [[ ! -f "$venv_bin/python" ]] && [[ ! -f "$venv_bin/python.exe" ]]; then
         echo "ERROR: Virtual environment not found at $VENV_DIR"
         exit 1
     fi
 
+    local python_bin="$venv_bin/python"
+    [[ -f "$venv_bin/python.exe" ]] && python_bin="$venv_bin/python.exe"
+
     local version
-    version=$("$VENV_DIR/bin/python" -c "import mcp_sql_server; print(mcp_sql_server.__version__)" 2>&1) || {
+    version=$("$python_bin" -c "import mcp_sql_server; print(mcp_sql_server.__version__)" 2>&1) || {
         echo "ERROR: Failed to import mcp_sql_server: $version"
         exit 1
     }
