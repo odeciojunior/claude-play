@@ -138,7 +138,7 @@ Or use env var references if credentials are already in a `.env` / settings file
 
 Ask the user: "Register for this project only, or for all projects? (project/user)"
 - project (default): edit `.mcp.json` in the project root, or use `claude mcp add` without extra flags
-- user: use `claude mcp add --scope user` (only if password has no special chars); otherwise edit `~/.claude/.mcp.json` directly using the same JSON structure above
+- user: use `claude mcp add --scope user` (preferred); if the password has special chars and `claude mcp add` fails, ask the user to store the password in an environment variable first (e.g. `export DB_PASS='...'`) and pass `-e DB_PASSWORD=$DB_PASS`, then re-run with `--scope user`
 
 ### Step 7: Verify Registration
 
