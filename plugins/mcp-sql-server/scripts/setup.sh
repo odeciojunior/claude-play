@@ -112,6 +112,24 @@ check_odbc() {
         fi
     fi
 
+    # Fallback: check via package manager (driver installed but odbcinst unavailable)
+    if command -v dpkg &>/dev/null; then
+        for ver in 18 17; do
+            if dpkg -l "msodbcsql${ver}" 2>/dev/null | grep -q "^ii"; then
+                echo "ODBC Driver $ver for SQL Server"
+                exit 0
+            fi
+        done
+    fi
+    if command -v rpm &>/dev/null; then
+        for ver in 18 17; do
+            if rpm -q "msodbcsql${ver}" &>/dev/null; then
+                echo "ODBC Driver $ver for SQL Server"
+                exit 0
+            fi
+        done
+    fi
+
     # Not found — print platform-specific instructions
     echo "ERROR: Microsoft ODBC Driver for SQL Server not found."
     echo ""
