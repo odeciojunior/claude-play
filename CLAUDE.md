@@ -55,6 +55,7 @@ Plans and research in `docs/plans/`:
 - `2026-03-04-plugin-reviewer-*.md` — Plugin reviewer agent design & implementation plan
 - `2026-03-06-sql-server-tools-*.md` — SQL Server tools plugin design, implementation plan & validation
 - `2026-03-06-mcp-sql-server-*.md` — MCP SQL Server plugin design & implementation plan
+- `2026-03-11-mcp-sql-server-3scope-plan.md` — 3-scope registration model (project-private, project-shared, user-global)
 
 ## Plugin Conventions
 
