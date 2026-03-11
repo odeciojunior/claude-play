@@ -98,6 +98,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" detect-env .
   6. "Enable encrypted connection? (default: no)" (DB_ENCRYPT)
   7. "Trust server certificate? (default: no)" (DB_TRUST_CERT)
 
+**Validate before continuing:**
+- DB_HOST, DB_USER, DB_DATABASE: must be non-empty — re-prompt any that are blank
+- DB_PORT: must be a number between 1 and 65535 (default: 1433) — re-prompt if invalid
+- DB_ENCRYPT, DB_TRUST_CERT: accept `yes`, `no`, `true`, `false` (case-insensitive) — re-prompt if unrecognized
+- Re-prompt only the invalid field, not the entire credential set
+
 ### Step 6: Register MCP Server
 
 First determine the correct Python interpreter path for the platform:
