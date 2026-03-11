@@ -115,9 +115,13 @@ First determine the correct Python interpreter path for the platform:
 
 Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
 
+Ask the user: "Register for this project only, or for all projects? (project/user)"
+- **project** (default): use `claude mcp add` without a scope flag
+- **user**: use `claude mcp add --scope user`
+
 **Always attempt `claude mcp add` first.** If it exits non-zero (for any reason — shell expansion, conflicts, permissions), automatically fall through to the `.mcp.json` direct-edit fallback below. Do not preemptively skip based on password content.
 
-Build and run the `claude mcp add` command with the collected credentials:
+Build and run the `claude mcp add` command with the collected credentials (add `--scope user` if the user chose user scope):
 
 ```bash
 claude mcp add --transport stdio \
@@ -128,6 +132,7 @@ claude mcp add --transport stdio \
   [-e DB_PORT=<port>] \
   [-e DB_ENCRYPT=<true/false>] \
   [-e DB_TRUST_CERT=<true/false>] \
+  [--scope user] \
   mcp-sql-server -- \
   <python-path> -m mcp_sql_server.server
 ```
@@ -160,9 +165,7 @@ If a `.mcp.json` already exists, merge the `"mcp-sql-server"` entry into the exi
 
 Or use env var references if credentials are already in a `.env` / settings file (e.g. `"DB_PASSWORD": "${MY_SQL_PASSWORD}"`).
 
-Ask the user: "Register for this project only, or for all projects? (project/user)"
-- project (default): edit `.mcp.json` in the project root, or use `claude mcp add` without extra flags
-- user: use `claude mcp add --scope user` (preferred); if `claude mcp add` fails, ask the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run with `--scope user`
+For **user scope** via fallback: if `claude mcp add --scope user` failed, ask the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run with `--scope user`.
 
 ### Step 7: Verify Registration
 

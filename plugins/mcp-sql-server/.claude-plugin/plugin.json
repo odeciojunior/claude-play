@@ -1,7 +1,7 @@
 {
   "name": "mcp-sql-server",
   "description": "Automated setup for the mcp-sql-server MCP server — connects Claude Code to SQL Server databases with 10 tools for querying, schema discovery, and stored procedures",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "Odecio Machado",
     "email": "odeciojunior@gmail.com"
