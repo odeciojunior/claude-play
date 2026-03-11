@@ -28,7 +28,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" check-python
 ```
 
 - If exit code 0: Report Python version found, continue
-- If exit code 1: Show the error message and STOP — user must install Python 3.10+
+- If exit code 1: Show the error message, then provide the install URL for their platform:
+  - **Windows:** https://www.python.org/downloads/ — check "Add Python to PATH" during install
+  - **Linux:** `sudo apt-get install python3 python3-venv` (Ubuntu/Debian) or `sudo dnf install python3` (RHEL/Fedora)
+  - Tell the user: "Install Python 3.10 or later, then re-run this skill."
+  - STOP — do not continue until Python is installed.
 
 ### Step 2: Check ODBC Driver
 
@@ -37,7 +41,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" check-odbc
 ```
 
 - If exit code 0: Report ODBC driver found, continue
-- If exit code 1: Show the platform-specific install instructions from the script output and STOP — user must install the ODBC driver first
+- If exit code 1: Show the install instructions from the script output, then STOP.
+- **Manual override:** If the user says the driver IS installed but detection failed, ask them to confirm the driver name:
+  - **Windows:** Open "ODBC Data Sources (64-bit)" (`odbcad32.exe`) → Drivers tab
+  - **Linux:** Run `odbcinst -q -d` or `dpkg -l | grep msodbcsql`
+  - Once the user confirms the driver name (e.g. "ODBC Driver 18 for SQL Server"), accept it and continue to Step 3.
 
 ### Step 3: Install MCP Server
 
