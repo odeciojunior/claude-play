@@ -41,11 +41,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" check-odbc
 ```
 
 - If exit code 0: Report ODBC driver found, continue
-- If exit code 1: Show the install instructions from the script output, then STOP.
-- **Manual override:** If the user says the driver IS installed but detection failed, ask them to confirm the driver name:
-  - **Windows:** Open "ODBC Data Sources (64-bit)" (`odbcad32.exe`) → Drivers tab
-  - **Linux:** Run `odbcinst -q -d` or `dpkg -l | grep msodbcsql`
-  - Once the user confirms the driver name (e.g. "ODBC Driver 18 for SQL Server"), accept it and continue to Step 3.
+- If exit code 1: Show the install instructions from the script output, then ask: "Is the ODBC driver already installed on your system?"
+  - **If yes:** Ask them to confirm the exact driver name:
+    - **Windows:** Open "ODBC Data Sources (64-bit)" (`odbcad32.exe`) → Drivers tab
+    - **Linux:** Run `odbcinst -q -d` or `dpkg -l | grep msodbcsql`
+    - Once confirmed (e.g. "ODBC Driver 18 for SQL Server"), accept it and continue to Step 3.
+  - **If no:** STOP — user must install the ODBC driver first.
 
 ### Step 3: Install MCP Server
 
@@ -57,7 +58,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" install-venv
 - If exit code 1: Diagnose from the error message:
   - **"git: command not found"** → Ask user to install git (`apt-get install git` / winget install git) and retry.
   - **pip / network error** → Retry once. If it fails again, show the manual install command:
-    `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip install git+https://github.com/odeciojunior/mcp-sql-server.git`
+    - Linux/macOS: `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip install git+https://github.com/odeciojunior/mcp-sql-server.git`
+    - Windows: `~/.claude/mcp-servers/mcp-sql-server/.venv/Scripts/pip install git+https://github.com/odeciojunior/mcp-sql-server.git`
   - **venv exists but broken** → Delete and recreate: `rm -rf ~/.claude/mcp-servers/mcp-sql-server/.venv` then re-run install-venv.
   - Any other error: Show the full error output and STOP.
 
@@ -68,7 +70,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" verify-install
 ```
 
 - If exit code 0: Report version, continue
-- If exit code 1: Re-run Step 3 automatically (one retry). If Step 4 fails again:
+- If exit code 1: Re-run only the `install-venv` command from Step 3 (one retry — do not re-enter the Step 3 diagnostic tree). If Step 4 fails again:
   - Show the installed packages for diagnosis:
     `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip list`
   - STOP and ask the user to share the output.
