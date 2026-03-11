@@ -170,7 +170,9 @@ Ask the user: "Register for this project only, or for all projects? (project/use
 claude mcp list
 ```
 
-Confirm `mcp-sql-server` appears in the output.
+- If `mcp-sql-server` appears: proceed to Step 8.
+- If not found and the user registered with `--scope user`: run `claude mcp list --scope user` — user-scoped servers may not appear in the default list.
+- If still not found: re-run Step 6 (the registration command). Check for error output — a common cause is a naming conflict with an existing `mcp-sql-server` entry. If so, run `claude mcp remove mcp-sql-server` first, then retry Step 6.
 
 ### Step 8: Report Success
 
