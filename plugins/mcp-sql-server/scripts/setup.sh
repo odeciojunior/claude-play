@@ -273,6 +273,7 @@ register_mcp_json() {
     local db_encrypt="${9:-false}"
     local db_trust_cert="${10:-false}"
 
+    # db_password intentionally not required (valid for Windows Auth / trusted connections)
     if [[ -z "$mcp_json_path" || -z "$python_path" || -z "$db_host" || -z "$db_user" || -z "$db_name" ]]; then
         echo "ERROR: Missing required arguments."
         echo "Usage: setup.sh register-mcp-json <mcp-json-path> <python-path> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]"
@@ -319,7 +320,7 @@ process.stdout.write(JSON.stringify(existing, null, 2) + '\n');
             echo "ERROR: Failed to merge JSON"
             exit 1
         fi
-        printf '%s' "$merged" > "$mcp_json_path"
+        printf '%s\n' "$merged" > "$mcp_json_path"
         echo "Updated $mcp_json_path (merged mcp-sql-server into existing servers)"
     else
         local full_json
@@ -333,7 +334,7 @@ process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
             exit 1
         fi
         mkdir -p "$(dirname "$mcp_json_path")"
-        printf '%s' "$full_json" > "$mcp_json_path"
+        printf '%s\n' "$full_json" > "$mcp_json_path"
         echo "Created $mcp_json_path with mcp-sql-server"
     fi
 
