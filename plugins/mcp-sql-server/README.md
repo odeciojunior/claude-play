@@ -4,6 +4,7 @@ Automated setup for the [mcp-sql-server](https://github.com/odeciojunior/mcp-sql
 
 ## Prerequisites
 
+- **Node.js** — required by the setup script to write `.mcp.json` files
 - **Python 3.10+** — the setup wizard checks automatically
 - **Microsoft ODBC Driver 17 or 18** — platform-specific install instructions provided if missing
 
@@ -21,7 +22,19 @@ After installing the plugin, describe your task or say "setup sql server". The s
 2. Create an isolated virtual environment at `~/.claude/mcp-servers/mcp-sql-server/.venv`
 3. Install the MCP server package from GitHub
 4. Detect existing `.env` files or prompt for database credentials
-5. Register the MCP server with Claude Code via `claude mcp add`
+5. Register the MCP server with Claude Code (scope options: project-private, project-shared, or user-global)
+
+## Registration Scopes
+
+The setup wizard offers 3 registration scopes:
+
+| Scope | Credentials Location | Git-tracked? | Use when |
+|-------|---------------------|:---:|----------|
+| **project-private** (default) | `.mcp.json` | No | Each project has its own database |
+| **project-shared** | `.mcp.json` | Yes | Team shares the same dev database |
+| **user-global** | `~/.claude.json` | No | One database across all projects |
+
+**project-private** is recommended. It writes to `.mcp.json` and adds it to `.gitignore` so credentials never leak to git. Each project gets its own isolated database configuration.
 
 ## Registration Scopes
 

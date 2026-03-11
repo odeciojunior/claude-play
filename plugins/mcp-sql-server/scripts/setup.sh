@@ -260,15 +260,129 @@ detect_env() {
     fi
 }
 
+register_mcp_json() {
+    # Usage: register-mcp-json <mcp-json-path> <python-path> <DB_HOST> <DB_PORT> <DB_USER> <DB_PASSWORD> <DB_NAME> <DB_DRIVER> <DB_ENCRYPT> <DB_TRUST_CERT>
+    local mcp_json_path="${1:-}"
+    local python_path="${2:-}"
+    local db_host="${3:-}"
+    local db_port="${4:-1433}"
+    local db_user="${5:-}"
+    local db_password="${6:-}"
+    local db_name="${7:-}"
+    local db_driver="${8:-ODBC Driver 18 for SQL Server}"
+    local db_encrypt="${9:-false}"
+    local db_trust_cert="${10:-false}"
+
+    # db_password intentionally not required (valid for Windows Auth / trusted connections)
+    if [[ -z "$mcp_json_path" || -z "$python_path" || -z "$db_host" || -z "$db_user" || -z "$db_name" ]]; then
+        echo "ERROR: Missing required arguments."
+        echo "Usage: setup.sh register-mcp-json <mcp-json-path> <python-path> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]"
+        exit 1
+    fi
+
+    # Build the new MCP server entry as JSON
+    local new_entry
+    new_entry=$(node -e "
+const entry = {
+  command: process.argv[1],
+  args: ['-m', 'mcp_sql_server.server'],
+  env: {
+    DB_HOST: process.argv[2],
+    DB_PORT: process.argv[3],
+    DB_USER: process.argv[4],
+    DB_PASSWORD: process.argv[5],
+    DB_NAME: process.argv[6],
+    DB_DRIVER: process.argv[7],
+    DB_ENCRYPT: process.argv[8],
+    DB_TRUST_CERT: process.argv[9]
+  }
+};
+process.stdout.write(JSON.stringify(entry));
+" "$python_path" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert")
+
+    if [[ -z "$new_entry" ]]; then
+        echo "ERROR: Failed to build JSON entry (is node available?)"
+        exit 1
+    fi
+
+    # Merge into existing .mcp.json or create new
+    if [[ -f "$mcp_json_path" ]]; then
+        local merged
+        merged=$(node -e "
+const fs = require('fs');
+const existing = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+const newEntry = JSON.parse(process.argv[2]);
+if (!existing.mcpServers) existing.mcpServers = {};
+existing.mcpServers['mcp-sql-server'] = newEntry;
+process.stdout.write(JSON.stringify(existing, null, 2) + '\n');
+" "$mcp_json_path" "$new_entry")
+        if [[ -z "$merged" ]]; then
+            echo "ERROR: Failed to merge JSON"
+            exit 1
+        fi
+        printf '%s\n' "$merged" > "$mcp_json_path"
+        echo "Updated $mcp_json_path (merged mcp-sql-server into existing servers)"
+    else
+        local full_json
+        full_json=$(node -e "
+const newEntry = JSON.parse(process.argv[1]);
+const doc = { mcpServers: { 'mcp-sql-server': newEntry } };
+process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
+" "$new_entry")
+        if [[ -z "$full_json" ]]; then
+            echo "ERROR: Failed to build JSON document"
+            exit 1
+        fi
+        mkdir -p "$(dirname "$mcp_json_path")"
+        printf '%s\n' "$full_json" > "$mcp_json_path"
+        echo "Created $mcp_json_path with mcp-sql-server"
+    fi
+
+    exit 0
+}
+
+ensure_gitignore() {
+    # Usage: ensure-gitignore <project-dir> <pattern>
+    # Ensures the given pattern exists in .gitignore (creates file if needed)
+    local project_dir="${1:-}"
+    local pattern="${2:-}"
+
+    if [[ -z "$project_dir" || -z "$pattern" ]]; then
+        echo "ERROR: Usage: setup.sh ensure-gitignore <project-dir> <pattern>"
+        exit 1
+    fi
+
+    local gitignore="$project_dir/.gitignore"
+
+    if [[ -f "$gitignore" ]]; then
+        if grep -qxF "$pattern" "$gitignore"; then
+            echo "$pattern already in $gitignore"
+            exit 0
+        fi
+    fi
+
+    # Append with a newline before if file doesn't end with one
+    if [[ -f "$gitignore" ]] && [[ -s "$gitignore" ]] && [[ "$(tail -c1 "$gitignore")" != "" ]]; then
+        printf '\n%s\n' "$pattern" >> "$gitignore"
+    else
+        printf '%s\n' "$pattern" >> "$gitignore"
+    fi
+
+    echo "Added $pattern to $gitignore"
+    exit 0
+}
+
 # --- Main dispatcher ---
 case "${1:-}" in
-    check-python)   check_python ;;
-    check-odbc)     check_odbc ;;
-    install-venv)   install_venv ;;
-    verify-install) verify_install ;;
-    detect-env)     detect_env "${2:-.}" ;;
+    check-python)       check_python ;;
+    check-odbc)         check_odbc ;;
+    install-venv)       install_venv ;;
+    verify-install)     verify_install ;;
+    detect-env)         detect_env "${2:-.}" ;;
+    register-mcp-json)  shift; register_mcp_json "$@" ;;
+    ensure-gitignore)   ensure_gitignore "${2:-}" "${3:-}" ;;
     *)
-        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|detect-env [path]}"
+        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|detect-env [path]|register-mcp-json <args...>|ensure-gitignore <dir> <pattern>}"
         exit 1
         ;;
 esac
