@@ -205,7 +205,7 @@ verify_install() {
     [[ -f "$venv_bin/python.exe" ]] && python_bin="$venv_bin/python.exe"
 
     local version
-    version=$("$python_bin" -c "import mcp_sql_server; print(mcp_sql_server.__version__)" 2>&1) || {
+    version=$("$python_bin" -c "import mcp_sql_server; print(getattr(mcp_sql_server, '__version__', 'unknown'))" 2>&1) || {
         echo "ERROR: Failed to import mcp_sql_server: $version"
         exit 1
     }
