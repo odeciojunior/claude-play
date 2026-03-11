@@ -54,7 +54,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" install-venv
 ```
 
 - If exit code 0: Report success, continue
-- If exit code 1: Show error and STOP
+- If exit code 1: Diagnose from the error message:
+  - **"git: command not found"** → Ask user to install git (`apt-get install git` / winget install git) and retry.
+  - **pip / network error** → Retry once. If it fails again, show the manual install command:
+    `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip install git+https://github.com/odeciojunior/mcp-sql-server.git`
+  - **venv exists but broken** → Delete and recreate: `rm -rf ~/.claude/mcp-servers/mcp-sql-server/.venv` then re-run install-venv.
+  - Any other error: Show the full error output and STOP.
 
 ### Step 4: Verify Installation
 
@@ -63,7 +68,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" verify-install
 ```
 
 - If exit code 0: Report version, continue
-- If exit code 1: Show error — installation may be corrupted, suggest re-running setup
+- If exit code 1: Re-run Step 3 automatically (one retry). If Step 4 fails again:
+  - Show the installed packages for diagnosis:
+    `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip list`
+  - STOP and ask the user to share the output.
 
 ### Step 5: Collect Database Credentials
 
