@@ -178,9 +178,13 @@ install_venv() {
         echo "Virtual environment exists at $VENV_DIR, upgrading..."
     fi
 
-    "$venv_bin/pip" install --upgrade pip --quiet
+    # Re-resolve pip after venv creation (Scripts/pip.exe on Windows)
+    local pip_cmd="$venv_bin/pip"
+    [[ -f "$venv_bin/pip.exe" ]] && pip_cmd="$venv_bin/pip.exe"
+
+    "$pip_cmd" install --upgrade pip --quiet
     echo "Installing mcp-sql-server from GitHub..."
-    "$venv_bin/pip" install "git+${REPO_URL}" --quiet
+    "$pip_cmd" install "git+${REPO_URL}" --quiet
     echo "Installed mcp-sql-server to $VENV_DIR"
     exit 0
 }
