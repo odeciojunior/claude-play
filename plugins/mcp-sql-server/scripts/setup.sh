@@ -220,7 +220,7 @@ detect_env() {
     local env_file=""
     local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_DATABASE" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
 
-    # Search starting directory and up to 4 parent levels (5 locations total)
+    # Search starting directory and up to 5 parent levels (6 locations total)
     local dir="$search_path"
     for _ in 1 2 3 4 5; do
         if [[ -f "$dir/.env" ]]; then

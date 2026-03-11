@@ -72,7 +72,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" verify-install
 - If exit code 0: Report version, continue
 - If exit code 1: Re-run only the `install-venv` command from Step 3 (one retry — do not re-enter the Step 3 diagnostic tree). If Step 4 fails again:
   - Show the installed packages for diagnosis:
-    `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip list`
+    - Linux/macOS: `~/.claude/mcp-servers/mcp-sql-server/.venv/bin/pip list`
+    - Windows: `~/.claude/mcp-servers/mcp-sql-server/.venv/Scripts/pip list`
   - STOP and ask the user to share the output.
 
 ### Step 5: Collect Database Credentials
