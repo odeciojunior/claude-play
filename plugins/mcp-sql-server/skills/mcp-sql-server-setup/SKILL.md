@@ -115,7 +115,7 @@ First determine the correct Python interpreter path for the platform:
 
 Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
 
-**Password special characters warning:** If the password contains `%`, `!`, `^`, `&`, `(`, `)`, `` ` ``, `'`, `"`, `<`, `>`, or spaces, `claude mcp add` may fail due to shell expansion (especially on Windows/Git Bash). In that case, skip this step and use the `.mcp.json` direct-edit fallback below.
+**Always attempt `claude mcp add` first.** If it exits non-zero (for any reason — shell expansion, conflicts, permissions), automatically fall through to the `.mcp.json` direct-edit fallback below. Do not preemptively skip based on password content.
 
 Build and run the `claude mcp add` command with the collected credentials:
 
@@ -134,7 +134,7 @@ claude mcp add --transport stdio \
 
 Only include optional `-e` flags if the user provided non-default values.
 
-**Fallback (passwords with special characters):** Edit `.mcp.json` directly instead:
+**Fallback (if `claude mcp add` fails for any reason):** Edit `.mcp.json` directly instead:
 
 ```json
 {
@@ -162,7 +162,7 @@ Or use env var references if credentials are already in a `.env` / settings file
 
 Ask the user: "Register for this project only, or for all projects? (project/user)"
 - project (default): edit `.mcp.json` in the project root, or use `claude mcp add` without extra flags
-- user: use `claude mcp add --scope user` (preferred); if the password has special chars (see warning above) and `claude mcp add` fails, ask the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run with `--scope user`
+- user: use `claude mcp add --scope user` (preferred); if `claude mcp add` fails, ask the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run with `--scope user`
 
 ### Step 7: Verify Registration
 
