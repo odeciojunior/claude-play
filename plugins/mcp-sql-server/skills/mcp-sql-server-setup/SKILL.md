@@ -146,6 +146,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" register-mcp-json \
   "<DB_DRIVER>" "<DB_ENCRYPT>" "<DB_TRUST_CERT>"
 ```
 
+Substitute `<DB_DRIVER>` with the driver name from Step 2, or `ODBC Driver 18 for SQL Server` if the user accepted the default.
+
 If the project `.mcp.json` already exists, the script merges the `mcp-sql-server` entry into the existing `mcpServers` object — other servers (e.g., `docker`) are preserved.
 
 #### Option B: project-shared
@@ -172,7 +174,9 @@ claude mcp add --transport stdio --scope user \
 
 Only include optional `-e` flags if the user provided non-default values.
 
-**Fallback if `claude mcp add --scope user` fails:** Tell the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run. If it still fails, fall back to Option A (project-private) and inform the user.
+**Tip:** If `<password>` contains special shell characters (e.g. `!`, `$`, backslashes, quotes), export it first and reference the variable: `export DB_PASSWORD='your_password'`, then use `-e DB_PASSWORD=$DB_PASSWORD` instead.
+
+**Fallback if `claude mcp add --scope user` fails:** Re-run using the `export DB_PASSWORD` approach above. If it still fails, fall back to Option A (project-private) and inform the user.
 
 ### Step 7: Verify Registration
 
