@@ -176,7 +176,7 @@ Only include optional `-e` flags if the user provided non-default values.
 
 **Tip:** If `<password>` contains special shell characters (e.g. `!`, `$`, backslashes, quotes), export it first and reference the variable: `export DB_PASSWORD='your_password'`, then use `-e DB_PASSWORD=$DB_PASSWORD` instead.
 
-**Fallback if `claude mcp add --scope user` fails:** Re-run using the `export DB_PASSWORD` approach above. If it still fails, fall back to Option A (project-private) and inform the user.
+**Fallback if `claude mcp add --scope user` fails:** Re-run using the `export DB_PASSWORD` approach above. If it still fails, fall back to Option A (project-private) and inform the user. Note: this fallback registers the server at project scope, not user-global — inform the user that the registration will be project-private for this project only.
 
 ### Step 7: Verify Registration
 
