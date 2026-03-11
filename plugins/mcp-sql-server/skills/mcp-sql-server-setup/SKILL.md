@@ -13,7 +13,7 @@ Automated setup wizard for the [mcp-sql-server](https://github.com/odeciojunior/
 2. Creates isolated Python environment
 3. Installs mcp-sql-server from GitHub
 4. Collects database credentials
-5. Registers the MCP server with Claude Code
+5. Registers the MCP server with Claude Code (3 scope options: project-private, project-shared, user-global)
 
 ## Setup Steps
 
@@ -116,57 +116,63 @@ First determine the correct Python interpreter path for the platform:
 
 Detect which applies by checking whether `uname -s` output starts with `MINGW`, `MSYS`, or `CYGWIN`.
 
-Ask the user: "Register for this project only, or for all projects? (project/user)"
-- **project** (default): use `claude mcp add` without a scope flag
-- **user**: use `claude mcp add --scope user`
+Ask the user: **"Where should I register the MCP server?"**
 
-**Always attempt `claude mcp add` first.** If it exits non-zero (for any reason — shell expansion, conflicts, permissions), automatically fall through to the `.mcp.json` direct-edit fallback below. Do not preemptively skip based on password content.
+Present these 3 options:
 
-Build and run the `claude mcp add` command with the collected credentials (add `--scope user` if the user chose user scope):
+| Option | Description | Where credentials are stored |
+|--------|-------------|------------------------------|
+| **project-private** (default) | This project only, credentials gitignored | `.mcp.json` + `.gitignore` |
+| **project-shared** | This project only, credentials visible to team | `.mcp.json` (not gitignored) |
+| **user-global** | All projects on this machine | `~/.claude.json` |
+
+Recommend **project-private** unless the user has a reason to choose otherwise. Explain: "project-private keeps credentials in .mcp.json (which gets added to .gitignore so they never leak to git). Each project gets its own database config."
+
+#### Option A: project-private (default)
+
+1. Ensure `.mcp.json` is gitignored:
 
 ```bash
-claude mcp add --transport stdio \
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" ensure-gitignore "$CLAUDE_PROJECT_DIR" ".mcp.json"
+```
+
+2. Write the MCP server entry into `.mcp.json`:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" register-mcp-json \
+  "$CLAUDE_PROJECT_DIR/.mcp.json" \
+  "<python-path>" \
+  "<DB_HOST>" "<DB_PORT>" "<DB_USER>" "<DB_PASSWORD>" "<DB_NAME>" \
+  "<DB_DRIVER>" "<DB_ENCRYPT>" "<DB_TRUST_CERT>"
+```
+
+If the project `.mcp.json` already exists, the script merges the `mcp-sql-server` entry into the existing `mcpServers` object — other servers (e.g., `docker`) are preserved.
+
+#### Option B: project-shared
+
+Same as Option A Step 2 (write to `.mcp.json`), but **skip** the `ensure-gitignore` step. Warn the user: "Credentials will be visible in git. Make sure this is a non-sensitive dev database."
+
+#### Option C: user-global
+
+**Always attempt `claude mcp add` first.** If it exits non-zero (for any reason — shell expansion, conflicts, permissions), automatically fall through to the `.mcp.json` direct-edit fallback in Option A.
+
+```bash
+claude mcp add --transport stdio --scope user \
   -e DB_HOST=<host> \
   -e DB_USER=<user> \
   -e DB_PASSWORD=<password> \
-  -e DB_DATABASE=<database> \
+  -e DB_NAME=<database> \
   [-e DB_PORT=<port>] \
+  [-e DB_DRIVER=<driver>] \
   [-e DB_ENCRYPT=<true/false>] \
   [-e DB_TRUST_CERT=<true/false>] \
-  [--scope user] \
   mcp-sql-server -- \
   <python-path> -m mcp_sql_server.server
 ```
 
 Only include optional `-e` flags if the user provided non-default values.
 
-**Fallback (if `claude mcp add` fails for any reason):** Edit `.mcp.json` directly instead:
-
-```json
-{
-  "mcpServers": {
-    "mcp-sql-server": {
-      "command": "<python-path>",
-      "args": ["-m", "mcp_sql_server.server"],
-      "env": {
-        "DB_HOST": "<host>",
-        "DB_USER": "<user>",
-        "DB_PASSWORD": "<password>",
-        "DB_DATABASE": "<database>",
-        "DB_PORT": "<port>",
-        "DB_ENCRYPT": "<true/false>",
-        "DB_TRUST_CERT": "<true/false>"
-      }
-    }
-  }
-}
-```
-
-If a `.mcp.json` already exists, merge the `"mcp-sql-server"` entry into the existing `"mcpServers"` object.
-
-Or use env var references if credentials are already in a `.env` / settings file (e.g. `"DB_PASSWORD": "${MY_SQL_PASSWORD}"`).
-
-For **user scope** via fallback: if `claude mcp add --scope user` failed, ask the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run with `--scope user`.
+**Fallback if `claude mcp add --scope user` fails:** Tell the user to export the password as a shell variable first (e.g. `export DB_PASSWORD='...'`) and pass `-e DB_PASSWORD=$DB_PASSWORD`, then re-run. If it still fails, fall back to Option A (project-private) and inform the user.
 
 ### Step 7: Verify Registration
 
@@ -187,7 +193,7 @@ MCP SQL Server setup complete!
 
 Server: mcp-sql-server
 Database: <DB_DATABASE> on <DB_HOST>
-Scope: project | user
+Scope: project-private | project-shared | user-global
 
 Available tools (10):
   - execute_query        Run read-only SELECT queries
@@ -210,7 +216,9 @@ Tip: For specialized SQL Server agents, also install:
 This skill can be re-run to:
 - Upgrade the mcp-sql-server package (re-runs install-venv)
 - Change database credentials (re-runs credential collection + MCP registration)
-- Switch between project and user scope
+- Switch between scopes (project-private, project-shared, user-global)
+
+**Switching scopes:** If changing from user-global to project-private, run `claude mcp remove mcp-sql-server --scope user` first to remove the global entry, then re-run setup and choose project-private.
 
 ## Troubleshooting
 
