@@ -55,7 +55,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" check-odbc
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" install-venv
 ```
 
-- If exit code 0: Report success, continue
+- If exit code 0: Report success and the installed commit from the script output, continue
 - If exit code 1: Diagnose from the error message:
   - **"git: command not found"** → Ask user to install git (`apt-get install git` / winget install git) and retry.
   - **pip / network error** → Retry once. If it fails again, show the manual install command:
@@ -273,7 +273,7 @@ Then tell the user:
 ## Reconfiguration
 
 This skill can be re-run to:
-- Upgrade the mcp-sql-server package (re-runs install-venv)
+- Upgrade the mcp-sql-server package (re-runs install-venv, which force-reinstalls so a moved git HEAD is always picked up)
 - Change database credentials (re-runs credential collection + MCP registration)
 - Switch between scopes (project-private, project-shared, user-global)
 - Add or update additional databases (re-runs Step 6.5; existing aliases are preserved)

@@ -184,8 +184,38 @@ install_venv() {
 
     "$pip_cmd" install --upgrade pip --quiet
     echo "Installing mcp-sql-server from GitHub..."
-    "$pip_cmd" install "git+${REPO_URL}" --quiet
-    echo "Installed mcp-sql-server to $VENV_DIR"
+
+    # Two passes, deliberately. The first installs the package and its
+    # dependencies, and is a no-op when they are already satisfied.
+    if ! "$pip_cmd" install "git+${REPO_URL}" --quiet; then
+        echo "ERROR: pip install failed."
+        exit 1
+    fi
+
+    # The second forces the package itself to the current git HEAD. --force-reinstall
+    # is required because the project version is static, so pip treats an existing
+    # install as already satisfied and silently skips it even when HEAD has moved.
+    # --no-deps is equally required: reinstalling dependencies would pull them across
+    # major versions (the mcp pin is unbounded), breaking a working install.
+    if ! "$pip_cmd" install --force-reinstall --no-deps "git+${REPO_URL}" --quiet; then
+        echo "ERROR: pip install failed."
+        exit 1
+    fi
+
+    # Report the commit actually installed, so a stale install is visible rather
+    # than hidden behind a success message.
+    local installed_commit
+    installed_commit=$("$venv_bin/python" -c "
+import json
+try:
+    from importlib.metadata import distribution
+    raw = distribution('mcp-sql-server').read_text('direct_url.json')
+    print(json.loads(raw).get('vcs_info', {}).get('commit_id', 'unknown')[:12] if raw else 'unknown')
+except Exception:
+    print('unknown')
+" 2>/dev/null) || installed_commit="unknown"
+
+    echo "Installed mcp-sql-server to $VENV_DIR (commit ${installed_commit})"
     exit 0
 }
 

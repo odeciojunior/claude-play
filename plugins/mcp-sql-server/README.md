@@ -123,5 +123,6 @@ claude plugin install sql-server-tools@claude-play
 | Python not found | Install Python 3.10+ from https://python.org |
 | ODBC driver missing | Follow the platform-specific instructions shown during setup |
 | pip install fails | Check internet connectivity; the package installs from GitHub |
+| Fix or change not picked up | Re-run setup (or `bash scripts/setup.sh install-venv`) — it force-reinstalls and prints the installed commit. Restart Claude Code afterwards |
 | MCP registration fails | Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server` and re-run |
 | Connection errors | Verify credentials, network access, and that SQL Server accepts remote connections |
