@@ -313,7 +313,14 @@ const fs = require('fs');
 const existing = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
 const newEntry = JSON.parse(process.argv[2]);
 if (!existing.mcpServers) existing.mcpServers = {};
-existing.mcpServers['mcp-sql-server'] = newEntry;
+const prev = existing.mcpServers['mcp-sql-server'];
+const prevEnv = (prev && typeof prev.env === 'object' && prev.env !== null) ? prev.env : {};
+// Overwrite only the default DB_* keys; keep DB_DATABASES and any DB_<ALIAS>_* vars
+existing.mcpServers['mcp-sql-server'] = Object.assign({}, prev, {
+  command: newEntry.command,
+  args: newEntry.args,
+  env: Object.assign({}, prevEnv, newEntry.env)
+});
 process.stdout.write(JSON.stringify(existing, null, 2) + '\n');
 " "$mcp_json_path" "$new_entry")
         if [[ -z "$merged" ]]; then
@@ -321,7 +328,7 @@ process.stdout.write(JSON.stringify(existing, null, 2) + '\n');
             exit 1
         fi
         printf '%s\n' "$merged" > "$mcp_json_path"
-        echo "Updated $mcp_json_path (merged mcp-sql-server into existing servers)"
+        echo "Updated $mcp_json_path (default database updated; additional databases preserved)"
     else
         local full_json
         full_json=$(node -e "
@@ -372,6 +379,91 @@ ensure_gitignore() {
     exit 0
 }
 
+add_database() {
+    # Usage: add-database <mcp-json-path> <alias> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]
+    # Adds an additional named database (alias) to an existing mcp-sql-server entry.
+    local mcp_json_path="${1:-}"
+    local db_alias="${2:-}"
+    local db_host="${3:-}"
+    local db_port="${4:-1433}"
+    local db_user="${5:-}"
+    local db_password="${6:-}"
+    local db_name="${7:-}"
+    local db_driver="${8:-ODBC Driver 18 for SQL Server}"
+    local db_encrypt="${9:-false}"
+    local db_trust_cert="${10:-false}"
+
+    if [[ -z "$mcp_json_path" || -z "$db_alias" || -z "$db_host" || -z "$db_user" || -z "$db_name" ]]; then
+        echo "ERROR: Missing required arguments."
+        echo "Usage: setup.sh add-database <mcp-json-path> <alias> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]"
+        exit 1
+    fi
+
+    # Must match the server's alias pattern: [a-zA-Z][a-zA-Z0-9_]{0,63}
+    if ! [[ "$db_alias" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,63}$ ]]; then
+        echo "ERROR: Invalid alias '$db_alias'. Start with a letter; letters, digits and underscores only; max 64 characters."
+        exit 1
+    fi
+
+    # "default" is the primary connection and is configured by register-mcp-json
+    local alias_lower
+    alias_lower=$(printf '%s' "$db_alias" | tr '[:upper:]' '[:lower:]')
+    if [[ "$alias_lower" == "default" ]]; then
+        echo "ERROR: 'default' is reserved for the primary connection. Use register-mcp-json instead."
+        exit 1
+    fi
+
+    # Prefixed configs have no fallback and require a non-empty password. An empty one
+    # raises a validation error at startup that breaks every database, not just this alias.
+    if [[ -z "$db_password" ]]; then
+        echo "ERROR: A password is required for additional databases (alias '$db_alias')."
+        exit 1
+    fi
+
+    if [[ ! -f "$mcp_json_path" ]]; then
+        echo "ERROR: $mcp_json_path not found. Register the default database first (register-mcp-json)."
+        exit 1
+    fi
+
+    local updated
+    if ! updated=$(node -e "
+const fs = require('fs');
+const a = process.argv;
+const doc = JSON.parse(fs.readFileSync(a[1], 'utf8'));
+const server = doc.mcpServers && doc.mcpServers['mcp-sql-server'];
+if (!server) {
+  process.stderr.write('ERROR: no mcp-sql-server entry in ' + a[1] + '\n');
+  process.exit(1);
+}
+if (!server.env || typeof server.env !== 'object') server.env = {};
+const alias = a[2];
+const p = alias.toUpperCase();
+server.env['DB_' + p + '_HOST'] = a[3];
+server.env['DB_' + p + '_PORT'] = a[4];
+server.env['DB_' + p + '_USER'] = a[5];
+server.env['DB_' + p + '_PASSWORD'] = a[6];
+server.env['DB_' + p + '_NAME'] = a[7];
+server.env['DB_' + p + '_DRIVER'] = a[8];
+server.env['DB_' + p + '_ENCRYPT'] = a[9];
+server.env['DB_' + p + '_TRUST_CERT'] = a[10];
+const listed = (server.env.DB_DATABASES || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+if (!listed.some(function (x) { return x.toLowerCase() === alias.toLowerCase(); })) listed.push(alias);
+server.env.DB_DATABASES = listed.join(',');
+process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
+" "$mcp_json_path" "$db_alias" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert"); then
+        exit 1
+    fi
+
+    if [[ -z "$updated" ]]; then
+        echo "ERROR: Failed to update JSON (is node available?)"
+        exit 1
+    fi
+
+    printf '%s\n' "$updated" > "$mcp_json_path"
+    echo "Added database '$db_alias' ($db_name@$db_host) to $mcp_json_path"
+    exit 0
+}
+
 # --- Main dispatcher ---
 case "${1:-}" in
     check-python)       check_python ;;
@@ -380,9 +472,10 @@ case "${1:-}" in
     verify-install)     verify_install ;;
     detect-env)         detect_env "${2:-.}" ;;
     register-mcp-json)  shift; register_mcp_json "$@" ;;
+    add-database)      shift; add_database "$@" ;;
     ensure-gitignore)   ensure_gitignore "${2:-}" "${3:-}" ;;
     *)
-        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|detect-env [path]|register-mcp-json <args...>|ensure-gitignore <dir> <pattern>}"
+        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|detect-env [path]|register-mcp-json <args...>|add-database <args...>|ensure-gitignore <dir> <pattern>}"
         exit 1
         ;;
 esac

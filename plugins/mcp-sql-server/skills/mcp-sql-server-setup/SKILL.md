@@ -14,6 +14,7 @@ Automated setup wizard for the [mcp-sql-server](https://github.com/odeciojunior/
 3. Installs mcp-sql-server from GitHub
 4. Collects database credentials
 5. Registers the MCP server with Claude Code (3 scope options: project-private, project-shared, user-global)
+6. Optionally adds further databases as named aliases
 
 ## Setup Steps
 
@@ -178,6 +179,49 @@ Only include optional `-e` flags if the user provided non-default values.
 
 **Fallback if `claude mcp add --scope user` fails:** Re-run using the `export DB_PASSWORD` approach above. If it still fails, fall back to Option A (project-private) and inform the user. Note: this fallback registers the server at project scope, not user-global — inform the user that the registration will be project-private for this project only.
 
+### Step 6.5: Additional Databases (optional)
+
+One server entry can serve several databases. Each extra database gets an **alias** with its own `DB_{ALIAS}_*` variables, and every tool takes a `database` argument to choose between them.
+
+Ask: **"Do you want to connect additional databases? (yes/no)"**
+
+If no, continue to Step 7. If yes, repeat this loop for each one:
+
+1. "What alias should this database use? (e.g. analytics, archive)"
+2. "Hostname or IP?"
+3. "Username?"
+4. "Password?"
+5. "Database name?"
+6. "Port? (default: 1433)"
+7. "Enable encrypted connection? (default: no)"
+8. "Trust server certificate? (default: no)"
+
+**Validate before calling the script:**
+- Alias: must match `[a-zA-Z][a-zA-Z0-9_]{0,63}` and must not be `default` — re-prompt if invalid
+- Host, username, database name: must be non-empty
+- **Password: required.** Unlike the default connection, an alias with an empty password fails validation at startup and breaks *every* database, including `default`
+- Port: a number between 1 and 65535
+- Re-prompt only the invalid field, not the whole set
+
+Then add the database:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" add-database \
+  "$CLAUDE_PROJECT_DIR/.mcp.json" \
+  "<alias>" \
+  "<HOST>" "<PORT>" "<USER>" "<PASSWORD>" "<NAME>" \
+  "<DRIVER>" "<ENCRYPT>" "<TRUST_CERT>"
+```
+
+The script writes `DB_{ALIAS}_*` into the existing entry and appends the alias to `DB_DATABASES`. Running it again with the same alias updates that database in place rather than duplicating it.
+
+After each one, ask: "Add another database? (yes/no)" — repeat until the user declines.
+
+**Notes:**
+- `add-database` needs the entry created in Step 6, so always run Step 6 first. It fails with a clear error if the entry is missing.
+- If the user chose **user-global** in Step 6, pass `"$HOME/.claude.json"` as the first argument instead of the project `.mcp.json`.
+- Re-running Step 6 later updates only the default connection — aliases added here are preserved.
+
 ### Step 7: Verify Registration
 
 ```bash
@@ -199,6 +243,10 @@ Server: mcp-sql-server
 Database: <DB_DATABASE> on <DB_HOST>
 Scope: project-private | project-shared | user-global
 
+Configured databases:
+  - default    <DB_DATABASE> on <DB_HOST>
+  - <alias>    <name> on <host>          (repeat per alias added in Step 6.5)
+
 Available tools (10):
   - execute_query        Run read-only SELECT queries
   - execute_statement    Execute INSERT/UPDATE/DELETE
@@ -215,12 +263,20 @@ Tip: For specialized SQL Server agents, also install:
   claude plugin install sql-server-tools@claude-play
 ```
 
+Then tell the user:
+- **Restart Claude Code** for the new configuration to take effect.
+- If more than one database is configured, explain how to target one: name it in the
+  request ("list tables in the analytics database"), which passes `database="analytics"`
+  to the tool. Without a name, tools use `default`.
+- `list_databases` shows every configured connection.
+
 ## Reconfiguration
 
 This skill can be re-run to:
 - Upgrade the mcp-sql-server package (re-runs install-venv)
 - Change database credentials (re-runs credential collection + MCP registration)
 - Switch between scopes (project-private, project-shared, user-global)
+- Add or update additional databases (re-runs Step 6.5; existing aliases are preserved)
 
 **Switching scopes:** If changing from user-global to project-private, run `claude mcp remove mcp-sql-server --scope user` first to remove the global entry, then re-run setup and choose project-private.
 
@@ -231,3 +287,5 @@ If setup fails:
 - **ODBC not found**: Follow the platform-specific instructions shown
 - **pip install fails**: Check internet connectivity; try `pip install git+https://github.com/odeciojunior/mcp-sql-server.git` manually
 - **MCP registration fails**: Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server` and re-run setup
+- **"Unknown database 'x'"**: The alias is not in `DB_DATABASES`. Re-run Step 6.5 for it, then restart Claude Code.
+- **All databases fail at once**: One alias is misconfigured — the whole registry loads together, so a single bad entry breaks `default` too. Check that every alias has a non-empty host, user, password and name.

@@ -23,6 +23,7 @@ After installing the plugin, describe your task or say "setup sql server". The s
 3. Install the MCP server package from GitHub
 4. Detect existing `.env` files or prompt for database credentials
 5. Register the MCP server with Claude Code (scope options: project-private, project-shared, or user-global)
+6. Optionally add further databases as named aliases
 
 ## Registration Scopes
 
@@ -35,6 +36,58 @@ The setup wizard offers 3 registration scopes:
 | **user-global** | `~/.claude.json` | No | One database across all projects |
 
 **project-private** is recommended. It writes to `.mcp.json` and adds it to `.gitignore` so credentials never leak to git. Each project gets its own isolated database configuration.
+
+## Multiple Databases
+
+One server entry can serve several databases, including ones on different hosts. The primary connection is always called `default`; each additional database gets an **alias** with its own `DB_{ALIAS}_*` variables, listed in `DB_DATABASES`.
+
+The setup wizard collects these for you (Step 6.5), producing an entry like:
+
+```json
+{
+  "mcpServers": {
+    "mcp-sql-server": {
+      "command": "/home/you/.claude/mcp-servers/mcp-sql-server/.venv/bin/python",
+      "args": ["-m", "mcp_sql_server.server"],
+      "env": {
+        "DB_HOST": "prod-sql", "DB_PORT": "1433",
+        "DB_USER": "svc", "DB_PASSWORD": "...", "DB_NAME": "BDesk",
+        "DB_DRIVER": "ODBC Driver 18 for SQL Server",
+        "DB_ENCRYPT": "true", "DB_TRUST_CERT": "true",
+
+        "DB_DATABASES": "analytics",
+
+        "DB_ANALYTICS_HOST": "analytics-sql",
+        "DB_ANALYTICS_PORT": "1433",
+        "DB_ANALYTICS_USER": "svc",
+        "DB_ANALYTICS_PASSWORD": "...",
+        "DB_ANALYTICS_NAME": "AnalyticsDB",
+        "DB_ANALYTICS_DRIVER": "ODBC Driver 18 for SQL Server",
+        "DB_ANALYTICS_ENCRYPT": "false",
+        "DB_ANALYTICS_TRUST_CERT": "true"
+      }
+    }
+  }
+}
+```
+
+The alias prefix is the uppercased alias (`analytics` -> `DB_ANALYTICS_*`). Aliases must match `[a-zA-Z][a-zA-Z0-9_]{0,63}`.
+
+To target a database, name it in your request -- "list tables in the **analytics** database" passes `database="analytics"` to the tool. Without a name, tools use `default`. `list_databases` shows everything configured.
+
+Restart Claude Code after adding a database.
+
+**Adding one manually:**
+
+```bash
+bash scripts/setup.sh add-database .mcp.json <alias> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]
+```
+
+Re-running with the same alias updates it in place. Re-running the wizard's default-database registration preserves every alias.
+
+**Caveats:**
+
+- An alias requires a non-empty password. A blank one fails validation at startup and breaks *every* database, `default` included, because all connections load together.
 
 ## Available Tools
 
@@ -52,6 +105,8 @@ Once configured, Claude Code gains these 10 MCP tools:
 | `list_procedures` | List stored procedures |
 | `execute_procedure` | Run stored procedure |
 | `list_databases` | List configured connections |
+
+Every tool except `list_databases` accepts a `database` argument to select a configured connection (default: `default`).
 
 ## Companion Plugin
 
