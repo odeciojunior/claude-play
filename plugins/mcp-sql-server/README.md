@@ -36,18 +36,6 @@ The setup wizard offers 3 registration scopes:
 
 **project-private** is recommended. It writes to `.mcp.json` and adds it to `.gitignore` so credentials never leak to git. Each project gets its own isolated database configuration.
 
-## Registration Scopes
-
-The setup wizard offers 3 registration scopes:
-
-| Scope | Credentials Location | Git-tracked? | Use when |
-|-------|---------------------|:---:|----------|
-| **project-private** (default) | `.mcp.json` | No | Each project has its own database |
-| **project-shared** | `.mcp.json` | Yes | Team shares the same dev database |
-| **user-global** | `~/.claude.json` | No | One database across all projects |
-
-**project-private** is recommended. It writes to `.mcp.json` and adds it to `.gitignore` so credentials never leak to git. Each project gets its own isolated database configuration.
-
 ## Available Tools
 
 Once configured, Claude Code gains these 10 MCP tools:
