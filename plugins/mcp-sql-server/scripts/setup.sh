@@ -444,7 +444,7 @@ add_database() {
     fi
 
     # Prefixed configs have no fallback and require a non-empty password. An empty one
-    # raises a validation error at startup that breaks every database, not just this alias.
+    # would leave the alias skipped and silently unavailable at startup, so catch it here.
     if [[ -z "$db_password" ]]; then
         echo "ERROR: A password is required for additional databases (alias '$db_alias')."
         exit 1

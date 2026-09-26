@@ -199,7 +199,7 @@ If no, continue to Step 7. If yes, repeat this loop for each one:
 **Validate before calling the script:**
 - Alias: must match `[a-zA-Z][a-zA-Z0-9_]{0,63}` and must not be `default` — re-prompt if invalid
 - Host, username, database name: must be non-empty
-- **Password: required.** Unlike the default connection, an alias with an empty password fails validation at startup and breaks *every* database, including `default`
+- **Password: required.** An alias with an empty password is skipped at startup and left unavailable — better to catch it now than discover it later
 - Port: a number between 1 and 65535
 - Re-prompt only the invalid field, not the whole set
 
@@ -288,4 +288,4 @@ If setup fails:
 - **pip install fails**: Check internet connectivity; try `pip install git+https://github.com/odeciojunior/mcp-sql-server.git` manually
 - **MCP registration fails**: Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server` and re-run setup
 - **"Unknown database 'x'"**: The alias is not in `DB_DATABASES`. Re-run Step 6.5 for it, then restart Claude Code.
-- **All databases fail at once**: One alias is misconfigured — the whole registry loads together, so a single bad entry breaks `default` too. Check that every alias has a non-empty host, user, password and name.
+- **A database is missing / unavailable**: Its alias is misconfigured (e.g. empty host, user, password or name) and was skipped — other databases, including `default`, keep working. Ask the server to list databases; a misconfigured alias shows `status: "misconfigured"` with a value-free error (e.g. `password: string_too_short`). Fix that alias's env vars and restart Claude Code.
