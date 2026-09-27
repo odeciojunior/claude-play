@@ -104,9 +104,18 @@ Once configured, Claude Code gains these 10 MCP tools:
 | `get_function_definition` | UDF SQL source |
 | `list_procedures` | List stored procedures |
 | `execute_procedure` | Run stored procedure |
-| `list_databases` | List configured connections |
+| `list_databases` | List configured connections and check each is reachable |
 
-Every tool except `list_databases` accepts a `database` argument to select a configured connection (default: `default`).
+Every tool except `list_databases` accepts a `database` argument to select a configured connection (default: `default`). `list_databases` instead takes `probe` (default `true`): it opens a real connection to each database and reports what it found.
+
+| `status` | Meaning |
+|----------|---------|
+| `ok` | Connected and queried successfully |
+| `unreachable` | The database exists in the config but could not be opened -- `error` gives the reason |
+| `misconfigured` | The alias's settings are invalid, so it was never tried |
+| `unknown` | No check was run (`probe=false`) |
+
+`status` never claims a database is reachable without having checked. A database that is offline on the server, or that your login cannot open, reports `unreachable` rather than `ok`.
 
 ## Companion Plugin
 

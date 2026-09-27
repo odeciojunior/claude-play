@@ -257,7 +257,7 @@ Available tools (10):
   - get_function_definition  UDF SQL source
   - list_procedures      List stored procedures
   - execute_procedure    Run stored procedure
-  - list_databases       List configured connections
+  - list_databases       List connections + check each is reachable
 
 Tip: For specialized SQL Server agents, also install:
   claude plugin install sql-server-tools@claude-play
@@ -268,7 +268,7 @@ Then tell the user:
 - If more than one database is configured, explain how to target one: name it in the
   request ("list tables in the analytics database"), which passes `database="analytics"`
   to the tool. Without a name, tools use `default`.
-- `list_databases` shows every configured connection.
+- `list_databases` shows every configured connection and whether each one is actually reachable (`ok`, `unreachable`, `misconfigured`, or `unknown`).
 
 ## Reconfiguration
 
@@ -288,4 +288,8 @@ If setup fails:
 - **pip install fails**: Check internet connectivity; try `pip install git+https://github.com/odeciojunior/mcp-sql-server.git` manually
 - **MCP registration fails**: Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server` and re-run setup
 - **"Unknown database 'x'"**: The alias is not in `DB_DATABASES`. Re-run Step 6.5 for it, then restart Claude Code.
-- **A database is missing / unavailable**: Its alias is misconfigured (e.g. empty host, user, password or name) and was skipped — other databases, including `default`, keep working. Ask the server to list databases; a misconfigured alias shows `status: "misconfigured"` with a value-free error (e.g. `password: string_too_short`). Fix that alias's env vars and restart Claude Code.
+- **A database is missing / unavailable**: Ask the server to list databases — the `status` field distinguishes two different problems, which need different fixes. Other databases, including `default`, keep working either way.
+  - `status: "misconfigured"` — the alias's settings are invalid (e.g. empty host, user, password or name), so it was skipped and never tried. The error is value-free (e.g. `password: string_too_short`). Fix that alias's env vars and restart Claude Code.
+  - `status: "unreachable"` — the settings are fine and the server was contacted, but the database could not be opened. `error` carries the server's reason. Common causes are a database that is OFFLINE, one that has been renamed or dropped, and a login without access to it. Nothing in the plugin config will fix this; it needs attention on the SQL Server itself.
+  - `status: "unknown"` means no check was run, not that anything is wrong.
+- **Every database reports `ok`, even one you know is down**: the installed package predates reachability checking — older versions set `status: "ok"` for any alias whose settings merely parsed, without contacting the server. Re-run this skill to upgrade the venv (install-venv), then restart Claude Code.
