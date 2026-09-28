@@ -31,6 +31,11 @@ plugins/
 docs/
   plans/                    # Design docs and implementation plans
   reports/                  # Deep research reports
+  diagrams/                 # repo-architecture.{md,excalidraw}
+.claude/
+  agents/                   # Repo-local agents (not shipped in plugins)
+  hooks/                    # protect-template, validate-marketplace-json
+  settings.json             # Hook wiring
 ```
 
 ## Plugins
