@@ -67,6 +67,8 @@ Plans and research in `docs/plans/`:
 - Architecture diagrams at `docs/diagrams/repo-architecture.{md,excalidraw}` — update when adding/removing plugins
 - Version lives in two places — bump `plugins/<name>/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` together
 - `mcp-sql-server` `setup.sh install-venv` targets `~/.claude/mcp-servers/mcp-sql-server/.venv` (non-editable, from git HEAD), never a local checkout
+- No CI in this repo: `.claude/hooks/validate-marketplace-json.sh` and the `marketplace-tools` `validate-plugin` skill are the only checks — run them before committing
+- Installed plugins resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`; without a version bump an edit never reaches an installed copy
 
 ## Hooks
 
@@ -81,7 +83,9 @@ Configured in `.claude/settings.json`:
 
 | Agent | Trigger | Description |
 |-------|---------|-------------|
-| plugin-reviewer | "review plugin X" | 3-phase plugin review: structural, content quality, security/policy |
+| plugin-reviewer | "review plugin X" | Repo-local (`.claude/agents/`), not shipped in a plugin: 3-phase structural/content/security review |
+
+Shipped agents live in the plugin that provides them — currently only `sql-server-tools/agents/` (5 SQL Server specialists).
 
 ## Contributing
 
