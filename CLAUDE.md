@@ -65,6 +65,8 @@ Plans and research in `docs/plans/`:
 - Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
 - When adding a plugin, also update: repo `README.md` (plugins table) and repo `CLAUDE.md` (plugins table, design docs)
 - Architecture diagrams at `docs/diagrams/repo-architecture.{md,excalidraw}` — update when adding/removing plugins
+- Version lives in two places — bump `plugins/<name>/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` together
+- `mcp-sql-server` `setup.sh install-venv` targets `~/.claude/mcp-servers/mcp-sql-server/.venv` (non-editable, from git HEAD), never a local checkout
 
 ## Hooks
 
