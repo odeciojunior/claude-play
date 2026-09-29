@@ -14,7 +14,7 @@ claude plugin install productivity-tools@claude-play
 | Skill | Trigger | Description |
 |-------|---------|-------------|
 | deep-researcher | "research X", "investigate Y" | Multi-source internet research producing structured reports |
-| plan-coordinator | "execute this plan", "build execution map" | Builds execution maps from implementation plans |
+| plan-coordinator | "execute this plan", "build execution map", "resume the plan" | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
 | report-analyzer | "analyze this report", "build roadmap from report" | SWOT analysis and strategic roadmap from reports |
 | roadmap-planner | "break down this roadmap", "create deliverables" | Decomposes roadmaps into deliverables with acceptance criteria |
 | mermaid-designer | "create a diagram", "draw a flowchart" | Mermaid diagram generation for documentation |
