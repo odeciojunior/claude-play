@@ -33,6 +33,7 @@ Look for this plan's progress file: `docs/plans/<topic>/progress-*.md` (or legac
 ### Step 1: Load the plan
 
 - Locations: `docs/plans/<topic>/steps-*.md`, `docs/plans/<topic>/*-plan.md`, legacy `docs/plans/*-plan.md`. If several match, ask which one. If a named plan doesn't exist but a close match does, confirm the match before using it. If nothing matches, ask for the plan or offer to write one.
+- Optional plan header line `**Roadmap:** <roadmap folder>`: extract it and record it in the progress file header (`**Roadmap**`; `none` if absent).
 - Extract per step: number, title, description, dependencies, inputs, outputs, **files it creates/modifies**, validation criteria, effort, "If Blocked" guidance.
 - If the plan omits files touched or dependencies, infer them — wave safety depends on both. Files: from the step text, Grep/Glob. Dependencies: step B depends on A when B reads, calls, tests or edits something A creates or changes. Mark inferred values `(inferred)`; when unsure, assume a dependency (serial is slower, a wrong parallel wave is broken).
 - A step whose sub-parts need different capabilities (e.g. "validate, then fix and commit") is split into a read-only part and a writing part, or routed to the writer.

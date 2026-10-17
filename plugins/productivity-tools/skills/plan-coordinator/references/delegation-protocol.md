@@ -15,7 +15,7 @@ Waves are **barriers**: a wave's writing groups launch only after the previous w
 7. **Verify each report** (§ Verification), launch its review gate if it has one, then write the handoff and status per step.
 8. **Wave gate:** when every group in the wave is done (review gates included) and nothing is in flight, run the project's full check once (the build/test command from the Shared Brief). Executors only run their targeted checks. If the gate fails, attribute it before escalating: run each group's targeted check again and diff the failing paths against each group's FILES; the owning group gets a FAIL with the gate output as evidence. If no group owns it, record it in Issues & Decisions and ask the user.
 9. **Inline steps:** run the next wave's inline steps now — between waves, with nothing in flight — then run their Done-means checks.
-10. **Advance:** update `Last COMPLETED Wave`, clear `In-Flight Agents`, set `Next Action`, append a row to the Wave Execution Log, start the next wave.
+10. **Advance:** update `Last COMPLETED Wave`, clear `In-Flight Agents`, set `Next Action`, append a row to the Wave Execution Log; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event "wave N closed (steps …)"; then start the next wave.
 
 ## Context layers
 
@@ -104,4 +104,4 @@ Keep it terse — the progress file is re-read after every compaction.
 
 ## Completion
 
-When every step is PASS or intentionally skipped: run the full check, set `Status: Completed`, add a tier summary (planned vs actual tier, retries, escalations) to Issues & Decisions, save non-obvious lessons to memory if available (SKILL.md Rule 8), and report to the user. Do not commit or push unless the user asked.
+When every step is PASS or intentionally skipped: run the full check, set `Status: Completed`; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event "plan completed"; add a tier summary (planned vs actual tier, retries, escalations) to Issues & Decisions, save non-obvious lessons to memory if available (SKILL.md Rule 8), and report to the user. Do not commit or push unless the user asked.

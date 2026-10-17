@@ -5,6 +5,7 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 ```markdown
 # Execution Progress: [Plan Name]
 **Plan**: docs/plans/<topic>/<plan-file>.md
+**Roadmap**: <roadmap folder> | none
 **Started**: [date] | **Last Updated**: [date]
 **Status**: Awaiting approval | In Progress | Blocked | Completed
 
