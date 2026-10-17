@@ -60,9 +60,11 @@ All keys are required except the optional `vocab.releasedStatuses`; only `files.
 - `formatVersion` changes only with a migration recipe in `roadmap-tracker/references/events.md`. A checker older than the folder's `formatVersion` errors instead of guessing.
 - `integratedStatuses` is the subset of statuses that claim code is on the integration branch.
 - `releasedStatuses` (optional; default `["released", "measured"]` when absent) is the subset of statuses that claim a deliverable shipped in a package; it matters only when `state.md` has a `releases` block (section 6).
+- `blockedStatus` and `discardedStatus` (optional; defaults `"blocked"` and `"discarded"`) are the localized words the tracker writes for those two states. When present, each must be a non-empty string contained in `deliverableStatuses`. A folder created before 1.3.0 adds the word to `deliverableStatuses` and these keys before first use.
+- `releasedStatuses` and `integratedStatuses`, when present, must only contain elements of `deliverableStatuses`. When `releasedStatuses` is absent and neither default (`released`, `measured`) is in `deliverableStatuses`, the checker warns `vocab-default-missing` (only if a `releases` block exists): the released-package check is then inactive, so set `releasedStatuses` to the localized words.
 - Two statuses beyond the delivery line: `blocked` (a `blocked` segment should cite a `BLQ-n` in its note or in Next step) and `discarded` (dropped by a `DEC`; the card is kept, with priority `Won't`). Older format-1 folders that lack them in `deliverableStatuses` keep working; add them to use them.
 - Card priority is not configurable: `Must`, `Should`, `Could`, `Won't`.
-- The checker validates the config before reading anything else, and reports `ERROR config: <key> ...` (exit 1) when: `formatVersion` is not an integer >= 1; any vocab string or array element, or any `tracks` element, is empty or not a string; `deliverableStatuses` or `tracks` is empty; a `limits` value is not a positive number (the string `"5"` is rejected); a `files` value (or `strategy`) is absolute or escapes its allowed root (`files` stay inside the roadmap folder; `strategy` may be `../<file>` but must stay inside the git repository, or inside the folder's parent when there is no git); two roles (including `strategy`) point to the same file.
+- The checker validates the config before reading anything else, and reports `ERROR config: <key> ...` (exit 1) when: `formatVersion` is not an integer >= 1; any vocab string or array element, or any `tracks` element, is empty or not a string; `deliverableStatuses` or `tracks` is empty; a `limits` value is not a positive number (the string `"5"` is rejected); a `files` value (or `strategy`) is absolute or escapes its allowed root (`files` stay inside the roadmap folder; `strategy` may be `../<file>` but must stay inside the git top level when git resolves it, or inside the folder's parent when there is no git); a `releasedStatuses`, `integratedStatuses`, `blockedStatus` or `discardedStatus` value is not in `deliverableStatuses`; two roles (including `strategy`) point to the same file.
 
 ## 3. Anchors and tables
 
@@ -104,7 +106,7 @@ An empty table has its header and separator only. A literal `|` inside a cell is
 
 ## 4. IDs and cell rules
 
-- IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `REQ`, `SRC` and `DEC` citations in the log must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
+- IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `decisions.md` is append-only too and gets the same allowance. `REQ`, `SRC` and `DEC` citations in both must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
 - Status cell (panel): segments separated by `;`, each `[<label>:] <status>[ (note)]`, for example `piece 1: integrated; piece 2: spec (waiting on DEC-004)`. Notes must not contain `;` (nested balanced parentheses are fine). Every status must be in `vocab.deliverableStatuses`.
 - Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). In a shallow clone these git checks are skipped with one `shallow-clone` warning.
 - Coverage cell: the `coverageCovered` word (and at least one deliverable in Deliverables), `coverageOutOfScope: <reason>` (reason required), or the `coverageNeedsClarification` word.
@@ -370,9 +372,11 @@ The generated `README.md` must state the check command, `node <roadmap-folder>/c
 | A branch is integrated or deleted | "in flight" in `state.md` and `log.md` |
 | A paid run or measurement | `measurements.md` and `log.md` |
 | A blocker opens or closes | `state.md` and `critical-path.md` |
+| A package is published | the `releases` block in `state.md` (only if the folder has one), and `log.md` |
+| The "do not do now" list changes | the `donot` block in `state.md` (only if the folder has one) |
 | A piece or phase ends | propose a strategy revision |
 
-The "paid run or measurement" row is dropped when `files.measurements` is `null`. README template:
+The "paid run or measurement" row is dropped when `files.measurements` is `null`; the "package is published" and "do not do now" rows are dropped when `state.md` has no `releases` / `donot` block. README template:
 
 ```markdown
 # <Topic> roadmap -- tracking folder
@@ -391,7 +395,7 @@ Living tracking for the roadmap. Strategy: `<strategy file>`.
 | `roadmap.config.json` | Paths, vocabulary, limits |
 
 ## Check
-Run `node <roadmap-folder>/check-roadmap.mjs` (Node 18 or newer). Exit 1 on errors; warnings pass.
+Run `node <roadmap-folder>/check-roadmap.mjs` (Node 18 or newer). Exit 1 on errors; warnings pass; exit 2 is an unexpected failure (`ERROR internal`). In CI add `--require-git` so that skipped git checks fail instead of passing silently.
 
 ## When to update
 <the table above>
@@ -413,7 +417,7 @@ Errors:
 
 Warnings:
 
-- `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `markers`, `req-card-asymmetry`.
+- `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `vocab-default-missing`, `markers`, `req-card-asymmetry`.
 - `unclosed-fence` (a fenced code block never closes), `invalid-utf8` (a file has invalid UTF-8 bytes).
 - Git: `no-git` (not inside a git repository), `git-unavailable` (git is missing from PATH or failed for a reason other than "not a git repository"), `shallow-clone`, `integration-branch-missing`. With `--require-git`, `no-git` and `git-unavailable` are errors.
 - `checker-stale` (a newer checker exists in the plugin cache).

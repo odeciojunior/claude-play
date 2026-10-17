@@ -263,7 +263,7 @@ export function validateConfig(c, folder = '.', repoRoot = null) {
     if (path.isAbsolute(v) || /^[A-Za-z]:/.test(v) || v.startsWith('/') || v.startsWith('\\')) fail(`${key} must be a relative path, got an absolute one`);
     const abs = path.resolve(base, v);
     const limit = allowParent ? (repoRoot ? path.resolve(repoRoot) : path.dirname(base)) : base;
-    if (!isInside(limit, abs)) fail(`${key} "${v}" escapes ${allowParent ? 'the repository root' : 'the roadmap folder'}`);
+    if (!isInside(limit, abs)) fail(`${key} "${v}" escapes ${allowParent ? (repoRoot ? 'the repository root' : "the roadmap folder's parent (no git)") : 'the roadmap folder'}`);
     return abs;
   };
   const seen = new Map();
@@ -291,6 +291,14 @@ export function validateConfig(c, folder = '.', repoRoot = null) {
   };
   for (const k of VOCAB_ARRAYS) strArray(`vocab.${k}`, c.vocab[k], k === 'deliverableStatuses');
   if ('releasedStatuses' in c.vocab) strArray('vocab.releasedStatuses', c.vocab.releasedStatuses, false);
+  for (const k of ['releasedStatuses', 'integratedStatuses']) {
+    if (k in c.vocab) for (const s of c.vocab[k]) if (!c.vocab.deliverableStatuses.includes(s)) fail(`vocab.${k} element "${s}" is not in vocab.deliverableStatuses`);
+  }
+  for (const k of ['blockedStatus', 'discardedStatus']) {
+    if (!(k in c.vocab)) continue;
+    if (!isNonEmptyString(c.vocab[k])) fail(`vocab.${k} must be a non-empty string`);
+    if (!c.vocab.deliverableStatuses.includes(c.vocab[k])) fail(`vocab.${k} "${c.vocab[k]}" is not in vocab.deliverableStatuses`);
+  }
   strArray('tracks', c.tracks, true);
   if (!c.limits || typeof c.limits !== 'object' || Array.isArray(c.limits)) fail('limits must be an object');
   for (const k of ['nowItems', 'cellChars']) if (!(k in c.limits)) fail(`limits.${k} is required`);
@@ -527,8 +535,8 @@ export function checkRoadmap(r, git, opts = {}) {
   for (const [file, text, role] of scanned) {
     if (scanFences(text, false).unclosed) add('warning', 'unclosed-fence', file, 'a fenced code block is never closed; everything after it is ignored by the checker');
     for (const id of idsIn(scanFences(text, true).text, ID_RE)) {
-      // log.md is append-only: it may cite retired blockers and dropped deliverables
-      if (role === 'log' && (id.startsWith('BLQ-') || /^E\d+$/.test(id))) continue;
+      // log.md and decisions.md are append-only: they may cite retired blockers and dropped deliverables
+      if ((role === 'log' || role === 'decisions') && (id.startsWith('BLQ-') || /^E\d+$/.test(id))) continue;
       if (!defined.has(id)) add('error', 'unknown-id', file, `${id} is cited but not defined`);
     }
   }
@@ -591,6 +599,9 @@ export function checkRoadmap(r, git, opts = {}) {
   // releases: when the block exists, every released deliverable must be in some package
   if (releaseBlock) {
     const released = v.releasedStatuses || ['released', 'measured'];
+    if (!v.releasedStatuses && !released.some((s) => v.deliverableStatuses.includes(s))) {
+      add('warning', 'vocab-default-missing', 'roadmap.config.json', 'releasedStatuses is absent and neither default ("released", "measured") is in deliverableStatuses; the released-package check is inactive');
+    }
     const packaged = new Set();
     releases.forEach((row) => idsIn(row[1], /\bE\d+\b/g).forEach((e) => packaged.add(e)));
     for (const row of panel) {

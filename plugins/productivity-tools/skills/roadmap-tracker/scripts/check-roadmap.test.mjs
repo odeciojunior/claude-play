@@ -11,6 +11,7 @@ import {
   readBlocks,
   parseTable,
   loadRoadmap,
+  validateConfig,
   checkRoadmap,
   createGitAdapter,
   compareVersions,
@@ -1025,4 +1026,55 @@ test('r2-12 bad-header is emitted for a malformed header', () => {
   const r = spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), dir], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /\[bad-header\]/);
+});
+
+
+// ---------- round 3 (1.3.0): cross-cutting review ----------
+
+test('r3-1 config: blockedStatus/discardedStatus optional, non-empty, in deliverableStatuses', () => {
+  assert.doesNotThrow(() => loadRoadmap(setConfig((c) => { c.vocab.blockedStatus = 'blocked'; c.vocab.discardedStatus = 'discarded'; })));
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.blockedStatus = 'bloqueada'))), /^Error: config: vocab\.blockedStatus/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.discardedStatus = 'descartada'))), /^Error: config: vocab\.discardedStatus/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.blockedStatus = ''))), /^Error: config: vocab\.blockedStatus/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.discardedStatus = 5))), /^Error: config: vocab\.discardedStatus/);
+});
+
+test('r3-2 config: releasedStatuses and integratedStatuses elements must be in deliverableStatuses', () => {
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.releasedStatuses = ['lancada']))), /^Error: config: vocab\.releasedStatuses/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.integratedStatuses = ['integrada']))), /^Error: config: vocab\.integratedStatuses/);
+});
+
+test('r3-2 vocab-default-missing: localized vocab without releasedStatuses and a releases block', () => {
+  const loc = (withBlock) => fixture((f) => {
+    const c = JSON.parse(f['roadmap.config.json']);
+    c.vocab.deliverableStatuses = c.vocab.deliverableStatuses.map((s) => (s === 'released' ? 'lancada' : s === 'measured' ? 'medida' : s));
+    c.vocab.integratedStatuses = c.vocab.integratedStatuses.map((s) => (s === 'released' ? 'lancada' : s === 'measured' ? 'medida' : s));
+    f['roadmap.config.json'] = JSON.stringify(c, null, 2);
+    if (withBlock) f['state.md'] += `
+${REL_HEAD}
+<!-- /roadmap:releases -->
+`;
+  });
+  const p = run(loc(true));
+  expectCode(p, 'vocab-default-missing', 'warning');
+  assert.equal(p.filter((x) => x.severity === 'error').length, 0);
+  assert.ok(!codes(run(loc(false))).includes('vocab-default-missing'));
+  assert.ok(!codes(run(fixture((f) => (f['state.md'] += `
+${REL_HEAD}
+<!-- /roadmap:releases -->
+`)))).includes('vocab-default-missing'));
+});
+
+test('r3-3 decisions.md may cite retired BLQ-n and E<n>, but not unknown DEC', () => {
+  const ok = fixture((f) => (f['decisions.md'] += '\nNote: unblocks BLQ-9 and E9 (retired).\n'));
+  assert.ok(!codes(run(ok)).includes('unknown-id'));
+  const bad = fixture((f) => (f['decisions.md'] += '\nNote: see DEC-999.\n'));
+  expectCode(run(bad), 'unknown-id', 'error');
+});
+
+test('r3-4 strategy containment message names git root only when git resolved it', () => {
+  const cfg = JSON.parse(fs.readFileSync(path.join(VALID, 'roadmap.config.json'), 'utf8'));
+  cfg.strategy = '../../../../../../x.md';
+  assert.throws(() => validateConfig(cfg, VALID, null), /parent \(no git\)/);
+  assert.throws(() => validateConfig(cfg, VALID, VALID), /repository root/);
 });
