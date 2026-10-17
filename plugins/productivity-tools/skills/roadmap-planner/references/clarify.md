@@ -121,8 +121,8 @@ Record only what the user actually answered. When the user accepts a recommendat
 
 ## 8. Boundary with brainstorming
 
-Clarification stays at **roadmap level**: objectives, scope and non-goals, constraints, source conflicts, deliverable boundaries. Questions about how one deliverable should be designed (UI details, data model, algorithm, library choice) belong to `superpowers:brainstorming`, which runs per deliverable. Do not ask them now: record each as an "Open questions" entry on that deliverable's card (prefixed with its `E<n>`), not as a `DEC` and not as a blocker unless it gates another deliverable.
+Clarification stays at **roadmap level**: objectives, scope and non-goals, constraints, source conflicts, deliverable boundaries. Questions about how one deliverable should be designed (UI details, data model, algorithm, library choice) belong to `superpowers:brainstorming`, which runs per deliverable. Do not ask them now: record each as an entry in the strategy's "Open questions" section, prefixed `E<n>:` (the card template has no open-questions slot), not as a `DEC` and not as a blocker unless it gates another deliverable.
 
 ## 9. Light mode
 
-When Step 0 chose light mode: at most 3 questions, one round, no further rounds. Pick the three highest-priority candidates from §3 (source conflicts and unsourced numbers first); everything else is recorded as an assumption or open question (§7). The stop rule of §6 still applies earlier.
+When Step 0 chose light mode: at most 3 clarification questions (the mode question itself does not count), one round, no further rounds. Pick the three highest-priority candidates from §3 (source conflicts and unsourced numbers first); everything else is recorded as an assumption or open question (§7). The stop rule of §6 still applies earlier.

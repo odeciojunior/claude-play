@@ -43,25 +43,26 @@ Take every file template from `references/formats.md`; this file does not repeat
 Copy this checklist into your working notes and tick it off:
 
 ```
-- [ ] 0 Resume check      - [ ] 5 Prioritize
+- [ ] 0 Mode + resume     - [ ] 5 Prioritize
 - [ ] 1 Intake + sources  - [ ] 6 Write files + copy checker
 - [ ] 2 Clarify           - [ ] 7 Verify (checker, reviewer)
 - [ ] 3 Requirements      - [ ] 8 Hand off
 - [ ] 4 Decompose
 ```
 
-### Step 0: Mode and resume check
+### Step 0: Resume check and mode
 
-**Mode.** Ask ONE question, with a recommended answer inferred from the request: "Is this a multi-deliverable initiative that will run for weeks?" Yes -> **full** mode; no -> **light** mode. Record the mode in the handoff.
+**Order.** First resolve the roadmap folder and check it (table below); only then ask the mode question.
+
+**Mode.** Ask ONE question, with a recommended answer inferred from the request: "Is this a multi-deliverable initiative that will run for weeks?" Yes -> **full** mode; no -> **light** mode. This question does not count toward the light mode's ≤3 clarification questions. Record the mode in the handoff and in the strategy changelog's v1.0 entry ("light mode" or "full mode"), so a later session can recover it.
 
 | | Full | Light |
 |---|------|-------|
 | Clarification | ≤5 questions per round, more rounds with consent | ≤3 questions, one round |
 | Sources | Discovered and read (Step 1) | Only those passed |
-| Card | All attributes of `formats.md` §5 | Acceptance (≥2), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track=engineering`, `critical` from the DAG |
+| Card | All attributes of `formats.md` §5 | Acceptance (≥2), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track` = the first entry of the config's `tracks`, `critical` from the DAG; critical cards still get ≥1 risk line |
 | Fresh-context reviewer | Yes (Step 7) | No; the handoff says none ran |
 | REQ/SRC traceability, vendored checker, tracker | Yes | Yes |
-
 
 Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a short kebab-case slug).
 
@@ -94,7 +95,7 @@ Also settle now:
 
 ### Step 2: Clarify
 
-Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as open questions on the card for `superpowers:brainstorming` (`clarify.md` §8).
+Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as "Open questions" entries in the strategy, prefixed `E<n>:`, for `superpowers:brainstorming` (`clarify.md` §8).
 
 Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give.
 
@@ -104,13 +105,13 @@ Extract `REQ-NNN` from the source summaries and the answers, per `references/dec
 
 ### Step 4: Decompose
 
-Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk. Light mode: cards are minimal (acceptance ≥2, `depends`, `reqs`) with the defaults of the Step 0 table.
+Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk. Light mode: cards are minimal (acceptance ≥2, `depends`, `reqs`) with the defaults of the Step 0 table; critical cards still get ≥1 risk.
 
 Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways. A `needs-clarification` requirement still lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed and keeps it traced.
 
 ### Step 5: Prioritize
 
-MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (`decompose.md` §8). Challenge the user when more than half of the deliverables are `Must`. Use WSJF only to order deliverables the DAG leaves unconstrained, and only with inputs the user supplies. No RICE. Size is a range with its basis, or `not estimated`.
+MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (`decompose.md` §8). Challenge the user when more than half of the deliverables are `Must` (full mode only; in light mode every card is `Must` by default, so skip the challenge and say in the handoff that the priorities were not challenged). Use WSJF only to order deliverables the DAG leaves unconstrained, and only with inputs the user supplies. No RICE. Size is a range with its basis, or `not estimated`.
 
 ### Step 6: Write the files
 
@@ -119,7 +120,7 @@ Write every file from its template in `references/formats.md`, in the project's 
 | File | Content at creation | formats.md |
 |------|---------------------|------------|
 | Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
-| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab, tracks, limits | §2 |
+| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
 | `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
 | `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (`not-started`; `blocked` citing its `BLQ-n` when it waits on a blocker from Step 2), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
 | `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
