@@ -1,6 +1,6 @@
 ---
 name: plan-coordinator
-description: "Use when executing a multi-step implementation plan from docs/plans/ with subagents and you want per-step model-tier routing (haiku/sonnet/opus by complexity), conflict-free parallel waves, and a persistent progress file that survives compaction — or when resuming such a plan from its progress file. Builds the Execution Map, gets approval, then runs the waves."
+description: "Use when executing a multi-step implementation plan from docs/plans/ or docs/superpowers/plans/ with subagents and you want per-step model-tier routing (haiku/sonnet/opus by complexity), conflict-free parallel waves, and a persistent progress file that survives compaction — or when resuming such a plan from its progress file. Builds the Execution Map, gets approval, then runs the waves."
 ---
 
 # Plan Coordinator
@@ -20,7 +20,7 @@ Two phases, both run by the main conversation:
 
 ### Step 0: Resume check
 
-Look for this plan's progress file: `docs/plans/<topic>/progress-*.md` (or legacy `docs/plans/*-progress.md`).
+Look for this plan's progress file: `docs/plans/<topic>/progress-*.md` (or legacy `docs/plans/*-progress.md`). `<topic>` is the plan's folder under `docs/plans/`; for a plan file directly in `docs/plans/` or `docs/superpowers/plans/`, it is the file name without the `YYYY-MM-DD-` prefix and `.md`.
 
 | Progress file state | Action |
 |---------------------|--------|
