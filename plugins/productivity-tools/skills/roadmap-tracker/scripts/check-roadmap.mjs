@@ -7,8 +7,10 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const FORMAT_VERSION = 1;
-export const CHECKER_VERSION = '1.2.0';
+// Line 1 of this file is the single source of the version.
+const SELF_HEADER = readHeader(fileURLToPath(import.meta.url));
+export const FORMAT_VERSION = SELF_HEADER ? SELF_HEADER.format : 0;
+export const CHECKER_VERSION = SELF_HEADER ? SELF_HEADER.version : '0.0.0';
 
 const ROLE_KEYS = ['readme', 'state', 'decisions', 'log', 'criticalPath', 'measurements', 'sources', 'requirements'];
 const VOCAB_STRINGS = [
@@ -453,31 +455,32 @@ export function checkRoadmap(r, git) {
   const shallow = typeof git.isShallow === 'function' && git.isShallow();
   if (shallow) add('warning', 'shallow-clone', 'roadmap.config.json', 'shallow clone: commit existence and ancestry checks skipped; fetch full history');
   const shaSeen = new Set();
-  const checkShas = (file, cell) => {
+  const checkShas = (file, cell, severity) => {
     for (const sha of shasIn(cell)) {
       if (shaSeen.has(`${file}:${sha}`)) continue;
       shaSeen.add(`${file}:${sha}`);
-      if (!git.commitExists(sha)) add('error', 'sha-missing', file, `commit ${sha} does not exist in this repository`);
+      if (!git.commitExists(sha)) add(severity, 'sha-missing', file, `commit ${sha} does not exist in this repository`);
     }
   };
   if (!shallow) {
-    panel.forEach((row) => checkShas(fileName('state'), row[2]));
-    logRows.forEach((row) => checkShas(fileName('log'), row[3]));
+    panel.forEach((row) => checkShas(fileName('state'), row[2], 'error'));
+    logRows.forEach((row) => checkShas(fileName('log'), row[3], 'warning'));
   }
 
   const integratedRows = panel.filter((row) => parseStatus(row[1]).some((s) => v.integratedStatuses.includes(s)) && shasIn(row[2]).length > 0);
   if (!shallow && integratedRows.length > 0) {
     const local = cfg.integrationBranch;
     const remote = `origin/${cfg.integrationBranch}`;
-    const ref = git.branchExists(local) ? local : git.branchExists(remote) ? remote : null;
-    if (ref === null) {
+    const refs = [local, remote].filter((b) => git.branchExists(b));
+    if (refs.length === 0) {
       add('warning', 'integration-branch-missing', 'roadmap.config.json', `neither ${local} nor ${remote} exists; integration checks skipped`);
     } else {
       for (const row of integratedRows) {
-        const bad = shasIn(row[2]).filter((sha) => git.commitExists(sha) && !git.isAncestor(sha, ref));
-        if (bad.length > 0) {
+        // at least one existing SHA must be on the integration branch (local or origin); siblings only need to exist
+        const existing = shasIn(row[2]).filter((sha) => git.commitExists(sha));
+        if (existing.length > 0 && !existing.some((sha) => refs.some((ref) => git.isAncestor(sha, ref)))) {
           const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
-          add('error', 'not-integrated', fileName('state'), `${id} is marked integrated, but ${bad.join(', ')} is not an ancestor of ${ref}`);
+          add('error', 'not-integrated', fileName('state'), `${id} is marked integrated, but none of ${existing.join(', ')} is an ancestor of ${refs.join(' or ')}`);
         }
       }
     }

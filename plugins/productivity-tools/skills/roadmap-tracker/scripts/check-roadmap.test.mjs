@@ -333,9 +333,9 @@ test('git: sha-missing in panel evidence', () => {
   expectCode(run(dir, createGitAdapter(dir)), 'sha-missing', 'error');
 });
 
-test('git: sha-missing in log evidence', () => {
+test('git: sha-missing in log evidence is only a warning', () => {
   const dir = repoFixture((f) => rep(f, 'log.md', '| `strategy.md` |', '| `deadbeef1234` |'));
-  expectCode(run(dir, createGitAdapter(dir)), 'sha-missing', 'error');
+  expectCode(run(dir, createGitAdapter(dir)), 'sha-missing', 'warning');
 });
 
 test('git: valid fixture in a repo has no problems', () => {
@@ -631,11 +631,6 @@ function scriptCopy(line1) {
   return file;
 }
 
-test('header: exported constants equal the repo copy line 1', () => {
-  const m = /^\/\/ check-roadmap (\S+) format (\d+)$/.exec(fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0]);
-  assert.equal(m[1], CHECKER_VERSION);
-  assert.equal(Number(m[2]), FORMAT_VERSION);
-});
 
 test('header: --version reads the running file line 1', () => {
   const r = spawnSync(process.execPath, [scriptCopy('// check-roadmap 1.1.0 format 1'), '--version'], { encoding: 'utf8' });
@@ -657,4 +652,98 @@ test('header: malformed line 1 makes --version fail with an ERROR line', () => {
   const r = spawnSync(process.execPath, [scriptCopy('// check-roadmap banana'), '--version'], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /^ERROR /m);
+});
+
+// ---------- final review fixes ----------
+
+test('header: exported constants derive from line 1 of the running file', async () => {
+  const m = /^\/\/ check-roadmap (\S+) format (\d+)$/.exec(fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0]);
+  assert.equal(m[1], CHECKER_VERSION);
+  assert.equal(Number(m[2]), FORMAT_VERSION);
+  const copy = scriptCopy('// check-roadmap 1.9.0 format 3');
+  const mod = await import(pathToFileURL(copy).href);
+  assert.equal(mod.CHECKER_VERSION, '1.9.0');
+  assert.equal(mod.FORMAT_VERSION, 3);
+});
+
+function withFeatCommit(dir) {
+  const a = git(dir, 'rev-parse', 'HEAD');
+  git(dir, 'checkout', '-q', '-b', 'feat');
+  fs.writeFileSync(path.join(dir, 'feature.txt'), 'x');
+  git(dir, 'add', 'feature.txt');
+  git(dir, 'commit', '-q', '-m', 'feature');
+  const b = git(dir, 'rev-parse', 'HEAD');
+  git(dir, 'checkout', '-q', 'main');
+  return { a, b };
+}
+
+function setE1(dir, status, evidence) {
+  const state = fs.readFileSync(path.join(dir, 'state.md'), 'utf8');
+  const lines = state.split('\n').map((l) => (l.startsWith('| E1 |') ? `| E1 | ${status} | ${evidence} | Next |` : l));
+  fs.writeFileSync(path.join(dir, 'state.md'), lines.join('\n'));
+}
+
+test('final1: per-piece status needs only one integrated SHA; siblings only need to exist', () => {
+  const dir = repoFixture();
+  const { a, b } = withFeatCommit(dir);
+  setE1(dir, 'piece 1: integrated; piece 2: on-branch', `\`${a}\` \`${b}\``);
+  assert.deepEqual(run(dir, createGitAdapter(dir)), []);
+  setE1(dir, 'piece 1: integrated; piece 2: on-branch', `\`${b}\` \`deadbeef1234\``);
+  const codesNow = codes(run(dir, createGitAdapter(dir)));
+  assert.ok(codesNow.includes('not-integrated') || codesNow.includes('sha-missing'));
+  setE1(dir, 'integrated', `\`${b}\``);
+  expectCode(run(dir, createGitAdapter(dir)), 'not-integrated', 'error');
+});
+
+test('final2: sha-missing in the panel stays an error, in the log is a warning', () => {
+  const dir = repoFixture((f) => {
+    rep(f, 'state.md', '`docs/spec-e1.md`', '`deadbeef1234`');
+    rep(f, 'log.md', '| `strategy.md` |', '| `cafebabe5678` |');
+  });
+  const problems = run(dir, createGitAdapter(dir));
+  const sev = (file) => problems.find((p) => p.code === 'sha-missing' && p.file === file).severity;
+  assert.equal(sev('state.md'), 'error');
+  assert.equal(sev('log.md'), 'warning');
+});
+
+test('final3: a stale local branch is fine when origin/<branch> contains the SHA', () => {
+  const dir = repoFixture();
+  const { b } = withFeatCommit(dir);
+  git(dir, 'update-ref', 'refs/remotes/origin/main', b);
+  setE1(dir, 'integrated', `\`${b}\``);
+  assert.deepEqual(run(dir, createGitAdapter(dir)), []);
+  git(dir, 'update-ref', '-d', 'refs/remotes/origin/main');
+  expectCode(run(dir, createGitAdapter(dir)), 'not-integrated', 'error');
+});
+
+test('final5: the fixture has a Phases section', () => {
+  assert.match(fs.readFileSync(path.join(VALID, 'strategy.md'), 'utf8'), /^## Phases$/m);
+});
+
+test('final5: a roadmap assembled verbatim from the formats.md templates has 0 errors', (t) => {
+  const formats = path.join(here, '..', '..', 'roadmap-planner', 'references', 'formats.md');
+  if (!fs.existsSync(formats)) return t.skip('formats.md not found');
+  const text = fs.readFileSync(formats, 'utf8').replace(/\r\n/g, '\n');
+  const blocks = [...text.matchAll(/^(`{3,})(\w*)\n([\s\S]*?)^\1[ \t]*$/gm)].map((m) => m[3]);
+  const pick = (needle) => {
+    const b = blocks.find((x) => x.includes(needle));
+    assert.ok(b, `no template containing ${needle}`);
+    return b;
+  };
+  const card = pick('<!-- roadmap:card');
+  const files = {
+    'roadmap.config.json': pick('"formatVersion"').replace(/"strategy":\s*"[^"]*"/, '"strategy": "strategy.md"'),
+    'strategy.md': pick('<!-- roadmap:version').replace('<one card per deliverable, see below>', card),
+    'state.md': pick('<!-- roadmap:now'),
+    'decisions.md': pick('<!-- roadmap:decisions'),
+    'log.md': pick('<!-- roadmap:log'),
+    'sources.md': pick('<!-- roadmap:sources'),
+    'requirements.md': pick('<!-- roadmap:requirements'),
+    'critical-path.md': pick('graph LR'),
+    'README.md': pick('# <Topic> roadmap'),
+  };
+  const dir = tmp();
+  for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body.split('<ISO date>').join('2026-01-01'));
+  const problems = run(dir, null);
+  assert.deepEqual(problems.filter((p) => p.severity === 'error'), []);
 });

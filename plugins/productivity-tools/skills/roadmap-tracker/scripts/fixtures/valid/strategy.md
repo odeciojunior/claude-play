@@ -33,6 +33,13 @@ Build the thinnest end-to-end flow first, then widen it.
 | E2 | Main flow | Main flow | E1 |
 | E3 | Reports | Main flow | E1, E2 |
 
+## Phases
+
+| Phase (outcome) | Entry criteria | Exit criteria | Deliverables |
+|---|---|---|---|
+| A thin end-to-end path works | Roadmap approved | One item travels input to storage and back | E1 |
+| Users complete the main flow | The thin path is integrated | A user completes the main flow and sees reports | E2, E3 |
+
 ## Deliverables
 
 <!-- roadmap:card id=E1 phase=skeleton track=engineering priority=Must size="not estimated" depends=- reqs=REQ-001 critical=true -->

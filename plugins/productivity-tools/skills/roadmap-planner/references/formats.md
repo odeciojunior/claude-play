@@ -98,7 +98,7 @@ An empty table has its header and separator only. A literal `|` inside a cell is
 
 - IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `REQ`, `SRC` and `DEC` citations in the log must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
 - Status cell (panel): segments separated by `;`, each `[<label>:] <status>[ (note)]`, for example `piece 1: integrated; piece 2: spec (waiting on DEC-004)`. Notes must not contain `;` (nested balanced parentheses are fine). Every status must be in `vocab.deliverableStatuses`.
-- Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA must exist; a panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and its SHAs must be ancestors of the integration branch. In a shallow clone these git checks are skipped with one `shallow-clone` warning.
+- Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). In a shallow clone these git checks are skipped with one `shallow-clone` warning.
 - Coverage cell: the `coverageCovered` word (and at least one deliverable in Deliverables), `coverageOutOfScope: <reason>` (reason required), or the `coverageNeedsClarification` word.
 - Decision Status: `decisionInForce`, `decisionPending`, or `decisionSupersededBy DEC-NNN` (the target must exist).
 - Contradicts cell: empty, `-` or `—` when the decision fits the roadmap; otherwise it names the section or deliverable it overrides. An in-force decision with a filled cell is *absorbed* once the strategy text cites its ID.
@@ -199,10 +199,10 @@ See sources.md.
 A deliverable ends at "gets its own spec and plan"; tasks are out of scope. Card template:
 
 ```markdown
-<!-- roadmap:card id=E2 phase=main-flow track=engineering priority=Must size="not estimated" depends=E1 reqs=REQ-001,REQ-002 critical=false -->
-### E2 -- Title
+<!-- roadmap:card id=E1 phase=<phase> track=engineering priority=Must size="not estimated" depends=- reqs=REQ-001 critical=false -->
+### E1 -- Title
 
-Why: REQ-001, REQ-002. One or two sentences of purpose.
+Why: REQ-001. One or two sentences of purpose.
 
 Pieces (vertical slices, each shippable alone):
 
@@ -222,7 +222,7 @@ Definition of done: <verifiable condition>.
 <!-- /roadmap:card -->
 ```
 
-Card attrs: `depends` and `reqs` are comma lists or `-`; `critical` is `true` or `false`; `track` is one of `tracks`; `priority` is MoSCoW; `size` is a range with its basis, or `"not estimated"`. At least one `REQ`, at least two acceptance items, one panel row per card. A critical card needs at least one risk (warning). Specs and plans are not in the card; the panel points to them.
+The template is the first card; for later cards change `id`, list earlier cards in `depends` and add the matching `REQ` ids. Card attrs: `depends` and `reqs` are comma lists or `-`; `critical` is `true` or `false`; `track` is one of `tracks`; `priority` is MoSCoW; `size` is a range with its basis, or `"not estimated"`. At least one `REQ`, at least two acceptance items, one panel row per card. A critical card needs at least one risk (warning). Specs and plans are not in the card; the panel points to them.
 
 ## 6. State, decisions, log
 
@@ -291,6 +291,7 @@ Templates:
 | ID | Source | What it is | Read on | Reliability |
 |---|---|---|---|---|
 | SRC-01 | `<path or URL>` | <what it is> | <ISO date> | <note> |
+| SRC-02 | `<path or URL>` | <what it is> | <ISO date> | <note> |
 <!-- /roadmap:sources -->
 
 ## Conflicts
@@ -314,7 +315,7 @@ Templates:
 
 ```mermaid
 graph LR
-  E1 --> E2
+  E1
 ```
 
 Critical path: E1. Next gate per track: <gate>.
@@ -368,7 +369,7 @@ Run `node <roadmap-folder>/check-roadmap.mjs` (Node 18 or newer). Exit 1 on erro
 
 ## 9. What the checker enforces
 
-Errors: `format-version`, `unknown-id`, `duplicate-id`, `bad-status`, `now-limit`, `cell-limit`, `log-order`, `banned-phrase`, `missing-evidence`, `uncovered-req`, `card-no-req`, `card-acceptance`, `card-no-panel-row`, `panel-unknown-deliverable`, `dependency-cycle`, `superseded-link`, `unknown-track`, `bad-priority`, `missing-block`, `unclosed-block`, `bad-row`, `integrated-no-sha`, and with git: `sha-missing`, `not-integrated`, `branch-live-missing`, `branch-deleted-exists`.
+Errors: `format-version`, `unknown-id`, `duplicate-id`, `bad-status`, `now-limit`, `cell-limit`, `log-order`, `banned-phrase`, `missing-evidence`, `uncovered-req`, `card-no-req`, `card-acceptance`, `card-no-panel-row`, `panel-unknown-deliverable`, `dependency-cycle`, `superseded-link`, `unknown-track`, `bad-priority`, `missing-block`, `unclosed-block`, `bad-row`, `integrated-no-sha`, and with git: `sha-missing`, `not-integrated`, `branch-live-missing`, `branch-deleted-exists`. A `sha-missing` found in `log.md` is a warning, not an error.
 
 Warnings: `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `markers`, `req-card-asymmetry`, `no-git`, `shallow-clone`, `integration-branch-missing`, `checker-stale`.
 

@@ -47,7 +47,7 @@ Checker: a filled Contradicts on an in-force decision → `contradiction-unabsor
 
 1. `state.md` panel row of the deliverable:
    - Status: per piece, `piece 1: on-branch; piece 2: spec` (segment rules in formats.md § 4). Code merged to the integration branch → § 3 instead.
-   - Evidence: backticked SHAs, the spec or plan path, the progress file path.
+   - Evidence: backticked SHAs, the spec or plan path, the progress file path. A SHA of a piece still on a branch only needs to exist. Once any piece is integrated, the Evidence also carries the SHA that entered the integration branch (§ 3).
    - Next step: the next concrete action.
 2. `now`: remove the finished item, add the next one.
 3. `log.md`: "E<n> piece <k> closed (<status>)", evidence = SHA or path.
@@ -60,10 +60,10 @@ Checker: `bad-status` (word not in vocab), `integrated-no-sha`, `sha-missing`, `
 
 **When:** a branch with roadmap work is merged into the configured `integrationBranch`.
 
-1. Get the SHA on the integration branch (the merge commit or the merged tip); ask for it if git cannot show it. Verify with `git cat-file -e <sha>^{commit}` and `git merge-base --is-ancestor <sha> <integrationBranch>` (fall back to `origin/<integrationBranch>`). Not an ancestor → do not mark integrated; tell the user.
-2. `state.md` panel: the integrated word (or `released` / `measured` words when the user says so) for the pieces it carries, the SHA in backticks in Evidence.
+1. Get the SHA that entered the integration branch (the merge commit, or the merged tip for a fast-forward or squash result); ask for it if git cannot show it. Verify with `git cat-file -e <sha>^{commit}` and `git merge-base --is-ancestor <sha> <ref>`, where `<ref>` is the local `integrationBranch` or `origin/<integrationBranch>`: either one passing is enough, so a stale local branch is fine (the checker also accepts either). Neither passes → do not mark integrated; tell the user.
+2. `state.md` panel: the integrated word (or `released` / `measured` words when the user says so) for the pieces it carries. Put that SHA in backticks in Evidence, alongside any branch SHAs of pieces not yet integrated. The checker needs at least one Evidence SHA that is an ancestor of the integration ref when the row has an integrated segment; the other SHAs only need to exist.
 3. `state.md` "in flight": the branch stays `vocab.branchLive` while it exists; deleted → § 4.
-4. `log.md`: "E<n> piece <k> integrated into <branch>", evidence the SHA.
+4. `log.md`: "E<n> piece <k> integrated into <branch>", evidence the SHA. A log SHA that no longer exists (a deleted or squashed branch) is only a `sha-missing` warning, so old log rows stay as written.
 5. Then § 2 step 4 (end of piece or phase?).
 
 Checker: `not-integrated`, `sha-missing`, `integrated-no-sha`; `shallow-clone` or `integration-branch-missing` warnings mean the ancestry was not verified: say so in the report.
@@ -163,7 +163,7 @@ On approval, in this order: strategy (`version` anchor, title, changelog entry l
 
 **When:** cold start (SKILL.md Step 2), the checker warns `checker-stale`, or the user asks.
 
-1. Versions: line 1 of `<base>/scripts/check-roadmap.mjs` and of `<folder>/check-roadmap.mjs`, header `// check-roadmap <version> format <n>`. Cross-check with `node <file> --version`; the header wins. Plugin's not newer → stop.
+1. Versions: line 1 of `<base>/scripts/check-roadmap.mjs` and of `<folder>/check-roadmap.mjs`, header `// check-roadmap <version> format <n>`. `node <file> --version` prints the same `<version> format <n>` from that line. Plugin's not newer → stop.
 2. `node "<base>/scripts/check-roadmap.mjs" "<folder>"`; read the exit code and the summary line `check-roadmap: N error(s), M warning(s)`.
 3. Exit 0 → copy the plugin's file over the vendored one (`cp`, byte for byte), log "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, remove any "checker … available" pending item.
 4. Exit 1 → keep the vendored copy, add or update the pending item "(maintainer) checker <new> available: N errors to fix". Show the errors in the report. Fixing them is a separate request.

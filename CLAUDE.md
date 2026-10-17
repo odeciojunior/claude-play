@@ -91,6 +91,7 @@ Plans in `docs/plans/`, research in `docs/reports/`:
 - Run the marketplace hook by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | bash .claude/hooks/validate-marketplace-json.sh` — it always exits 0; no output = pass, `{"decision":"block",...}` on stdout = fail. Both hooks need `jq`
 - Test a skill change behaviorally: have a subagent follow it literally on a real input (e.g. a plan in `docs/plans/`), writing output to the scratchpad and listing every ambiguity it hit, then run a read-only adversarial review
 - Installed plugins resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`; without a version bump an edit never reaches an installed copy
+- Changing `productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs` ⇒ bump its line 1 (`// check-roadmap <plugin version> format <n>`) with the plugin version: roadmap folders carry a vendored copy, and the tracker and the copy only detect a newer checker by that header. Bump `format <n>` only with a migration recipe in `roadmap-tracker/references/events.md`. Tests: `node --test plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.test.mjs`
 
 ## Hooks
 

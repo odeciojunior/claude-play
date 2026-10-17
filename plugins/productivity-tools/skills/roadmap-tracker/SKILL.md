@@ -65,7 +65,7 @@ Then apply layers 1 and 3 (Steps 2 and 3) before writing anything.
 
 ### Step 2: Layer 1 -- refresh the vendored checker
 
-Compare the plugin's checker with the vendored copy. The version of each is the one in its line-1 header `// check-roadmap <version> format <n>` (the same header formats.md § 1 defines and the checker's own `checker-stale` warning reads); `node <file> --version` prints the version compiled into the script and is the cross-check, but the header wins if they differ. Compare versions numerically (`1.10.0` > `1.9.0`).
+Compare the plugin's checker with the vendored copy. The version of each is the one in its line-1 header `// check-roadmap <version> format <n>` (the same header formats.md § 1 defines and the checker's own `checker-stale` warning reads); `node <file> --version` reads that same line and prints `<version> format <n>`, so it is a convenient way to read it. Compare versions numerically (`1.10.0` > `1.9.0`).
 
 | Situation | Action |
 |-----------|--------|
