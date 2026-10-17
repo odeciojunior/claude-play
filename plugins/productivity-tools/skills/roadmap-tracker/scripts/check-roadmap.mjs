@@ -1,4 +1,4 @@
-// check-roadmap 1.2.0 format 1
+// check-roadmap 1.3.0 format 1
 // Deterministic checker for roadmap folders (format contract: roadmap-planner/references/formats.md).
 // Single file, Node >= 18, no dependencies, no network. Vendored into each roadmap folder.
 import fs from 'node:fs';
@@ -33,32 +33,135 @@ function escapeRe(s) {
 }
 
 function parseAttrs(s) {
+  // Linear tokenizer: key=value, key="quoted value", and positional tokens (_0, _1, ...).
   const attrs = {};
-  let rest = s || '';
-  rest = rest.replace(/([^\s=]+)=(?:"([^"]*)"|(\S+))/g, (_m, k, q, v) => {
-    attrs[k] = q !== undefined ? q : v;
-    return ' ';
-  });
-  rest.split(/\s+/).filter(Boolean).forEach((tok, i) => {
-    attrs[`_${i}`] = tok;
-  });
+  const str = s || '';
+  const n = str.length;
+  const isWs = (ch) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v';
+  let pos = 0;
+  let positional = 0;
+  while (pos < n) {
+    while (pos < n && isWs(str[pos])) pos++;
+    if (pos >= n) break;
+    let end = pos;
+    while (end < n && !isWs(str[end]) && str[end] !== '=') end++;
+    if (end < n && str[end] === '=' && end > pos) {
+      const key = str.slice(pos, end);
+      let vs = end + 1;
+      if (vs < n && str[vs] === '"') {
+        const close = str.indexOf('"', vs + 1);
+        if (close !== -1) {
+          attrs[key] = str.slice(vs + 1, close);
+          pos = close + 1;
+          continue;
+        }
+      }
+      let ve = vs;
+      while (ve < n && !isWs(str[ve])) ve++;
+      if (ve > vs) {
+        attrs[key] = str.slice(vs, ve);
+        pos = ve;
+        continue;
+      }
+      // "key=" with nothing after: fall through as a positional token
+    }
+    let te = pos;
+    while (te < n && !isWs(str[te])) te++;
+    if (te === pos) te = pos + 1;
+    attrs[`_${positional++}`] = str.slice(pos, te);
+    pos = te;
+  }
   return attrs;
+}
+
+// Blanks fenced code (same length, newlines kept) so offsets stay valid. keepMermaid leaves ```mermaid content intact.
+export function scanFences(text, keepMermaid) {
+  const lines = text.split('\n');
+  let open = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (open === null) {
+      const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (m && !(m[1][0] === '`' && m[2].includes('`'))) {
+        open = { ch: m[1][0], len: m[1].length, keep: keepMermaid && /^\s*mermaid\b/i.test(m[2]) };
+      }
+    } else {
+      const m = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (m && m[1][0] === open.ch && m[1].length >= open.len) open = null;
+      else if (!open.keep) lines[i] = ' '.repeat(line.length);
+    }
+  }
+  return { text: lines.join('\n'), unclosed: open !== null };
+}
+
+// One linear pass over the comments of a text; a comment whose `-->` comes after the next `<!--` is malformed.
+function scanComments(text) {
+  const out = [];
+  let closeAt = -2;
+  let openAt = -2;
+  let i = text.indexOf('<!--');
+  while (i !== -1) {
+    const from = i + 4;
+    if (closeAt !== -1 && closeAt < from) closeAt = text.indexOf('-->', from);
+    if (openAt !== -1 && openAt < from) openAt = text.indexOf('<!--', from);
+    const malformed = closeAt === -1 || (openAt !== -1 && openAt < closeAt);
+    const end = malformed ? (openAt === -1 ? text.length : openAt) : closeAt;
+    out.push({ start: i, innerStart: from, end, after: malformed ? end : closeAt + 3, malformed });
+    if (malformed) i = openAt;
+    else {
+      if (openAt !== -1 && openAt < closeAt + 3) openAt = text.indexOf('<!--', closeAt + 3);
+      i = openAt;
+    }
+  }
+  return out;
+}
+
+const WS_RE = /\s/;
+
+// Position right after leading whitespace of the comment inner text.
+function skipWs(text, from, end) {
+  let k = from;
+  while (k < end && WS_RE.test(text[k])) k++;
+  return k;
 }
 
 export function readBlocks(text, name) {
   text = norm(text);
-  const open = new RegExp(`<!--\\s*roadmap:${escapeRe(name)}(\\s[^]*?)?\\s*-->`, 'g');
-  const close = new RegExp(`<!--\\s*/roadmap:${escapeRe(name)}\\s*-->`, 'g');
+  const scan = scanFences(text, false).text;
+  const comments = scanComments(scan);
+  const openTag = `roadmap:${name}`;
+  const closeTag = `/roadmap:${name}`;
   const out = [];
-  let m;
-  while ((m = open.exec(text)) !== null) {
-    const bodyStart = m.index + m[0].length;
-    close.lastIndex = bodyStart;
-    const c = close.exec(text);
-    const block = { attrs: parseAttrs(m[1]), body: c ? text.slice(bodyStart, c.index) : '' };
-    Object.defineProperty(block, 'closed', { value: Boolean(c), enumerable: false });
+  for (let idx = 0; idx < comments.length; idx++) {
+    const c = comments[idx];
+    const k = skipWs(scan, c.innerStart, c.end);
+    if (!scan.startsWith(openTag, k)) continue;
+    const after = k + openTag.length;
+    if (after < c.end && !WS_RE.test(scan[after])) continue;
+    if (c.malformed) {
+      const block = { attrs: {}, body: '' };
+      Object.defineProperty(block, 'closed', { value: false, enumerable: false });
+      Object.defineProperty(block, 'malformed', { value: true, enumerable: false });
+      out.push(block);
+      continue;
+    }
+    let closer = null;
+    for (let j = idx + 1; j < comments.length; j++) {
+      const d = comments[j];
+      if (d.malformed) continue;
+      const dk = skipWs(scan, d.innerStart, d.end);
+      if (!scan.startsWith(closeTag, dk)) continue;
+      const tail = dk + closeTag.length;
+      if (scan.slice(tail, d.end).trim() === '') {
+        closer = d;
+        idx = j;
+        break;
+      }
+    }
+    const block = { attrs: parseAttrs(scan.slice(after, c.end)), body: closer ? text.slice(c.after, closer.start) : '' };
+    Object.defineProperty(block, 'closed', { value: Boolean(closer), enumerable: false });
+    Object.defineProperty(block, 'malformed', { value: false, enumerable: false });
     out.push(block);
-    if (c) open.lastIndex = c.index + c[0].length;
   }
   return out;
 }
@@ -105,10 +208,6 @@ function stripNote(seg) {
   return s;
 }
 
-function stripFences(text) {
-  return text.replace(/^(```|~~~)[ \t]*([^\n]*)\n[^]*?^\1[ \t]*$/gm, (m, _f, info) => (/^mermaid\b/i.test(info.trim()) ? m : ''));
-}
-
 function parseStatus(cell) {
   return cell
     .split(';')
@@ -134,72 +233,175 @@ function shasIn(cell) {
 
 // ---------- loading ----------
 
-function validateConfig(c) {
+const isNonEmptyString = (x) => typeof x === 'string' && x.trim() !== '';
+
+function samePathKey(p) {
+  const r = path.resolve(p);
+  return process.platform === 'win32' || process.platform === 'darwin' ? r.toLowerCase() : r;
+}
+
+function isInside(root, target) {
+  const rel = path.relative(root, target);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+// `repoRoot` is the git top level when known; without git a strategy may sit in the folder or its parent.
+export function validateConfig(c, folder = '.', repoRoot = null) {
   const fail = (msg) => {
     throw new Error(`config: ${msg}`);
   };
   if (!c || typeof c !== 'object' || Array.isArray(c)) fail('roadmap.config.json must be a JSON object');
-  if (!Number.isInteger(c.formatVersion)) fail('formatVersion must be an integer');
+  if (!Number.isInteger(c.formatVersion) || c.formatVersion < 1) fail('formatVersion must be an integer >= 1');
   if (c.formatVersion > FORMAT_VERSION) return;
-  for (const k of ['language', 'strategy', 'integrationBranch']) {
-    if (typeof c[k] !== 'string' || !c[k]) fail(`${k} must be a non-empty string`);
+  for (const k of ['language', 'integrationBranch']) {
+    if (!isNonEmptyString(c[k])) fail(`${k} must be a non-empty string`);
   }
-  if (!c.files || typeof c.files !== 'object') fail('files must be an object');
+  if (!isNonEmptyString(c.strategy)) fail('strategy must be a non-empty string');
+  if (!c.files || typeof c.files !== 'object' || Array.isArray(c.files)) fail('files must be an object');
+  const base = path.resolve(folder);
+  const relPath = (key, v, allowParent) => {
+    if (path.isAbsolute(v) || /^[A-Za-z]:/.test(v) || v.startsWith('/') || v.startsWith('\\')) fail(`${key} must be a relative path, got an absolute one`);
+    const abs = path.resolve(base, v);
+    const limit = allowParent ? (repoRoot ? path.resolve(repoRoot) : path.dirname(base)) : base;
+    if (!isInside(limit, abs)) fail(`${key} "${v}" escapes ${allowParent ? 'the repository root' : 'the roadmap folder'}`);
+    return abs;
+  };
+  const seen = new Map();
+  const claim = (key, abs) => {
+    const id = samePathKey(abs);
+    if (seen.has(id)) fail(`${key} and ${seen.get(id)} point to the same file`);
+    seen.set(id, key);
+  };
+  claim('strategy', relPath('strategy', c.strategy, true));
   for (const k of ROLE_KEYS) {
     if (!(k in c.files)) fail(`files.${k} is required`);
     const v = c.files[k];
     if (v === null && k === 'measurements') continue;
-    if (typeof v !== 'string' || !v) fail(`files.${k} must be a file name${k === 'measurements' ? ' or null' : ''}`);
+    if (!isNonEmptyString(v)) fail(`files.${k} must be a file name${k === 'measurements' ? ' or null' : ''}`);
+    claim(`files.${k}`, relPath(`files.${k}`, v, false));
   }
-  if (!c.vocab || typeof c.vocab !== 'object') fail('vocab must be an object');
-  for (const k of VOCAB_STRINGS) if (typeof c.vocab[k] !== 'string' || !c.vocab[k]) fail(`vocab.${k} must be a non-empty string`);
-  for (const k of VOCAB_ARRAYS) if (!Array.isArray(c.vocab[k])) fail(`vocab.${k} must be an array`);
-  if (!Array.isArray(c.tracks) || c.tracks.length === 0) fail('tracks must be a non-empty array');
-  if (!c.limits || !(c.limits.nowItems > 0) || !(c.limits.cellChars > 0)) fail('limits.nowItems and limits.cellChars must be positive numbers');
+  if (!c.vocab || typeof c.vocab !== 'object' || Array.isArray(c.vocab)) fail('vocab must be an object');
+  for (const k of VOCAB_STRINGS) if (!isNonEmptyString(c.vocab[k])) fail(`vocab.${k} must be a non-empty string`);
+  const strArray = (key, arr, nonEmpty) => {
+    if (!Array.isArray(arr)) fail(`${key} must be an array`);
+    if (nonEmpty && arr.length === 0) fail(`${key} must not be empty`);
+    arr.forEach((x, i) => {
+      if (!isNonEmptyString(x)) fail(`${key}[${i}] must be a non-empty string`);
+    });
+  };
+  for (const k of VOCAB_ARRAYS) strArray(`vocab.${k}`, c.vocab[k], k === 'deliverableStatuses');
+  if ('releasedStatuses' in c.vocab) strArray('vocab.releasedStatuses', c.vocab.releasedStatuses, false);
+  strArray('tracks', c.tracks, true);
+  if (!c.limits || typeof c.limits !== 'object' || Array.isArray(c.limits)) fail('limits must be an object');
+  for (const k of ['nowItems', 'cellChars']) if (!(k in c.limits)) fail(`limits.${k} is required`);
+  for (const [k, val] of Object.entries(c.limits)) {
+    if (typeof val !== 'number' || !Number.isFinite(val) || val <= 0) fail(`limits.${k} must be a positive number`);
+  }
 }
 
-function readText(file, what) {
+function decodeText(buf) {
   try {
-    return norm(fs.readFileSync(file, 'utf8'));
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), invalid: false };
+  } catch {
+    return { text: new TextDecoder('utf-8').decode(buf), invalid: true };
+  }
+}
+
+function readText(file, what, invalid) {
+  let buf;
+  try {
+    buf = fs.readFileSync(file);
   } catch (e) {
     throw new Error(`config: cannot read ${what} (${file}): ${e.code || e.message}`);
   }
+  const d = decodeText(buf);
+  if (d.invalid && invalid) invalid.push(path.basename(file));
+  return norm(d.text);
 }
 
 export function loadRoadmap(folder) {
+  const invalid = [];
   const cfgFile = path.join(folder, 'roadmap.config.json');
-  const raw = readText(cfgFile, 'roadmap.config.json');
+  const raw = readText(cfgFile, 'roadmap.config.json', invalid);
   let config;
   try {
     config = JSON.parse(raw);
   } catch (e) {
     throw new Error(`config: invalid JSON in roadmap.config.json: ${e.message}`);
   }
-  validateConfig(config);
-  const roadmap = { folder, config, strategyPath: '', strategy: '', files: {}, paths: {} };
+  validateConfig(config, folder, config && config.formatVersion <= FORMAT_VERSION ? gitTopLevel(folder) : null);
+  const roadmap = { folder, config, strategyPath: '', strategy: '', files: {}, paths: {}, invalidUtf8: invalid };
   if (config.formatVersion > FORMAT_VERSION) return roadmap;
   roadmap.strategyPath = path.resolve(folder, config.strategy);
-  roadmap.strategy = readText(roadmap.strategyPath, 'strategy');
+  roadmap.strategy = readText(roadmap.strategyPath, 'strategy', invalid);
   for (const role of ROLE_KEYS) {
     const name = config.files[role];
     roadmap.paths[role] = name;
-    roadmap.files[role] = name === null ? null : readText(path.resolve(folder, name), `files.${role}`);
+    roadmap.files[role] = name === null ? null : readText(path.resolve(folder, name), `files.${role}`, invalid);
   }
   return roadmap;
 }
 
 // ---------- git adapter ----------
 
-function gitRun(folder, args) {
-  return spawnSync('git', ['-C', folder, ...args], { encoding: 'utf8' });
+function gitRun(folder, args, input) {
+  return spawnSync('git', ['-C', folder, ...args], { encoding: 'utf8', input, maxBuffer: 1 << 28 });
 }
 
+function gitTopLevel(folder) {
+  const r = gitRun(folder, ['rev-parse', '--show-toplevel']);
+  return !r.error && r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+}
+
+// Returns null when `folder` is not inside a git repository, `{ unavailable, reason }` when git cannot be used.
 export function createGitAdapter(folder) {
   const probe = gitRun(folder, ['rev-parse', '--is-inside-work-tree']);
-  if (probe.error || probe.status !== 0 || probe.stdout.trim() !== 'true') return null;
+  if (probe.error) return { unavailable: true, reason: probe.error.code || probe.error.message };
+  if (probe.status !== 0) {
+    if (/not a git repository/i.test(probe.stderr || '')) return null;
+    return { unavailable: true, reason: (probe.stderr || '').trim().split('\n')[0] || `git exited ${probe.status}` };
+  }
+  if (probe.stdout.trim() !== 'true') return null;
+
+  const oids = new Map(); // sha as written -> full oid, or null when missing
+  const ancestors = new Map(); // ref -> Set of ancestor oids (built after a few single checks)
+  const singleCalls = new Map();
+  const ANCESTRY_BATCH_AFTER = 4;
+
+  function resolveMany(shas) {
+    const todo = [...new Set(shas)].filter((s) => !oids.has(s));
+    if (todo.length === 0) return;
+    const r = gitRun(folder, ['cat-file', '--batch-check'], todo.map((s) => `${s}^{commit}`).join('\n') + '\n');
+    const lines = r.error || r.status !== 0 ? [] : r.stdout.split('\n');
+    todo.forEach((s, i) => {
+      const m = /^([0-9a-f]{40,64}) commit /.exec(lines[i] || '');
+      oids.set(s, m ? m[1] : null);
+    });
+  }
+
   return {
-    commitExists: (sha) => gitRun(folder, ['cat-file', '-e', `${sha}^{commit}`]).status === 0,
-    isAncestor: (sha, ref) => gitRun(folder, ['merge-base', '--is-ancestor', sha, ref]).status === 0,
+    prefetch: (shas) => resolveMany(shas),
+    commitExists: (sha) => {
+      resolveMany([sha]);
+      return oids.get(sha) !== null;
+    },
+    isAncestor: (sha, ref) => {
+      resolveMany([sha]);
+      const oid = oids.get(sha);
+      if (!oid) return false;
+      if (ancestors.has(ref)) return ancestors.get(ref).has(oid);
+      const n = (singleCalls.get(ref) || 0) + 1;
+      singleCalls.set(ref, n);
+      if (n > ANCESTRY_BATCH_AFTER) {
+        const r = gitRun(folder, ['rev-list', ref]);
+        if (!r.error && r.status === 0) {
+          const set = new Set(r.stdout.split('\n').filter(Boolean));
+          ancestors.set(ref, set);
+          return set.has(oid);
+        }
+      }
+      return gitRun(folder, ['merge-base', '--is-ancestor', oid, ref]).status === 0;
+    },
     isShallow: () => gitRun(folder, ['rev-parse', '--is-shallow-repository']).stdout.trim() === 'true',
     branchExists: (name) =>
       gitRun(folder, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]).status === 0 ||
@@ -209,10 +411,11 @@ export function createGitAdapter(folder) {
 
 // ---------- checks ----------
 
-export function checkRoadmap(r, git) {
+export function checkRoadmap(r, git, opts = {}) {
   const problems = [];
   const add = (severity, code, file, message) => problems.push({ severity, code, file, message });
   const cfg = r.config;
+  for (const f of r.invalidUtf8 || []) add('warning', 'invalid-utf8', f, 'file is not valid UTF-8; invalid bytes were replaced while reading');
 
   if (cfg.formatVersion > FORMAT_VERSION) {
     add('error', 'format-version', 'roadmap.config.json',
@@ -225,19 +428,28 @@ export function checkRoadmap(r, git) {
   const fileName = (role) => r.paths[role] || role;
 
   // ---- block access with structural diagnostics ----
+  // Well-formed blocks of a name; every opener missing its `-->` is reported as malformed-anchor.
+  function blocksOf(text, name, file) {
+    const all = readBlocks(text, name);
+    for (const b of all) {
+      if (b.malformed) add('error', 'malformed-anchor', file, `opener of block roadmap:${name} has no closing --> before the next comment`);
+    }
+    return all.filter((b) => !b.malformed);
+  }
+
   function firstBlock(text, name, file, required = true) {
     if (text === null || text === undefined) return null;
-    const blocks = readBlocks(text, name);
+    const blocks = blocksOf(text, name, file);
     if (blocks.length === 0) {
-      if (required) add('error', 'missing-block', file, `missing block roadmap:${name}`);
+      if (required && !readBlocks(text, name).some((b) => b.malformed)) add('error', 'missing-block', file, `missing block roadmap:${name}`);
       return null;
     }
     if (!blocks[0].closed) add('error', 'unclosed-block', file, `block roadmap:${name} has no closing comment`);
     return blocks[0];
   }
 
-  function tableRows(text, name, file, cols) {
-    const b = firstBlock(text, name, file);
+  function tableRows(text, name, file, cols, required = true) {
+    const b = firstBlock(text, name, file, required);
     if (!b) return [];
     const rows = [];
     parseTable(b.body).forEach((row, i) => {
@@ -247,20 +459,22 @@ export function checkRoadmap(r, git) {
     return rows;
   }
 
-  function listItems(text, name, file) {
-    const b = firstBlock(text, name, file);
+  function listItems(text, name, file, required = true) {
+    const b = firstBlock(text, name, file, required);
     return b ? parseList(b.body) : [];
   }
 
   // ---- strategy: version and cards ----
-  if (readBlocks(r.strategy, 'version').length === 0) add('error', 'missing-block', strategyName, 'missing roadmap:version anchor');
+  if (blocksOf(r.strategy, 'version', strategyName).length === 0 && !readBlocks(r.strategy, 'version').some((b) => b.malformed)) {
+    add('error', 'missing-block', strategyName, 'missing roadmap:version anchor');
+  }
 
   const cards = [];
-  for (const b of readBlocks(r.strategy, 'card')) {
+  for (const b of blocksOf(r.strategy, 'card', strategyName)) {
     if (!b.closed) add('error', 'unclosed-block', strategyName, `card ${b.attrs.id || '?'} has no closing comment`);
     const list = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
-    const acc = readBlocks(b.body, 'acceptance')[0];
-    const risks = readBlocks(b.body, 'risks')[0];
+    const acc = blocksOf(b.body, 'acceptance', strategyName)[0];
+    const risks = blocksOf(b.body, 'risks', strategyName)[0];
     cards.push({
       id: b.attrs.id || '',
       attrs: b.attrs,
@@ -277,6 +491,9 @@ export function checkRoadmap(r, git) {
   const panel = tableRows(r.files.state, 'panel', fileName('state'), 4);
   const blockers = tableRows(r.files.state, 'blockers', fileName('state'), 5);
   const inflight = tableRows(r.files.state, 'inflight', fileName('state'), 3);
+  const donotItems = listItems(r.files.state, 'donot', fileName('state'), false);
+  const releaseBlock = r.files.state ? readBlocks(r.files.state, 'releases').some((b) => !b.malformed) : false;
+  const releases = tableRows(r.files.state, 'releases', fileName('state'), 6, false);
   const nowItems = listItems(r.files.state, 'now', fileName('state'));
   const pendingItems = listItems(r.files.state, 'pending', fileName('state'));
   const decisions = tableRows(r.files.decisions, 'decisions', fileName('decisions'), 9);
@@ -308,7 +525,8 @@ export function checkRoadmap(r, git) {
   const scanned = [[strategyName, r.strategy, 'strategy']];
   for (const role of ROLE_KEYS) if (r.files[role] !== null && r.files[role] !== undefined) scanned.push([fileName(role), r.files[role], role]);
   for (const [file, text, role] of scanned) {
-    for (const id of idsIn(stripFences(text), ID_RE)) {
+    if (scanFences(text, false).unclosed) add('warning', 'unclosed-fence', file, 'a fenced code block is never closed; everything after it is ignored by the checker');
+    for (const id of idsIn(scanFences(text, true).text, ID_RE)) {
       // log.md is append-only: it may cite retired blockers and dropped deliverables
       if (role === 'log' && (id.startsWith('BLQ-') || /^E\d+$/.test(id))) continue;
       if (!defined.has(id)) add('error', 'unknown-id', file, `${id} is cited but not defined`);
@@ -357,7 +575,31 @@ export function checkRoadmap(r, git) {
   panel.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `panel row ${i + 1}`, c)));
   blockers.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `blockers row ${i + 1}`, c)));
   inflight.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `inflight row ${i + 1}`, c)));
-  [...nowItems, ...pendingItems].forEach((t) => limitCell(fileName('state'), 'list item', t));
+  releases.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `releases row ${i + 1}`, c)));
+  [...nowItems, ...pendingItems, ...donotItems].forEach((t) => limitCell(fileName('state'), 'list item', t));
+
+  donotItems.forEach((t) => {
+    if (!/\b(?:BLQ-\d+|DEC-\d+)\b/.test(t)) add('error', 'donot-no-ref', fileName('state'), `"Do not do now" item cites no BLQ-n or DEC-NNN: ${t.slice(0, 60)}`);
+  });
+
+  for (const row of inflight) {
+    if (row[1] !== v.branchLive && row[1] !== v.branchDeleted) {
+      add('error', 'bad-kind', fileName('state'), `in-flight branch ${row[0].replace(/`/g, '').trim()} has Kind "${row[1]}", expected "${v.branchLive}" or "${v.branchDeleted}"`);
+    }
+  }
+
+  // releases: when the block exists, every released deliverable must be in some package
+  if (releaseBlock) {
+    const released = v.releasedStatuses || ['released', 'measured'];
+    const packaged = new Set();
+    releases.forEach((row) => idsIn(row[1], /\bE\d+\b/g).forEach((e) => packaged.add(e)));
+    for (const row of panel) {
+      const id = (row[0].match(/\bE\d+\b/) || [])[0];
+      if (id && parseStatus(row[1]).some((s) => released.includes(s)) && !packaged.has(id)) {
+        add('error', 'released-no-package', fileName('state'), `${id} has a released status but no package in the releases block lists it`);
+      }
+    }
+  }
 
   for (const row of panel) {
     const id = (row[0].match(/\bE\d+\b/) || [])[0];
@@ -377,7 +619,7 @@ export function checkRoadmap(r, git) {
   for (const row of decisions) {
     const [id, , , , , contradicts, , , status] = row;
     if (status === v.decisionInForce) {
-      if (!isEmptyCell(contradicts) && !r.strategy.includes(id)) {
+      if (!isEmptyCell(contradicts) && !new RegExp(`(?<![A-Za-z0-9-])${escapeRe(id)}(?![A-Za-z0-9])`).test(r.strategy)) {
         add('warning', 'contradiction-unabsorbed', fileName('decisions'), `${id} contradicts the roadmap (${contradicts}) and the strategy does not cite it; propose a revision`);
       }
     } else if (status === v.decisionPending) {
@@ -447,8 +689,13 @@ export function checkRoadmap(r, git) {
   void measurements;
 
   // ---- git ----
+  const gitSeverity = opts.requireGit ? 'error' : 'warning';
+  if (git && git.unavailable) {
+    add(gitSeverity, 'git-unavailable', 'roadmap.config.json', `git could not be used (${git.reason || 'unknown reason'}); git checks skipped`);
+    return problems;
+  }
   if (git === null || git === undefined) {
-    add('warning', 'no-git', 'roadmap.config.json', 'not inside a git repository (or git is unavailable); git checks skipped');
+    add(gitSeverity, 'no-git', 'roadmap.config.json', 'not inside a git repository; git checks skipped');
     return problems;
   }
 
@@ -463,7 +710,12 @@ export function checkRoadmap(r, git) {
     }
   };
   if (!shallow) {
+    // one batched git process resolves every SHA; the per-SHA checks below then hit its cache
+    if (typeof git.prefetch === 'function') {
+      git.prefetch([...panel.map((row) => row[2]), ...releases.map((row) => row[3]), ...logRows.map((row) => row[3])].flatMap((cell) => shasIn(cell)));
+    }
     panel.forEach((row) => checkShas(fileName('state'), row[2], 'error'));
+    releases.forEach((row) => checkShas(fileName('state'), row[3], 'error'));
     logRows.forEach((row) => checkShas(fileName('log'), row[3], 'warning'));
   }
 
@@ -552,23 +804,28 @@ function main(argv) {
   // Line 1 of this very file is the single source of the version at runtime.
   const self = readHeader(selfPath);
   if (!self) {
-    console.log(`ERROR ${path.basename(selfPath)}: line 1 must be "// check-roadmap <version> format <n>"`);
+    console.log(`ERROR ${path.basename(selfPath)}: line 1 must be "// check-roadmap <version> format <n>" [bad-header]`);
     return 1;
   }
   if (args.includes('--version')) {
     console.log(`${self.version} format ${self.format}`);
     return 0;
   }
+  const requireGit = args.includes('--require-git');
   const folder = path.resolve(args.find((a) => !a.startsWith('--')) || path.dirname(selfPath));
   let problems;
   try {
-    problems = checkRoadmap(loadRoadmap(folder), createGitAdapter(folder));
+    if (process.env.ROADMAP_CHECK_SELFTEST_THROW) throw new Error('self-test: forced internal failure');
+    problems = checkRoadmap(loadRoadmap(folder), createGitAdapter(folder), { requireGit });
   } catch (e) {
-    if (!String(e.message).startsWith('config:')) throw e;
-    problems = [{ severity: 'error', code: 'config', file: 'roadmap.config.json', message: e.message }];
-    console.log(`ERROR ${e.message}`);
-    console.log('check-roadmap: 1 error(s), 0 warning(s)');
-    return 1;
+    const message = String((e && e.message) || e);
+    if (message.startsWith('config:')) {
+      console.log(`ERROR ${message}`);
+      console.log('check-roadmap: 1 error(s), 0 warning(s)');
+      return 1;
+    }
+    console.log(`ERROR internal: ${message.split('\n')[0]}`);
+    return 2;
   }
   try {
     const cacheRoot = process.env.ROADMAP_CHECK_PLUGIN_CACHE || path.join(os.homedir(), '.claude', 'plugins', 'cache');
@@ -599,5 +856,10 @@ function isMain() {
 }
 
 if (isMain()) {
-  process.exitCode = main(process.argv);
+  try {
+    process.exitCode = main(process.argv);
+  } catch (e) {
+    console.log(`ERROR internal: ${String((e && e.message) || e).split('\n')[0]}`);
+    process.exitCode = 2;
+  }
 }

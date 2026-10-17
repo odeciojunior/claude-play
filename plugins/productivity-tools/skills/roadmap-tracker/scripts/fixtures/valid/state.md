@@ -1,5 +1,7 @@
 # State
 
+Strategy v1.0 -- 2026-01-01
+
 Snapshot. Overwritten on every update; history goes to `log.md`.
 
 ## Now

@@ -31,7 +31,7 @@ File names may be localized; the config maps roles to names. One fact lives in o
 
 ## 2. Config: `roadmap.config.json`
 
-All keys are required; only `files.measurements` may be `null`.
+All keys are required except the optional `vocab.releasedStatuses`; only `files.measurements` may be `null`.
 
 ```json
 {
@@ -42,8 +42,9 @@ All keys are required; only `files.measurements` may be `null`.
   "files": { "readme": "README.md", "state": "state.md", "decisions": "decisions.md", "log": "log.md",
              "criticalPath": "critical-path.md", "measurements": null, "sources": "sources.md", "requirements": "requirements.md" },
   "vocab": {
-    "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured"],
+    "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"],
     "integratedStatuses": ["integrated", "released", "measured"],
+    "releasedStatuses": ["released", "measured"],
     "decisionInForce": "in-force", "decisionPending": "pending", "decisionSupersededBy": "superseded by",
     "coverageCovered": "covered", "coverageOutOfScope": "out-of-scope", "coverageNeedsClarification": "needs-clarification",
     "branchLive": "live", "branchDeleted": "deleted",
@@ -58,7 +59,10 @@ All keys are required; only `files.measurements` may be `null`.
 - `vocab` values are exact strings. Localize them freely (`"integrada"`, `"vigente"`, `"substituída por"`) and use the same words in the files. Comparison is exact and case-sensitive.
 - `formatVersion` changes only with a migration recipe in `roadmap-tracker/references/events.md`. A checker older than the folder's `formatVersion` errors instead of guessing.
 - `integratedStatuses` is the subset of statuses that claim code is on the integration branch.
+- `releasedStatuses` (optional; default `["released", "measured"]` when absent) is the subset of statuses that claim a deliverable shipped in a package; it matters only when `state.md` has a `releases` block (section 6).
+- Two statuses beyond the delivery line: `blocked` (a `blocked` segment should cite a `BLQ-n` in its note or in Next step) and `discarded` (dropped by a `DEC`; the card is kept, with priority `Won't`). Older format-1 folders that lack them in `deliverableStatuses` keep working; add them to use them.
 - Card priority is not configurable: `Must`, `Should`, `Could`, `Won't`.
+- The checker validates the config before reading anything else, and reports `ERROR config: <key> ...` (exit 1) when: `formatVersion` is not an integer >= 1; any vocab string or array element, or any `tracks` element, is empty or not a string; `deliverableStatuses` or `tracks` is empty; a `limits` value is not a positive number (the string `"5"` is rejected); a `files` value (or `strategy`) is absolute or escapes its allowed root (`files` stay inside the roadmap folder; `strategy` may be `../<file>` but must stay inside the git repository, or inside the folder's parent when there is no git); two roles (including `strategy`) point to the same file.
 
 ## 3. Anchors and tables
 
@@ -85,12 +89,16 @@ Tables inside a block are **position-mapped**: the checker ignores header text a
 | state | `blockers` | ID, Blocker, Affects, Since, Unblocks when |
 | state | `pending` | list; each item "(owner) item" |
 | state | `inflight` | Branch, Kind (`branchLive` / `branchDeleted` word), Note |
+| state | `donot` (optional) | list "Do not do now"; each item cites at least one `BLQ-n` or `DEC-NNN` |
+| state | `releases` (optional) | Package, Deliverables, State, Stamped SHA, Date, Environment |
 | decisions | `decisions` | ID, Date, Deliverable, Decision, Discarded alternative, Contradicts, Revisit when, Origin, Status |
 | log | `log` | Date, Deliverable, What happened, Evidence |
 | sources | `sources` | ID, Source (path or URL), What it is, Read on, Reliability |
 | sources | `conflicts` | list; each item "SRC-a vs SRC-b: ..." |
 | requirements | `requirements` | ID, Requirement, Type, Sources, Deliverables, Coverage |
 | measurements | `measurements` | Date, Deliverable, Kind, Detail, Recorded, Billed, Status |
+
+Anchors inside fenced code blocks (any fence, including ` ```mermaid `) are ignored by the block scan, so a template can be quoted in a fence without defining a block; an unclosed fence is a warning (`unclosed-fence`) and hides the rest of the file from the scan. An opener whose `-->` is missing before the next `<!--` is an error (`malformed-anchor`) naming the block.
 
 An empty table has its header and separator only. A literal `|` inside a cell is written `\|`. Every row must have exactly the column count in the table above (`bad-row` otherwise), because an unescaped `|` would shift the other columns silently. Text is compared after Unicode NFC normalization, so composed and decomposed accents match. CRLF and LF files are equivalent.
 
@@ -101,7 +109,10 @@ An empty table has its header and separator only. A literal `|` inside a cell is
 - Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). In a shallow clone these git checks are skipped with one `shallow-clone` warning.
 - Coverage cell: the `coverageCovered` word (and at least one deliverable in Deliverables), `coverageOutOfScope: <reason>` (reason required), or the `coverageNeedsClarification` word.
 - Decision Status: `decisionInForce`, `decisionPending`, or `decisionSupersededBy DEC-NNN` (the target must exist).
-- Contradicts cell: empty, `-` or `—` when the decision fits the roadmap; otherwise it names the section or deliverable it overrides. An in-force decision with a filled cell is *absorbed* once the strategy text cites its ID.
+- Contradicts cell: empty, `-` or `—` when the decision fits the roadmap; otherwise it names the section or deliverable it overrides. An in-force decision with a filled cell is *absorbed* once the strategy text cites its ID as a whole token (`DEC-001` is not absorbed by a citation of `DEC-0010`). The same `-` / `—` (meaning "none") is allowed in Discarded alternative and Revisit when.
+- Volatile values: a value that changes over time (counts, balances, quotas) is written once, together with the command that measures it and the date, and every other file points to that place instead of repeating the number.
+- Inflight Kind must be the `branchLive` or `branchDeleted` word (`bad-kind` otherwise).
+- Encoding: files must be UTF-8; invalid bytes produce a warning (`invalid-utf8`) and are replaced while reading.
 - Length: state and log cells at most `limits.cellChars`; `now` at most `limits.nowItems` items.
 - Never write dates, durations, metrics or estimates that the user or a source did not supply. Unsourced claims carry `ASSUMPTION` or `UNSOURCED`; the checker reports their count in the strategy as a warning.
 
@@ -226,9 +237,11 @@ The template is the first card; for later cards change `id`, list earlier cards 
 
 ## 6. State, decisions, log
 
-`state.md` is overwritten on every update: a header line with the strategy version and date, then `now` (at most five items), `panel`, `blockers`, `pending` and `inflight`. Template:
+`state.md` is overwritten on every update: a header line with the strategy version and date (not checked by the script, but always present), then `now` (at most five items), `panel`, `blockers`, `pending` and `inflight`, plus the optional `donot` and `releases` blocks. Shape of a `now` item (guidance, not checked): `<action>. Runs: <who>. Approves: <who>. Depends on: <ids>.` Template:
 
 ```markdown
+Strategy v<version> -- <ISO date>
+
 <!-- roadmap:now -->
 1. <next action>
 <!-- /roadmap:now -->
@@ -249,6 +262,23 @@ The template is the first card; for later cards change `id`, list earlier cards 
 |---|---|---|
 <!-- /roadmap:inflight -->
 ```
+
+Optional blocks of `state.md`; when absent the checker reports nothing:
+
+```markdown
+<!-- roadmap:donot -->
+- Do not <action> until <BLQ-n> clears.
+- Do not <action> (<DEC-NNN>).
+<!-- /roadmap:donot -->
+<!-- roadmap:releases -->
+| Package | Deliverables | State | Stamped SHA | Date | Environment |
+|---|---|---|---|---|---|
+| <package id> | E1 E2 | <shipped, pending install, ...> | `<sha>` | <ISO date> | <environment> |
+<!-- /roadmap:releases -->
+```
+
+- `donot` ("Do not do now"): a list; each item cites at least one `BLQ-n` or `DEC-NNN` (`donot-no-ref` otherwise). Cited IDs must exist (`unknown-id`).
+- `releases`: when the block exists, every panel row with a segment status in `vocab.releasedStatuses` must appear in the Deliverables cell of some row (`released-no-package`). A backticked Stamped SHA follows the panel SHA rules (it must exist: `sha-missing`, error). Cell length limits apply as in the rest of `state.md`.
 
 `decisions.md` is append-only, global IDs, never reused. Rows are never edited except Status (to `superseded by DEC-NNN`) and Revisit when. One row per choice: the decision, the discarded alternative, who or what originated it (`SRC`, `REQ` or "user"). Template:
 
@@ -369,8 +399,25 @@ Run `node <roadmap-folder>/check-roadmap.mjs` (Node 18 or newer). Exit 1 on erro
 
 ## 9. What the checker enforces
 
-Errors: `format-version`, `unknown-id`, `duplicate-id`, `bad-status`, `now-limit`, `cell-limit`, `log-order`, `banned-phrase`, `missing-evidence`, `uncovered-req`, `card-no-req`, `card-acceptance`, `card-no-panel-row`, `panel-unknown-deliverable`, `dependency-cycle`, `superseded-link`, `unknown-track`, `bad-priority`, `missing-block`, `unclosed-block`, `bad-row`, `integrated-no-sha`, and with git: `sha-missing`, `not-integrated`, `branch-live-missing`, `branch-deleted-exists`. A `sha-missing` found in `log.md` is a warning, not an error.
+Run `node check-roadmap.mjs [folder] [--require-git]`. Exit 0: no errors (warnings pass). Exit 1: at least one error, or an `ERROR config:` / `bad-header` failure. Exit 2: an unexpected failure (code `internal`), printed as `ERROR internal: <message>` without a stack trace. `--version` prints `<version> format <n>`. `--require-git` turns `no-git` and `git-unavailable` into errors (use it in CI, where skipped git checks must not pass silently).
 
-Warnings: `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `markers`, `req-card-asymmetry`, `no-git`, `shallow-clone`, `integration-branch-missing`, `checker-stale`.
+Errors:
+
+- Config and header: `config` (the config is invalid; the message names the key, see section 2), `bad-header` (line 1 of the checker is not `// check-roadmap <version> format <n>`), `format-version` (the folder is newer than the checker).
+- Structure: `missing-block`, `unclosed-block`, `malformed-anchor` (an opener without `-->` before the next `<!--`), `bad-row` (wrong column count).
+- IDs and cells: `unknown-id`, `duplicate-id`, `cell-limit`, `now-limit`.
+- Cards: `card-no-req`, `card-acceptance`, `card-no-panel-row`, `unknown-track`, `bad-priority`, `dependency-cycle`.
+- State: `bad-status`, `panel-unknown-deliverable`, `integrated-no-sha`, `bad-kind` (inflight Kind is neither `branchLive` nor `branchDeleted`), `donot-no-ref` (a `donot` item cites no `BLQ-n` or `DEC-NNN`), `released-no-package` (a released deliverable is in no `releases` row).
+- Decisions, log, requirements: `superseded-link`, `log-order`, `banned-phrase`, `missing-evidence`, `uncovered-req`.
+- With git: `sha-missing` (panel and `releases` Stamped SHA: error; in `log.md`: warning), `not-integrated`, `branch-live-missing`, `branch-deleted-exists`.
+
+Warnings:
+
+- `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `markers`, `req-card-asymmetry`.
+- `unclosed-fence` (a fenced code block never closes), `invalid-utf8` (a file has invalid UTF-8 bytes).
+- Git: `no-git` (not inside a git repository), `git-unavailable` (git is missing from PATH or failed for a reason other than "not a git repository"), `shallow-clone`, `integration-branch-missing`. With `--require-git`, `no-git` and `git-unavailable` are errors.
+- `checker-stale` (a newer checker exists in the plugin cache).
 
 The `integration-branch-missing` warning appears only when a panel row claims an integrated status with commit evidence and neither `<integrationBranch>` nor `origin/<integrationBranch>` exists.
+
+Performance: all commit SHAs are resolved with one `git cat-file --batch-check` process; ancestry checks switch to one `git rev-list` listing after a few single checks, so large logs do not cost one process per SHA.

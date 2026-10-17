@@ -145,9 +145,9 @@ function keepOneLogRow(files) {
 
 test('script header and constants', () => {
   const first = fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0];
-  assert.equal(first, '// check-roadmap 1.2.0 format 1');
+  assert.equal(first, '// check-roadmap 1.3.0 format 1');
   assert.equal(FORMAT_VERSION, 1);
-  assert.equal(CHECKER_VERSION, '1.2.0');
+  assert.equal(CHECKER_VERSION, '1.3.0');
 });
 
 test('script imports only node: modules', () => {
@@ -413,7 +413,7 @@ test('git: neither local nor origin branch gives one warning, no false error', (
 test('cli --version', () => {
   const r = cli(['--version']);
   assert.equal(r.status, 0);
-  assert.equal(r.stdout.trim(), '1.2.0 format 1');
+  assert.equal(r.stdout.trim(), '1.3.0 format 1');
 });
 
 test('cli exit 0 on the valid fixture, with summary', () => {
@@ -459,10 +459,10 @@ function cacheWith(version) {
 }
 
 test('cli warns checker-stale when a newer plugin copy exists, still exit 0', () => {
-  const r = cli([VALID], { env: { ROADMAP_CHECK_PLUGIN_CACHE: cacheWith('1.3.0') } });
+  const r = cli([VALID], { env: { ROADMAP_CHECK_PLUGIN_CACHE: cacheWith('1.4.0') } });
   assert.equal(r.status, 0, r.stdout);
   assert.equal(r.stdout.split('checker-stale').length - 1, 1);
-  assert.match(r.stdout, /1\.3\.0/);
+  assert.match(r.stdout, /1\.4\.0/);
 });
 
 test('cli: no stale warning for an older copy or an empty cache', () => {
@@ -523,7 +523,7 @@ test('fix2: CRLF fixture and CRLF script run through the CLI; CRLF header is rea
   const r = spawnScript(path.join(dir, 'check-roadmap.mjs'), os.tmpdir());
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /check-roadmap: 0 error\(s\)/);
-  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.2.0 format 1');
+  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.3.0 format 1');
   const cache = tmp('roadmap-cache-');
   const scripts = path.join(cache, 'mkt', 'productivity-tools', '1.3.0', 'skills', 'roadmap-tracker', 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
@@ -746,4 +746,283 @@ test('final5: a roadmap assembled verbatim from the formats.md templates has 0 e
   for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body.split('<ISO date>').join('2026-01-01'));
   const problems = run(dir, null);
   assert.deepEqual(problems.filter((p) => p.severity === 'error'), []);
+});
+
+// ---------- round 2 (1.3.0): checker defects and format additions ----------
+
+function setConfig(mutate) {
+  return fixture((f) => {
+    const c = JSON.parse(f['roadmap.config.json']);
+    mutate(c);
+    f['roadmap.config.json'] = JSON.stringify(c, null, 2);
+  });
+}
+
+function bulkCommits(dir, n) {
+  let stream = '';
+  for (let i = 0; i < n; i++) {
+    stream += `commit refs/heads/bulk\ncommitter t <t@t> ${1700000000 + i} +0000\ndata 5\nc${String(i).padStart(3, '0')}\n`;
+    stream += 'M 100644 inline f.txt\ndata 4\n' + String(i).padStart(3, '0') + '\n\n';
+  }
+  const r = spawnSync('git', ['-C', dir, 'fast-import', '--quiet'], { input: stream, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return git(dir, 'rev-list', 'bulk').split('\n');
+}
+
+test('r2-1 perf: 300 SHAs in the log are checked with a handful of git processes', () => {
+  const dir = repoFixture();
+  const shas = bulkCommits(dir, 300);
+  assert.equal(shas.length, 300);
+  const rows = shas.map((s) => `| 2026-01-02 | - | Row | ${String.fromCharCode(96)}${s}${String.fromCharCode(96)} |`).join(String.fromCharCode(10));
+  const log = fs.readFileSync(path.join(dir, 'log.md'), 'utf8').replace('| 2026-01-02 | E2', () => rows + String.fromCharCode(10) + '| 2026-01-02 | E2');
+  fs.writeFileSync(path.join(dir, 'log.md'), log);
+  const adapter = createGitAdapter(dir);
+  const t0 = Date.now();
+  const problems = run(dir, adapter);
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < 3000, `took ${elapsed} ms`);
+  assert.ok(!codes(problems).includes('sha-missing'), codes(problems).join(','));
+});
+
+test('r2-1 ancestry batching answers the same as one process per sha', () => {
+  const dir = repoFixture();
+  const shas = bulkCommits(dir, 12);
+  const adapter = createGitAdapter(dir);
+  git(dir, 'merge', '-q', '--allow-unrelated-histories', '-m', 'm', shas[3]);
+  const head = git(dir, 'rev-parse', 'HEAD');
+  adapter.prefetch([head, ...shas]);
+  const expected = shas.map((s) => spawnSync('git', ['-C', dir, 'merge-base', '--is-ancestor', s, 'main']).status === 0);
+  const got = shas.map((s) => adapter.isAncestor(s, 'main'));
+  assert.deepEqual(got, expected);
+  assert.ok(got.some(Boolean) && !got.every(Boolean));
+});
+
+test('r2-2 config: array elements must be non-empty strings', () => {
+  for (const [key, bad] of [['markers', ['']], ['bannedPhrases', [3]], ['integratedStatuses', [null]], ['deliverableStatuses', ['ok', '']]]) {
+    const dir = setConfig((c) => (c.vocab[key] = bad));
+    assert.throws(() => loadRoadmap(dir), new RegExp(`^Error: config: vocab\.${key}`), key);
+  }
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.tracks = ['a', 5]))), /^Error: config: tracks/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.tracks = ['']))), /^Error: config: tracks/);
+});
+
+test('r2-2 config: deliverableStatuses must not be empty', () =>
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.deliverableStatuses = []))), /^Error: config: vocab\.deliverableStatuses/));
+
+test('r2-2 config: limits must be positive numbers (no strings)', () => {
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.limits.nowItems = '5'))), /^Error: config: limits\.nowItems/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.limits.cellChars = 0))), /^Error: config: limits\.cellChars/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.limits.other = -1))), /^Error: config: limits\.other/);
+});
+
+test('r2-2 config: formatVersion must be an integer >= 1', () => {
+  for (const bad of [0, 1.5, '1', -1]) assert.throws(() => loadRoadmap(setConfig((c) => (c.formatVersion = bad))), /^Error: config: formatVersion/, String(bad));
+});
+
+test('r2-2 config: file paths cannot escape the folder, be absolute, or collide', () => {
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.files.state = '../state.md'))), /^Error: config: files\.state/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.files.state = path.resolve(os.tmpdir(), 'x.md')))), /^Error: config: files\.state/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.strategy = path.resolve(os.tmpdir(), 'x.md')))), /^Error: config: strategy/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.strategy = '../../../../../../x.md'))), /^Error: config: strategy/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.files.log = 'state.md'))), /^Error: config: .*same file/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.strategy = 'state.md'))), /^Error: config: .*same file/);
+});
+
+test('r2-2 config: strategy may sit beside the folder (../<file>)', () => {
+  const dir = setConfig((c) => (c.strategy = '../roadmap-check-nonexistent-strategy.md'));
+  assert.throws(() => loadRoadmap(dir), /cannot read strategy/);
+});
+
+test('r2-2 cli: config errors print ERROR config and exit 1', () => {
+  const r = cli([setConfig((c) => (c.limits.nowItems = '5'))]);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^ERROR config: limits\.nowItems/m);
+});
+
+test('r2-2 cli: an unexpected exception prints ERROR internal and exits 2, no stack', () => {
+  const r = cli([VALID], { env: { ROADMAP_CHECK_SELFTEST_THROW: '1' } });
+  assert.equal(r.status, 2);
+  assert.match(r.stdout, /^ERROR internal: /m);
+  assert.doesNotMatch(r.stdout + r.stderr, /\n\s+at /);
+});
+
+test('r2-3 malformed-anchor: an opener missing --> before the next comment', () => {
+  const p = run(fixture((f) => rep(f, 'state.md', '<!-- roadmap:panel -->', '<!-- roadmap:panel')));
+  expectCode(p, 'malformed-anchor', 'error');
+  assert.match(p.find((x) => x.code === 'malformed-anchor').message, /roadmap:panel/);
+});
+
+test('r2-3 attribute parsing is linear on huge tokens', () => {
+  for (const attr of ['a'.repeat(300000), `k="${'b'.repeat(300000)}`, 'x='.repeat(150000), ' '.repeat(300000) + 'z']) {
+    const t0 = Date.now();
+    readBlocks(`<!-- roadmap:card ${attr} -->\nbody\n<!-- /roadmap:card -->`, 'card');
+    readBlocks(`<!-- roadmap:card ${attr}`, 'card');
+    readBlocks('<!-- '.repeat(60000), 'card');
+    assert.ok(Date.now() - t0 < 1000, `slow: ${Date.now() - t0} ms`);
+  }
+});
+
+test('r2-4 fences: anchors inside any fence are ignored, mermaid included', () => {
+  const fake = '<!-- roadmap:now -->\n1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n<!-- /roadmap:now -->';
+  for (const info of ['markdown', 'mermaid', '']) {
+    const dir = fixture((f) => rep(f, 'state.md', '## Now\n', `## Now\n\n\`\`\`${info}\n${fake}\n\`\`\`\n`));
+    assert.deepEqual(run(dir), [], `fence "${info}"`);
+  }
+});
+
+test('r2-4 fences: tilde fences work and mermaid ids still count', () => {
+  const dir = fixture((f) => (f['critical-path.md'] += '\n~~~mermaid\nE9 --> E1\n~~~\n'));
+  expectCode(run(dir), 'unknown-id', 'error');
+  const ok = fixture((f) => (f['critical-path.md'] += '\n~~~text\nE9 --> E1\n~~~\n'));
+  assert.deepEqual(run(ok), []);
+});
+
+test('r2-4 fences: an unclosed fence is a warning', () => {
+  const p = run(fixture((f) => (f['README.md'] += '\n```text\nnever closed\n')));
+  expectCode(p, 'unclosed-fence', 'warning');
+  assert.deepEqual(p.filter((x) => x.severity === 'error'), []);
+});
+
+test('r2-5 contradiction-unabsorbed matches whole ids (DEC-001 vs DEC-0010)', () => {
+  const dir = fixture((f) => {
+    repAll(f, 'strategy.md', 'DEC-001', 'DEC-0010');
+    rep(f, 'decisions.md', '<!-- /roadmap:decisions -->', '| DEC-0010 | 2026-01-03 | E1 | Other | Another | - | never | user | in-force |\n<!-- /roadmap:decisions -->');
+  });
+  const p = run(dir);
+  expectCode(p, 'contradiction-unabsorbed', 'warning');
+  assert.match(p.find((x) => x.code === 'contradiction-unabsorbed').message, /DEC-001 contradicts/);
+});
+
+test('r2-6 bad-kind: inflight Kind outside branchLive/branchDeleted', () => {
+  const dir = fixture((f) => rep(f, 'state.md', '|---|---|---|\n<!-- /roadmap:inflight -->', '|---|---|---|\n| `feat/x` | weird | note |\n<!-- /roadmap:inflight -->'));
+  expectCode(run(dir, null), 'bad-kind', 'error');
+});
+
+test('r2-7 invalid UTF-8 is a warning, parsing continues', () => {
+  const dir = fixture();
+  fs.appendFileSync(path.join(dir, 'README.md'), Buffer.from([0x0a, 0x61, 0xff, 0xfe, 0x0a]));
+  const p = run(dir);
+  expectCode(p, 'invalid-utf8', 'warning');
+  assert.equal(p.find((x) => x.code === 'invalid-utf8').file, 'README.md');
+  assert.deepEqual(p.filter((x) => x.severity === 'error'), []);
+});
+
+test('r2-8 git-unavailable: distinct from no-git, --require-git makes both errors', () => {
+  const p = run(fixture(), { unavailable: true, reason: 'ENOENT' });
+  assert.deepEqual(codes(p), ['git-unavailable']);
+  assert.equal(p[0].severity, 'warning');
+  const req = checkRoadmap(loadRoadmap(fixture()), { unavailable: true, reason: 'x' }, { requireGit: true });
+  expectCode(req, 'git-unavailable', 'error');
+  expectCode(checkRoadmap(loadRoadmap(fixture()), null, { requireGit: true }), 'no-git', 'error');
+});
+
+test('r2-8 git missing from PATH: adapter reports unavailable, CLI warns, --require-git fails', () => {
+  const saved = process.env.PATH;
+  try {
+    process.env.PATH = '';
+    const a = createGitAdapter(fixture());
+    assert.ok(a && a.unavailable, 'expected an unavailable adapter');
+  } finally {
+    process.env.PATH = saved;
+  }
+  const noGitEnv = { PATH: '', Path: '' };
+  const r = cli([fixture()], { env: noGitEnv });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /\[git-unavailable\]/);
+  assert.doesNotMatch(r.stdout, /\[no-git\]/);
+  const strict = cli([fixture(), '--require-git'], { env: noGitEnv });
+  assert.equal(strict.status, 1);
+  assert.match(strict.stdout, /^ERROR .*\[git-unavailable\]$/m);
+  const strictNoRepo = cli([fixture(), '--require-git']);
+  assert.equal(strictNoRepo.status, 1);
+  assert.match(strictNoRepo.stdout, /^ERROR .*\[no-git\]$/m);
+});
+
+test('r2-9 statuses blocked and discarded are valid by default; old status lists still pass', () => {
+  assert.deepEqual(run(fixture((f) => rep(f, 'state.md', '| E3 | not-started |', '| E3 | discarded |'))), []);
+  assert.deepEqual(run(fixture((f) => rep(f, 'state.md', '| E3 | not-started |', '| E3 | blocked (BLQ-1) |'))).filter((p) => p.code === 'bad-status'), []);
+  const old = setConfig((c) => {
+    c.vocab.deliverableStatuses = c.vocab.deliverableStatuses.filter((s) => s !== 'blocked' && s !== 'discarded');
+  });
+  assert.ok(!JSON.parse(fs.readFileSync(path.join(old, 'roadmap.config.json'), 'utf8')).vocab.deliverableStatuses.includes('blocked'));
+  assert.deepEqual(run(old), []);
+});
+
+const BLQ_ROW = '| BLQ-1 | Waiting on the owner | E3 | 2026-01-03 | The owner answers |';
+function withBlocker(f) {
+  rep(f, 'state.md', '|---|---|---|---|---|\n<!-- /roadmap:blockers -->', `|---|---|---|---|---|\n${BLQ_ROW}\n<!-- /roadmap:blockers -->`);
+}
+
+test('r2-9 donot: absent is fine; items must cite BLQ or DEC', () => {
+  const ok = fixture((f) => {
+    withBlocker(f);
+    f['state.md'] += '\n<!-- roadmap:donot -->\n- Do not start E3 until BLQ-1 clears.\n- Do not reopen the order (DEC-001).\n<!-- /roadmap:donot -->\n';
+  });
+  assert.deepEqual(run(ok), []);
+  const bad = fixture((f) => (f['state.md'] += '\n<!-- roadmap:donot -->\n- Do not touch the schema.\n<!-- /roadmap:donot -->\n'));
+  const p = run(bad);
+  expectCode(p, 'donot-no-ref', 'error');
+  assert.equal(p.filter((x) => x.code === 'donot-no-ref').length, 1);
+  const unknown = fixture((f) => (f['state.md'] += '\n<!-- roadmap:donot -->\n- Do not do X (DEC-999).\n<!-- /roadmap:donot -->\n'));
+  expectCode(run(unknown), 'unknown-id', 'error');
+});
+
+const REL_HEAD = '<!-- roadmap:releases -->\n| Package | Deliverables | State | Stamped SHA | Date | Environment |\n|---|---|---|---|---|---|\n';
+function releasedE1(f, rel) {
+  rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `4821937` |');
+  f['state.md'] += `\n${REL_HEAD}${rel}\n<!-- /roadmap:releases -->\n`;
+}
+
+test('r2-9 releases: a released panel row must be listed in some package', () => {
+  const none = fixture((f) => releasedE1(f, ''));
+  expectCode(run(none), 'released-no-package', 'error');
+  const listed = fixture((f) => releasedE1(f, '| v2026.01 | E1 | shipped | `4821937` | 2026-01-05 | prod |'));
+  assert.deepEqual(run(listed), []);
+  const absent = fixture((f) => rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `4821937` |'));
+  assert.deepEqual(run(absent), []);
+});
+
+test('r2-9 releases: bad column count, unknown deliverable, custom releasedStatuses', () => {
+  expectCode(run(fixture((f) => releasedE1(f, '| v1 | E1 | shipped |'))), 'bad-row', 'error');
+  expectCode(run(fixture((f) => releasedE1(f, '| v1 | E1 E9 | shipped | `4821937` | 2026-01-05 | prod |'))), 'unknown-id', 'error');
+  const custom = fixture((f) => {
+    f['roadmap.config.json'] = f['roadmap.config.json'].replace('"integratedStatuses"', '"releasedStatuses": ["integrated"],\n    "integratedStatuses"');
+    rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | integrated | `4821937` |');
+    f['state.md'] += `\n${REL_HEAD}| v1 | E2 | shipped | \`4821937\` | 2026-01-05 | prod |\n<!-- /roadmap:releases -->\n`;
+  });
+  expectCode(run(custom), 'released-no-package', 'error');
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.vocab.releasedStatuses = ['']))), /^Error: config: vocab\.releasedStatuses/);
+});
+
+test('r2-9 releases: Stamped SHA follows the panel SHA rules', () => {
+  const bad = repoFixture((f) => releasedE1(f, '| v1 | E1 | shipped | `deadbeef1234` | 2026-01-05 | prod |'));
+  const p = run(bad, createGitAdapter(bad));
+  assert.ok(p.some((x) => x.code === 'sha-missing' && x.severity === 'error' && /deadbeef1234/.test(x.message)));
+});
+
+test('r2-10 fixture state.md carries the strategy version and date header line', () => {
+  assert.match(fs.readFileSync(path.join(VALID, 'state.md'), 'utf8'), /^Strategy v1\.0 -- 2026-01-01$/m);
+});
+
+test('r2-12 formats.md documents every code the checker can emit', () => {
+  const src = fs.readFileSync(SCRIPT, 'utf8');
+  const emitted = new Set(['config', 'internal']);
+  for (const m of src.matchAll(/\badd\(\s*(?:'(?:error|warning)'|[A-Za-z]+),\s*'([a-z]+(?:-[a-z0-9]+)*)'/g)) emitted.add(m[1]);
+  for (const m of src.matchAll(/code: '([a-z]+(?:-[a-z0-9]+)*)'/g)) emitted.add(m[1]);
+  for (const c of ['unclosed-fence', 'malformed-anchor', 'bad-kind', 'invalid-utf8', 'git-unavailable', 'donot-no-ref', 'released-no-package', 'bad-header']) emitted.add(c);
+  const formats = fs.readFileSync(path.join(here, '..', '..', 'roadmap-planner', 'references', 'formats.md'), 'utf8');
+  const section = formats.slice(formats.indexOf('## 9. What the checker enforces'));
+  assert.ok(emitted.size >= 35, `only ${emitted.size} codes found`);
+  for (const c of emitted) assert.ok(section.includes(`\`${c}\``), `formats.md section 9 lacks ${c}`);
+});
+
+test('r2-12 bad-header is emitted for a malformed header', () => {
+  const dir = tmp();
+  copyRoadmapTo(dir);
+  const lines = fs.readFileSync(path.join(dir, 'check-roadmap.mjs'), 'utf8').split('\n');
+  lines[0] = '// check-roadmap banana';
+  fs.writeFileSync(path.join(dir, 'check-roadmap.mjs'), lines.join('\n'));
+  const r = spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), dir], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /\[bad-header\]/);
 });

@@ -14,7 +14,7 @@
     "requirements": "requirements.md"
   },
   "vocab": {
-    "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured"],
+    "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"],
     "integratedStatuses": ["integrated", "released", "measured"],
     "decisionInForce": "in-force",
     "decisionPending": "pending",
