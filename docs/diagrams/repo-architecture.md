@@ -14,6 +14,7 @@ mindmap
         deep-researcher
         report-analyzer
         roadmap-planner
+        roadmap-tracker
         plan-coordinator
         mermaid-designer
         excalidraw-designer
@@ -70,6 +71,7 @@ flowchart TB
     dr["deep-researcher"]
     ra["report-analyzer"]
     rp["roadmap-planner"]
+    rt["roadmap-tracker"]
     pc["plan-coordinator"]
     md["mermaid-designer"]
     ed["excalidraw-designer"]
@@ -112,7 +114,7 @@ flowchart TB
   mktjson -->|"registers"| Sql
   mktjson -->|"registers"| Mcp
 
-  prod_pj --- dr & ra & rp & pc & md & ed & wh
+  prod_pj --- dr & ra & rp & rt & pc & md & ed & wh
   mkt_pj --- np & vp
   sql_pj --- spm & ssd & spt & ts & scr & stk
   mcp_pj --- mss & sh

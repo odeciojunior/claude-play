@@ -52,7 +52,7 @@ docs/
 
 | Plugin | Description | Components | Category |
 |--------|-------------|------------|----------|
-| productivity-tools | Research, analysis, planning, diagramming, visual whiteboarding, and system health skills | skills: deep-researcher, report-analyzer, roadmap-planner, plan-coordinator, mermaid-designer, excalidraw-designer, wsl-health-check | productivity |
+| productivity-tools | Research, analysis, planning, diagramming, visual whiteboarding, and system health skills | skills: deep-researcher, report-analyzer, roadmap-planner, roadmap-tracker, plan-coordinator, mermaid-designer, excalidraw-designer, wsl-health-check | productivity |
 | marketplace-tools | Maintainer scaffolding and validation | skills: new-plugin, validate-plugin | developer-tools |
 | sql-server-tools | SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents | skill: sql-server-toolkit; 5 agents | developer-tools |
 | mcp-sql-server | Automated MCP SQL Server setup — connects Claude Code to SQL Server databases | skill: mcp-sql-server-setup; `scripts/setup.sh` | developer-tools |
@@ -73,6 +73,8 @@ Plans in `docs/plans/`, research in `docs/reports/`:
 - `2026-03-10-mcp-sql-server-setup-hardening-*.md` — setup.sh hardening design & plan
 - `2026-03-11-mcp-sql-server-3scope-plan.md` — 3-scope registration model (project-private, project-shared, user-global)
 - `2026-09-29-plan-coordinator-v2-design.md` — plan-coordinator v2: complexity-based model routing, conflict-free waves, shared-brief context handoffs
+- `2026-10-1[67]-roadmap-planner-v2-*.md` — roadmap-planner v2 + roadmap-tracker: living roadmap (versioned strategy, tracking folder, vendored checker) design & implementation plan
+- `docs/reports/2026-10-16-roadmap-best-practices.md` — Research behind roadmap-planner v2
 
 ## Plugin Conventions
 
