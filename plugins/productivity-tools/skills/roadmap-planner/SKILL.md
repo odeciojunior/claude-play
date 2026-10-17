@@ -122,7 +122,7 @@ Write every file from its template in `references/formats.md`, in the project's 
 | Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
 | `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
 | `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
-| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (`not-started`; `blocked` citing its `BLQ-n` when it waits on a blocker from Step 2), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
+| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (`not-started`; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
 | `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
 | `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
 | `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |

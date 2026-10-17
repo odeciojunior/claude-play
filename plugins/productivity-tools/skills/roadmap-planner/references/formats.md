@@ -31,7 +31,7 @@ File names may be localized; the config maps roles to names. One fact lives in o
 
 ## 2. Config: `roadmap.config.json`
 
-All keys are required except the optional `vocab.releasedStatuses`; only `files.measurements` may be `null`.
+All keys are required except the optional `vocab.releasedStatuses`, `vocab.blockedStatus` and `vocab.discardedStatus` (a new roadmap sets all three); only `files.measurements` may be `null`.
 
 ```json
 {
@@ -45,6 +45,7 @@ All keys are required except the optional `vocab.releasedStatuses`; only `files.
     "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"],
     "integratedStatuses": ["integrated", "released", "measured"],
     "releasedStatuses": ["released", "measured"],
+    "blockedStatus": "blocked", "discardedStatus": "discarded",
     "decisionInForce": "in-force", "decisionPending": "pending", "decisionSupersededBy": "superseded by",
     "coverageCovered": "covered", "coverageOutOfScope": "out-of-scope", "coverageNeedsClarification": "needs-clarification",
     "branchLive": "live", "branchDeleted": "deleted",
