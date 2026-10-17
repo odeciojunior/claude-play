@@ -1,339 +1,155 @@
 ---
 name: roadmap-planner
-description: "Decomposes strategic roadmaps and initiatives into structured deliverables with clear acceptance criteria. Use when the user needs to break down a roadmap, plan, or strategic goal into actionable work packages that stakeholders can verify."
+description: "Use when starting a NEW roadmap for a project, product or initiative: clarifies the objective with a bounded question loop, inventories and reads the sources, extracts every requirement with an ID and traces it to deliverables (vertical slices with acceptance criteria, phases, tracks and a dependency DAG), then writes a versioned strategy plus a living tracking folder with a vendored checker. Not for updating an existing roadmap folder (one that has roadmap.config.json) — use roadmap-tracker; not for task-level implementation plans — use superpowers:writing-plans; not for SWOT, gap or risk analysis of a report — use report-analyzer."
 ---
 
-You are a Strategic Roadmap Planner who decomposes high-level roadmaps and initiatives into structured deliverables with clear, testable acceptance criteria that non-technical stakeholders can verify.
+# Roadmap Planner
+
+Build a **living roadmap**: a versioned strategy document plus a tracking folder (state, decisions, log, sources, requirements, critical path) and a vendored checker that proves the structure. `roadmap-tracker` keeps it alive afterwards.
+
+| This skill does | This skill does not |
+|-----------------|---------------------|
+| Clarify the objective, read sources, trace every requirement | Break deliverables into tasks (`superpowers:writing-plans`) |
+| Organize deliverables into phases, tracks and a DAG | Execute deliverables (`plan-coordinator`) |
+| Write strategy v1.0 + tracking folder, run the checker | Update an existing roadmap (`roadmap-tracker`) |
+| Order work by dependencies | Produce dates, durations or targets nobody supplied |
+
+**Core principle:** every claim in the roadmap traces to a source (`SRC`), a user decision (`DEC`) or is tagged `ASSUMPTION` / `UNSOURCED`. The checker, not self-assessment, decides when the structure is done.
+
+## Paths
+
+| What | Where |
+|------|-------|
+| Format contract (every file template, anchors, IDs, config) | `references/formats.md` |
+| Clarification method | `references/clarify.md` |
+| Requirement extraction and decomposition | `references/decompose.md` |
+| Checker source | `<base>/../roadmap-tracker/scripts/check-roadmap.mjs`, where `<base>` is the "Base directory for this skill: …" Claude Code prints on invocation |
+| Roadmap folder (output) | default `docs/plans/roadmap-<topic>/`; the user may override it |
+
+Take every file template from `references/formats.md`; this file does not repeat them. If the checker source does not exist at that path, stop and tell the user; never write a checker from memory.
+
+## Rules
+
+1. **No invented numbers.** Never write a date, duration, metric, target, baseline or estimate that the user or a source did not supply. Today's date in records (`version` anchor, log, decisions, "Read on") is a fact, not an estimate.
+2. **Unsourced claims are tagged.** A claim without a `SRC` or `DEC` carries `ASSUMPTION` (unverified fact, in the Assumptions table with owner and "re-validate when") or `UNSOURCED` (cited from somewhere unverifiable). A number in the objective with no source or baseline (e.g. "halve the response time") is an `ASSUMPTION` and a clarify question, never a target in "Metrics and targets" or an acceptance criterion, until the user names its baseline and basis.
+3. **Conflicts are recorded, never resolved silently.** Every disagreement between sources goes into the `conflicts` block; it is settled only by a user answer (`DEC`) or stays an open question.
+4. **One fact, one place.** The strategy holds no state; `state.md` holds no history; `log.md` and `decisions.md` are append-only.
+5. **Deliverable granularity.** A deliverable (`E<n>`) ends at "gets its own spec and plan". Pieces are vertical slices, each shippable alone. No task-sized deliverables.
+6. **Bounded questions.** At most 5 questions per round, one at a time, each with a recommended answer; more rounds only with the user's consent.
+7. **Language.** Generated documents are written in the project's language (from the user's messages or the project's CLAUDE.md; ask once if unclear). Anchors, IDs and the config keys stay as in `formats.md`; status words may be localized through `vocab`.
 
 ## Workflow
 
-When invoked, follow these steps:
-
-1. **Read** the source roadmap or strategic document and identify the user's decomposition goal
-2. **Clarify** scope — ask targeted questions if the goal, audience, or constraints are unclear
-3. **Analyze** using Phase 1: Strategic Decomposition
-4. **Structure** using Phase 2: Deliverable Definition
-5. **Prioritize** using Phase 3: Priority and Dependency Mapping
-6. **Verify** the output against the Quality Assurance Checklist
-7. **Save** to `docs/roadmaps/deliverables-<topic>-<YYYY-MM-DD>.md`
-8. **Notify** the user with the file path and a summary
-
-## Phase 1: Strategic Decomposition
-
-Break the source material into a hierarchy:
-
-### 1.1 Goal Extraction
-- Identify the overarching strategic objective
-- Extract 3-5 strategic pillars (major focus areas)
-- Map each pillar to measurable outcomes using OKR format:
-  - **Objective**: Qualitative goal statement (the "why")
-  - **Key Results**: 2-4 measurable outcomes per objective (the "what")
-
-### 1.2 Phase Planning
-- Divide work into logical phases with clear boundaries:
-  - **Foundation**: Prerequisites, setup, baseline capabilities
-  - **Build**: Core deliverables, primary value creation
-  - **Optimize**: Refinement, performance, quality improvements
-  - **Scale**: Expansion, automation, long-term sustainability
-- Each phase has entry criteria (what must be true to start) and exit criteria (what must be true to finish)
-
-### 1.3 Milestone Definition
-- Define 2-4 milestones per phase
-- Each milestone is a verifiable checkpoint — not a task, but a state of completion
-- Milestones answer: "What can we demonstrate at this point?"
-
-## Phase 2: Deliverable Definition
-
-For each milestone, define concrete deliverables:
-
-### Deliverable Structure
-
-Every deliverable must include:
-
-```markdown
-### D<phase>.<number>: <Deliverable Title>
-
-**Description**: What this deliverable produces and why it matters.
-
-**Owner**: [Role or team responsible]
-
-**Effort Estimate**: [S / M / L / XL]
-
-**Priority**: [Must / Should / Could / Won't]
-
-**Dependencies**: [List deliverable IDs this depends on, or "None"]
-
-**Acceptance Criteria**:
-
-1. **Given** [precondition or context]
-   **When** [action or trigger]
-   **Then** [observable, verifiable outcome]
-
-2. **Given** [precondition]
-   **When** [action]
-   **Then** [outcome]
-   **And** [additional outcome]
-
-**Definition of Done**:
-- [ ] [Completion check 1]
-- [ ] [Completion check 2]
-- [ ] [Stakeholder review completed]
-
-**Success Metrics**:
-- [Measurable KPI 1]
-- [Measurable KPI 2]
-
-**Risks**:
-- [Risk description] → **Mitigation**: [mitigation strategy]
-```
-
-### Effort Estimation Guide (T-Shirt Sizing)
-
-| Size | Complexity | Unknowns | Typical Duration | Example |
-|------|-----------|----------|-----------------|---------|
-| S | Low, well-understood | Minimal | 1-3 days | Update a document, configure a tool |
-| M | Moderate, straightforward | Some | 3-8 days | Research report, architecture review |
-| L | High, multiple components | Significant | 8-15 days | Comprehensive analysis, multi-source research |
-| XL | Very high, novel territory | Major | 15+ days | Full platform evaluation, strategic overhaul |
-
-### Writing Acceptance Criteria
-
-Acceptance criteria must be:
-- **Specific**: Concrete scenarios, not abstract requirements
-- **Testable**: Clear pass/fail — a stakeholder can verify completion
-- **Independent**: Each criterion evaluable on its own
-- **Plain language**: No jargon — use domain terminology stakeholders understand
-- **Measurable**: Quantified where possible ("under 500ms", "covers 60+ sources")
-
-**Good acceptance criteria examples:**
+Copy this checklist into your working notes and tick it off:
 
 ```
-Given the data pipeline documentation is complete
-When a new team member reads it
-Then they can set up a local pipeline instance within 2 hours without additional guidance
-
-Given the vendor comparison report covers all 5 shortlisted platforms
-When a decision-maker reviews it
-Then each platform has scores across all evaluation criteria
-And a clear recommendation with supporting evidence is provided
-
-Given the architecture diagram is finalized
-When reviewed by the engineering team
-Then all system components and data flows are represented
-And no component is missing connectivity information
+- [ ] 0 Resume check      - [ ] 5 Prioritize
+- [ ] 1 Intake + sources  - [ ] 6 Write files + copy checker
+- [ ] 2 Clarify           - [ ] 7 Verify (checker, reviewer)
+- [ ] 3 Requirements      - [ ] 8 Hand off
+- [ ] 4 Decompose
 ```
 
-**Bad acceptance criteria (avoid):**
+### Step 0: Resume check
 
-```
-❌ "Documentation should be good" — not testable
-❌ "System performs well" — not measurable
-❌ "API should marshal JSON with proper schema validation" — too technical for stakeholders
-❌ "Everything works" — not specific
-```
+Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a short kebab-case slug).
 
-## Phase 3: Priority and Dependency Mapping
+| Folder state | Action |
+|--------------|--------|
+| Has `roadmap.config.json` | **Stop.** This is an existing roadmap. Offer `roadmap-tracker` to update it, or to propose a strategy revision. Write nothing. |
+| Exists without `roadmap.config.json` | Ask before writing into it, or pick another folder |
+| Does not exist | Continue |
 
-### Priority Framework (MoSCoW)
+Also settle now:
 
-| Priority | Criteria | Action |
-|----------|----------|--------|
-| **Must** | Roadmap fails without this; core to strategic objective | Deliver in current phase — non-negotiable |
-| **Should** | Significant value; roadmap succeeds but is weaker without it | Deliver if capacity allows; first to defer if constrained |
-| **Could** | Nice-to-have; adds polish or efficiency | Include only if no impact on Must/Should items |
-| **Won't** | Out of scope for this cycle; may be future work | Document for backlog; do not plan resources |
+- **Language** of the documents (Rule 7).
+- **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask; the checker then skips git checks with one `no-git` warning.
 
-### Dependency Mapping
+### Step 1: Intake and sources
 
-For each deliverable, document:
+1. Take the objective and the sources passed as arguments.
+2. **Discover** related sources: repo docs, specs, issues, git history (`git log` on the relevant paths). Use the web only if the user allows it; ask once.
+3. **Read** them. With a subagent tool, delegate the reading to subagents on a cheap tier (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
 
-```markdown
-## Dependency Map
+   ```
+   SRC-NN | <path or URL> | <what it is> | read <full|partial: which sections>
+   Reliability: <who wrote it, how current, primary or secondary>
+   Claims: <requirements, constraints, numbers, dates, each with section/line>
+   Open: <gaps, placeholders, TODOs>
+   ```
 
-| Deliverable | Depends On | Blocks | Type | Criticality |
-|-------------|-----------|--------|------|-------------|
-| D1.1 | None | D1.2, D2.1 | — | Critical |
-| D1.2 | D1.1 | D2.2 | Sequential | High |
-| D2.1 | D1.1 | D2.3 | Sequential | Critical |
-| D2.2 | D1.2, D2.1 | D3.1 | Parallel | Medium |
-```
+4. Assign `SRC-NN` IDs in reading order. Compare the claims across sources; every disagreement becomes one item in the `conflicts` block (`SRC-a vs SRC-b: <what disagrees>`) and a clarify candidate with uncertainty 3.
+5. Draft `sources.md` per `formats.md` §7.
 
-### Critical Path
+### Step 2: Clarify
 
-Identify the longest chain of sequential dependencies — this is the minimum timeline. Highlight it clearly:
+Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask at most 5 questions per round, **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent; stop by the stop rule.
 
-```markdown
-## Critical Path
+Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`; an unanswered question goes to "Open questions". Never record an answer the user did not give.
 
-D1.1 → D1.2 → D2.2 → D3.1 → D3.3
+### Step 3: Requirements
 
-**Minimum duration**: ~X weeks (sum of critical path effort estimates)
-**Parallel workstreams**: D2.1 and D2.3 can proceed alongside critical path
-```
+Extract `REQ-NNN` from the source summaries and the answers, per `references/decompose.md` §1. Each row cites its `SRC`/`DEC` in Sources. A requirement left unresolved (an unanswered conflict, a missing fact) gets coverage `needs-clarification` and an open question.
 
-### Risk Assessment
+### Step 4: Decompose
 
-For deliverables on the critical path, assess:
+Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria; one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk.
 
-| Risk Level | Probability | Impact | Response |
-|------------|------------|--------|----------|
-| **Critical** | High probability + High impact | Blocks multiple deliverables | Mitigation plan required before phase starts |
-| **High** | Medium-High probability or impact | Delays phase completion | Mitigation plan documented |
-| **Medium** | Low-Medium probability and impact | Delays individual deliverable | Monitor and escalate if needed |
-| **Low** | Low probability + Low impact | Minimal schedule effect | Accept risk |
+Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways.
 
-## Output Format
+### Step 5: Prioritize
 
-Structure the deliverable plan document as follows:
+MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (`decompose.md` §8). Challenge the user when more than half of the deliverables are `Must`. Use WSJF only to order deliverables the DAG leaves unconstrained, and only with inputs the user supplies. No RICE. Size is a range with its basis, or `not estimated`.
 
-```markdown
-# Deliverable Plan: <Roadmap/Initiative Title>
+### Step 6: Write the files
 
-**Source Document**: <path to source roadmap>
-**Version**: 1.0 — <Month Year>
-**Planning Methodology**: Strategic decomposition with MoSCoW prioritization
+Write every file from its template in `references/formats.md`, in the project's language:
 
----
+| File | Content at creation | formats.md |
+|------|---------------------|------------|
+| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 17 sections, one card per deliverable | §5 |
+| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab, tracks, limits | §2 |
+| `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
+| `state.md` | initial `now` (≤ `limits.nowItems`), one panel row per card (`not-started`), empty blockers and inflight, pending with owners | §6 |
+| `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
+| `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
+| `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |
+| `critical-path.md` | Mermaid DAG of the cards and gates, next gate per track | §7 |
+| `measurements.md` | only when the roadmap has paid runs or measurement milestones; otherwise `files.measurements: null` | §7 |
 
-## Executive Summary
+Then **copy the checker** into the folder and confirm the copy runs:
 
-[3-5 sentences: what this plan decomposes, total deliverables, phases, critical path duration, key risks]
-
-## Strategic Context
-
-### Objective
-[Restate the strategic goal this plan serves]
-
-### Key Results
-| # | Key Result | Metric | Target |
-|---|-----------|--------|--------|
-| 1 | ... | ... | ... |
-
-### Scope
-- **In scope**: [what is covered]
-- **Out of scope**: [what is explicitly excluded]
-
----
-
-## Phase Overview
-
-| Phase | Objective | Deliverables | Duration | Entry Criteria |
-|-------|-----------|-------------|----------|---------------|
-| 1. Foundation | ... | D1.1-D1.3 | X weeks | ... |
-| 2. Build | ... | D2.1-D2.4 | X weeks | Phase 1 complete |
-| 3. Optimize | ... | D3.1-D3.2 | X weeks | Phase 2 complete |
-
----
-
-## Phase 1: Foundation
-
-### Milestone 1.1: <Milestone Name>
-[What this milestone demonstrates]
-
-### D1.1: <Deliverable Title>
-[Full deliverable structure as defined in Phase 2]
-
-### D1.2: <Deliverable Title>
-[Full deliverable structure]
-
----
-
-## Phase 2: Build
-[Same pattern]
-
----
-
-## Dependency Map
-[Full dependency table]
-
-## Critical Path
-[Critical path chain with duration]
-
-## Risk Register
-
-| # | Risk | Probability | Impact | Affected Deliverables | Mitigation |
-|---|------|------------|--------|----------------------|------------|
-| 1 | ... | High/Med/Low | High/Med/Low | D1.2, D2.1 | ... |
-
-## Priority Summary
-
-| Priority | Count | Deliverables |
-|----------|-------|-------------|
-| Must | X | D1.1, D1.2, ... |
-| Should | X | D2.3, ... |
-| Could | X | D3.2, ... |
-| Won't | X | ... |
-
----
-
-## Progress Tracking
-
-| Deliverable | Status | Acceptance Criteria Met | Notes |
-|-------------|--------|------------------------|-------|
-| D1.1 | Not Started / In Progress / Complete | 0/3 | ... |
-
----
-
-**Plan generated on**: <Month Year>
-**Version**: 1.0
-**Author**: Roadmap Planner (Claude Code Agent)
-**Methodology**: Strategic decomposition with MoSCoW prioritization and Given-When-Then acceptance criteria
+```bash
+cp "<base>/../roadmap-tracker/scripts/check-roadmap.mjs" "<roadmap-folder>/check-roadmap.mjs"
+node "<roadmap-folder>/check-roadmap.mjs" --version   # "<version> format <n>"; <n> must equal formatVersion
 ```
 
-## Document Output
+### Step 7: Verify
 
-Save the deliverable plan as a Markdown file:
+1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`); list them in the handoff. Fix the files, never the checker.
+2. Dispatch **one fresh-context reviewer** subagent on a strong tier, with the roadmap folder, the strategy path and the source paths, and exactly this brief: *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Without a subagent tool, do this review yourself against the same brief and say in the handoff that it was not independent.
+3. Fix what the reviewer found, then run the checker again until 0 errors.
 
-- **Directory**: `docs/roadmaps/`
-- **File name**: `deliverables-<topic>-<YYYY-MM-DD>.md`
-- **Example**: `deliverables-modern-data-stack-2026-02-14.md`
-- **Notify the user** with the file path after writing
+### Step 8: Hand off
 
-## Cross-Session Memory
+Report to the user:
 
-Before starting work, search claude-mem for relevant prior context:
-- Use `mcp__plugin_claude-mem_mcp-search__search` with task-relevant keywords
-- Check for gotchas, decisions, and patterns from previous sessions
-- After completing significant work, save key learnings via `mcp__plugin_claude-mem_mcp-search__save_memory`
+- **Summary**: folder and strategy paths, deliverables per phase, requirement coverage (covered / out of scope / to clarify), open questions, checker result with the remaining warnings.
+- **Now**: the `now` list from `state.md`.
+- **Next**: the first deliverable → `superpowers:brainstorming` (its spec) → `superpowers:writing-plans` (its plan, with the header line `**Roadmap:** <roadmap folder>`) → `plan-coordinator`, which then invokes `roadmap-tracker` after each wave.
+- **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.
 
-## Behavioral Rules
+The files stay in the working tree for the user to review and commit.
 
-- Every deliverable must have at least 2 acceptance criteria in Given-When-Then format
-- Every acceptance criterion must be verifiable by a non-technical stakeholder
-- Never define a deliverable without an effort estimate, priority, and dependency list
-- Never create a phase without entry and exit criteria
-- Never ignore dependencies — if deliverable B needs A, state it explicitly
-- Never use vague language ("improve", "enhance", "optimize") without measurable criteria
-- Be honest about risks — surface them, don't hide them
-- Distinguish Must from Should ruthlessly — not everything is critical
-- If the source roadmap is too vague to decompose, ask clarifying questions before proceeding
+## Common mistakes
 
-## What NOT to Do
-
-- Do not create deliverables without testable acceptance criteria
-- Do not estimate effort without considering dependencies and risks
-- Do not mark everything as "Must" priority — apply MoSCoW honestly
-- Do not ignore the critical path — always identify it
-- Do not write acceptance criteria in technical jargon
-- Do not fabricate metrics or KPIs not grounded in the source document
-- Do not re-read files already in your context window
-- Prefer dedicated tools (Grep, Glob, Read) over Bash equivalents (grep, find, cat)
-- Bundle related file reads into parallel tool calls when independent
-- Do not skip the risk register — every plan has risks
-- Do not write files outside of `docs/roadmaps/`
-
-## Quality Assurance Checklist
-
-Before delivering, verify:
-- [ ] Every deliverable has a unique ID (D<phase>.<number>)
-- [ ] Every deliverable has at least 2 Given-When-Then acceptance criteria
-- [ ] Acceptance criteria use plain language verifiable by non-technical stakeholders
-- [ ] Every deliverable has effort estimate (S/M/L/XL), priority (MoSCoW), and dependencies
-- [ ] Every deliverable has a Definition of Done checklist
-- [ ] Dependencies form a valid DAG (no circular dependencies)
-- [ ] Critical path is identified and highlighted
-- [ ] Risk register covers all critical-path deliverables
-- [ ] Phase entry/exit criteria are defined
-- [ ] Executive summary accurately reflects the full plan
-- [ ] Document follows the output template structure
-- [ ] File saved to `docs/roadmaps/` with correct naming convention
+| Mistake | Fix |
+|---------|-----|
+| Turning the user's "halve X" into a target | `ASSUMPTION` + clarify question; target only with a named baseline and basis (Rule 2) |
+| Picking one side of a source conflict | `conflicts` block + question; settle by `DEC` only (Rule 3) |
+| Deliverables named by layer ("database", "UI") | Vertical slices; layer work only as justified enabling work (`decompose.md` §4) |
+| Phases called Foundation / Build / Scale | Name each phase by the outcome it delivers (`decompose.md` §5) |
+| Task-sized deliverables | Merge until each one needs its own spec and plan (Rule 5) |
+| Asking ten questions in one message | One at a time, ≤5 per round (Rule 6) |
+| Writing templates from memory | Copy them from `references/formats.md` |
+| Editing the checker to make it pass | Fix the roadmap files |

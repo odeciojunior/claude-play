@@ -76,7 +76,7 @@ Default root `docs/plans/roadmap-<topic>/` (user can override). Generated docume
 
 | Role | Default file | Nature | Origin |
 |---|---|---|---|
-| Strategy | `../<date>-roadmap-<topic>-plan.md` | Versioned (v1.0, v1.1…), changelog on top; no state | chatbot |
+| Strategy | `../<date>-roadmap-<topic>.md` (never `*-plan.md`: `plan-coordinator` searches that pattern for implementation plans; changed during execution, 2026-10-17) | Versioned (v1.0, v1.1…), changelog on top; no state | chatbot |
 | Config | `roadmap.config.json` | Paths/names, integration branch, status vocabulary, tracks, limits, language | new |
 | README | `README.md` | Files, conventions, "when to update" table | chatbot |
 | State | `state.md` | Overwritten snapshot: header, **Now** (≤5), deliverable panel, blockers `BLQ-n`, pending items with owner, in flight | chatbot |

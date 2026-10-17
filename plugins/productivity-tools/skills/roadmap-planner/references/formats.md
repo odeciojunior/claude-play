@@ -19,7 +19,7 @@ The single contract for every file in a roadmap. `roadmap-planner` writes these 
 Default root: `docs/plans/roadmap-<topic>/` (the user may override it).
 
 ```
-<strategy>.md              versioned strategy; path set in config (default ../<date>-roadmap-<topic>-plan.md)
+<strategy>.md              versioned strategy; path set in config (default ../<date>-roadmap-<topic>.md; never end it in -plan.md, which plan-coordinator searches for implementation plans)
 <root>/roadmap.config.json
 <root>/check-roadmap.mjs   vendored copy of the checker; first line "// check-roadmap <version> format <n>"
 <root>/README.md
@@ -37,7 +37,7 @@ All keys are required; only `files.measurements` may be `null`.
 {
   "formatVersion": 1,
   "language": "en",
-  "strategy": "../2026-01-01-roadmap-sample-plan.md",
+  "strategy": "../2026-01-01-roadmap-sample.md",
   "integrationBranch": "main",
   "files": { "readme": "README.md", "state": "state.md", "decisions": "decisions.md", "log": "log.md",
              "criticalPath": "critical-path.md", "measurements": null, "sources": "sources.md", "requirements": "requirements.md" },
@@ -163,8 +163,20 @@ Strategy skeleton (headings translated into the project's language):
 ## Metrics and targets
 None supplied.
 
-## Flags / Cross-cutting risks / Decisions / External pending items / Open questions
-(Decisions: "see decisions.md"; cite a DEC only where this version absorbs it.)
+## Flags
+<feature flags or "none">
+
+## Cross-cutting risks
+- <risk> → <mitigation>
+
+## Decisions
+See decisions.md. (Cite a DEC only where this version absorbs it.)
+
+## External pending items
+- (<owner>) <item>
+
+## Open questions
+- <question>
 
 ## Coverage summary
 <N covered, M out of scope, K to clarify>
