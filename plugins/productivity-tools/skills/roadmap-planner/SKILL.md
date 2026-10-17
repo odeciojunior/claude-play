@@ -63,11 +63,11 @@ Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a s
 Also settle now:
 
 - **Language** of the documents (Rule 7).
-- **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask; the checker then skips git checks with one `no-git` warning.
+- **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask which branch the work will integrate into (default `main`); the checker then skips git checks with one `no-git` warning, which is expected and listed in the handoff.
 
 ### Step 1: Intake and sources
 
-1. Take the objective and the sources passed as arguments.
+1. Take the objective and the sources passed as arguments. When the user supplies only an objective (or a brief in the conversation), register it as `SRC-01` (What it is: user brief) so requirements can cite it (`decompose.md` §1).
 2. **Discover** related sources: repo docs, specs, issues, git history (`git log` on the relevant paths). Use the web only if the user allows it; ask once.
 3. **Read** them. With a subagent tool, delegate the reading to subagents on a cheap tier (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
 
@@ -85,7 +85,7 @@ Also settle now:
 
 Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask at most 5 questions per round, **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent; stop by the stop rule.
 
-Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`; an unanswered question goes to "Open questions". Never record an answer the user did not give.
+Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give.
 
 ### Step 3: Requirements
 
@@ -93,9 +93,9 @@ Extract `REQ-NNN` from the source summaries and the answers, per `references/dec
 
 ### Step 4: Decompose
 
-Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria; one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk.
+Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk.
 
-Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways.
+Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways. A `needs-clarification` requirement still lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed and keeps it traced.
 
 ### Step 5: Prioritize
 
@@ -107,7 +107,7 @@ Write every file from its template in `references/formats.md`, in the project's 
 
 | File | Content at creation | formats.md |
 |------|---------------------|------------|
-| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 17 sections, one card per deliverable | §5 |
+| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
 | `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab, tracks, limits | §2 |
 | `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
 | `state.md` | initial `now` (≤ `limits.nowItems`), one panel row per card (`not-started`), empty blockers and inflight, pending with owners | §6 |
@@ -126,8 +126,8 @@ node "<roadmap-folder>/check-roadmap.mjs" --version   # "<version> format <n>"; 
 
 ### Step 7: Verify
 
-1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`); list them in the handoff. Fix the files, never the checker.
-2. Dispatch **one fresh-context reviewer** subagent on a strong tier, with the roadmap folder, the strategy path and the source paths, and exactly this brief: *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Without a subagent tool, do this review yourself against the same brief and say in the handoff that it was not independent.
+1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker.
+2. Dispatch **one fresh-context reviewer** subagent on a strong tier, with the roadmap folder, the strategy path and the source paths, and exactly this brief: *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
 3. Fix what the reviewer found, then run the checker again until 0 errors.
 
 ### Step 8: Hand off

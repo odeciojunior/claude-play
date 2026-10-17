@@ -33,7 +33,8 @@ Rules:
 
 - **One testable statement per `REQ`.** Split compound statements ("borrow and renew") into separate rows.
 - **Every source item is consumed.** Each claim in a source summary becomes a `REQ`, merges into an existing one (add the `SRC` to Sources), or becomes a `REQ` with coverage `out-of-scope: <reason>`. Nothing is dropped silently.
-- **Trace.** Sources cites `SRC` and/or `DEC` IDs. A requirement that comes only from the objective cites the `DEC` that confirmed it, or is tagged `ASSUMPTION` in its statement.
+- **Trace.** Sources cites `SRC` and/or `DEC` IDs.
+- **No sources.** When the user gives only an objective, register the objective (and any brief or conversation the user supplied) as `SRC-01` with What it is "user brief", so requirements cite it. Never create a `DEC` just to carry a source; a `DEC` records a choice.
 - **No speculation.** No "might need" requirements nobody stated.
 - **Duplicates** merge into one row listing every source.
 - **Conflicts.** A requirement both sides of an unsettled conflict touch stays `needs-clarification` until a `DEC` settles it; then it cites that `DEC`.
@@ -76,7 +77,8 @@ A layer-only deliverable ("database", "API", "UI") is allowed only as enabling w
 ## 5. Phases
 
 - Name each phase by the **outcome** it delivers ("a reader can borrow a book end to end"), never by a template stage ("Foundation", "Build", "Optimize", "Scale").
-- Each phase states **entry criteria** (what must be true to start) and **exit criteria** (what must be true to finish, observable), in the strategy's deliverables overview or thesis.
+- Each phase states **entry criteria** (what must be true to start) and **exit criteria** (what must be true to finish, observable).
+- The strategy's **Phases** section (after the Deliverables overview, `formats.md` §5) lists every phase in order: name by outcome, entry criteria, exit criteria, deliverables (`E<n>`).
 - The card's `phase` attribute is a short slug of the phase name.
 - Phases follow the DAG: no deliverable sits in an earlier phase than one it depends on.
 
@@ -130,7 +132,7 @@ Never a point estimate, never a duration, never a number without a basis.
 
 Before writing the files:
 
-1. **Forward**: every `REQ` lists ≥1 deliverable with coverage `covered`, or is `out-of-scope: <reason>`, or `needs-clarification` with an open question.
+1. **Forward**: every `REQ` lists ≥1 deliverable with coverage `covered`, or is `out-of-scope: <reason>`, or `needs-clarification` with an open question. A `needs-clarification` requirement lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed.
 2. **Backward**: every card's `reqs` lists ≥1 `REQ`.
 3. **Symmetry**: if `REQ-004` lists `E2`, the `E2` card lists `REQ-004`, and the other way round.
 4. **Sources consumed**: every `SRC` is cited by at least one `REQ` or `DEC`, or the strategy says why it was read but not used.

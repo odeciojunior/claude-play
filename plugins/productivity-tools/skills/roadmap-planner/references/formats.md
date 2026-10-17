@@ -116,16 +116,17 @@ The strategy is versioned (v1.0, v1.1, ...), carries no state, and starts with t
 5. Where we are (regenerated from `state.md` and `critical-path.md` at each revision)
 6. Thesis
 7. Deliverables overview (ID, title, phase, depends on)
-8. Deliverable cards
-9. Metrics and targets (sourced only; otherwise "none supplied")
-10. Flags
-11. Cross-cutting risks
-12. Decisions: a pointer to `decisions.md`; cites a `DEC` only where it absorbs it
-13. External pending items
-14. Open questions
-15. Coverage summary
-16. Version history
-17. Sources: a pointer to `sources.md`
+8. Phases: in order, each with its name (by outcome), entry criteria, exit criteria and deliverables
+9. Deliverable cards
+10. Metrics and targets (sourced only; otherwise "none supplied")
+11. Flags
+12. Cross-cutting risks
+13. Decisions: a pointer to `decisions.md`; cites a `DEC` only where it absorbs it
+14. External pending items
+15. Open questions
+16. Coverage summary
+17. Version history
+18. Sources: a pointer to `sources.md`
 
 Strategy skeleton (headings translated into the project's language):
 
@@ -156,6 +157,11 @@ Strategy skeleton (headings translated into the project's language):
 ## Deliverables overview
 | ID | Title | Phase | Depends on |
 |---|---|---|---|
+
+## Phases
+| Phase (outcome) | Entry criteria | Exit criteria | Deliverables |
+|---|---|---|---|
+| <outcome> | <what must be true to start> | <observable condition to finish> | E1 |
 
 ## Deliverables
 <one card per deliverable, see below>
@@ -274,7 +280,7 @@ Card attrs: `depends` and `reqs` are comma lists or `-`; `critical` is `true` or
 
 `requirements.md`: one `REQ-NNN` row per requirement, traced to `SRC`/`DEC`, with Deliverables and Coverage. Requirement and card must agree: if a requirement lists `E2`, the `E2` card lists the requirement (warning `req-card-asymmetry` otherwise).
 
-`critical-path.md`: a Mermaid graph of deliverables and gates plus the next gate per track. Ordering only; no dates unless the user supplied them. The checker only verifies that the IDs cited exist.
+`critical-path.md`: a Mermaid graph of deliverables and gates plus the next gate per track. Gates may appear as nodes: blockers (`BLQ-n`, defined in `state.md`) and decision gates (`DEC-NNN`, defined in `decisions.md`). Write a gate node with a hyphen-free node id and the real ID in its label (`BLQ1["BLQ-1: <gate>"]`), because the checker reads IDs in Mermaid labels and every cited ID must exist. Ordering only; no dates unless the user supplied them. The checker only verifies that the IDs cited exist.
 
 `measurements.md` (optional): runs, costs and measurement milestones. Recorded and Billed are separate columns.
 

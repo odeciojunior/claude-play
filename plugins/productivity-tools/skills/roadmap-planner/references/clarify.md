@@ -103,7 +103,7 @@ Stop when any of these holds:
 2. The user says to stop.
 3. The user declines another round.
 
-Whatever remains goes into "Open questions" in the strategy and, when it blocks a requirement, makes that requirement `needs-clarification`.
+Whatever remains is recorded as a deferred question (§7): an "Open questions" entry, a `pending` item with an owner and, when it blocks a deliverable, a `BLQ-n`; a requirement it leaves unresolved is `needs-clarification`.
 
 ## 7. Recording answers
 
@@ -112,7 +112,7 @@ Whatever remains goes into "Open questions" in the strategy and, when it blocks 
 | A **choice** between options | A `DEC-NNN` row in `decisions.md`: Decision = the chosen option; Discarded alternative = the options not chosen; Contradicts `-`; Revisit when = the condition that would reopen it; Origin `user`; Status `in-force` |
 | An **unverified fact** ("the vendor API allows about 100 calls a minute") | The Assumptions table, tagged `ASSUMPTION`, with an owner and "re-validate when" |
 | A conflict settled by the user | A `DEC` row whose Decision cites both `SRC` IDs (Origin `user`); the `conflicts` item stays and names the `DEC` (`SRC-01 vs SRC-03: … -> DEC-002`) |
-| No answer, or "later" | "Open questions" in the strategy; affected requirements `needs-clarification` |
+| No answer, "later" or "defer" | **Not a `DEC`.** An "Open questions" entry in the strategy; a `pending` item in `state.md` with its owner (`(owner) <question>`); a `BLQ-n` row in `blockers` when it blocks a deliverable (Affects = that `E<n>`, Unblocks when = the question is answered); affected requirements `needs-clarification`. A related `conflicts` item stays and names the question (`SRC-01 vs SRC-03: … -> open question: <short title>`) |
 | A new source the user points to | A new `SRC` row, read like the others in Step 1 |
 
 Record only what the user actually answered. When the user accepts a recommendation, the decision is still the user's (Origin `user`). Requirements derived from an answer cite its `DEC`.
