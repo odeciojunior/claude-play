@@ -619,3 +619,42 @@ test('round2: an all-digit 7-char SHA counts as evidence', () => {
   const missing = { ...okGit, commitExists: () => false };
   expectCode(run(dir, missing), 'sha-missing', 'error');
 });
+
+// ---------- line 1 is the runtime version source ----------
+
+function scriptCopy(line1) {
+  const dir = tmp();
+  const lines = fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/);
+  lines[0] = line1;
+  const file = path.join(dir, 'check-roadmap.mjs');
+  fs.writeFileSync(file, lines.join('\n'));
+  return file;
+}
+
+test('header: exported constants equal the repo copy line 1', () => {
+  const m = /^\/\/ check-roadmap (\S+) format (\d+)$/.exec(fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0]);
+  assert.equal(m[1], CHECKER_VERSION);
+  assert.equal(Number(m[2]), FORMAT_VERSION);
+});
+
+test('header: --version reads the running file line 1', () => {
+  const r = spawnSync(process.execPath, [scriptCopy('// check-roadmap 1.1.0 format 1'), '--version'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), '1.1.0 format 1');
+});
+
+test('header: stale check uses the running file line 1', () => {
+  const file = scriptCopy('// check-roadmap 1.1.0 format 1');
+  const r = spawnSync(process.execPath, [file, VALID], {
+    encoding: 'utf8',
+    env: { ...process.env, ROADMAP_CHECK_PLUGIN_CACHE: cacheWith('1.2.0') },
+  });
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /\[checker-stale\]/);
+});
+
+test('header: malformed line 1 makes --version fail with an ERROR line', () => {
+  const r = spawnSync(process.execPath, [scriptCopy('// check-roadmap banana'), '--version'], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^ERROR /m);
+});

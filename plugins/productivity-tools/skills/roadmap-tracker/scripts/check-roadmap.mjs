@@ -506,14 +506,14 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-function headerVersion(file) {
+function readHeader(file) {
   try {
     const fd = fs.openSync(file, 'r');
     const buf = Buffer.alloc(200);
     const n = fs.readSync(fd, buf, 0, 200, 0);
     fs.closeSync(fd);
-    const m = /^\/\/ check-roadmap (\d+\.\d+\.\d+) format (\d+)/.exec(buf.toString('utf8', 0, n));
-    return m ? m[1] : null;
+    const m = /^\/\/ check-roadmap (\d+\.\d+\.\d+) format (\d+)\s*$/.exec(buf.toString('utf8', 0, n).split(/\r?\n/)[0]);
+    return m ? { version: m[1], format: Number(m[2]) } : null;
   } catch {
     return null;
   }
@@ -534,7 +534,7 @@ export function findNewerPluginCopy(selfPath, selfVersion, cacheRoot) {
     for (const ver of dirs(pluginDir)) {
       const file = path.join(pluginDir, ver, 'skills', 'roadmap-tracker', 'scripts', 'check-roadmap.mjs');
       if (path.resolve(file) === self) continue;
-      const version = headerVersion(file);
+      const version = (readHeader(file) || {}).version;
       if (version && compareVersions(version, selfVersion) > 0 && (!best || compareVersions(version, best.version) > 0)) best = { path: file, version };
     }
   }
@@ -545,11 +545,17 @@ export function findNewerPluginCopy(selfPath, selfVersion, cacheRoot) {
 
 function main(argv) {
   const args = argv.slice(2);
+  const selfPath = fileURLToPath(import.meta.url);
+  // Line 1 of this very file is the single source of the version at runtime.
+  const self = readHeader(selfPath);
+  if (!self) {
+    console.log(`ERROR ${path.basename(selfPath)}: line 1 must be "// check-roadmap <version> format <n>"`);
+    return 1;
+  }
   if (args.includes('--version')) {
-    console.log(`${CHECKER_VERSION} format ${FORMAT_VERSION}`);
+    console.log(`${self.version} format ${self.format}`);
     return 0;
   }
-  const selfPath = fileURLToPath(import.meta.url);
   const folder = path.resolve(args.find((a) => !a.startsWith('--')) || path.dirname(selfPath));
   let problems;
   try {
@@ -563,7 +569,7 @@ function main(argv) {
   }
   try {
     const cacheRoot = process.env.ROADMAP_CHECK_PLUGIN_CACHE || path.join(os.homedir(), '.claude', 'plugins', 'cache');
-    const newer = findNewerPluginCopy(selfPath, CHECKER_VERSION, cacheRoot);
+    const newer = findNewerPluginCopy(selfPath, self.version, cacheRoot);
     if (newer) {
       problems.push({
         severity: 'warning', code: 'checker-stale', file: path.basename(selfPath),
