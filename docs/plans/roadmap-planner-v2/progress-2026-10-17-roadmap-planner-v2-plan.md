@@ -145,3 +145,20 @@
 ### Review G-R and final H
 - **G-R**: opus read-only: three-place version consistency, catalog text accurate to the skills as built, no stale `docs/roadmaps/` claims for roadmap-planner.
 - **H**: opus read-only whole-branch review `git diff bb6ec3d..HEAD` against the spec: goals, non-goals, anti-goals, the four layers, calls made by the designer; report defects only.
+
+---
+
+# Round 2 (2026-10-17): multi-angle review fixes → v1.3.0
+**Status**: Completed (2026-10-17; HEAD `60b144d`; checker 115/115; opus cross-cutting review PASS after one fix round)
+**Source**: 7 read-only reviewers (haiku: structure, catalogs, contract×checker; sonnet: checker robustness, tracker lifecycle in a real git repo, workflow fit, parity with the BDesk chatbot roadmap).
+**Decisions (user-approved, on the orchestrator's recommendation)**: restore 4 chatbot practices (statuses `blocked`/`discarded`; Now item shape as guidance + optional `donot` block citing BLQ/DEC; optional `releases` block; volatile-value rule as text); add an optional light mode (≤3 questions, one round, given sources only, no reviewer, minimal cards; REQ/SRC + checker + tracker kept); plugin 1.3.0; `formatVersion` stays 1 (new blocks/keys optional).
+
+| Wave | Group | Scope | Agent · tier | Writes | Status |
+|---|---|---|---|---|---|
+| 1 | R1 | checker defects (A) + format additions (D) + fixture header | general-purpose · sonnet | check-roadmap.mjs, test, fixtures/valid/*, formats.md | In flight (a1d13cb101d1f3bcf) |
+| 1 | R2 | planner: light mode, routing vs brainstorming, handoff seams (B3), new statuses/blocks | general-purpose · sonnet | roadmap-planner/SKILL.md, clarify.md, decompose.md | In flight (a587e13676996f8a1) |
+| 1 | R3 | tracker recipe gaps (C), new statuses/blocks recipes, trigger words | general-purpose · sonnet | roadmap-tracker/SKILL.md, events.md | In flight (a8c596440e2e19681) |
+| 2 | R4 | plan-coordinator search path (B1), catalogs/texts (E), version 1.3.0 | general-purpose · sonnet | plan-coordinator/SKILL.md, manifests, READMEs, CLAUDE.md, diagram | Pending |
+| 3 | R5 | opus cross-cutting review of the round; sonnet behavioural run of light mode | opus + sonnet, read-only | — | Pending |
+
+**Round 2 outcome**: commits `a38ed21` (checker 1.3.0), `be69f84` (planner light mode + handoffs), `33950f2` (tracker recipes), `fc7f670` (v1.3.0, plan-coordinator search path, catalogs), `2a3d1bd`/`f6aca55`/`8628192`/`afa0d8d` (fixes from the opus cross-cutting review: blocked/discarded vocab keys, first-release backfill, status subsets, retired ids in decisions, light-mode defaults, resume-before-mode), `60b144d` (doc nits). Light mode behavioural run (sonnet, pt-BR PDF export request): PASS, 1 mode + 3 questions, checker 0 errors. Known: header stays `1.3.0` across post-`fc7f670` checker changes because 1.3.0 was never published; bump to 1.3.1 for any change after the first push.
