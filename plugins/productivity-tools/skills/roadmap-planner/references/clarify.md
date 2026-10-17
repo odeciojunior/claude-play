@@ -11,6 +11,8 @@ How `roadmap-planner` Step 2 finds what is ambiguous, decides what to ask, asks 
 5. Recommended answers
 6. Rounds and the stop rule
 7. Recording answers
+8. Boundary with brainstorming
+9. Light mode
 
 ## 1. Inputs
 
@@ -93,7 +95,7 @@ The recommendation is advice; the user decides. Base it on:
 
 ## 6. Rounds and the stop rule
 
-- A round has **at most 5 questions**, asked one at a time; the next question waits for the previous answer, and an answer may change the scores of the remaining candidates.
+- A round has **at most 5 questions** (light mode: 3, one round, §9), asked one at a time; the next question waits for the previous answer, and an answer may change the scores of the remaining candidates.
 - After each round, report the categories as **Resolved** (answered now), **Deferred** (left as assumption or open question), **Clear** (needed no question) and **Outstanding** (still high priority).
 - Another round, one theme at a time (for example "integrations", then "non-functional"), only when the user consents. Never exceed the budget without asking.
 
@@ -116,3 +118,11 @@ Whatever remains is recorded as a deferred question (§7): an "Open questions" e
 | A new source the user points to | A new `SRC` row, read like the others in Step 1 |
 
 Record only what the user actually answered. When the user accepts a recommendation, the decision is still the user's (Origin `user`). Requirements derived from an answer cite its `DEC`.
+
+## 8. Boundary with brainstorming
+
+Clarification stays at **roadmap level**: objectives, scope and non-goals, constraints, source conflicts, deliverable boundaries. Questions about how one deliverable should be designed (UI details, data model, algorithm, library choice) belong to `superpowers:brainstorming`, which runs per deliverable. Do not ask them now: record each as an "Open questions" entry on that deliverable's card (prefixed with its `E<n>`), not as a `DEC` and not as a blocker unless it gates another deliverable.
+
+## 9. Light mode
+
+When Step 0 chose light mode: at most 3 questions, one round, no further rounds. Pick the three highest-priority candidates from §3 (source conflicts and unsourced numbers first); everything else is recorded as an assumption or open question (§7). The stop rule of §6 still applies earlier.

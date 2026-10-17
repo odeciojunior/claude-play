@@ -15,6 +15,7 @@ How `roadmap-planner` Steps 3 to 5 turn sources and answers into requirements, d
 9. Size
 10. Acceptance criteria and definition of done
 11. Coverage pass
+12. Light mode
 
 ## 1. Requirement extraction
 
@@ -138,3 +139,7 @@ Before writing the files:
 4. **Sources consumed**: every `SRC` is cited by at least one `REQ` or `DEC`, or the strategy says why it was read but not used.
 
 The checker verifies 1 to 3 mechanically; 4 and the quality of each criterion are for you and the reviewer.
+
+## 12. Light mode
+
+Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required. Defaults for the rest: `priority=Must`, `size="not estimated"`, `track=engineering`, `critical` computed from the DAG. Phases may be a single phase. Requirement extraction (§1) and the coverage pass (§11) are unchanged: REQ/SRC traceability and the checker stay. A deliverable that waits on an open blocker is created with status `blocked` citing its `BLQ-n`; one dropped by a decision is `discarded` with priority `Won't`.
