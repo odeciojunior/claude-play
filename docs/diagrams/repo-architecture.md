@@ -47,7 +47,7 @@ mindmap
       Research Reports
 ```
 
-**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Four plugins ship with the repo: `productivity-tools` (7 skills for research, analysis, planning, and diagramming), `marketplace-tools` (2 skills for scaffolding and validation), `sql-server-tools` (5 specialized agents + 1 routing skill for SQL Server work), and `mcp-sql-server` (setup skill + bash script for automated MCP server installation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
+**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Four plugins ship with the repo: `productivity-tools` (8 skills for research, analysis, planning, diagramming, and system health), `marketplace-tools` (2 skills for scaffolding and validation), `sql-server-tools` (5 specialized agents + 1 routing skill for SQL Server work), and `mcp-sql-server` (setup skill + bash script for automated MCP server installation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
 
 ---
 

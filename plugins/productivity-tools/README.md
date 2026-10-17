@@ -1,6 +1,6 @@
 # Productivity Tools
 
-Research, analysis, planning, diagramming, and visual whiteboarding skills for strategic work.
+Research, analysis, planning, diagramming, visual whiteboarding and system health skills for strategic work.
 
 ## Installation
 
@@ -13,13 +13,14 @@ claude plugin install productivity-tools@claude-play
 
 | Skill | Trigger | Description |
 |-------|---------|-------------|
-| deep-researcher | "research X", "investigate Y" | Multi-source internet research producing structured reports |
-| plan-coordinator | "execute this plan", "build execution map", "resume the plan" | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
-| report-analyzer | "analyze this report", "build roadmap from report" | SWOT analysis and strategic roadmap from reports |
-| roadmap-planner | "plan a new roadmap", "break down this initiative" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker |
-| roadmap-tracker | "record this decision", "update the roadmap", "piece closed" | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
-| mermaid-designer | "create a diagram", "draw a flowchart" | Mermaid diagram generation for documentation |
-| excalidraw-designer | "create an excalidraw diagram", "draw a whiteboard" | Hand-drawn style diagrams and visual whiteboards (.excalidraw files) |
+| deep-researcher | "in-depth investigation", technical deep-dives, market analysis, competitive intelligence, architectural research | Multi-source internet research producing structured reports |
+| plan-coordinator | executing a multi-step plan from `docs/plans/` or `docs/superpowers/plans/` with subagents, per-step model-tier routing, resuming from the progress file | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
+| report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT analysis and strategic roadmap from reports |
+| roadmap-planner | "plan the roadmap for X", "break this initiative into deliverables", "we need a roadmap" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker. Full mode for multi-week initiatives, light mode for small ones |
+| roadmap-tracker | an existing roadmap folder (`roadmap.config.json`) after an event: a decision (DEC), blocker (BLQ), closed piece or wave, status request | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
+| mermaid-designer | any visual diagram, chart, or flowchart embedded in Markdown | Mermaid diagram generation for documentation |
+| excalidraw-designer | hand-drawn style diagrams, whiteboards, mind maps, wireframes as `.excalidraw` files | Hand-drawn style diagrams and visual whiteboards (.excalidraw files) |
+| wsl-health-check | "check system health", "run a health report", "is the machine healthy" | System health report and diagnosis of the machine |
 
 ## Pipeline
 
