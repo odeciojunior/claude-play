@@ -199,7 +199,7 @@ See sources.md.
 A deliverable ends at "gets its own spec and plan"; tasks are out of scope. Card template:
 
 ```markdown
-<!-- roadmap:card id=E1 phase=<phase> track=engineering priority=Must size="not estimated" depends=- reqs=REQ-001 critical=false -->
+<!-- roadmap:card id=E1 phase=<phase> track=engineering priority=Must size="not estimated" depends=- reqs=REQ-001 critical=true -->
 ### E1 -- Title
 
 Why: REQ-001. One or two sentences of purpose.
