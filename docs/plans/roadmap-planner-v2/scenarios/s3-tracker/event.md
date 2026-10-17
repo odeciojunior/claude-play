@@ -18,9 +18,11 @@ Invoke `roadmap-tracker` on the scratch folder with this event. When the skill a
 
 Expected:
 
-- `decisions.md` gains `DEC-002` (next ID after `DEC-001`), dated 2026-01-05, deliverable `E2`, with the **Contradicts** cell filled (naming E2's pieces) and Status `in-force`. `DEC-001` may be marked `superseded by DEC-002`; no other existing row cell changes.
+- `decisions.md` gains `DEC-002` (next ID after `DEC-001`), dated 2026-01-05, deliverable `E2`, with the **Contradicts** cell filled (naming E2's pieces) and Status `in-force`.
+- `DEC-001` stays `in-force`, unchanged. It answered *when* sharing ships (after editing, as piece 2); `DEC-002` answers *whether* E2 ships sharing at all, a different question that only makes `DEC-001` moot, so the supersede rule (events.md § 1 step 2) does not apply. If the skill asks, its recommended answer is "not superseded". No existing row cell changes.
+- Coverage re-check of the dropped piece: `REQ-002` (share and list items) lists `E2, E3`; listing is still served by `E3`, sharing no longer is. Expected: the skill either asks (recommending `needs-clarification`) or sets `REQ-002` to `needs-clarification`, and names `REQ-002` in the revision proposal. `requirements.md` gets no other change; card `reqs` stay unchanged.
 - `log.md` gains a row at the top citing `DEC-002`, with backticked evidence.
-- The vendored checker exits 0 and warns `contradiction-unabsorbed` for `DEC-002`.
+- The vendored checker exits 0 and warns `contradiction-unabsorbed` for `DEC-002`; also `needs-clarification` if `REQ-002` was set so, and `no-git` outside a repo.
 - A revision v1.1 is proposed (absorbing `DEC-002`; E2 pieces and acceptance, and the effect on `REQ-002`, listed) and **not written**: `strategy.md` is byte-identical to the fixture. A pending approval item in `state.md` is acceptable.
 - No commit, no file outside the scratch folder touched.
 

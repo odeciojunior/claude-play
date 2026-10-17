@@ -34,8 +34,9 @@ Common to every recipe:
    - **Contradicts:** read the strategy text the decision touches: the card's pieces, acceptance, definition of done, attrs (`priority`, `phase`, `track`, `depends`, `reqs`), and the objective, non-goals, thesis and deliverables overview. If the decision overrides any of them, name it, for example `E2 (pieces)`, `E3 (priority)`, `Non-goals`. If it only fills in detail the strategy leaves open, write `-`. If unsure, ask once and recommend the filled cell.
    - Revisit when: a condition ("the owner reprioritizes sharing"), not a date unless one was supplied.
    - Origin: `user`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone.
-2. **Supersedes an earlier decision?** Set the old row's Status to `<vocab.decisionSupersededBy> DEC-NNN` (the new ID). Status and Revisit when are the only cells of an old row that may change.
+2. **Supersedes an earlier decision?** Only when the new decision replaces the old one's choice on the same question (the old row's Decision would now be answered differently). Touching the same deliverable, or making the old choice moot, is not enough. If unsure, ask the user, recommending "not superseded". When it does supersede, set the old row's Status to `<vocab.decisionSupersededBy> DEC-NNN` (the new ID). Status and Revisit when are the only cells of an old row that may change.
 3. Then whatever uses it: `state.md` (remove the pending item it resolves, adjust panel Next step and `now`), `requirements.md` (a coverage change that touches no card: `out-of-scope: <reason citing DEC-NNN>`, or `needs-clarification`), `critical-path.md` (a changed gate). Changes to a card wait for the revision.
+   - **A piece dropped or moved:** list the `REQ` that piece served (the card's `reqs` and the `requirements.md` rows whose Deliverables name that card) and re-check each one's coverage. Still served by another piece or deliverable → leave it and say so in the revision proposal. No longer served → set Coverage to `<vocab.coverageOutOfScope>: <reason citing DEC-NNN>` if the decision drops it from scope, otherwise `vocab.coverageNeedsClarification`; if unclear which, ask (recommend `needs-clarification`). Card `reqs` change only in the revision.
 4. `log.md`: "DEC-NNN recorded: <short decision>", evidence `` `decisions.md` ``.
 
 Checker: a filled Contradicts on an in-force decision → `contradiction-unabsorbed` (warning) until a revision cites the ID → propose one (§ 9). `superseded-link` if the superseding ID does not exist.
@@ -51,6 +52,7 @@ Checker: a filled Contradicts on an in-force decision → `contradiction-unabsor
 2. `now`: remove the finished item, add the next one.
 3. `log.md`: "E<n> piece <k> closed (<status>)", evidence = SHA or path.
 4. Last piece of the deliverable, or last deliverable of a phase → § 9.
+5. A piece dropped or moved (not closed) is a decision: § 1, including its coverage re-check.
 
 Checker: `bad-status` (word not in vocab), `integrated-no-sha`, `sha-missing`, `now-limit`, `cell-limit`.
 
@@ -153,7 +155,7 @@ Unchanged: everything else
 Approve?
 ```
 
-Nothing to change → say so and write nothing. Not approved → leave the strategy untouched, keep the pending approval item; the warning stays.
+Nothing to change → say so and write nothing. Not approved → leave the strategy untouched; the proposal lives only in the conversation plus the pending item "(user) approve strategy v<N+1> (absorbs DEC-…)" in `state.md`, nothing else is written, and the warning stays. A later run (after compaction or in a new session) regenerates the proposal from the `DEC` rows that pending item names.
 
 On approval, in this order: strategy (`version` anchor, title, changelog entry listing the absorbed `DEC`, changed sections citing each `DEC`, "Where we are", version-history row), then `state.md` panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, remove the pending approval item, `log.md` "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, then the checker.
 
@@ -166,6 +168,8 @@ On approval, in this order: strategy (`version` anchor, title, changelog entry l
 3. Exit 0 → copy the plugin's file over the vendored one (`cp`, byte for byte), log "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, remove any "checker … available" pending item.
 4. Exit 1 → keep the vendored copy, add or update the pending item "(maintainer) checker <new> available: N errors to fix". Show the errors in the report. Fixing them is a separate request.
 5. Either way, run the vendored copy for this run's final check (SKILL.md Step 5).
+
+When the refresh and the event both add log rows in one run, both carry the same date (the day of the run) and the event's row goes on top: the refresh happened first (cold start), so it is the older row.
 
 ## 11. Migration
 

@@ -28,8 +28,9 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 2. **One fact in one place.** The strategy holds no state; `state.md` holds no history (it is overwritten); `log.md` and `decisions.md` are append-only. Old decision rows change only in Status and Revisit when.
 3. **Never invent numbers.** No dates, durations, metrics, estimates or costs that the user or a source did not supply. Date cells hold the date the event happened (today's date unless the user or a source gives another); never deadlines or forecasts. A value nobody supplied is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
 4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
-5. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval.
-6. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
+5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
+6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval.
+7. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
 
 ## Workflow
 
@@ -70,7 +71,7 @@ Compare the plugin's checker with the vendored copy. The version of each is the 
 |-----------|--------|
 | Vendored version equal to or newer than the plugin's | Nothing to do |
 | Plugin's is newer | Run it on the folder: `node "<base>/scripts/check-roadmap.mjs" "<folder>"` |
-| ... and it exits 0 | Copy it over `<folder>/check-roadmap.mjs` (byte copy), add a `log` row "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, and drop any earlier "checker ... available" pending item |
+| ... and it exits 0 | Copy it over `<folder>/check-roadmap.mjs` (byte copy), add a `log` row "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, and drop any earlier "checker ... available" pending item. If the event adds log rows too, all carry the same date and the event's rows go above the refresh row (the refresh came first) |
 | ... and it exits 1 | Keep the old copy. Add to the `pending` block "(maintainer) checker <new> available: N errors to fix" (N = the error count of its summary line); if such an item exists, update it instead of adding a second one |
 | Vendored copy missing | Nothing to keep: copy the plugin's checker in, add a `log` row "checker added <new>", and fix its errors in Step 5 |
 | Vendored line 1 has no version header (hand-edited copy) | Do not replace it; add a pending item "(maintainer) vendored checker has no version header; review it, then replace with <new>" |
@@ -120,7 +121,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 `node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing.
 
-- **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask; if still unresolved, hand back with status "errors remain" and list them. Never hide an error.
+- **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask, with a recommended fix. If no user answer is available (a caller like plan-coordinator, or the user defers), hand back `errors remain: <codes>` with one recommended fix per error (for example "now-limit: drop item 6, the least urgent") and do not claim 0 errors. Never hide an error.
 - **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run.
 
 ### Step 6: Revision
@@ -128,7 +129,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks.
 
 1. **Propose** strategy vN+1 in the conversation, without writing it: the new version (minor bump, `1.0` → `1.1`, unless the user wants a major one for a changed objective or phases), the `DEC` IDs it absorbs, each section that changes with one line on how, card changes (pieces, acceptance, `reqs`, priority), and requirement or coverage changes. Checklist: `events.md` § End of piece or phase. If nothing needs changing, say so; the user may still ask for a revision.
-2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. Add a pending item "(user) approve strategy v<N+1> (absorbs DEC-…)" so the proposal survives the conversation; the contradiction warning stays and the run may end with it.
+2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the § End of piece or phase checklist). The contradiction warning stays and the run may end with it.
 3. **On approval:** update the `version` anchor (`<!-- roadmap:version <N+1> <date> -->`) and the title; add a changelog entry (newest first) listing the absorbed `DEC`; edit the changed sections and cite each absorbed `DEC` ID where it applies; regenerate "Where we are" from `state.md` and `critical-path.md`; add a version-history row. Then update whatever the revision moved (panel rows for new or dropped cards, `requirements.md`, `critical-path.md`), remove the approval pending item, add a `log` row "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, and rerun Step 5.
 4. **Rejected:** the user may change the decision instead; that is a new decision (§ Decision, superseding the old one).
 
