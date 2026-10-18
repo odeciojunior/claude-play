@@ -43,7 +43,7 @@ Take every file template from `references/formats.md`; this file does not repeat
 Copy this checklist into your working notes and tick it off:
 
 ```
-- [ ] 0 Mode + resume     - [ ] 5 Prioritize
+- [ ] 0 Resume + mode     - [ ] 5 Prioritize
 - [ ] 1 Intake + sources  - [ ] 6 Write files + copy checker
 - [ ] 2 Clarify           - [ ] 7 Verify (checker, reviewer)
 - [ ] 3 Requirements      - [ ] 8 Hand off
@@ -119,10 +119,10 @@ Write every file from its template in `references/formats.md`, in the project's 
 
 | File | Content at creation | formats.md |
 |------|---------------------|------------|
-| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
+| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
 | `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
 | `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
-| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (`not-started`; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
+| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (the first `deliverableStatuses` word; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2, and that BLQ row's "Unblocks when" records "restores E<n> to <the first `deliverableStatuses` word>", which `events.md` § 5 reads on closing), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
 | `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
 | `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
 | `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |
@@ -140,7 +140,7 @@ node "<roadmap-folder>/check-roadmap.mjs" --version   # "<version> format <n>"; 
 
 ### Step 7: Verify
 
-1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker.
+1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker. If `node` is missing or older than 18, do not claim the folder verified: stop, or hand off saying "checker not run (Node ≥18 missing)".
 2. Full mode: dispatch **one fresh-context reviewer** subagent on a strong tier, with the roadmap folder, the strategy path and the source paths, and exactly this brief: *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
 3. Fix what the reviewer found, then run the checker again until 0 errors.
 

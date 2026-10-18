@@ -537,6 +537,8 @@ export function checkRoadmap(r, git, opts = {}) {
     for (const id of idsIn(scanFences(text, true).text, ID_RE)) {
       // log.md and decisions.md are append-only: they may cite retired blockers and dropped deliverables
       if ((role === 'log' || role === 'decisions') && (id.startsWith('BLQ-') || /^E\d+$/.test(id))) continue;
+      // the strategy changes only through a revision, so it may keep citing a closed blocker (BLQ only) until then
+      if (role === 'strategy' && id.startsWith('BLQ-')) continue;
       if (!defined.has(id)) add('error', 'unknown-id', file, `${id} is cited but not defined`);
     }
   }

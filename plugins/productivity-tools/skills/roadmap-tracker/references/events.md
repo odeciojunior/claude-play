@@ -20,7 +20,7 @@ One recipe per event. Each names the files in the order they change, the cells t
 
 Common to every recipe:
 
-- **Log row**: insert at the top of the `log` table (newest first, dates descending). Columns: Date, Deliverable (`E<n>` or `-`), What happened (≤ `limits.cellChars`), Evidence (a SHA, path or URL in backticks, never empty, never "this commit" or another `bannedPhrases` entry).
+- **Log row**: insert in the `log` table below any rows with a newer date and above rows with an older or equal date (newest first, dates descending; a past-dated event goes under newer rows). Columns: Date, Deliverable (`E<n>` or `-`), What happened (≤ `limits.cellChars`), Evidence (a SHA, path or URL in backticks, never empty, never "this commit" or another `bannedPhrases` entry).
 - **Next ID**: the highest ID of that kind ever used, in any file (the log included), plus one. Never reuse, never renumber.
 - **Words**: statuses, coverage, decision status and branch kind use the exact `vocab` words of the config, which may be localized.
 - **State is a snapshot**: rewrite the affected rows and lists; do not keep history in `state.md`. Keep `now` within `limits.nowItems`.
@@ -31,7 +31,7 @@ Common to every recipe:
 - **Evidence fallback**: when the event has no SHA or path (a blocker closed by a phone call), Evidence cites the file that now holds the change (`decisions.md`, `state.md`, `requirements.md`). Never empty, never "this commit".
 - **Volatile values**: a value that changes over time is written once, with the command that measures it and the date; other files point to it.
 - **Blocked and discarded words**: before the first use of the blocked or discarded status in a recipe, read `vocab.blockedStatus` / `vocab.discardedStatus` (defaults `"blocked"` / `"discarded"`). If the key is absent, or its word is not in `deliverableStatuses` (folders created before 1.3.0, or localized ones), add the localized word to `deliverableStatuses`, set the key in `roadmap.config.json`, and log a row "config: added status <word>" (evidence `roadmap.config.json`). Then always write the configured word, never the English literal.
-- **Wording**: a spec written is "reached spec" (status word for spec), never "closed".
+- **Wording**: a spec written is "reached spec" (the configured word for spec, position 2 of `deliverableStatuses`), never "closed".
 
 ## 1. Decision
 
@@ -45,7 +45,7 @@ Common to every recipe:
    - Origin: `user`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone.
    - A decision row may cite the `BLQ-n` it closes (decisions may cite retired ids, like the log); apply § 5 "Closed" for the blocker itself.
 2. **Supersedes an earlier decision?** Only when the new decision replaces the old one's choice on the same question (the old row's Decision would now be answered differently). Touching the same deliverable, or making the old choice moot, is not enough. If unsure, ask the user, recommending "not superseded". When it does supersede, set the old row's Status to `<vocab.decisionSupersededBy> DEC-NNN` (the new ID). Status and Revisit when are the only cells of an old row that may change.
-3. Then whatever uses it: `state.md` (remove the pending item it resolves, adjust panel Next step and `now`), `requirements.md` (a coverage change that touches no card: `out-of-scope: <reason citing DEC-NNN>`, or `needs-clarification`), `critical-path.md` (a changed gate, then refresh the next milestone per track, Common). A decision that forbids an action → also § 13. Changes to a card wait for the revision.
+3. Then whatever uses it: `state.md` (remove the pending item it resolves, adjust panel Next step and `now`; the strategy's Open questions entry for it stays until the next approved revision, § 9), `requirements.md` (a coverage change that touches no card: `out-of-scope: <reason citing DEC-NNN>`, or `needs-clarification`), `critical-path.md` (a changed gate, then refresh the next milestone per track, Common). A decision that forbids an action → also § 13. Changes to a card wait for the revision.
    - **A deliverable discarded** (the decision drops a whole card): panel Status `vocab.discardedStatus` (Common), Next step cites the DEC; the card keeps its place and gets priority `Won't` in the strategy **only after the revision is approved**; until then the `pending` approval item names the card ("(user) approve strategy v<N+1> (absorbs DEC-…; discards E<n>)"). Mark the node discarded in `critical-path.md` and remove gates that only it held. Re-check REQ coverage (next bullet). The revision touches these strategy sections: overview of deliverables, phases (membership and exit criteria), non-goals (add what was dropped when it is now out of scope), coverage summary, and the card itself (priority `Won't`, pieces and `reqs` left as history). Include them in the proposal (§ 9).
    - **A piece dropped or moved:** list the `REQ` that piece served (the card's `reqs` and the `requirements.md` rows whose Deliverables name that card) and re-check each one's coverage. Still served by another piece or deliverable → leave it and say so in the revision proposal. No longer served → set Coverage to `<vocab.coverageOutOfScope>: <reason citing DEC-NNN>` if the decision drops it from scope, otherwise `vocab.coverageNeedsClarification`; if unclear which, ask (recommend `needs-clarification`). Card `reqs` change only in the revision.
 4. `log.md`: "DEC-NNN recorded: <short decision>", evidence `` `decisions.md` ``.
@@ -73,7 +73,7 @@ Checker: `bad-status` (word not in vocab), `integrated-no-sha`, `sha-missing`, `
 **When:** a branch with roadmap work is merged into the configured `integrationBranch`.
 
 1. Get the SHA that entered the integration branch (the merge commit, or the merged tip for a fast-forward or squash result); ask for it if git cannot show it. Verify with `git cat-file -e <sha>^{commit}` and `git merge-base --is-ancestor <sha> <ref>`, where `<ref>` is the local `integrationBranch` or `origin/<integrationBranch>`: either one passing is enough, so a stale local branch is fine (the checker also accepts either). Neither passes → do not mark integrated; tell the user.
-2. `state.md` panel: the integrated word for the pieces it carries (never set a released status here: that goes through § 12, which also records the package). Put that SHA in backticks in Evidence, alongside any branch SHAs of pieces not yet integrated. The checker needs at least one Evidence SHA that is an ancestor of the integration ref when the row has an integrated segment; the other SHAs only need to exist.
+2. `state.md` panel: the integrated word (position 6 of `deliverableStatuses`) for the pieces it carries (never set a released status here: that goes through § 12, which also records the package). Put that SHA in backticks in Evidence, alongside any branch SHAs of pieces not yet integrated. The checker needs at least one Evidence SHA that is an ancestor of the integration ref when the row has an integrated segment; the other SHAs only need to exist.
 3. `state.md` "in flight": the branch stays `vocab.branchLive` while it exists; deleted → § 4.
 4. `log.md`: "E<n> piece <k> integrated into <branch>", evidence the SHA. A log SHA that no longer exists (a deleted or squashed branch) is only a `sha-missing` warning, so old log rows stay as written.
 5. Refresh `critical-path.md` (next milestone per track), then § 2 step 4 (end of piece or phase? phase exit criteria first).
@@ -103,9 +103,10 @@ Checker: `branch-deleted-exists`, `branch-live-missing`.
 **Closed:**
 
 1. If a decision closed it, apply § 1 first.
-2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log may cite a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status; update panel and `now`; drop `donot` items citing this `BLQ-n`.
-3. `critical-path.md`: remove or resolve the gate, then refresh the next milestone per track (Common).
-4. `log.md`: "BLQ-n closed: <how>", evidence. No SHA or path (a phone call) → cite `decisions.md` or `state.md`, whichever now holds the change.
+2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log and the strategy may keep citing a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status; update panel and `now`; drop `donot` items citing this `BLQ-n`.
+3. `critical-path.md`: remove the gate node, then refresh the next milestone per track (Common).
+4. The strategy is not edited: it may keep citing the closed `BLQ-n`, and its Open questions entry for it is cleaned at the next approved revision (§ 9).
+5. `log.md`: "BLQ-n closed: <how>", evidence. No SHA or path (a phone call) → cite `decisions.md` or `state.md`, whichever now holds the change.
 
 Checker: `unknown-id` (a `BLQ` cited in `state.md` or `critical-path.md` without a row), `duplicate-id`.
 
@@ -152,6 +153,7 @@ Review before proposing:
 - Requirements with `needs-clarification` or `req-card-asymmetry`.
 - Phase exit criteria: met? Next phase entry criteria: met?
 - Assumptions whose "re-validate when" condition has fired.
+- Open questions (the `E<n>:`-prefixed ones and the global ones) whose pending item or `BLQ` was closed or answered: remove them or mark them answered, citing the `DEC`; also stale citations of retired `BLQ-n`.
 - Risks that materialized or vanished; critical-path changes.
 - "Where we are": what `state.md` and `critical-path.md` now say.
 
@@ -179,6 +181,7 @@ On approval, in this order: strategy (`version` anchor, title, changelog entry l
 2. `node "<base>/scripts/check-roadmap.mjs" "<folder>"`; read the exit code and the summary line `check-roadmap: N error(s), M warning(s)`.
 3. Exit 0 → copy the plugin's file over the vendored one (`cp`, byte for byte), log "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, remove any "checker … available" pending item.
 4. Exit 1 → keep the vendored copy, add or update the pending item "(maintainer) checker <new> available: N errors to fix". Show the errors in the report. Fixing them is a separate request.
+   Exit 2 (`ERROR internal`, the new checker crashed) → also a failed refresh: keep the vendored copy and add or update the pending item "(maintainer) checker <new> available: internal error, see output"; show the message in the report.
 5. Either way, run the vendored copy for this run's final check (SKILL.md Step 5).
 
 When the refresh and the event both add log rows in one run, both carry the same date (the day of the run) and the event's row goes on top: the refresh happened first (cold start), so it is the older row.
@@ -211,7 +214,7 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 **When:** a release package is built and published (installed, shipped or handed to a client). Optional block: if `state.md` has no `releases` block, add it per formats.md and say so in the report.
 
 1. Get the stamped SHA (the commit the package was built from; verify with `git cat-file -e <sha>^{commit}`), the date and the environment (the user or the release log tells; never guess).
-2. `state.md` `releases`: when this creates the block for the first time, first backfill one row per deliverable already in a released status (ask for or cite the evidence: package, SHA, date, environment; `-` in fields not known), or the checker fails `released-no-package`. Then add a row `Package · Deliverables · State · Stamped SHA · Date · Environment`. The deliverables listed are the ones the package carries.
+2. `state.md` `releases`: when this creates the block for the first time, first backfill one row per deliverable already in a released status (ask for or cite the evidence: package, SHA, date, environment; `-` in fields not known), or the checker fails `released-no-package`. Also add the "package is published" row to the README table (formats.md § 8). Then add a row `Package · Deliverables · State · Stamped SHA · Date · Environment`. The deliverables listed are the ones the package carries.
 3. Panel: set each carried deliverable (or piece) to the `vocab.releasedStatuses` word (default `released`; `measured` only after a measurement, § 6). The checker's `released-no-package` error fires when a released deliverable appears in no `releases` row.
 4. `now`, `critical-path.md` next milestone per track, header line (Common).
 5. `log.md`: "package <name> published to <environment>", evidence the stamped SHA in backticks (or the release log path).
@@ -220,6 +223,6 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 
 **When:** a decision or a blocker forbids an action ("do not deploy to X until Y"), or stops forbidding it.
 
-1. Add (to `state.md` `donot`): one list item naming the forbidden action and citing the `BLQ-n` or `DEC-NNN` that forbids it. An item with no reference → checker error `donot-no-ref`.
+1. Add (to `state.md` `donot`): one list item naming the forbidden action and citing the `BLQ-n` or `DEC-NNN` that forbids it. An item with no reference → checker error `donot-no-ref`. When this creates the block for the first time, also add the "do not do now list changes" row to the README table (formats.md § 8).
 2. Remove the item when its `BLQ`/`DEC` is resolved (blocker closed, decision superseded); this happens in the same event that closes it (§ 5, § 1) and again as the pruning pass of every event (Common).
 3. `log.md` carries the event that caused the add or the removal; `donot` itself keeps no history.

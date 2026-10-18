@@ -12,6 +12,7 @@ import {
   parseTable,
   loadRoadmap,
   validateConfig,
+  scanFences,
   checkRoadmap,
   createGitAdapter,
   compareVersions,
@@ -576,6 +577,24 @@ test('fix6: log may cite retired BLQ and E ids, but not unknown REQ/DEC/SRC', ()
   assert.deepEqual(run(retired), []);
   const unknown = fixture((f) => rep(f, 'log.md', '| 2026-01-02 | E2', '| 2026-01-03 | - | REQ-999 added | `decisions.md` |\n| 2026-01-02 | E2'));
   expectCode(run(unknown), 'unknown-id', 'error');
+});
+
+test('strategy may cite a retired BLQ, but not an undefined REQ or E', () => {
+  const retired = fixture((f) => rep(f, 'strategy.md', 'No deliverable started. See `state.md`.', 'No deliverable started. See `state.md`. BLQ-7 was closed.'));
+  assert.deepEqual(run(retired), []);
+  const req = fixture((f) => rep(f, 'strategy.md', 'No deliverable started. See `state.md`.', 'No deliverable started. See `state.md`. REQ-999 is open.'));
+  expectCode(run(req), 'unknown-id', 'error');
+  const del = fixture((f) => rep(f, 'strategy.md', 'No deliverable started. See `state.md`.', 'No deliverable started. See `state.md`. E9 was dropped.'));
+  expectCode(run(del), 'unknown-id', 'error');
+});
+
+test('scanFences reports an unclosed fence and blanks fenced lines', () => {
+  const closed = scanFences('a\n```\nREQ-1\n```\nb', false);
+  assert.equal(closed.unclosed, false);
+  assert.ok(!closed.text.includes('REQ-1'));
+  const open = scanFences('a\n```\nREQ-1\nb', false);
+  assert.equal(open.unclosed, true);
+  assert.ok(!open.text.includes('REQ-1'));
 });
 
 test('fix6: ids in non-mermaid fenced blocks are ignored, in mermaid blocks checked', () => {

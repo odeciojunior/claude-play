@@ -91,11 +91,11 @@ The strategy doc keeps the chatbot sections (objective + acceptance + DoD, where
 
 **Deliverable card** (in the strategy doc): ID `E<n>`, title, why (`REQ` links), phase, track, priority (MoSCoW), size as a range with its basis or `not estimated`, depends on, pieces (vertical slices, each shippable alone), ≥2 Given-When-Then acceptance criteria in plain language, DoD, risks → mitigation. Specs/plans are not in the card; the state panel points to them.
 
-**Status vocabulary** (closed, configurable): default `not-started`, `spec`, `plan`, `executing`, `on-branch`, `integrated`, `released`, `measured`. Multi-piece deliverables show per-piece status.
+**Status vocabulary** (closed, configurable): default `not-started`, `spec`, `plan`, `executing`, `on-branch`, `integrated`, `released`, `measured`. Multi-piece deliverables show per-piece status. (Updated during execution, 2026-10-18: two more statuses, blocked and discarded, set through `vocab.blockedStatus` / `vocab.discardedStatus`; the list is positional, so a localized roadmap keeps the canonical order.)
 
 ### roadmap-planner workflow
 
-0. **Resume check.** If the target folder exists, stop: offer `roadmap-tracker` (update) or a revision.
+0. **Resume check, then mode.** If the target folder holds `roadmap.config.json`, stop and point to `roadmap-tracker` (update or revision); a folder without it asks before writing (updated during execution, 2026-10-18). Only then ask the mode question. Light mode (added during execution): at most 3 clarification questions in one round, minimal cards, no fresh-context reviewer, and the handoff says so.
 1. **Intake.** Objective + sources from the arguments. Discover related sources (repo docs, specs, issues, git history; web only if the user allows). Reading many sources is delegated to subagents (cheap tier) that return per-source summaries with `SRC` IDs; the main conversation keeps judgment. Write `sources.md`, including a conflicts list (never silently resolved).
 2. **Clarify.** Scan ambiguity categories, rank by impact × uncertainty, ask ≤5 questions per round, one at a time, each with a recommended answer. Rounds per theme are allowed; stop when the user says so or only low-impact items remain. User answers become `DEC` (choices) or assumptions (unverified facts).
 3. **Requirements.** Extract `REQ-NNN` from sources and answers, each traced to `SRC`/`DEC`; unresolved ones marked `needs-clarification`.
@@ -148,7 +148,7 @@ No eval infra exists in the repo; validation is behavioural, by subagents follow
 
 ### Repo hygiene
 
-`plan-coordinator` gets the roadmap hook (SKILL.md completion step, `references/delegation-protocol.md` wave end, `references/progress-template.md` roadmap link field). Bump `productivity-tools` to 1.2.0 in `plugin.json`, `marketplace.json` and the root README table; add `roadmap-tracker` to the plugin README and the CLAUDE.md tables; list this design (and the research report) under Design Docs.
+`plan-coordinator` gets the roadmap hook (SKILL.md completion step, `references/delegation-protocol.md` wave end, `references/progress-template.md` roadmap link field). Bump `productivity-tools` to 1.3.0 (updated during execution, 2026-10-18; first planned as 1.2.0) in `plugin.json`, `marketplace.json` and the root README table; add `roadmap-tracker` to the plugin README and the CLAUDE.md tables; list this design (and the research report) under Design Docs.
 
 ## Calls made by the designer (not discussed)
 

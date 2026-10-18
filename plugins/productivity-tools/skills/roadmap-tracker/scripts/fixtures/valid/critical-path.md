@@ -7,4 +7,4 @@ graph LR
   E2 --> E3
 ```
 
-Critical path: E1. Next gate: the E1 spec approved.
+Critical path: E1, E2, E3. Next gate: the E1 spec approved.

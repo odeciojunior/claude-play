@@ -30,7 +30,8 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
 5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
 6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval.
-7. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
+7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
+8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
 
 ## Workflow
 
@@ -72,9 +73,12 @@ Compare the plugin's checker with the vendored copy. The version of each is the 
 | Vendored version equal to or newer than the plugin's | Nothing to do |
 | Plugin's is newer | Run it on the folder: `node "<base>/scripts/check-roadmap.mjs" "<folder>"` |
 | ... and it exits 0 | Copy it over `<folder>/check-roadmap.mjs` (byte copy), add a `log` row "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, and drop any earlier "checker ... available" pending item. If the event adds log rows too, all carry the same date and the event's rows go above the refresh row (the refresh came first) |
+| ... and it exits 2 (`ERROR internal`, a crash) | Treat it as a failed refresh like exit 1: keep the old copy and add or update the pending item "(maintainer) checker <new> available: internal error, see output" |
 | ... and it exits 1 | Keep the old copy. Add to the `pending` block "(maintainer) checker <new> available: N errors to fix" (N = the error count of its summary line); if such an item exists, update it instead of adding a second one |
 | Vendored copy missing | Nothing to keep: copy the plugin's checker in, add a `log` row "checker added <new>", and fix its errors in Step 5 |
 | Vendored line 1 has no version header (hand-edited copy) | Do not replace it; add a pending item "(maintainer) vendored checker has no version header; review it, then replace with <new>" |
+
+If the vendored checker warns `checker-stale` but this skill's own copy is not newer than the vendored one, the warning comes from another cached plugin version (orphaned or downgraded): this skill's copy is the reference, there is nothing to refresh; mention it once in the report.
 
 Never replace silently, never delete the old copy on failure, and do not fix the new checker's errors as part of the refresh unless the user asks. Steps and commands: `events.md` § Checker refresh.
 
@@ -122,14 +126,14 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 1. Read that progress file (the one the caller names; otherwise the `docs/plans/**/progress-*.md` whose `**Roadmap**:` field names this folder): the header (`**Plan**`), the Execution Map table (Wave, Group, Steps, Status), the Steps table, the Wave Execution Log and any recorded commit SHAs. Never edit it.
 2. Find the deliverable: the panel row whose Evidence or Next step cites that plan (or its spec); else the `E<n>` the plan's title or header names; else ask once.
-3. Decide which pieces closed: a piece closes when every plan step that implements it has Status PASS (or an intentional skip). Map steps to pieces from the plan's own text (a step naming the piece, or a plan that covers exactly one piece). When the progress file cannot tell which piece a step belongs to (an unmapped step): on "wave N closed" add one `log` row "wave N closed (steps …)" and set the piece status from the artifacts that exist: a plan file → the word for plan (default `plan`), only a spec file → the word for spec (default `spec`), else leave the status unchanged; on "plan completed" mark the pieces the plan covers with the word for on-branch (default `on-branch`). Never infer `integrated` without a SHA that is on the integration branch.
+3. Decide which pieces closed: a piece closes when every plan step that implements it has Status PASS (or an intentional skip). Map steps to pieces from the plan's own text (a step naming the piece, or a plan that covers exactly one piece). When the progress file cannot tell which piece a step belongs to (an unmapped step): on "wave N closed" add one `log` row "wave N closed (steps …)" and set the piece status from the artifacts that exist: a plan file → the configured word for plan (position 3), only a spec file → the word for spec (position 2), else leave the status unchanged; on "plan completed" mark the pieces the plan covers with the word for on-branch (position 5). Never infer the integrated word (position 6) without a SHA that is on the integration branch.
 4. Record per § Piece or step closed. Evidence = the progress file path in backticks plus the commit SHAs it records (each verified with `git cat-file -e <sha>^{commit}`). Read the current branch with `git branch --show-current` and keep its "in flight" row `live`.
 5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping.
 6. If a piece or the deliverable closed, run the end-of-piece check (Step 6). Hand back to plan-coordinator with the Step 7 report; it continues with the next wave.
 
 ### Step 5: Run the vendored checker
 
-`node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing.
+`node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing. If `node` is missing or older than 18, do not claim the folder verified: stop and hand back "checker not run (Node ≥18 missing)" in the Checker line of the report.
 
 - **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask, with a recommended fix. If no user answer is available (a caller like plan-coordinator, or the user defers), hand back `errors remain: <codes>` with one recommended fix per error (for example "now-limit: drop item 6, the least urgent") and do not claim 0 errors. Never hide an error.
 - **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run.

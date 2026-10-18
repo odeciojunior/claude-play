@@ -59,6 +59,7 @@ All keys are required except the optional `vocab.releasedStatuses`, `vocab.block
 - `strategy` and every `files` value are paths relative to the folder holding the config.
 - `vocab` values are exact strings. Localize them freely (`"integrada"`, `"vigente"`, `"substituída por"`) and use the same words in the files. Comparison is exact and case-sensitive.
 - `formatVersion` changes only with a migration recipe in `roadmap-tracker/references/events.md`. A checker older than the folder's `formatVersion` errors instead of guessing.
+- `deliverableStatuses` is positional: its entries keep the canonical order of the default list above (1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the `blockedStatus` and `discardedStatus` words). A localized roadmap replaces the words but keeps the order, so the Nth word always means the Nth canonical status. The checker does not verify the order; the planner writes it and the tracker relies on it.
 - `integratedStatuses` is the subset of statuses that claim code is on the integration branch.
 - `releasedStatuses` (optional; default `["released", "measured"]` when absent) is the subset of statuses that claim a deliverable shipped in a package; it matters only when `state.md` has a `releases` block (section 6).
 - `blockedStatus` and `discardedStatus` (optional; defaults `"blocked"` and `"discarded"`) are the localized words the tracker writes for those two states. When present, each must be a non-empty string contained in `deliverableStatuses`. A folder created before 1.3.0 adds the word to `deliverableStatuses` and these keys before first use.
@@ -107,7 +108,7 @@ An empty table has its header and separator only. A literal `|` inside a cell is
 
 ## 4. IDs and cell rules
 
-- IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `decisions.md` is append-only too and gets the same allowance. `REQ`, `SRC` and `DEC` citations in both must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
+- IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `decisions.md` is append-only too and gets the same allowance. The strategy may also keep citing a retired `BLQ-n` (for example in "Where we are" or an Open questions entry) until the next approved revision, because closing a blocker removes its row but the strategy changes only through a revision; it may not cite a dropped `E<n>`. `REQ`, `SRC` and `DEC` citations in all three must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
 - Status cell (panel): segments separated by `;`, each `[<label>:] <status>[ (note)]`, for example `piece 1: integrated; piece 2: spec (waiting on DEC-004)`. Notes must not contain `;` (nested balanced parentheses are fine). Every status must be in `vocab.deliverableStatuses`.
 - Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). In a shallow clone these git checks are skipped with one `shallow-clone` warning.
 - Coverage cell: the `coverageCovered` word (and at least one deliverable in Deliverables), `coverageOutOfScope: <reason>` (reason required), or the `coverageNeedsClarification` word.
@@ -149,7 +150,7 @@ Strategy skeleton (headings translated into the project's language):
 # <Topic> -- Strategy v1.0
 
 ## Changelog
-- v1.0 (<ISO date>): first version.
+- v1.0 (<ISO date>): first version (<full|light> mode).
 
 ## Objective
 <objective>. Acceptance criterion: <testable>. Definition of done: <verifiable>.
@@ -197,6 +198,7 @@ See decisions.md. (Cite a DEC only where this version absorbs it.)
 
 ## Open questions
 - <question>
+- E<n>: <deliverable-level question, for superpowers:brainstorming>
 
 ## Coverage summary
 <N covered, M out of scope, K to clarify>
@@ -256,6 +258,7 @@ Strategy v<version> -- <ISO date>
 <!-- roadmap:blockers -->
 | ID | Blocker | Affects | Since | Unblocks when |
 |---|---|---|---|---|
+| BLQ-1 | <blocker> | E1 | <ISO date> | <condition>; restores E1 to <previous status> |
 <!-- /roadmap:blockers -->
 <!-- roadmap:pending -->
 - (owner) <item>
@@ -280,6 +283,7 @@ Optional blocks of `state.md`; when absent the checker reports nothing:
 <!-- /roadmap:releases -->
 ```
 
+- `blockers`: when a deliverable is set to the blocked status, "Unblocks when" ends with "restores E<n> to <previous status>" (the status before it was blocked; a deliverable created blocked restores to the first `deliverableStatuses` word). Closing the blocker reads it back (`events.md` § 5).
 - `donot` ("Do not do now"): a list; each item cites at least one `BLQ-n` or `DEC-NNN` (`donot-no-ref` otherwise). Cited IDs must exist (`unknown-id`).
 - `releases`: when the block exists, every panel row with a segment status in `vocab.releasedStatuses` must appear in the Deliverables cell of some row (`released-no-package`). A backticked Stamped SHA follows the panel SHA rules (it must exist: `sha-missing`, error). Cell length limits apply as in the rest of `state.md`.
 

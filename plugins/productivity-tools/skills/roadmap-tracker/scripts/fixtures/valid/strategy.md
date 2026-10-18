@@ -63,7 +63,7 @@ Definition of done: acceptance passes in the integration branch.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
-<!-- roadmap:card id=E2 phase=main-flow track=engineering priority=Must size="not estimated" depends=E1 reqs=REQ-001,REQ-002 critical=false -->
+<!-- roadmap:card id=E2 phase=main-flow track=engineering priority=Must size="not estimated" depends=E1 reqs=REQ-001,REQ-002 critical=true -->
 ### E2 -- Main flow
 
 Why: REQ-001, REQ-002.
@@ -81,10 +81,11 @@ Pieces:
 Definition of done: acceptance passes in the integration branch.
 
 <!-- roadmap:risks -->
+- Sharing rules are undecided -> settle them with the owner before the plan.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
-<!-- roadmap:card id=E3 phase=main-flow track=engineering priority=Should size="not estimated" depends=E1,E2 reqs=REQ-002 critical=false -->
+<!-- roadmap:card id=E3 phase=main-flow track=engineering priority=Should size="not estimated" depends=E1,E2 reqs=REQ-002 critical=true -->
 ### E3 -- Reports
 
 Why: REQ-002.
@@ -101,6 +102,7 @@ Pieces:
 Definition of done: acceptance passes in the integration branch.
 
 <!-- roadmap:risks -->
+- Report volume is unmeasured -> test with a large item list first.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
