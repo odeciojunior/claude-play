@@ -1,119 +1,54 @@
 # CLAUDE.md
 
-Community-driven Claude Code plugin marketplace. Users register this repo as a marketplace source and install plugins via the standard Claude Code CLI.
+Claude Code plugin marketplace (`claude-play`). Users add this repo as a marketplace source and install plugins with the standard CLI: `claude plugin install <plugin>@claude-play`.
 
-## Quick Reference
+## Rules that matter
 
-```bash
-# Add marketplace
-claude plugin marketplace add odeciojunior/claude-play
+- **Bump the version in three places together**: `plugins/<name>/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and the root `README.md` plugins table. Installed copies resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`, so an edit without a bump never reaches users.
+- **SKILL.md frontmatter allows only** `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata`. No `model`/`context`/`allowed-tools`: skills run in the main conversation, so don't write them as tool-restricted forked agents.
+- **Never edit `plugins/_template/`** (the `protect-template` hook blocks it); contributors copy it to a new plugin directory.
+- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin.
+- Path-specific rules load from `.claude/rules/` when you touch those files: skills, the roadmap checker, mcp-sql-server.
 
-# Install a plugin
-claude plugin install <plugin-name>@claude-play
+## Publish an update
 
-# Validate (official CLI) — run before committing
-claude plugin validate .                       # marketplace.json
-claude plugin validate plugins/<plugin-name>   # one plugin manifest
+1. Bump the version (three places), commit on a feature branch, fast-forward or merge into `main`, `git push origin main`.
+2. `claude plugin marketplace update claude-play`, then `claude plugin update <plugin>@claude-play`.
+3. Check that `~/.claude/plugins/cache/claude-play/<plugin>/<new version>/` exists. Older version folders linger there; don't debug against them.
 
-# Try a plugin locally without installing
-claude --plugin-dir ./plugins/<plugin-name>
+Commits use `type(scope): description` (`feat`, `fix`, `docs`, `chore`).
+
+## Layout
+
+```
+.claude-plugin/marketplace.json     # Plugin catalog: source of truth for plugins, versions, categories
+plugins/<name>/
+  .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); required: name, description, version, author, license, keywords
+  skills/<skill>/SKILL.md           # + references/*.md loaded on demand
+  agents/<agent>.md                 # Shipped subagents (today only sql-server-tools)
+  scripts/                          # Setup/utility scripts
+plugins/_template/                  # Starter template (protected)
+.claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"
+.claude/hooks/*.mjs                 # Wired in .claude/settings.json
+.claude/rules/*.md                  # Path-scoped rules
+docs/plans/  docs/reports/          # Designs and plans (YYYY-MM-DD-<topic>-design|plan.md); research reports
+docs/diagrams/repo-architecture.{md,excalidraw}
+docs/claude-code-extensibility-reference.md   # Spec digest: plugin/skill/hook/agent formats
 ```
 
-## Structure
-
-```
-.claude-plugin/
-  marketplace.json          # Plugin catalog (Claude Code reads this)
-plugins/
-  <plugin-name>/
-    .claude-plugin/plugin.json
-    agents/
-      <agent-name>.md            # Subagent definitions (optional)
-    skills/
-      <skill-name>/SKILL.md
-      <skill-name>/references/*.md  # On-demand detail loaded by SKILL.md (optional)
-    scripts/
-      <script>.sh                # Setup/utility scripts (optional)
-    README.md
-  _template/                # Starter template for contributors
-docs/
-  plans/                    # Design docs and implementation plans
-  reports/                  # Deep research reports
-  diagrams/                 # repo-architecture.{md,excalidraw}
-  claude-code-extensibility-reference.md  # Spec digest: plugin/skill/hook/agent formats
-.github/PULL_REQUEST_TEMPLATE.md
-.claude/
-  agents/                   # Repo-local agents (not shipped in plugins)
-  hooks/                    # protect-template, validate-marketplace-json
-  settings.json             # Hook wiring
-```
-
-## Plugins
-
-| Plugin | Description | Components | Category |
-|--------|-------------|------------|----------|
-| productivity-tools | Research, analysis, planning, diagramming, visual whiteboarding, and system health skills | skills: deep-researcher, report-analyzer, roadmap-planner, roadmap-tracker, plan-coordinator, mermaid-designer, excalidraw-designer, wsl-health-check | productivity |
-| marketplace-tools | Maintainer scaffolding and validation | skills: new-plugin, validate-plugin | developer-tools |
-| sql-server-tools | SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents | skill: sql-server-toolkit; 5 agents | developer-tools |
-| mcp-sql-server | Automated MCP SQL Server setup — connects Claude Code to SQL Server databases | skill: mcp-sql-server-setup; `scripts/setup.sh` | developer-tools |
-
-## Design Docs
-
-Plans in `docs/plans/`, research in `docs/reports/`:
-- `2026-03-02-plugin-marketplace-design.md` — Marketplace architecture research (trust tiers, security, registry API)
-- `2026-03-02-plugin-marketplace-plan.md` — Implementation plan (v1.0 → v2.0 roadmap)
-- `2026-03-02-system-health-check-*.md` — First plugin design & baseline
-- `2026-03-04-productivity-tools-*.md` — Productivity tools plugin design & implementation plan
-- `2026-03-04-marketplace-tools-*.md` — Marketplace tools plugin design & implementation plan
-- `2026-03-04-excalidraw-skill-*.md` — Excalidraw designer skill design, research & implementation plan
-- `2026-03-04-hooks-*.md` — Hook system design & implementation plan (protect-template, validate-marketplace-json)
-- `2026-03-04-plugin-reviewer-*.md` — Plugin reviewer agent design & implementation plan
-- `2026-03-06-sql-server-tools-*.md` — SQL Server tools plugin design, implementation plan & validation
-- `2026-03-06-mcp-sql-server-*.md` — MCP SQL Server plugin design & implementation plan
-- `2026-03-10-mcp-sql-server-setup-hardening-*.md` — setup.sh hardening design & plan
-- `2026-03-11-mcp-sql-server-3scope-plan.md` — 3-scope registration model (project-private, project-shared, user-global)
-- `2026-09-29-plan-coordinator-v2-design.md` — plan-coordinator v2: complexity-based model routing, conflict-free waves, shared-brief context handoffs
-- `2026-10-1[67]-roadmap-planner-v2-*.md` — roadmap-planner v2 + roadmap-tracker: living roadmap (versioned strategy, tracking folder, vendored checker) design & implementation plan
-- `docs/reports/2026-10-16-roadmap-best-practices.md` — Research behind roadmap-planner v2
-
-## Plugin Conventions
-
-- Plugin dir name = `plugin.json` `name` field (kebab-case)
-- Required `plugin.json` fields: `name`, `description`, `version`, `author`, `license`, `keywords`
-- Skills live at `plugins/<name>/skills/<skill-name>/SKILL.md`
-- Marketplace catalog: `.claude-plugin/marketplace.json` — update when adding/removing plugins
-- When adding a plugin, also update: repo `README.md` (plugins table) and repo `CLAUDE.md` (plugins table, design docs)
-- Architecture diagrams at `docs/diagrams/repo-architecture.{md,excalidraw}` — update when adding/removing plugins
-- Version lives in three places — bump `plugins/<name>/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and the root `README.md` plugins table together
-- SKILL.md frontmatter allows only `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata` — no `model`/`context`/`allowed-tools`; skills run in the main conversation, so don't write them as tool-restricted forked agents
-- `mcp-sql-server` `setup.sh install-venv` targets `~/.claude/mcp-servers/mcp-sql-server/.venv` (non-editable, from git HEAD), never a local checkout
-- No CI in this repo: before committing run `claude plugin validate` (marketplace + changed plugins), the `marketplace-tools` `validate-plugin` skill (repo conventions: frontmatter keys, abs paths, secrets), and the marketplace hook
-- Run the marketplace hook by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | bash .claude/hooks/validate-marketplace-json.sh` — it always exits 0; no output = pass, `{"decision":"block",...}` on stdout = fail. Both hooks need `jq`
-- Test a skill change behaviorally: have a subagent follow it literally on a real input (e.g. a plan in `docs/plans/`), writing output to the scratchpad and listing every ambiguity it hit, then run a read-only adversarial review
-- Installed plugins resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`; without a version bump an edit never reaches an installed copy
-- Changing `productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs` ⇒ bump its line 1 (`// check-roadmap <plugin version> format <n>`) with the plugin version: roadmap folders carry a vendored copy, and the tracker and the copy only detect a newer checker by that header. Bump `format <n>` only with a migration recipe in `roadmap-tracker/references/events.md`. Tests: `node --test plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.test.mjs`
+Human-facing plugin table: `README.md`. When adding or removing a plugin, update `marketplace.json`, `README.md` and both `docs/diagrams/repo-architecture` files.
 
 ## Hooks
 
-Configured in `.claude/settings.json`:
+Both are Node scripts (Node ≥18 is already required by the roadmap checker); they used to need `jq` and silently passed without it.
 
-| Hook | Type | Trigger | Description |
-|------|------|---------|-------------|
-| protect-template | PreToolUse | Edit\|Write | Blocks modifications to `plugins/_template/` |
-| validate-marketplace-json | PostToolUse | Edit\|Write | Validates marketplace.json schema after edits |
+- `protect-template.mjs` (PreToolUse, Edit|Write): exit 2 blocks edits under `plugins/_template/` (Windows `\` paths and any case included).
+- `validate-marketplace-json.mjs` (PostToolUse, Edit|Write): after an edit to `marketplace.json`, prints `{"decision":"block","reason":...}` when one of its 6 schema checks fails; no output = pass. Run it by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
 
-## Agents
+## Windows
 
-| Agent | Trigger | Description |
-|-------|---------|-------------|
-| plugin-reviewer | "review plugin X" | Repo-local (`.claude/agents/`), not shipped in a plugin: 3-phase structural/content/security review |
-
-Shipped agents live in the plugin that provides them — currently only `sql-server-tools/agents/` (5 SQL Server specialists).
+`core.autocrlf=true` checks text files out as CRLF. `.gitattributes` keeps `*.sh` LF everywhere; check with `git ls-files --eol`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors copy `plugins/_template/`, add their plugin, and open a PR.
-
-## Marketplace Name
-
-`claude-play` — used in install commands: `claude plugin install <name>@claude-play`
+See [CONTRIBUTING.md](CONTRIBUTING.md): copy `plugins/_template/`, add the plugin, open a PR against `main`.

@@ -202,7 +202,7 @@ stateDiagram-v2
   [*] --> EditOrWrite: Claude calls Edit or Write
 
   state PreToolUse {
-    check_template: protect-template.sh
+    check_template: protect-template.mjs
   }
 
   EditOrWrite --> PreToolUse
@@ -211,7 +211,7 @@ stateDiagram-v2
   Blocked --> [*]
 
   state PostToolUse {
-    validate: validate-marketplace-json.sh
+    validate: validate-marketplace-json.mjs
   }
 
   Execute --> FileModified
