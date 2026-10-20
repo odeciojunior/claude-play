@@ -6,7 +6,7 @@ Thanks for your interest in contributing a plugin to the claude-play marketplace
 
 - [Claude Code](https://claude.ai/code) installed
 - Git and a GitHub account
-- Familiarity with Claude Code plugins ([docs](https://docs.anthropic.com/en/docs/claude-code/plugins))
+- Familiarity with Claude Code plugins ([docs](https://code.claude.com/docs/en/plugins))
 
 ## Submitting a Plugin
 
@@ -31,6 +31,8 @@ Edit `plugins/your-plugin-name/.claude-plugin/plugin.json`:
 - Add your `author` info
 - Add relevant `keywords`
 
+The Claude Code spec requires only `name`. This repo additionally requires (repo policy) `description`, `version`, `author`, `license` and `keywords`.
+
 ### 3. Add your skills, hooks, or agents
 
 - **Skills**: Add `SKILL.md` files under `skills/<skill-name>/SKILL.md`
@@ -39,6 +41,15 @@ Edit `plugins/your-plugin-name/.claude-plugin/plugin.json`:
 - **MCP Servers**: Add `.mcp.json` configuration
 
 Each skill needs a YAML frontmatter with `name` and `description` fields. The description should clearly state when the skill triggers.
+
+SKILL.md frontmatter policy (repo policy, stricter than the official spec):
+- Allowed keys: `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`.
+- Other valid Claude Code fields such as `model`, `context` and `allowed-tools` aren't used in this repo.
+- Claude Code ignores unknown keys silently, so check spelling (it is `user-invocable`).
+
+Other format notes:
+- `hooks/hooks.json` wraps events in a top-level object: `{"hooks": {"PreToolUse": [...]}}`.
+- Plugin agents ignore `hooks`, `mcpServers` and `permissionMode`; don't add them.
 
 ### 4. Write your README
 
@@ -50,6 +61,14 @@ Update `plugins/your-plugin-name/README.md` with:
 
 ### 5. Open a pull request
 
+Before opening the PR, run both checks:
+
+```bash
+claude plugin validate plugins/your-plugin-name   # manifests
+```
+
+and, inside Claude Code, `/marketplace-tools:validate-plugin your-plugin-name` (frontmatter, agents, structure, paths, secrets).
+
 Push your branch and open a PR against `main`. The PR template will guide you through the checklist.
 
 ## Plugin Guidelines
@@ -57,6 +76,8 @@ Push your branch and open a PR against `main`. The PR template will guide you th
 ### Naming
 - Use kebab-case: `my-plugin-name`
 - Directory name must match `plugin.json` `name` field
+- The `marketplace.json` entry name must equal the `plugin.json` name
+- Must not start with `claude-`, `anthropic-` or `cc-plugin-` (reserved; `claude plugin validate` rejects them)
 - Be descriptive but concise
 
 ### Quality
@@ -80,4 +101,4 @@ Push your branch and open a PR against `main`. The PR template will guide you th
 
 1. A maintainer will review your PR for quality and security
 2. If changes are needed, we'll leave comments on the PR
-3. Once approved, the maintainer adds your plugin to `marketplace.json` and merges
+3. Once approved, the maintainer adds the plugin to `marketplace.json`, the root README table and both `docs/diagrams/repo-architecture.*` files, then merges

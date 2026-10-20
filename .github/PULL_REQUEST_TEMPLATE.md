@@ -7,8 +7,10 @@
 ### Checklist
 
 - [ ] Plugin directory name matches `plugin.json` `name` field
-- [ ] `plugin.json` has all required fields (name, description, version, author, license, keywords)
+- [ ] `plugin.json` has all repo-required fields (name, description, version, author, license, keywords)
 - [ ] Skills have YAML frontmatter with `name` and `description`
+- [ ] `claude plugin validate plugins/<name>` passes
+- [ ] `/marketplace-tools:validate-plugin <name>` has no FAIL results
 - [ ] `README.md` documents what the plugin does and how to use it
 - [ ] No hardcoded absolute paths (using `${CLAUDE_PLUGIN_ROOT}` where needed)
 - [ ] No sensitive data (API keys, credentials, tokens)

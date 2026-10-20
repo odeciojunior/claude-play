@@ -12,6 +12,13 @@ claude plugin marketplace add odeciojunior/claude-play
 claude plugin install productivity-tools@claude-play
 ```
 
+Update: third-party marketplaces don't auto-update by default, so refresh manually.
+
+```bash
+claude plugin marketplace update claude-play
+claude plugin update <plugin>@claude-play
+```
+
 ## Available Plugins
 
 | Plugin | Description | Category | Version |
