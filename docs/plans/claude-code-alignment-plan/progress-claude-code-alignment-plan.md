@@ -6,10 +6,10 @@
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
-**Last COMPLETED Wave**: 2
-**Last DELEGATED Wave**: 2
-**In-Flight Agents**: none
-**Next Action**: Launch Wave 3 (Groups J opus, K haiku, L sonnet, M sonnet)
+**Last COMPLETED Wave**: 3
+**Last DELEGATED Wave**: 4
+**In-Flight Agents**: Group N (Step 17, sonnet): launching · Group O (Step 18, sonnet): launching · Group P (Step 19, sonnet): launching · Group Q (Step 20, sonnet): launching
+**Next Action**: Wait for Wave 4 reports; behavioral gates O, P, Q
 
 ## Execution Map
 **Steps**: 25 (execute 25, skip 0; Task 22 split into 22a/22b) | **Waves**: 6 + inline | **Effort**: ~10h agent time (estimate; plan has none) | **Tiers**: inline 3 · haiku 2 · sonnet 17 · opus 3 | **Review gates**: 8
@@ -76,12 +76,12 @@
 | 8 | Release marketplace-tools 1.1.0 | Done | sonnet · 1 | 3 (1/0/0/2/0) | aebefe6 |
 | 9 | Spike: `${VAR}` expansion in ~/.claude.json | Done | inline · 1 | 1 (0/0/0/1/0) | yes (local scope); probe removed |
 | 10 | setup.sh python-path + print-entry | Done | sonnet · 1 (+2 fix-ups) | 5 (1/1/1/2/0) | opus gate PASS round 3; env: refs |
-| 11 | Setup skill never asks for the password | Pending | opus · 0 | 6 (1/1/1/2/1) | credentials + install |
-| 12 | Release mcp-sql-server 1.3.0 | Pending | opus · 0 | 3 (1/0/0/2/0) | bundled with 11 |
+| 11 | Setup skill never asks for the password | Done | opus · 1 (+2 fix-ups) | 6 (1/1/1/2/1) | opus gate PASS round 3; .env filter, redacted mcp get, SQL logins only |
+| 12 | Release mcp-sql-server 1.3.0 | Done | opus · 1 | 3 (1/0/0/2/0) | committed |
 | 13 | wsl-health-check ships its script | Done | sonnet · 1 | 5 (1/1/1/1/1) | committed; WSL run = manual action (untested paths: --full, --check-services) |
-| 14 | report-analyzer: drop claude-mem | Pending | haiku · 0 | 2 (0/0/0/1/1) | — |
-| 15 | deep-researcher: drop agent-only text | Pending | sonnet · 0 | 3 (1/0/0/1/1) | — |
-| 16 | excalidraw-designer < 500 lines + validator | Pending | sonnet · 0 | 5 (2/1/1/1/0) | — |
+| 14 | report-analyzer: drop claude-mem | Done | haiku · 1 | 2 (0/0/0/1/1) | committed |
+| 15 | deep-researcher: drop agent-only text | Done | sonnet · 1 (BLOCKED once: report-file filter) | 3 (1/0/0/1/1) | committed; orchestrator wrote references/report-template.md |
+| 16 | excalidraw-designer < 500 lines + validator | Done | sonnet · 1 | 5 (2/1/1/1/0) | committed; 506→197 lines; 10 tests; font IDs left unverified |
 | 17 | mermaid-designer dedupe + verify claims | Pending | sonnet · 0 | 5 (1/1/1/1/1) | web check |
 | 18 | plan-coordinator vs current subagents | Pending | sonnet · 0 | 5 (1/1/1/1/1) | behavioral gate |
 | 19 | roadmap-planner: skill dir var, subagent spec | Pending | sonnet · 0 | 4 (1/1/0/1/1) | behavioral gate |
@@ -96,6 +96,7 @@
 | Wave | Groups | Delegated | Completed | Agent IDs | Notes |
 |------|--------|-----------|-----------|-----------|-------|
 | 0 | I1 | inline | 2026-10-20 | — | Step 4 (6e14674) |
+| 3 | J, K, L, M | 2026-10-20 | 2026-10-20 | J a7b786383d8930534 (gate ae160b7526fd5c06a) · K a11d52c21990fee95 · L aad7d1de022d2606b · M af8b97545874369d4 | gate: 221/221 tests; pt lint 32 OK 1 WARN; J needed 2 review rounds (leak paths, Windows Auth unsupported); L blocked once by report-file filter |
 | 2 | E, F, G, H + inline 22b, 9 | 2026-10-20 | 2026-10-20 | E a0e1026e1cb29f571 · F a530c5983561b7044 (gate a8bfbf0743253bd23) · G aa68d949d716e7e1c · H acd084175d699e214 | gate: 211/211 tests, 4 validators pass; F needed 2 review rounds (placeholder mangling/leak → env: refs) |
 | 1 | A, B, C, D | 2026-10-20 | 2026-10-20 | A ab5d6451f6f168549 · B aeb59684a5e92b027 · C aa437191c04f94e37 (gate a13b224e11c14d5a6) · D a8a939ee4ec239ea7 (gate acafc5c7dac15a110) | gate: 195/195 tests, validators pass; C and D each needed 1 review round; template guard live probe blocked |
 
@@ -115,6 +116,8 @@
 - **Gate C round 1 (DEFECTS 7)**: fixed 1,2,5,6,7 via SendMessage; #3 kept FAIL with stated reason; #4 rejected (gate read the main checkout's CLAUDE.md, the worktree already says `user-invocable`).
 - **Out-of-scope findings for the sql-server-tools session** (tell the user; do not fix here): all 5 `plugins/sql-server-tools/agents/*.md` set `permissionMode`, which Claude Code ignores for plugin agents (lint-plugin: 5 FAIL); `tsql-specialist` carries `Bash` but its instructions never run commands (reviewer FLAG).
 - **Gate F round 1 (DEFECTS 2)**: (1) `${DB_PASSWORD}` arg is mangled to `$DB_PASSWORD` when bash is started from PowerShell, and leaks the real secret if double-quoted → added `env:<NAME>` password-ref (script writes `${NAME}` itself; no `$` crosses argv); Step 11 must use `env:DB_PASSWORD` / `env:DB_<ALIAS>_PASSWORD` only. (2) detect-env died silently on a partial `.env` / `export` lines (pre-existing) → fixed; also reads DB_NAME.
+- **Step 15 BLOCKED → unblocked**: the harness refuses subagent writes of a file it reads as a "report" (`references/report-template.md`: "Subagents should return findings as text, not write report files"). Not renamed to dodge the filter; the orchestrator wrote the reference file and the executor did the SKILL.md edits. Expect the same for any future subagent-written file named like a report.
+- **Gate J round 1 (DEFECTS 5)**: `.env` values had no filter command (Read would show DB_PASSWORD); `claude mcp get` would print a leftover 1.2.3 literal password → redactor pipe; `$CLAUDE_PROJECT_DIR` is empty in the Bash tool (pre-existing bug) → `${CLAUDE_PROJECT_DIR}` substitution; Windows Auth unsupported by the server (config.py requires password, always `UID/PWD`) → removed, "SQL logins only"; upgrade note maps 1.2.3 scope names. Gate agent ae160b7526fd5c06a.
 - **Thin information**: Step 9's result decides Step 11's local/user branch; Step 2's inline Edit probe may show hooks don't fire on this Windows setup (then stop and report); Step 17's Mermaid claims and Step 16's font IDs depend on what the official docs say.
 
 ## Step Cards
@@ -230,7 +233,7 @@
 - **Gate (opus, read-only)**: review diff of Steps 10–12 for secret leakage and command correctness; then follow the SKILL.md literally for a fake server (`sql01`, user `app_ro`, db `Sales`, Windows host; project scope, then local scope), writing every command it would run to the scratchpad without executing installs/registrations → no command or message contains a password value; both scopes give a complete command
 - **If Blocked**: if a scope can't be done without the password reaching Claude, report BLOCKED with the reason
 - **Commit msgs**: `fix(mcp-sql-server-setup): keep the password out of the conversation; native scopes and add-json` · `chore(mcp-sql-server): release 1.3.0`
-- **Handoff**:
+- **Handoff**: skill uses only `env:DB_PASSWORD` / `env:DB_<ALIAS>_PASSWORD`; scopes project (`register-mcp-json` → `${CLAUDE_PROJECT_DIR}/.mcp.json`) / local (default) / user (`add-json` + `print-entry`); `.env` read only through a key-filtering grep; `claude mcp get` always piped through an anchored redactor; SQL logins only (server requires password); upgrade table maps 1.2.3 scope names; `disable-model-invocation: true`. mcp-sql-server 1.3.0. Open: empty/unset alias variable behavior not tested against a live server.
 
 ### Step 13: wsl-health-check ships its script
 - **Route**: general-purpose · sonnet · score 5 — bash refactor + skill rewrite; full run only in WSL (manual action)
