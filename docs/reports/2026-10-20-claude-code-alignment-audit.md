@@ -10,7 +10,7 @@ O repo segue boa parte da spec atual, mas tem três tipos de problema:
 2. **Skills que só funcionam na máquina do autor.** `wsl-health-check` chama um script que não é distribuído. `report-analyzer` usa ferramentas de um plugin não declarado. `mcp-sql-server-setup` monta `claude mcp add` em ordem errada e grava a senha em texto puro.
 3. **A spec digest (`docs/claude-code-extensibility-reference.md`) está desatualizada desde março.** Ela tem 52 divergências, entre elas 17 eventos de hook quando hoje são 33, "subagents não aninham" e `tool_result` no lugar de `tool_response`.
 
-Nada foi alterado. A seção [Decisões](#decisões-pendentes) lista o que precisa de escolha antes de corrigir.
+Nada foi alterado ainda. As escolhas que guiam as correções estão em [Decisões](#decisões).
 
 ## Método
 
@@ -142,15 +142,17 @@ Agrupado por seção de `docs/claude-code-extensibility-reference.md`. A revisã
 | Hooks (258-407) | 33 eventos, não 17. Hooks de todas as origens rodam, sem escada de prioridade. `tool_response`, não `tool_result`. Faltam `defer` e o tipo `mcp_tool`. `additionalContext` fica dentro de `hookSpecificOutput`. PreCompact pode bloquear. Timeout padrão do HTTP é 600 s. `$CLAUDE_SESSION_ID` não está na lista de env. Regras de matcher (exato vs regex). |
 | Subagents (456-544) | Faltam `fable` e `auto`, além de `effort`, `color`, `omitClaudeMd`. Explore usa o modelo principal. Precedência: managed > `--agents` > projeto > usuário > plugin. Aninhamento até 3 níveis. Background por padrão. Edição recarrega sem reiniciar. Memória: 200 linhas **ou** 25 KB. |
 
-## Decisões pendentes
+## Decisões
 
-| # | Decisão | Opções |
-|---|---|---|
-| D1 | Versão em três lugares | (a) manter e adicionar a checagem G9 contra divergência; (b) tirar `version` do `marketplace.json`, que a spec diz ser sobrescrito pelo `plugin.json`, e a regra vira dois lugares. Muda `CLAUDE.md` e `.claude/rules/roadmap-checker.md`. |
-| D2 | Política de frontmatter de skill | (a) manter a lista restrita com justificativa correta (C3); (b) liberar campos úteis como `when_to_use`, `paths`, `allowed-tools`. |
-| D3 | Comentário no `_template/` | O hook bloqueia a edição; precisa de liberação explícita. |
-| D4 | Credenciais no mcp-sql-server | `${DB_PASSWORD}` no shell (mais seguro, um passo a mais) ou `--scope local` com valor literal (privado, mas em texto puro em `~/.claude.json`). |
-| D5 | `wsl-health-check` | Distribuir o script no plugin ou declarar o pré-requisito em `compatibility`. |
+Tomadas em 20/10/2026.
+
+| # | Decisão | Escolha | Consequência |
+|---|---|---|---|
+| D1 | Versão em três lugares | **`plugin.json` + README.** Tirar `version` das entradas do `marketplace.json`. | Antes, conferir na doc que o `plugin.json` prevalece. Ajustar a checagem 5 do hook, a checagem 7 do `validate-plugin`, `CLAUDE.md` e `.claude/rules/roadmap-checker.md`. G9 passa a checar só o nome. |
+| D2 | Política de frontmatter de skill | **Manter a lista restrita**, com a grafia `user-invocable` e a justificativa reescrita como política do repo (C3). | Sem campos novos. |
+| D3 | Comentário no `_template/` | **Autorizado**: um comentário com as chaves permitidas no SKILL.md do template. | Liberação explícita para passar pelo hook `protect-template`, só para essa edição. |
+| D4 | Credenciais no mcp-sql-server | **O Claude nunca vê a senha.** A skill grava `${DB_PASSWORD}` e `${DB_<ALIAS>_PASSWORD}`, e o usuário define a variável (`setx` no Windows, `export` no bash). | Escopos: `.mcp.json` do projeto (pode ir para o git) ou `--scope local`. Sai a opção project-shared com senha literal, e a skill deixa de pedir senha no chat. A doc confirma a expansão de `${VAR}` em `env`. Variável ausente gera aviso no `claude mcp list` e falha de login. |
+| D5 | `wsl-health-check` | **Distribuir o script** em `scripts/health-report.sh`, chamado via `${CLAUDE_SKILL_DIR}`. | Depende de receber o `~/health-report.sh` atual e revisar a portabilidade. Os serviços críticos ficam configuráveis. |
 
 ## Impacto de versão
 
@@ -158,7 +160,7 @@ Agrupado por seção de `docs/claude-code-extensibility-reference.md`. A revisã
 |---|---|---|---|
 | marketplace-tools | 1.0.0 | C2, C3, C11, G1-G8, G12 | 1.1.0 |
 | productivity-tools | 1.3.0 | C7-C9 e melhorias de skills | 1.3.1 (só correções) ou 1.4.0 (com melhorias) |
-| mcp-sql-server | 1.2.3 | C4-C6 e melhorias | 1.2.4 ou 1.3.0 se D4 mudar o fluxo |
+| mcp-sql-server | 1.2.3 | C4-C6 e melhorias | 1.3.0 (D4 muda o fluxo de setup) |
 | sql-server-tools | 1.0.0 | fora do escopo (plano v1.1) | — |
 
 Itens em `.claude/`, `CLAUDE.md`, `CONTRIBUTING.md`, `README.md` (fora a tabela) e `docs/` não exigem bump.
@@ -167,7 +169,7 @@ Itens em `.claude/`, `CLAUDE.md`, `CONTRIBUTING.md`, `README.md` (fora a tabela)
 
 1. **Guarda-corpos**, sem bump: C1, C10, G9-G11, `settings.json` e a grafia em `CLAUDE.md` e `plugin-reviewer`. São pequenos e protegem o resto.
 2. **marketplace-tools 1.1.0:** C2, C3, C11 e as checagens G1-G8, G12. Depois disso o `validate-plugin` passa a pegar o que o validador oficial não pega.
-3. **mcp-sql-server:** C4-C6 após decidir D4. É o único item com risco de segurança.
+3. **mcp-sql-server:** C4-C6 com o fluxo de D4. É o único item com risco de segurança.
 4. **productivity-tools:** C7-C9 primeiro, depois roteamento das descrições, e por último tamanho e duplicação.
 5. **Spec digest (C12)** e orientação do repo, que podem ir em paralelo com os passos 2-4.
 
