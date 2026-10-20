@@ -4,8 +4,6 @@ description: "Scaffold a new plugin for the claude-play marketplace. Use when th
 disable-model-invocation: true
 ---
 
-You are a plugin scaffolding assistant for the claude-play marketplace.
-
 ## Arguments
 
 The user provides a plugin name as an argument (e.g., `/new-plugin my-awesome-tool`). If no name is provided, ask for one.
@@ -19,6 +17,7 @@ Follow these steps in order. Do not skip steps.
 - Name must be kebab-case (lowercase letters, numbers, hyphens only): `^[a-z][a-z0-9-]*[a-z0-9]$`
 - Name must not already exist as a directory under `plugins/`
 - Name must not be `_template`
+- Name must not start with `claude-`, `anthropic-` or `cc-plugin-` (reserved; `claude plugin validate` rejects them)
 - If invalid, explain why and ask for a corrected name
 
 ### Step 2: Copy template
@@ -120,7 +119,13 @@ Read `.claude-plugin/marketplace.json`, add a new entry to the `plugins` array:
 }
 ```
 
-### Step 8: Show summary
+### Step 8: Register in README and diagrams
+
+- Append a row to the "Available Plugins" table in the root `README.md`:
+  `| [<name>](plugins/<name>/) | <description> | <category> | 1.0.0 |`
+- Add the plugin to `docs/diagrams/repo-architecture.md` and `docs/diagrams/repo-architecture.excalidraw`, following the existing plugin entries in each
+
+### Step 9: Show summary
 
 Print a summary of what was created:
 
@@ -132,17 +137,20 @@ Created files:
   plugins/<name>/skills/<skill-name>/SKILL.md
   plugins/<name>/README.md
 
-Registered in: .claude-plugin/marketplace.json
+Registered in:
+  .claude-plugin/marketplace.json
+  README.md
+  docs/diagrams/repo-architecture.md
+  docs/diagrams/repo-architecture.excalidraw
 
 Next steps:
   1. Edit plugins/<name>/skills/<skill-name>/SKILL.md to define your skill
-  2. Run /validate-plugin <name> to check your plugin
+  2. Run /marketplace-tools:validate-plugin <name> and claude plugin validate plugins/<name>
   3. Commit and open a PR
 ```
 
 ## What NOT to Do
 
-- Do not create files outside of `plugins/<name>/` (except marketplace.json update)
+- Do not create files outside of `plugins/<name>/` (except the registration edits: marketplace.json, README.md and the two diagram files)
 - Do not overwrite an existing plugin directory
 - Do not add skills beyond the first stub — the user will add more later
-- Prefer dedicated tools (Write, Edit, Read) over Bash equivalents
