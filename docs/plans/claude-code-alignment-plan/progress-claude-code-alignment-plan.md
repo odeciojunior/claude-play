@@ -6,10 +6,10 @@
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
-**Last COMPLETED Wave**: 3
-**Last DELEGATED Wave**: 4
-**In-Flight Agents**: Group N (Step 17, sonnet): launching · Group O (Step 18, sonnet): launching · Group P (Step 19, sonnet): launching · Group Q (Step 20, sonnet): launching
-**Next Action**: Wait for Wave 4 reports; behavioral gates O, P, Q
+**Last COMPLETED Wave**: 4
+**Last DELEGATED Wave**: 5
+**In-Flight Agents**: Group R routing test (sonnet, orchestrator-run): launching · Group R executor (Step 21 bump, sonnet): launching · Group S (Step 23, opus): launching
+**Next Action**: Wait for Wave 5; fix misrouting descriptions if any; opus gate on R; then Step 24 waits for the v1.1 merge
 
 ## Execution Map
 **Steps**: 25 (execute 25, skip 0; Task 22 split into 22a/22b) | **Waves**: 6 + inline | **Effort**: ~10h agent time (estimate; plan has none) | **Tiers**: inline 3 · haiku 2 · sonnet 17 · opus 3 | **Review gates**: 8
@@ -82,10 +82,10 @@
 | 14 | report-analyzer: drop claude-mem | Done | haiku · 1 | 2 (0/0/0/1/1) | committed |
 | 15 | deep-researcher: drop agent-only text | Done | sonnet · 1 (BLOCKED once: report-file filter) | 3 (1/0/0/1/1) | committed; orchestrator wrote references/report-template.md |
 | 16 | excalidraw-designer < 500 lines + validator | Done | sonnet · 1 | 5 (2/1/1/1/0) | committed; 506→197 lines; 10 tests; font IDs left unverified |
-| 17 | mermaid-designer dedupe + verify claims | Pending | sonnet · 0 | 5 (1/1/1/1/1) | web check |
-| 18 | plan-coordinator vs current subagents | Pending | sonnet · 0 | 5 (1/1/1/1/1) | behavioral gate |
-| 19 | roadmap-planner: skill dir var, subagent spec | Pending | sonnet · 0 | 4 (1/1/0/1/1) | behavioral gate |
-| 20 | roadmap-tracker: skill dir var | Pending | sonnet · 0 | 4 (1/1/0/1/1) | behavioral gate |
+| 17 | mermaid-designer dedupe + verify claims | Done | sonnet · 1 (+1 wording fix) | 5 (1/1/1/1/1) | committed; 419→~110 lines; false accTitle rule removed |
+| 18 | plan-coordinator vs current subagents | Done | sonnet · 1 (+2 fix-ups) | 5 (1/1/1/1/1) | committed; gate 9+2 defects fixed |
+| 19 | roadmap-planner: skill dir var, subagent spec | Done | sonnet · 1 (+1 fix-up) | 4 (1/1/0/1/1) | committed; behavioral gate (checker 0 errors) → 4 fixes |
+| 20 | roadmap-tracker: skill dir var | Done | sonnet · 1 (+1 nit) | 4 (1/1/0/1/1) | committed; behavioral gate PASS |
 | 21 | Release productivity-tools 1.4.0 + routing test | Pending | sonnet · 0 | 5 (1/0/1/2/1) | risk floor |
 | 22a | Contributor docs | Done | sonnet · 1 | 3 (1/0/0/1/1) | committed |
 | 22b | Template comment (D3) | Done | inline · 1 | 1 (0/0/0/1/0) | committed; only that file |
@@ -96,6 +96,7 @@
 | Wave | Groups | Delegated | Completed | Agent IDs | Notes |
 |------|--------|-----------|-----------|-----------|-------|
 | 0 | I1 | inline | 2026-10-20 | — | Step 4 (6e14674) |
+| 4 | N, O, P, Q | 2026-10-20 | 2026-10-20 | N a11ebaa004a755916 · O a299bfc9d36413cd2 (gate ab76d05a13729199c) · P a82ccbb861ff2d667 (gate a21ce2ca5f7987116) · Q abe4e353e635b597c (gate af44516edd4ad479e) | gate: 221/221; pt lint 34 OK 0 WARN; O needed 2 rounds; Step 21 routing test moved out of the executor card (executors don't spawn subagents) |
 | 3 | J, K, L, M | 2026-10-20 | 2026-10-20 | J a7b786383d8930534 (gate ae160b7526fd5c06a) · K a11d52c21990fee95 · L aad7d1de022d2606b · M af8b97545874369d4 | gate: 221/221 tests; pt lint 32 OK 1 WARN; J needed 2 review rounds (leak paths, Windows Auth unsupported); L blocked once by report-file filter |
 | 2 | E, F, G, H + inline 22b, 9 | 2026-10-20 | 2026-10-20 | E a0e1026e1cb29f571 · F a530c5983561b7044 (gate a8bfbf0743253bd23) · G aa68d949d716e7e1c · H acd084175d699e214 | gate: 211/211 tests, 4 validators pass; F needed 2 review rounds (placeholder mangling/leak → env: refs) |
 | 1 | A, B, C, D | 2026-10-20 | 2026-10-20 | A ab5d6451f6f168549 · B aeb59684a5e92b027 · C aa437191c04f94e37 (gate a13b224e11c14d5a6) · D a8a939ee4ec239ea7 (gate acafc5c7dac15a110) | gate: 195/195 tests, validators pass; C and D each needed 1 review round; template guard live probe blocked |
@@ -118,6 +119,8 @@
 - **Gate F round 1 (DEFECTS 2)**: (1) `${DB_PASSWORD}` arg is mangled to `$DB_PASSWORD` when bash is started from PowerShell, and leaks the real secret if double-quoted → added `env:<NAME>` password-ref (script writes `${NAME}` itself; no `$` crosses argv); Step 11 must use `env:DB_PASSWORD` / `env:DB_<ALIAS>_PASSWORD` only. (2) detect-env died silently on a partial `.env` / `export` lines (pre-existing) → fixed; also reads DB_NAME.
 - **Step 15 BLOCKED → unblocked**: the harness refuses subagent writes of a file it reads as a "report" (`references/report-template.md`: "Subagents should return findings as text, not write report files"). Not renamed to dodge the filter; the orchestrator wrote the reference file and the executor did the SKILL.md edits. Expect the same for any future subagent-written file named like a report.
 - **Gate J round 1 (DEFECTS 5)**: `.env` values had no filter command (Read would show DB_PASSWORD); `claude mcp get` would print a leftover 1.2.3 literal password → redactor pipe; `$CLAUDE_PROJECT_DIR` is empty in the Bash tool (pre-existing bug) → `${CLAUDE_PROJECT_DIR}` substitution; Windows Auth unsupported by the server (config.py requires password, always `UID/PWD`) → removed, "SQL logins only"; upgrade note maps 1.2.3 scope names. Gate agent ae160b7526fd5c06a.
+- **Step 17 fact fix**: the old mermaid rule "accTitle/accDescr unsupported in gantt/pie/mindmap/sequence, cause TypeError" was false — mermaid.js.org/config/accessibility.html says they work for all diagram types; removed. `%%{init}%%` reworded to "deprecated in favour of frontmatter (available from v10.5.0)".
+- **Gate O round 1 (DEFECTS 9)** on plan-coordinator: `git commit -- <files>` fails for untracked files (add first); Completion contradicted per-step commits; wrong claim that CLAUDE_CODE_SUBAGENT_MODEL overrides a per-call `model` (only _FORCE does); allow rules must be proposed, not self-granted; stale cross-ref; Explore/Plan not resumable; who runs behavioral tests; what counts as a "step"; hedge subagent_type claim. Sent to executor.
 - **Thin information**: Step 9's result decides Step 11's local/user branch; Step 2's inline Edit probe may show hooks don't fire on this Windows setup (then stop and report); Step 17's Mermaid claims and Step 16's font IDs depend on what the official docs say.
 
 ## Step Cards
