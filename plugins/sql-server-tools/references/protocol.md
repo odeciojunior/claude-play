@@ -69,6 +69,10 @@ In SCRIPT mode, put the Environment Detection query first in the emitted script.
 Also:
 
 - Name every output column, and keep names unique: the wrapper's `SELECT *` fails on unnamed or duplicate columns.
+- Return only JSON-safe types. Results pass through pyodbc and then a JSON encoder, and a single unsupported value fails the whole query. Convert these output columns, and leave them unconverted in joins and `APPLY`:
+  - `binary`/`varbinary` (hashes, handles, sids): `CONVERT(varchar(n), col, 1)`.
+  - `datetimeoffset` (most Query Store times): `CAST(SWITCHOFFSET(col, '+00:00') AS datetime2(3)) AS <name>_utc`.
+  - `sql_variant` (`SERVERPROPERTY`, `sys.configurations`, extended properties): `CAST` to a concrete type.
 - If a query is rejected, rewrite it to comply. Never retry it unchanged.
 
 ## Read-Only Safety
