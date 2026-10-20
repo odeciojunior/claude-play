@@ -93,9 +93,9 @@ check_odbc() {
     fi
 
     # Linux / macOS: check odbcinst.ini files
-    for ini_file in /etc/odbcinst.ini /usr/local/etc/odbcinst.ini; do
+    for ini_file in /etc/odbcinst.ini /usr/local/etc/odbcinst.ini /opt/homebrew/etc/odbcinst.ini; do
         if [[ -f "$ini_file" ]]; then
-            driver=$(grep -oP "ODBC Driver \d+ for SQL Server" "$ini_file" | tail -1)
+            driver=$(grep -oE "ODBC Driver [0-9]+ for SQL Server" "$ini_file" | tail -1)
             if [[ -n "$driver" ]]; then
                 echo "$driver"
                 exit 0
@@ -105,7 +105,7 @@ check_odbc() {
 
     # Try odbcinst command
     if command -v odbcinst &>/dev/null; then
-        driver=$(odbcinst -q -d 2>/dev/null | grep -oP "ODBC Driver \d+ for SQL Server" | tail -1)
+        driver=$(odbcinst -q -d 2>/dev/null | grep -oE "ODBC Driver [0-9]+ for SQL Server" | tail -1)
         if [[ -n "$driver" ]]; then
             echo "$driver"
             exit 0
@@ -248,7 +248,7 @@ detect_env() {
     local search_path
     search_path=$(cd "${1:-.}" && pwd)
     local env_file=""
-    local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_DATABASE" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
+    local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_NAME" "DB_DATABASE" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
 
     # Search starting directory and up to 5 parent levels (6 locations total)
     local dir="$search_path"
@@ -267,10 +267,19 @@ detect_env() {
 
     echo "Found: $env_file"
     local found_host=false
+    local found_name=false
     for var in "${db_vars[@]}"; do
         local value
-        value=$(grep -oP "^${var}=\K.*" "$env_file" 2>/dev/null | head -1 | sed 's/^["'\''"]//;s/["'\''"]$//')
-        if [[ -n "$value" ]]; then
+        # { grep || true; } keeps a variable missing from .env from killing the script (pipefail)
+        value=$({ grep -E "^(export[[:space:]]+)?${var}=" "$env_file" 2>/dev/null || true; } | head -1 | sed -E "s/^(export[[:space:]]+)?${var}=//" | tr -d '\r' | sed 's/^["'\''"]//;s/["'\''"]$//')
+        if [[ -z "$value" ]]; then
+            # DB_NAME and DB_DATABASE are alternatives: report one missing line for the pair
+            if [[ "$var" == "DB_NAME" || "$var" == "DB_DATABASE" ]]; then
+                continue
+            fi
+            echo "$var missing"
+        else
+            [[ "$var" == "DB_NAME" || "$var" == "DB_DATABASE" ]] && found_name=true
             if [[ "$var" == "DB_PASSWORD" ]]; then
                 echo "$var=********"
             elif [[ ${#value} -le 6 ]]; then
@@ -281,6 +290,7 @@ detect_env() {
             [[ "$var" == "DB_HOST" ]] && found_host=true
         fi
     done
+    $found_name || echo "DB_NAME missing"
 
     if $found_host; then
         exit 0
@@ -288,6 +298,119 @@ detect_env() {
         echo "ERROR: .env found but DB_HOST not set"
         exit 1
     fi
+}
+
+venv_python() {
+    # Prints the venv interpreter path (native-looking on Windows); returns 1 if missing.
+    local venv_bin="$VENV_DIR/bin"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) venv_bin="$VENV_DIR/Scripts" ;;
+    esac
+    local py=""
+    if [[ -f "$venv_bin/python.exe" ]]; then
+        py="$venv_bin/python.exe"
+    elif [[ -f "$venv_bin/python" ]]; then
+        py="$venv_bin/python"
+    else
+        return 1
+    fi
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            if command -v cygpath &>/dev/null; then
+                cygpath -m "$py"
+            else
+                echo "$(cd "$(dirname "$py")" && pwd -W)/$(basename "$py")"
+            fi
+            ;;
+        *) echo "$py" ;;
+    esac
+}
+
+python_path() {
+    # Usage: python-path   (prints the absolute path of the venv interpreter)
+    local p
+    if ! p=$(venv_python); then
+        echo "ERROR: Virtual environment interpreter not found under $VENV_DIR. Run install-venv first." >&2
+        exit 1
+    fi
+    echo "$p"
+    exit 0
+}
+
+resolve_password() {
+    # Usage: resolve_password <arg>   Prints the value to store; returns 1 on a bad reference.
+    #   env:NAME  -> literal ${NAME} (NAME must match ^[A-Z_][A-Z0-9_]*$); no $ crosses argv
+    #   env: is a reserved prefix for the password argument (a literal password cannot start with it)
+    #   $NAME     -> rejected (whole argument ^\$[A-Z_][A-Z0-9_]*$): a mangled ${NAME} placeholder
+    #   Messages never include the argument: it may be a real secret.
+    #   anything else (including empty and a literal ${NAME}) is passed through unchanged
+    local arg="${1:-}"
+    if [[ "$arg" == env:* ]]; then
+        local name="${arg#env:}"
+        if ! [[ "$name" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+            echo "ERROR: invalid env: password reference (expected env:<NAME>, NAME = [A-Z_][A-Z0-9_]*)" >&2
+            return 1
+        fi
+        printf '%s' "\${${name}}"
+        return 0
+    fi
+    if [[ "$arg" =~ ^\$[A-Z_][A-Z0-9_]*$ ]]; then
+        echo "ERROR: password argument looks like a mangled \${NAME} placeholder (the shell may have rewritten it). Use env:<NAME> instead. Note: env: is a reserved prefix for the password argument." >&2
+        return 1
+    fi
+    printf '%s' "$arg"
+}
+
+build_entry() {
+    # Usage: build_entry <python-path> <host> <port> <user> <password-or-ref> <name> <driver> <encrypt> <trust_cert>
+    # Prints the single-line JSON server entry.
+    node -e "
+const entry = {
+  command: process.argv[1],
+  args: ['-m', 'mcp_sql_server.server'],
+  env: {
+    DB_HOST: process.argv[2],
+    DB_PORT: process.argv[3],
+    DB_USER: process.argv[4],
+    DB_PASSWORD: process.argv[5],
+    DB_NAME: process.argv[6],
+    DB_DRIVER: process.argv[7],
+    DB_ENCRYPT: process.argv[8],
+    DB_TRUST_CERT: process.argv[9]
+  }
+};
+process.stdout.write(JSON.stringify(entry));
+" "$@"
+}
+
+print_entry() {
+    # Usage: print-entry <python-path> <host> <port> <user> <password-ref> <name> [driver] [encrypt] [trust_cert]
+    local python_path="${1:-}"
+    local db_host="${2:-}"
+    local db_port="${3:-1433}"
+    local db_user="${4:-}"
+    local db_password="${5:-}"
+    local db_name="${6:-}"
+    local db_driver="${7:-ODBC Driver 18 for SQL Server}"
+    local db_encrypt="${8:-false}"
+    local db_trust_cert="${9:-false}"
+
+    if [[ -z "$python_path" || -z "$db_host" || -z "$db_user" || -z "$db_name" ]]; then
+        echo "ERROR: Missing required arguments." >&2
+        echo "Usage: setup.sh print-entry <python-path> <host> <port> <user> <password-ref> <name> [driver] [encrypt] [trust_cert]" >&2
+        exit 1
+    fi
+
+    db_password=$(resolve_password "$db_password") || exit 1
+
+    local entry
+    entry=$(build_entry "$python_path" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert")
+    if [[ -z "$entry" ]]; then
+        echo "ERROR: Failed to build JSON entry (is node available?)" >&2
+        exit 1
+    fi
+    printf '%s\n' "$entry"
+    exit 0
 }
 
 register_mcp_json() {
@@ -310,25 +433,11 @@ register_mcp_json() {
         exit 1
     fi
 
+    db_password=$(resolve_password "$db_password") || exit 1
+
     # Build the new MCP server entry as JSON
     local new_entry
-    new_entry=$(node -e "
-const entry = {
-  command: process.argv[1],
-  args: ['-m', 'mcp_sql_server.server'],
-  env: {
-    DB_HOST: process.argv[2],
-    DB_PORT: process.argv[3],
-    DB_USER: process.argv[4],
-    DB_PASSWORD: process.argv[5],
-    DB_NAME: process.argv[6],
-    DB_DRIVER: process.argv[7],
-    DB_ENCRYPT: process.argv[8],
-    DB_TRUST_CERT: process.argv[9]
-  }
-};
-process.stdout.write(JSON.stringify(entry));
-" "$python_path" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert")
+    new_entry=$(build_entry "$python_path" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert")
 
     if [[ -z "$new_entry" ]]; then
         echo "ERROR: Failed to build JSON entry (is node available?)"
@@ -443,6 +552,8 @@ add_database() {
         exit 1
     fi
 
+    db_password=$(resolve_password "$db_password") || exit 1
+
     # Prefixed configs have no fallback and require a non-empty password. An empty one
     # would leave the alias skipped and silently unavailable at startup, so catch it here.
     if [[ -z "$db_password" ]]; then
@@ -502,10 +613,12 @@ case "${1:-}" in
     verify-install)     verify_install ;;
     detect-env)         detect_env "${2:-.}" ;;
     register-mcp-json)  shift; register_mcp_json "$@" ;;
-    add-database)      shift; add_database "$@" ;;
+    add-database)       shift; add_database "$@" ;;
+    python-path)        python_path ;;
+    print-entry)        shift; print_entry "$@" ;;
     ensure-gitignore)   ensure_gitignore "${2:-}" "${3:-}" ;;
     *)
-        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|detect-env [path]|register-mcp-json <args...>|add-database <args...>|ensure-gitignore <dir> <pattern>}"
+        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|python-path|print-entry <args...>|detect-env [path]|register-mcp-json <args...>|add-database <args...>|ensure-gitignore <dir> <pattern>}"
         exit 1
         ;;
 esac
