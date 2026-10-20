@@ -6,10 +6,10 @@
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
-**Last COMPLETED Wave**: 0
-**Last DELEGATED Wave**: 0
+**Last COMPLETED Wave**: 2
+**Last DELEGATED Wave**: 2
 **In-Flight Agents**: none
-**Next Action**: Inline Step 4 (CLAUDE.md), then launch Wave 1 (Groups A, B, C, D)
+**Next Action**: Launch Wave 3 (Groups J opus, K haiku, L sonnet, M sonnet)
 
 ## Execution Map
 **Steps**: 25 (execute 25, skip 0; Task 22 split into 22a/22b) | **Waves**: 6 + inline | **Effort**: ~10h agent time (estimate; plan has none) | **Tiers**: inline 3 · haiku 2 · sonnet 17 · opus 3 | **Review gates**: 8
@@ -66,19 +66,19 @@
 ## Steps
 | # | Step | Status | Tier · Attempts | Score (S/A/R/B/V) | Note |
 |---|------|--------|-----------------|-------------------|------|
-| 1 | Marketplace hook: block, don't crash; checks 7–9 | Pending | sonnet · 0 | 3 (1/0/1/1/0) | tests prove it |
-| 2 | Template guard: all edit tools, normalised paths | Pending | sonnet · 0 | 3 (1/0/1/1/0) | + inline Edit probe after |
-| 3 | plugin-reviewer: patterns, agent checks, spelling | Pending | sonnet · 0 | 4 (0/1/1/1/1) | behavioral gate |
-| 4 | CLAUDE.md accurate rules | Pending | inline · 0 | 2 (0/0/0/1/1) | inline: doc, in context |
-| 5 | lint-plugin.mjs + tests + fixtures | Pending | sonnet · 0 | 5 (2/1/1/1/0) | bundle D |
-| 6 | validate-plugin SKILL runs validate + lint | Pending | sonnet · 0 | 3 (0/1/0/1/1) | bundle D |
-| 7 | new-plugin: prefixes, README/diagrams, namespaced cmd | Pending | haiku · 0 | 2 (0/0/0/1/1) | inline cap reached |
-| 8 | Release marketplace-tools 1.1.0 | Pending | sonnet · 0 | 3 (1/0/0/2/0) | risk floor (manifests) |
-| 9 | Spike: `${VAR}` expansion in ~/.claude.json | Pending | inline · 0 | 1 (0/0/0/1/0) | commands only |
-| 10 | setup.sh python-path + print-entry | Pending | sonnet · 0 | 5 (1/1/1/2/0) | risk floor (installer) |
+| 1 | Marketplace hook: block, don't crash; checks 7–9 | Done | sonnet · 1 (+1 style fix-up) | 3 (1/0/1/1/0) | ab7396d; 12 tests |
+| 2 | Template guard: all edit tools, normalised paths | Done | sonnet · 1 | 3 (1/0/1/1/0) | 28a1ae8; 6 tests; live Edit probe blocked ✓ |
+| 3 | plugin-reviewer: patterns, agent checks, spelling | Done | sonnet · 1 (+2 fix-ups) | 4 (0/1/1/1/1) | gate PASS after round 1 |
+| 4 | CLAUDE.md accurate rules | Done | inline · 1 | 2 (0/0/0/1/1) | 6e14674; Hooks section updated after Wave 1 |
+| 5 | lint-plugin.mjs + tests + fixtures | Done | sonnet · 1 (+1 fix-up) | 5 (2/1/1/1/0) | 7e03108; 60 tests; opus gate PASS round 2 |
+| 6 | validate-plugin SKILL runs validate + lint | Done | sonnet · 1 (+1 fix-up) | 3 (0/1/0/1/1) | fb1ec03 |
+| 7 | new-plugin: prefixes, README/diagrams, namespaced cmd | Done | haiku · 1 | 2 (0/0/0/1/1) | committed after 1.1.0 commit, ships in 1.1.0 (not yet published) |
+| 8 | Release marketplace-tools 1.1.0 | Done | sonnet · 1 | 3 (1/0/0/2/0) | aebefe6 |
+| 9 | Spike: `${VAR}` expansion in ~/.claude.json | Done | inline · 1 | 1 (0/0/0/1/0) | yes (local scope); probe removed |
+| 10 | setup.sh python-path + print-entry | Done | sonnet · 1 (+2 fix-ups) | 5 (1/1/1/2/0) | opus gate PASS round 3; env: refs |
 | 11 | Setup skill never asks for the password | Pending | opus · 0 | 6 (1/1/1/2/1) | credentials + install |
 | 12 | Release mcp-sql-server 1.3.0 | Pending | opus · 0 | 3 (1/0/0/2/0) | bundled with 11 |
-| 13 | wsl-health-check ships its script | Pending | sonnet · 0 | 5 (1/1/1/1/1) | WSL run = manual action |
+| 13 | wsl-health-check ships its script | Done | sonnet · 1 | 5 (1/1/1/1/1) | committed; WSL run = manual action (untested paths: --full, --check-services) |
 | 14 | report-analyzer: drop claude-mem | Pending | haiku · 0 | 2 (0/0/0/1/1) | — |
 | 15 | deep-researcher: drop agent-only text | Pending | sonnet · 0 | 3 (1/0/0/1/1) | — |
 | 16 | excalidraw-designer < 500 lines + validator | Pending | sonnet · 0 | 5 (2/1/1/1/0) | — |
@@ -87,14 +87,17 @@
 | 19 | roadmap-planner: skill dir var, subagent spec | Pending | sonnet · 0 | 4 (1/1/0/1/1) | behavioral gate |
 | 20 | roadmap-tracker: skill dir var | Pending | sonnet · 0 | 4 (1/1/0/1/1) | behavioral gate |
 | 21 | Release productivity-tools 1.4.0 + routing test | Pending | sonnet · 0 | 5 (1/0/1/2/1) | risk floor |
-| 22a | Contributor docs | Pending | sonnet · 0 | 3 (1/0/0/1/1) | — |
-| 22b | Template comment (D3) | Pending | inline · 0 | 1 (0/0/0/1/0) | user-authorized |
+| 22a | Contributor docs | Done | sonnet · 1 | 3 (1/0/0/1/1) | committed |
+| 22b | Template comment (D3) | Done | inline · 1 | 1 (0/0/0/1/0) | committed; only that file |
 | 23 | Extensibility reference revision | Pending | opus · 0 | 6 (1/1/1/1/2) | judgment-only check |
 | 24 | D1: version in plugin.json + README only | Blocked | sonnet · 0 | 5 (2/0/1/2/0) | waits for v1.1 merge |
 
 ## Wave Execution Log
 | Wave | Groups | Delegated | Completed | Agent IDs | Notes |
 |------|--------|-----------|-----------|-----------|-------|
+| 0 | I1 | inline | 2026-10-20 | — | Step 4 (6e14674) |
+| 2 | E, F, G, H + inline 22b, 9 | 2026-10-20 | 2026-10-20 | E a0e1026e1cb29f571 · F a530c5983561b7044 (gate a8bfbf0743253bd23) · G aa68d949d716e7e1c · H acd084175d699e214 | gate: 211/211 tests, 4 validators pass; F needed 2 review rounds (placeholder mangling/leak → env: refs) |
+| 1 | A, B, C, D | 2026-10-20 | 2026-10-20 | A ab5d6451f6f168549 · B aeb59684a5e92b027 · C aa437191c04f94e37 (gate a13b224e11c14d5a6) · D a8a939ee4ec239ea7 (gate acafc5c7dac15a110) | gate: 195/195 tests, validators pass; C and D each needed 1 review round; template guard live probe blocked |
 
 ## Manual Actions Required
 - Step 13: after Wave 2, run `bash plugins/productivity-tools/skills/wsl-health-check/scripts/health-report.sh --full --no-color` inside WSL (from the worktree under `/mnt/d/...`) and report errors.
@@ -109,6 +112,9 @@
 - **Behavioral gates** (`.claude/rules/skills.md`): Steps 3, 6 (inside D's opus review), 11 (inside J's opus review), 18, 19, 20. Steps 14–17 rely on lint + targeted greps + Step 21's routing test instead; choose **Safer** to add behavioral gates to them.
 - **Write-set overlaps**: `marketplace.json` + root `README.md` are written by D (8), J (12), H (22a, Quick Start only), R (21), T (24) → placed in different waves (1, 3, 2, 5, 6). `CLAUDE.md`: I1 (4) and T (24) → wave 0 and 6. lint-plugin consumers (6, 11, 13–21) depend on D.
 - **Self-modification**: Step 18 edits plan-coordinator, the skill running this plan. This run uses the installed 1.3.0 copy from the plugin cache; edits in the worktree do not affect it.
+- **Gate C round 1 (DEFECTS 7)**: fixed 1,2,5,6,7 via SendMessage; #3 kept FAIL with stated reason; #4 rejected (gate read the main checkout's CLAUDE.md, the worktree already says `user-invocable`).
+- **Out-of-scope findings for the sql-server-tools session** (tell the user; do not fix here): all 5 `plugins/sql-server-tools/agents/*.md` set `permissionMode`, which Claude Code ignores for plugin agents (lint-plugin: 5 FAIL); `tsql-specialist` carries `Bash` but its instructions never run commands (reviewer FLAG).
+- **Gate F round 1 (DEFECTS 2)**: (1) `${DB_PASSWORD}` arg is mangled to `$DB_PASSWORD` when bash is started from PowerShell, and leaks the real secret if double-quoted → added `env:<NAME>` password-ref (script writes `${NAME}` itself; no `$` crosses argv); Step 11 must use `env:DB_PASSWORD` / `env:DB_<ALIAS>_PASSWORD` only. (2) detect-env died silently on a partial `.env` / `export` lines (pre-existing) → fixed; also reads DB_NAME.
 - **Thin information**: Step 9's result decides Step 11's local/user branch; Step 2's inline Edit probe may show hooks don't fire on this Windows setup (then stop and report); Step 17's Mermaid claims and Step 16's font IDs depend on what the official docs say.
 
 ## Step Cards
@@ -124,7 +130,7 @@
 - **Done means**: `node --test .claude/hooks/validate-marketplace-json.test.mjs` → all pass; `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs` from the worktree root → no output
 - **If Blocked**: if the real marketplace.json fails a new check, report which entry — do not edit marketplace.json
 - **Commit msg**: `fix(hooks): block on malformed marketplace.json instead of crashing; check entries against plugin.json`
-- **Handoff**:
+- **Handoff**: hook has 9 checks inside try/catch (+ non-object guard). Check 8 reads plugin.json via the entry's `source` path and compares name and (if present) version — any bump must edit plugin.json and the marketplace entry together or the hook blocks. Tests: `.claude/hooks/validate-marketplace-json.test.mjs` (12).
 
 ### Step 2: Template guard covers every edit tool and normalised paths
 - **Route**: general-purpose · sonnet · score 3 — exact spec, tests prove it
@@ -139,7 +145,7 @@
 - **If Blocked**: none expected
 - **After (orchestrator, inline)**: attempt an Edit on `plugins/_template/README.md` → must be blocked; if not, stop and report
 - **Commit msg**: `fix(hooks): template guard covers NotebookEdit/MultiEdit and normalised paths`
-- **Handoff**:
+- **Handoff**: guard reads `file_path ?? notebook_path`, normalises (`\`→`/`, posix normalize, lowercase); both matchers `Edit|MultiEdit|Write|NotebookEdit`; no Bash guard by design. CLAUDE.md Hooks section updated in the same commit. Tests: `.claude/hooks/protect-template.test.mjs` (6).
 
 ### Step 3: plugin-reviewer checks what it reports, with working patterns
 - **Route**: general-purpose · sonnet · score 4 — one file, wording choices; behavioral gate (repo rule)
@@ -160,7 +166,7 @@
 - **Do**: line 8 → repo policy with `user-invocable`, "`model`/`context`/`agent`/`allowed-tools`/`paths`/`hooks` are valid Claude Code fields we don't use; unknown keys are ignored silently, so spelling matters"; line 10 → `claude plugin validate` checks manifests only, frontmatter/agents via `marketplace-tools` `validate-plugin` (lint-plugin.mjs); line 11 → rules load "when a matching file is read or edited"; line 26 → "repo-required fields (the spec requires only `name`)"; agents layout comment → plugin agents ignore `hooks`/`mcpServers`/`permissionMode`; line 43 → delete the jq history; publish steps → add `/reload-plugins` or restart, old versions deleted after 14 days, dev loop `claude plugin marketplace add <local path>` + `/reload-plugins`. Keep the three-place bump rule.
 - **Done means**: `grep -n "user-invokable" CLAUDE.md` → none; < 60 lines
 - **Commit msg**: `docs(claude-md): accurate frontmatter policy and validation scope`
-- **Handoff**:
+- **Handoff**: CLAUDE.md lines 8, 10–11, publish steps, layout comments, hooks intro updated (6e14674). Follow-up after Wave 1: Hooks section → matchers `Edit|MultiEdit|Write|NotebookEdit`, "9 checks".
 
 ### Step 5–6–8 (bundle D): lint-plugin, validate-plugin skill, release marketplace-tools 1.1.0
 - **Route**: general-purpose · sonnet · score 5 (max of 5/3/3) — script + skill + release, sequential and coupled; risk floor (manifests) → opus review gate, which also runs the validate-plugin skill literally on `plugins/productivity-tools` (behavioral)
@@ -181,7 +187,7 @@
 - **Done means**: `node --test plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs` → pass; lint on `plugins/marketplace-tools`, `plugins/mcp-sql-server`, `plugins/productivity-tools` → exit 0 (list every WARN in CONCERNS); `claude plugin validate .` and `claude plugin validate plugins/marketplace-tools` → pass
 - **If Blocked**: if an existing plugin produces a FAIL, report it; don't change that plugin
 - **Commit msgs**: `feat(marketplace-tools): add lint-plugin script for frontmatter, agents and structure` · `feat(validate-plugin): run claude plugin validate and lint-plugin; keep judgment checks` · `chore(marketplace-tools): release 1.1.0`
-- **Handoff**:
+- **Handoff**: CLI `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs <plugin-dir> [--marketplace <path>]`, exit 0/1/2; exports `lintPlugin`, `parseFrontmatter`, `formatResults`. Baseline: marketplace-tools 12 OK, mcp-sql-server 10 OK, productivity-tools 29 OK + 2 WARN (excalidraw 506 lines; delegation-protocol.md 107 lines w/o `## Contents`) — later steps must not add WARNs. marketplace-tools is 1.1.0 (aebefe6).
 
 ### Step 7: new-plugin scaffolds everything the repo requires
 - **Route**: general-purpose · haiku · score 2 — exact text edits in one file
@@ -191,13 +197,13 @@
 - **Done means**: `grep -n "Run /validate-plugin" plugins/marketplace-tools/skills/new-plugin/SKILL.md` → none; lint on `plugins/marketplace-tools` → exit 0
 - **If Blocked**: none expected
 - **Commit msg**: `fix(new-plugin): reserved prefixes, README and diagram registration, namespaced command`
-- **Handoff**:
+- **Handoff**: new Step 8 registers README row + both diagram files; summary is Step 9; marketplace entry template still has `version` (Step 24 removes it, around the Step 7 JSON block). Concern: .excalidraw edit is prose-only.
 
 ### Step 9: Spike — `${VAR}` expansion in ~/.claude.json (inline)
 - **Route**: inline · score 1 — 3 CLI commands; needs this session's environment
 - **Do**: `claude mcp add-json --scope local zz-env-probe '{"command":"node","args":["-e","require(\"fs\").writeFileSync(process.env.OUT, process.env.PROBE)"],"env":{"OUT":"<scratchpad>/probe.txt","PROBE":"${ZZ_PROBE}"}}'` → `ZZ_PROBE=expanded claude mcp list` → read probe.txt (`expanded` = yes; `${ZZ_PROBE}` = no; not written = no, unverified) → `claude mcp remove zz-env-probe --scope local` → `claude mcp get zz-env-probe` reports not found.
 - **Done means**: `EXPANDS_IN_CLAUDE_JSON` recorded in Handoff; probe removed
-- **Handoff**:
+- **Handoff**: `EXPANDS_IN_CLAUDE_JSON=yes` (verified for `--scope local`; user scope uses the same `~/.claude.json` mechanism, not separately tested). Unset variable → server receives the literal `${VAR}`; `claude mcp list` prints "MCP config diagnostics ⚠ … [Warning] [<server>] mcpServers.<server>: Missing environment variables: <VAR>". Probe removed (`claude mcp get` → not found).
 
 ### Step 10: setup.sh prints a native interpreter path and a JSON entry
 - **Route**: general-purpose · sonnet · score 5 — installer script (risk floor) → opus review gate
@@ -208,7 +214,7 @@
 - **Done means**: `node --test plugins/mcp-sql-server/scripts/setup.test.mjs` → pass; `git ls-files --eol plugins/mcp-sql-server/scripts/setup.sh` → `w/lf`; `bash -n plugins/mcp-sql-server/scripts/setup.sh` → no output
 - **If Blocked**: if `cygpath` is missing in Git Bash, fall back to `pwd -W` and say so
 - **Commit msg**: `feat(mcp-sql-server): python-path and print-entry subcommands; portable grep`
-- **Handoff**:
+- **Handoff**: `setup.sh python-path` → one line, native absolute interpreter path (`C:/Users/…/.venv/Scripts/python.exe` on Git Bash), exit 1 if no venv. `setup.sh print-entry <python-path> <host> <port> <user> <password-ref> <name> [driver] [encrypt] [trust_cert]` → single-line JSON entry. Password arg of print-entry / register-mcp-json / add-database: **`env:<NAME>`** → stored as literal `${NAME}` (the only safe form: a `${…}` argv is mangled from PowerShell and a double-quoted one leaks the real value); whole-arg `$NAME` rejected; errors never echo the argument; literals still accepted. `detect-env` exits 0 when DB_HOST is found, prints masked values and `<VAR> missing` lines, handles `export` and CRLF, reads DB_NAME or DB_DATABASE. 16 tests.
 
 ### Step 11–12 (bundle J): setup skill never asks for the password; release mcp-sql-server 1.3.0
 - **Route**: general-purpose · opus · score 6 — credential flow with two scope branches (security); release bundled; opus review gate incl. a behavioral run
@@ -217,8 +223,8 @@
 - **Needs from upstream**: Step 10 handoff (`python-path`, `print-entry`); Step 9 handoff (`EXPANDS_IN_CLAUDE_JSON`); D (lint-plugin)
 - **Do**:
   1. Step 5: ask host, user, database name (write as `DB_NAME`; read `DB_DATABASE` or `DB_NAME` from `.env`), port, encrypt, trust cert. Never ask for, read or print a password; `detect-env` may say whether `DB_PASSWORD` exists, never its value. Tell the user to set `DB_PASSWORD` themselves: Windows `setx DB_PASSWORD "<password>"` then open a new terminal/IDE window; bash `export DB_PASSWORD=…` in `~/.bashrc`; Windows Auth → leave unset/empty.
-  2. Step 6 scopes: **project** → `register-mcp-json` into `.mcp.json` with password ref `'${DB_PASSWORD}'` (safe to commit; first launch asks for approval); **local** / **user** → if `EXPANDS_IN_CLAUDE_JSON=yes`: `claude mcp add-json --scope local|user mcp-sql-server "$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" print-entry "<python>" … '${DB_PASSWORD}' …)"`; if `no`: show the same command with `"$DB_PASSWORD"` and ask the user to run it in their own terminal. Interpreter path always from `setup.sh python-path`. Remove project-shared-with-literal-password, `ensure-gitignore` usage and the `claude mcp add -e` block. Step 6.5: password ref `'${DB_<ALIAS>_PASSWORD}'` + tell the user to set it; write down one exact alias flow for local/user scope.
-  3. Steps 7–8 + Troubleshooting: verify with `claude mcp get mcp-sql-server`; project-scope approval note; new entry "missing-variable warning / login fails with `${DB_PASSWORD}` → variable not set in the environment that launched Claude Code"; fix "Switching scopes"; scope names in the summary = project | local | user. Frontmatter: add `disable-model-invocation: true`.
+  2. Step 6 scopes (Step 9 verified expansion works in `~/.claude.json`): **project** → `register-mcp-json "$CLAUDE_PROJECT_DIR/.mcp.json" "<python>" <host> <port> <user> env:DB_PASSWORD <name> …` (safe to commit; first launch asks for approval); **local** (this project, private) / **user** (all projects) → `claude mcp add-json --scope local|user mcp-sql-server "$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" print-entry "<python>" <host> <port> <user> env:DB_PASSWORD <name> …)"`. The password argument is ALWAYS `env:DB_PASSWORD` (never `${…}`, never quoted values). Interpreter path always from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" python-path`. Remove project-shared-with-literal-password, `ensure-gitignore` usage and the `claude mcp add -e` block. Step 6.5: password ref `env:DB_<ALIAS>_PASSWORD` + tell the user to set that variable; aliases need the entry in a JSON file: for project scope run `add-database` on `.mcp.json`; for local/user scope re-register the whole entry (remove + add-json) — write one exact flow (e.g. build the entry in a temp `.mcp.json` with register-mcp-json + add-database, then `claude mcp remove mcp-sql-server --scope <s>` and `claude mcp add-json --scope <s> mcp-sql-server "$(node -e "…print mcpServers['mcp-sql-server']…" <tmp>)"`), never editing `~/.claude.json` by hand.
+  3. Steps 7–8 + Troubleshooting: verify with `claude mcp get mcp-sql-server`; project-scope approval note; new entry: `claude mcp list` shows "MCP config diagnostics ⚠ … Missing environment variables: DB_PASSWORD" and login fails → the variable isn't set in the environment that launched Claude Code (Windows: `setx` needs a new terminal/IDE window); fix "Switching scopes"; scope names in the summary = project | local | user. Frontmatter: add `disable-model-invocation: true`.
   4. Release: `1.3.0` in the three places; plugin README describes the new password handling.
 - **Done means**: `grep -nE "What is the database password|Password\?\"|project-shared|ensure-gitignore|mcp add --transport" plugins/mcp-sql-server/skills/mcp-sql-server-setup/SKILL.md` → none; lint on `plugins/mcp-sql-server` → exit 0; `claude plugin validate .` and `plugins/mcp-sql-server` → pass
 - **Gate (opus, read-only)**: review diff of Steps 10–12 for secret leakage and command correctness; then follow the SKILL.md literally for a fake server (`sql01`, user `app_ro`, db `Sales`, Windows host; project scope, then local scope), writing every command it would run to the scratchpad without executing installs/registrations → no command or message contains a password value; both scopes give a complete command
@@ -235,7 +241,7 @@
 - **Done means**: `bash -n plugins/productivity-tools/skills/wsl-health-check/scripts/health-report.sh` → no output; `grep -rn "bc -l\|redis-server" plugins/productivity-tools/skills/wsl-health-check/` → none; `bash …/health-report.sh --help` in Git Bash → help text; lint on `plugins/productivity-tools` → no new WARN for this skill
 - **If Blocked**: commands unavailable in Git Bash are fine; don't try `wsl`
 - **Commit msg**: `fix(wsl-health-check): ship health-report.sh; key services checked directly`
-- **Handoff**:
+- **Handoff**: `--check-services "<names>"` (default `$HEALTH_KEY_SERVICES`, else `cron`) → `▶ Key Services` lines `<name>: active|inactive|not-found` (also in `--full`/`--services`); `Zombie processes: <n>` in summary and `--processes`; awk helpers `num_gt`/`num_lt`; ping cached in `INTERNET_OK`. Step 21's plugin README must document `HEALTH_KEY_SERVICES`.
 
 ### Step 14: report-analyzer has no hidden plugin dependency
 - **Route**: general-purpose · haiku · score 2 — text edits in one file
