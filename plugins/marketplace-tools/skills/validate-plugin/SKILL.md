@@ -1,92 +1,77 @@
 ---
 name: validate-plugin
-description: "Validate a plugin directory against claude-play marketplace quality standards. Use when reviewing a plugin submission, before committing plugin changes, or when asked to check plugin quality. Checks plugin.json fields, SKILL.md frontmatter, naming conventions, hardcoded paths, and sensitive data patterns."
+description: "Validates a plugin directory by running `claude plugin validate` plus the deterministic lint-plugin.mjs script, then adding judgment checks for hardcoded absolute paths and sensitive data. Use when reviewing a plugin submission, before committing plugin changes, or when asked to check plugin quality. Not for scaffolding a new plugin (use new-plugin)."
 ---
 
-You are a plugin quality validator for the claude-play marketplace.
+# Validate a plugin
 
 ## Arguments
 
-The user may provide a plugin name as an argument (e.g., `/validate-plugin my-plugin`). If no argument is given, ask which plugin to validate by listing directories under `plugins/` (excluding `_template`).
+The user may provide a plugin as a bare name (`/validate-plugin my-plugin`) or as a path (`/validate-plugin plugins/my-plugin`). Normalize both to `plugins/<name>`. If none is given, list the directories under `plugins/` (excluding `_template`) and ask which one to validate.
 
 ## Workflow
 
-1. **Resolve plugin path**: `plugins/<name>/`
-2. **Run all checks** in order (see Validation Checks below)
-3. **Print summary** using the Output Format below
+Run from the repository root. Do not skip a step because an earlier one failed; do not modify any file.
 
-## Validation Checks
+### Step 0: Official validator
 
-Run each check and record the result as OK, WARN, or FAIL.
+Run `claude plugin validate plugins/<name>` and report its output.
 
-### Check 1: Directory name matches plugin.json name (FAIL)
+- It prints `Validation passed` (with or without warnings): one `[OK]` line, `claude plugin validate: Validation passed`. If it printed warnings, list each one on its own `[WARN]` line.
+- It fails: one `[FAIL]` line, `claude plugin validate: <first error line>`.
+- The `claude` command is unavailable: one `[WARN]` line, `claude plugin validate: not run (claude CLI unavailable)`.
 
-- Read `plugins/<name>/.claude-plugin/plugin.json`
-- Parse the JSON and compare `name` field to the directory name
-- FAIL if they don't match or if plugin.json doesn't exist
+It checks manifests only (plugin.json and similar files), not skill content or repo policy, so Step 1 is still required.
 
-### Check 2: plugin.json has all required fields (FAIL)
+### Step 1: Lint script
 
-- Required fields: `name`, `description`, `version`, `author`, `license`, `keywords`
-- `author` must have `name` and `email` subfields
-- `keywords` must be a non-empty array
-- FAIL if any field is missing or empty
+Run:
 
-### Check 3: SKILL.md frontmatter validation (FAIL)
+```
+node "${CLAUDE_SKILL_DIR}/scripts/lint-plugin.mjs" plugins/<name>
+```
 
-- Glob for `plugins/<name>/skills/*/SKILL.md`
-- Each SKILL.md must have YAML frontmatter (between `---` markers) with `name` and `description` fields
-- Only supported frontmatter attributes: `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata`
-- WARN if unsupported attributes are found (e.g., `model`, `context`, `allowed-tools`)
-- FAIL if any SKILL.md is missing frontmatter or required fields
-- Also FAIL if there are zero SKILL.md files found
+If `${CLAUDE_SKILL_DIR}` was not substituted (the path is empty or still contains the literal `${CLAUDE_SKILL_DIR}`) and you are inside the claude-play repository, run `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/<name>` instead.
 
-### Check 4: README.md exists and is non-empty (WARN)
+Include its `[OK]`, `[WARN]` and `[FAIL]` lines verbatim in the report and add its counts to the total (ignore its own `Result:` line). The script covers: directory and plugin name, required plugin.json fields (repo policy), SKILL.md frontmatter keys and values, SKILL.md and reference length, reference depth, agent frontmatter, `hooks.json`, `.mcp.json`, plugin-root `CLAUDE.md`, writes into `${CLAUDE_PLUGIN_ROOT}`, README, and marketplace registration and version. Exit code 1 means at least one FAIL.
 
-- Check if `plugins/<name>/README.md` exists
-- WARN if missing or empty (less than 10 characters)
+### Step 2: Judgment checks
 
-### Check 5: No hardcoded absolute paths (WARN)
+These need reading, so do them yourself with Grep over `plugins/<name>/`.
 
-- Grep all files under `plugins/<name>/` for patterns: `/home/`, `/Users/`, `C:\`, `/tmp/`
-- Exclude matches inside code blocks that reference `${CLAUDE_PLUGIN_ROOT}`
-- WARN if any matches found, listing the file and line
+**Hardcoded absolute paths (WARN)**
 
-### Check 6: No sensitive data patterns (FAIL)
+- Search for `/home/`, `/Users/`, `C:\` and `/tmp/`.
+- Ignore a matching line if that line references `${CLAUDE_PLUGIN_ROOT}` or `${CLAUDE_SKILL_DIR}`. Ignore files under `scripts/fixtures/` and `*.test.mjs` files. Ignore text that only describes this check (like this file) or names the paths as examples of what to avoid.
+- Report each remaining match as `[WARN] Hardcoded absolute path: <file>:<line>`.
+- If nothing remains, print `[OK]   No hardcoded absolute paths found`.
 
-- Grep all files under `plugins/<name>/` for patterns (case-insensitive): `api_key\s*[:=]`, `token\s*[:=]`, `password\s*[:=]`, `secret\s*[:=]`
-- Exclude SKILL.md files that mention these terms in validation check descriptions (like this very file)
-- FAIL if any real matches found
+**Sensitive data patterns (FAIL)**
 
-### Check 7: Plugin registered in marketplace.json (WARN)
+- Search case-insensitively for `api_key\s*[:=]`, `token\s*[:=]`, `password\s*[:=]` and `secret\s*[:=]`.
+- Ignore SKILL.md or reference text that only names these terms while describing a check (like this file), placeholders such as `<your-token>` or `${VAR}`, and variable references with no literal value.
+- Report each real match as `[FAIL] Sensitive data pattern: <file>:<line>`, without printing the value.
+- If nothing remains, print `[OK]   No sensitive data patterns found`.
 
-- Read `.claude-plugin/marketplace.json`
-- Check if a plugin entry with matching `name` exists in the `plugins` array
-- WARN if not found (plugin may not be ready for registration yet)
+## Output format
 
-## Output Format
-
-Print results in this exact format:
+Print the validator line, the lint lines, the judgment lines and one total:
 
 ```
 Validating plugin: <name>
 
+[OK]   claude plugin validate: Validation passed
 [OK]   Directory name matches plugin.json name
-[FAIL] plugin.json missing required field: keywords
-[OK]   All SKILL.md files have valid frontmatter
-[WARN] README.md is empty
-[OK]   No hardcoded paths found
+[WARN] skills/demo/SKILL.md length: 506 lines (> 500); move detail into references/
+[OK]   No hardcoded absolute paths found
 [OK]   No sensitive data patterns found
-[WARN] Plugin not registered in marketplace.json
 
-Result: 4 OK, 2 WARN, 1 FAIL
+Result: 4 OK, 1 WARN, 0 FAIL
 ```
 
-Use `[OK]` with 3 spaces, `[WARN]` with 1 space, `[FAIL]` with 1 space to align the messages.
+Use `[OK]` followed by 3 spaces, `[WARN]` and `[FAIL]` followed by 1 space. Print exactly one `Result:` line, after all checks.
 
-## What NOT to Do
+## What not to do
 
-- Do not modify any files — this is a read-only validation skill
-- Do not skip checks — run all 7 even if earlier checks fail
-- Do not fabricate results — if a file can't be read, report the error
-- Prefer dedicated tools (Grep, Glob, Read) over Bash equivalents
+- Do not modify files; this skill is read-only.
+- Do not fabricate results; if a command or file cannot be run or read, report the error.
