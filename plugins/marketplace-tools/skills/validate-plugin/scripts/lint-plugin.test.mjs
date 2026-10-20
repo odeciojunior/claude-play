@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { lintPlugin, parseFrontmatter } from './lint-plugin.mjs';
+import { lintPlugin, parseFrontmatter, isReservedPluginName } from './lint-plugin.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VALID = path.join(here, 'fixtures', 'valid');
@@ -76,7 +76,16 @@ test('reserved name prefix -> FAIL', () => {
   const renamed = path.join(path.dirname(dir), 'claude-valid');
   fs.renameSync(dir, renamed);
   mutatePluginJson(renamed, (j) => { j.name = 'claude-valid'; });
-  assert.ok(has(lint(renamed), 'FAIL', 'prefix'));
+  assert.ok(has(lint(renamed), 'FAIL', 'reserved'));
+});
+
+test('isReservedPluginName classes', () => {
+  for (const n of ['claude-x', 'anthropic-x', 'anthropics-x', 'cc-plugin-x', 'claude', 'anthropic', 'anthropics', 'claude-code', 'claude-mods', 'official-claude-x', 'anthropic-official', 'my-official-anthropic-tool']) {
+    assert.equal(isReservedPluginName(n), true, n);
+  }
+  for (const n of ['my-claude-helper', 'official-tools', 'productivity-tools']) {
+    assert.equal(isReservedPluginName(n), false, n);
+  }
 });
 
 // ---------- check 2 ----------

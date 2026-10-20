@@ -7,7 +7,7 @@ description: "Validates a plugin directory by running `claude plugin validate` p
 
 ## Arguments
 
-The user may provide a plugin as a bare name (`/validate-plugin my-plugin`) or as a path (`/validate-plugin plugins/my-plugin`). Normalize both to `plugins/<name>`. If none is given, list the directories under `plugins/` (excluding `_template`) and ask which one to validate.
+The user may provide a plugin as a bare name (`/marketplace-tools:validate-plugin my-plugin`) or as a path (`/marketplace-tools:validate-plugin plugins/my-plugin`). Normalize both to `plugins/<name>`. If none is given, list the directories under `plugins/` (excluding `_template`) and ask which one to validate.
 
 ## Workflow
 

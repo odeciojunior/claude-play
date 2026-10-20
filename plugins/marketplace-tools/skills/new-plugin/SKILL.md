@@ -1,12 +1,12 @@
 ---
 name: new-plugin
-description: "Scaffold a new plugin for the claude-play marketplace. Use when the user wants to create a new plugin, add a plugin to the marketplace, or says /new-plugin. Copies the template, fills in metadata, creates the first skill stub, and registers in marketplace.json."
+description: "Scaffold a new plugin for the claude-play marketplace. Use when the user wants to create a new plugin, add a plugin to the marketplace, or says /marketplace-tools:new-plugin. Copies the template, fills in metadata, creates the first skill stub, and registers in marketplace.json."
 disable-model-invocation: true
 ---
 
 ## Arguments
 
-The user provides a plugin name as an argument (e.g., `/new-plugin my-awesome-tool`). If no name is provided, ask for one.
+The user provides a plugin name as an argument (e.g., `/marketplace-tools:new-plugin my-awesome-tool`). If no name is provided, ask for one.
 
 ## Workflow
 
@@ -17,7 +17,7 @@ Follow these steps in order. Do not skip steps.
 - Name must be kebab-case (lowercase letters, numbers, hyphens only): `^[a-z][a-z0-9-]*[a-z0-9]$`
 - Name must not already exist as a directory under `plugins/`
 - Name must not be `_template`
-- Name must not start with `claude-`, `anthropic-` or `cc-plugin-` (reserved; `claude plugin validate` rejects them)
+- Name must not be reserved (`claude plugin validate` rejects these): names starting with `claude-`, `anthropic-`, `anthropics-` or `cc-plugin-`; the exact names `claude`, `anthropic`, `anthropics`, `claude-code`, `claude-mods`; and names that combine "official" with "claude" or "anthropic" (e.g. `official-claude-x`, `anthropic-official`). Only the prefix is reserved, so `my-claude-helper` is fine
 - If invalid, explain why and ask for a corrected name
 
 ### Step 2: Copy template

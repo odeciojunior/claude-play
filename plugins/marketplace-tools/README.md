@@ -13,14 +13,14 @@ claude plugin install marketplace-tools@claude-play
 
 | Skill | Trigger | Description |
 |-------|---------|-------------|
-| new-plugin | `/new-plugin my-tool` | Scaffold a new plugin from the template with metadata and marketplace registration |
-| validate-plugin | `/validate-plugin my-tool` | Validate a plugin against marketplace quality standards : runs `claude plugin validate`, the `lint-plugin.mjs` script and judgment checks |
+| new-plugin | `/marketplace-tools:new-plugin my-tool` | Scaffold a new plugin from the template with metadata and marketplace registration |
+| validate-plugin | `/marketplace-tools:validate-plugin my-tool` | Validate a plugin against marketplace quality standards : runs `claude plugin validate`, the `lint-plugin.mjs` script and judgment checks |
 
 ## Workflow
 
-1. Run `/new-plugin my-awesome-tool` to scaffold a new plugin
+1. Run `/marketplace-tools:new-plugin my-awesome-tool` to scaffold a new plugin
 2. Edit the generated SKILL.md to define your skill's behavior
-3. Run `/validate-plugin my-awesome-tool` to verify quality
+3. Run `/marketplace-tools:validate-plugin my-awesome-tool` to verify quality
 4. Commit and open a PR
 
 ## Lint script

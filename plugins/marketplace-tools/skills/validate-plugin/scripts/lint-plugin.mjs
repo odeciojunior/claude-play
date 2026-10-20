@@ -17,7 +17,17 @@ const SKILL_KEYS = new Set([
   'metadata',
 ]);
 const AGENT_IGNORED_KEYS = ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'];
-const RESERVED_PREFIXES = ['claude-', 'anthropic-', 'cc-plugin-'];
+const RESERVED_PREFIXES = ['claude-', 'anthropic-', 'anthropics-', 'cc-plugin-'];
+const RESERVED_NAMES = ['claude', 'anthropic', 'anthropics', 'claude-code', 'claude-mods'];
+
+// Rule observed from `claude plugin validate`: reserved prefixes, reserved exact names,
+// or "official" combined with claude/anthropic.
+export function isReservedPluginName(name) {
+  const n = String(name ?? '').toLowerCase();
+  if (RESERVED_NAMES.includes(n)) return true;
+  if (RESERVED_PREFIXES.some((p) => n.startsWith(p))) return true;
+  return n.includes('official') && (n.includes('claude') || n.includes('anthropic'));
+}
 const ROOT_REF = '${CLAUDE_PLUGIN_ROOT}';
 const ROOT_REDIRECT_OR_MKDIR = /(>|mkdir -p)\s*"?\$\{CLAUDE_PLUGIN_ROOT\}/;
 
@@ -164,11 +174,10 @@ export function lintPlugin(dir, { marketplace } = {}) {
     if (pj.name === dirName) ok('Directory name matches plugin.json name');
     else add('FAIL', 'Directory name matches plugin.json name', `directory "${dirName}" vs name "${pj.name}"`);
 
-    const prefix = RESERVED_PREFIXES.find((p) => String(pj.name ?? '').startsWith(p));
-    if (prefix) {
-      add('FAIL', 'Plugin name has no reserved prefix', `"${pj.name}" starts with "${prefix}"; claude plugin validate rejects this prefix`);
+        if (isReservedPluginName(pj.name)) {
+      add('FAIL', 'Plugin name is not reserved', `"${pj.name}" is reserved; claude plugin validate rejects it`);
     } else {
-      ok('Plugin name has no reserved prefix');
+      ok('Plugin name is not reserved');
     }
 
     const missing = [];
