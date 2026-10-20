@@ -25,6 +25,9 @@ Shared rules for every sql-server-tools agent. Read this file before anything el
    - The first line of the final message is `Live mode unavailable: <reason>`.
    - Output the relevant reference queries as a numbered script for the user to run.
    - In SCRIPT mode, replace each `?` with the literal value before emitting the script; SSMS and sqlcmd do not bind `?`.
+   - T-SQL compiles a whole batch first, so one query the server cannot run (Msg 207/208, such as a 2022-only view on 2019, Query Store on 2014, or `sys.master_files` on Azure SQL DB) would kill the whole script. Put `GO` on its own line after each query.
+   - Without environment data you cannot apply the gates, so put each block's `Requires:` and `Azure SQL DB:` lines above its query as `-- ` comments.
+   - When the version or edition is unknown, emit both the box query and its `-azure` variant, each labelled. The user's server will reject the one that does not apply; that error is expected.
    - Analyze results only if the caller supplied them. Never invent output: no table names, row counts, wait types or metrics that did not come from a real result.
 
 ## Environment Detection
@@ -62,7 +65,7 @@ In SCRIPT mode, put the Environment Detection query first in the emitted script.
 1. **Starts with `SELECT`.** The first token after whitespace and `--` comment lines must be `SELECT`. A query starting with `WITH` is rejected, and a CTE cannot sit inside the derived-table wrapper anyway: rewrite CTEs as derived tables or `CROSS APPLY`.
 2. **No blocked keywords anywhere.** DROP, TRUNCATE, ALTER, CREATE, GRANT, REVOKE, SHUTDOWN, BACKUP, RESTORE, DBCC, OPENROWSET, OPENQUERY, OPENDATASOURCE, BULK and KILL are rejected as whole words even inside comments and string literals, because the server scans the raw text. Column names such as `create_date` are fine; a literal such as `N'BACKUPIO'` is fine; `'BACKUP'` is not.
 3. **No `sp_` or `xp_` tokens anywhere**, including inside literals (for example a wait type named `SP_SERVER_DIAGNOSTICS_SLEEP`). Filter such values with `LIKE` patterns that do not form the token, or leave them out.
-4. **`ORDER BY` at the top level needs `TOP` at the top level.** A derived table cannot contain `ORDER BY` without `TOP`. `ORDER BY` inside `OVER (...)` or inside a subquery that has its own `TOP` is fine. In `TOP (n)`, n is the number of rows you want (for a top-N report n = N; to keep every row, n ≥ the maximum possible rows). The wrapper does not guarantee order, so return a rank column such as `ROW_NUMBER() OVER (ORDER BY …) AS rn` and sort by it when you present results.
+4. **`ORDER BY` at the top level needs `TOP` at the top level.** A derived table cannot contain `ORDER BY` without `TOP`. `ORDER BY` inside `OVER (...)` or inside a subquery that has its own `TOP` is fine. In `TOP (n)`, n is the number of rows you want (for a top-N report n = N; to keep every row, n ≥ the maximum possible rows). The wrapper does not guarantee order, so return a rank column such as `ROW_NUMBER() OVER (ORDER BY …) AS rn` and sort by it when you present results. When n > 1000, pass `limit` = n to `execute_query` (max 10000). If a response has `truncated: true`, say so under "Assumptions and not checked".
 5. **No `;`** outside string literals: a statement terminator inside the derived-table wrapper is a syntax error.
 6. **No `OPTION (...)`** at the top level: query hints cannot sit inside a derived table.
 7. **No variables.** `@name` is rejected; `@@VERSION` and `@@SPID` are allowed. Pass parameters as `?` placeholders with the `params` list. A query block's `Params:` line labels the positional `?` placeholders `?1`, `?2`, … in order of appearance. Pass the values in that order in `params`; the SQL itself contains plain `?`.

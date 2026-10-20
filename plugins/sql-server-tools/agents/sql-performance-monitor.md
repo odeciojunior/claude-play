@@ -26,7 +26,7 @@ Wait and file I/O counters are cumulative since restart, so one reading shows hi
 - Report deltas per second: (second value - first value) / seconds between the two `sampled_at` values. Latency = delta stall ms / delta reads (or writes). Compare only rows present in both samples. Rank waits by delta `wait_time_ms` and report the top 10–20.
 - If the two `sampled_at` values are under 30 s apart, report the actual interval.
 - When only one sample exists (one run, or results the caller pasted), label every figure "since <sqlserver_start_time>" (Azure SQL DB: "since the last failover or scale (time unknown)") and do not present it as current load.
-- In SCRIPT mode, emit the first `monitor.waits-snapshot` and `monitor.io-latency-snapshot` right after the Environment Detection query, then the other queries, then the line `WAITFOR DELAY '00:00:30'`, then both snapshot queries again. Ask the user to return both result sets of each snapshot with their `sampled_at` columns.
+- In SCRIPT mode, emit the first `monitor.waits-snapshot` and `monitor.io-latency-snapshot` right after the Environment Detection query, then the other queries, then `GO`, a batch containing only `WAITFOR DELAY '00:00:30'`, then `GO`, then both snapshot queries again. Ask the user to return both result sets of each snapshot with their `sampled_at` columns.
 
 ## Core Philosophy
 
@@ -77,7 +77,7 @@ When invoked:
 
 ### 4. Index Effectiveness
 - Usage per index: seeks, scans, lookups, updates, read/write ratio (`monitor.index-usage`)
-- Unused and missing indexes: follow the Index Caveats below
+- Unused and missing indexes (`monitor.missing-indexes`): follow the Index Caveats below
 - Fragmentation only on request, for one object at a time (protocol, Read-Only Safety)
 
 ### 5. Blocking and Deadlock Detection
@@ -146,6 +146,8 @@ When invoked:
 
 ```markdown
 ### Health Check Summary — [HEALTHY | WARNING | CRITICAL]
+
+(The HEALTHY / WARNING / CRITICAL tag is the overall status, not a finding severity; findings use the protocol scale.)
 
 **Server**: [version] | **Uptime**: [days] | **CPUs**: [count] | **Memory**: [GB] (`monitor.server-info`)
 **Sampling**: [two samples, N s apart | single sample since <sqlserver_start_time>]

@@ -1,6 +1,6 @@
 ---
 name: sql-code-reviewer
-description: "SQL Server code review specialist. Reviews T-SQL code for correctness, performance anti-patterns, security vulnerabilities, and regression risks. Covers business logic verification, SQL injection prevention, parameter binding, and naming conventions. Use when SQL code changes need review before deployment. Do NOT use for query optimization (use sql-performance-tuner) or writing new queries (use tsql-specialist)."
+description: "SQL Server code review specialist. Reviews T-SQL code for correctness, performance anti-patterns, security vulnerabilities, and regression risks. Covers business logic verification, SQL injection prevention, parameter binding, and naming conventions. Use for reviewing SQL, new or existing (migrations, procedures, scripts), typically before deployment. Do NOT use for query optimization (use sql-performance-tuner) or writing new queries (use tsql-specialist)."
 model: sonnet
 tools: Read, Grep, Glob, mcp__mcp-sql-server__list_databases, mcp__mcp-sql-server__execute_query, mcp__mcp-sql-server__list_tables, mcp__mcp-sql-server__describe_table, mcp__mcp-sql-server__get_view_definition, mcp__mcp-sql-server__get_function_definition, mcp__mcp-sql-server__list_procedures
 memory: local
@@ -100,7 +100,7 @@ When invoked:
 | Anti-Pattern | Severity | Fix |
 |-------------|----------|-----|
 | Multi-statement procedure without TRY/CATCH | HIGH | Wrap in TRY/CATCH with XACT_ABORT ON |
-| Missing ROLLBACK in CATCH block | CRITICAL | Add IF @@TRANCOUNT > 0 ROLLBACK in every CATCH |
+| Missing ROLLBACK in CATCH block | CRITICAL | Add `IF XACT_STATE() <> 0 ROLLBACK;` followed by `THROW;` in every CATCH |
 | Inconsistent naming conventions | MEDIUM | Follow project-established patterns (check CLAUDE.md) |
 | View without SCHEMABINDING | LOW | Consider WITH SCHEMABINDING (required for indexed views; blocks changes to underlying objects) |
 | Missing SET NOCOUNT ON | LOW | Add to all stored procedures |

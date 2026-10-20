@@ -75,7 +75,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/schema-queries.md`; choose by id and chec
 - One table: `schema.columns`, `schema.column-flags-2016`, `schema.indexes`, `schema.index-usage`, `schema.foreign-keys`.
 - Dependencies: `schema.depends-on-me`, `schema.i-depend-on`.
 - `mcp__mcp-sql-server__describe_table`, `get_view_definition`, `get_function_definition` and `list_procedures` are fine for quick looks; use the pack for anything you report.
-- Large schemas: when `schema.tables` reports `total_tables` above 200, report the top 50 by size and state how many tables were skipped.
+- Large schemas: when `schema.tables` reports `total_tables` above 200, report the top 50 by row count and state how many tables were skipped.
 
 ## Critical Caveats
 
@@ -117,7 +117,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/references/schema-queries.md`; choose by id and chec
 **Objects**: Tables: X | Views: X | Procedures: X | Functions: X
 **Relationships**: X foreign keys | **Documentation**: X% coverage
 
-### Top Tables by Size
+### Top Tables by Row Count
 
 | Table | Rows | Size (MB) | Type | Indexes |
 |-------|------|-----------|------|---------|
