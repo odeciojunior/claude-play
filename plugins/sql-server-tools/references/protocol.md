@@ -24,6 +24,7 @@ Shared rules for every sql-server-tools agent. Read this file before anything el
 3. **SCRIPT mode**: the tool is unavailable, or no alias has `status: ok`.
    - The first line of the final message is `Live mode unavailable: <reason>`.
    - Output the relevant reference queries as a numbered script for the user to run.
+   - In SCRIPT mode, replace each `?` with the literal value before emitting the script; SSMS and sqlcmd do not bind `?`.
    - Analyze results only if the caller supplied them. Never invent output: no table names, row counts, wait types or metrics that did not come from a real result.
 
 ## Environment Detection
