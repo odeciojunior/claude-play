@@ -1,6 +1,6 @@
 # Decompose: requirements to deliverables
 
-How `roadmap-planner` Steps 3 to 5 turn sources and answers into requirements, deliverables, phases, tracks and an order. File formats (card attributes, table columns) are in `formats.md`; this file covers the judgment.
+How `roadmap-planner` Steps 3 to 6 (the Step 6 file table is §13) turn sources and answers into requirements, deliverables, phases, tracks and an order. File formats (card attributes, table columns) are in `formats.md`; this file covers the judgment.
 
 ## Contents
 
@@ -16,6 +16,7 @@ How `roadmap-planner` Steps 3 to 5 turn sources and answers into requirements, d
 10. Acceptance criteria and definition of done
 11. Coverage pass
 12. Light mode
+13. Files to write (roadmap-planner Step 6)
 
 ## 1. Requirement extraction
 
@@ -142,4 +143,20 @@ The checker verifies 1 to 3 mechanically; 4 and the quality of each criterion ar
 
 ## 12. Light mode
 
-Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required. Defaults for the rest: `priority=Must`, `size="not estimated"`, `track` = the first entry of the config's `tracks` (tracks may be renamed), `critical` computed from the DAG; critical cards still get ≥1 risk line (else the checker warns `critical-no-risk`). Skip the "more than half Must" challenge of §8 (every card is `Must` by default); the handoff says the priorities were not challenged. Phases may be a single phase. Requirement extraction (§1) and the coverage pass (§11) are unchanged: REQ/SRC traceability and the checker stay. A deliverable that waits on an open blocker is created with status `blocked` (config `vocab.blockedStatus`) citing its `BLQ-n`; one dropped by a decision is `discarded` (config `vocab.discardedStatus`) with priority `Won't`.
+Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required. Defaults for the rest: `priority=Must`, `size="not estimated"`, `track` defaults to the first track (`engineering`), but use `measurement`, `external` or `decisions` when the card is clearly that kind (tracks may be renamed), `critical` computed from the DAG; critical cards still get ≥1 risk line (else the checker warns `critical-no-risk`). Skip the "more than half Must" challenge of §8 (every card is `Must` by default); the handoff says the priorities were not challenged. Phases may be a single phase. Requirement extraction (§1) and the coverage pass (§11) are unchanged: REQ/SRC traceability and the checker stay. A deliverable that waits on an open blocker is created with status `blocked` (config `vocab.blockedStatus`) citing its `BLQ-n`; one dropped by a decision is `discarded` (config `vocab.discardedStatus`) with priority `Won't`.
+
+## 13. Files to write (roadmap-planner Step 6)
+
+Each file is written from its template in `formats.md`, in the project's language:
+
+| File | Content at creation | formats.md |
+|------|---------------------|------------|
+| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
+| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
+| `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
+| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (the first `deliverableStatuses` word; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2, and that BLQ row's "Unblocks when" records "restores E<n> to <the first `deliverableStatuses` word>", which `events.md` § 5 reads on closing), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
+| `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
+| `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
+| `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |
+| `critical-path.md` | Mermaid DAG of the cards and gates, next gate per track | §7 |
+| `measurements.md` | only when the roadmap has paid runs or measurement milestones; otherwise `files.measurements: null` | §7 |

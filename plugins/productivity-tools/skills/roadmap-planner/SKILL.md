@@ -1,6 +1,6 @@
 ---
 name: roadmap-planner
-description: "Use when the user wants a roadmap, or an initiative with several deliverables to plan or break down: \"plan the roadmap for X\", \"break this initiative into deliverables\", \"we need a roadmap\". Use it BEFORE superpowers:brainstorming when the work has several deliverables (brainstorming then runs once per deliverable). Clarifies the objective, reads the sources (a report or research document may be one of them), traces every requirement (REQ) to deliverables with acceptance criteria, phases, tracks and a dependency DAG, and writes a versioned strategy plus a tracking folder with a vendored checker. Full mode for multi-week initiatives, light mode for small ones. Not for updating an existing roadmap folder (one with roadmap.config.json): use roadmap-tracker. Not for task-level plans of one deliverable: use superpowers:writing-plans. Not for SWOT, gap or risk analysis of a report: use report-analyzer."
+description: "Plans a roadmap: clarifies the objective, reads the sources, traces every requirement (REQ) to deliverables with acceptance criteria, phases, tracks and a dependency DAG, and writes a versioned strategy plus a tracking folder with a vendored checker. Full mode for multi-week initiatives, light mode for small ones. Use when the user wants a roadmap or an initiative with several deliverables to plan or break down: \"plan the roadmap for X\", \"break this initiative into deliverables\", \"we need a roadmap\". Use it BEFORE superpowers:brainstorming when the work has several deliverables (brainstorming then runs once per deliverable). A report used only as input for SWOT, gap or risk analysis goes to report-analyzer first. Not for updating an existing roadmap folder (one with roadmap.config.json): use roadmap-tracker. Not for task-level plans of one deliverable: use superpowers:writing-plans."
 ---
 
 # Roadmap Planner
@@ -23,10 +23,10 @@ Build a **living roadmap**: a versioned strategy document plus a tracking folder
 | Format contract (every file template, anchors, IDs, config) | `references/formats.md` |
 | Clarification method | `references/clarify.md` |
 | Requirement extraction and decomposition | `references/decompose.md` |
-| Checker source | `<base>/../roadmap-tracker/scripts/check-roadmap.mjs`, where `<base>` is the "Base directory for this skill: …" Claude Code prints on invocation |
+| Checker source (sibling skill, same plugin) | `${CLAUDE_SKILL_DIR}/../roadmap-tracker/scripts/check-roadmap.mjs` |
 | Roadmap folder (output) | default `docs/plans/roadmap-<topic>/`; the user may override it |
 
-Take every file template from `references/formats.md`; this file does not repeat them. If the checker source does not exist at that path, stop and tell the user; never write a checker from memory.
+Take every file template from `references/formats.md`; this file does not repeat them. If `${CLAUDE_SKILL_DIR}` appears empty or literally in a command, use the directory this SKILL.md was loaded from. If the checker source does not exist at that path, stop and tell the user; never write a checker from memory.
 
 ## Rules
 
@@ -60,7 +60,7 @@ Copy this checklist into your working notes and tick it off:
 |---|------|-------|
 | Clarification | ≤5 questions per round, more rounds with consent | ≤3 questions, one round |
 | Sources | Discovered and read (Step 1) | Only those passed |
-| Card | All attributes of `formats.md` §5 | Acceptance (≥2), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track` = the first entry of the config's `tracks`, `critical` from the DAG; critical cards still get ≥1 risk line |
+| Card | All attributes of `formats.md` §5 | Acceptance (≥2), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track` defaults to the first track (`engineering`), but use `measurement`, `external` or `decisions` when the card is clearly that kind, `critical` from the DAG; critical cards still get ≥1 risk line |
 | Fresh-context reviewer | Yes (Step 7) | No; the handoff says none ran |
 | REQ/SRC traceability, vendored checker, tracker | Yes | Yes |
 
@@ -81,7 +81,7 @@ Also settle now:
 
 1. Take the objective and the sources passed as arguments. When the user supplies only an objective (or a brief in the conversation), register it as `SRC-01` (What it is: user brief) so requirements can cite it (`decompose.md` §1).
 2. **Discover** related sources (light mode: skip; use only the sources passed): repo docs, specs, issues, git history (`git log` on the relevant paths). Use the web only if the user allows it; ask once.
-3. **Read** them. With a subagent tool, delegate the reading to subagents on a cheap tier (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
+3. **Read** them. With a subagent tool, delegate the reading to subagents with `model: sonnet` (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format below in each Agent prompt, then wait for its completion notification before using the result. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
 
    ```
    SRC-NN | <path or URL> | <what it is> | read <full|partial: which sections>
@@ -115,33 +115,23 @@ MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (
 
 ### Step 6: Write the files
 
-Write every file from its template in `references/formats.md`, in the project's language:
-
-| File | Content at creation | formats.md |
-|------|---------------------|------------|
-| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
-| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
-| `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
-| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (the first `deliverableStatuses` word; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2, and that BLQ row's "Unblocks when" records "restores E<n> to <the first `deliverableStatuses` word>", which `events.md` § 5 reads on closing), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
-| `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
-| `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
-| `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |
-| `critical-path.md` | Mermaid DAG of the cards and gates, next gate per track | §7 |
-| `measurements.md` | only when the roadmap has paid runs or measurement milestones; otherwise `files.measurements: null` | §7 |
+Write every file listed in `${CLAUDE_SKILL_DIR}/references/decompose.md` §13, each from its template in `references/formats.md` and in the project's language.
 
 **Volatile values.** A value that changes over time (counts, test totals, versions, "current" status) is written once, with the command that measures it and the date; every other file points to that place instead of repeating the value.
 
 Then **copy the checker** into the folder and confirm the copy runs:
 
 ```bash
-cp "<base>/../roadmap-tracker/scripts/check-roadmap.mjs" "<roadmap-folder>/check-roadmap.mjs"
-node "<roadmap-folder>/check-roadmap.mjs" --version   # "<version> format <n>"; <n> must equal formatVersion
+cp "${CLAUDE_SKILL_DIR}/../roadmap-tracker/scripts/check-roadmap.mjs" "<roadmap-folder>/check-roadmap.mjs"
+node "<roadmap-folder>/check-roadmap.mjs" --version
 ```
+
+The `--version` output reads `<version> format <n>`; `<n>` must equal `formatVersion`.
 
 ### Step 7: Verify
 
 1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker. If `node` is missing or older than 18, do not claim the folder verified: stop, or hand off saying "checker not run (Node ≥18 missing)".
-2. Full mode: dispatch **one fresh-context reviewer** subagent on a strong tier, with the roadmap folder, the strategy path and the source paths, and exactly this brief: *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
+2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, with the roadmap folder, the strategy path and the source paths, and exactly this brief (it is read-only; tell it "do not edit files"): *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
 3. Fix what the reviewer found, then run the checker again until 0 errors.
 
 ### Step 8: Hand off
