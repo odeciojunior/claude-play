@@ -1,45 +1,48 @@
 ---
 name: sql-server-toolkit
-description: Routes SQL Server tasks to specialized agents. Use when working with SQL Server databases, T-SQL queries, database performance, schema exploration, or SQL code review. Automatically selects the best agent for the task.
+description: Routes SQL Server work to the sql-server-tools agents and chains them for multi-step tasks. Use when a SQL Server task needs more than one agent or the right agent is unclear.
 ---
 
 # SQL Server Toolkit
 
-Routes SQL Server tasks to the right specialist agent.
+Route SQL Server work to the right `sql-server-tools` agent, chain agents for compound tasks, and relay what they ask.
 
-## Agent Selection
+## Steps
 
-| Task Type | Agent | What It Does |
-|-----------|-------|-------------|
-| Performance issues, health checks, wait stats, CPU/memory/I/O analysis, blocking, deadlocks | `sql-performance-monitor` | Deep diagnostics using Waits & Queues methodology |
-| Schema exploration, table structure, relationships, dependencies, documentation | `sql-schema-discovery` | Metadata-first schema analysis via catalog views |
-| Query optimization, execution plans, index strategy, query rewrites | `sql-performance-tuner` | Execution plan analysis and optimization recommendations |
-| Write queries, stored procedures, CTEs, window functions, T-SQL development | `tsql-specialist` | Expert T-SQL development with best practices |
-| Review SQL code, anti-patterns, security, regression analysis | `sql-code-reviewer` | 5-phase SQL-focused code review |
+1. **Pick the agent** from the table. Apply the tie-breakers when two rows fit.
 
-## How to Use
+   | Task | Agent |
+   |------|-------|
+   | Server-wide or unknown-cause slowness with no specific query named, high CPU, blocking, deadlocks, health checks, baselines | `sql-performance-monitor` |
+   | One specific query, stored procedure or execution plan to speed up; index recommendations; rewrites | `sql-performance-tuner` |
+   | Tables, columns, relationships, dependencies, indexes, schema documentation | `sql-schema-discovery` |
+   | Writing or changing SQL; explaining T-SQL (queries, procedures, functions, views) | `tsql-specialist` |
+   | Reviewing SQL, new or existing (migrations, procedures, scripts), for correctness, anti-patterns, security, regression risk | `sql-code-reviewer` |
 
-Ask Claude to delegate to the appropriate agent:
+   Tie-breakers:
+   - Slowness with no named query, or a cause nobody knows: monitor. One named query, procedure or plan: tuner.
+   - If the monitor finds one culprit query, hand that query to the tuner.
+   - Reviewing SQL, new or existing: reviewer. Writing or changing SQL: tsql-specialist.
 
-- "Use sql-performance-monitor to check database health"
-- "Use sql-schema-discovery to explore the Customers table"
-- "Use sql-performance-tuner to optimize this slow query"
-- "Use tsql-specialist to write a query with running totals"
-- "Use sql-code-reviewer to review my stored procedure changes"
+2. **Call the Agent tool** with `subagent_type: "sql-server-tools:<agent>"` (for example `sql-server-tools:sql-performance-tuner`). The subagent sees nothing of this conversation, so make the prompt self-contained:
+   - the goal: the user's request verbatim, plus a one-sentence restatement;
+   - the SQL text, or the file path to read (pass an absolute path, resolving relative paths against the working directory; do not paste file contents);
+   - the mcp-sql-server database alias if the user named one, otherwise write "No alias given" so the agent applies its own alias rules;
+   - facts already established: server version, earlier findings, constraints, and the symptoms, timings and numbers the user gave (for example "since 9am", "30 s").
 
-Or just describe your task — Claude will select the right agent based on context.
+3. **Chain compound tasks** in this order: `sql-schema-discovery` → `sql-performance-tuner` → `sql-code-reviewer`. Another valid chain is `sql-performance-monitor` → `sql-performance-tuner`: when server-wide findings name specific queries, send those to the tuner. Paste each agent's findings into the next agent's prompt. Skip the stages the task does not need: run schema discovery first only when the task is about indexes or structure, or when the tuner's "Questions for the caller" ask for schema. Subagents cannot spawn other agents, so you run the chain.
 
-## When NOT to Use
+4. **Relay the output.** Every agent ends with "Questions for the caller" and "Suggested handoffs". Show the questions to the user and wait for answers before re-running an agent. After the user answers, re-run that agent with the original prompt, the agent's findings and the user's answers appended. Act on a suggested handoff only when it serves the user's request.
 
-- General Python/JavaScript/other language work — these agents are SQL Server specific
-- Report analysis or strategic planning — use productivity-tools plugin instead
-- Non-SQL-Server databases (PostgreSQL, MySQL, etc.) — agents use SQL Server DMVs and T-SQL syntax
+## Live and script mode
+
+Agents run read-only queries themselves when an mcp-sql-server alias is reachable (LIVE mode). Otherwise they open with `Live mode unavailable: <reason>` and emit queries for the user to run (SCRIPT mode). An agent stops with `Mode: STOPPED (alias not chosen: ...)` when several aliases are reachable and none was named, and with `Mode: STOPPED (alias <name> not ok: <status>)` when the alias you passed is not reachable. In both cases ask the user which alias to use (or to fix the named one), then call the agent again with it.
+
+## When NOT to use
+
+- Work in other languages, or on non-SQL-Server databases (PostgreSQL, MySQL): the agents use SQL Server DMVs and T-SQL.
+- Tasks that do not involve SQL Server.
 
 ## Setup
 
-For full database interaction, configure an MCP server for SQL Server connectivity:
-```bash
-claude mcp add --transport stdio sql-server -- <your-mcp-server-command>
-```
-
-Without an MCP server, agents analyze SQL files and provide recommendations without live database access.
+Live access needs the `mcp-sql-server` MCP server, registered under that name. Run the `mcp-sql-server:mcp-sql-server-setup` skill to install and configure it. Without it, agents work in SCRIPT mode.
