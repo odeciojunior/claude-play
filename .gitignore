@@ -1,5 +1,19 @@
+# Dependencies and logs
 node_modules/
-.env
 *.log
-projects/
+
+# Secrets: the mcp-sql-server setup reads database settings from .env
+.env
+.env.*
+!.env.example
+
+# Per-developer MCP registration: holds the absolute path to the local venv interpreter
 .mcp.json
+
+# Claude Code: personal settings and memory, and EnterWorktree worktrees
+.claude/settings.local.json
+CLAUDE.local.md
+.claude/worktrees/
+
+# Output of wsl-health-check's health-report.sh --save
+health_report_*.txt
