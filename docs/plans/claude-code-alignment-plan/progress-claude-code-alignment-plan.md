@@ -2,14 +2,15 @@
 **Plan**: docs/plans/2026-10-20-claude-code-alignment-plan.md
 **Roadmap**: none
 **Started**: 2026-10-20 | **Last Updated**: 2026-10-20
-**Status**: In Progress
+**Status**: Blocked (Steps 1–23 done; Step 24 waits for the sql-server-tools v1.1 merge)
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
 **Last COMPLETED Wave**: 4
 **Last DELEGATED Wave**: 5
-**In-Flight Agents**: Group R routing test (sonnet, orchestrator-run): launching · Group R executor (Step 21 bump, sonnet): launching · Group S (Step 23, opus): launching
-**Next Action**: Wait for Wave 5; fix misrouting descriptions if any; opus gate on R; then Step 24 waits for the v1.1 merge
+**Last COMPLETED Wave**: 5 (Steps 21, 23 done; gate 221/221, 4 validators pass)
+**In-Flight Agents**: none
+**Next Action**: When `feat/sql-server-tools-v1.1` is merged into main: merge main into this branch, run Step 24 (D1), then publish per CLAUDE.md. Before publishing: the manual WSL run (Step 13).
 
 ## Execution Map
 **Steps**: 25 (execute 25, skip 0; Task 22 split into 22a/22b) | **Waves**: 6 + inline | **Effort**: ~10h agent time (estimate; plan has none) | **Tiers**: inline 3 · haiku 2 · sonnet 17 · opus 3 | **Review gates**: 8
@@ -70,6 +71,7 @@
 | 2 | Template guard: all edit tools, normalised paths | Done | sonnet · 1 | 3 (1/0/1/1/0) | 28a1ae8; 6 tests; live Edit probe blocked ✓ |
 | 3 | plugin-reviewer: patterns, agent checks, spelling | Done | sonnet · 1 (+2 fix-ups) | 4 (0/1/1/1/1) | gate PASS after round 1 |
 | 4 | CLAUDE.md accurate rules | Done | inline · 1 | 2 (0/0/0/1/1) | 6e14674; Hooks section updated after Wave 1 |
+| — | Final review fix-ups (X1, X2a, X2b, X3) | Done | sonnet · 1 each | — | 4 commits; reserved names, reviewer/lint alignment, doc drift, setup.sh leftovers |
 | 5 | lint-plugin.mjs + tests + fixtures | Done | sonnet · 1 (+1 fix-up) | 5 (2/1/1/1/0) | 7e03108; 60 tests; opus gate PASS round 2 |
 | 6 | validate-plugin SKILL runs validate + lint | Done | sonnet · 1 (+1 fix-up) | 3 (0/1/0/1/1) | fb1ec03 |
 | 7 | new-plugin: prefixes, README/diagrams, namespaced cmd | Done | haiku · 1 | 2 (0/0/0/1/1) | committed after 1.1.0 commit, ships in 1.1.0 (not yet published) |
@@ -86,16 +88,17 @@
 | 18 | plan-coordinator vs current subagents | Done | sonnet · 1 (+2 fix-ups) | 5 (1/1/1/1/1) | committed; gate 9+2 defects fixed |
 | 19 | roadmap-planner: skill dir var, subagent spec | Done | sonnet · 1 (+1 fix-up) | 4 (1/1/0/1/1) | committed; behavioral gate (checker 0 errors) → 4 fixes |
 | 20 | roadmap-tracker: skill dir var | Done | sonnet · 1 (+1 nit) | 4 (1/1/0/1/1) | committed; behavioral gate PASS |
-| 21 | Release productivity-tools 1.4.0 + routing test | Pending | sonnet · 0 | 5 (1/0/1/2/1) | risk floor |
+| 21 | Release productivity-tools 1.4.0 + routing test | Done | sonnet · 1 | 5 (1/0/1/2/1) | committed; routing 12/12 (separate blind agent) + 3 description tweaks; opus gate PASS |
 | 22a | Contributor docs | Done | sonnet · 1 | 3 (1/0/0/1/1) | committed |
 | 22b | Template comment (D3) | Done | inline · 1 | 1 (0/0/0/1/0) | committed; only that file |
-| 23 | Extensibility reference revision | Pending | opus · 0 | 6 (1/1/1/1/2) | judgment-only check |
+| 23 | Extensibility reference revision | Done | opus · 1 | 6 (1/1/1/1/2) | committed; 568→691 lines; several audit items corrected by the docs |
 | 24 | D1: version in plugin.json + README only | Blocked | sonnet · 0 | 5 (2/0/1/2/0) | waits for v1.1 merge |
 
 ## Wave Execution Log
 | Wave | Groups | Delegated | Completed | Agent IDs | Notes |
 |------|--------|-----------|-----------|-----------|-------|
 | 0 | I1 | inline | 2026-10-20 | — | Step 4 (6e14674) |
+| 5 | R, S + final review + fix-ups | 2026-10-20 | 2026-10-20 | R routing a3505925ce9e330f6 · tweaks a9bf85026da9981aa · R aefeac6a1e1c56c60 (gate a95afcd74c67bc27c) · S a37c468a3bedf81c8 · final a24dd4c3495345916 · X1 a1780376e200cab73 · X2a ab4656d9c4e5ed07f · X2b a49e265a16e7e2ee7 · X3 a03db64967a350631 | final check: 228/228 tests, 4 validators, lint 0/0 on 3 plugins |
 | 4 | N, O, P, Q | 2026-10-20 | 2026-10-20 | N a11ebaa004a755916 · O a299bfc9d36413cd2 (gate ab76d05a13729199c) · P a82ccbb861ff2d667 (gate a21ce2ca5f7987116) · Q abe4e353e635b597c (gate af44516edd4ad479e) | gate: 221/221; pt lint 34 OK 0 WARN; O needed 2 rounds; Step 21 routing test moved out of the executor card (executors don't spawn subagents) |
 | 3 | J, K, L, M | 2026-10-20 | 2026-10-20 | J a7b786383d8930534 (gate ae160b7526fd5c06a) · K a11d52c21990fee95 · L aad7d1de022d2606b · M af8b97545874369d4 | gate: 221/221 tests; pt lint 32 OK 1 WARN; J needed 2 review rounds (leak paths, Windows Auth unsupported); L blocked once by report-file filter |
 | 2 | E, F, G, H + inline 22b, 9 | 2026-10-20 | 2026-10-20 | E a0e1026e1cb29f571 · F a530c5983561b7044 (gate a8bfbf0743253bd23) · G aa68d949d716e7e1c · H acd084175d699e214 | gate: 211/211 tests, 4 validators pass; F needed 2 review rounds (placeholder mangling/leak → env: refs) |
@@ -121,6 +124,8 @@
 - **Gate J round 1 (DEFECTS 5)**: `.env` values had no filter command (Read would show DB_PASSWORD); `claude mcp get` would print a leftover 1.2.3 literal password → redactor pipe; `$CLAUDE_PROJECT_DIR` is empty in the Bash tool (pre-existing bug) → `${CLAUDE_PROJECT_DIR}` substitution; Windows Auth unsupported by the server (config.py requires password, always `UID/PWD`) → removed, "SQL logins only"; upgrade note maps 1.2.3 scope names. Gate agent ae160b7526fd5c06a.
 - **Step 17 fact fix**: the old mermaid rule "accTitle/accDescr unsupported in gantt/pie/mindmap/sequence, cause TypeError" was false — mermaid.js.org/config/accessibility.html says they work for all diagram types; removed. `%%{init}%%` reworded to "deprecated in favour of frontmatter (available from v10.5.0)".
 - **Gate O round 1 (DEFECTS 9)** on plan-coordinator: `git commit -- <files>` fails for untracked files (add first); Completion contradicted per-step commits; wrong claim that CLAUDE_CODE_SUBAGENT_MODEL overrides a per-call `model` (only _FORCE does); allow rules must be proposed, not self-granted; stale cross-ref; Explore/Plan not resumable; who runs behavioral tests; what counts as a "step"; hedge subagent_type claim. Sent to executor.
+- **Final whole-branch review** (opus, a24dd4c3495345916): 0 BLOCKER, 6 SHOULD-FIX, 8 NIT — all cross-task (reserved-name rule incomplete everywhere; reviewer vs lint severity drift; plugin-agent field list drift; setup.sh Windows-Auth leftover; checker line-1 wording; stale audit status; slash-command spelling; regex drift; diagram text; hook fixture path match). Fixed in wave X1/X2a/X2b/X3 + orchestrator (audit status, one README line), folded into the unpublished 1.1.0 / 1.3.0. After: 228/228 tests, 4 validators pass, lint 0 WARN/0 FAIL on all 3 plugins.
+- **Tier summary (planned → actual)**: inline 3 → 3 (+2 small orchestrator writes: deep-researcher reference file, one README line) · haiku 2 → 3 (+ description tweaks) · sonnet 17 → 17 · opus 3 → 3 executors + 7 opus reviewers (D, F, J, R, final, plus re-reviews). No tier escalations; review fix-up rounds: C 1, D 1, F 2, J 2, O 2, P 1, plus nits on 1, 17, 20. One BLOCKED (Step 15, harness report-file filter).
 - **Thin information**: Step 9's result decides Step 11's local/user branch; Step 2's inline Edit probe may show hooks don't fire on this Windows setup (then stop and report); Step 17's Mermaid claims and Step 16's font IDs depend on what the official docs say.
 
 ## Step Cards
