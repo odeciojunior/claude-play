@@ -33,7 +33,7 @@ Unknown information scores **1**, not 0 — and flag it in the approval summary.
 3. **Verification-heavy:** Verifiability = 2 and Reasoning ≥ 1 → one tier up; nothing will catch a subtle mistake.
 4. **Research/read-only:** locating code or answering "where/how is X" → `Explore` (read-only, fast); design questions → `Plan` or an opus `general-purpose` agent.
 
-**Passing the tier:** always pass the routed tier as the `Agent` tool's `model` parameter — it's the only reliable way for built-in and plugin agents, whose model you usually can't read. Two exceptions: a project/user agent whose frontmatter pins `model` that you decide to keep (record why), and `fork`, which always inherits the orchestrator's model and so cannot be down-tiered. Only fork when the step needs unwritten conversation context (see delegation-protocol § Fork vs fresh).
+**Passing the tier:** always pass the routed tier as the `Agent` tool's `model` parameter — it's the only reliable way for built-in and plugin agents, whose model you usually can't read. Two exceptions: a project/user agent whose frontmatter pins `model` that you decide to keep (record why), and `fork`, which always inherits the orchestrator's model and so cannot be down-tiered. Only fork when the step needs unwritten conversation context (see the Fork vs fresh section of the delegation protocol, linked from SKILL.md).
 
 ## 4. Review gates
 
@@ -47,12 +47,12 @@ Rules:
 
 - A gated step is **done** only after the reviewer's PASS. Its dependents don't start before that, and its Handoff is (re)written after any fix-up.
 - The reviewer gets the step card, the executor's report and the changed file paths — never the executor's transcript. Its verdict is PASS or a list of concrete defects.
-- Defects go back to the **same** executor via `SendMessage` (works on finished agents too; they keep their context). **At most 2 fix-up rounds** — a third defect list is a capability shortfall (§5 step 3).
+- Defects go back to the **same** executor via `SendMessage` (works on finished agents too; they keep their context; `Explore` and `Plan` are one-shot, so for them a fix-up or retry means a fresh agent). **At most 2 fix-up rounds** — a third defect list is a capability shortfall (§5 step 3).
 
 ## 5. Escalation ladder (on FAIL, BLOCKED, or exhausted review rounds)
 
-1. **Diagnose first.** Read the report: spec gap, environment problem, or capability shortfall?
-2. **Spec gap / environment** → fix the card or environment and retry **same tier**, via `SendMessage` to the same agent. One such retry per step.
+1. **Diagnose first.** Read the report: spec gap, environment problem, or capability shortfall? For a shortfall, try a higher per-call `effort` on the `Agent` call before a tier bump.
+2. **Spec gap / environment** → fix the card or environment and retry **same tier**, via `SendMessage` to the same agent (Explore/Plan: fresh agent, same tier). One such retry per step.
 3. **Capability shortfall** (wrong approach, looping, shallow fix) → retry **one tier up** with a fresh agent, including the failed attempt's report as "what was tried and why it failed". Inline → sonnet (skip haiku: the step already proved harder than it looked). Already at opus → one fresh opus retry with the failure report and a narrowed card.
 4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch, record it in Issues & Decisions, and ask the user. Groups that don't depend on it may continue.
 

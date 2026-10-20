@@ -1,6 +1,6 @@
 ---
 name: plan-coordinator
-description: "Use when executing a multi-step implementation plan from docs/plans/ or docs/superpowers/plans/ with subagents and you want per-step model-tier routing (haiku/sonnet/opus by complexity), conflict-free parallel waves, and a persistent progress file that survives compaction — or when resuming such a plan from its progress file. Builds the Execution Map, gets approval, then runs the waves."
+description: "Use when executing a multi-step implementation plan from docs/plans/ or docs/superpowers/plans/ with subagents and you want per-step model-tier routing (haiku/sonnet/opus by complexity), conflict-free parallel waves, and a persistent progress file that survives compaction — or when resuming such a plan from its progress file. Builds the Execution Map, gets approval, then runs the waves. Not for ad-hoc plans without model routing or a progress file (use superpowers:subagent-driven-development)."
 ---
 
 # Plan Coordinator
@@ -36,7 +36,7 @@ Look for this plan's progress file: `docs/plans/<topic>/progress-*.md` (or legac
 - Optional plan header line `**Roadmap:** <roadmap folder>`: extract it and record it in the progress file header (`**Roadmap**`; `none` if absent).
 - Extract per step: number, title, description, dependencies, inputs, outputs, **files it creates/modifies**, validation criteria, effort, "If Blocked" guidance.
 - If the plan omits files touched or dependencies, infer them — wave safety depends on both. Files: from the step text, Grep/Glob. Dependencies: step B depends on A when B reads, calls, tests or edits something A creates or changes. Mark inferred values `(inferred)`; when unsure, assume a dependency (serial is slower, a wrong parallel wave is broken).
-- A step whose sub-parts need different capabilities (e.g. "validate, then fix and commit") is split into a read-only part and a writing part, or routed to the writer.
+- A step whose sub-parts need different capabilities (e.g. "validate, then fix and commit") is split into a read-only part and a writing part, or routed to the writer. Sub-steps that need a subagent (behavioral tests, reviews) are run by the orchestrator as review gates, never inside an executor card.
 - **Skips:** mark a step Skip when its outputs already exist and its validation passes, when the plan marks it optional and the user hasn't asked for it, or when it's blocked by a missing prerequisite (list that under Manual Actions). Skipped steps count as done for dependencies only if their outputs exist.
 
 **Fast path:** for plans of ≤3 steps, or when only one viable writer agent exists, skip the agent matching in Step 3 (use that writer) and keep scoring only to pick the model tier.
@@ -47,7 +47,7 @@ Check the plan's entry criteria and earlier progress files. Collect manual actio
 
 ### Step 3: Discover executors
 
-1. Start from the agent types the `Agent` tool lists in this session (built-in, plugin, user and project agents). Do not invent names — a missing `subagent_type` fails the call.
+1. Start from the agent types the `Agent` tool lists in this session (built-in, plugin, user and project agents). Use only the types the tool lists; never invent names.
 2. For project/user agents, read `.claude/agents/*.md` / `~/.claude/agents/*.md` frontmatter: `name`, `description`, `tools`, `model`. Skip files without frontmatter.
 3. **Capability filter first:** a step that edits files needs an agent with Edit/Write (and Bash if validation runs commands). Read-only agents (`Explore`, `Plan`, most reviewers) only take research or review steps.
 4. **Then domain match:** the most specialized agent whose description covers the step's primary technology wins; respect "Do NOT use for…" lines.
@@ -60,9 +60,9 @@ Score each step 0–10 on five dimensions and map the score to a route — **Inl
 ### Step 5: Group into waves
 
 1. Build the dependency DAG. A step never shares a wave with (or precedes) a step it depends on. A step behind a review gate counts as done only after the reviewer's PASS.
-2. **Write-set check:** two steps in one wave must not write the same file. Each step's write set is its declared files **plus implicit writes**: lockfiles and manifests if it installs or removes dependencies; generated/output dirs (`dist/`, `build/`, codegen output, `*.tsbuildinfo`, coverage) if it builds or generates; snapshot files if it updates snapshots; migration directories if it creates migrations. On overlap: serialize or bundle. (Don't resolve overlaps with worktree isolation — worktree work never reaches the main tree without a merge the protocol doesn't have.)
+2. **Write-set check:** two steps in one wave must not write the same file. Each step's write set is its declared files **plus implicit writes**: lockfiles and manifests if it installs or removes dependencies; generated/output dirs (`dist/`, `build/`, codegen output, `*.tsbuildinfo`, coverage) if it builds or generates; snapshot files if it updates snapshots; migration directories if it creates migrations. On overlap: serialize or bundle. (Don't resolve overlaps with worktree isolation: a worktree branches from the default branch, so earlier waves' unmerged work is invisible to it, and its changes never reach the main tree without a merge the protocol doesn't have.)
 3. **Bundle** into one delegation when steps are sequential, same agent, same tier, and tightly coupled (type → hook → tests for one feature). Split when agents or tiers differ, when steps are independent, or when failure modes differ. Keep bundles to what one fresh context can hold comfortably — roughly ≤5 steps or ≤~15 files.
-4. Parallel width: default ≤4 concurrent agents per wave; go wider only for read-only or clearly disjoint mechanical work.
+4. Parallel width: default ≤4 concurrent agents per wave; go wider only for read-only or clearly disjoint mechanical work. The platform caps concurrent subagents (default 20, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); never plan a wave above it.
 5. Put the critical path first; fill waves with off-path work. Inline steps run between waves (see delegation-protocol), so place them in the wave after their dependencies.
 
 ### Step 6: Write the shared context
@@ -86,6 +86,8 @@ Use `AskUserQuestion` with a compact summary, not the whole map: wave count, ste
 - **Cheaper** — move borderline steps one tier down
 - **Safer** — move borderline steps one tier up and add review gates to them
 - **Adjust** — user edits the progress file or states changes
+
+For plans with more than 25 steps (Execution Map rows, i.e. plan tasks, not checkboxes), or 10+ near-identical mechanical items, also offer a dynamic workflow (the user says "use a workflow") as an alternative to waves; it suits dozens to hundreds of agents. Never launch one unasked.
 
 A step is **borderline** when its score is at a tier edge (2↔3, 5↔6) or any dimension was scored 1 only because information was missing. Neither option moves a step across a risk floor (routing.md §3). Never auto-approve. After approval, set `Status: In Progress` and follow `references/delegation-protocol.md`.
 
