@@ -1,6 +1,6 @@
 ---
 name: report-analyzer
-description: "Analyzes an existing report (SWOT, gap and risk analysis) and turns it into a phased roadmap document with strategic pillars, milestones and prioritized initiatives. Use when the user supplies a report and wants strategic planning or an actionable roadmap from it. Not for researching a topic (use deep-researcher) or for a living, tracked roadmap folder (use roadmap-planner)."
+description: "Analyzes an existing report (SWOT, gap and risk analysis) and turns it into a phased roadmap document with strategic pillars, milestones and prioritized initiatives. Use when the user supplies a report and wants strategic planning or an actionable roadmap from it, as a one-off document with no tracking folder. Not for researching a topic (use deep-researcher) or for a living, tracked roadmap folder (use roadmap-planner)."
 ---
 
 Analyze the report and build a roadmap toward the user's stated goal.

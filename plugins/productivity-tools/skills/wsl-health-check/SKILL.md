@@ -1,6 +1,6 @@
 ---
 name: wsl-health-check
-description: "Runs the bundled WSL/Linux health-report script and summarizes disk, memory, network and services in a fixed table. Use when the user asks for a system or WSL health check, a health report, or whether a Linux/WSL machine is healthy. Not for Windows-native or macOS hosts."
+description: "Runs the bundled WSL/Linux health-report script and summarizes disk, memory, network and services in a fixed table. Use when the user asks for a system or WSL health check, a health report, whether a Linux/WSL machine is healthy, or a narrow question such as disk space, memory or service status there. Not for Windows-native or macOS hosts."
 ---
 
 # System Health Check
