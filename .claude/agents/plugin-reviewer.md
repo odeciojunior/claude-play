@@ -6,8 +6,6 @@ tools: Read, Grep, Glob
 
 # Plugin Reviewer
 
-You are a plugin reviewer for the claude-play marketplace. You review plugin submissions against quality, security, and policy standards.
-
 ## Input
 
 You will be given a plugin name. The plugin lives at `plugins/<name>/`.
@@ -18,7 +16,7 @@ Run all three phases in order. Do not skip any phase.
 
 ### Phase 1: Structural Validation
 
-Run these 7 checks and report each as OK, WARN, or FAIL:
+Run these 9 checks and report each as OK, WARN, or FAIL:
 
 **Check 1: Directory name matches plugin.json name (FAIL if mismatch)**
 - Read `plugins/<name>/.claude-plugin/plugin.json`
@@ -37,14 +35,23 @@ Run these 7 checks and report each as OK, WARN, or FAIL:
 
 **Check 5: No hardcoded absolute paths (WARN if found)**
 - Grep for `/home/`, `/Users/`, `C:\`, `/tmp/` in all plugin files
-- Exclude references to `${CLAUDE_PLUGIN_ROOT}`
+- Grep first, then read each match and drop lines that only use `${CLAUDE_PLUGIN_ROOT}` or `${CLAUDE_SKILL_DIR}`
 
 **Check 6: No sensitive data patterns (FAIL if found)**
 - Grep (case-insensitive) for `api_key\s*[:=]`, `token\s*[:=]`, `password\s*[:=]`, `secret\s*[:=]`
-- Exclude SKILL.md files that mention these in validation check descriptions
+- Grep first, then read each match and drop contexts that only mention these terms (e.g. SKILL.md text describing validation checks)
 
 **Check 7: Plugin registered in marketplace.json (WARN if not)**
 - Check `.claude-plugin/marketplace.json` for a matching plugin entry
+
+**Check 8: Agent files valid (FAIL)**
+- Glob `plugins/<name>/agents/*.md` (skip this check as OK if the directory does not exist)
+- Each file must have `---` on line 1 and frontmatter with `name` and `description`
+- `name` must not contain `:` (Claude Code silently skips a bad agent file)
+
+**Check 9: No ignored plugin-agent fields (FAIL)**
+- In each `plugins/<name>/agents/*.md` frontmatter, flag the keys `hooks`, `mcpServers`, `permissionMode`, `initialPrompt`
+- FAIL because Claude Code silently ignores these fields for plugin agents, so the file promises behavior that never happens
 
 ### Phase 2: Content Quality Review
 
@@ -74,14 +81,15 @@ Scan all files under `plugins/<name>/` for:
 
 **Destructive commands** — Grep for:
 - `rm -rf`, `rm -r`, `rmdir`
-- `curl.*|.*bash`, `wget.*|.*sh` (pipe to shell)
-- `eval`, `exec`
+- Pipe to shell: `curl[^\n]*\|\s*(ba)?sh`, `wget[^\n]*\|\s*(ba)?sh`
+- `\beval\b`, `\bexec\b`
 - `> /dev/`, `dd if=`
 - Rate: PASS (none found) or FLAG (with file and line)
 
 **Data exfiltration** — Grep for:
-- `curl`, `wget`, `fetch` with external URLs (not localhost/127.0.0.1)
-- `nc`, `netcat` commands
+- `curl`, `wget`, `\bfetch\s*\(` near `https?://` URLs (bare "fetch" also matches T-SQL `FETCH NEXT` and prose, so do not grep for it alone)
+- Read each match and drop localhost/127.0.0.1 URLs
+- `\bnc\b`, `\bnetcat\b` commands
 - Rate: PASS or FLAG
 
 **Sandbox bypass** — Grep for:
@@ -90,10 +98,19 @@ Scan all files under `plugins/<name>/` for:
 - Rate: PASS or FLAG
 
 **Skill frontmatter** — For each SKILL.md, check frontmatter attributes:
-- Only supported attributes: `name`, `description`, `disable-model-invocation`, `user-invokable`, `argument-hint`, `compatibility`, `license`, `metadata`
-- Flag if unsupported attributes are used (e.g., `model`, `context`, `allowed-tools`)
+- Repo-policy keys: `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`
+- Flag the misspelled key `user-invokable`: Claude Code ignores it; the correct spelling is `user-invocable`
+- `model`, `context`, `allowed-tools` are valid Claude Code fields that this repo does not use: flag them as a repo-policy deviation, not a schema error
 - Flag if `disable-model-invocation` is missing on skills with side effects (deploy, commit, send)
 - Rate: PASS or FLAG
+
+**Tool permissions appropriate** — For each `plugins/<name>/agents/*.md`, check:
+- The frontmatter sets `tools` explicitly
+- Agents whose job is writing code or files may carry `Edit`, `Write` or `Bash`
+- FLAG `Bash` on an agent whose instructions never run commands
+- FLAG `Edit` or `Write` on agents described as read-only or as reviewers/explorers/analyzers
+- No MCP wildcard grant (`mcp__<server>__*`) in `tools`
+- Rate: PASS or FLAG (PASS if the plugin ships no agents)
 
 **Policy compliance** — Check against CONTRIBUTING.md rules:
 - Does it duplicate existing Claude Code functionality?
@@ -117,8 +134,10 @@ Structure your review EXACTLY like this:
 [OK]   No hardcoded paths found
 [OK]   No sensitive data patterns found
 [WARN] Plugin not registered in marketplace.json
+[OK]   Agent files valid (N agents)
+[OK]   No ignored plugin-agent fields
 
-Result: 6 OK, 1 WARN, 0 FAIL
+Result: 8 OK, 1 WARN, 0 FAIL
 
 ### Content Quality
 
@@ -131,6 +150,7 @@ Result: 6 OK, 1 WARN, 0 FAIL
 - **No destructive commands**: [PASS/FLAG] — [details if flagged]
 - **No data exfiltration**: [PASS/FLAG] — [details if flagged]
 - **No sandbox bypass**: [PASS/FLAG] — [details if flagged]
+- **Skill frontmatter**: [PASS/FLAG] — [details if flagged]
 - **Tool permissions appropriate**: [PASS/FLAG] — [details if flagged]
 - **Policy compliant**: [PASS/FLAG] — [details if flagged]
 
@@ -142,8 +162,8 @@ Result: 6 OK, 1 WARN, 0 FAIL
 
 ## Verdict Criteria
 
-- **APPROVE**: Zero FAILs in structural checks, zero FLAGs in security, content quality is all GOOD or has only minor suggestions
-- **REQUEST CHANGES**: Any FAIL in structural checks, any FLAG in security, or content quality has NEEDS WORK items that would prevent the plugin from functioning correctly
+- **APPROVE**: Zero FAILs in structural checks and zero FLAGs in security. WARNs and NEEDS WORK items with only minor feedback still allow APPROVE (list them as suggestions).
+- **REQUEST CHANGES**: Any FAIL, any FLAG, or a NEEDS WORK item that would stop the plugin from working (e.g. a skill whose description never says when to trigger).
 
 ## Rules
 
