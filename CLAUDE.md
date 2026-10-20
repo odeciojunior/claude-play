@@ -44,8 +44,8 @@ Human-facing plugin table: `README.md`. When adding or removing a plugin, update
 
 Both are Node scripts (Node ≥18 is already required by the roadmap checker).
 
-- `protect-template.mjs` (PreToolUse, Edit|Write): exit 2 blocks edits under `plugins/_template/` (Windows `\` paths and any case included).
-- `validate-marketplace-json.mjs` (PostToolUse, Edit|Write): after an edit to `marketplace.json`, prints `{"decision":"block","reason":...}` when one of its 6 schema checks fails; no output = pass. Run it by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
+- `protect-template.mjs` (PreToolUse, Edit|MultiEdit|Write|NotebookEdit): exit 2 blocks edits under `plugins/_template/` (Windows `\` paths, any case and `..` segments included). Shell commands are not guarded.
+- `validate-marketplace-json.mjs` (PostToolUse, same matcher): after an edit to `marketplace.json`, prints `{"decision":"block","reason":...}` when one of its 9 checks fails (including entry name/version vs each `plugin.json`); an unexpected error also blocks; no output = pass. Run it by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
 
 ## Windows
 
