@@ -7,7 +7,7 @@
 ### Checklist
 
 - [ ] Plugin directory name matches `plugin.json` `name` field
-- [ ] `plugin.json` has all repo-required fields (name, description, version, author, license, keywords)
+- [ ] `plugin.json` has all repo-required fields (name, description, version, author with name and email, license, non-empty keywords array)
 - [ ] Skills have YAML frontmatter with `name` and `description`
 - [ ] `claude plugin validate plugins/<name>` passes
 - [ ] `/marketplace-tools:validate-plugin <name>` has no FAIL results

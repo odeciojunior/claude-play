@@ -81,7 +81,7 @@ flowchart TB
   subgraph Mkt["marketplace-tools plugin"]
     mkt_pj["plugin.json"]
     np["new-plugin"]
-    vp["validate-plugin"]
+    vp["validate-plugin (lint-plugin.mjs)"]
   end
 
   subgraph Sql["sql-server-tools plugin"]
@@ -126,7 +126,7 @@ flowchart TB
   pr -.->|"reviews"| Prod & Mkt & Sql & Mcp
 ```
 
-**Description:** The marketplace registry (`marketplace.json`) is the central catalog that registers all four plugins. Each plugin has a `plugin.json` manifest and skill/agent definitions. `sql-server-tools` provides 5 specialized agents routed by a single skill, while `mcp-sql-server` uses a setup skill that orchestrates a bash script for MCP server installation — the two plugins are companions (mcp-sql-server provides database connectivity, sql-server-tools provides expert agents that use it). Two hooks enforce quality: `protect-template` (PreToolUse) prevents modifications to the contributor template, and `validate-marketplace-json` (PostToolUse) validates the catalog schema after every edit. The `plugin-reviewer` agent can perform structured reviews on any plugin.
+**Description:** The marketplace registry (`marketplace.json`) is the central catalog that registers all four plugins. Each plugin has a `plugin.json` manifest and skill/agent definitions. `sql-server-tools` provides 5 specialized agents routed by a single skill, while `mcp-sql-server` uses a setup skill that orchestrates a bash script for MCP server installation — the two plugins are companions (mcp-sql-server provides database connectivity, sql-server-tools provides expert agents that use it). Two hooks enforce quality: `protect-template` (PreToolUse) prevents modifications to the contributor template, and `validate-marketplace-json` (PostToolUse) runs 9 catalog checks after every edit. The `plugin-reviewer` agent can perform structured reviews on any plugin.
 
 ---
 
@@ -199,7 +199,7 @@ stateDiagram-v2
   accTitle: Hook Execution Flow
   accDescr: Shows how PreToolUse and PostToolUse hooks fire during file editing
 
-  [*] --> EditOrWrite: Claude calls Edit or Write
+  [*] --> EditOrWrite: Claude calls Edit, MultiEdit, Write or NotebookEdit
 
   state PreToolUse {
     check_template: protect-template.mjs
@@ -216,10 +216,10 @@ stateDiagram-v2
 
   Execute --> FileModified
   FileModified --> PostToolUse
-  PostToolUse --> ValidationPass: Schema valid
-  PostToolUse --> ValidationFail: Schema invalid
+  PostToolUse --> ValidationPass: All 9 checks pass
+  PostToolUse --> ValidationFail: A check fails or errors
   ValidationPass --> [*]
   ValidationFail --> [*]
 ```
 
-**Description:** When Claude Code attempts an Edit or Write operation, two hooks fire. First, the `protect-template` PreToolUse hook checks if the target is inside `_template/` and blocks the operation if so. If allowed, the file is modified, then the `validate-marketplace-json` PostToolUse hook runs to validate the marketplace catalog schema. This ensures the template stays pristine and the catalog remains well-formed.
+**Description:** When Claude Code attempts an edit (the `Edit|MultiEdit|Write|NotebookEdit` tools), two hooks fire. First, the `protect-template` PreToolUse hook checks if the target is inside `_template/` and blocks the operation if so. If allowed, the file is modified, then the `validate-marketplace-json` PostToolUse hook runs to run its 9 checks on the marketplace catalog (including each entry's name and version against its plugin.json) and block on unexpected errors. This ensures the template stays pristine and the catalog remains well-formed.

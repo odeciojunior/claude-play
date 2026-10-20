@@ -79,7 +79,7 @@ my-plugin/
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | **Only required field.** Kebab-case, no spaces/`@`/`:`/separators. Namespaces components: `plugin-name:skill-name`. Names that pass as Anthropic's own (`claude-…`, `anthropic-…`) are errors |
+| `name` | string | **Only required field.** Kebab-case, no spaces/`@`/`:`/separators. Namespaces components: `plugin-name:skill-name`. Reserved names are errors: prefixes `claude-`, `anthropic-`, `anthropics-`, `cc-plugin-`; exact names `claude`, `anthropic`, `anthropics`, `claude-code`, `claude-mods`; names combining "official" with claude or anthropic |
 | `displayName` | string | Name shown in UI instead of `name`. Not used for namespacing. A marketplace entry's value wins |
 | `version` | string | Not checked against semver. Setting it pins users to that version until it changes. Without it, git sources use the commit SHA |
 | `description` | string | Short purpose |
@@ -578,7 +578,7 @@ System prompt in markdown format.
 | `initialPrompt` | No | First user turn when run as the main agent (`--agent` / `agent` setting) |
 | `experimental` | No | `cacheTtl`: `5m` or `1h` |
 
-**Plugin agents ignore** `hooks`, `mcpServers`, `permissionMode` (and `initialPrompt`). Ship hooks in `hooks/hooks.json` and servers in `.mcp.json` instead. An agent file whose frontmatter doesn't parse still loads, with every field ignored.
+**Plugin agents ignore** `hooks`, `mcpServers`, `permissionMode` and `initialPrompt`. Ship hooks in `hooks/hooks.json` and servers in `.mcp.json` instead. An agent file whose frontmatter doesn't parse still loads, with every field ignored.
 
 ### 4.3 Built-in Subagent Types
 

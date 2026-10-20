@@ -49,7 +49,7 @@ SKILL.md frontmatter policy (repo policy, stricter than the official spec):
 
 Other format notes:
 - `hooks/hooks.json` wraps events in a top-level object: `{"hooks": {"PreToolUse": [...]}}`.
-- Plugin agents ignore `hooks`, `mcpServers` and `permissionMode`; don't add them.
+- Plugin agents ignore `hooks`, `mcpServers`, `permissionMode` and `initialPrompt`; don't add them.
 
 ### 4. Write your README
 
@@ -77,7 +77,7 @@ Push your branch and open a PR against `main`. The PR template will guide you th
 - Use kebab-case: `my-plugin-name`
 - Directory name must match `plugin.json` `name` field
 - The `marketplace.json` entry name must equal the `plugin.json` name
-- Must not start with `claude-`, `anthropic-` or `cc-plugin-` (reserved; `claude plugin validate` rejects them)
+- Reserved names (`claude plugin validate` rejects them): the prefixes `claude-`, `anthropic-`, `anthropics-` and `cc-plugin-`; the exact names `claude`, `anthropic`, `anthropics`, `claude-code` and `claude-mods`; and names combining "official" with claude or anthropic
 - Be descriptive but concise
 
 ### Quality

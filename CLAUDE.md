@@ -7,7 +7,7 @@ Claude Code plugin marketplace (`claude-play`). Users add this repo as a marketp
 - **Bump the version in three places together**: `plugins/<name>/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and the root `README.md` plugins table. Installed copies resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`, so an edit without a bump never reaches users.
 - **SKILL.md frontmatter keys (repo policy):** `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. `model`/`context`/`agent`/`allowed-tools`/`paths`/`hooks` are valid Claude Code fields that we don't use, to keep skills portable and predictable. Unknown keys are ignored silently, so spelling matters.
 - **Never edit `plugins/_template/`** (the `protect-template` hook blocks it); contributors copy it to a new plugin directory.
-- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin. It checks manifests only; SKILL.md frontmatter and agent files are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
+- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin, and the tests: `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs"`. The validator checks manifests only; SKILL.md frontmatter and agent files are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
 - Path-specific rules load from `.claude/rules/` when a matching file is read or edited: skills, the roadmap checker, mcp-sql-server.
 
 ## Publish an update
@@ -27,7 +27,7 @@ Commits use `type(scope): description` (`feat`, `fix`, `docs`, `chore`).
 plugins/<name>/
   .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); repo-required: name, description, version, author, license, keywords (the spec requires only name)
   skills/<skill>/SKILL.md           # + references/*.md loaded on demand
-  agents/<agent>.md                 # Shipped subagents (today only sql-server-tools); plugin agents ignore hooks, mcpServers, permissionMode
+  agents/<agent>.md                 # Shipped subagents (today only sql-server-tools); plugin agents ignore hooks, mcpServers, permissionMode, initialPrompt
   scripts/                          # Setup/utility scripts
 plugins/_template/                  # Starter template (protected)
 .claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"

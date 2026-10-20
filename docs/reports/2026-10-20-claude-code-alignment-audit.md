@@ -10,7 +10,9 @@ O repo segue boa parte da spec atual, mas tem três tipos de problema:
 2. **Skills que só funcionam na máquina do autor.** `wsl-health-check` chama um script que não é distribuído. `report-analyzer` usa ferramentas de um plugin não declarado. `mcp-sql-server-setup` monta `claude mcp add` em ordem errada e grava a senha em texto puro.
 3. **A spec digest (`docs/claude-code-extensibility-reference.md`) está desatualizada desde março.** Ela tem 52 divergências, entre elas 17 eventos de hook quando hoje são 33, "subagents não aninham" e `tool_result` no lugar de `tool_response`.
 
-Nada foi alterado ainda. As escolhas que guiam as correções estão em [Decisões](#decisões).
+> **Status (20/10/2026):** as correções foram aplicadas no branch `chore/claude-code-alignment`, seguindo o plano `docs/plans/2026-10-20-claude-code-alignment-plan.md`. O progresso está em `docs/plans/claude-code-alignment-plan/progress-claude-code-alignment-plan.md`. Falta só D1 (versão apenas no `plugin.json` e no README), que espera o merge do `sql-server-tools` v1.1. Releases prontas e ainda não publicadas: marketplace-tools 1.1.0, mcp-sql-server 1.3.0, productivity-tools 1.4.0. Algumas afirmações abaixo foram corrigidas na execução contra a documentação oficial, por exemplo `accTitle`, Windows Auth e a lista de nomes reservados. O arquivo de progresso registra essas mudanças.
+
+As escolhas que guiam as correções estão em [Decisões](#decisões).
 
 ## Método
 
