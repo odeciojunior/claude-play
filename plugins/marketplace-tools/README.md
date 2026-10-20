@@ -14,7 +14,7 @@ claude plugin install marketplace-tools@claude-play
 | Skill | Trigger | Description |
 |-------|---------|-------------|
 | new-plugin | `/new-plugin my-tool` | Scaffold a new plugin from the template with metadata and marketplace registration |
-| validate-plugin | `/validate-plugin my-tool` | Validate a plugin against marketplace quality standards (7 checks) |
+| validate-plugin | `/validate-plugin my-tool` | Validate a plugin against marketplace quality standards : runs `claude plugin validate`, the `lint-plugin.mjs` script and judgment checks |
 
 ## Workflow
 
@@ -22,6 +22,16 @@ claude plugin install marketplace-tools@claude-play
 2. Edit the generated SKILL.md to define your skill's behavior
 3. Run `/validate-plugin my-awesome-tool` to verify quality
 4. Commit and open a PR
+
+## Lint script
+
+`validate-plugin` runs a deterministic linter, `skills/validate-plugin/scripts/lint-plugin.mjs` (Node 18+, no dependencies). To run it by hand from the repository root:
+
+```bash
+node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/<name> [--marketplace <path>]
+```
+
+It prints `[OK]`, `[WARN]` and `[FAIL]` lines and a `Result:` total. Exit code 0 means no FAIL, 1 means at least one FAIL, 2 means a usage error. Tests: `node --test plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs`.
 
 ## Prerequisites
 

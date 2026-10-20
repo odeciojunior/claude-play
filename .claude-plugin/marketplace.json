@@ -25,7 +25,7 @@
       "name": "marketplace-tools",
       "source": "./plugins/marketplace-tools",
       "description": "Maintainer tools for the claude-play marketplace: scaffold new plugins and validate plugin quality",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Odecio Machado",
         "email": "odeciojunior@gmail.com"
