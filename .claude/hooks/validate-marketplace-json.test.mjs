@@ -114,6 +114,36 @@ test('non-marketplace file_path produces no output', () => {
   assert.equal(r.stdout, '');
 });
 
+test('fixture marketplace.json path is ignored', () => {
+  const r = runHook('null', {}, '{"tool_input":{"file_path":"plugins/x/fixtures/marketplace.json"}}');
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, '');
+});
+
+test('absolute Windows path to the catalog is checked', () => {
+  const r = runHook('null', {}, JSON.stringify({ tool_input: { file_path: 'D:\\p\\repo\\.claude-plugin\\marketplace.json' } }));
+  assert.equal(r.decision, 'block');
+});
+
+test('relative catalog path is checked', () => {
+  const r = runHook('null');
+  assert.equal(r.decision, 'block');
+});
+
+const nameCase = (n) => run(market({ plugins: [entry({ name: n, source: `./plugins/${n}` })] }), { [n]: { name: n, version: '1.0.0' } });
+
+test('name a1-b is ok', () => {
+  assert.equal(nameCase('a1-b').stdout, '');
+});
+
+test('names 1abc and abc- are blocked', () => {
+  for (const n of ['1abc', 'abc-']) {
+    const r = nameCase(n);
+    assert.equal(r.decision, 'block', n);
+    assert.match(r.reason, /kebab/);
+  }
+});
+
 test('unparseable hook input blocks', () => {
   const r = runHook(JSON.stringify(market()), plugin(), 'not json');
   assert.equal(r.code, 0);

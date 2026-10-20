@@ -25,7 +25,7 @@ process.stdin.on('end', () => {
   } catch {
     block('validate-marketplace-json: could not parse the hook input');
   }
-  if (!filePath.replace(/\\/g, '/').endsWith('marketplace.json')) process.exit(0);
+  if (!/(^|\/)\.claude-plugin\/marketplace\.json$/.test(filePath.replace(/\\/g, '/'))) process.exit(0);
 
   try {
     const candidates = [
@@ -95,8 +95,8 @@ process.stdin.on('end', () => {
     if (syncErrors.length) block(`marketplace.json out of sync with plugin.json (repo policy): ${syncErrors.join('; ')}`);
 
     // Check 9: entry names are kebab-case (repo policy)
-    const badNames = names.filter((n) => !/^[a-z0-9][a-z0-9-]*$/.test(n));
-    if (badNames.length) block(`Plugin names must be kebab-case, matching ^[a-z0-9][a-z0-9-]*$ (repo policy): ${badNames.join(', ')}`);
+    const badNames = names.filter((n) => !/^[a-z][a-z0-9-]*[a-z0-9]$/.test(n));
+    if (badNames.length) block(`Plugin names must be kebab-case, matching ^[a-z][a-z0-9-]*[a-z0-9]$ (repo policy): ${badNames.join(', ')}`);
 
   } catch (e) {
     block(`validate-marketplace-json: unexpected error (${e.message})`);

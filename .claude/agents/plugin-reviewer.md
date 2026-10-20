@@ -10,6 +10,8 @@ tools: Read, Grep, Glob
 
 You will be given a plugin name. The plugin lives at `plugins/<name>/`.
 
+If you can run commands, `/marketplace-tools:validate-plugin <name>` (lint-plugin) is the source of truth for structural checks; this review adds judgment.
+
 ## Review Process
 
 Run all three phases in order. Do not skip any phase.
@@ -18,9 +20,10 @@ Run all three phases in order. Do not skip any phase.
 
 Run these 9 checks and report each as OK, WARN, or FAIL:
 
-**Check 1: Directory name matches plugin.json name (FAIL if mismatch)**
+**Check 1: Directory name matches plugin.json name and is not reserved (FAIL)**
 - Read `plugins/<name>/.claude-plugin/plugin.json`
 - Compare the `name` field to the directory name
+- FAIL if the name is reserved: prefixes `claude-`, `anthropic-`, `anthropics-`, `cc-plugin-`; exact names `claude`, `anthropic`, `anthropics`, `claude-code`, `claude-mods`; or a name combining "official" with claude/anthropic
 
 **Check 2: plugin.json has all required fields (FAIL if missing)**
 - Required: `name`, `description`, `version`, `author` (with `name` and `email`), `license`, `keywords` (non-empty array)
@@ -42,7 +45,8 @@ Run these 9 checks and report each as OK, WARN, or FAIL:
 - Grep first, then read each match and drop contexts that only mention these terms (e.g. SKILL.md text describing validation checks)
 
 **Check 7: Plugin registered in marketplace.json (WARN if not)**
-- Check `.claude-plugin/marketplace.json` for a matching plugin entry
+- Check `.claude-plugin/marketplace.json` for a matching plugin entry (WARN if missing)
+- If the entry has a `version`, it must equal the `version` in plugin.json (FAIL if different)
 
 **Check 8: Agent files valid (FAIL)**
 - Glob `plugins/<name>/agents/*.md` (skip this check as OK if the directory does not exist)
@@ -99,10 +103,11 @@ Scan all files under `plugins/<name>/` for:
 
 **Skill frontmatter** — For each SKILL.md, check frontmatter attributes:
 - Repo-policy keys: `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`
-- Flag the misspelled key `user-invokable`: Claude Code ignores it; the correct spelling is `user-invocable`
-- `model`, `context`, `allowed-tools` are valid Claude Code fields that this repo does not use: flag them as a repo-policy deviation, not a schema error
+- FLAG the misspelled key `user-invokable`: Claude Code ignores it; the correct spelling is `user-invocable`
+- FLAG boolean keys (`disable-model-invocation`, `user-invocable`) whose value is not `true` or `false`
+- Keys outside the list (e.g. `model`, `context`, `allowed-tools`) are valid Claude Code fields that this repo does not use: report them as a WARN-level note (repo policy), not a FLAG; they do not force REQUEST CHANGES
 - Flag if `disable-model-invocation` is missing on skills with side effects (deploy, commit, send)
-- Rate: PASS or FLAG
+- Rate: PASS or FLAG (list any WARN notes in the details)
 
 **Tool permissions appropriate** — For each `plugins/<name>/agents/*.md`, check:
 - The frontmatter sets `tools` explicitly
@@ -127,18 +132,17 @@ Structure your review EXACTLY like this:
 
 ### Structural Checks
 
-[OK]   Directory name matches plugin.json name
+[OK]   Directory name matches plugin.json name, not reserved
 [OK]   plugin.json has all required fields
 [OK]   All SKILL.md files have valid frontmatter (N skills)
 [OK]   README.md exists and is non-empty
 [OK]   No hardcoded paths found
 [OK]   No sensitive data patterns found
-[WARN] Plugin not registered in marketplace.json
+[WARN] Plugin not registered in marketplace.json (or entry version matches plugin.json)
 [OK]   Agent files valid (N agents)
 [OK]   No ignored plugin-agent fields
 
 Result: 8 OK, 1 WARN, 0 FAIL
-
 ### Content Quality
 
 - **SKILL.md descriptions**: [GOOD/NEEDS WORK] — [specific feedback]
