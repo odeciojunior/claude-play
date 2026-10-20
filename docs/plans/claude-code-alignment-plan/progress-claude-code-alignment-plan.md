@@ -2,15 +2,17 @@
 **Plan**: docs/plans/2026-10-20-claude-code-alignment-plan.md
 **Roadmap**: none
 **Started**: 2026-10-20 | **Last Updated**: 2026-10-20
-**Status**: Blocked (Steps 1–23 done; Step 24 waits for the sql-server-tools v1.1 merge)
+**Status**: Completed
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
 **Last COMPLETED Wave**: 4
 **Last DELEGATED Wave**: 5
 **Last COMPLETED Wave**: 5 (Steps 21, 23 done; gate 221/221, 4 validators pass)
+**Last DELEGATED Wave**: 6
+**Last COMPLETED Wave**: 6
 **In-Flight Agents**: none
-**Next Action**: When `feat/sql-server-tools-v1.1` is merged into main: merge main into this branch, run Step 24 (D1), then publish per CLAUDE.md. Before publishing: the manual WSL run (Step 13).
+**Next Action**: Plan complete. Before publishing: manual WSL run (Step 13), then merge into main and publish per CLAUDE.md (user decision).
 
 ## Execution Map
 **Steps**: 25 (execute 25, skip 0; Task 22 split into 22a/22b) | **Waves**: 6 + inline | **Effort**: ~10h agent time (estimate; plan has none) | **Tiers**: inline 3 · haiku 2 · sonnet 17 · opus 3 | **Review gates**: 8
@@ -92,12 +94,13 @@
 | 22a | Contributor docs | Done | sonnet · 1 | 3 (1/0/0/1/1) | committed |
 | 22b | Template comment (D3) | Done | inline · 1 | 1 (0/0/0/1/0) | committed; only that file |
 | 23 | Extensibility reference revision | Done | opus · 1 | 6 (1/1/1/1/2) | committed; 568→691 lines; several audit items corrected by the docs |
-| 24 | D1: version in plugin.json + README only | Blocked | sonnet · 0 | 5 (2/0/1/2/0) | waits for v1.1 merge |
+| 24 | D1: version in plugin.json + README only | Done | sonnet · 1 (+1 fix-up) | 5 (2/0/1/2/0) | after merging main (v1.1); docs quote confirmed; opus gate PASS with mutation test; new README-row drift guard |
 
 ## Wave Execution Log
 | Wave | Groups | Delegated | Completed | Agent IDs | Notes |
 |------|--------|-----------|-----------|-----------|-------|
 | 0 | I1 | inline | 2026-10-20 | — | Step 4 (6e14674) |
+| 6 | merge main + T | 2026-10-20 | 2026-10-20 | T ad7e875323c91d8b4 (gate a52632884d6fb7e5a) | main (9c52bea, sql-server-tools v1.1) merged, README conflict resolved; D1 applied; 250/250 tests; lint 0/0 on all 4 plugins |
 | 5 | R, S + final review + fix-ups | 2026-10-20 | 2026-10-20 | R routing a3505925ce9e330f6 · tweaks a9bf85026da9981aa · R aefeac6a1e1c56c60 (gate a95afcd74c67bc27c) · S a37c468a3bedf81c8 · final a24dd4c3495345916 · X1 a1780376e200cab73 · X2a ab4656d9c4e5ed07f · X2b a49e265a16e7e2ee7 · X3 a03db64967a350631 | final check: 228/228 tests, 4 validators, lint 0/0 on 3 plugins |
 | 4 | N, O, P, Q | 2026-10-20 | 2026-10-20 | N a11ebaa004a755916 · O a299bfc9d36413cd2 (gate ab76d05a13729199c) · P a82ccbb861ff2d667 (gate a21ce2ca5f7987116) · Q abe4e353e635b597c (gate af44516edd4ad479e) | gate: 221/221; pt lint 34 OK 0 WARN; O needed 2 rounds; Step 21 routing test moved out of the executor card (executors don't spawn subagents) |
 | 3 | J, K, L, M | 2026-10-20 | 2026-10-20 | J a7b786383d8930534 (gate ae160b7526fd5c06a) · K a11d52c21990fee95 · L aad7d1de022d2606b · M af8b97545874369d4 | gate: 221/221 tests; pt lint 32 OK 1 WARN; J needed 2 review rounds (leak paths, Windows Auth unsupported); L blocked once by report-file filter |
