@@ -1,6 +1,6 @@
 # Event recipes
 
-One recipe per event. Each names the files in the order they change, the cells to write, and the checker codes to watch. File formats, anchors, column orders and cell rules are in `../roadmap-planner/references/formats.md` (relative to the skill base directory); this file never restates a template.
+One recipe per event. Each names the files in the order they change, the cells to write, and the checker codes to watch. File formats, anchors, column orders and cell rules are in formats.md (see SKILL.md for the formats reference); this file never restates a template.
 
 ## Contents
 
@@ -17,6 +17,7 @@ One recipe per event. Each names the files in the order they change, the cells t
 11. Migration
 12. Package published
 13. Do not do now
+14. Events from plan-coordinator
 
 Common to every recipe:
 
@@ -54,7 +55,7 @@ Checker: a filled Contradicts on an in-force decision → `contradiction-unabsor
 
 ## 2. Piece or step closed
 
-**When:** a vertical slice of a deliverable, or a plan step that finishes one, is done; or plan-coordinator reports "wave N closed" / "plan completed" (SKILL.md Step 4a).
+**When:** a vertical slice of a deliverable, or a plan step that finishes one, is done; or plan-coordinator reports "wave N closed" / "plan completed" (§ 14).
 
 1. `state.md` panel row of the deliverable:
    - Status: per piece, `piece 1: on-branch; piece 2: spec` (segment rules in formats.md § 4). Code merged to the integration branch → § 3 instead.
@@ -145,7 +146,7 @@ Checker: `uncovered-req` (covered with no deliverable, or out of scope without a
 
 ## 9. End of piece or phase (revision)
 
-**When:** a piece or phase ends, the checker warns `contradiction-unabsorbed`, a requirement awaits a card, or the user asks. Procedure and approval: SKILL.md Step 6.
+**When:** a piece or phase ends, the checker warns `contradiction-unabsorbed`, a requirement awaits a card, or the user asks. Procedure and approval below.
 
 Review before proposing:
 
@@ -173,12 +174,19 @@ Nothing to change → say so and write nothing. Not approved → leave the strat
 
 On approval, in this order: strategy (`version` anchor, title, changelog entry listing the absorbed `DEC`, changed sections citing each `DEC`, "Where we are", version-history row), then `state.md` panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, remove the pending approval item, `log.md` "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, then the checker.
 
+### Revision procedure (SKILL.md Step 6)
+
+1. **Propose** strategy vN+1 in the conversation, without writing it: the new version (minor bump, `1.0` → `1.1`, unless the user wants a major one for a changed objective or phases), the `DEC` IDs it absorbs, each section that changes with one line on how, card changes (pieces, acceptance, `reqs`, priority), and requirement or coverage changes. Checklist: the "Review before proposing" list above. If nothing needs changing, say so; the user may still ask for a revision.
+2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the checklist above). The contradiction warning stays and the run may end with it.
+3. **On approval:** update the `version` anchor (`<!-- roadmap:version <N+1> <date> -->`) and the title; add a changelog entry (newest first) listing the absorbed `DEC`; edit the changed sections and cite each absorbed `DEC` ID where it applies; regenerate "Where we are" from `state.md` and `critical-path.md`; add a version-history row. Then update whatever the revision moved (panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, the `state.md` header line), remove the approval pending item, add a `log` row "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, and rerun Step 5.
+4. **Rejected:** the user may change the decision instead; that is a new decision (§ Decision, superseding the old one).
+
 ## 10. Checker refresh
 
 **When:** cold start (SKILL.md Step 1, which then applies this layer in Step 2), the checker warns `checker-stale`, or the user asks.
 
-1. Versions: line 1 of `<base>/scripts/check-roadmap.mjs` and of `<folder>/check-roadmap.mjs`, header `// check-roadmap <version> format <n>`. `node <file> --version` prints the same `<version> format <n>` from that line. Plugin's not newer → stop.
-2. `node "<base>/scripts/check-roadmap.mjs" "<folder>"`; read the exit code and the summary line `check-roadmap: N error(s), M warning(s)`.
+1. Versions: line 1 of the plugin's checker (SKILL.md Paths) and of `<folder>/check-roadmap.mjs`, header `// check-roadmap <version> format <n>`. `node <file> --version` prints the same `<version> format <n>` from that line. Plugin's not newer → stop.
+2. Run the plugin's checker (SKILL.md Paths) on the folder: `node <plugin checker> "<folder>"`; read the exit code and the summary line `check-roadmap: N error(s), M warning(s)`.
 3. Exit 0 → copy the plugin's file over the vendored one (`cp`, byte for byte), log "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, remove any "checker … available" pending item.
 4. Exit 1 → keep the vendored copy, add or update the pending item "(maintainer) checker <new> available: N errors to fix". Show the errors in the report. Fixing them is a separate request.
    Exit 2 (`ERROR internal`, the new checker crashed) → also a failed refresh: keep the vendored copy and add or update the pending item "(maintainer) checker <new> available: internal error, see output"; show the message in the report.
@@ -226,3 +234,14 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 1. Add (to `state.md` `donot`): one list item naming the forbidden action and citing the `BLQ-n` or `DEC-NNN` that forbids it. An item with no reference → checker error `donot-no-ref`. When this creates the block for the first time, also add the "do not do now list changes" row to the README table (formats.md § 8).
 2. Remove the item when its `BLQ`/`DEC` is resolved (blocker closed, decision superseded); this happens in the same event that closes it (§ 5, § 1) and again as the pruning pass of every event (Common).
 3. `log.md` carries the event that caused the add or the removal; `donot` itself keeps no history.
+
+## 14. Events from plan-coordinator
+
+`plan-coordinator` invokes this skill with the event "wave N closed (steps …)" after each wave gate, and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`.
+
+1. Read that progress file (the one the caller names; otherwise the `docs/plans/**/progress-*.md` whose `**Roadmap**:` field names this folder): the header (`**Plan**`), the Execution Map table (Wave, Group, Steps, Status), the Steps table, the Wave Execution Log and any recorded commit SHAs. Never edit it.
+2. Find the deliverable: the panel row whose Evidence or Next step cites that plan (or its spec); else the `E<n>` the plan's title or header names; else ask once.
+3. Decide which pieces closed: a piece closes when every plan step that implements it has Status PASS (or an intentional skip). Map steps to pieces from the plan's own text (a step naming the piece, or a plan that covers exactly one piece). When the progress file cannot tell which piece a step belongs to (an unmapped step): on "wave N closed" add one `log` row "wave N closed (steps …)" and set the piece status from the artifacts that exist: a plan file → the configured word for plan (position 3), only a spec file → the word for spec (position 2), else leave the status unchanged; on "plan completed" mark the pieces the plan covers with the word for on-branch (position 5). Never infer the integrated word (position 6) without a SHA that is on the integration branch.
+4. Record per § Piece or step closed. Evidence = the progress file path in backticks plus the commit SHAs it records (each verified with `git cat-file -e <sha>^{commit}`). Read the current branch with `git branch --show-current` and keep its "in flight" row `live`.
+5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping.
+6. If a piece or the deliverable closed, run the end-of-piece check (Step 6). Hand back to plan-coordinator with the Step 7 report; it continues with the next wave.

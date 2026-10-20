@@ -1,6 +1,6 @@
 ---
 name: roadmap-tracker
-description: "Use when an existing roadmap folder (roadmap.config.json) needs updating after an event: roadmap status, a deliverable E<n> changed, a DEC or \"we decided\", a blocker (BLQ) opened or closed, a piece, wave or plan step closed, a branch integrated or deleted, a measurement or paid run, a release published, a new source or requirement, the end of a piece or phase (strategy revision), or a plan-coordinator \"wave N closed\" / \"plan completed\". Updates the tracking files in the working tree, keeps the vendored checker current, runs it, and proposes strategy revisions written only after approval. Never commits. Requires an existing roadmap folder; not for creating a roadmap (use roadmap-planner) or for task plans (use superpowers:writing-plans)."
+description: "Requires an existing roadmap folder (roadmap.config.json). Use when it needs updating after an event: roadmap status, a deliverable E<n> changed, a DEC or \"we decided\", a blocker (BLQ) opened or closed, a piece, wave or plan step closed, a branch integrated or deleted, a measurement or paid run, a release published, a new source or requirement, the end of a piece or phase (strategy revision), or a plan-coordinator \"wave N closed\" / \"plan completed\". Updates the tracking files in the working tree, keeps the vendored checker current, runs it, and proposes strategy revisions written only after approval. Never commits. Not for creating a roadmap (use roadmap-planner) or for task plans (use superpowers:writing-plans)."
 ---
 
 # Roadmap Tracker
@@ -11,13 +11,13 @@ Keep a living roadmap true. A roadmap built by `roadmap-planner` is a versioned 
 
 ## Paths
 
-Claude Code prints this skill's base directory on invocation. Resolve everything from it:
+`${CLAUDE_SKILL_DIR}` is this skill's directory (Claude Code substitutes it in this file):
 
 | What | Path |
 |------|------|
-| Format contract (the only source of file templates, anchors, column orders, ID and cell rules) | `<base>/../roadmap-planner/references/formats.md` |
-| Plugin's checker (newest copy) | `<base>/scripts/check-roadmap.mjs` |
-| Per-event recipes | `<base>/references/events.md` |
+| Format contract (the only source of file templates, anchors, column orders, ID and cell rules) | `${CLAUDE_SKILL_DIR}/../roadmap-planner/references/formats.md` |
+| Plugin's checker (newest copy) | `${CLAUDE_SKILL_DIR}/scripts/check-roadmap.mjs` |
+| Per-event recipes (every step's detail) | `${CLAUDE_SKILL_DIR}/references/events.md` |
 | Vendored checker | `<folder>/check-roadmap.mjs` |
 
 Read `formats.md` before the first edit of a run; never write a file from memory or duplicate its templates here. If `formats.md` cannot be read, stop and report it instead of guessing the format.
@@ -33,6 +33,21 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
 8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
 
+## Hand-back report (Step 7)
+
+End every run with this reply, short:
+
+```
+Roadmap: <folder> | strategy v<version> | format <n>
+Event: <what was recorded>
+Files changed: <paths> (not committed)
+Recorded: <new IDs and log rows, one line>
+Checker: <vendored version> -> check-roadmap: <E> error(s), <W> warning(s)
+Warnings: <one line each, or none>
+Awaiting approval: <revision proposal summary, or none>
+Questions: <anything only the user can answer, or none>
+```
+
 ## Workflow
 
 | Step | What | Detail |
@@ -43,8 +58,8 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 | 3 | Layer 3: format version | below + `events.md` § Migration |
 | 4 | Classify the event, apply its recipe | table below + `events.md` |
 | 5 | Run the vendored checker: 0 errors | below |
-| 6 | Revision (end of piece or phase, or an unabsorbed contradiction) | below + `events.md` § End of piece or phase |
-| 7 | Hand back | report format below |
+| 6 | Revision (end of piece or phase, or an unabsorbed contradiction) | stub below + `events.md` § End of piece or phase |
+| 7 | Hand back | report format above |
 
 ### Step 0: Locate the roadmap folder
 
@@ -71,7 +86,7 @@ Compare the plugin's checker with the vendored copy. The version of each is the 
 | Situation | Action |
 |-----------|--------|
 | Vendored version equal to or newer than the plugin's | Nothing to do |
-| Plugin's is newer | Run it on the folder: `node "<base>/scripts/check-roadmap.mjs" "<folder>"` |
+| Plugin's is newer | Run it on the folder: `node "${CLAUDE_SKILL_DIR}/scripts/check-roadmap.mjs" "<folder>"` |
 | ... and it exits 0 | Copy it over `<folder>/check-roadmap.mjs` (byte copy), add a `log` row "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, and drop any earlier "checker ... available" pending item. If the event adds log rows too, all carry the same date and the event's rows go above the refresh row (the refresh came first) |
 | ... and it exits 2 (`ERROR internal`, a crash) | Treat it as a failed refresh like exit 1: keep the old copy and add or update the pending item "(maintainer) checker <new> available: internal error, see output" |
 | ... and it exits 1 | Keep the old copy. Add to the `pending` block "(maintainer) checker <new> available: N errors to fix" (N = the error count of its summary line); if such an item exists, update it instead of adding a second one |
@@ -122,14 +137,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 ### Step 4a: Events from plan-coordinator
 
-`plan-coordinator` invokes this skill with the event "wave N closed (steps …)" after each wave gate, and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`.
-
-1. Read that progress file (the one the caller names; otherwise the `docs/plans/**/progress-*.md` whose `**Roadmap**:` field names this folder): the header (`**Plan**`), the Execution Map table (Wave, Group, Steps, Status), the Steps table, the Wave Execution Log and any recorded commit SHAs. Never edit it.
-2. Find the deliverable: the panel row whose Evidence or Next step cites that plan (or its spec); else the `E<n>` the plan's title or header names; else ask once.
-3. Decide which pieces closed: a piece closes when every plan step that implements it has Status PASS (or an intentional skip). Map steps to pieces from the plan's own text (a step naming the piece, or a plan that covers exactly one piece). When the progress file cannot tell which piece a step belongs to (an unmapped step): on "wave N closed" add one `log` row "wave N closed (steps …)" and set the piece status from the artifacts that exist: a plan file → the configured word for plan (position 3), only a spec file → the word for spec (position 2), else leave the status unchanged; on "plan completed" mark the pieces the plan covers with the word for on-branch (position 5). Never infer the integrated word (position 6) without a SHA that is on the integration branch.
-4. Record per § Piece or step closed. Evidence = the progress file path in backticks plus the commit SHAs it records (each verified with `git cat-file -e <sha>^{commit}`). Read the current branch with `git branch --show-current` and keep its "in flight" row `live`.
-5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping.
-6. If a piece or the deliverable closed, run the end-of-piece check (Step 6). Hand back to plan-coordinator with the Step 7 report; it continues with the next wave.
+`plan-coordinator` invokes this skill with "wave N closed (steps …)" after each wave gate and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`. Read the progress file (never edit it), find the deliverable, decide which pieces closed, record per § Piece or step closed, and hand back to plan-coordinator with the Step 7 report. Never infer the integrated word without a SHA that is on the integration branch. Full procedure: `events.md` § Events from plan-coordinator.
 
 ### Step 5: Run the vendored checker
 
@@ -140,27 +148,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 ### Step 6: Revision
 
-Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks.
-
-1. **Propose** strategy vN+1 in the conversation, without writing it: the new version (minor bump, `1.0` → `1.1`, unless the user wants a major one for a changed objective or phases), the `DEC` IDs it absorbs, each section that changes with one line on how, card changes (pieces, acceptance, `reqs`, priority), and requirement or coverage changes. Checklist: `events.md` § End of piece or phase. If nothing needs changing, say so; the user may still ask for a revision.
-2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the § End of piece or phase checklist). The contradiction warning stays and the run may end with it.
-3. **On approval:** update the `version` anchor (`<!-- roadmap:version <N+1> <date> -->`) and the title; add a changelog entry (newest first) listing the absorbed `DEC`; edit the changed sections and cite each absorbed `DEC` ID where it applies; regenerate "Where we are" from `state.md` and `critical-path.md`; add a version-history row. Then update whatever the revision moved (panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, the `state.md` header line), remove the approval pending item, add a `log` row "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, and rerun Step 5.
-4. **Rejected:** the user may change the decision instead; that is a new decision (§ Decision, superseding the old one).
-
-### Step 7: Hand back
-
-Reply with this, short:
-
-```
-Roadmap: <folder> | strategy v<version> | format <n>
-Event: <what was recorded>
-Files changed: <paths> (not committed)
-Recorded: <new IDs and log rows, one line>
-Checker: <vendored version> -> check-roadmap: <E> error(s), <W> warning(s)
-Warnings: <one line each, or none>
-Awaiting approval: <revision proposal summary, or none>
-Questions: <anything only the user can answer, or none>
-```
+Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). Procedure, proposal format and checklist: `events.md` § End of piece or phase.
 
 ## Red flags
 
