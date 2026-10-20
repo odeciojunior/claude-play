@@ -4,8 +4,10 @@
 // Node instead of jq: a missing jq made the bash version report a pass without checking.
 // Any unexpected error also blocks (a crash would exit 1, which does not block).
 // Checks: 1 valid JSON · 2 top-level fields · 3 owner is an object with name+email ·
-// 4 plugins is a non-empty array · 5 entry required fields · 6 source is a ./plugins/ string (repo policy) ·
-// 7 no duplicate names · 8 plugins/<dir>/.claude-plugin/plugin.json exists, name and version match (repo policy) ·
+// 4 plugins is a non-empty array · 5 entry required fields (no version: it lives in plugin.json) ·
+// 6 source is a ./plugins/ string (repo policy) · 7 no duplicate names ·
+// 8 plugins/<dir>/.claude-plugin/plugin.json exists, name matches, and the entry has no version (repo policy:
+//   Claude Code uses the plugin.json version over the entry's, so the version is set in one place) ·
 // 9 entry name is kebab-case (repo policy)
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -59,7 +61,7 @@ process.stdin.on('end', () => {
     }
 
     // Check 5: each plugin has the required fields
-    const required = ['name', 'source', 'description', 'version', 'author', 'license', 'keywords', 'category'];
+    const required = ['name', 'source', 'description', 'author', 'license', 'keywords', 'category'];
     const entryErrors = m.plugins
       .map((p) => [p?.name ?? 'unknown', required.filter((k) => !(k in (p ?? {})))])
       .filter(([, miss]) => miss.length)
@@ -79,7 +81,7 @@ process.stdin.on('end', () => {
     const dupes = [...new Set(names.filter((n, i) => names.indexOf(n) !== i))];
     if (dupes.length) block(`Duplicate plugin names: ${dupes.join(', ')}`);
 
-    // Check 8: each local plugin.json exists and agrees with the entry (repo policy)
+    // Check 8: each local plugin.json exists, the name agrees, and the entry carries no version (repo policy)
     const root = dirname(dirname(file));
     const syncErrors = [];
     for (const p of m.plugins) {
@@ -88,8 +90,8 @@ process.stdin.on('end', () => {
       let manifest;
       try { manifest = JSON.parse(readFileSync(pj, 'utf8')); } catch { syncErrors.push(`${p.name}: plugin.json is not valid JSON`); continue; }
       if (manifest?.name !== p.name) syncErrors.push(`${p.name}: name differs from plugin.json (${manifest?.name})`);
-      if ('version' in p && manifest?.version !== p.version) {
-        syncErrors.push(`${p.name}: version ${p.version} differs from plugin.json (${manifest?.version})`);
+      if ('version' in p) {
+        syncErrors.push(`${p.name}: remove "version" from the entry; it lives in plugin.json only (repo policy)`);
       }
     }
     if (syncErrors.length) block(`marketplace.json out of sync with plugin.json (repo policy): ${syncErrors.join('; ')}`);

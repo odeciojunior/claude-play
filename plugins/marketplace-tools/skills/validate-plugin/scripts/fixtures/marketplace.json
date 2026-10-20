@@ -2,6 +2,6 @@
   "name": "fixture-marketplace",
   "owner": { "name": "Test" },
   "plugins": [
-    { "name": "valid", "source": "./valid", "description": "fixture", "version": "1.0.0" }
+    { "name": "valid", "source": "./valid", "description": "fixture" }
   ]
 }

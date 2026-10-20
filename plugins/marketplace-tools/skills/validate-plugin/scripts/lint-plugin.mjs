@@ -351,10 +351,28 @@ export function lintPlugin(dir, { marketplace } = {}) {
       } else {
         ok('Registered in marketplace.json');
         if (entry.version !== undefined) {
-          if (entry.version === pj.version) ok('Marketplace version matches plugin.json');
-          else add('FAIL', 'Marketplace version matches plugin.json', `marketplace ${entry.version} vs plugin.json ${pj.version}`);
+          add('FAIL', 'Marketplace entry has no version', `entry sets version ${entry.version}; drop it (repo policy: version lives in plugin.json, which wins)`);
+        } else {
+          ok('Marketplace entry has no version');
         }
       }
+    }
+
+    // README table row must carry the plugin.json version (drift guard)
+    const mpDir = path.dirname(mpPath);
+    const repoRoot = path.basename(mpDir) === '.claude-plugin' ? path.dirname(mpDir) : mpDir;
+    const rdPath = path.join(repoRoot, 'README.md');
+    const prefix = `| [${pj.name}](`;
+    const row = isFile(rdPath)
+      ? readText(rdPath).split(/\r?\n/).find((l) => l.trimStart().startsWith(prefix))
+      : undefined;
+    if (!row) {
+      add('WARN', 'README version matches plugin.json', `no table row starting with "${prefix}" in ${rdPath}`);
+    } else {
+      const cells = row.trim().replace(/^\||\|$/g, '').split('|');
+      const last = cells[cells.length - 1].trim();
+      if (last === pj.version) ok('README version matches plugin.json');
+      else add('FAIL', 'README version matches plugin.json', `README row says ${last}, plugin.json says ${pj.version}`);
     }
   }
 

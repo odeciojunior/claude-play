@@ -33,7 +33,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/lint-plugin.mjs" plugins/<name>
 
 If `${CLAUDE_SKILL_DIR}` was not substituted (the path is empty or still contains the literal `${CLAUDE_SKILL_DIR}`) and you are inside the claude-play repository, run `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/<name>` instead.
 
-Include its `[OK]`, `[WARN]` and `[FAIL]` lines verbatim in the report and add its counts to the total (ignore its own `Result:` line). The script covers: directory and plugin name, required plugin.json fields (repo policy), SKILL.md frontmatter keys and values, SKILL.md and reference length, reference depth, agent frontmatter, `hooks.json`, `.mcp.json`, plugin-root `CLAUDE.md`, writes into `${CLAUDE_PLUGIN_ROOT}`, README, and marketplace registration and version. Exit code 1 means at least one FAIL.
+Include its `[OK]`, `[WARN]` and `[FAIL]` lines verbatim in the report and add its counts to the total (ignore its own `Result:` line). The script covers: directory and plugin name, required plugin.json fields (repo policy), SKILL.md frontmatter keys and values, SKILL.md and reference length, reference depth, agent frontmatter, `hooks.json`, `.mcp.json`, plugin-root `CLAUDE.md`, writes into `${CLAUDE_PLUGIN_ROOT}`, README, and marketplace registration (an entry that still sets `version` is a FAIL: repo policy keeps it in plugin.json), and that the root `README.md` table row carries the plugin.json version (FAIL on mismatch, WARN if the row is missing). Exit code 1 means at least one FAIL.
 
 ### Step 2: Judgment checks
 

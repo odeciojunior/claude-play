@@ -34,7 +34,7 @@ function runHook(marketplaceText, pluginJsons = {}, stdin = HOOK_INPUT) {
 }
 
 const entry = (over = {}) => ({
-  name: 'alpha', source: './plugins/alpha', description: 'd', version: '1.0.0',
+  name: 'alpha', source: './plugins/alpha', description: 'd',
   author: { name: 'a' }, license: 'MIT', keywords: ['k'], category: 'c', ...over,
 });
 const market = (over = {}) => ({
@@ -90,10 +90,18 @@ test('entry name differing from plugin.json blocks', () => {
   assert.match(r.reason, /name/);
 });
 
-test('entry version differing from plugin.json blocks', () => {
-  const r = run(market(), plugin({ version: '2.0.0' }));
+test('entry without version passes', () => {
+  const r = run(market({ plugins: [entry()] }));
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, '');
+});
+
+test('entry with version is rejected (repo policy: version lives in plugin.json)', () => {
+  const r = run(market({ plugins: [entry({ version: '1.0.0' })] }));
+  assert.equal(r.code, 0);
   assert.equal(r.decision, 'block');
   assert.match(r.reason, /version/);
+  assert.match(r.reason, /plugin\.json/);
 });
 
 test('missing plugin.json blocks', () => {

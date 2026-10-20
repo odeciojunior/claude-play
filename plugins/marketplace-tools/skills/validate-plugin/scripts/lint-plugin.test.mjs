@@ -310,17 +310,45 @@ test('not in marketplace -> WARN', () => {
   assert.ok(has(lint(dir, mp), 'WARN', 'marketplace'));
 });
 
-test('marketplace version differs -> FAIL', () => {
-  const dir = fresh();
-  mutatePluginJson(dir, (j) => { j.version = '2.0.0'; });
-  assert.ok(has(lint(dir), 'FAIL', 'version'));
-});
-
-test('marketplace entry without version -> no version FAIL', () => {
+test('registered entry without version -> OK', () => {
   const dir = fresh();
   const mp = path.join(path.dirname(dir), 'mp.json');
   fs.writeFileSync(mp, JSON.stringify({ name: 'm', plugins: [{ name: 'valid', source: './valid' }] }));
-  assert.deepEqual(lint(dir, mp).filter((x) => x.level !== 'OK'), []);
+  fs.writeFileSync(path.join(path.dirname(dir), 'README.md'), readmeWith('1.0.0'));
+  const r = lint(dir, mp);
+  assert.deepEqual(r.filter((x) => x.level !== 'OK'), []);
+  assert.ok(has(r, 'OK', 'Registered in marketplace.json'));
+});
+
+test('entry that still has version -> FAIL (repo policy: drop it; plugin.json wins)', () => {
+  const dir = fresh();
+  const mp = path.join(path.dirname(dir), 'mp.json');
+  fs.writeFileSync(mp, JSON.stringify({ name: 'm', plugins: [{ name: 'valid', source: './valid', version: '1.0.0' }] }));
+  const r = lint(dir, mp);
+  assert.ok(has(r, 'FAIL', 'Marketplace entry has no version'));
+});
+
+// README row drift guard: <root>/README.md row "| [name](" last cell must equal plugin.json version
+const readmeWith = (v) => `| Plugin | Version |\n|---|---|\n| [valid](plugins/valid/) | desc | cat | ${v} |\n`;
+function withReadme(text) {
+  const dir = fresh();
+  const mp = path.join(path.dirname(dir), 'mp.json');
+  fs.writeFileSync(mp, JSON.stringify({ name: 'm', plugins: [{ name: 'valid', source: './valid' }] }));
+  if (text !== null) fs.writeFileSync(path.join(path.dirname(dir), 'README.md'), text);
+  return lint(dir, mp);
+}
+
+test('README row version matches plugin.json -> OK', () => {
+  assert.ok(has(withReadme(readmeWith('1.0.0')), 'OK', 'README version'));
+});
+
+test('README row version differs -> FAIL', () => {
+  assert.ok(has(withReadme(readmeWith('0.9.0')), 'FAIL', 'README version'));
+});
+
+test('README row missing -> WARN', () => {
+  assert.ok(has(withReadme('# nothing here\n'), 'WARN', 'README version'));
+  assert.ok(has(withReadme(null), 'WARN', 'README version'));
 });
 
 // ---------- parseFrontmatter ----------

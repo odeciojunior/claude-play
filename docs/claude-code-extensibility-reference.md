@@ -124,7 +124,6 @@ Directory-listing fields (`icon`, `documentationUrl`, `supportUrl`, `privacyPoli
       "name": "plugin-name",
       "source": "./plugins/plugin-name",
       "description": "Brief plugin description",
-      "version": "1.0.0",
       "category": "developer-tools",
       "tags": ["extra", "tags"],
       "strict": true
@@ -135,7 +134,7 @@ Directory-listing fields (`icon`, `documentationUrl`, `supportUrl`, `privacyPoli
 
 **Required top-level fields**: `name`, `owner` (`owner.name` required), `plugins`. Each entry requires `name` and `source`. Unknown keys are ignored at load and reported as validate warnings. Optional top-level: `description`, `version`, `metadata.{description,version,pluginRoot}`, `forceRemoveDeletedPlugins`, `allowCrossMarketplaceDependenciesOn`, `renames`.
 
-**Entry fields**: an entry accepts every `plugin.json` field (except the directory-listing fields) plus `category`, `tags`, `strict`, `relevance`, `headers`, `headersHelper`. When both set `version`, `plugin.json` wins. The entry's `defaultEnabled` and display fields (`displayName`, `description`, `author`, …) override `plugin.json`.
+**Entry fields**: an entry accepts every `plugin.json` field (except the directory-listing fields) plus `category`, `tags`, `strict`, `relevance`, `headers`, `headersHelper`. When both set `version`, `plugin.json` wins (the docs advise setting it in one place only; repo policy: `plugin.json` only, entries omit `version`). The entry's `defaultEnabled` and display fields (`displayName`, `description`, `author`, …) override `plugin.json`.
 
 **Plugin source types**:
 

@@ -77,6 +77,7 @@ Push your branch and open a PR against `main`. The PR template will guide you th
 - Use kebab-case: `my-plugin-name`
 - Directory name must match `plugin.json` `name` field
 - The `marketplace.json` entry name must equal the `plugin.json` name
+- The `marketplace.json` entry has no `version`: the version lives in `plugin.json` (and the root README table)
 - Reserved names (`claude plugin validate` rejects them): the prefixes `claude-`, `anthropic-`, `anthropics-` and `cc-plugin-`; the exact names `claude`, `anthropic`, `anthropics`, `claude-code` and `claude-mods`; and names combining "official" with claude or anthropic
 - Be descriptive but concise
 

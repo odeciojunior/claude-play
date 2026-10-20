@@ -107,7 +107,6 @@ Read `.claude-plugin/marketplace.json`, add a new entry to the `plugins` array:
   "name": "<name>",
   "source": "./plugins/<name>",
   "description": "<description>",
-  "version": "1.0.0",
   "author": {
     "name": "Odecio Machado",
     "email": "odeciojunior@gmail.com"
@@ -118,6 +117,8 @@ Read `.claude-plugin/marketplace.json`, add a new entry to the `plugins` array:
   "tags": []
 }
 ```
+
+Do not put `version` in the entry: repo policy keeps it in `plugin.json` only (Claude Code uses the `plugin.json` value over any marketplace value).
 
 ### Step 8: Register in README and diagrams
 

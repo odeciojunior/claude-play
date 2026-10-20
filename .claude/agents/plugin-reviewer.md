@@ -46,7 +46,7 @@ Run these 9 checks and report each as OK, WARN, or FAIL:
 
 **Check 7: Plugin registered in marketplace.json (WARN if not)**
 - Check `.claude-plugin/marketplace.json` for a matching plugin entry (WARN if missing)
-- If the entry has a `version`, it must equal the `version` in plugin.json (FAIL if different)
+- FAIL if the entry has a `version` (repo policy: the version lives in plugin.json, which Claude Code uses over any marketplace value)
 
 **Check 8: Agent files valid (FAIL)**
 - Glob `plugins/<name>/agents/*.md` (skip this check as OK if the directory does not exist)
@@ -138,7 +138,7 @@ Structure your review EXACTLY like this:
 [OK]   README.md exists and is non-empty
 [OK]   No hardcoded paths found
 [OK]   No sensitive data patterns found
-[WARN] Plugin not registered in marketplace.json (or entry version matches plugin.json)
+[WARN] Plugin not registered in marketplace.json
 [OK]   Agent files valid (N agents)
 [OK]   No ignored plugin-agent fields
 
