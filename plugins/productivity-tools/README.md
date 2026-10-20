@@ -13,14 +13,14 @@ claude plugin install productivity-tools@claude-play
 
 | Skill | Trigger | Description |
 |-------|---------|-------------|
-| deep-researcher | "in-depth investigation", technical deep-dives, market analysis, competitive intelligence, architectural research | Multi-source internet research producing structured reports |
+| deep-researcher | in-depth investigation, technical deep-dives, market or competitive analysis, architectural research | Multi-source research on authoritative sources, written as a cited Markdown report |
 | plan-coordinator | executing a multi-step plan from `docs/plans/` or `docs/superpowers/plans/` with subagents, per-step model-tier routing, resuming from the progress file | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
-| report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT analysis and strategic roadmap from reports |
+| report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT, gap and risk analysis of an existing report, turned into a phased roadmap document. No extra dependencies |
 | roadmap-planner | "plan the roadmap for X", "break this initiative into deliverables", "we need a roadmap" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker. Full mode for multi-week initiatives, light mode for small ones |
 | roadmap-tracker | an existing roadmap folder (`roadmap.config.json`) after an event: a decision (DEC), blocker (BLQ), closed piece or wave, status request | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
-| mermaid-designer | any visual diagram, chart, or flowchart embedded in Markdown | Mermaid diagram generation for documentation |
-| excalidraw-designer | hand-drawn style diagrams, whiteboards, mind maps, wireframes as `.excalidraw` files | Hand-drawn style diagrams and visual whiteboards (.excalidraw files) |
-| wsl-health-check | "check system health", "run a health report", "is the machine healthy" | System health report and diagnosis of the machine |
+| mermaid-designer | a diagram in Markdown or a Mermaid code block (flowchart, sequence, ER, state, class, Gantt, C4) | Mermaid diagram generation for documentation |
+| excalidraw-designer | an `.excalidraw` file or a hand-drawn, sketch or whiteboard look (architecture, flowcharts, mind maps, wireframes) | Hand-drawn style diagrams (.excalidraw files), checked by the bundled Node validator `scripts/validate-excalidraw.mjs` |
+| wsl-health-check | a system or WSL health check, a health report, "is the Linux/WSL machine healthy" | WSL/Linux only. Runs the bundled `scripts/health-report.sh` (no separate install) and summarizes disk, memory, network and services. Key services come from `HEALTH_KEY_SERVICES` (space-separated, default `cron`); `--check-services "<names>"` overrides them for one run |
 
 ## Pipeline
 
@@ -55,7 +55,8 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 ## Prerequisites
 
 - Claude Code with plugin support
-- Node.js >= 18 for the roadmap checker (roadmap-planner, roadmap-tracker)
+- Node.js >= 18 for the roadmap checker (roadmap-planner, roadmap-tracker) and the Excalidraw validator (excalidraw-designer)
+- A WSL/Linux shell for wsl-health-check
 - No other tools or setup required
 
 ## License
