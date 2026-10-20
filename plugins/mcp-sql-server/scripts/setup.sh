@@ -250,7 +250,7 @@ detect_env() {
     local env_file=""
     local db_vars=("DB_HOST" "DB_USER" "DB_PASSWORD" "DB_NAME" "DB_DATABASE" "DB_PORT" "DB_ENCRYPT" "DB_TRUST_CERT")
 
-    # Search starting directory and up to 5 parent levels (6 locations total)
+    # Search the starting directory and up to 4 parent levels (5 locations total)
     local dir="$search_path"
     for _ in 1 2 3 4 5; do
         if [[ -f "$dir/.env" ]]; then
@@ -402,6 +402,10 @@ print_entry() {
     fi
 
     db_password=$(resolve_password "$db_password") || exit 1
+    if [[ -z "$db_password" ]]; then
+        echo "ERROR: A password argument is required (use env:DB_PASSWORD)." >&2
+        exit 1
+    fi
 
     local entry
     entry=$(build_entry "$python_path" "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_driver" "$db_encrypt" "$db_trust_cert")
@@ -426,7 +430,6 @@ register_mcp_json() {
     local db_encrypt="${9:-false}"
     local db_trust_cert="${10:-false}"
 
-    # db_password intentionally not required (valid for Windows Auth / trusted connections)
     if [[ -z "$mcp_json_path" || -z "$python_path" || -z "$db_host" || -z "$db_user" || -z "$db_name" ]]; then
         echo "ERROR: Missing required arguments."
         echo "Usage: setup.sh register-mcp-json <mcp-json-path> <python-path> <host> <port> <user> <password> <name> [driver] [encrypt] [trust_cert]"
@@ -434,6 +437,10 @@ register_mcp_json() {
     fi
 
     db_password=$(resolve_password "$db_password") || exit 1
+    if [[ -z "$db_password" ]]; then
+        echo "ERROR: A password argument is required (use env:DB_PASSWORD)." >&2
+        exit 1
+    fi
 
     # Build the new MCP server entry as JSON
     local new_entry
@@ -489,6 +496,7 @@ process.stdout.write(JSON.stringify(doc, null, 2) + '\n');
 
 ensure_gitignore() {
     # Usage: ensure-gitignore <project-dir> <pattern>
+    # Legacy (<=1.2.3 project-private flow): no longer used by the skill; kept for backward compatibility.
     # Ensures the given pattern exists in .gitignore (creates file if needed)
     local project_dir="${1:-}"
     local pattern="${2:-}"
@@ -618,7 +626,7 @@ case "${1:-}" in
     print-entry)        shift; print_entry "$@" ;;
     ensure-gitignore)   ensure_gitignore "${2:-}" "${3:-}" ;;
     *)
-        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|python-path|print-entry <args...>|detect-env [path]|register-mcp-json <args...>|add-database <args...>|ensure-gitignore <dir> <pattern>}"
+        echo "Usage: setup.sh {check-python|check-odbc|install-venv|verify-install|python-path|print-entry <args...>|detect-env [path]|register-mcp-json <args...>|add-database <args...>|ensure-gitignore <dir> <pattern> (legacy, <=1.2.3 project-private flow)}"
         exit 1
         ;;
 esac

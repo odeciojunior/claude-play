@@ -97,7 +97,7 @@ Restart Claude Code after adding a database.
 **Adding one manually:**
 
 ```bash
-bash scripts/setup.sh add-database .mcp.json <alias> <host> <port> <user> env:DB_<ALIAS>_PASSWORD <name> [driver] [encrypt] [trust_cert]
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" add-database "<project>/.mcp.json" <alias> <host> <port> <user> env:DB_<ALIAS>_PASSWORD <name> [driver] [encrypt] [trust_cert]
 ```
 
 `env:NAME` makes the script write the placeholder `${NAME}`; then set `NAME` in your environment. This edits a project `.mcp.json`; for local or user scope, re-run the setup wizard instead of editing `~/.claude.json` by hand.
@@ -151,8 +151,8 @@ claude plugin install sql-server-tools@claude-play
 | Python not found | Install Python 3.10+ from https://python.org |
 | ODBC driver missing | Follow the platform-specific instructions shown during setup |
 | pip install fails | Check internet connectivity; the package installs from GitHub |
-| Fix or change not picked up | Re-run setup (or `bash scripts/setup.sh install-venv`) — it force-reinstalls and prints the installed commit. Restart Claude Code afterwards |
-| MCP registration fails | Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server` and re-run |
+| Fix or change not picked up | Re-run setup (or `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" install-venv`) — it force-reinstalls and prints the installed commit. Restart Claude Code afterwards |
+| MCP registration fails | Run `claude mcp list` to check for conflicts, then `claude mcp remove mcp-sql-server --scope <local\|user\|project>` (the scope you registered it with) and re-run |
 | `Missing environment variables: DB_PASSWORD`, login fails | Set `DB_PASSWORD` and restart Claude Code from a new window (on Windows `setx` affects only new windows) |
 | Project server never starts | Approve it on launch; `claude mcp reset-project-choices` asks again |
 | Connection errors | Verify credentials, network access, and that SQL Server accepts remote connections |

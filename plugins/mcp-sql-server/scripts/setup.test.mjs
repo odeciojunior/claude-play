@@ -159,8 +159,17 @@ test('literal password values are still accepted', () => {
   const r = run(tmpHome(), ['print-entry', PY, 'h', '1433', 'u', 'p@ss$word', 'n']);
   assert.equal(r.code, 0, r.err);
   assert.equal(JSON.parse(r.out).env.DB_PASSWORD, 'p@ss$word');
-  const e = run(tmpHome(), ['print-entry', PY, 'h', '1433', 'u', '', 'n']);
-  assert.equal(JSON.parse(e.out).env.DB_PASSWORD, '');
+});
+
+test('empty password is rejected by print-entry and register-mcp-json', () => {
+  const home = tmpHome();
+  const mcp = path.join(home, 'e.json').split(BS).join('/');
+  const a = run(home, ['print-entry', PY, 'h', '1433', 'u', '', 'n']);
+  assert.equal(a.code, 1);
+  assert.match(a.err, /password/i);
+  const b = run(home, ['register-mcp-json', mcp, PY, 'h', '1433', 'u', '', 'n']);
+  assert.equal(b.code, 1);
+  assert.match(b.err, /password/i);
 });
 
 function detect(content) {
