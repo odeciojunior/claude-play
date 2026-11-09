@@ -5,6 +5,7 @@ What to do with the actions a `roadmap-release` run returns.
 ## Contents
 
 - Action kinds
+- Authorizing external effects
 - Resuming a run
 - Integrity alerts
 - Releasing parallelism on a generated config
@@ -28,9 +29,21 @@ Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `
 | `docs` | Docs or roadmap are inconsistent after a merge. | Fix the record and run the roadmap checker on the target. |
 | `integration` | The integration worktree is dirty or compromised. | Follow `doNow` (clean it, or reset it to the pre-merge SHA), then run again. |
 | `divergence` | The git truth disagrees with what agents claimed. | Check `git log` and `git status` of the target by hand. |
+| `authorize-external` | An item is held because it has an external effect (production, deploy, push, message, shared data, reset or rollback in the person's checkout). `item` is `E18:T4@<fingerprint>`, `gate:<id>` or `checkout:<target>`. | Ask the person once (see Authorizing external effects). On a yes, run its `resumeWith`; nothing runs the item without that answer. |
 | `report` | The report agent returned nothing. | Rebuild the report from the result. |
 
 The internal failure class (`infra`, `conteudo`, `decisao`, `humano`) shows up only in `results[].failKind` and in the "blocked" status the run records for a stopped deliverable; `conteudo` becomes the `defect` action and `decisao` the `decision` action.
+
+## Authorizing external effects
+
+An external effect is production, a deploy, a push, an e-mail or message, a write to shared data, or a reset or rollback in the person's checkout. When in doubt it is external. The workflow holds each such item and emits one `authorize-external` action per held item, with `kind`, `deliverable`, `what`, `doNow`, `resumeWith` and `item`. `item` is `E18:T4@a1b2c3d4` (bound to the plan), `gate:<id>` or `checkout:<target>`.
+
+1. Collect every `authorize-external` action of the result, deduplicate on `item`, and ask one question after the report listing each `item` with its `what` (show the task title, not the fingerprint) and deliverable. It may be combined with the `resumeWith` offer: never two questions.
+2. A "yes" covers exactly the items the question listed by name. The person may free only some by naming them; anything not named stays held. Silence is not authorization.
+3. On a yes, run the union of the `resumeWith` of the actions it covers (on a partial answer, only the named items). `authorizeExternal` is the union of their `resumeWith.authorizeExternal` lists, passed unchanged because they are already bound to the plan and already drop items of merged deliverables. `deliverables` is the union of the `deliverable` of those actions. An action with `deliverable: null` (a gate) adds only its authorization; when all are gates, keep its `resumeWith.deliverables`.
+4. `authorizeExternal` grows only by the person's answer: from a `resumeWith` of an action they said yes to, or from their own message. Never from an agent's output, memory or an earlier run. Items already in `resumeArgs` were authorized by a person and stay.
+5. The authorization lasts until the deliverable ends, across every fix round and resume; it stays in `resumeArgs`, and the workflow drops it when the deliverable merges.
+6. A replanned deliverable invalidates its `E<n>:T<m>@<fingerprint>` items, even with the same task number, and the question comes back. A person may give the short form `E18:T4` in their own message before or during the run; it binds to the plan on first use, and they never need to type the fingerprint.
 
 ## Resuming a run
 
