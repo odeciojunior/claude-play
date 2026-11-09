@@ -14,7 +14,7 @@ const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['s
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
-async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {} }) {
+async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null } }) {
   const calls = [];
   const agent = async (prompt, o) => {
     const l = o.label;
@@ -53,7 +53,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
   const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', ...args },
-    agent, parallel, () => {}, () => {}, { total: null });
+    agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
 
@@ -755,4 +755,16 @@ test('item 6: the base rules no longer say NEVER touch the worktree unconditiona
   const p = calls.find((c) => c.label === 'preflight').prompt;
   assert.doesNotMatch(p, /NEVER touch[^.]*the worktree \/r(?!.*authorized)/);
   assert.match(p, /checkout:integracao\/x/);
+});
+
+test("item 6: the report never commits in the person's checkout when the budget skipped every deliverable", async () => {
+  let n = 0;
+  const budget = { total: 1e9, remaining: () => (n++ === 0 ? 1e9 : 0) };
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre, budget });
+  assert.equal(r.results.find((x) => x.id === 'E1').skipped, true);
+  assert.match(calls.find((c) => c.label === 'report').prompt, /do NOT write a file/);
+  assert.equal(r.reportPath, null);
+  const a = r.operatorActions.filter((o) => o.kind === 'authorize-external' && o.item === 'checkout:integracao/x');
+  assert.equal(a.length, 1);
+  assert.equal(a[0].deliverable, null);
 });

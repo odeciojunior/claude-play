@@ -922,6 +922,7 @@ if (MODE === 'run') {
 }
 const FOREIGN = !isOwnWorktree(INTWT, WT)
 const FOREIGN_ITEM = 'checkout:' + TARGET
+const foreignHold = FOREIGN && !authorized(FOREIGN_ITEM)  // the person's checkout stays untouched: no report file, no commit
 const baseTxt = () => GATES.map(d => `${d.name}: ${resultTxt(BASE[d.name])}`).join(' | ')
 const COMMON = () => `${COMMON_BASE}
 ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
@@ -959,7 +960,6 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
-let foreignHold = false  // the person's checkout was left untouched: no report file, no commit
 const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
   if (integBroken) return null
   const r = await agent(`${COMMON()}
@@ -1009,7 +1009,6 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
   }
   // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
   if (FOREIGN && !authorized(FOREIGN_ITEM)) {
-    foreignHold = true
     op('authorize-external', E, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: merging, recording and rolling back there would touch your checkout, so ${E} was not run`,
       `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
       { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM], deliverables: [E] }, { item: FOREIGN_ITEM })
@@ -1642,5 +1641,10 @@ Be factual. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
+if (foreignHold && MODE !== 'plan-only' && !OPS.some(o => o.item === FOREIGN_ITEM)) {
+  op('authorize-external', null, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: nothing was written there, and no execution report file was committed`,
+    `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
+    { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM] }, { item: FOREIGN_ITEM })
+}
 const allOk = slim.every(r => r.merged || r.planOnly)
 return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeFinal, reportPath: report && !integBroken && !foreignHold ? reportPath : null, report })
