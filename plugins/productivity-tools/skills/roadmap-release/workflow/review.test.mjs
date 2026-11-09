@@ -307,9 +307,9 @@ const P4 = loadPure();
 const acCard = [{ id: 'AC1', text: 'works', tag: null }];
 const row = (command, external = true, ac = 'AC1') => ({ ac, kind: 'smoke', command, external, externalDedupe: 'd' });
 
-test('commandKey ignores only one whole wrapper of quotes or backticks and the spaces outside it', () => {
+test('commandKey ignores only one whole wrapper of backticks and the spaces outside it', () => {
   const { commandKey: k } = P4;
-  for (const v of ['npm test', '  npm test ', '`npm test`', '"npm test"', "'npm test'", ' "npm test" ']) assert.equal(k(v), 'npm test', v);
+  for (const v of ['npm test', '  npm test ', '`npm test`', ' `npm test` ']) assert.equal(k(v), 'npm test', v);
   assert.notEqual(k('grep "a  b" f'), k('grep "a b" f'));
   assert.notEqual(k('npm test -- a'), k('npm test -- b'));
   assert.equal(k('echo "a"'), 'echo "a"');
@@ -318,7 +318,7 @@ test('commandKey ignores only one whole wrapper of quotes or backticks and the s
 
 test('evidenceRowGaps: equal rows give no gap, in any order and through a harmless retranscription', () => {
   const { evidenceRowGaps: g } = P4;
-  assert.deepEqual(g(acCard, [row('a'), row('b')], [row('`b`'), row("'a'")]), []);
+  assert.deepEqual(g(acCard, [row('a'), row('b')], [row('`b`'), row(' a ')]), []);
   assert.deepEqual(g(acCard, [{ ac: 'AC1', kind: 'human' }], [{ ac: 'AC1', kind: 'human' }]), []);
   assert.deepEqual(g(acCard, [{ ac: 'AC1: works', kind: 'test', command: 'a', external: false }], [{ ac: 'AC1', kind: 'smoke', command: 'a', external: false }]), []);
 });
@@ -368,9 +368,9 @@ test('fix round 2: commandKey is exact inside the command', () => {
   const differ = [['npm   test', 'npm test'], ['npm\ttest', 'npm test'], ['echo "$(echo "a  b")"', 'echo "$(echo "a b")"'], ["echo $'a\\'  b'", "echo $'a\\' b"], ['printf %s a\\ ', 'printf %s a\\'], ['a\u00a0', 'a'], ['a\t', 'a'], ['a\n', 'a']];
   for (const [x, y] of differ) assert.notEqual(k(x), k(y), JSON.stringify([x, y]));
   assert.equal(k('``npm test``'), '``npm test``', 'only one wrapper, and it must wrap the whole value');
-  assert.equal(k('"`npm test`"'), '`npm test`', 'one wrapper only');
-  assert.equal(k('"a\\"'), '"a\\"', 'an escaped closing quote is not a wrapper');
-  assert.equal(k('" npm test "'), ' npm test ', 'exact inside the wrapper');
+  assert.equal(k('"`npm test`"'), '"`npm test`"', 'quotes are part of the command');
+  assert.equal(k('`a\\`'), '`a\\`', 'an escaped closing backtick is not a wrapper');
+  assert.equal(k('` npm test `'), ' npm test ', 'exact inside the wrapper');
   assert.equal(g([{ id: 'AC1', text: 't', tag: null }], [{ ac: 'AC1', kind: 'smoke', command: '""' }], new Set()).length, 1, 'a wrapper around nothing is no command');
 });
 
@@ -405,4 +405,40 @@ test('minor 1: a request in Portuguese is annotated too', () => {
   const { annotateAuthorizedHuman: a } = P4;
   const cmd = 'node scripts/notify.mjs';
   for (const what of [`Autorização do dono para rodar ${cmd}`, `Aprovação para ${cmd}`, `Permissão de escrita para ${cmd}`]) assert.deepEqual(a([{ what }], [{ item: 'E1:AC3', command: cmd }]), [{ what: what + RAN(cmd) }]);
+});
+
+// ---- leva 3, bloco A
+test('decision 3: quotes are part of the command, in comparison and in dispatch', () => {
+  const { commandKey: k, evidenceRowGaps: g } = P4;
+  for (const v of ['"./my tool"', "'npm test'", '"echo hi"']) assert.equal(k(v), v);
+  assert.notEqual(k('"./my tool"'), k('./my tool'));
+  assert.notEqual(k('"echo hi"'), k('echo hi'));
+  assert.equal(g(acCard, [row('"./my tool"')], [row('"./my tool"')]).length, 0);
+  assert.ok(g(acCard, [row('"./my tool"')], [row('./my tool')]).length >= 1);
+  assert.ok(g(acCard, [row("'a'")], [row('a')]).length >= 1);
+});
+
+test('commandKey changes nothing in a multi-line command', () => {
+  const { commandKey: k } = P4;
+  for (const v of ['cat <<E\nx\nE ', 'cat <<E\nx  ', '  cat <<E\nx\nE', 'a\r\nb ', 'a\n ']) assert.equal(k(v), v, JSON.stringify(v));
+  assert.notEqual(k('cat <<E\nx\nE '), k('cat <<E\nx\nE'));
+  assert.notEqual(k('cat <<E\nx  '), k('cat <<E\nx'));
+  assert.equal(k('`cat <<E\nx\nE `'), 'cat <<E\nx\nE ', 'a whole pair of backticks goes, and nothing else');
+});
+
+test('evidenceGaps: a blank command is no command, with or without a wrapper', () => {
+  const card = [{ id: 'AC1', text: 't', tag: null }];
+  const gaps = (command) => evidenceGaps(card, [{ ac: 'AC1', kind: 'smoke', command }], new Set());
+  for (const v of [' ', '   ', '\t', '\n', '` `', '``', '" "', '""', "' '", "''", ' "  " ']) assert.match(gaps(v)[0]?.description || '', /no evidence command/, JSON.stringify(v));
+  for (const v of ['npm test', '"./my tool"', '`echo x`']) assert.deepEqual(gaps(v), [], v);
+});
+
+test('evidenceGaps: the card tag is compared with the value that is dispatched', () => {
+  const card = [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence: 'npm x' } }];
+  const changed = (command, tag = card) => evidenceGaps(tag, [{ ac: 'AC1', kind: 'smoke', command }], new Set()).some((x) => /changed the command bound by the card tag/.test(x.description));
+  for (const v of ['npm x', ' npm x ', '`npm x`']) assert.equal(changed(v), false, JSON.stringify(v));
+  for (const v of ['npm x' + String.fromCharCode(160), 'npm x' + String.fromCharCode(9), '"npm x"']) assert.equal(changed(v), true, JSON.stringify(v));
+  const tagged = (evidence) => [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence } }];
+  assert.equal(changed('a\\ ', tagged('a\\')), true);
+  assert.equal(changed('cat <<E\nx\nE ', tagged('cat <<E\nx\nE')), true);
 });

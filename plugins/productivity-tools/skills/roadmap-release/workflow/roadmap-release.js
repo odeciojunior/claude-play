@@ -327,12 +327,12 @@ function evidenceGaps(cardAc, planAc, blqIds) {
     if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan (expected ac "${a.id}", the id alone; the plan returned ac values: ${rows.length ? rows.map(p => JSON.stringify(String(p.ac))).join(', ') : 'none'}): ${a.text}`)); continue }
     const t = a.tag
     if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
-    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => VERIFY_EXEC.includes(p.kind) && String(p.command || '').trim() === t.evidence))
+    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => VERIFY_EXEC.includes(p.kind) && commandKey(p.command) === commandKey(t.evidence)))
       out.push(gap(`criterion ${a.id}: the plan changed the command bound by the card tag (${t.evidence})`))
     if (t && (t.kind === 'human' || t.kind === 'blocked') && !mine.some(p => p.kind === t.kind)) out.push(gap(`criterion ${a.id}: the plan replaced the ${t.kind} tag with another kind of evidence`))
   }
   for (const p of rows) {
-    if (VERIFY_EXEC.includes(p.kind) && !commandKey(p.command)) out.push(gap(`criterion ${p.ac} has no evidence command`))
+    if (VERIFY_EXEC.includes(p.kind) && blankCommand(p.command)) out.push(gap(`criterion ${p.ac} has no evidence command`))
     if (p.kind === 'blocked' && !hasBlq(blqIds, p.blq)) out.push(gap(`criterion ${p.ac} marked blocked without a registered blocker (blq=${p.blq || 'empty'})`))
   }
   return out
@@ -669,19 +669,26 @@ function evidenceExternalGaps(cardAc, planAc) {
     ...(p.external === true && !(ids.includes(p.ac) && /^AC[1-9]\d*$/.test(p.ac)) ? [gap(`external evidence row ${p.ac} must use a criterion id of the card (AC<n>), which is what the authorization names`)] : []),
   ])
 }
-// The command as compared and as dispatched. Exact inside: only ASCII spaces around the value go away (never an escaped one), plus one
-// wrapper of matching backticks or quotes around the whole value, which a retranscription adds and which a shell would otherwise execute.
+// The command as compared and as dispatched. Exact inside: on one line only ASCII spaces around the value go away (never an escaped one),
+// and a multi-line value is never trimmed, since the spaces can belong to a heredoc. One pair of backticks around the whole value also goes:
+// a retranscription adds it and a shell would otherwise execute it. Quotes always stay, because "./my tool" means something else without them.
 function commandKey(s) {
   const t = String(s == null ? '' : s)
   const oddSlashes = (x, end) => { let n = 0; while (end - n - 1 >= 0 && x[end - n - 1] === '\\') n++; return n % 2 === 1 }
   let start = 0, end = t.length
-  while (start < end && t[start] === ' ') start++
-  while (end > start && t[end - 1] === ' ' && !oddSlashes(t, end - 1)) end--
+  if (!/[\r\n]/.test(t)) {
+    while (start < end && t[start] === ' ') start++
+    while (end > start && t[end - 1] === ' ' && !oddSlashes(t, end - 1)) end--
+  }
   const v = t.slice(start, end)
-  const c = v[0]
-  if (v.length < 2 || !['`', '"', "'"].includes(c) || v[v.length - 1] !== c) return v
+  if (v.length < 2 || v[0] !== '`' || v[v.length - 1] !== '`') return v
   const inner = v.slice(1, -1)
-  return inner.includes(c) || oddSlashes(v, v.length - 1) ? v : inner
+  return inner.includes('`') || oddSlashes(v, v.length - 1) ? v : inner
+}
+// Nothing a shell could run: empty, only blanks, or quotes around only blanks.
+function blankCommand(s) {
+  const k = commandKey(s).trim()
+  return !k || /^(["'])\s*\1$/.test(k)
 }
 // The blob does not cover the JSON the code runs, so the rows the plan agent transcribed must equal the rows another agent read
 // from the plan file at the measured blob. A row or command on one side only is a defect, never a run.
@@ -1255,7 +1262,7 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
 
 DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}); merge ${mergeCommit}. Only this stage edits the project docs and ${RM}.
 1. Project docs: ${DOCS.instructions || '(no project docs instructions configured: skip this item)'}
-2. Roadmap: use the skill productivity-tools:roadmap-tracker: ${E} with status "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}; evidence: merge ${mergeCommit}, gates ${g.summary}, spec ${specTxt()}, plan ${planTxt()}, reviews ${reviewsTxt()}; remove ${br} from the inflight block; accepted risks and pending human inputs go to pending, all of them, none omitted: ${JSON.stringify([...out.acceptedRisks.map(fmtRisk), ...human.map(h => h.what), ...(out.acOpen || []).map(x => `criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`)])}. Never record a human act (acceptance, go/no-go, credentials) as done.
+2. Roadmap: use the skill productivity-tools:roadmap-tracker: ${E} with status "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}; evidence: merge ${mergeCommit}, gates ${g.summary}, spec ${specTxt()}, plan ${planTxt()}, reviews ${reviewsTxt()}; remove ${br} from the inflight block; accepted risks and pending human inputs go to pending, all of them, none omitted except as the next sentence says: ${JSON.stringify([...out.acceptedRisks.map(fmtRisk), ...human.map(h => h.what), ...(out.acOpen || []).map(x => `criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`)])}. A human item marked "[${RAN_MARK}: ...]" names an external effect this run was authorized for and already ran: when the item asks only for that authorization it is fulfilled, so leave it out of pending; any other need the item states stays open in pending. Never record a human act (acceptance, go/no-go, credentials) as done.
 3. ${NO_REVISION}
 4. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''} and the panel row of ${E} shows "${STATUS_AFTER_MERGE}".` : ''}
 Return statusWritten, commit, details.`,
@@ -1496,7 +1503,9 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of that list whose newest commit in ${TARGET}..HEAD with a subject starting "${E} T<n>:" or "${E} T<n> awaiting person:" is one of the latter (empty list when none).`,
+  // Only this subject ends the wait: a re-run that commits and then fails is still waiting for the person.
+  const effectDone = n => `${E} T${n}: external effect completed`
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).`,
     { label: `${E}:progress`, phase: 'Implementation', schema: S_PROGRESS, model: 'haiku' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -1540,15 +1549,15 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     const state = fromFix ? 'a fix round needs a person first, and the external effect may already have happened' : 'its external effect did not complete; it needs a person first'
     const check = fromFix ? `Check whether the effect already happened before repeating it (externalDedupe: ${t.externalDedupe || 'none declared'}). ` : ''
     op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but ${state}: ${needed}`,
-      `${check}Provide the data (or the decision) and run again passing the answer in notes; the task runs again and any commits it made stay on ${br}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
+      `${check}Provide the data (or the decision) and run again passing the answer in notes; the task runs again and any commits it made stay on ${br}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it. The task stays awaiting until a commit with a subject starting "${effectDone(t.n)}" exists: the run writes it when the task completes, so add it yourself (an empty commit on ${br}) only if you performed the effect by hand.${markWarn}`,
       { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
     return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person, and the external effect may already have happened: ${needed}` : `authorized external task ${t.n} needs a person; its external effect did not complete: ${needed}`)
   }
   // Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again.
   const clearAwaiting = async t => {
-    const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${E} T${t.n}: external effect completed, clears the awaiting-person mark". Change nothing else. Return ok = true only if that commit is now HEAD.`,
+    const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${effectDone(t.n)}, clears the awaiting-person mark". Change nothing else. Return ok = true only if that commit is now HEAD.`,
       { label: `${E}:t${t.n}:clear-awaiting`, phase: 'Implementation', schema: S_MARK, model: 'haiku' }))
-    if (!r || !r.ok) out.concerns.push(`T${t.n}: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on ${br} with a subject starting "${E} T${t.n}: "`)
+    if (!r || !r.ok) out.concerns.push(`T${t.n}: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on ${br} with the subject "${effectDone(t.n)}"`)
   }
   let head = prog.head
   const taskLog = []
@@ -1558,7 +1567,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     const start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const rangeNote = earlier ? ` The range holds this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${E} T${t.n}: external effect completed" or "${E}: review log" are bookkeeping and not extra scope.` : ''
+    const rangeNote = earlier || (resumed && t.external !== false) ? ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.` : ''
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
     // A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
     const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
