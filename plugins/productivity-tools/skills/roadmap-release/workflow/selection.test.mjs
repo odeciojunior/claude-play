@@ -19,9 +19,21 @@ test('ready only takes cards whose dependencies are already on the target', () =
   assert.ok(r.notes.some((n) => n.startsWith('E3:')));
 });
 
-test('cycle returns error', () => {
-  const r = run([card('E1', { deps: ['E2'] }), card('E2', { deps: ['E1'] })], { selector: 'all' });
-  assert.match(r.error, /E1/);
+test('cycle returns error under every selector', () => {
+  const cyc = [card('E1', { deps: ['E2'] }), card('E2', { deps: ['E1'] }), card('E3')];
+  for (const selector of ['next', 'ready', 'all', ['E1', 'E2'], ['E3', 'E1']]) {
+    const r = run(cyc, { selector });
+    assert.match(r.error, /E1/, String(selector));
+    assert.match(r.error, /E2/, String(selector));
+    assert.deepEqual(r.order, []);
+  }
+});
+
+test('a cycle among done cards only is not an error', () => {
+  const done = { onTarget: true, status: 'na-branch' };
+  const r = run([card('E1', { ...done, deps: ['E2'] }), card('E2', { ...done, deps: ['E1'] }), card('E3', { deps: ['E1'] })]);
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.order, ['E3']);
 });
 
 test('blocked card stays out of next with a note', () => {

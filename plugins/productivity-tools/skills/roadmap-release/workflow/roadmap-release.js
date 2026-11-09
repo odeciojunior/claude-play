@@ -29,6 +29,19 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
   const pool = cards.filter(c => (!f.phase || c.phase === f.phase) && (!f.priority || c.priority === f.priority) && (!f.track || c.track === f.track))
   const held = heldBy instanceof Map ? heldBy : new Map(Object.entries(heldBy || {}))
   const override = overrideDonot || []
+  // A dependency cycle among cards still open is an error under every selector.
+  const roots = Array.isArray(selector) ? selector.filter(id => byId[id]) : pool.map(c => c.id)
+  const state = {}
+  const stack = []
+  const visit = id => {
+    if (state[id] === 2 || !byId[id] || done(byId[id])) return null
+    if (state[id] === 1) return stack.slice(stack.indexOf(id))
+    state[id] = 1; stack.push(id)
+    for (const d of byId[id].deps) { const cyc = visit(d); if (cyc) return cyc }
+    stack.pop(); state[id] = 2
+    return null
+  }
+  for (const id of roots) { const cyc = visit(id); if (cyc) return fail('ciclo ou dependência inválida entre: ' + cyc.join(', ')) }
   const sel = selector === undefined || selector === null ? 'next' : selector
   const want = new Set()
   if (Array.isArray(sel)) {
