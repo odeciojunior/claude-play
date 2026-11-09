@@ -778,7 +778,7 @@ const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, read
 log(`selection: ${order.join(' -> ') || '(empty)'}${picked.skipped.length ? ` | skipped: ${picked.skipped.map(s => s.id).join(', ')}` : ''}`)
 if (MODE === 'run' && order.length && interrupted.length) {
   const resumeWith = { ...A, deliverables: [...interrupted, ...order] }
-  for (const id of interrupted) op('unfinished-merge', id, `the merge of ${id} is on ${TARGET} without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target`, `Run again with ${id} in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge`, resumeWith)
+  for (const id of interrupted) op('unfinished-merge', id, `the merge of ${id} is on ${TARGET} without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target`, `Run again with ${id} in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge. That validation replaces the panel row with the post-merge status, so an open blocker note or per-piece status on that row is lost. If the merge was already validated, keep the row instead: write its Status cell as "code: ${STATUS_AFTER_MERGE}; <the existing segments>", which the workflow reads as finished, then run again`, resumeWith)
   return mkResult('needs-operator', { selection, resumeArgs: resumeWith })
 }
 if (MODE === 'dry-run' || !order.length) return mkResult(order.length ? 'done' : 'partial', { selection })
@@ -850,7 +850,7 @@ if (MODE === 'run') {
   if (red.length && !ACCEPT_RED) {
     op('preflight:red-baseline', null, `baseline of ${TARGET} is red in: ${red.join(', ')}`,
       zeroTestGates(GATES, BASE).length
-        ? `Fix the command of ${zeroTestGates(GATES, BASE).join(', ')} so it runs tests, or set kind: exit on it in release.config.json if it is not a test suite. A tests gate that measures no tests fails on every deliverable, so a red baseline cannot be accepted for it`
+        ? `Fix the command of ${zeroTestGates(GATES, BASE).join(', ')} so it runs tests, or set kind: exit on it in release.config.json if it is not a test suite. An explicitly accepted red baseline is honoured, but a tests gate with total 0 fails any deliverable that adds no tests`
         : 'Fix the target (or the environment) before running; with a red baseline the matching gates stop blocking regressions. To accept it anyway, pass acceptRedBaseline:true', { ...A })
     return mkResult('needs-operator', { selection })
   }

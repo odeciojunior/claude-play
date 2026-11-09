@@ -534,3 +534,26 @@ test('m9: meta and selection messages are in English, and every phase used is de
   const un = await exec({ cards: [card('E1')], deliverables: ['E9'] });
   assert.match(un.r.error, /unknown deliverables: E9/);
 });
+
+const EXIT_LOSS = /replaces the panel row with the post-merge status/;
+
+test('the selection stop states what the exit does to the panel row and the exact alternative', async () => {
+  const { r } = await exec({ cards: three(), deliverables: ['E2', 'E3'] });
+  const doNow = r.operatorActions.find((x) => x.kind === 'unfinished-merge').doNow;
+  assert.match(doNow, EXIT_LOSS);
+  assert.match(doNow, /blocker note or per-piece status/);
+  assert.ok(doNow.includes('code: e; <the existing segments>'));
+  const guide = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'references', 'operator.md'), 'utf8');
+  assert.match(guide, EXIT_LOSS);
+  assert.ok(guide.includes('code: <post-merge status>; <the existing segments>'));
+});
+
+test('the zero-test wording says an accepted red baseline is honoured but such a gate fails deliverables that add no tests', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: redBase(gm('abc1234', { total: 0 })) });
+  const doNow = r.operatorActions.find((x) => x.kind === 'preflight:red-baseline').doNow;
+  assert.match(doNow, /fails any deliverable that adds no tests/);
+  assert.doesNotMatch(doNow, /cannot be accepted/);
+  const cfg = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'references', 'config.md'), 'utf8');
+  assert.match(cfg, /explicit .acceptRedBaseline. is honoured, but a .tests. gate with total zero fails any deliverable that adds no tests/);
+  assert.doesNotMatch(cfg, /fails on every deliverable/);
+});

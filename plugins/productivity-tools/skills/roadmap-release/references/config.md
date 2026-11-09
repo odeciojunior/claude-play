@@ -38,7 +38,7 @@ Each gate is `{ name, cmd, kind, needsLock?, invariant?, ignoreFailuresWhenChang
 - `invariant` marks a project invariant, such as schema drift or migration policy. It has no baseline.
 - `ignoreFailuresWhenChanged` describes exceptions, such as a smoke test that exercises old code.
 
-A red baseline stops the preflight: an `exit` gate with a non-zero code, a `tests` gate with total zero, or a violated invariant, unless `acceptRedBaseline` is set. A `tests` gate with total zero fails on every deliverable even when accepted, so fix its command or set `kind: exit`. A gate is green when its failing names are a subset of the baseline and the counts do not drop.
+A red baseline stops the preflight: an `exit` gate with a non-zero code, a `tests` gate with total zero, or a violated invariant, unless `acceptRedBaseline` is set. An explicit `acceptRedBaseline` is honoured, but a `tests` gate with total zero fails any deliverable that adds no tests, so fix the gate or set `kind: exit`. A gate is green when its failing names are a subset of the baseline and the counts do not drop.
 
 ## Generated config
 
