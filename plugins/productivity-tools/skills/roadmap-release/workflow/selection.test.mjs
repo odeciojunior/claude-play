@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { cleanSlug, selectDeliverables, isUnfinished } = loadPure();
+const { cleanSlug, selectDeliverables, isUnfinished, onTargetEffective } = loadPure();
 const statuses = { onBranch: 'na-branch', integrated: ['integrada', 'publicada'], blocked: 'bloqueada', discarded: 'descartada' };
 const card = (id, o = {}) => ({ id, phase: 'p1', track: 't', priority: 'P1', deps: [], status: 'planejada', onTarget: false, mergeFound: false, mergeSha: '', ...o });
 const run = (cards, o = {}) => selectDeliverables({ cards, statuses, selector: 'next', ...o });
@@ -131,4 +131,12 @@ test('I5: zeroTestGates names the tests gates that measured no tests', () => {
   const defs = [{ name: 'a', kind: 'tests' }, { name: 'b', kind: 'exit' }, { name: 'c', kind: 'tests' }, { name: 'd', kind: 'tests', invariant: true }];
   const base = { a: { ran: true, exit: 0, total: 0 }, b: { ran: true, exit: 1 }, c: { ran: true, exit: 0, total: 4 }, d: { ran: true, exit: 0 } };
   assert.deepEqual(zeroTestGates(defs, base), ['a']);
+});
+
+test('item 2: onTargetEffective trusts onTarget only for finished or on-branch statuses', () => {
+  assert.equal(onTargetEffective({ onTarget: true, mergeFound: false, status: 'planejada' }, statuses), false);
+  assert.equal(onTargetEffective({ onTarget: true, mergeFound: false, status: 'integrada' }, statuses), true);
+  assert.equal(onTargetEffective({ onTarget: true, mergeFound: false, status: 'na-branch' }, statuses), true);
+  assert.equal(onTargetEffective({ onTarget: true, mergeFound: true, status: 'executando' }, statuses), true);
+  assert.equal(onTargetEffective({ onTarget: false, mergeFound: false, status: 'integrada' }, statuses), false);
 });

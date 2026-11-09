@@ -809,3 +809,24 @@ test('item 1: a resume that throws also stops new merges', async () => {
   assert.ok(e1.skipped);
   assert.match(e1.error, /compromised/);
 });
+
+test('item 2: piece 1 integrated and piece 2 spec is not done', async () => {
+  const { r } = await exec({ cards: [card('E1', { status: 'piece 1: integrada; piece 2: spec', onTarget: true })], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.ok(r.selection.order.includes('E1'));
+});
+
+test('item 2: a spec row citing a commit of the main is not done', async () => {
+  const { r } = await exec({ cards: [card('E2', { status: 'spec', onTarget: true })], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.ok(r.selection.order.includes('E2'));
+});
+
+test('item 2: a finished code segment still counts', async () => {
+  const { r } = await exec({ cards: [card('E3', { status: 'code: integrada; acceptance: blocked (BLQ-2)', onTarget: true, mergeFound: true, mergeSha: 'm' })], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.ok(!r.selection.order.includes('E3'));
+});
+
+test('item 2: the discovery prompt restricts the ancestor rule', async () => {
+  const { calls } = await exec({ cards: [card('E1')], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.match(calls[0].prompt, /several pieces/);
+  assert.match(calls[0].prompt, /ONLY when the code segment is finished/);
+});
