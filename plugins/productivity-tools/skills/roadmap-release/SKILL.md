@@ -1,6 +1,6 @@
 ---
 name: roadmap-release
-description: "Executa entregas E<n> de um roadmap acompanhado: descoberta, spec, plano, tarefas com revisão dupla, revisão final, gates contra baseline, merge serializado com rollback, docs e roadmap - Automatizar uma ou mais entregas de docs/plans/roadmap-*/. Exemplos de args: {\"deliverables\":[\"E18\"],\"targetBranch\":\"release/2026-11-24\"} | {\"deliverables\":\"next\",\"phase\":\"r1-1\"} | {\"mode\":\"dry-run\"} | {\"mode\":\"plan-only\",\"deliverables\":[\"E19\"]}"
+description: "Use when the user wants to run one or more roadmap deliverables (E<n>) from a tracked roadmap folder docs/plans/roadmap-*/ end to end, or says \"run E18\", \"execute the next deliverable\", \"release dry-run\", \"plan-only E19\"."
 ---
 
 # Roadmap Release
