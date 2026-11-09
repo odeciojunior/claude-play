@@ -18,7 +18,15 @@ const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta'
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null } }) {
   const calls = [];
+  const lastAc = {};
+  // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
   const agent = async (prompt, o) => {
+    const v = await answerOf(prompt, o);
+    const id = (/^(E\d+):/.exec(o.label) || [])[1];
+    if (/:plan(-fix\d+)?$/.test(o.label) && v && v.ac) lastAc[id] = v.ac;
+    return /plan-review/.test(o.label) && v && !('evidenceRows' in v) ? { ...v, evidenceRows: lastAc[id] || [] } : v;
+  };
+  const answerOf = async (prompt, o) => {
     const l = o.label;
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
@@ -47,6 +55,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
+    if (/:merge-risks$/.test(l)) return { head: 'm1', commit: 'm1' };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
     if (l === 'git-truth') return { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
@@ -814,7 +823,7 @@ test("item 6: a target checked out in the person's checkout holds every merge", 
   assert.equal(r.results.find((x) => x.id === 'E1').merged, false);
   const a = r.operatorActions.find((o) => o.kind === 'authorize-external');
   assert.equal(a.item, 'checkout:integracao/x');
-  assert.equal(a.deliverable, 'E1');
+  assert.equal(a.deliverable, null);
   assert.match(calls.find((c) => c.label === 'report').prompt, /do NOT write a file/);
   assert.equal(r.reportPath, null);
 });
@@ -834,7 +843,7 @@ test("item 6: an interrupted merge is not finished in the person's checkout with
 test('item 6: the base rules no longer say NEVER touch the worktree unconditionally', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre });
   const p = calls.find((c) => c.label === 'preflight').prompt;
-  assert.doesNotMatch(p, /NEVER touch[^.]*the worktree \/r(?!.*authorized)/);
+  assert.match(p, /NEVER touch the branch main or the worktree \/r, except the integration worktree of the target when the operator authorized checkout:integracao\/x\./);
   assert.match(p, /checkout:integracao\/x/);
 });
 
@@ -1089,8 +1098,8 @@ test('I2/I3: the plan review checks the flags against the JSON the code acts on'
   const p = calls.find((c) => c.label === 'E1:plan-review1').prompt;
   assert.match(p, /steps touch anything outside the branch but which declares external false/);
   assert.match(p, /evidence row[^;]*command[^;]*outside the branch[^;]*external false/);
-  assert.ok(p.includes('deploy to prod') && p.includes(deploy));
-  assert.ok(p.includes('"external":false') && p.includes('"external":true'));
+  assert.ok(p.includes('deploy to prod') && p.includes('"external":false'));
+  assert.ok(!p.includes(deploy), 'the rows the code compares must not be shown to the reviewer that measures them');
 });
 
 test('I4: the gate action says it only covers later merges and that the gate repeats', async () => {
@@ -1183,4 +1192,264 @@ test('minor 4: gate and checkout items leave resumeArgs when no deliverable rema
   assert.deepEqual(a.r.resumeArgs.authorizeExternal, []);
   const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: items }, over: withPlan([tk(1, true)]) });
   assert.deepEqual(b.r.resumeArgs.authorizeExternal, items);
+});
+
+// ---- leva 2, bloco A
+const cmdRow = (command, over = {}) => ({ ac: 'AC1', kind: 'smoke', command, external: true, externalDedupe: 'd', ...over });
+const reviewRows = (rows) => (l) => (/plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1, evidenceRows: rows } : undefined);
+const authAc = () => ({ authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 0 });
+const mism = (plan, measured) => exec({ cards: [card('E1')], deliverables: ['E1'], args: authAc(), over: both(planRows(plan), reviewRows(measured)) });
+
+test('decision 1: a row in the plan JSON that the file does not have is a defect and never runs', async () => {
+  const { r, labels } = await mism([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')], [cmdRow('cmd-A')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.equal(r.results[0].merged, false);
+  assert.equal(r.results[0].failKind, 'conteudo');
+  assert.match(r.results[0].error, /cmd-B-not-shown/);
+});
+
+test('decision 1: a command changed in the transcription is a defect and never runs', async () => {
+  const { r, labels } = await mism([cmdRow('cmd-C-changed')], [cmdRow('cmd-A')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.match(r.results[0].error, /cmd-C-changed/);
+  assert.match(r.results[0].error, /cmd-A/);
+});
+
+test('decision 1: a row in the file that the JSON dropped is a defect', async () => {
+  const { r } = await mism([cmdRow('cmd-A')], [cmdRow('cmd-A'), cmdRow('cmd-in-file')]);
+  assert.equal(r.results[0].merged, false);
+  assert.match(r.results[0].error, /cmd-in-file/);
+});
+
+test('decision 1: an external flag that differs from the file is a defect', async () => {
+  const { r, labels } = await mism([cmdRow('cmd-A', { external: false, externalDedupe: undefined })], [cmdRow('cmd-A')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.match(r.results[0].error, /external/);
+});
+
+test('decision 1: a harmless retranscription (quotes, backticks) still runs under the authorization', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)] },
+    over: both(planRows([cmdRow(deploy)]), reviewRows([cmdRow('`' + deploy + '`')]), evOk) });
+  assert.ok(labels.includes('E1:evidence1'));
+  assert.equal(r.results[0].merged, true);
+});
+
+test('decision 1: the reviewer reads the rows from git at the measured blob, and its schema requires them', async () => {
+  const rows = planRows([extRow]);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: rows });
+  const c = calls.find((x) => x.label === 'E1:plan-review1');
+  assert.match(c.prompt, /evidenceRows/);
+  assert.ok(c.prompt.includes('git -C "/wt/E1" show <measuredPlanBlob>'));
+  assert.ok(['measuredPlanBlob', 'evidenceRows'].every((k) => c.opts.schema.required.includes(k)));
+  assert.ok(calls.find((x) => x.label === 'E1:spec-review1').opts.schema.required.every((k) => k !== 'measuredPlanBlob'));
+});
+
+const doneT1 = [{ n: 1, firstParent: 'h0', last: 'c1' }];
+const resumedRun = (over, args = {}) => exec({ cards: [card('E1')], deliverables: ['E1'], args,
+  over: both((l) => (l === 'E1:progress' ? { head: 'c1', clean: true, done: doneT1 } : undefined), over || (() => undefined)) });
+const loggedRun = (l) => (l === 'E1:resume-review-log' ? { found: true, humanInputs: [{ what: 'SECRET-PLACEHOLDER' }], acceptedRisks: [{ stage: 'final', severity: 'minor', category: 'fora-do-escopo', description: 'RISK-X' }], ac: [] } : undefined);
+
+test('important 2: a resume restores human inputs and accepted risks from the persisted log', async () => {
+  const { r, calls } = await resumedRun(loggedRun);
+  const docs = calls.find((c) => c.label === 'E1:docs1').prompt;
+  assert.ok(docs.includes('SECRET-PLACEHOLDER') && docs.includes('RISK-X'));
+  assert.ok(r.ownerReview.acceptedRisks.some((x) => x.description === 'RISK-X'));
+  assert.ok(r.results[0].human.some((h) => /SECRET-PLACEHOLDER/.test(h)));
+  const log = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.ok(log.includes('SECRET-PLACEHOLDER') && log.includes('RISK-X'));
+  assert.ok(calls.find((c) => c.label === 'E1:resume-review-log').prompt.includes('In "/wt/E1" read'));
+});
+
+test('important 2: the review log keeps what the file already holds', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:review-log').prompt, /already exists[^.]*keep/i);
+});
+
+test('important 2: a run with no committed task does not read the log', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(!labels.includes('E1:resume-review-log'));
+});
+
+test('important 2: restored items are not duplicated against this run, and a null read is a concern', async () => {
+  const { r, calls } = await resumedRun((l) => {
+    if (l === 'E1:spec') return { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'SECRET-PLACEHOLDER' }] };
+    return loggedRun(l);
+  });
+  assert.equal(r.results[0].human.filter((h) => /SECRET-PLACEHOLDER/.test(h)).length, 1);
+  assert.equal(calls.find((c) => c.label === 'E1:docs1').prompt.split('SECRET-PLACEHOLDER').length, 2);
+  const nul = await resumedRun((l) => (l === 'E1:resume-review-log' ? null : undefined));
+  assert.ok(nul.r.results[0].concerns.some((c) => /review log not read/.test(c)));
+});
+
+test('rereview minor 1: the evidence doNow lists every re-run of the command', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([extRow]) });
+  const d = ext(r)[0].doNow;
+  assert.match(d, /after each gates fix/);
+  assert.match(d, /late sync/);
+  assert.match(d, /invalid measure/);
+});
+
+const evidenceFailsOnce = (l) => {
+  if (l === 'E1:evidence1') return { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'x' }] };
+  if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+  if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'h2', clean: true, commitsInRange: 1 };
+  if (/:evidence/.test(l)) return { headSha: l === 'E1:evidence2' ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] };
+  return undefined;
+};
+
+test('rereview minor 2: the gates fix prompt carries the duplicate check of an external evidence command', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), evidenceFailsOnce) });
+  const p = calls.find((c) => c.label === 'E1:gates-fix1').prompt;
+  assert.match(p, /duplicate check[^\n]*GET \/deploys first/);
+  assert.ok(p.includes(deploy));
+});
+
+test('rereview minor 2: a local evidence command adds no such clause', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
+    if (l === 'E1:evidence1') return { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 1, log: 'x' }] };
+    if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'h2', clean: true, commitsInRange: 1 };
+    return undefined;
+  } });
+  assert.doesNotMatch(calls.find((c) => c.label === 'E1:gates-fix1').prompt, /duplicate check/);
+});
+
+test('rereview minor 3: the authorization sentence is conditional on the plan not changing', async () => {
+  const tasks = [tk(1, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan(tasks, (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
+  assert.match(r.operatorActions.find((o) => o.kind === 'human-input').doNow, /stays valid unless the answer changes the plan/);
+});
+
+test('minor 6: force does not take an interrupted merge out of FINISH', async () => {
+  const { r, labels } = await exec({ cards: [card('E1'), interrupted()], deliverables: ['E1', 'E2'], args: { force: true } });
+  assert.ok(!labels.includes('E2:spec'));
+  assert.ok(labels.indexOf('E2:merge-gates1-1') < labels.indexOf('E1:merge'));
+  assert.ok(r.selection.notes.some((n) => /E2/.test(n) && /force/.test(n)));
+});
+
+const hasNotes = (o) => o.resumeWith && o.resumeWith.notes;
+
+test('minor 7: consumed notes leave resumeWith; notes of other deliverables stay', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer', E9: 'later' } }, over: withPlan(tasks) });
+  assert.deepEqual(ext(r)[0].resumeWith.notes, { E9: 'later' });
+  assert.deepEqual(r.resumeArgs.notes, { E9: 'later' });
+  const only = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: withPlan(tasks) });
+  assert.equal(ext(only.r)[0].resumeWith.notes, undefined);
+  assert.equal(only.r.resumeArgs.notes, undefined);
+});
+
+test('minor 7: a template answer is kept, and notes the plan never read stay', async () => {
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
+  assert.equal(d.r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, '<owner instruction>');
+  const s = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: (l) => (l === 'E1:setup' ? null : undefined) });
+  assert.ok(s.r.operatorActions.some((o) => hasNotes(o) && o.resumeWith.notes.E1 === 'answer'));
+});
+
+const riskIssue = { severity: 'important', category: 'fora-do-escopo', description: 'RISK-M' };
+
+test('minor 13: a risk accepted on the conflict review is committed before the post-merge gates', async () => {
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
+    if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 1, clean: true };
+    if (l === 'E1:merge-review') return { issues: [riskIssue], headSha: 'm1', clean: true, commitsInRange: 1 };
+    return undefined;
+  } });
+  const at = labels.indexOf('E1:merge-risks');
+  assert.ok(at > labels.indexOf('E1:merge-review') && at < labels.indexOf('E1:merge-gates1-1'));
+  const p = calls[at].prompt;
+  assert.ok(p.includes('RISK-M') && p.includes('/wt/_integracao'));
+});
+
+test('minor 13: a risk accepted on the merge fix is committed, and the next measure expects that head', async () => {
+  let n = 0;
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
+    if (/^E1:merge-gates1/.test(l)) return gm('m1', { exit: 1, failedNames: ['t'] });
+    if (l === 'E1:merge-fix') return { status: 'DONE', summary: 's', checks: [] };
+    if (l === 'E1:merge-fix-review') return { issues: [riskIssue], headSha: 'm8', clean: true, commitsInRange: 1 };
+    if (l === 'E1:merge-risks') { n++; return { head: 'm9', commit: 'm9' }; }
+    if (/^E1:merge-gates2/.test(l)) return gm('m9');
+    return undefined;
+  } });
+  assert.equal(n, 1);
+  assert.ok(labels.indexOf('E1:merge-risks') < labels.indexOf('E1:merge-gates2-1'));
+  assert.equal(r.results[0].merge.docsOk, true);
+});
+
+test('minor 13: no accepted risk means no extra commit on the target', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(!labels.includes('E1:merge-risks'));
+});
+
+test('ledger: a stale bound item leaves resumeWith', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2@00000000', 'E2:T1@11111111'] }, over: withPlan(tasks) });
+  const fp = fpOf(tasks);
+  assert.deepEqual(ext(r)[0].resumeWith.authorizeExternal, ['E2:T1@11111111', 'E1:T2@' + fp]);
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['E2:T1@11111111']);
+});
+
+test('ledger: a replan that makes a committed task external stops and says the task will not run again', async () => {
+  const tasks = [tk(1, true), tk(2, false)];
+  const { r, labels } = await resumedRun(withPlan(tasks));
+  for (const bad of ['E1:t1:spec1', 'E1:t2:impl', 'E1:sync']) assert.ok(!labels.includes(bad), bad);
+  assert.equal(r.results[0].failKind, 'externo');
+  const a = ext(r);
+  assert.equal(a[0].item, 'E1:T1@' + fpOf(tasks));
+  assert.match(a[0].doNow, /already committed[^.]*not run again/i);
+});
+
+test('ledger: a committed external task that is authorized goes on', async () => {
+  const tasks = [tk(1, true), tk(2, false)];
+  const { labels } = await resumedRun(withPlan(tasks), { authorizeExternal: ['E1:T1'] });
+  assert.ok(labels.includes('E1:t2:impl'));
+});
+
+test('ledger: the checkout item is one action per run, keeping the selection', async () => {
+  const { r } = await exec({ cards: [card('E1'), card('E2')], deliverables: ['E1', 'E2'], over: foreignNoBase });
+  const a = r.operatorActions.filter((o) => o.item === 'checkout:integracao/x');
+  assert.equal(a.length, 1);
+  assert.equal(a[0].deliverable, null);
+  assert.deepEqual(a[0].resumeWith.deliverables, ['E1', 'E2']);
+});
+
+test('ledger: plan-only with every deliverable skipped still explains the hold', async () => {
+  let n = 0;
+  const budget = { total: 1e9, remaining: () => (n++ === 0 ? 1e9 : 0) };
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: foreignNoBase, budget });
+  assert.equal(r.results[0].skipped, true);
+  assert.equal(r.operatorActions.filter((o) => o.item === 'checkout:integracao/x').length, 1);
+});
+
+test('ledger: the plan path is quoted in the blob measurement', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(calls.find((c) => c.label === 'E1:plan-review1').prompt.includes('rev-parse "HEAD:docs/p.md"'));
+});
+
+test('ledger: resume-review-log says what counts as accepted', async () => {
+  const { calls } = await exec({ cards: [unfinished()], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.match(p, /accepted risk[^.]*never a finding that was fixed/i);
+});
+
+test('ledger: the closed-blocker doNow names every closed blocker in both remedies', async () => {
+  const c = card('E1', { acceptance: [{ id: 'AC1', text: 'a {verify: blocked BLQ-8; evidence: x}' }, { id: 'AC2', text: 'b {verify: blocked BLQ-9; evidence: y}' }] });
+  const { r } = await exec({ cards: [c], deliverables: ['E1'], discOver: { blockers: [] } });
+  const d = r.operatorActions.find((o) => o.kind === 'decision').doNow;
+  assert.match(d, /\{verify: blocked BLQ-8\}[^.]*\{verify: blocked BLQ-9\}/);
+  assert.match(d, /reopen BLQ-8, BLQ-9/);
+});
+
+test('ledger: the report does not attribute the origin of an effect without evidence', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'report').prompt, /origin of an external effect[^.]*unknown/i);
+});
+
+test('ledger: a reused plan without the external declarations is not reusable as is', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /A reused plan whose tasks or command evidence rows do not declare external is not reusable/);
+});
+
+test('ledger: a finished code segment counts with mergeFound false', async () => {
+  const { r } = await exec({ cards: [card('E3', { status: 'code: integrada; acceptance: blocked (BLQ-2)', onTarget: true, mergeFound: false })], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.ok(!r.selection.order.includes('E3'));
 });

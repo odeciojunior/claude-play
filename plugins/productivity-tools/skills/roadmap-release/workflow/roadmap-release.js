@@ -352,8 +352,9 @@ function lastContiguousDone(tasks, doneMap) {
   for (const t of tasks || []) { if ((doneMap || {})[t.n]) last = t.n; else break }
   return last
 }
-function resumeAction(card, statuses, force) {
-  return isUnfinished(card, statuses) && !force ? 'finish-merge' : 'run'
+// An interrupted merge always finishes first, even under force: new deliverables must keep waiting for it.
+function resumeAction(card, statuses) {
+  return isUnfinished(card, statuses) ? 'finish-merge' : 'run'
 }
 // ---- issues and per-task prompts
 const SEV = s => s === 'critical' || s === 'important'
@@ -601,8 +602,8 @@ function parseAuthorizeExternal(v) {
   if (v == null || v === '') return { items: [], error: null }
   if (!Array.isArray(v)) return { items: [], error: 'authorizeExternal must be a list of items such as "gate:G3", "E18:T4", "E18:AC1" or "checkout:<target>"' }
   const re = /^(gate:\S+|[A-Za-z][A-Za-z0-9-]*:(T|AC)[1-9]\d*(@[0-9a-f]{8})?|checkout:\S+)$/
-  const bad = v.find(i => typeof i !== 'string' || !re.test(i))
-  if (bad !== undefined) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(bad)}` }
+  const bad = v.findIndex(i => typeof i !== 'string' || !re.test(i))
+  if (bad !== -1) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(v[bad])}` }
   return { items: [...new Set(v)], error: null }
 }
 // True only for <wtRoot>/_integracao: the integration worktree this workflow creates. Any other path is the person's checkout.
@@ -667,6 +668,63 @@ function evidenceExternalGaps(cardAc, planAc) {
     ...(p.external === true && !(ids.includes(p.ac) && /^AC[1-9]\d*$/.test(p.ac)) ? [gap(`external evidence row ${p.ac} must use a criterion id of the card (AC<n>), which is what the authorization names`)] : []),
   ])
 }
+// The comparison key of an evidence command: only what a retranscription adds harmlessly goes away (surrounding backticks or quotes,
+// whitespace outside quotes). Whitespace inside quotes is part of the command, and anything else counts as a different command.
+function commandKey(s) {
+  let t = String(s == null ? '' : s).trim()
+  for (let prev = null; prev !== t;) {
+    prev = t
+    const bt = /^(`+)([^`]*)\1$/.exec(t)
+    if (bt) t = bt[2].trim()
+    else if (t.length > 1 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0] && !t.slice(1, -1).includes(t[0])) t = t.slice(1, -1).trim()
+  }
+  let out = '', q = ''
+  for (const ch of t) {
+    if (q) { out += ch; if (ch === q) q = ''; continue }
+    if (ch === '"' || ch === "'" || ch === '`') { q = ch; out += ch; continue }
+    if (/\s/.test(ch)) { if (!out.endsWith(' ')) out += ' '; continue }
+    out += ch
+  }
+  return out
+}
+// The blob does not cover the JSON the code runs, so the rows the plan agent transcribed must equal the rows another agent read
+// from the plan file at the measured blob. A row or command on one side only is a defect, never a run.
+function evidenceRowGaps(cardAc, planAc, measured) {
+  const gap = description => ({ severity: 'critical', category: 'defeito', description })
+  if (!Array.isArray(measured)) return [gap('the plan reviewer did not return evidenceRows, the rows read from the plan file at the measured blob')]
+  const isExec = k => VERIFY_EXEC.includes(k)
+  const keyOf = p => [String(p.ac), isExec(p.kind) ? 'exec' : String(p.kind), isExec(p.kind) ? commandKey(p.command) : ''].join('\n')
+  const show = p => `${p.ac} (${p.kind}): ${JSON.stringify(String(p.command || ''))}`
+  const left = normalizePlanAc(cardAc, measured).map(m => ({ m, key: keyOf(m) }))
+  const out = []
+  for (const p of normalizePlanAc(cardAc, planAc)) {
+    const at = left.findIndex(x => x.key === keyOf(p))
+    if (at < 0) { out.push(gap(`evidence row ${show(p)} is in the plan JSON but not in the plan file at the measured blob: return the rows exactly as the file has them, or fix the file`)); continue }
+    const m = left.splice(at, 1)[0].m
+    if (isExec(p.kind) && m.external !== p.external) out.push(gap(`evidence row ${show(p)} declares external ${p.external} in the plan JSON and ${m.external} in the plan file`))
+  }
+  for (const x of left) out.push(gap(`evidence row ${show(x.m)} is in the plan file at the measured blob but not in the plan JSON`))
+  return out
+}
+// A bound item of a deliverable whose plan this run approved under another fingerprint can never match again.
+function dropStaleBound(items, bound) {
+  return (items || []).filter(i => {
+    const m = /^([^:]+):(?:T|AC)[1-9]\d*@([0-9a-f]{8})$/.exec(i)
+    return !m || bound[m[1]] === undefined || bound[m[1]] === m[2]
+  })
+}
+// Items not yet in the list, by key, also dropping repeats among the new items.
+function missingFrom(list, items, key) {
+  const seen = new Set((list || []).map(key))
+  return (items || []).filter(x => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true })
+}
+// Notes a plan agent already read leave the resume args, so a resume does not adjust the plan again; a template waiting for an answer stays.
+function dropConsumedNotes(args, consumed) {
+  if (!args || !args.notes) return args
+  const kept = Object.fromEntries(Object.entries(args.notes).filter(([id, v]) => !(consumed || []).includes(id) || /^\s*<.*>\s*$/.test(String(v))))
+  const { notes, ...rest } = args
+  return Object.keys(kept).length ? { ...rest, notes: kept } : rest
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -698,6 +756,7 @@ const TRAILER = A.trailer || 'Co-Authored-By: Claude <noreply@anthropic.com>'
 const PROJECT = CFG.projectContext || ''
 const GATES = CFG.gates.filter(g => !g.restricted || authorized('gate:' + g.name))
 const BOUND = {}  // deliverable id -> plan fingerprint, set when its plan is approved
+const NOTES_READ = []  // deliverables whose notes a plan agent already read
 const boundItems = E => (BOUND[E] === undefined ? AUTH.items : bindAuthorizations(AUTH.items, E, BOUND[E]))
 for (const g of CFG.gates.filter(g => g.restricted && !authorized('gate:' + g.name))) {
   if (MODE !== 'run') continue
@@ -802,7 +861,11 @@ const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisio
 const S_PLAN = { type: 'object', properties: { planPath: STR, planBlob: STR, roadmapHeader: BOOL, reused: BOOL,
   ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR, external: BOOL, externalDedupe: STR }, required: ['ac', 'kind'] } },
   tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR }, required: ['n', 'title', 'tier', 'external'] } } }, required: ['planPath', 'planBlob', 'tasks'] }
-const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT, measuredPlanBlob: STR }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR,
+  evidenceRows: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, blq: STR, external: BOOL }, required: ['ac', 'kind'] } } },
+  required: [...S_REVIEW.required, 'measuredPlanBlob', 'evidenceRows'] }
+const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, required: ['head'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
 const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } } }, required: ['head', 'clean', 'done'] }
@@ -886,6 +949,7 @@ if (noCriteria.length) return { status: 'error', error: `discovery failed: no ac
 const notes = [...picked.notes, ...(disc.donot || []).map(d => `roadmap "do not" restriction (check before running): ${d}`)]
 const interrupted = unfinishedOutside(disc.cards, STATUSES, order)
 for (const id of interrupted) notes.push(`${id}: interrupted merge on the target, outside this selection`)
+if (A.force) for (const id of order) if (isUnfinished(byId[id], STATUSES)) notes.push(`${id}: force does not apply to an interrupted merge: it is validated and documented first`)
 const isDone = c => !!c && ((c.onTarget && !isUnfinished(c, STATUSES)) || c.status === STATUSES.discarded)
 const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, readFrom: disc.readFrom, statusAfterMerge: STATUS_AFTER_MERGE, order, skippedUpfront: picked.skipped, notes,
   deps: Object.fromEntries(order.map(id => [id, byId[id].deps.map(d => `${d}:${isDone(byId[d]) ? 'on target' : 'in this run'}`)])) }
@@ -1057,7 +1121,7 @@ Never write or quote a credential, token or key from the owner instruction in an
     if (!setupOk || !out.reviews.length) return
     const w = await agent(`${Cn()}
 
-Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log: per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking). Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null })}
+Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking). Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
@@ -1067,11 +1131,15 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     await persistReviews('failed')
     return out
   }
+  // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
+  const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. Transcribe faithfully, do not invent.`,
+    { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet' })
+  const restoreFromLog = rl => {
+    human.push(...missingFrom(human, rl.humanInputs, h => h.what))
+    out.acceptedRisks.push(...missingFrom(out.acceptedRisks, rl.acceptedRisks, x => `${x.stage}|${x.description}`))
+  }
   // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
   if (FOREIGN && !authorized(FOREIGN_ITEM)) {
-    op('authorize-external', E, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: merging, recording and rolling back there would touch your checkout, so ${E} was not run`,
-      `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
-      { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM], deliverables: [E] }, { item: FOREIGN_ITEM })
     return fail('externo', `the target ${TARGET} is checked out in ${INTWT} and ${FOREIGN_ITEM} is not authorized`)
   }
 
@@ -1115,6 +1183,20 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
     return { ok: false, broken: true, kind, why }
   }
 
+  // A risk accepted after the merge commit lives only in memory until the docs stage: commit it to the log on the target, where a finish-merge reads it.
+  // Returns the head the next measure must expect.
+  const persistMergeRisks = async (from, exp) => {
+    const fresh = out.acceptedRisks.slice(from)
+    if (!fresh.length) return exp
+    const w = await agent(`${Cn()}
+
+Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the merge of ${E}. Add them to the accepted risks of its review log on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), keeping everything the file holds: ${JSON.stringify(fresh)}
+Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev-parse HEAD after the commit) and commit.`,
+      { label: `${E}:merge-risks`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet' })
+    if (!w || !w.head) { out.concerns.push(`merge-stage accepted risks not committed to the review log: ${fresh.map(fmtRisk).join('; ')}`); return exp }
+    return w.head
+  }
+
   // Post-merge gates (one reviewed fix), baseline refresh and docs. Runs inside the merge lock.
   const postMerge = async (mergeCommit, conflicts, onBad, firstExp = mergeCommit) => {
     let g
@@ -1137,8 +1219,9 @@ Use superpowers:systematic-debugging; fix on ${TARGET} with a test and commit "$
 Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, introducing a defect. Measure headSha, clean, commitsInRange.`,
         { label: `${E}:merge-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus' })
       if (!rr || blocking(rr).filter(i => isHard(i, blqIds)).length) return onBad(`post-merge fix rejected: ${rr ? fmt(blocking(rr)) : 'null agent'}`, rr ? 'conteudo' : 'infra')
+      const riskFrom = out.acceptedRisks.length
       acceptRisks('merge-fix', blocking(rr))
-      exp = rr.headSha
+      exp = await persistMergeRisks(riskFrom, rr.headSha)
     }
     Object.assign(BASE, refreshBaseline(BASE, GATES, g.m, g.m.changedFiles))
     lastGood = g.m.headSha
@@ -1204,18 +1287,14 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   }
 
   // A merge already on the target without a post-merge status: validate and document, do not redo the deliverable.
-  if (resumeAction(card, STATUSES, A.force) === 'finish-merge' && MODE === 'run') {
+  if (resumeAction(card, STATUSES) === 'finish-merge' && MODE === 'run') {
     log(`${E}: merge ${card.mergeSha || '?'} already on the target without a record; validating and documenting`)
     if (!card.mergeSha) return closeOut(await markBroken('a merge of this deliverable is on the target but the discovery did not identify its commit, so it cannot be validated', 'conteudo', `Identify the merge commit (git -C "${INTWT}" log --first-parent --grep "^merge: ${E} "), then revert it (git revert -m 1) or fix the roadmap record, and run again with deliverables:["${E}"]`))
     // The run that was interrupted held the human acts and accepted risks in memory: recompute them from the card tags and the persisted files.
-    const rl = await agent(`Read-only. In "${INTWT}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. Transcribe faithfully, do not invent.`,
-      { label: `${E}:resume-review-log`, phase: 'Merge', schema: S_RESUMELOG, model: 'sonnet' })
+    const rl = await readPersistedLog(INTWT, 'Merge')
     out.acOpen = criteriaOpen(cardAc, rl && rl.found === true ? rl.ac || [] : [])
     if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs may be missing')
-    else {
-      for (const h of rl.humanInputs || []) if (!human.some(x => x.what === h.what)) human.push(h)
-      out.acceptedRisks.push(...(rl.acceptedRisks || []))
-    }
+    else restoreFromLog(rl)
     return closeOut(await mergeLock(async () => {
       if (integBroken) return { ok: false, kind: 'infra', why: `integration worktree compromised: ${integBroken}` }
       const named = Object.values(BASE).flatMap(r => r.failedNames || [])
@@ -1243,8 +1322,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   // A BLQ closed on the roadmap while the card still tags a criterion blocked on it: only a revision (or reopening it) fixes that.
   const closed = closedBlockers(cardAc, blqIds)
   if (closed.length) {
-    const b = closed[0]
-    out.doNow = `${closed.join(', ')} ${closed.length > 1 ? 'are' : 'is'} closed on the roadmap but the card still tags a criterion {verify: blocked ${b}}: change the tag through a strategy revision, or reopen ${b}, then run again`
+    out.doNow = `${closed.join(', ')} ${closed.length > 1 ? 'are' : 'is'} closed on the roadmap but the card still tags ${closed.map(b => `{verify: blocked ${b}}`).join(' and ')}: change the tag through a strategy revision, or reopen ${closed.join(', ')}, then run again`
     return fail('decisao', `the card ${E} tags a criterion as blocked by ${closed.join(', ')}, which is not registered as open on the roadmap`)
   }
 
@@ -1325,9 +1403,10 @@ ${acTxt}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
     { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
+  if (noteE) NOTES_READ.push(E)
   const planGaps = () => {
     const gap = description => ({ severity: 'critical', category: 'defeito', description })
     const tasks = plan.tasks || []
@@ -1342,17 +1421,17 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const planBlobGaps = r => {
     const m = r && typeof r.measuredPlanBlob === 'string' ? r.measuredPlanBlob.trim() : ''
     const reported = String(plan.planBlob || '').trim()
-    if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse HEAD:${plan.planPath}); the plan agent reported ${JSON.stringify(reported)}` }]
-    return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan agent (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); return the output of git rev-parse HEAD:${plan.planPath} after the commit` }]
+    if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse "HEAD:${plan.planPath}"); the plan agent reported ${JSON.stringify(reported)}` }]
+    return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan agent (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); return the output of git rev-parse "HEAD:${plan.planPath}" after the commit` }]
   }
   const planLoop = await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; a canonical gate changed (decisao, critical).
-THE TASKS AND EVIDENCE ROWS THE CODE ACTS ON (transcribed by the plan agent; these external flags decide what is held, so compare each one with the plan file, and a flag that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks, evidence: plan.ac })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), and measuredPlanBlob = the output of git -C "${wt}" rev-parse HEAD:${plan.planPath}, run by you; do not copy it from the plan agent.`,
-      { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_REVIEW, model: 'opus' }),
+THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external flags decide what is held, so compare each one with the plan file, and a flag that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
+Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan agent; and evidenceRows = every row of the "## Acceptance criteria evidence" section, read from the output of git -C "${wt}" show <measuredPlanBlob>, in order: ac (the criterion id alone), kind, command (the exact text of the row; none for human or blocked), blq, external (the boolean the row declares). The script compares these rows with the rows it would run, so list only what you read in that output, even if a previous issue names another row.`,
+      { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
 
@@ -1364,7 +1443,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
       return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
     },
-    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...planGaps()],
+    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...evidenceRowGaps(cardAc, plan.ac, r && r.evidenceRows), ...planGaps()],
     { tier: 'opus', reviewModel: 'opus' })
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
   if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')
@@ -1377,7 +1456,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const heldEvidence = () => evidenceHolds(normalizePlanAc(cardAc, plan.ac), E, AUTH.items, fp)
   const opEvidence = held => {
     for (const h of held) op('authorize-external', E, `the acceptance evidence of criterion ${h.ac} of ${E} runs a command with an external effect and is not authorized, so it was not run: ${h.commands.join(' ; ')}`,
-      `Authorize it by running again with authorizeExternal including "${h.item}" (externalDedupe: ${h.dedupe.join(' ; ') || 'none declared'}); the command runs on the branch and again after each gates fix`,
+      `Authorize it by running again with authorizeExternal including "${h.item}" (externalDedupe: ${h.dedupe.join(' ; ') || 'none declared'}); the command runs on the branch, again after each gates fix, after a late sync and on the retry of an invalid measure`,
       { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
   }
 
@@ -1401,6 +1480,28 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   const doneMap = Object.fromEntries((prog.done || []).map(d => [d.n, d]))
   const lastDone = lastContiguousDone(plan.tasks, doneMap)  // a gap is where the run resumes; the last committed task is reviewed again
+  if (Object.keys(doneMap).length) {
+    const rl = await readPersistedLog(wt, 'Implementation')
+    if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
+    else restoreFromLog(rl)
+  }
+  const opTasks = held => {
+    for (const h of held) op('authorize-external', E, `task ${h.x.n} ("${h.x.title}") of ${E} is external and not authorized: it was not run`,
+      `Authorize it by running again with authorizeExternal including "${h.item}" (externalDedupe: ${h.x.externalDedupe || 'none declared'}); the tasks before it are already committed on ${br}`,
+      { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
+  }
+  const holdOf = xs => xs.map(x => ({ x, item: externalHold(x, E, AUTH.items, fp) })).filter(h => h.item)
+  // A replan can declare external a task already committed: it will not run, but its commits must not go on without the person seeing them.
+  const lateExternal = holdOf(plan.tasks.filter(x => doneMap[x.n]))
+  if (lateExternal.length) {
+    for (const h of lateExternal) op('authorize-external', E, `task ${h.x.n} ("${h.x.title}") of ${E} is already committed on ${br}, but the current plan declares it external and it is not authorized`,
+      `Check its commits on ${br}. It is already committed and will not run again: authorizing "${h.item}" accepts that work as it is and lets the deliverable go on. If the effect must not stand or never happened, revert those commits first (externalDedupe: ${h.x.externalDedupe || 'none declared'})`,
+      { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
+    opTasks(holdOf(plan.tasks.filter(x => !doneMap[x.n])))
+    opEvidence(heldEvidence())
+    out.held = lateExternal[0].item
+    return fail('externo', `committed task ${lateExternal[0].x.n} is now declared external and awaits authorization (${lateExternal[0].item})`)
+  }
   let head = prog.head
   const taskLog = []
   for (const t of plan.tasks) {
@@ -1412,9 +1513,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (!resumed) {
       const held = plan.tasks.filter(x => !doneMap[x.n] && x.n >= t.n).map(x => ({ x, item: externalHold(x, E, AUTH.items, fp) })).filter(h => h.item)
       if (held.length && held[0].x.n === t.n) {
-        for (const h of held) op('authorize-external', E, `task ${h.x.n} ("${h.x.title}") of ${E} is external and not authorized: it was not run`,
-          `Authorize it by running again with authorizeExternal including "${h.item}" (externalDedupe: ${h.x.externalDedupe || 'none declared'}); the tasks before it are already committed on ${br}`,
-          { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
+        opTasks(held)
         opEvidence(heldEvidence())  // one question lists every external item of the plan
         out.held = held[0].item
         return fail('externo', `external task ${t.n} awaits authorization (${held[0].item})`)
@@ -1429,7 +1528,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         impl = await runImpl(`${E}:t${t.n}:impl-lock`)
       }
       if (!impl) return fail('infra', `task ${t.n}: null implementer`)
-      human.push(...(impl.humanInputs || []))
+      human.push(...missingFrom(human, impl.humanInputs, h => h.what))
       if (impl.concerns) out.concerns.push(`T${t.n}: ${impl.concerns}`)
       if (impl.status === 'BLOCKED') return fail('conteudo', `task ${t.n} BLOCKED: ${impl.summary}`)
     }
@@ -1456,7 +1555,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
     if (authorizedExt && !resumed && impl.status === 'NEEDS_HUMAN' && lastR.commitsInRange === 0) {
       const needed = (impl.humanInputs || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; ') || impl.summary
       op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized but needs a person first and committed nothing: ${needed}`,
-        'Provide the data (or the decision) and run again passing the answer in notes; the authorization of this task stays valid. Never put a secret in notes: set an environment variable and name it',
+        'Provide the data (or the decision) and run again passing the answer in notes; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it',
         { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
       return fail('humano', `authorized external task ${t.n} needs a person and made no commit: ${needed}`)
     }
@@ -1515,6 +1614,10 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IM
 
   // ---------- Gates on the branch (+ reviewed fix). Every acceptance criterion is proved by a command that ran.
   const acExec = () => normalizePlanAc(cardAc, plan.ac).filter(p => VERIFY_EXEC.includes(p.kind) && p.command)
+  const externalEvidenceNote = () => {
+    const rows = acExec().filter(p => p.external !== false)
+    return rows.length ? `\nThe person AUTHORIZED the external effect of these evidence commands: ${rows.map(p => p.command).join(' ; ')}. Run one again only if that command is what failed, and only after its duplicate check: ${rows.map(p => `${p.ac}: ${p.externalDedupe || 'none declared'}`).join('; ')}.` : ''
+  }
   let evRound = 0
   const runEvidence = async exp => {
     const rows = acExec()
@@ -1560,7 +1663,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
 ${lockNote(planLocks)} The gates failed against the baseline:
 ${failText}
 Failing output: ${String(g.m.log || '').slice(0, 3000)}
-Use superpowers:systematic-debugging: root cause, a fix with a test when it is a defect, run the failed gate again and commit "${E} gates-fix: ...". A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.`,
+Use superpowers:systematic-debugging: root cause, a fix with a test when it is a defect, run the failed gate again and commit "${E} gates-fix: ...". A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.${externalEvidenceNote()}`,
         { label: `${E}:${tag}gates-fix${k + 1}`, phase: 'Gates', schema: S_IMPL, model: 'sonnet' }))
       if (!fx) return { ok: false, kind: 'infra', msg: 'gates fix: null agent' }
       if (fx.status === 'BLOCKED') return { ok: false, kind: 'conteudo', msg: `gates fix BLOCKED: ${fx.summary}` }
@@ -1656,11 +1759,14 @@ Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-p
       { label: `${E}:merge`, phase: 'Merge', schema: S_MERGE, model: 'sonnet' })
     if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? mg.details : 'null agent'}`, mg ? 'conteudo' : 'infra')
     if (!mergeParentsOk(mg, preSha, validatedHead)) return rollback(`the merge commit ${mg.mergeCommit} has first parent ${mg.firstParent} and second parent ${mg.secondParent}, expected ${preSha} and the validated head ${validatedHead}: the second parent does not match`, 'conteudo')
+    let firstExp = mg.mergeCommit
     if (mg.conflicts !== 0) {
+      const riskFrom = out.acceptedRisks.length
       const rc = await reviewConflicts(mg.mergeCommit, INTWT, `${E}:merge-review`)
       if (!rc.ok) return rollback(rc.why, rc.kind)
+      firstExp = await persistMergeRisks(riskFrom, firstExp)
     }
-    return postMerge(mg.mergeCommit, mg.conflicts, rollback)
+    return postMerge(mg.mergeCommit, mg.conflicts, rollback, firstExp)
   })
   return closeOut(result)
 }
@@ -1672,7 +1778,7 @@ const runs = {}
 // Interrupted merges finish (validate and document) before any new deliverable asks for the semaphore.
 // An interrupted deliverable waits only for dependencies that are also interrupted: waiting for a new one
 // would deadlock, because the new one waits for every interrupted one.
-const FINISH = order.filter(id => MODE === 'run' && resumeAction(byId[id], STATUSES, A.force) === 'finish-merge')
+const FINISH = order.filter(id => MODE === 'run' && resumeAction(byId[id], STATUSES) === 'finish-merge')
 order.forEach((id, idx) => {
   runs[id] = (async () => {
     await Promise.resolve()  // every runs[] entry exists after this point
@@ -1733,7 +1839,7 @@ const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
-if (foreignHold && MODE !== 'plan-only' && !OPS.some(o => o.item === FOREIGN_ITEM)) {
+if (foreignHold) {
   op('authorize-external', null, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: nothing was written there, and no execution report file was committed`,
     `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
     { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM] }, { item: FOREIGN_ITEM })
@@ -1741,17 +1847,18 @@ if (foreignHold && MODE !== 'plan-only' && !OPS.some(o => o.item === FOREIGN_ITE
 // Authorizations come back bound to the plan they were given for, and end with the delivery they covered.
 const settleAuth = items => {
   const done = RESULTS.filter(r => r.merged && !r.broken).map(r => r.id)
-  const bound = Object.keys(BOUND).reduce((acc, id) => bindAuthorizations(acc, id, BOUND[id]), items)
+  const bound = dropStaleBound(Object.keys(BOUND).reduce((acc, id) => bindAuthorizations(acc, id, BOUND[id]), items), BOUND)
   return bound.filter(i => !done.some(id => i.startsWith(id + ':T') || i.startsWith(id + ':AC')))
 }
 const finalResume = () => {
-  const base = resumeArgs || { ...A }
+  const base = dropConsumedNotes(resumeArgs || { ...A }, NOTES_READ)
   if (!A.authorizeExternal) return base
   const settled = settleAuth(AUTH.items)
   return { ...base, authorizeExternal: resumeIds.length ? settled : settled.filter(i => !/^(gate|checkout):/.test(i)) }  // with nothing left to run they authorize nothing
 }
 // Every operator action resumes with the same settled authorizations: bound to the approved plan, none for a delivery already merged.
 for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
+for (const o of OPS) if (o.resumeWith) o.resumeWith = dropConsumedNotes(o.resumeWith, NOTES_READ)
 const resumeFinal = finalResume()
 const report = await safe(() => mergeLock(() => agent(`${COMMON()}
 
@@ -1763,7 +1870,7 @@ Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)
 Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
-Be factual. Return the report text.`,
+Be factual. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 

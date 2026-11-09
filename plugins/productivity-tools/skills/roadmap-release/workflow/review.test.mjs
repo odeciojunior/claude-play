@@ -85,10 +85,10 @@ test('lastContiguousDone stops at the first gap', () => {
   assert.equal(lastContiguousDone(tasks, { 1: {}, 2: {}, 3: {}, 4: {} }), 4);
 });
 
-test('resumeAction finishes an interrupted merge unless forced', () => {
+test('resumeAction finishes an interrupted merge, even when forced', () => {
   const c = { status: 'em-execucao', mergeFound: true };
   assert.equal(resumeAction(c, statuses, false), 'finish-merge');
-  assert.equal(resumeAction(c, statuses, true), 'run');
+  assert.equal(resumeAction(c, statuses, true), 'finish-merge');
   assert.equal(resumeAction({ status: 'integrada', mergeFound: true }, statuses, false), 'run');
   assert.equal(resumeAction({ status: 'planejada', mergeFound: false }, statuses, false), 'run');
 });
@@ -300,4 +300,49 @@ test('I2: evidenceExternalGaps rejects a missing flag, an external row with no d
 test('I2: bindAuthorizations binds bare criterion items of that deliverable only', () => {
   const { bindAuthorizations } = loadPure();
   assert.deepEqual(bindAuthorizations(['E1:AC1', 'E10:AC1', 'E1:AC2@aa', 'gate:E1:AC1'], 'E1', 'ff'), ['E1:AC1@ff', 'E10:AC1', 'E1:AC2@aa', 'gate:E1:AC1']);
+});
+
+// ---- leva 2, bloco A
+const P4 = loadPure();
+const acCard = [{ id: 'AC1', text: 'works', tag: null }];
+const row = (command, external = true, ac = 'AC1') => ({ ac, kind: 'smoke', command, external, externalDedupe: 'd' });
+
+test('commandKey ignores only surrounding quotes or backticks and whitespace outside quotes', () => {
+  const { commandKey: k } = P4;
+  for (const v of ['npm test', '  npm test ', '`npm test`', '``npm test``', '"npm test"', "'npm test'", '"`npm test`"', 'npm   test']) assert.equal(k(v), 'npm test', v);
+  assert.notEqual(k('grep "a  b" f'), k('grep "a b" f'));
+  assert.notEqual(k('npm test -- a'), k('npm test -- b'));
+  assert.equal(k('echo "a"'), 'echo "a"');
+  assert.notEqual(k('"a" "b"'), k('a b'));
+});
+
+test('evidenceRowGaps: equal rows give no gap, in any order and through a harmless retranscription', () => {
+  const { evidenceRowGaps: g } = P4;
+  assert.deepEqual(g(acCard, [row('a'), row('b')], [row('`b`'), row("'a'")]), []);
+  assert.deepEqual(g(acCard, [{ ac: 'AC1', kind: 'human' }], [{ ac: 'AC1', kind: 'human' }]), []);
+  assert.deepEqual(g(acCard, [{ ac: 'AC1: works', kind: 'test', command: 'a', external: false }], [{ ac: 'AC1', kind: 'smoke', command: 'a', external: false }]), []);
+});
+
+test('evidenceRowGaps: a row or command on one side only, a repeated row, a differing flag and a missing measurement are critical', () => {
+  const { evidenceRowGaps: g } = P4;
+  const one = (a, b) => { const x = g(acCard, a, b); assert.ok(x.length >= 1); assert.ok(x.every((i) => i.severity === 'critical' && i.category === 'defeito')); return x; };
+  assert.match(one([row('a'), row('b')], [row('a')])[0].description, /"b"/);
+  assert.match(one([row('a')], [row('a'), row('c')])[0].description, /"c"/);
+  one([row('a'), row('a')], [row('a')]);
+  one([row('a')], [row('a', false)]);
+  one([row('a')], [{ ac: 'AC1', kind: 'smoke', command: 'a' }]);
+  one([{ ac: 'AC1', kind: 'human' }], [{ ac: 'AC1', kind: 'blocked', blq: 'BLQ-1' }]);
+  assert.match(one([row('a')], undefined)[0].description, /did not return/);
+});
+
+test('parseAuthorizeExternal rejects an undefined item', () => {
+  const r = P4.parseAuthorizeExternal([undefined]);
+  assert.notEqual(r.error, null);
+  assert.deepEqual(r.items, []);
+});
+
+test('evidenceGaps: a plan row of kind blocked needs a registered blocker', () => {
+  const card = [{ id: 'AC1', text: 't', tag: null }];
+  assert.deepEqual(evidenceGaps(card, [{ ac: 'AC1', kind: 'blocked', blq: 'BLQ-1' }], new Set(['BLQ-1'])), []);
+  for (const blq of ['BLQ-9', undefined]) assert.match(evidenceGaps(card, [{ ac: 'AC1', kind: 'blocked', blq }], new Set(['BLQ-1']))[0].description, /without a registered blocker/);
 });
