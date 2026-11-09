@@ -7,18 +7,19 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 **Plan**: docs/plans/<topic>/<plan-file>.md
 **Roadmap**: <roadmap folder> | none
 **Started**: [date] | **Last Updated**: [date]
-**Status**: Awaiting approval | In Progress | Blocked | Completed
+**Status**: Map ready | In Progress | Blocked | Completed
 
 ## Recovery State
 <!-- Read THIS first after compaction or restart -->
 **Worktree:** <absolute worktree path>
 **Branch:** <branch>
+**Base:** <SHA the work started from>
 **Test:** <exact test command — no credentials>
 **Baseline:** <expected result, e.g. "412 passed, 3 skipped">
 **Last COMPLETED Wave**: 0
 **Last DELEGATED Wave**: 0
 **In-Flight Agents**: none   <!-- before launch: "Group C (Steps 3-5, sonnet): launching"; after launch: add the agent ID -->
-**Next Action**: Await approval   <!-- e.g. "Launch Wave 2 (Groups C, D)" -->
+**Next Action**: Self-approve the map (SKILL.md Step 8)   <!-- e.g. "Launch Wave 2 (Groups C, D)" -->
 
 ## Execution Map
 **Steps**: N (execute M, skip K) | **Waves**: W | **Effort**: Xh | **Tiers**: inline a · haiku b · sonnet c · opus d | **Review gates**: R
@@ -31,6 +32,8 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 
 ## Shared Brief
 <!-- Pasted verbatim at the top of every subagent prompt. ≤60 lines. -->
+- **Workspace**: [absolute path; run every command there]
+- **Commits**: per step | none
 - **Goal**: [one or two sentences]
 - **Architecture**: [3-6 lines: layers, key dirs, data flow]
 - **Conventions**: [naming, error handling, test style, language of comments/commits]
