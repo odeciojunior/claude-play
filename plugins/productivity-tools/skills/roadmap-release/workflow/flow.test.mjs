@@ -373,3 +373,9 @@ test('branchMerged: a located commit whose second parent is not the branch count
   const loc = calls.find((c) => c.label === 'E1:merge-locate');
   assert.ok(['secondParent', 'branchTip'].every((k) => loc.opts.schema.required.includes(k)));
 });
+
+test('result returns lastGood (the validated tip)', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(typeof r.lastGood, 'string');
+  assert.ok(r.lastGood.length > 0);
+});

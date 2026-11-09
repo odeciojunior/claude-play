@@ -2,7 +2,7 @@
 // Preflight for the roadmap-release skill: validates (or derives) release.config.json
 // and checks permission rules. Read-only: it never writes any file or setting.
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, isAbsolute } from 'node:path';
+import { join, resolve, isAbsolute, relative, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -152,7 +152,15 @@ export function requiredRules(cfg) {
 
 export function missingRules(required, settingsList, commandsByRule = {}) {
   const allow = new Set();
-  for (const s of settingsList || []) for (const r of s?.permissions?.allow || []) allow.add(String(r).trim());
+  for (const s of settingsList || []) {
+    for (const r of s?.permissions?.allow || []) {
+      const rule = String(r).trim();
+      allow.add(rule);
+      // `Bash(git *)` and `Bash(git:*)` are the same prefix rule.
+      const sp = /^Bash\((.+?) \*\)$/.exec(rule);
+      if (sp) allow.add(`Bash(${sp[1]}:*)`);
+    }
+  }
   if (allow.has('Bash') || allow.has('Bash(*)')) return [];
   return required.filter((rule) => {
     if (allow.has(rule)) return false;
@@ -183,14 +191,24 @@ function repoRoot(from) {
   } catch { return from; }
 }
 
-export function runPreflight(folder, { home = homedir() } = {}) {
+function readRef(root, ref, relFile) {
+  try {
+    return execFileSync('git', ['show', `${ref}:${relFile}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return null; }
+}
+
+export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
   let config = null;
   let generated = false;
   const errors = [];
-  if (existsSync(configPath)) {
+  const relFile = relative(root, configPath).split(sep).join('/');
+  const onRef = ref ? readRef(root, ref, relFile) : null;
+  if (onRef !== null) {
+    try { config = JSON.parse(onRef); generated = config.generated === true; } catch { errors.push(`release.config.json on ${ref} is not valid JSON`); }
+  } else if (existsSync(configPath)) {
     config = readJson(configPath);
     if (config === null) errors.push('release.config.json is not valid JSON');
     else generated = config.generated === true;
@@ -212,7 +230,7 @@ export function runPreflight(folder, { home = homedir() } = {}) {
   if (config) errors.push(...validateReleaseConfig(config));
   let missing = [];
   if (config && errors.length === 0) {
-    const settings = ['settings.json'].map((f) => join(home, '.claude', f))
+    const settings = ['settings.json'].map((f) => join(configDir || join(home, '.claude'), f))
       .concat([join(root, '.claude', 'settings.json'), join(root, '.claude', 'settings.local.json')]).map(readJson);
     const cmds = requiredCommands(config);
     missing = missingRules(Object.keys(cmds), settings, cmds);
@@ -221,12 +239,16 @@ export function runPreflight(folder, { home = homedir() } = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const folder = process.argv[2];
+  const argv = process.argv.slice(2);
+  const ri = argv.indexOf('--ref');
+  const ref = ri >= 0 ? argv[ri + 1] : null;
+  if (ri >= 0) argv.splice(ri, 2);
+  const folder = argv[0];
   if (!folder) {
-    console.error('usage: node preflight.mjs <roadmap-folder>');
+    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>]');
     process.exit(2);
   }
-  const result = runPreflight(folder);
+  const result = runPreflight(folder, { ref });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.errors.length ? 1 : 0);
 }

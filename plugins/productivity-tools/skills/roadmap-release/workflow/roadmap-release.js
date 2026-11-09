@@ -41,7 +41,7 @@ export const meta = {
 //   trailer, branchPrefix ("feat/")
 //
 // RETURN: { status: done|partial|needs-operator|error, operatorActions[], resumeArgs, selection,
-//           results[], ownerReview { acceptedRisks[], decisionsPending[], criteriaOpen[] }, truth, reportPath }
+//           results[], ownerReview { acceptedRisks[], decisionsPending[], criteriaOpen[] }, truth, lastGood, reportPath }
 // The workflow never asks during the run: it stops the run (preflight) or the deliverable (blocking human
 // input, decision against a DEC, defect without a fix) and returns operatorActions with resumeArgs.
 
@@ -521,7 +521,7 @@ const MODE = A.mode || 'run'
 const RESULTS = []
 const mkResult = (status, extra) => ({
   status, mode: MODE, operatorActions: OPS, resumeArgs: { ...A }, selection: null, results: RESULTS,
-  ownerReview: { acceptedRisks: [], decisionsPending: [], criteriaOpen: [] }, truth: null, reportPath: null, ...(extra || {}),
+  ownerReview: { acceptedRisks: [], decisionsPending: [], criteriaOpen: [] }, truth: null, lastGood: null, reportPath: null, ...(extra || {}),
 })
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
@@ -1456,4 +1456,4 @@ Be factual. Return the report text.`,
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)
-return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, resumeArgs: resumeArgs || { ...A }, reportPath, report })
+return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeArgs || { ...A }, reportPath, report })

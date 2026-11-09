@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import {
   validateReleaseConfig, deriveConfig, effectiveMaxParallel,
-  requiredRules, requiredCommands, missingRules, quoteArg, parseGatesTable,
+  requiredRules, requiredCommands, missingRules, quoteArg, parseGatesTable, runPreflight,
 } from './preflight.mjs';
 
 const good = () => ({
@@ -138,4 +142,57 @@ test('validateReleaseConfig rejects the reserved lock name merge', () => {
   assert.ok(validateReleaseConfig(a).some((e) => /merge/.test(e) && /reserved/.test(e)));
   const b = good(); b.locks = ['db', 'merge']; b.gates[1].needsLock = ['merge'];
   assert.ok(validateReleaseConfig(b).some((e) => /needsLock/.test(e) && /reserved/.test(e)));
+});
+
+test('missingRules accepts the space-star wildcard form', () => {
+  const cmds = { 'Bash(npm:*)': ['npm run lint'], 'Bash(git:*)': [] };
+  const req = Object.keys(cmds);
+  assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(git *)', 'Bash(npm run *)'] } }], cmds), []);
+  assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(git:*)'] } }], cmds), ['Bash(npm:*)']);
+});
+
+function repoWithRoadmap(releaseCfgOnRef) {
+  const root = mkdtempSync(join(tmpdir(), 'pf-'));
+  const git = (...a) => execFileSync('git', ['-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { cwd: root, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  const dir = join(root, 'docs', 'plans', 'roadmap-x');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'roadmap.config.json'), JSON.stringify({ strategy: 's.md' }));
+  writeFileSync(join(dir, 's.md'), '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n| g1 | npm run lint | - | always | green |\n<!-- /roadmap:gates -->\n');
+  git('add', '.'); git('commit', '-qm', 'init');
+  git('branch', 'rel');
+  if (releaseCfgOnRef) {
+    git('checkout', '-q', 'rel');
+    writeFileSync(join(dir, 'release.config.json'), JSON.stringify({ ...good(), generated: false }));
+    git('add', '.'); git('commit', '-qm', 'cfg');
+    git('checkout', '-q', 'main');
+  }
+  return { root, dir };
+}
+
+test('runPreflight --ref uses the reviewed config on the ref instead of regenerating', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const withRef = runPreflight(dir, { home, ref: 'rel' });
+  assert.equal(withRef.generated, false);
+  assert.equal(withRef.config.install, 'npm ci');
+  assert.deepEqual(withRef.errors, []);
+  const noRef = runPreflight(dir, { home });
+  assert.equal(noRef.generated, true);
+});
+
+test('runPreflight --ref falls back to regeneration when the ref has no config', () => {
+  const { dir } = repoWithRoadmap(false);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  assert.equal(runPreflight(dir, { home, ref: 'rel' }).generated, true);
+  assert.equal(runPreflight(dir, { home, ref: 'no-such-branch' }).generated, true);
+});
+
+test('runPreflight reads settings from CLAUDE_CONFIG_DIR when given', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const cfgDir = mkdtempSync(join(tmpdir(), 'cc-'));
+  writeFileSync(join(cfgDir, 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash'] } }));
+  assert.deepEqual(runPreflight(dir, { home, ref: 'rel', configDir: cfgDir }).missingRules, []);
+  assert.ok(runPreflight(dir, { home, ref: 'rel' }).missingRules.length > 0);
 });

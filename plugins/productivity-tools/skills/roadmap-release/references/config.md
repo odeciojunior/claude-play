@@ -24,7 +24,7 @@ Project-specific settings for `roadmap-release`, stored in the roadmap folder ne
 | `docsStage` | no | Instructions for the docs step: a string, or `{ instructions, measure?, paths? }`. `measure` is a Node script that prints `{"ok":true|false,"details":"..."}`; `paths` are doc prefixes (default `docs/`) whose changes alone skip the late-sync review. |
 | `testIntegrity` | no | Own test-integrity Node script (receives the target branch as `argv[2]`, prints `{deletedTests, removedAsserts, skipsAdded, prodChanged, assertsAdded}`), or `false` to disable. A built-in script is the default. |
 | `acceptRedBaseline` | no | Accept a red baseline instead of stopping the preflight. |
-| `releaseBranch` | no | Target branch for the run. Default is `integracao/<slug>`. |
+| `releaseBranch` | no | Target branch for the run. Order: `args.targetBranch`, this field, the roadmap's `releaseBranch` in `roadmap.config.json`, then `integracao/<slug>`. |
 | `maxParallel` | no | Parallel deliverables. Default 3. Forced to 1 while `generated` is true. |
 | `generated` | no | Set on derived configs. See "Generated config". |
 
@@ -48,9 +48,9 @@ While `generated` is true the run uses `maxParallel: 1`, because an undetected s
 
 ## Permission preflight
 
-`node scripts/preflight.mjs <roadmap-folder>` prints `{ configPath, generated, errors, missingRules, config }` and exits 1 when `errors` is not empty. It reads `permissions.allow` from `~/.claude/settings.json`, `<repo>/.claude/settings.json` and `<repo>/.claude/settings.local.json`; a missing file counts as empty. It never changes them.
+`node scripts/preflight.mjs <roadmap-folder> [--ref <target>]` prints `{ configPath, generated, errors, missingRules, config }` and exits 1 when `errors` is not empty. It reads `permissions.allow` from `~/.claude/settings.json`, `<repo>/.claude/settings.json` and `<repo>/.claude/settings.local.json`; a missing file counts as empty. When `CLAUDE_CONFIG_DIR` is set, the user file is read from there instead of `~/.claude`. Managed (enterprise) settings are not read. It never changes any of them. With `--ref <target>`, a `release.config.json` that exists on that ref is loaded, validated and used instead of regenerating (`generated` comes from its content); without it, the working tree and then derivation apply.
 
-Required rules have the form `Bash(<first word>:*)` for every subcommand of every gate, `install`, `setup` and `beforeEvidence`, split on newline, `;`, `&`, `&&`, `|`, `||` and `|&` outside quotes (subshell parens dropped, `$(...)` and backtick contents required too), plus `Bash(git:*)`. A rule is covered by `Bash`, `Bash(*)`, the rule itself, an exact `Bash(<command>)`, or a prefix rule such as `Bash(npm run:*)` that matches every command needing it. If rules are missing, the skill stops once, before launching any agent, and shows the exact rules to add.
+Required rules have the form `Bash(<first word>:*)` for every subcommand of every gate, `install`, `setup` and `beforeEvidence`, split on newline, `;`, `&`, `&&`, `|`, `||` and `|&` outside quotes (subshell parens dropped, `$(...)` and backtick contents required too), plus `Bash(git:*)`. A rule is covered by `Bash`, `Bash(*)`, the rule itself, an exact `Bash(<command>)`, or a prefix rule such as `Bash(npm run:*)` that matches every command needing it. `Bash(git *)` and `Bash(git:*)` are treated as the same rule. If rules are missing in `run` mode, the skill stops once, before launching any agent, and shows the exact rules to add; in other modes it only reports them.
 
 ## Minimal example
 
