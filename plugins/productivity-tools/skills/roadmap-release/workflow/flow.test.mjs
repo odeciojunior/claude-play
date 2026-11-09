@@ -1257,6 +1257,57 @@ test('resume: without the authorization the pending task is held, not relaunched
   assert.equal(x.r.results[0].failKind, 'externo');
 });
 
+// Reviews count commits as git would: only a range from the task's own first parent holds the earlier commits.
+const rerunRange = (l, prompt) => (/:t1:(spec|quality)\d/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: prompt.includes('log -p p..HEAD') ? 3 : 0 } : undefined);
+
+test('resume: a re-run that completes with no new commit passes, spends no fix and records the effect', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both((l) => (l === 'E1:plan' ? planWith(ext1) : undefined), pendingProgress, rerunRange) });
+  assert.equal(x.r.results[0].merged, true);
+  assert.ok(!x.labels.some((l) => /:t1:(spec|quality)-fix/.test(l)), 'no fix round');
+  assert.ok(x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+  const review = x.calls.find((c) => c.label === 'E1:t1:spec1').prompt;
+  assert.match(review, /awaiting person:[^\n]*not extra scope/);
+});
+
+test('resume: a completed re-run clears the mark right after the implementer, before any review', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, pendingProgress) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:clear-awaiting').prompt, /--allow-empty.*"E1 T1: /);
+  assert.ok(x.labels.indexOf('E1:t1:impl') < x.labels.indexOf('E1:t1:clear-awaiting'));
+  assert.ok(x.labels.indexOf('E1:t1:clear-awaiting') < x.labels.indexOf('E1:t1:spec1'));
+});
+
+test('resume: a repeated NEEDS_HUMAN does not clear the mark', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => pendingProgress(l) || (l === 'E1:t1:impl' ? noInputs : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:clear-awaiting'));
+});
+
+test('resume: a first run with no commits still gets its completion cleared', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1] } : undefined)) });
+  assert.ok(x.labels.includes('E1:t1:clear-awaiting'));
+  assert.equal(x.r.results[0].merged, true);
+});
+
+test('a mark that cannot be cleared is a concern', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => pendingProgress(l) || (/clear-awaiting/.test(l) ? null : undefined)) });
+  assert.ok(x.r.results[0].concerns.some((c) => /mark was not cleared/.test(c)));
+});
+
+test('a task with commits before a stopped task is not reviewed again over the stopped commits', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] },
+    over: withPlan(tasks, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p1', last: 'c1' }, { n: 2, firstParent: 'p', last: 'c' }], awaitingPerson: [2] } : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:spec1'));
+  assert.ok(x.labels.includes('E1:t2:impl'));
+});
+
+test('a mark agent that rejects still ends in the human stop, with the warning', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => { if (/awaiting-person/.test(l)) throw new Error('boom'); return l === 'E1:t1:impl' ? needsHuman : undefined; }) });
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /count this task as done/);
+});
+
 const reviewIssue = (l) => (l === 'E1:t1:spec1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 } : undefined);
 
 test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at once', async () => {
@@ -1264,7 +1315,11 @@ test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at 
     over: withPlan(ext1, (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 'needs a key', checks: [], humanInputs: [{ what: 'fix key' }] } : reviewIssue(l))) });
   assert.equal(x.r.results[0].merged, false);
   assert.equal(x.r.results[0].failKind, 'humano');
-  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').what, /external effect did not complete.*fix key/);
+  const act = x.r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.match(act.what, /task 1.*fix round needs a person.*may already have happened.*fix key/);
+  assert.match(act.doNow, /before repeating it.*checks outbox\.log first/);
+  assert.match(x.r.results[0].error, /may already have happened/);
+  for (const t of [act.what, act.doNow, x.r.results[0].error, x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt]) assert.doesNotMatch(t, /did not complete/);
   assert.ok(!x.labels.includes('E1:t1:spec2'));
   assert.ok(!x.labels.includes('E1:t1:quality1'));
   assert.ok(!x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));

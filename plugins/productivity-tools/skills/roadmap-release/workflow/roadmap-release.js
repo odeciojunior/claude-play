@@ -482,7 +482,7 @@ function buildTaskReviewPrompt(ctx, task, kind, impl) {
   return `${briefing(ctx)}
 
 Review of ${spec ? 'SPEC COMPLIANCE' : 'CODE QUALITY'} (read-only; do not trust the implementer's report, read the code) of Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
-Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.
+Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.${ctx.rangeNote || ''}
 ${spec
     ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
     : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block), a fragile test. Also confirm there is no regression against the spec.'}
@@ -1527,24 +1527,38 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     return fail('externo', `committed task ${lateExternal[0].x.n} is now declared external and awaits authorization (${lateExternal[0].item})`)
   }
   // An authorized external task that stopped for a person did not do its effect: the authorization is not spent and nothing merges.
-  const stopForPerson = async (t, res) => {
+  // fromFix: the implementer reported the task done, so its effect may have run; only the implementer's own stop proves it did not.
+  const stopForPerson = async (t, res, fromFix = false) => {
     human.push(...missingFrom(human, res.humanInputs, humanKey))
     const needed = (res.humanInputs || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; ') || res.summary
+    const reason = fromFix ? 'a fix round needs a person' : 'external effect did not complete'
+    const subject = `${E} T${t.n} awaiting person: ${reason}`
     // Without this mark a resume finds the task's commits and takes it for done.
-    const mark = await agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${E} T${t.n} awaiting person: external effect did not complete". Change nothing else. Return ok = true only if that commit is now HEAD.`,
-      { label: `${E}:t${t.n}:awaiting-person`, phase: 'Implementation', schema: S_MARK, model: 'haiku' })
-    const markWarn = mark && mark.ok ? '' : ` WARNING: the mark commit could not be written, so a resume would count this task as done: before running again, add an empty commit on ${br} with the subject "${E} T${t.n} awaiting person: external effect did not complete"`
-    op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but its external effect did not complete; it needs a person first: ${needed}`,
-      `Provide the data (or the decision) and run again passing the answer in notes; the task runs again and any commits it made stay on ${br}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
+    const mark = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${subject}". Change nothing else. Return ok = true only if that commit is now HEAD.`,
+      { label: `${E}:t${t.n}:awaiting-person`, phase: 'Implementation', schema: S_MARK, model: 'haiku' }))
+    const markWarn = mark && mark.ok ? '' : ` WARNING: the mark commit could not be written, so a resume would count this task as done: before running again, add an empty commit on ${br} with the subject "${subject}"`
+    const state = fromFix ? 'a fix round needs a person first, and the external effect may already have happened' : 'its external effect did not complete; it needs a person first'
+    const check = fromFix ? `Check whether the effect already happened before repeating it (externalDedupe: ${t.externalDedupe || 'none declared'}). ` : ''
+    op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but ${state}: ${needed}`,
+      `${check}Provide the data (or the decision) and run again passing the answer in notes; the task runs again and any commits it made stay on ${br}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
       { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
-    return fail('humano', `authorized external task ${t.n} needs a person; its external effect did not complete: ${needed}`)
+    return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person, and the external effect may already have happened: ${needed}` : `authorized external task ${t.n} needs a person; its external effect did not complete: ${needed}`)
+  }
+  // Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again.
+  const clearAwaiting = async t => {
+    const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${E} T${t.n}: external effect completed, clears the awaiting-person mark". Change nothing else. Return ok = true only if that commit is now HEAD.`,
+      { label: `${E}:t${t.n}:clear-awaiting`, phase: 'Implementation', schema: S_MARK, model: 'haiku' }))
+    if (!r || !r.ok) out.concerns.push(`T${t.n}: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on ${br} with a subject starting "${E} T${t.n}: "`)
   }
   let head = prog.head
   const taskLog = []
   for (const t of plan.tasks) {
     const resumed = doneMap[t.n]
-    if (resumed && t.n < lastDone) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
-    const start = resumed ? resumed.firstParent : head
+    // A later task stopped for a person ran after this one passed its reviews, and its commits are not this task's scope.
+    if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
+    const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
+    const start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
+    const rangeNote = earlier ? ` The range holds this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${E} T${t.n}: external effect completed" or "${E}: review log" are bookkeeping and not extra scope.` : ''
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
     // A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
     const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
@@ -1570,12 +1584,13 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       if (impl.concerns) out.concerns.push(`T${t.n}: ${impl.concerns}`)
       if (impl.status === 'BLOCKED') return fail('conteudo', `task ${t.n} BLOCKED: ${impl.summary}`)
       if (authorizedExt && impl.status === 'NEEDS_HUMAN') return stopForPerson(t, impl)
+      if (awaitingPerson.includes(t.n) && (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS')) await clearAwaiting(t)
     }
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {
       const loop = await reviewLoop(`T${t.n}:${kind}`,
-        (round, prev) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev }), t, kind, cur),
+        (round, prev) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev, rangeNote }), t, kind, cur),
           { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', schema: S_REVIEW, model: reviewModelFor(t) }),
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
@@ -1587,7 +1602,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
         }),
         r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1, `${start}..HEAD`),
         { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
-      if (loop.halted) return stopForPerson(t, loop.halted)
+      if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
       lastR = loop.r
     }
