@@ -1001,7 +1001,8 @@ async function runDeliverable(E, idx) {
   const human = []
   const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [] }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
-DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}` : ''}`
+DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
+Never write or quote a credential, token or key from the owner instruction in any file, commit message, review finding or report; write 'provided through environment variable <NAME>' instead.` : ''}`
   const ctxFor = extra => ({ base: baseOf(), envFacts: pre.envFacts, baseline: baseTxt(), E, wt, planPath: plan && plan.planPath, specPath: spec && spec.specPath, locks: [], ...extra })
   const C = () => briefing(ctxFor())
   // Briefing without the owner notes, for every stage that writes to a committed record (docs, review log, merge-fix).
@@ -1228,7 +1229,6 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   spec = await agent(`${C()}
 
 If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it, reassess humanInputs (an answered input stops being blocking), commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
-Never write a credential, token or key from the owner instruction into any file; write 'provided through environment variable <NAME>' instead.
 Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
 - You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block, the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
 - Parts that are human acts: produce the artifacts and leave the acceptance to the human.
@@ -1276,7 +1276,6 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
   plan = await agent(`${C()}
 
 If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
-Never write a credential, token or key from the owner instruction into any file; write 'provided through environment variable <NAME>' instead.
 Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Header with the exact line: **Roadmap:** ${RM}
 - Save to ${planName}, in the language of the roadmap.

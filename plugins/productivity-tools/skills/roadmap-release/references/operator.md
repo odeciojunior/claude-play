@@ -50,7 +50,7 @@ An external effect is production, a deploy, a push, an e-mail or message, a writ
 The result carries `resumeArgs`, the args to pass back. Run the Workflow again with them:
 
 - `deliverables` narrows to the ones still open, and keeps a merge that failed validation. A merge already on the target without its post-merge status is finished as validate-and-document, not redone.
-- `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected. Never put a secret (credential, token, key) in `notes`: set an environment variable and name it in `notes`. The text of `notes` reaches the spec and plan stages only; the roadmap record, the docs, the review log and the committed report never carry it.
+- `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected. Never put a secret (credential, token, key) in `notes`: set an environment variable and name it in `notes`. The workflow does not copy `notes` into the roadmap record, the docs, the review log or the committed report, and tells every agent that receives it not to write or quote a secret.
 - `overrideDonot`, `acceptRisks` and `acceptRedBaseline` are decisions of the person. Add them only when the person asked for them.
 
 ## Integrity alerts
