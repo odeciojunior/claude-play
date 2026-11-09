@@ -69,6 +69,7 @@ Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a s
 | Folder state | Action |
 |--------------|--------|
 | Has `roadmap.config.json` | **Stop.** This is an existing roadmap. Offer `roadmap-tracker` to update it, or to propose a strategy revision. Write nothing. |
+| Has `planning-draft.md`, no `roadmap.config.json` | **Resume** from the draft (see "Planning draft"); do not redo the questions it records |
 | Exists without `roadmap.config.json` | Ask before writing into it, or pick another folder |
 | Does not exist | Continue |
 
@@ -77,6 +78,8 @@ Also settle now:
 - **Language** of the documents (Rule 7).
 - **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask which branch the work will integrate into (default `main`); the checker then skips git checks with one `no-git` warning, which is expected and listed in the handoff.
 - **Release branch** (config `releaseBranch`): ask whether deliverables merge into an intermediate release branch before the integration branch. If yes, record its name; if no, omit the key.
+
+**Planning draft.** `<roadmap-folder>/planning-draft.md` keeps the answers across a crash or `/clear`. Write it (create the folder if it does not exist; the draft is then its only file) after Step 1, after Step 2, and after each round of questions, overwriting it with: objective and mode, sources read (paths), questions asked, the user's answers verbatim, the `DEC` and `REQ` rows so far, and the next step. Never put a secret the user pasted (token, password, key) in it; write "[omitted: secret]" instead. If the draft exists at Step 0, tell the user you are resuming from it, read it, skip the mode question and any question it records as answered, and continue at its next step. Step 6 deletes it.
 
 ### Step 1: Intake and sources
 
@@ -93,12 +96,13 @@ Also settle now:
 
 4. Assign `SRC-NN` IDs in reading order. Compare the claims across sources; every disagreement becomes one item in the `conflicts` block (`SRC-a vs SRC-b: <what disagrees>`) and a clarify candidate with uncertainty 3.
 5. Draft `sources.md` per `formats.md` §7.
+6. Write `planning-draft.md` (see "Planning draft" in Step 0).
 
 ### Step 2: Clarify
 
 Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask capacity and date constraints before or together with the scope decisions (showing the accumulated cost when a sourced estimate exists), settle the executor autonomy policy (`clarify.md` §7; the autonomy question is a clarification question and counts toward the budget (light mode: one of the 3; full mode: one of the round's 5), unlike the mode question), ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as "Open questions" entries in the strategy, prefixed `E<n>:`, for `superpowers:brainstorming` (`clarify.md` §8).
 
-Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give.
+Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give. Update `planning-draft.md` after each round and when this step ends.
 
 ### Step 3: Requirements
 
@@ -130,6 +134,8 @@ node "<roadmap-folder>/check-roadmap.mjs" --version
 ```
 
 The `--version` output reads `<version> format <n>`; `<n>` must equal `formatVersion`.
+
+When the definitive files are written, delete `<roadmap-folder>/planning-draft.md`.
 
 ### Step 7: Verify
 
