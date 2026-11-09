@@ -25,14 +25,14 @@ Look for this plan's progress file in the current tree and in every worktree fro
 | Progress file state | Action |
 |---------------------|--------|
 | None | Build the map (Step 1) |
-| `Status: In Progress` or `Blocked`, **and** it has `## Shared Brief` and `## Step Cards` | Don't rebuild: read `## Recovery State` + the Execution Map table, continue Phase 2 at **Next Action** |
+| `Status: In Progress` or `Blocked`, **and** it has `## Shared Brief` and `## Step Cards` | Don't rebuild: read state as `references/delegation-protocol.md` § Step lifecycle says, continue Phase 2 at **Next Action** |
 | `Status: Map ready` or legacy `Awaiting approval` (same sections present) | Go to Step 8 |
 | `Status: Completed` | Tell the user it's done; ask before re-running anything |
 | Older format (no Shared Brief / Step Cards / Tier column) | Rebuild the map, carrying over completed statuses as skips |
 
 A file that has those sections but lacks `Base`, the `Commits` line or the Final gate row gets them before anything else: `Commits` and the row by Steps 2 and 5, and `Base` from `git merge-base <default branch> HEAD`. On the default branch there is no reliable Base, so ask the user for it.
 
-A file that has those sections and is not `Status: Completed` but lacks the map's `External:` line predates external-step classification. Before anything else, classify its unfinished steps as in Step 1 and write the `External:` line and the cards' `External: yes` lines; steps already PASS are left as they are. With no external step among them, write `External: none` and continue as the table says. Otherwise re-apply routing.md §3 to each newly external step (never Inline, Blast radius 2, opus review gate) and rewrite its card `Route` and map row, splitting its group if needed (Step 5). Then process any recorded in-flight groups (delegation-protocol, Recovery): a newly classified external step in flight is held under its item 3 and never launched a second time. Then, by the status at that point: `Map ready` or legacy `Awaiting approval` runs all of Step 8, as the table says. `In Progress` runs Step 8 items 3 to 6. `Blocked` keeps its `Status` and `Next Action` and asks that question first; append "then run Step 8 items 3 to 6 before any launch" to `Next Action`.
+A file with those sections that is not `Status: Completed` and predates the state table (no `External:` line in the map, or no `Final gate` row in `## Steps`) is brought into it before anything else: delegation-protocol, § Step lifecycle, Older progress files.
 
 ### Step 1: Load the plan
 
@@ -69,11 +69,11 @@ Score each step 0–10 on five dimensions and map the score to a route — **Inl
 
 ### Step 5: Group into waves
 
-1. Build the dependency DAG. A step never shares a wave with (or precedes) a step it depends on. A step behind a review gate counts as done only after the reviewer's PASS.
-2. **Write-set check:** two steps in one wave must not write the same file. Each step's write set is its declared files **plus implicit writes**: lockfiles and manifests if it installs or removes dependencies; generated/output dirs (`dist/`, `build/`, codegen output, `*.tsbuildinfo`, coverage) if it builds or generates; snapshot files if it updates snapshots; migration directories if it creates migrations. On overlap: serialize or bundle. (Don't resolve overlaps with worktree isolation: a worktree branches from the default branch, so earlier waves' unmerged work is invisible to it, and its changes never reach the main tree without a merge the protocol doesn't have.)
+1. Build the dependency DAG. A step never shares a wave with (or precedes) a step it depends on.
+2. **Write-set check:** two steps in one wave must not write the same file. Each step's write set is its declared files **plus implicit writes**: lockfiles and manifests if it installs or removes dependencies; generated/output dirs (`dist/`, `build/`, codegen output, `*.tsbuildinfo`, coverage) if it builds or generates; snapshot files if it updates snapshots; migration directories if it creates migrations. On overlap: serialize or bundle. Don't resolve overlaps with worktree isolation (delegation-protocol, Fork vs fresh).
 3. **Bundle** into one delegation when steps are sequential, same agent, same tier, and tightly coupled (type → hook → tests for one feature). Split when agents or tiers differ, when steps are independent, or when failure modes differ. Keep bundles to what one fresh context can hold comfortably — roughly ≤5 steps or ≤~15 files.
 4. Parallel width: default ≤4 concurrent agents per wave; go wider only for read-only or clearly disjoint mechanical work. The platform caps concurrent subagents (default 20, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); never plan a wave above it.
-5. Put the critical path first; fill waves with off-path work. Inline steps of the wave about to start run right before its launch, wave 1 included: on the first pass run Wave loop item 10 for wave 1 after item 3 (pre-flight and allow rules done) and before item 4 (marking delegated), with nothing in flight; afterwards item 10 runs the next wave's inline steps after the wave gate. Place them in the wave after their dependencies (see delegation-protocol, Wave loop).
+5. Put the critical path first; fill waves with off-path work. Inline steps run right before their wave's launch (delegation-protocol, Wave loop item 10); place them in the wave after their dependencies.
 6. **Final gate:** the last row of the map is always a read-only review of the whole change, `Mode: Final gate`, opus with `effort: high`, depending on every other row. It runs alone, under Completion in `references/delegation-protocol.md`, never as a wave group.
 
 ### Step 6: Write the shared context
@@ -94,18 +94,17 @@ A step card must be self-sufficient with the brief: executors never read the pla
 The orchestrator approves the map by its own best analysis, in this order, and continues into Phase 2 in the same turn. The map is never put to the user for approval.
 
 1. **Resolve borderline steps.** A step is **borderline** when its score is at a tier edge (2, 3, 5 or 6) or any dimension was scored 1 only because information was missing. A step already listed with an outcome under `Map self-approved` in Issues & Decisions is settled: keep that outcome. For the others, read the files that fill the missing information and re-score. When a step is still borderline and has Verifiability ≥ 1 or a dependent step: an inline or haiku step moves to sonnet with a review gate; a sonnet step keeps its tier and gets a review gate. Every other borderline step keeps its scored tier. Self-approval never promotes a step to opus beyond routing.md §2–§3, and risk floors (routing.md §3) always hold. Write each tier and outcome to the progress file as you decide it, under a `Map self-approved` entry with the date, the reason and anything scored on thin information.
-2. **Apply manual actions.** A step that needs an unfinished manual action, or has any open entry under Manual Actions, is **held**, from the moment the entry opens: mark it `Skip (manual)` and every step depending on it, directly or transitively, `Waiting (manual)`, and split any group holding both held and other steps so the others can run. Neither status counts as intentionally skipped, and held steps stay out of launches. An answer closes the entries it settles: `no` or `skip` becomes a `Refused:` entry; `it is done` marks the step PASS, with the user's word noted in Issues & Decisions; a finished manual action returns the step to `Pending`. An external step held by an `Open question:` entry may already have run, so it returns to `Pending` only if the answer says to run it, and that answer is its new authorization, replacing `Authorized:`. When no step can run and an open Manual Actions entry is not a `Refused:` one, set `Status: Blocked`, set `Next Action` to re-run Step 8 after the manual actions, and stop after asking the user for them.
-3. **Validate the final map.** Every Step 5 rule holds, every step has a tier and rationale, every routing.md §3 override and review gate is applied, and every card is self-sufficient (Step 6). If a check fails, fix the map and validate again. After two failed fixes, record the failing check under Issues & Decisions, set `Status: Blocked` and stop after asking the user.
-4. **External steps.** Applies to each step marked `External: yes` that is neither PASS nor held.
-   - **Pre-launch review.** Unless the card has a `Pre-launch review:` line, run the read-only opus review of the card (routing.md §4). On PASS, record it in Issues & Decisions and add the line `Pre-launch review: <Issues & Decisions entry>` to the card. On defects, fix the card and review again, at most 2 rounds, recording each as `Pre-launch review round <n>: Step N` in Issues & Decisions so a compaction does not restart the count. If it still does not pass, the effect is not launched and the question below is not asked for that step: hold it (item 2) with `Pre-launch review failed: Step N: <defects>` under Manual Actions. Closing that entry never authorizes the effect: the corrected card comes back to this review, then to the question. A later change to any card line other than `Handoff`, `Pre-launch review:` or `Authorized:` removes its `Pre-launch review:` line and, if the change alters the effect, its `Authorized:` line; the step then returns to this item before any launch or retry (routing.md §5).
-   - **Authorization.** For each step whose review passed: unless the user's request names the step (number or title) as authorized, write `Status: Blocked` and a `Next Action` that names the step, its effect and what each answer does into the progress file, ending with "then continue at SKILL.md Step 8 item 5", BEFORE asking; then ask one question listing every unauthorized external step whose review passed and stop after asking. Silence is not authorization. The answer authorizes only the steps it names. A step the answer does not name is held (item 2) with `Not named: Step N: <effect>` under Manual Actions until a later answer names it, which counts as this answer. Record either kind of authorization (from the original request or the answer) in Issues & Decisions, and add the line `Authorized: <Issues & Decisions entry>` to the step's card; a re-run honours an existing record of a step not yet launched.
-   - **Refusal.** A refused step is held (item 2) with `Refused: Step N: <effect>` under Manual Actions until the user names the step. Groups with no external step keep running, and a refusal does not hold the final gate of the steps that did run (delegation-protocol, Completion).
+2. **Apply manual actions.** A step that needs an unfinished manual action, or has any open entry under Manual Actions, is **held**, from the moment the entry opens. Holding, answers and release follow delegation-protocol, § Step lifecycle.
+3. **Validate the final map.** Every Step 5 rule holds, every step has a tier and rationale, every routing.md §3 override and review gate is applied, and every card is self-sufficient (Step 6). If a check fails, fix the map and validate again. After two failed fixes, record the failing check under Issues & Decisions, then stop and ask (delegation-protocol, § Step lifecycle).
+4. **External steps.** Applies only to external steps in state `Pending` (delegation-protocol, § Step lifecycle), so it never asks about an effect already performed.
+   - **Pre-launch review** (routing.md §4), unless the card has a `Pre-launch review:` line. On PASS, record it in Issues & Decisions and add the line `Pre-launch review: <Issues & Decisions entry>` to the card. On defects, fix the card and review again, at most 2 rounds, recording each as `Pre-launch review round <n>: Step N` in Issues & Decisions.
+   - **Authorization**, unless the card has an `Authorized:` line or the user's request names the step (number or title) as authorized. One question lists every such step whose review passed. Stop and ask at once, with a `Next Action` that names each step, its effect and what each answer does, ending "then continue at SKILL.md Step 8 item 5". Silence is not authorization. Record any authorization in Issues & Decisions and add the line `Authorized: <Issues & Decisions entry>` to the card.
 
    After the answer, or when no question was needed, continue at item 5.
-5. **Report the map** in one message that does not wait for an answer: wave count, steps per tier (`inline 2 · haiku 5 · sonnet 6 · opus 2`), review gates, total effort, write-set overlaps and how they were resolved, skips, manual actions, each external step with what happened to it (`authorized by the request`, `authorized by the answer`, `not named`, `refused`, `pre-launch review failed`) or `External: none`, thin information, and the allow rules from delegation-protocol. For plans with more than 25 steps (Execution Map rows, i.e. plan tasks, not checkboxes), or 10+ near-identical mechanical items, add that a dynamic workflow is available if the user says "use a workflow"; it suits dozens to hundreds of agents. Never launch one unasked.
-6. Set `Status: In Progress` and set `Next Action`, in this order, to: finish every `Launched` step (Recovery if needed, then its owed review gate; never a second launch); if `Last DELEGATED Wave` is above `Last COMPLETED Wave`, run that wave's gate; then start the lowest wave with a `Pending` step. Then follow `references/delegation-protocol.md`.
+5. **Report the map** in one message that does not wait for an answer: wave count, steps per tier (`inline 2 · haiku 5 · sonnet 6 · opus 2`), review gates, total effort, write-set overlaps and how they were resolved, skips, manual actions, each external step with what happened to it (`authorized by the request`, `authorized by the answer`, `not named`, `refused`, `pre-launch review failed`, `launched`) or `External: none`, thin information, and the allow rules from delegation-protocol. For plans with more than 25 steps (Execution Map rows, i.e. plan tasks, not checkboxes), or 10+ near-identical mechanical items, add that a dynamic workflow is available if the user says "use a workflow"; it suits dozens to hundreds of agents. Never launch one unasked.
+6. Set `Status: In Progress` and set `Next Action`, in this order, to: finish every `Launched` and `Review owed` step (delegation-protocol, § Step lifecycle); if `Wave gate owed` names a wave, run its gate; then start the lowest wave with a `Pending` step. Then follow `references/delegation-protocol.md`.
 
-Self-approval covers the map only. The questions in Steps 0 and 1, the external-step stop in item 4 and the stops in `references/routing.md` and `references/delegation-protocol.md` still apply.
+Self-approval covers the map only: the questions in Steps 0 and 1 and every stop of delegation-protocol, § Step lifecycle still apply.
 
 ## Execution Map Format
 
@@ -115,23 +114,23 @@ Self-approval covers the map only. The questions in Steps 0 and 1, the external-
 **Steps**: N (execute M, skip K) | **Waves**: W | **Effort**: Xh | **Tiers**: inline a · haiku b · sonnet c · opus d | **Review gates**: R
 External: none   <!-- or the external steps: "External: Step 7 (deploy to staging); Step 9 (send release e-mail)" -->
 
-| Wave | Group | Steps | Agent | Tier | Score | Mode | Depends On | Writes | Status |
-|------|-------|-------|-------|------|-------|------|------------|--------|--------|
-| 1 | A | 1 | general-purpose | haiku | 1 | Single | — | src/types/models.ts | Pending |
-| 1 | B | 2 | general-purpose | sonnet | 3 | Single | — | tests/filter.test.ts | Pending |
-| 2 | C | 3-5 | general-purpose | sonnet | 5 | Bundle | A | src/api/*.ts | Pending |
-| 2 | D | 6 | — | inline | 1 | Inline | A | README.md | Pending |
-| 3 | E | 7 | general-purpose | opus | 8 | Single + review | C | src/auth/session.ts | Pending |
-| 4 | F | all | general-purpose | opus | — | Final gate | A-E | — | Pending |
+| Wave | Group | Steps | Agent | Tier | Score | Mode | Depends On | Writes |
+|------|-------|-------|-------|------|-------|------|------------|--------|
+| 1 | A | 1 | general-purpose | haiku | 1 | Single | — | src/types/models.ts |
+| 1 | B | 2 | general-purpose | sonnet | 3 | Single | — | tests/filter.test.ts |
+| 2 | C | 3-5 | general-purpose | sonnet | 5 | Bundle | A | src/api/*.ts |
+| 2 | D | 6 | — | inline | 1 | Inline | A | README.md |
+| 3 | E | 7 | general-purpose | opus | 8 | Single + review | C | src/auth/session.ts |
+| 4 | F | all | general-purpose | opus | — | Final gate | A-E | — |
 ```
 
-**External line**: every `External: yes` step of the cards, or `none`; its state lives in the Status column and the card.
+**External line**: every `External: yes` step of the cards, or `none`.
 
 **Mode key**: Final gate = whole-change review before completion · Single = 1 step, 1 agent · Bundle = sequential steps, 1 agent · Inline = orchestrator does it directly, between waves · `+ review` = a read-only reviewer must PASS it before dependents start.
 
 ## Rules
 
-1. **Map before running.** No delegation until the progress file holds the complete map and it passed self-approval (Step 8). The read-only pre-launch reviews of Step 8 item 4 are part of self-approval.
+1. **Map before running.** No delegation until the progress file holds the complete map and it passed self-approval (Step 8).
 2. **Progress file is the source of truth** for status, handoffs and recovery.
 3. **Cheapest reliable tier.** Tier by score, raise by risk, not by habit. Justify every opus and every inline.
 4. **No write collisions** inside a wave, counting implicit writes.
