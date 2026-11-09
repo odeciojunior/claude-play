@@ -1767,3 +1767,55 @@ test('real run: programs that need a directory are run with cd, since a Bash cal
   const res = await exec({ cards: [unfinished()], deliverables: ['E1'] });
   assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "m0^1"'));
 });
+
+// ---- leva 3, bloco A
+test('decision 2: only the completion subject clears the mark in the progress read', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  const p = calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.match(p, /awaitingPerson = [^\n]*"E1 T<n> awaiting person:"[^\n]*"E1 T<n>: external effect completed"/);
+  assert.match(p, /any other "E1 T<n>:" commit does not count/i);
+});
+
+test('decision 2: the action of a stop names the subject that clears the mark', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /"E1 T1: external effect completed"/);
+});
+
+test('decision 2: a mark that cannot be cleared names the completion subject', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => pendingProgress(l) || (/clear-awaiting/.test(l) ? null : undefined)) });
+  assert.ok(x.r.results[0].concerns.some((c) => /mark was not cleared/.test(c) && c.includes('"E1 T1: external effect completed"')));
+});
+
+test('a mark cleared with success raises no concern', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => pendingProgress(l) || (/clear-awaiting/.test(l) ? { ok: true } : undefined)) });
+  assert.ok(x.labels.includes('E1:t1:clear-awaiting'));
+  assert.equal(x.r.results[0].merged, true);
+  assert.ok(!x.r.results[0].concerns.some((c) => /mark was not cleared/.test(c)));
+});
+
+test('resume: the range note names the spec and the plan of the resume', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both((l) => (l === 'E1:plan' ? planWith(ext1) : undefined), pendingProgress, rerunRange) });
+  const review = x.calls.find((c) => c.label === 'E1:t1:spec1').prompt;
+  assert.match(review, /not extra scope[^\n]*docs\/s\.md[^\n]*docs\/p\.md[^\n]*not extra scope/);
+});
+
+test('decision 3: a quoted command is dispatched with its quotes', async () => {
+  const q = '"./my tool"';
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
+    over: both(planRows([cmdRow(q)]), reviewRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
+  assert.equal(r.results[0].merged, true);
+  assert.match(calls.find((c) => c.label === 'E1:evidence1').prompt, /^AC1: "\.\/my tool"$/m);
+});
+
+test('decision 3: a quoted command against its bare form is a defect and never runs', async () => {
+  const { r, labels } = await mism([cmdRow('"./my tool"')], [cmdRow('./my tool')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.equal(r.results[0].merged, false);
+});
+
+test('the docs stage explains the mark: a fulfilled request leaves pending, any other need stays', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), asksAuth, evOk) });
+  const docs = calls.find((c) => c.label === 'E1:docs1').prompt;
+  assert.ok(docs.includes(ranMark(deploy)));
+  assert.match(docs, /marked "\[already authorized and run in this run: \.\.\.\]"[^\n]*only[^\n]*leave it out of pending[^\n]*any other need the item states stays open in pending/);
+});
