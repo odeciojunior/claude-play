@@ -1,4 +1,4 @@
-// check-roadmap 1.3.0 format 1
+// check-roadmap 1.5.0 format 1
 // Deterministic checker for roadmap folders (format contract: roadmap-planner/references/formats.md).
 // Single file, Node >= 18, no dependencies, no network. Vendored into each roadmap folder.
 import fs from 'node:fs';
@@ -221,7 +221,12 @@ function parseStatus(cell) {
 }
 
 const isEmptyCell = (c) => c === undefined || c.trim() === '' || c.trim() === '-' || c.trim() === '—';
-const idsIn = (s, re) => [...new Set((s || '').match(re) || [])];
+const localIsoDate = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const idsIn =(s, re) => [...new Set((s || '').match(re) || [])];
 
 function shasIn(cell) {
   const out = [];
@@ -229,6 +234,45 @@ function shasIn(cell) {
     out.push(m[1]);
   }
   return [...new Set(out)];
+}
+
+// Acceptance verification tag, at the end of an item: ` {verify: <kind>[ BLQ-n]; evidence: <command or artifact>}`.
+const VERIFY_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
+const EXECUTABLE_KINDS = ['test', 'smoke', 'integration'];
+
+export function parseVerifyTag(item) {
+  const at = item.indexOf('{verify:');
+  if (at === -1) return { text: item, tag: null, problem: null };
+  const text = item.slice(0, at).trimEnd();
+  const m = /^\{verify:\s*([^;}]*?)\s*(?:;\s*evidence:\s*([\s\S]*?))?\s*\}$/.exec(item.slice(at).trim());
+  if (!m) return { text, tag: {}, problem: 'tag is not of the form {verify: <kind>; evidence: <...>}' };
+  const km = /^([A-Za-z-]+)(?:\s+(BLQ-\d+))?$/.exec(m[1]);
+  const kind = km ? km[1] : m[1];
+  const evidence = (m[2] || '').trim();
+  const tag = { kind, blq: km ? km[2] : undefined, evidence };
+  if (!km || !VERIFY_KINDS.includes(kind)) return { text, tag, problem: `unknown kind "${m[1]}" (use ${VERIFY_KINDS.join(', ')})` };
+  if (kind === 'blocked' && !tag.blq) return { text, tag, problem: 'kind "blocked" must cite a BLQ-n' };
+  if (kind !== 'blocked' && tag.blq) return { text, tag, problem: `kind "${kind}" does not take a BLQ-n` };
+  if (EXECUTABLE_KINDS.includes(kind) && !evidence) return { text, tag, problem: `kind "${kind}" needs a command or artifact as evidence` };
+  return { text, tag, problem: null };
+}
+
+// Command text (gates Command column, verify evidence) is shell, not a citation: blank it before the ID scan.
+function blankCommandText(text, isStrategy) {
+  if (!isStrategy) return text;
+  let inGates = false;
+  return text.split('\n').map((raw) => {
+    let line = raw;
+    if (/<!--\s*roadmap:gates\b/.test(line)) inGates = true;
+    else if (/<!--\s*\/roadmap:gates\b/.test(line)) inGates = false;
+    else if (inGates && line.trim().startsWith('|')) {
+      const cells = line.split(/(?<!\\)\|/);
+      if (cells.length > 2) { cells[2] = ' '.repeat(cells[2].length); line = cells.join('|'); }
+    }
+    const at = line.indexOf('{verify:');
+    if (at !== -1) line = line.slice(0, at) + line.slice(at).replace(/;\s*evidence:[\s\S]*$/, (m) => ' '.repeat(m.length));
+    return line;
+  }).join('\n');
 }
 
 // ---------- loading ----------
@@ -300,6 +344,7 @@ export function validateConfig(c, folder = '.', repoRoot = null) {
     if (!c.vocab.deliverableStatuses.includes(c.vocab[k])) fail(`vocab.${k} "${c.vocab[k]}" is not in vocab.deliverableStatuses`);
   }
   strArray('tracks', c.tracks, true);
+  if ('releaseBranch' in c && !isNonEmptyString(c.releaseBranch)) fail('releaseBranch must be a non-empty string');
   if (!c.limits || typeof c.limits !== 'object' || Array.isArray(c.limits)) fail('limits must be an object');
   for (const k of ['nowItems', 'cellChars']) if (!(k in c.limits)) fail(`limits.${k} is required`);
   for (const [k, val] of Object.entries(c.limits)) {
@@ -489,11 +534,14 @@ export function checkRoadmap(r, git, opts = {}) {
       depends: list(b.attrs.depends),
       reqs: list(b.attrs.reqs),
       critical: String(b.attrs.critical).toLowerCase() === 'true',
-      acceptance: acc ? parseList(acc.body) : [],
+      acceptance: (acc ? parseList(acc.body) : []).map(parseVerifyTag),
       risks: risks ? parseList(risks.body) : [],
     });
   }
   if (cards.length === 0) add('error', 'missing-block', strategyName, 'no roadmap:card blocks found');
+  for (const row of tableRows(r.strategy, 'gates', strategyName, 5, false)) {
+    if (isEmptyCell(row[1])) add('warning', 'gate-no-command', strategyName, `gate ${row[0] || '?'} has no command`);
+  }
 
   // ---- tables ----
   const panel = tableRows(r.files.state, 'panel', fileName('state'), 4);
@@ -534,7 +582,7 @@ export function checkRoadmap(r, git, opts = {}) {
   for (const role of ROLE_KEYS) if (r.files[role] !== null && r.files[role] !== undefined) scanned.push([fileName(role), r.files[role], role]);
   for (const [file, text, role] of scanned) {
     if (scanFences(text, false).unclosed) add('warning', 'unclosed-fence', file, 'a fenced code block is never closed; everything after it is ignored by the checker');
-    for (const id of idsIn(scanFences(text, true).text, ID_RE)) {
+    for (const id of idsIn(blankCommandText(scanFences(text, true).text, role === 'strategy'), ID_RE)) {
       // log.md and decisions.md are append-only: they may cite retired blockers and dropped deliverables
       if ((role === 'log' || role === 'decisions') && (id.startsWith('BLQ-') || /^E\d+$/.test(id))) continue;
       // the strategy changes only through a revision, so it may keep citing a closed blocker (BLQ only) until then
@@ -553,6 +601,18 @@ export function checkRoadmap(r, git, opts = {}) {
     if (!cfg.tracks.includes(c.attrs.track)) add('error', 'unknown-track', strategyName, `${c.id} track "${c.attrs.track}" is not in tracks`);
     if (!PRIORITIES.includes(c.attrs.priority)) add('error', 'bad-priority', strategyName, `${c.id} priority "${c.attrs.priority}" is not one of ${PRIORITIES.join(', ')}`);
     if (c.critical && c.risks.length === 0) add('warning', 'critical-no-risk', strategyName, `${c.id} is on the critical path and has no risk listed`);
+  }
+
+  // acceptance verification tags: adoption rule (some item tagged), then one warning per card
+  {
+    const adopted = cards.some((c) => c.acceptance.some((a) => a.tag !== null));
+    for (const c of cards) {
+      for (const a of c.acceptance) {
+        if (a.problem) add('warning', 'ac-verify-invalid', strategyName, `${c.id} acceptance "${a.text.slice(0, 50)}": ${a.problem}`);
+      }
+      const untagged = c.acceptance.filter((a) => a.tag === null).length;
+      if (adopted && untagged > 0) add('warning', 'ac-verify-missing', strategyName, `${c.id} has ${untagged} acceptance item(s) without a {verify: ...} tag`);
+    }
   }
 
   // dependency cycle (DFS, one report)
@@ -587,6 +647,17 @@ export function checkRoadmap(r, git, opts = {}) {
   inflight.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `inflight row ${i + 1}`, c)));
   releases.forEach((row, i) => row.forEach((c) => limitCell(fileName('state'), `releases row ${i + 1}`, c)));
   [...nowItems, ...pendingItems, ...donotItems].forEach((t) => limitCell(fileName('state'), 'list item', t));
+
+  if (typeof cfg.limits.pendingItems === 'number' && pendingItems.length > cfg.limits.pendingItems) {
+    add('warning', 'pending-limit', fileName('state'), `Pending has ${pendingItems.length} items, limit ${cfg.limits.pendingItems}`);
+  }
+  {
+    const today = opts.today || localIsoDate();
+    for (const row of blockers) {
+      const due = (row[4].match(/\(due (\d{4}-\d{2}-\d{2})\)/) || [])[1];
+      if (due && due < today) add('warning', 'blocker-overdue', fileName('state'), `${row[0]} was due ${due} and is still open`);
+    }
+  }
 
   donotItems.forEach((t) => {
     if (!/\b(?:BLQ-\d+|DEC-\d+)\b/.test(t)) add('error', 'donot-no-ref', fileName('state'), `"Do not do now" item cites no BLQ-n or DEC-NNN: ${t.slice(0, 60)}`);
@@ -642,6 +713,15 @@ export function checkRoadmap(r, git, opts = {}) {
       if (!target || !defs.DEC.includes(target)) add('error', 'superseded-link', fileName('decisions'), `${id} is superseded by "${target || status}", which does not exist`);
     } else {
       add('error', 'bad-status', fileName('decisions'), `${id} status "${status}" is not in-force, pending or superseded`);
+    }
+  }
+
+  {
+    // append-only file: long cells are never an error, and one warning covers them all
+    const long = decisions.filter((row) => row.some((c) => c.length > cfg.limits.cellChars)).map((row) => row[0]);
+    if (long.length > 0) {
+      const names = long.slice(0, 3).join(', ') + (long.length > 3 ? ', ...' : '');
+      add('warning', 'decisions-cell-long', fileName('decisions'), `${long.length} decision row(s) have a cell above ${cfg.limits.cellChars} characters (${names}); decisions.md is append-only, so this is only a warning`);
     }
   }
 
@@ -732,8 +812,13 @@ export function checkRoadmap(r, git, opts = {}) {
     logRows.forEach((row) => checkShas(fileName('log'), row[3], 'warning'));
   }
 
+  const onBranchWord = v.deliverableStatuses[4];
+  const pendingRows = panel.filter((row) => {
+    const st = parseStatus(row[1]);
+    return st.length > 0 && st.every((s) => s === onBranchWord) && shasIn(row[2]).length > 0;
+  });
   const integratedRows = panel.filter((row) => parseStatus(row[1]).some((s) => v.integratedStatuses.includes(s)) && shasIn(row[2]).length > 0);
-  if (!shallow && integratedRows.length > 0) {
+  if (!shallow && (integratedRows.length > 0 || pendingRows.length > 0)) {
     const local = cfg.integrationBranch;
     const remote = `origin/${cfg.integrationBranch}`;
     const refs = [local, remote].filter((b) => git.branchExists(b));
@@ -746,6 +831,14 @@ export function checkRoadmap(r, git, opts = {}) {
         if (existing.length > 0 && !existing.some((sha) => refs.some((ref) => git.isAncestor(sha, ref)))) {
           const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
           add('error', 'not-integrated', fileName('state'), `${id} is marked integrated, but none of ${existing.join(', ')} is an ancestor of ${refs.join(' or ')}`);
+        }
+      }
+      for (const row of pendingRows) {
+        // every segment is still the on-branch word, yet every existing SHA is already on the integration branch
+        const existing = shasIn(row[2]).filter((sha) => git.commitExists(sha));
+        if (existing.length > 0 && existing.every((sha) => refs.some((ref) => git.isAncestor(sha, ref)))) {
+          const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
+          add('warning', 'integrated-pending', fileName('state'), `${id} is "${onBranchWord}", but every SHA in Evidence is already on ${refs.join(' or ')}; update the status`);
         }
       }
     }

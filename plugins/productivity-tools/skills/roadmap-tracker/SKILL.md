@@ -29,9 +29,9 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 3. **Never invent numbers.** No dates, durations, metrics, estimates or costs that the user or a source did not supply. Date cells hold the date the event happened (today's date unless the user or a source gives another); never deadlines or forecasts. A value nobody supplied is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
 4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
 5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
-6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval.
+6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") never covers a strategy revision or a migration. With no person present, write only the pending item and say so in the hand-back.
 7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
-8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
+8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer. When the event says `no questions`, this rule is overridden: never ask, in any recipe (`events.md` Common, `no questions`); follow `events.md` § 14 and report the items under `Pending for the user:`.
 
 ## Hand-back report (Step 7)
 
@@ -46,6 +46,7 @@ Checker: <vendored version> -> check-roadmap: <E> error(s), <W> warning(s)
 Warnings: <one line each, or none>
 Awaiting approval: <revision proposal summary, or none>
 Questions: <anything only the user can answer, or none>
+Pending for the user: <(user) items written under no-questions, or none>
 ```
 
 ## Workflow
@@ -71,13 +72,13 @@ The folder is the directory holding `roadmap.config.json`. Take it, in this orde
 
 Read, before anything else:
 
-1. `roadmap.config.json`: file names, strategy path, `integrationBranch`, `vocab` (exact, case-sensitive words), `tracks`, `limits`, `formatVersion`.
+1. `roadmap.config.json`: file names, strategy path, `integrationBranch`, `releaseBranch` (optional), `vocab` (exact, case-sensitive words), `tracks`, `limits`, `formatVersion`.
 2. `state.md`: the header line (strategy version + date), `now`, `panel`, `blockers`, `pending`, `inflight`, and the optional `donot` and `releases` blocks when present.
 3. The 10 newest rows of the `log` block (the top 10 rows: the log is newest first).
 4. The `decisions` rows whose Status is `vocab.decisionPending`, plus any in-force row whose Contradicts cell is filled.
 5. The strategy's `version` anchor and the cards (`card` blocks) of the deliverables this event touches.
 
-Then apply layers 1 and 3 (Steps 2 and 3) before writing anything.
+Then apply layers 1 and 3 (Steps 2 and 3) before writing anything. If the checker run in Step 2 or at cold start shows `integrated-pending` (rows still on-branch whose SHAs already reached the integration branch), propose the batch turn to the integrated word (`events.md` § 16) instead of leaving the panel stale.
 
 ### Step 2: Layer 1 -- refresh the vendored checker
 
@@ -110,8 +111,15 @@ Three numbers: `formats.md` formatVersion (its title, `# Roadmap format contract
 | Event | Files, in this order | Recipe (`events.md`) |
 |-------|----------------------|----------------------|
 | A decision is made | `decisions.md` first (Contradicts filled per the contradiction rule), then whatever uses it (`state.md`, `requirements.md`, `critical-path.md`), then `log.md` | § Decision |
+| A spec, a plan or execution starts for a deliverable | `state.md` panel (+ "in flight" when executing), `log.md` | § 20 |
+| The user only asks for the roadmap status | nothing is written | Read-only queries (below) |
 | A piece or plan step closes | `state.md` panel (and `now`), `log.md` | § Piece or step closed |
 | A branch is integrated | `state.md` panel + "in flight", `log.md` | § Integration |
+| A deliverable merges into `releaseBranch` | `state.md` panel (on-branch word, merge SHA, branch in Next step), `log.md` | § Merge into the release branch |
+| The release branch is integrated (or `integrated-pending`) | `state.md` panel (batch to the integrated word) + "in flight", `log.md` | § Release branch integrated |
+| Code ready, acceptance pending | `state.md` panel (`code: ...; acceptance: blocked (BLQ-n)`) + blockers, `log.md` | § Acceptance pending |
+| An executor made a choice nobody settled | `decisions.md` (Origin `executor`, pending) only when the autonomy answer allows it; under "no" only a `state.md` pending item `(owner) ratify: <choice>`; `log.md` | § Executor decision |
+| The last piece of a deliverable closes | card vs spec criteria; `state.md` pending, `log.md` | § Deliverable closed: criteria check |
 | A branch is deleted (or started) | `state.md` "in flight", `log.md` | § Branch deleted |
 | A blocker opens or closes | `state.md` blockers (+ panel, `now`), `critical-path.md`, `log.md` | § Blocker opened or closed |
 | A paid run or a measurement | `measurements.md` (only when `files.measurements` is set), `log.md` | § Measurement |
@@ -139,16 +147,26 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 `plan-coordinator` invokes this skill with "wave N closed (steps …)" after each wave gate and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`. Read the progress file (never edit it), find the deliverable, decide which pieces closed, record per § Piece or step closed, and hand back to plan-coordinator with the Step 7 report. Never infer the integrated word without a SHA that is on the integration branch. Full procedure: `events.md` § Events from plan-coordinator.
 
+### Read-only queries
+
+When the user only asks for status ("roadmap status"): read `state.md` and `critical-path.md`, run the checker, report the panel, the blockers and the next gates. Write nothing: no file, no log row. Skip the writes of Steps 2 and 3 (no checker copy, no log row, no migration); report a stale checker or a format mismatch as a warning only.
+
 ### Step 5: Run the vendored checker
 
 `node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing. If `node` is missing or older than 18, do not claim the folder verified: stop and hand back "checker not run (Node ≥18 missing)" in the Checker line of the report.
 
 - **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask, with a recommended fix. If no user answer is available (a caller like plan-coordinator, or the user defers), hand back `errors remain: <codes>` with one recommended fix per error (for example "now-limit: drop item 6, the least urgent") and do not claim 0 errors. Never hide an error.
-- **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run.
+- **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run. What to do with the newer warnings:
+  - `integrated-pending`: propose the batch turn to the integrated word (`events.md` § 16).
+  - `pending-limit`: group `pending` by origin and retire items that already have an owner elsewhere (`events.md` Common, lean panel).
+  - `blocker-overdue`: propose escalating to the blocker's owner (`events.md` § 5); do not close it.
+  - `decisions-cell-long`: informational (`decisions.md` is append-only); keep new rows short, do not rewrite old ones.
+  - `ac-verify-missing` / `ac-verify-invalid`: acceptance `{verify: ...}` tags in the strategy; report them and, on the next approved revision, add or fix the tags (`blocked` needs a `BLQ-n`, executable kinds need a command). Never edit the strategy outside a revision.
+  - `gate-no-command`: the strategy's gates table has a row with no command; report it and add it to the next revision.
 
 ### Step 6: Revision
 
-Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). Procedure, proposal format and checklist: `events.md` § End of piece or phase.
+Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). A caller's or orchestrator's pre-approval never covers a revision: with no person present, write only the pending item and say so in the hand-back. Procedure, proposal format and checklist: `events.md` § End of piece or phase.
 
 ## Red flags
 

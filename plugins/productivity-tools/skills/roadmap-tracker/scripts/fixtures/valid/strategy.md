@@ -52,11 +52,11 @@ Pieces:
 - Piece 1: one request travels from input to storage and back.
 
 <!-- roadmap:acceptance -->
-1. Given an empty system, when a user submits one item, then the item is stored and shown back.
-2. Given a stored item, when the user reloads, then the same item is shown.
+1. Given an empty system, when a user submits one item, then the item is stored and shown back. {verify: test; evidence: node --test tests/e1.test.mjs}
+2. Given a stored item, when the user reloads, then the same item is shown. {verify: smoke; evidence: node scripts/smoke.mjs reload}
 <!-- /roadmap:acceptance -->
 
-Definition of done: acceptance passes in the integration branch.
+Definition of done: acceptance passes in the integration branch; G1 and G2 green.
 
 <!-- roadmap:risks -->
 - The storage layer is unproven -> build it first and test it alone.
@@ -74,11 +74,11 @@ Pieces:
 - Piece 2: share items.
 
 <!-- roadmap:acceptance -->
-1. Given a stored item, when the user edits it, then the change is saved.
-2. Given a stored item, when the user shares it, then the recipient can open it.
+1. Given a stored item, when the user edits it, then the change is saved. {verify: test; evidence: node --test tests/e2.test.mjs}
+2. Given a stored item, when the user shares it, then the recipient can open it. {verify: human; evidence: owner opens a shared item in the integration build}
 <!-- /roadmap:acceptance -->
 
-Definition of done: acceptance passes in the integration branch.
+Definition of done: acceptance passes in the integration branch; G1 and G2 green.
 
 <!-- roadmap:risks -->
 - Sharing rules are undecided -> settle them with the owner before the plan.
@@ -95,16 +95,25 @@ Pieces:
 - Piece 1: a list of items per user.
 
 <!-- roadmap:acceptance -->
-1. Given several stored items, when the user opens the report, then every item is listed.
-2. Given no items, when the user opens the report, then an empty message is shown.
+1. Given several stored items, when the user opens the report, then every item is listed. {verify: integration; evidence: node --test tests/reports.test.mjs}
+2. Given no items, when the user opens the report, then an empty message is shown. {verify: test; evidence: node --test tests/reports.test.mjs}
 <!-- /roadmap:acceptance -->
 
-Definition of done: acceptance passes in the integration branch.
+Definition of done: acceptance passes in the integration branch; G1 and G2 green.
 
 <!-- roadmap:risks -->
 - Report volume is unmeasured -> test with a large item list first.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
+
+## Gates and verification
+
+<!-- roadmap:gates -->
+| ID | Command | Environment | When | Baseline |
+|---|---|---|---|---|
+| G1 | `node --test` | local | every task and merge | green |
+| G2 | `node scripts/smoke.mjs` | local | before each merge | green |
+<!-- /roadmap:gates -->
 
 ## Metrics and targets
 

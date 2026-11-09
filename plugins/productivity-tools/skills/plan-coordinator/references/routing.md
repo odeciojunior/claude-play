@@ -14,7 +14,7 @@ Score each dimension 0, 1 or 2 and sum.
 | **Blast radius** | Leaf code, docs, tests | Shared internal code, internal config | Public API, schema/migrations, auth, money, data deletion, infra, and files that drive build/CI/deploy/install (manifests, pipelines, registries) |
 | **Verifiability** | Automated check proves it (tests, typecheck, exact output) | Partial check | Only judgment or manual check |
 
-Unknown information scores **1**, not 0 — and flag it in the approval summary.
+Unknown information scores **1**, not 0 — and flag it in the map report (SKILL.md Step 8).
 
 ## 2. Map score to route
 
@@ -28,11 +28,12 @@ Unknown information scores **1**, not 0 — and flag it in the approval summary.
 
 **Reasoning effort per tier** (not the step-effort hours in the progress file). Pass it as the `Agent` call's `effort`, or set it in the agent's frontmatter: **haiku → `low`**, **sonnet → `medium`**, **opus → `medium`**. A step scored 6–10 that is routed to sonnet runs with `high`. `high` is otherwise reserved for the final whole-branch gate (§4) and for a capability-shortfall retry (§5 step 1). Inline steps run at the orchestrator's own effort.
 
-**Inline limits** — all must hold: the files are docs/config or already read in this conversation, ≤2 files, <~50 changed lines, no dependency install/codegen, no test run longer than a single quick command, Blast radius ≤ 1, and at most 3 inline steps per plan. Inline skips subagent cold start but spends orchestrator context, which is why it's capped. Inline steps run **between waves** (after one wave's gate, before the next launch), never while agents are in flight — an inline edit mid-wave is an undeclared parallel writer.
+**Inline limits** — all must hold: the files are docs/config or already read in this conversation, ≤2 files, <~50 changed lines, no dependency install/codegen, no test run longer than a single quick command, Blast radius ≤ 1, and at most 3 inline steps per plan. Inline skips subagent cold start but spends orchestrator context, which is why it's capped. Inline steps run **between waves** (Wave loop item 10 of the delegation protocol), never while agents are in flight — an inline edit mid-wave is an undeclared parallel writer.
 
 ## 3. Overrides (apply after the table, in this order)
 
-1. **Risk floor (always wins):** Blast radius = 2 → implementation at least sonnet **and** a review gate by an opus-tier reviewer. No later override, and neither the Cheaper nor the Safer approval option, can take a step below this.
+1. **Risk floor (always wins):** Blast radius = 2 → implementation at least sonnet **and** a review gate by an opus-tier reviewer. No later override or self-approval decision can take a step below this.
+   External effect: an external step counts as Blast radius 2 (opus pre-launch review and opus review gate, §4), is never Inline, and never starts without a recorded authorization (SKILL.md Step 8). It launches at most once and takes no retry, fix-up or escalation; its states are in delegation-protocol, § Step lifecycle.
 2. **Mechanical ceiling:** high Scope, Ambiguity = 0, Reasoning = 0 and Blast radius ≤ 1 (bulk rename of internal names, repetitive edits, formatting, codemod-like changes) → haiku, split into parallel bundles by directory. With Blast radius 2 the floor applies instead: sonnet, bundled, plus review.
 3. **Verification-heavy:** Verifiability = 2 and Reasoning ≥ 1 → one tier up; nothing will catch a subtle mistake. A step scored 6–10 does not reach opus through this override: it stays on sonnet with `effort: high` and gets a review gate.
 4. **Research/read-only:** locating code or answering "where/how is X" → `Explore` (read-only, fast); design questions → `Plan` or an opus `general-purpose` agent.
@@ -52,14 +53,21 @@ Rules:
 - **Reviewer tier = executor tier or above, never below.** Per-step review gates run on opus (`effort: medium`); do not move them to another model without measured evidence; the final whole-branch review is always opus with `effort: high`.
 - A gated step is **done** only after the reviewer's PASS. Its dependents don't start before that, and its Handoff is (re)written after any fix-up.
 - The reviewer gets the step card, the executor's report and the changed file paths — never the executor's transcript. Its verdict is PASS or a list of concrete defects.
-- Defects go back to the **same** executor via `SendMessage` (works on finished agents too; they keep their context; `Explore` and `Plan` are one-shot, so for them a fix-up or retry means a fresh agent). **At most 2 fix-up rounds** (same tier) — a third defect list is a capability shortfall (§5 step 3), and the third round runs on opus. This holds at every executor tier and takes precedence over §5 step 3's one-tier-up.
+- Defects go back to the **same** executor via `SendMessage` (`Explore` and `Plan`: a fresh agent). **At most 2 fix-up rounds** (same tier) — a third defect list is a capability shortfall (§5 step 3), and the third round runs on opus. This holds at every executor tier and takes precedence over §5 step 3's one-tier-up. An external step has no fix-up (§3.1).
+
+**External step: two opus gates.** Both are read-only, run at `effort: medium`, and never cause the effect themselves. Their outcomes are in delegation-protocol, § Step lifecycle.
+
+- **Pre-launch review** (SKILL.md Step 8 item 4), before the authorization question and before launch. It gets the Shared Brief, the step card and the plan's text of the step, and returns PASS or concrete defects. It checks that the card states the exact effect and its target, nothing broader than the step; how a duplicate is avoided or detected; and how the result will be verified. A parameter that comes from an upstream handoff is named in the card.
+- **Review gate after the effect**, as above: it checks the result of a PASS report, the only thing reviewed after launch.
 
 ## 5. Escalation ladder (on FAIL, BLOCKED, or exhausted review rounds)
+
+Non-external steps only; see delegation-protocol, § Step lifecycle.
 
 1. **Diagnose first.** Read the report: spec gap, environment problem, or capability shortfall? For a shortfall, try a higher per-call `effort` on the `Agent` call before a tier bump.
 2. **Spec gap / environment** → fix the card or environment and retry **same tier**, via `SendMessage` to the same agent (Explore/Plan: fresh agent, same tier). One such retry per step.
 3. **Capability shortfall** (wrong approach, looping, shallow fix) → retry **one tier up** with a fresh agent, including the failed attempt's report as "what was tried and why it failed". Inline → sonnet (skip haiku: the step already proved harder than it looked). Already at opus → one fresh opus retry with the failure report and a narrowed card.
-4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch, record it in Issues & Decisions, and ask the user. Groups that don't depend on it may continue.
+4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch: hold the step with `Open question: Step N: <exact question and what each answer does>` under Manual Actions (delegation-protocol, § Step lifecycle) and record it in Issues & Decisions.
 
 Never resend an identical prompt at an identical tier.
 

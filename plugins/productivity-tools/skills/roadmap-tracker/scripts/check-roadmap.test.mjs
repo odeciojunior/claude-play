@@ -147,9 +147,9 @@ function keepOneLogRow(files) {
 
 test('script header and constants', () => {
   const first = fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0];
-  assert.equal(first, '// check-roadmap 1.3.0 format 1');
+  assert.equal(first, '// check-roadmap 1.5.0 format 1');
   assert.equal(FORMAT_VERSION, 1);
-  assert.equal(CHECKER_VERSION, '1.3.0');
+  assert.equal(CHECKER_VERSION, '1.5.0');
 });
 
 test('script imports only node: modules', () => {
@@ -247,7 +247,7 @@ test('card-no-req', () =>
 
 test('card-acceptance', () =>
   expectCode(
-    run(fixture((f) => rep(f, 'strategy.md', '2. Given no items, when the user opens the report, then an empty message is shown.\n', ''))),
+    run(fixture((f) => { f['strategy.md'] = f['strategy.md'].replace(/2\. Given no items.*\n/, ''); })),
     'card-acceptance',
     'error',
   ));
@@ -415,7 +415,7 @@ test('git: neither local nor origin branch gives one warning, no false error', (
 test('cli --version', () => {
   const r = cli(['--version']);
   assert.equal(r.status, 0);
-  assert.equal(r.stdout.trim(), '1.3.0 format 1');
+  assert.equal(r.stdout.trim(), '1.5.0 format 1');
 });
 
 test('cli exit 0 on the valid fixture, with summary', () => {
@@ -461,10 +461,10 @@ function cacheWith(version) {
 }
 
 test('cli warns checker-stale when a newer plugin copy exists, still exit 0', () => {
-  const r = cli([VALID], { env: { ROADMAP_CHECK_PLUGIN_CACHE: cacheWith('1.4.0') } });
+  const r = cli([VALID], { env: { ROADMAP_CHECK_PLUGIN_CACHE: cacheWith('1.9.0') } });
   assert.equal(r.status, 0, r.stdout);
   assert.equal(r.stdout.split('checker-stale').length - 1, 1);
-  assert.match(r.stdout, /1\.4\.0/);
+  assert.match(r.stdout, /1\.9\.0/);
 });
 
 test('cli: no stale warning for an older copy or an empty cache', () => {
@@ -525,7 +525,7 @@ test('fix2: CRLF fixture and CRLF script run through the CLI; CRLF header is rea
   const r = spawnScript(path.join(dir, 'check-roadmap.mjs'), os.tmpdir());
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /check-roadmap: 0 error\(s\)/);
-  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.3.0 format 1');
+  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.5.0 format 1');
   const cache = tmp('roadmap-cache-');
   const scripts = path.join(cache, 'mkt', 'productivity-tools', '1.3.0', 'skills', 'roadmap-tracker', 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
@@ -1096,4 +1096,236 @@ test('r3-4 strategy containment message names git root only when git resolved it
   cfg.strategy = '../../../../../../x.md';
   assert.throws(() => validateConfig(cfg, VALID, null), /parent \(no git\)/);
   assert.throws(() => validateConfig(cfg, VALID, VALID), /repository root/);
+});
+
+// ---------- 1.5.0: verification tags, gates, limits, new warnings ----------
+
+const tag = (kind, ev) => ` {verify: ${kind}; evidence: ${ev}}`;
+// Replaces the tag on the acceptance line containing `needle` (empty string removes it).
+const retag = (files, needle, newTag) => {
+  const lines = files['strategy.md'].split('\n');
+  const i = lines.findIndex((l) => l.includes(needle));
+  assert.ok(i >= 0, 'no line with ' + needle);
+  lines[i] = lines[i].replace(/ \{verify:.*\}\s*$/, '') + newTag;
+  files['strategy.md'] = lines.join('\n');
+};
+const E1_A = 'then the item is stored and shown back.';
+const E2_A = 'then the change is saved.';
+const E3_A = 'then every item is listed.';
+const E3_B = 'then an empty message is shown.';
+const stripAllTags = (f) => { f['strategy.md'] = f['strategy.md'].replace(/ \{verify:.*\}/g, ''); };
+const only = (problems, code) => problems.filter((p) => p.code === code);
+const BLQ_HEAD = '| ID | Blocker | Affects | Since | Unblocks when |\n|---|---|---|---|---|\n';
+const addBlocker = (files, cell) => rep(files, 'state.md', BLQ_HEAD, `${BLQ_HEAD}| BLQ-1 | Owner answer | E1 | 2026-01-01 | ${cell} |\n`);
+
+test('v150 ac-verify-missing: no tag anywhere means no warning (adoption rule)', () => {
+  assert.ok(!codes(run(fixture(stripAllTags))).includes('ac-verify-missing'));
+});
+
+test('v150 ac-verify-missing: fully tagged strategy has no warnings at all', () => {
+  assert.deepEqual(run(fixture()), []);
+});
+
+test('v150 ac-verify-missing: one warning per card with untagged items once adopted', () => {
+  const dir = fixture((f) => {
+    retag(f, E3_A, '');
+    retag(f, E3_B, '');
+    retag(f, E2_A, '');
+  });
+  const w = only(run(dir), 'ac-verify-missing');
+  assert.equal(w.length, 2);
+  assert.ok(w.every((x) => x.severity === 'warning'));
+  assert.ok(w.some((x) => x.message.includes('E2')) && w.some((x) => x.message.includes('E3')));
+});
+
+test('v150 ac-verify-missing: a single tag anywhere activates the rule for every card', () => {
+  const dir = fixture((f) => {
+    stripAllTags(f);
+    retag(f, E1_A, tag('test', 'node --test'));
+  });
+  assert.equal(only(run(dir), 'ac-verify-missing').length, 3);
+});
+
+test('v150 ac-verify-invalid: unknown kind', () => {
+  expectCode(run(fixture((f) => retag(f, E1_A, tag('magic', 'x')))), 'ac-verify-invalid', 'warning');
+});
+
+test('v150 ac-verify-invalid: blocked needs BLQ-n; with one it is valid', () => {
+  expectCode(run(fixture((f) => retag(f, E1_A, ' {verify: blocked; evidence: waits}'))), 'ac-verify-invalid', 'warning');
+  const good = fixture((f) => {
+    retag(f, E1_A, ' {verify: blocked BLQ-1; evidence: waits for the owner}');
+    addBlocker(f, 'Owner answers');
+  });
+  assert.deepEqual(run(good), []);
+});
+
+test('v150 ac-verify-invalid: empty evidence on executable kinds but not on human', () => {
+  for (const kind of ['test', 'smoke', 'integration']) {
+    expectCode(run(fixture((f) => retag(f, E1_A, ` {verify: ${kind}; evidence: }`))), 'ac-verify-invalid', 'warning');
+  }
+  const human = fixture((f) => retag(f, E1_A, ' {verify: human; evidence: }'));
+  assert.ok(!codes(run(human)).includes('ac-verify-invalid'));
+});
+
+test('v150 ac-verify-invalid: unterminated tag', () => {
+  expectCode(run(fixture((f) => {
+    const lines = f['strategy.md'].split('\n');
+    const i = lines.findIndex((l) => l.includes(E1_A));
+    lines[i] = lines[i].replace(/\}\s*$/, '');
+    f['strategy.md'] = lines.join('\n');
+  })), 'ac-verify-invalid', 'warning');
+});
+
+test('v150 a tagged item still counts as one acceptance criterion', () => {
+  assert.ok(!codes(run(fixture())).includes('card-acceptance'));
+  const one = fixture((f) => rep(f, 'strategy.md', /2\. Given a stored item, when the user reloads.*\n/.exec(f['strategy.md'])[0], ''));
+  expectCode(run(one), 'card-acceptance', 'error');
+});
+
+const GATES_RE = /<!-- roadmap:gates -->[\s\S]*?<!-- \/roadmap:gates -->\n/;
+const GATES_HEAD = '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n';
+const withGates = (rows) => fixture((f) => { f['strategy.md'] = f['strategy.md'].replace(GATES_RE, () => `${GATES_HEAD}${rows}<!-- /roadmap:gates -->\n`); });
+
+test('v150 gate-no-command: a real command passes; empty, dash and em dash warn', () => {
+  assert.deepEqual(run(withGates('| G1 | `npm test` | local | each task | green |\n')), []);
+  for (const c of ['', '-', String.fromCharCode(0x2014)]) {
+    const p = run(withGates(`| G1 | ${c} | local | each task | green |\n`));
+    expectCode(p, 'gate-no-command', 'warning');
+    assert.equal(p.filter((x) => x.severity === 'error').length, 0);
+  }
+});
+
+test('v150 gates: wrong column count is a bad-row error; the block is optional', () => {
+  expectCode(run(withGates('| G1 | x |\n')), 'bad-row', 'error');
+  const none = fixture((f) => { f['strategy.md'] = f['strategy.md'].replace(GATES_RE, () => ''); });
+  assert.deepEqual(run(none), []);
+});
+
+test('v150 pending-limit: absent means no check; over warns; at the limit is fine', () => {
+  const list = (n) => Array.from({ length: n }, (_, i) => `- (owner) item ${i}`).join('\n');
+  const mk = (n, limit) => fixture((f) => {
+    rep(f, 'state.md', '- (owner) Confirm the storage choice.', list(n));
+    const c = JSON.parse(f['roadmap.config.json']);
+    if (limit === undefined) delete c.limits.pendingItems;
+    else c.limits.pendingItems = limit;
+    f['roadmap.config.json'] = JSON.stringify(c, null, 2);
+  });
+  assert.ok(!codes(run(mk(50, undefined))).includes('pending-limit'));
+  expectCode(run(mk(4, 3)), 'pending-limit', 'warning');
+  assert.ok(!codes(run(mk(3, 3))).includes('pending-limit'));
+});
+
+test('v150 config: limits.pendingItems must be a positive number', () => {
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.limits.pendingItems = 0))), /^Error: config: limits\.pendingItems/);
+  assert.throws(() => loadRoadmap(setConfig((c) => (c.limits.pendingItems = '20'))), /^Error: config: limits\.pendingItems/);
+});
+
+test('v150 config: releaseBranch must be a non-empty string when present', () => {
+  assert.doesNotThrow(() => loadRoadmap(setConfig((c) => (c.releaseBranch = 'release/2026-01'))));
+  for (const bad of ['', '  ', 5, null, ['x']]) {
+    assert.throws(() => loadRoadmap(setConfig((c) => (c.releaseBranch = bad))), /^Error: config: releaseBranch/);
+  }
+  assert.doesNotThrow(() => loadRoadmap(setConfig((c) => delete c.releaseBranch)));
+});
+
+test('v150 blocker-overdue: past due warns; today, future and no date do not; opts.today and default', () => {
+  const at = (cell, today) => checkRoadmap(loadRoadmap(fixture((f) => addBlocker(f, cell))), okGit, today ? { today } : {});
+  expectCode(at('Owner answers (due 2026-03-01)', '2026-03-02'), 'blocker-overdue', 'warning');
+  assert.ok(!codes(at('Owner answers (due 2026-03-01)', '2026-03-01')).includes('blocker-overdue'));
+  assert.ok(!codes(at('Owner answers (due 2026-03-01)', '2026-02-01')).includes('blocker-overdue'));
+  assert.ok(!codes(at('Owner answers', '2030-01-01')).includes('blocker-overdue'));
+  expectCode(at('Owner answers (due 2000-01-01)'), 'blocker-overdue', 'warning');
+  assert.ok(!codes(at('Owner answers (due 2999-01-01)')).includes('blocker-overdue'));
+});
+
+test('v150 decisions-cell-long: one aggregated warning naming the first IDs, never an error', () => {
+  const long = 'x'.repeat(301);
+  const row = (n) => `| DEC-00${n} | 2026-01-01 | Q | ${long} | r | - | owner | - | in-force |`;
+  const dir = fixture((f) => {
+    const close = '<!-- /roadmap:decisions -->';
+    rep(f, 'decisions.md', close, [2, 3, 4, 5, 6].map(row).join('\n') + '\n' + close);
+  });
+  const p = run(dir);
+  const w = only(p, 'decisions-cell-long');
+  assert.equal(w.length, 1);
+  assert.equal(w[0].severity, 'warning');
+  assert.match(w[0].message, /\b5\b/);
+  assert.match(w[0].message, /DEC-002/);
+  assert.ok(!codes(p).includes('cell-limit'));
+  assert.ok(!codes(run(fixture())).includes('decisions-cell-long'));
+});
+
+test('v150 integrated-pending: all segments on-branch and every SHA integrated warns', () => {
+  const dir = repoFixture();
+  const { a, b } = withFeatCommit(dir);
+  git(dir, 'merge', '-q', 'feat');
+  setE1(dir, 'on-branch', `\`${b}\``);
+  expectCode(run(dir, createGitAdapter(dir)), 'integrated-pending', 'warning');
+  setE1(dir, 'piece 1: on-branch; piece 2: on-branch', `\`${a}\` \`${b}\``);
+  expectCode(run(dir, createGitAdapter(dir)), 'integrated-pending', 'warning');
+});
+
+test('v150 integrated-pending: not merged, mixed segments, or no SHA do not fire', () => {
+  const dir = repoFixture();
+  const { b } = withFeatCommit(dir);
+  const fires = () => codes(run(dir, createGitAdapter(dir))).includes('integrated-pending');
+  setE1(dir, 'on-branch', `\`${b}\``);
+  assert.equal(fires(), false);
+  git(dir, 'merge', '-q', 'feat');
+  setE1(dir, 'code: on-branch; acceptance: blocked', `\`${b}\``);
+  assert.equal(fires(), false);
+  setE1(dir, 'piece 1: on-branch; piece 2: executing', `\`${b}\``);
+  assert.equal(fires(), false);
+  setE1(dir, 'on-branch', '-');
+  assert.equal(fires(), false);
+  setE1(dir, 'on-branch', `\`${b}\``);
+  assert.equal(fires(), true);
+});
+
+test('v150 integrated-pending: one SHA still off the integration branch means no warning', () => {
+  const dir = repoFixture();
+  const { a, b } = withFeatCommit(dir);
+  setE1(dir, 'on-branch', `\`${a}\` \`${b}\``);
+  assert.ok(!codes(run(dir, createGitAdapter(dir))).includes('integrated-pending'));
+});
+
+test('v150 integrated-pending: works through origin/<branch> when the local branch is behind', () => {
+  const dir = repoFixture();
+  const { b } = withFeatCommit(dir);
+  git(dir, 'update-ref', 'refs/remotes/origin/main', b);
+  setE1(dir, 'on-branch', `\`${b}\``);
+  expectCode(run(dir, createGitAdapter(dir)), 'integrated-pending', 'warning');
+});
+
+test('v150 integrated-pending: skipped in a shallow clone and when no integration ref exists', () => {
+  const src = repoFixture();
+  fs.writeFileSync(path.join(src, 'more.txt'), 'x');
+  git(src, 'add', 'more.txt');
+  git(src, 'commit', '-q', '-m', 'second');
+  const sha = git(src, 'rev-parse', 'HEAD');
+  const dst = path.join(tmp(), 'clone');
+  const c = spawnSync('git', ['clone', '-q', '--depth', '1', pathToFileURL(src).href, dst], { encoding: 'utf8' });
+  assert.equal(c.status, 0, c.stderr);
+  setE1(dst, 'on-branch', `\`${sha}\``);
+  assert.deepEqual(codes(run(dst, createGitAdapter(dst))), ['shallow-clone']);
+  const nob = repoFixture();
+  git(nob, 'branch', '-m', 'main', 'other');
+  setE1(nob, 'on-branch', `\`${git(nob, 'rev-parse', 'HEAD')}\``);
+  const p = run(nob, createGitAdapter(nob));
+  assert.ok(!codes(p).includes('integrated-pending'));
+  expectCode(p, 'integration-branch-missing', 'warning');
+});
+
+test('v150 cli: the fixture with tag and gates exits 0 with no warnings', () => {
+  const r = cli([VALID]);
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /0 error\(s\), 0 warning\(s\)/);
+});
+
+test('v150 unknown-id: ids inside the gates Command column and the verify evidence are ignored', () => {
+  const f = fixture((x) => {
+    rep(x, 'strategy.md', '| G1 | `node --test` |', '| G1 | `ruff check --select E501` |');
+    retag(x, E1_A, tag('test', 'ruff check --select E501 src'));
+  });
+  assert.deepEqual(run(f), []);
 });
