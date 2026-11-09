@@ -17,7 +17,8 @@ Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `
 |---|---|---|
 | `preflight:<errorKind>` | The preflight agent failed (`dirty`, `setup`, `other`). No deliverable ran. | Clean the integration worktree, fix the setup command or the environment, run again. |
 | `preflight:baseline-invalid` | The baseline measure was unusable. | Fix the environment and run again. |
-| `preflight:red-baseline` | The baseline of the target is red. | Fix the target, or pass `acceptRedBaseline: true` if a person accepts it. |
+| `preflight:red-baseline` | The baseline of the target is red. | Fix the target, or pass `acceptRedBaseline: true` if a person accepts it. A `tests` gate that measured no tests is not offered this: fix its command or set `kind: exit`. |
+| `unfinished-merge` | A merge on the target has no post-merge status and is outside the selection. No deliverable ran. | Run with `resumeWith`, which validates it first, or revert the merge. |
 | `infra` | Environment or tooling failure in a deliverable (null agent, unexpected error). | Run again with `resumeWith`; spec, plan and commits are reused. |
 | `defect` | The review loop could not fix a content defect within `maxFixRounds`. | Read the review log on the deliverable branch, adjust the spec or plan or add an instruction in `notes`, run again. |
 | `decision` | The work would contradict a recorded decision (DEC). | Decide (new DEC or revision), then run again with the decision in `notes`. |
@@ -35,7 +36,7 @@ The internal failure class (`infra`, `conteudo`, `decisao`, `humano`) shows up o
 
 The result carries `resumeArgs`, the args to pass back. Run the Workflow again with them:
 
-- `deliverables` narrows to the ones still open. A merge already on the target without its post-merge status is finished as validate-and-document, not redone.
+- `deliverables` narrows to the ones still open, and keeps a merge that failed validation. A merge already on the target without its post-merge status is finished as validate-and-document, not redone.
 - `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected.
 - `overrideDonot`, `acceptRisks` and `acceptRedBaseline` are decisions of the person. Add them only when the person asked for them.
 

@@ -56,18 +56,26 @@ export function parseGatesTable(markdown) {
   });
 }
 
-export function deriveConfig({ gatesBlockRows = [], projectContext = '' } = {}) {
+// A derived gate is a tests gate only when its command names a test runner: anything else has no test count to read.
+const TEST_RUNNER = /\b(jest|vitest|mocha|ava|pytest|tox|phpunit|rspec|ctest|playwright|cypress)\b|\bnode\s+--test\b|\b(npm|pnpm|yarn|bun|make|go|cargo|dotnet|mvn|gradle|gradlew|deno|mix|rake)\s+(run\s+)?test\b|\bnpm\s+t\b/;
+
+const LOCKFILES = [
+  ['package-lock.json', 'npm ci'], ['pnpm-lock.yaml', 'pnpm install --frozen-lockfile'], ['yarn.lock', 'yarn install --frozen-lockfile'],
+  ['bun.lock', 'bun install --frozen-lockfile'], ['bun.lockb', 'bun install --frozen-lockfile'], ['poetry.lock', 'poetry install'], ['uv.lock', 'uv sync'],
+  ['Cargo.lock', 'cargo fetch'], ['go.sum', 'go mod download'], ['composer.lock', 'composer install'], ['Gemfile.lock', 'bundle install'],
+];
+
+function detectInstall(root) {
+  const hit = LOCKFILES.find(([file]) => existsSync(join(root, file)));
+  return hit ? hit[1] : '';
+}
+
+export function deriveConfig({ gatesBlockRows = [], projectContext = '', install = '' } = {}) {
   const gates = gatesBlockRows
     .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim() }))
     .filter((g) => g.name && g.cmd)
-    .map((g) => ({ ...g, kind: /\b(lint|build)\b/.test(g.cmd) ? 'exit' : 'tests' }));
-  return { generated: true, projectContext, install: '', locks: [], conflictRules: '', gates };
-}
-
-export function effectiveMaxParallel(cfg, requested) {
-  if (cfg && cfg.generated) return 1;
-  const n = Number.isFinite(requested) ? requested : Number.isFinite(cfg?.maxParallel) ? cfg.maxParallel : 3;
-  return Math.max(1, Math.floor(n));
+    .map((g) => ({ ...g, kind: TEST_RUNNER.test(g.cmd) ? 'tests' : 'exit' }));
+  return { generated: true, projectContext, install, locks: [], conflictRules: '', gates };
 }
 
 // Index of the closer matching an opener at `from` (just after it), quote-aware; -1 when unbalanced.
@@ -142,7 +150,9 @@ export function requiredCommands(cfg) {
       if (w) add(`Bash(${w}:*)`, sub);
     }
   }
-  add('Bash(git:*)', null);
+  // The workflow itself runs git and node (checker, docs measure, test integrity): a narrower rule is not enough.
+  out['Bash(git:*)'] = [];
+  out['Bash(node:*)'] = [];
   return out;
 }
 
@@ -177,10 +187,6 @@ export function missingRules(required, settingsList, commandsByRule = {}) {
   });
 }
 
-export function quoteArg(path) {
-  return '"' + String(path).replace(/(["$`])/g, '\\$1') + '"';
-}
-
 function readJson(p) {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
 }
@@ -204,6 +210,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
   let config = null;
   let generated = false;
   const errors = [];
+  const warnings = [];
   const relFile = relative(root, configPath).split(sep).join('/');
   const onRef = ref ? readRef(root, ref, relFile) : null;
   if (onRef !== null) {
@@ -223,7 +230,9 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       if (md && rows.length === 0) errors.push('strategy has no roadmap:gates table rows');
       let ctx = '';
       try { ctx = readFileSync(join(root, 'CLAUDE.md'), 'utf8'); } catch { /* no project CLAUDE.md */ }
-      config = deriveConfig({ gatesBlockRows: rows, projectContext: ctx });
+      const install = detectInstall(root);
+      if (!install) warnings.push('no lockfile at the repository root, so the derived install is empty and worktrees get no dependencies: set "install" in release.config.json if the project needs one');
+      config = deriveConfig({ gatesBlockRows: rows, projectContext: ctx, install });
       generated = true;
     }
   }
@@ -235,7 +244,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     const cmds = requiredCommands(config);
     missing = missingRules(Object.keys(cmds), settings, cmds);
   }
-  return { configPath, generated, errors, missingRules: missing, config };
+  return { configPath, generated, errors, missingRules: missing, warnings, config };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,19 +1,19 @@
 export const meta = {
   name: 'roadmap-release',
-  description: 'Executa entregas E<n> de um roadmap acompanhado: descoberta, spec, plano, tarefas com revisão dupla, revisão final, gates contra baseline, merge serializado com rollback, docs e roadmap',
-  whenToUse: 'Automatizar uma ou mais entregas de docs/plans/roadmap-*/. Exemplos de args: {"deliverables":["E18"],"targetBranch":"release/2026-11-24"} | {"deliverables":"next","phase":"r1-1"} | {"mode":"dry-run"} | {"mode":"plan-only","deliverables":["E19"]}',
+  description: 'Runs E<n> deliverables of a tracked roadmap: discovery, spec, plan, tasks with double review, final review, gates against the baseline, serialized merge with rollback, docs and roadmap',
+  whenToUse: 'Automate one or more deliverables of docs/plans/roadmap-*/. Example args: {"deliverables":["E18"],"targetBranch":"release/2026-11-24"} | {"deliverables":"next","phase":"r1-1"} | {"mode":"dry-run"} | {"mode":"plan-only","deliverables":["E19"]}',
   phases: [
-    { title: 'Descoberta', detail: 'reads config, cards and panel on the target; computes selection and dependencies' },
+    { title: 'Discovery', detail: 'reads config, cards and panel on the target; computes selection and dependencies' },
     { title: 'Preflight', detail: 'target, integration worktree, setup commands, environment and baseline of every gate' },
     { title: 'Setup', detail: 'worktree and install per deliverable' },
     { title: 'Spec', detail: 'autonomous brainstorming, review loop, human-input gate' },
-    { title: 'Plano', detail: 'writing-plans, review loop, "running" record' },
-    { title: 'Implementação', detail: 'one task per implementer, spec review, quality review, git truth' },
-    { title: 'Revisão final', detail: 'sync with the target and review of the whole branch (2 lenses if critical)' },
+    { title: 'Plan', detail: 'writing-plans, review loop, "running" record' },
+    { title: 'Implementation', detail: 'one task per implementer, spec review, quality review, git truth' },
+    { title: 'Final review', detail: 'sync with the target and review of the whole branch (2 lenses if critical)' },
     { title: 'Gates', detail: 'numeric gates against the baseline; locked resources serialized; reviewed fixes' },
     { title: 'Merge', detail: 're-sync, merge, conflict review, post-merge gates, verified rollback' },
     { title: 'Docs', detail: 'docs stage, roadmap-tracker and independent measurement' },
-    { title: 'Relatório', detail: 'git truth, report and operator actions' },
+    { title: 'Report', detail: 'git truth, report and operator actions' },
   ],
 }
 
@@ -41,7 +41,7 @@ export const meta = {
 //   trailer, branchPrefix ("feat/")
 //
 // RETURN: { status: done|partial|needs-operator|error, operatorActions[], resumeArgs, selection,
-//           results[], ownerReview { acceptedRisks[], decisionsPending[], criteriaOpen[] }, truth, lastGood, reportPath }
+//           results[], ownerReview { acceptedRisks[], decisionsPending[], criteriaOpen[] }, truth, lastGood, reportPath (null when no report file was written) }
 // The workflow never asks during the run: it stops the run (preflight) or the deliverable (blocking human
 // input, decision against a DEC, defect without a fix) and returns operatorActions with resumeArgs.
 
@@ -54,6 +54,41 @@ function cleanSlug(s, id) {
 function isUnfinished(card, statuses) {
   const after = [...(statuses.integrated || []), statuses.onBranch, statuses.discarded]
   return !!card && !!card.mergeFound && !after.includes(card.status)
+}
+
+// Interrupted merges the selection leaves out: anything merged after them would be measured on an unvalidated target.
+function unfinishedOutside(cards, statuses, order) {
+  return (cards || []).filter(c => isUnfinished(c, statuses) && !(order || []).includes(c.id)).map(c => c.id)
+}
+
+// Panel Status cell, same rules as parseStatus of the roadmap checker: segments split by ";", each "[label:] status[ (note)]".
+function stripStatusNote(seg) {
+  const s = seg.trimEnd()
+  if (!s.endsWith(')')) return s
+  let depth = 0
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] === ')') depth++
+    else if (s[i] === '(' && --depth === 0) return s.slice(0, i).trimEnd()
+  }
+  return s
+}
+function statusSegments(cell) {
+  return String(cell == null ? '' : cell).split(';').map(s => s.trim()).filter(Boolean).map(seg => {
+    const noNote = stripStatusNote(seg)
+    const at = noNote.indexOf(':')
+    return at >= 0 ? { label: noNote.slice(0, at).trim().toLowerCase(), status: noNote.slice(at + 1).trim() } : { label: '', status: noNote.trim() }
+  })
+}
+// The single status this workflow acts on. Finished when the code segment (or the only, unlabelled status) is integrated or
+// on-branch, even with acceptance still blocked; otherwise blocked if any segment is; otherwise the first open segment.
+function cardStatus(cell, statuses) {
+  const segs = statusSegments(cell)
+  if (!segs.length) return ''
+  const finished = s => (statuses.integrated || []).includes(s) || s === statuses.onBranch
+  const code = segs.find(s => /^(code|c[oó]digo)$/.test(s.label)) || (segs.length === 1 && !segs[0].label ? segs[0] : null)
+  if (code && finished(code.status)) return code.status
+  if (segs.some(s => s.status === statuses.blocked)) return statuses.blocked
+  return (segs.find(s => !finished(s.status) && s.status !== statuses.discarded) || segs[0]).status
 }
 
 function selectDeliverables({ cards, statuses, selector, filters, heldBy, overrideDonot, autoDeps, force, maxDeliverables }) {
@@ -79,14 +114,14 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
     stack.pop(); state[id] = 2
     return null
   }
-  for (const id of roots) { const cyc = visit(id); if (cyc) return fail('ciclo ou dependência inválida entre: ' + cyc.join(', ')) }
+  for (const id of roots) { const cyc = visit(id); if (cyc) return fail('cycle or invalid dependency among: ' + cyc.join(', ')) }
   const sel = selector === undefined || selector === null ? 'next' : selector
   const want = new Set()
   if (Array.isArray(sel)) {
     const unknown = sel.filter(id => !byId[id])
-    if (unknown.length) return fail('entregas desconhecidas: ' + unknown.join(', '))
+    if (unknown.length) return fail('unknown deliverables: ' + unknown.join(', '))
     for (const id of sel) {
-      if (done(byId[id]) && !force) notes.push(id + ': já concluída no alvo (' + byId[id].status + '); use force para refazer')
+      if (done(byId[id]) && !force) notes.push(id + ': already done on the target (' + byId[id].status + '); use force to redo it')
       else want.add(id)
     }
     if (autoDeps) {
@@ -95,7 +130,7 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
     }
   } else if (sel === 'next' || sel === 'ready' || sel === 'all') {
     const cand = pool.filter(c => !done(c))
-    for (const c of cand.filter(c => c.status === statuses.blocked)) notes.push(c.id + ': status "' + statuses.blocked + '" no roadmap; não entra em "' + sel + '" (rode com deliverables:["' + c.id + '"] depois de resolver)')
+    for (const c of cand.filter(c => c.status === statuses.blocked)) notes.push(c.id + ': status "' + statuses.blocked + '" on the roadmap; left out of "' + sel + '" (run with deliverables:["' + c.id + '"] once it is resolved)')
     const open = cand.filter(c => c.status !== statuses.blocked)
     if (sel === 'all') open.forEach(c => want.add(c.id))
     else {
@@ -107,11 +142,11 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
           if (c.deps.every(d => satisfied(d) || (sel === 'next' && want.has(d)))) { want.add(c.id); changed = true }
         }
       }
-      for (const c of open.filter(c => !want.has(c.id))) notes.push(c.id + ': fora da seleção (dependências pendentes: ' + c.deps.filter(d => !satisfied(d) && !want.has(d)).join(', ') + ')')
+      for (const c of open.filter(c => !want.has(c.id))) notes.push(c.id + ': outside the selection (pending dependencies: ' + c.deps.filter(d => !satisfied(d) && !want.has(d)).join(', ') + ')')
     }
-  } else return fail('deliverables inválido: ' + JSON.stringify(sel))
+  } else return fail('invalid deliverables: ' + JSON.stringify(sel))
   for (const id of [...want]) {
-    if (held.has(id) && !override.includes(id)) { want.delete(id); skipped.push({ id, reason: 'vetada pelo bloco "não fazer" do roadmap (' + held.get(id) + '); use overrideDonot:["' + id + '"] se o veto já não vale' }) }
+    if (held.has(id) && !override.includes(id)) { want.delete(id); skipped.push({ id, reason: 'vetoed by the roadmap "do not" block (' + held.get(id) + '); use overrideDonot:["' + id + '"] if the veto no longer applies' }) }
   }
   const order = []
   const pending = new Set(want)
@@ -121,15 +156,15 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
     for (const id of [...pending]) {
       const deps = byId[id].deps
       const missing = deps.filter(d => !satisfied(d) && !want.has(d))
-      if (missing.length) { pending.delete(id); want.delete(id); skipped.push({ id, reason: 'dependências não satisfeitas no alvo e fora da seleção: ' + missing.join(', ') }); progress = true; continue }
+      if (missing.length) { pending.delete(id); want.delete(id); skipped.push({ id, reason: 'dependencies not met on the target and outside the selection: ' + missing.join(', ') }); progress = true; continue }
       if (deps.every(d => satisfied(d) || order.includes(d))) { order.push(id); pending.delete(id); progress = true }
     }
   }
-  if (pending.size) return fail('ciclo ou dependência inválida entre: ' + [...pending].join(', '))
+  if (pending.size) return fail('cycle or invalid dependency among: ' + [...pending].join(', '))
   const max = Number.isInteger(maxDeliverables) && maxDeliverables >= 1 ? maxDeliverables : 12
   const cut = order.length > max ? order.splice(max) : []  // a topological prefix keeps dependencies satisfied
-  for (const id of cut) skipped.push({ id, reason: 'acima de maxDeliverables (' + max + '); a ferramenta limita cada run a 1000 agentes' })
-  for (const id of order) if (byId[id].criticalMissing) notes.push(id + ': card sem atributo critical (tratado como não crítico)')
+  for (const id of cut) skipped.push({ id, reason: 'above maxDeliverables (' + max + '); each run is limited to 1000 agents' })
+  for (const id of order) if (byId[id].criticalMissing) notes.push(id + ': card without the critical attribute (treated as not critical)')
   return { order, skipped, notes }
 }
 // ---- gates: generic measurement and baseline comparison
@@ -189,6 +224,13 @@ function isRedBaseline(defs, baseline) {
     return !(r.total > 0) || !gateCoherent(def, r)
   }).map(def => def.name)
 }
+// Tests gates that measured no tests: gatePasses fails them at total 0, so accepting a red baseline cannot help.
+function zeroTestGates(defs, baseline) {
+  return (defs || []).filter(def => {
+    const r = (baseline || {})[def.name]
+    return def.kind === 'tests' && !def.invariant && !!r && r.ran !== false && !(r.total > 0)
+  }).map(def => def.name)
+}
 // Post-merge floor: the target may not have fewer tests than the branch measured (minus baseline failures already unstable).
 function mergeFloor(baseline, branchMeasure) {
   const floor = JSON.parse(JSON.stringify(baseline || {}))
@@ -227,13 +269,16 @@ function parseVerifyTag(item) {
   if (at === -1) return null
   if (!text.endsWith('}')) return { invalid: true }
   const body = text.slice(at + '{verify:'.length, -1)
-  const m = /^\s*([a-z]+)(?:\s+(BLQ-\d+))?\s*;\s*evidence:([\s\S]*)$/.exec(body)
+  // Same grammar as the roadmap checker: the evidence part is optional for human and blocked.
+  const m = /^\s*([^;}]*?)\s*(?:;\s*evidence:([\s\S]*))?$/.exec(body)
   if (!m) return { invalid: true }
-  const kind = m[1]
-  const out = { kind, evidence: m[3].trim() }
-  if (m[2]) out.blq = m[2]
+  const km = /^([A-Za-z-]+)(?:\s+(BLQ-\d+))?$/.exec(m[1])
+  if (!km) return { invalid: true }
+  const kind = km[1]
+  const out = { kind, evidence: (m[2] || '').trim().replace(/^(`+)([\s\S]*?)\1$/, '$2').trim() }
+  if (km[2]) out.blq = km[2]
   const known = [...VERIFY_EXEC, 'human', 'blocked'].includes(kind)
-  if (!known || (kind === 'blocked') !== !!m[2] || (VERIFY_EXEC.includes(kind) && !out.evidence)) out.invalid = true
+  if (!known || (kind === 'blocked') !== !!km[2] || (VERIFY_EXEC.includes(kind) && !out.evidence)) out.invalid = true
   return out
 }
 // A plan evidence row belongs to a card criterion when its ac is the id, the id plus a separator ("AC1: ...", "AC1 - ..."),
@@ -249,6 +294,21 @@ function matchesCriterion(rowAc, card) {
   const at = full.lastIndexOf('{verify:')
   const bare = at === -1 ? full : norm(full.slice(0, at))
   return [full, bare].some(t => t && (v === t || v.includes(t)))
+}
+// Plan rows with their ac resolved to the card id: an id match wins over a match on the criterion text.
+function normalizePlanAc(cardAc, planAc) {
+  const cards = cardAc || []
+  return (planAc || []).map(p => {
+    const a = cards.find(c => matchesCriterion(p.ac, { id: c.id, text: '' })) || cards.find(c => matchesCriterion(p.ac, c))
+    return a ? { ...p, ac: a.id } : p
+  })
+}
+// The result of an evidence row, by id or position; the trimmed command must always be the one the plan binds.
+function matchEvidence(results, row, idx) {
+  const cmd = s => String(s == null ? '' : s).trim()
+  const rs = results || []
+  const same = r => !!r && cmd(r.command) === cmd(row.command)
+  return rs.find(r => r.ac === row.ac && same(r)) || (same(rs[idx]) ? rs[idx] : undefined)
 }
 // cardAc = [{ id, text, tag }]; planAc = [{ ac, kind, command?, testRef?, blq? }]
 function evidenceGaps(cardAc, planAc, blqIds) {
@@ -496,6 +556,12 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
   }
   return out
 }
+// Resume args as shown to the report agent: the config is long and already known to the caller.
+function withoutConfig(resumeWith) {
+  if (!resumeWith) return resumeWith
+  const { config, ...rest } = resumeWith
+  return rest
+}
 // Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
 function postMergeFixArgs(mergeSha, roadmapDir, docsPaths) {
   const skip = [...new Set([roadmapDir, ...(docsPaths || [])].filter(Boolean))].map(p => ':!' + p)
@@ -608,11 +674,11 @@ const S_DISC = { type: 'object', properties: {
   targetExists: BOOL, readFrom: STR, trackerAvailable: BOOL, checkerExists: BOOL,
   cards: { type: 'array', items: { type: 'object', properties: {
     id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
-    status: STR, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget'] } },
+    status: { ...STR, description: 'the Status cell of the panel row, verbatim, with every segment and note' }, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget', 'mergeFound', 'acceptance'] } },
   blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
   donot: STRS,
   donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
-}, required: ['cards'] }
+}, required: ['cards', 'repo', 'wtRoot'] }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
@@ -639,7 +705,7 @@ const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsRes
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
-const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['checkerErrors', 'clean'] }
+const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR, panelStatus: STR }, required: ['checkerErrors', 'clean', 'panelStatus'] }
 const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
 const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, secondParent: STR, branchTip: STR }, required: ['mergeSha', 'rangeOk', 'secondParent', 'branchTip'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
@@ -649,24 +715,27 @@ const S_TRUTH = { type: 'object', properties: { targetHead: STR, clean: BOOL, la
 const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
 
 // ---------------------------------------------------------------- discovery
-phase('Descoberta')
+phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const disc = await agent(`DISCOVERY task (read-only; change nothing). Answer with measured data.
 1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
 2. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
 3. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
 4. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
-5. Status: the <!-- roadmap:panel --> block of the state.md read; mergeCommit = first hash in backticks in the Evidence column, if any.
-6. Per card (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the status is in integratedStatuses and the integrationBranch is an ancestor of the target. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
+5. Status: the <!-- roadmap:panel --> block of the state.md read. status = the deliverable's Status cell verbatim, with every segment and note (for example "code: on-branch; acceptance: blocked (BLQ-2)"), never reduced to one word; empty when the card has no row. mergeCommit = first hash in backticks in the Evidence column, if any.
+6. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 7. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
 8. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
 9. wtRoot: ${A.wtRoot || 'if git worktree list shows worktrees outside the repo, their common parent directory; otherwise <repo parent>/<repo name>-wt'} (with "/").`,
-  { label: 'discovery', phase: 'Descoberta', schema: S_DISC, model: 'sonnet' })
+  { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet' })
 if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
+const noMergeFlag = disc.cards.filter(c => typeof c.mergeFound !== 'boolean').map(c => c.id)
+if (noMergeFlag.length) return { status: 'error', error: `discovery failed: mergeFound not reported for ${noMergeFlag.join(', ')}` }
+if (!(A.repo || disc.repo) || !(A.wtRoot || disc.wtRoot)) return { status: 'error', error: 'discovery failed: repo or wtRoot not reported' }
 disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
 
 const TODAY = A.today || disc.today
-const REPO = disc.repo
+const REPO = A.repo || disc.repo
 const WT = String(A.wtRoot || disc.wtRoot).replace(/\/+$/, '')
 const RM = disc.roadmapDir
 const STRAT = disc.strategy
@@ -678,9 +747,10 @@ const STATUSES = {
   plan: (disc.deliverableStatuses || [])[2] || 'plano',
   executing: (disc.deliverableStatuses || [])[3] || 'executando',
   onBranch: (disc.deliverableStatuses || [])[4] || 'na-branch',
-  discarded: disc.discardedStatus || 'descartada',
-  blocked: disc.blockedStatus || 'bloqueada',
+  discarded: disc.discardedStatus || 'discarded',
+  blocked: disc.blockedStatus || 'blocked',
 }
+disc.cards.forEach(c => { c.status = cardStatus(c.status, STATUSES) })
 const STATUS_AFTER_MERGE = TARGET === INTEG ? STATUSES.integrated[0] : STATUSES.onBranch
 if (TARGET === INTEG && !A.allowIntegrationBranch) return { status: 'error', error: `targetBranch (${TARGET}) is the integrationBranch; pass allowIntegrationBranch: true to merge into it.` }
 if (disc.trackerAvailable === false) return { status: 'error', error: 'the skill productivity-tools:roadmap-tracker is not available to the subagents' }
@@ -697,11 +767,20 @@ const picked = selectDeliverables({
 })
 if (picked.error) return { status: 'error', error: picked.error }
 const order = picked.order
+const noCriteria = order.filter(id => !(byId[id].acceptance || []).length)
+if (noCriteria.length) return { status: 'error', error: `discovery failed: no acceptance criteria extracted for ${noCriteria.join(', ')}` }
 const notes = [...picked.notes, ...(disc.donot || []).map(d => `roadmap "do not" restriction (check before running): ${d}`)]
+const interrupted = unfinishedOutside(disc.cards, STATUSES, order)
+for (const id of interrupted) notes.push(`${id}: interrupted merge on the target, outside this selection`)
 const isDone = c => !!c && ((c.onTarget && !isUnfinished(c, STATUSES)) || c.status === STATUSES.discarded)
 const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, readFrom: disc.readFrom, statusAfterMerge: STATUS_AFTER_MERGE, order, skippedUpfront: picked.skipped, notes,
   deps: Object.fromEntries(order.map(id => [id, byId[id].deps.map(d => `${d}:${isDone(byId[d]) ? 'on target' : 'in this run'}`)])) }
 log(`selection: ${order.join(' -> ') || '(empty)'}${picked.skipped.length ? ` | skipped: ${picked.skipped.map(s => s.id).join(', ')}` : ''}`)
+if (MODE === 'run' && order.length && interrupted.length) {
+  const resumeWith = { ...A, deliverables: [...interrupted, ...order] }
+  for (const id of interrupted) op('unfinished-merge', id, `the merge of ${id} is on ${TARGET} without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target`, `Run again with ${id} in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge`, resumeWith)
+  return mkResult('needs-operator', { selection, resumeArgs: resumeWith })
+}
 if (MODE === 'dry-run' || !order.length) return mkResult(order.length ? 'done' : 'partial', { selection })
 const MIN_BUDGET = intArg(A.minBudgetPerDeliverable, MODE === 'plan-only' ? 150000 : 700000, 0)
 if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) {
@@ -770,7 +849,9 @@ if (MODE === 'run') {
   const red = isRedBaseline(GATES, BASE)
   if (red.length && !ACCEPT_RED) {
     op('preflight:red-baseline', null, `baseline of ${TARGET} is red in: ${red.join(', ')}`,
-      'Fix the target (or the environment) before running; with a red baseline the matching gates stop blocking regressions. To accept it anyway, pass acceptRedBaseline:true', { ...A })
+      zeroTestGates(GATES, BASE).length
+        ? `Fix the command of ${zeroTestGates(GATES, BASE).join(', ')} so it runs tests, or set kind: exit on it in release.config.json if it is not a test suite. A tests gate that measures no tests fails on every deliverable, so a red baseline cannot be accepted for it`
+        : 'Fix the target (or the environment) before running; with a red baseline the matching gates stop blocking regressions. To accept it anyway, pass acceptRedBaseline:true', { ...A })
     return mkResult('needs-operator', { selection })
   }
 }
@@ -816,7 +897,7 @@ const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
 
 RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Use the skill productivity-tools:roadmap-tracker to record deliverable ${E} with status "${status}" (vocabulary: ${(disc.deliverableStatuses || []).join(', ')}), evidence: ${evidence}.${extraTxt ? '\n' + extraTxt : ''}
 Run node ${disc.checker} and leave it with 0 errors. Commit only files of ${RM}. Return checkerErrors, statusWritten, commit, head (git rev-parse HEAD after the commit), details.`,
-    { label: `${E}:status-${status}`, phase: 'Plano', schema: S_STATUS, model: 'sonnet' })
+    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_STATUS, model: 'sonnet' })
   if (r && r.head) lastGood = r.head  // a record-only commit does not invalidate what was already validated
   return r
 })
@@ -849,7 +930,7 @@ DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.$
 
 Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log: per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns and gates. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, failure: out.error || null })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
-      { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plano', model: 'sonnet' })
+      { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
   const fail = async (kind, msg) => {
@@ -927,17 +1008,17 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     lastGood = g.m.headSha
 
     let docs = null, meas = null
-    const measureOk = x => !!x && x.checkerErrors === 0 && x.clean !== false && (!DOCS.measure || x.measureOk === true)
+    const measureOk = x => !!x && x.checkerErrors === 0 && x.clean !== false && (!DOCS.measure || x.measureOk === true) && cardStatus(x.panelStatus, STATUSES) === STATUS_AFTER_MERGE
     for (let k = 0; k < 2; k++) {
       docs = await agent(`${C()}
 
 DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}); merge ${mergeCommit}. Only this stage edits the project docs and ${RM}.
 1. Project docs: ${DOCS.instructions || '(no project docs instructions configured: skip this item)'}
 2. Roadmap: use the skill productivity-tools:roadmap-tracker: ${E} with status "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}; evidence: merge ${mergeCommit}, gates ${g.summary}, spec ${specTxt()}, plan ${planTxt()}, reviews ${reviewsTxt()}; remove ${br} from the inflight block; accepted risks and pending human inputs go to pending, all of them, none omitted: ${JSON.stringify([...out.acceptedRisks.map(fmtRisk), ...human.map(h => h.what), ...(out.acOpen || []).map(x => `criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`)])}. Never record a human act (acceptance, go/no-go, credentials) as done.
-3. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''}.` : ''}
+3. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''} and the panel row of ${E} shows "${STATUS_AFTER_MERGE}".` : ''}
 Return statusWritten, commit, details.`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet' })
-      meas = await agent(`MEASUREMENT (read-only) in the worktree ${INTWT}: ${DOCS.measure ? `write this Node program to ${WT}/_tmp/${E}-docs-measure.cjs, run "node ${WT}/_tmp/${E}-docs-measure.cjs" from ${INTWT}, delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run node ${disc.checker} in ${INTWT} and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD.`,
+      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run node "${WT}/_tmp/${E}-docs-measure.cjs" from "${INTWT}", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run node "${disc.checker}" from "${INTWT}" and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD; panelStatus = the Status cell of the row ${E} in the panel of ${RM}state.md, verbatim.`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku' })
       if (docs && measureOk(meas)) break
     }
@@ -957,7 +1038,7 @@ Return statusWritten, commit, details.`,
       out.concerns.push(`docs with pending items after 2 rounds: ${JSON.stringify(result.docsMeasure)}`)
       op('docs', E, `docs or roadmap inconsistent after the merge of ${E}: ${JSON.stringify(result.docsMeasure)}`, 'Fix the record and run the roadmap checker on the target', null)
     }
-    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST: if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, a patch is needed: mkdir -p ${WT}/_tmp/${E}-dirty, save it (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) and confirm the file was written; if it cannot be written, do not remove the worktree and list it in leftovers. Then, when no patch was needed, or only after the patch was written: git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
+    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST: if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, a patch is needed: mkdir -p "${WT}/_tmp/${E}-dirty", save it (git -C "${wt}" diff --binary HEAD > "${WT}/_tmp/${E}-dirty/cleanup.patch", plus the untracked files list and copies) and confirm the file was written; if it cannot be written, do not remove the worktree and list it in leftovers. Then, when no patch was needed, or only after the patch was written: git -C "${REPO}" worktree remove --force "${wt}"; delete "${WT}/_tmp/${E}-"* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku' })
     if (!cl || !cl.ok) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
@@ -1084,12 +1165,12 @@ Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Small tasks, with TDD and the exact verification commands, using the canonical gates and respecting the MEASURED ENVIRONMENT. Each task lists the files it touches and the locks it needs (needsLock: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses). For each verification, the expected result; a baseline failure is named as expected.
 - Per task, declare "tier" (the implementer's model) by the routing scoring rules of the plan-coordinator skill (references/routing.md) when available: haiku for mechanical work, sonnet by default, opus only when ambiguity AND blast radius are both high. Declare "reviewTier": opus ONLY for blast radius 2 (authentication, secrets, writes to a production backend, data migration, push); otherwise sonnet.
 - Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. The ac of each evidence row is ONLY the criterion id (the text inside the brackets, e.g. AC1): never the id followed by text, never the criterion text. Criteria:
-${acTxt || '(card without extracted criteria: use the ones in the spec)'}
+${acTxt}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
 Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section: ac, kind, command, testRef, blq) and tasks (n, title, files, tier, reviewTier, needsLock).`,
-    { label: `${E}:plan`, phase: 'Plano', schema: S_PLAN, model: 'opus' })
+    { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
   const planGaps = () => {
     const gap = description => ({ severity: 'critical', category: 'defeito', description })
@@ -1106,7 +1187,7 @@ Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
-      { label: `${E}:plan-review${round}`, phase: 'Plano', schema: S_REVIEW, model: 'opus' }),
+      { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_REVIEW, model: 'opus' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
 
@@ -1114,7 +1195,7 @@ Fix the plan ${plan.planPath} according to the review below and commit. Stop aft
 ${fmt(iss)}
 Every ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.
 Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, reviewTier and needsLock).`,
-        { label: `${E}:plan-fix${k}`, phase: 'Plano', schema: S_PLAN, model: tier })
+        { label: `${E}:plan-fix${k}`, phase: 'Plan', schema: S_PLAN, model: tier })
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
       return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
     },
@@ -1136,13 +1217,13 @@ Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, 
     return out
   }
   const recRun = await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
-    `${decisionsTxt}\nAdd ${br} to the inflight block (type: deliverable, note: automatic execution).`)
+    `${decisionsTxt}\nAdd ${br} to the inflight block (Branch: ${br}; Kind: the branchLive word of the roadmap vocab; Note: automatic execution).`)
 
   if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
   const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }.`,
-    { label: `${E}:progress`, phase: 'Implementação', schema: S_PROGRESS, model: 'haiku' })
+    { label: `${E}:progress`, phase: 'Implementation', schema: S_PROGRESS, model: 'haiku' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   const doneMap = Object.fromEntries((prog.done || []).map(d => [d.n, d]))
@@ -1154,7 +1235,7 @@ Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, 
     if (resumed && t.n < lastDone) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
     const start = resumed ? resumed.firstParent : head
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
-    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks }), t), { label, phase: 'Implementação', schema: S_IMPL, model: implModel(t) }))
+    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t) }))
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       impl = await runImpl(`${E}:t${t.n}:impl`)
@@ -1172,12 +1253,12 @@ Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, 
     for (const kind of ['spec', 'quality']) {
       const loop = await reviewLoop(`T${t.n}:${kind}`,
         (round, prev) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev }), t, kind, cur),
-          { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementação', schema: S_REVIEW, model: reviewModelFor(t) }),
+          { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', schema: S_REVIEW, model: reviewModelFor(t) }),
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
 
 In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
-${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementação', schema: S_IMPL, model: tier })
+${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
@@ -1197,15 +1278,15 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementação',
 
 Bring the target state into the branch: headBefore = git -C "${wt}" rev-parse HEAD; git -C "${wt}" merge --no-ff ${ref} -m "${E}: sync with ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource. Nothing to merge: ok=true without a commit.
 Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in).`,
-    { label, phase: 'Revisão final', schema: S_SYNC, model: 'sonnet' })
+    { label, phase: 'Final review', schema: S_SYNC, model: 'sonnet' })
   // Sync with the last VALIDATED tip: a merge of another deliverable still under validation does not come in here.
   let syncAt = lastGood
   let myBase = snapshotBase()  // baseline matching syncAt (captured together, no await between them)
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
   if (!sync || !sync.ok) return fail(sync ? 'conteudo' : 'infra', `sync with ${TARGET} failed: ${sync ? sync.details : 'null agent'}`)
 
-  const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run "node ${WT}/_tmp/${E}-integrity.cjs ${TARGET}" from ${wt}, delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
-    { label: `${E}:test-integrity`, phase: 'Revisão final', schema: S_INTEG, model: 'haiku' }) : null
+  const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" from "${wt}", delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+    { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku' }) : null
   if (TEST_INTEGRITY && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
   const integTxt = alerts.length ? `\nALERTS MEASURED IN THE TESTS (check each one; weakening a test without justification is a critical defect): ${alerts.join('; ')}.` : ''
@@ -1220,20 +1301,20 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
 FINAL REVIEW OF THE WHOLE BRANCH (mandatory; read-only), lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD (branch already synced with the target).
 Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
-        { label: `${E}:final-${li + 1}-r${round}`, phase: 'Revisão final', schema: S_REVIEW, model: 'opus', effort: 'high' })))
+        { label: `${E}:final-${li + 1}-r${round}`, phase: 'Final review', schema: S_REVIEW, model: 'opus', effort: 'high' })))
       if (rs.some(x => !x)) return null
       return { issues: rs.flatMap(x => x.issues), headSha: rs[0].headSha, clean: rs.every(x => x.clean), commitsInRange: rs[0].commitsInRange }
     },
     (iss, k, tier) => withLocks(planLocks, () => agent(`${C()}
 
 Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} If you disagree technically, do not apply the item and explain in concerns.
-${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Revisão final', schema: S_IMPL, model: tier })),
+${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IMPL, model: tier })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
     { tier: 'sonnet', reviewModel: 'opus' })
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
 
   // ---------- Gates on the branch (+ reviewed fix). Every acceptance criterion is proved by a command that ran.
-  const acExec = () => (plan.ac || []).filter(p => VERIFY_EXEC.includes(p.kind) && p.command)
+  const acExec = () => normalizePlanAc(cardAc, plan.ac).filter(p => VERIFY_EXEC.includes(p.kind) && p.command)
   let evRound = 0
   const runEvidence = async exp => {
     const rows = acExec()
@@ -1244,14 +1325,14 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Revisão final', schema: S_
 ${lockNote(TASK_LOCKS)} Fix nothing. In the worktree ${wt}:
 1. BEFORE any command: clean (git status --porcelain empty) and headSha.
 2. ${BEFORE_EVIDENCE.length ? `Bring the state up, in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. beforeOk=true only if every command exited 0.` : 'No state to prepare (beforeOk=true).'}
-3. Run each command below in the resulting state and return results [{ac, command, exit, log (excerpt)}], in order:
+3. Run each command below in the resulting state and return results [{ac, command, exit, log (excerpt)}], in order, copying ac and command verbatim from its line ("<ac>: <command>"):
 ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}`,
       { label, phase: 'Gates', schema: S_EVID, model: 'sonnet' }))
     let ev = await once(`${E}:evidence${++evRound}`)
     if (!validEv(ev)) ev = await once(`${E}:evidence${evRound}-retry`)
     if (!validEv(ev)) return { ok: false, infra: true, summary: 'evidence measurement null, with a dirty tree, at the wrong commit or with the state preparation failing' }
-    const problems = rows.flatMap(p => {
-      const x = (ev.results || []).find(r => r.ac === p.ac && r.command === p.command)
+    const problems = rows.flatMap((p, i) => {
+      const x = matchEvidence(ev.results, p, i)
       if (!x) return [`criterion ${p.ac}: command not run`]
       return x.exit === 0 ? [] : [`criterion ${p.ac}: "${p.command}" exited ${x.exit}: ${String(x.log || '').slice(0, 600)}`]
     })
@@ -1415,7 +1496,7 @@ order.forEach((id, idx) => {
 for (const id of order) RESULTS.push(await runs[id])
 
 // ============================================================================ report
-phase('Relatório')
+phase('Report')
 const slim = RESULTS.map(r => ({ id: r.id, merged: !!r.merged, broken: !!r.broken, planOnly: !!r.planOnly, skipped: r.skipped, error: r.error, failKind: r.failKind,
   branch: r.branch, spec: r.spec, plan: r.plan, merge: r.merge ? { commit: r.merge.mergeCommit, conflicts: r.merge.conflicts, gates: r.merge.gates, docsOk: r.merge.docsOk } : undefined,
   tasks: (r.tasks || []).length, concerns: r.concerns || [], acceptedRisks: r.acceptedRisks || [], decisions: (r.decisions || []).length,
@@ -1434,26 +1515,26 @@ for (const r of RESULTS) {
 const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).map(r => ({ id: r.id, commit: r.merge.mergeCommit }))
 const truth = MODE === 'plan-only' ? null : await safe(() => agent(`GIT TRUTH (read-only). Target ${TARGET} in ${INTWT}.
 targetHead = git rev-parse HEAD; clean = git status --porcelain empty on the target; lastGoodReachable = git merge-base --is-ancestor ${lastGood} ${TARGET} (exit 0); mergedIds = deliverables among [${order.join(', ')}] with a commit "merge: <E> in ${TARGET}" in git log --first-parent ${TARGET}; notMergedIds = the others; claims = for each of ${JSON.stringify(claims)}: { id, commit, reachable = the commit is an ancestor of ${TARGET} }; worktrees = git -C "${REPO}" worktree list; strays = files and folders loose in ${WT}/ that are neither registered worktrees nor an empty _tmp.`,
-  { label: 'git-truth', phase: 'Relatório', schema: S_TRUTH, model: 'haiku' }))
+  { label: 'git-truth', phase: 'Report', schema: S_TRUTH, model: 'haiku' }))
 const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!integBroken)
 for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
 const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
-const resumeIds = [...slim.filter(r => !r.merged && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
+const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
 const report = await safe(() => mergeLock(() => agent(`${COMMON()}
 
 ${integBroken ? 'The integration worktree is compromised: do NOT write a file or commit, only build the execution report and return the text.' : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
 Selection: ${JSON.stringify(selection)}
 Results (summary per deliverable; details in the docs/superpowers/reviews/ log of each branch): ${JSON.stringify(slim)}
-Operator actions: ${JSON.stringify(OPS)}
+Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConfig(o.resumeWith) })))}
 Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)}
-Resume args: ${JSON.stringify(resumeArgs)}
+Resume args: ${JSON.stringify(withoutConfig(resumeArgs))}
 Owner review: ${JSON.stringify(ownerReview)}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
 Be factual. Return the report text.`,
-  { label: 'report', phase: 'Relatório', model: 'sonnet' })))
+  { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)
-return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeArgs || { ...A }, reportPath, report })
+return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeArgs || { ...A }, reportPath: report && !integBroken ? reportPath : null, report })

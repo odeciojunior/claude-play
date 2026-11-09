@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  validateReleaseConfig, deriveConfig, effectiveMaxParallel,
-  requiredRules, requiredCommands, missingRules, quoteArg, parseGatesTable, runPreflight,
+  validateReleaseConfig, deriveConfig,
+  requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight,
 } from './preflight.mjs';
 
 const good = () => ({
@@ -61,14 +61,6 @@ test('deriveConfig marks generated and classifies lint/build as exit, others tes
   assert.deepEqual(validateReleaseConfig(cfg), []);
 });
 
-test('effectiveMaxParallel is 1 when generated', () => {
-  assert.equal(effectiveMaxParallel({ generated: true }, 5), 1);
-  assert.equal(effectiveMaxParallel({}, 5), 5);
-  assert.equal(effectiveMaxParallel({}), 3);
-  assert.equal(effectiveMaxParallel({ maxParallel: 2 }), 2);
-  assert.equal(effectiveMaxParallel({}, 0), 1);
-});
-
 test('requiredRules covers gates, install, setup, beforeEvidence and git', () => {
   const cfg = {
     ...good(), install: 'pnpm install', setup: ['redis-server --daemonize yes'], beforeEvidence: 'make reset && make seed; echo ok',
@@ -107,12 +99,6 @@ test('requiredCommands maps rules to commands', () => {
   assert.ok(m['Bash(git:*)']);
 });
 
-test('quoteArg quotes paths with spaces and escapes quotes', () => {
-  assert.equal(quoteArg('D:/a b/c'), '"D:/a b/c"');
-  assert.equal(quoteArg('a"b'), '"a\\"b"');
-  assert.equal(quoteArg('x$y'), '"x\\$y"');
-});
-
 const rulesFor = (install) => requiredRules({ ...good(), install });
 
 test('requiredRules treats a newline as a separator', () => {
@@ -134,7 +120,7 @@ test('requiredRules extracts $() and backtick substitutions', () => {
 
 test('requiredRules respects quotes and redirects', () => {
   const r = rulesFor('bash -c "a && b; c" && echo \'x | y\' 2>&1');
-  assert.deepEqual(r.filter((x) => x !== 'Bash(npm:*)' && x !== 'Bash(git:*)').sort(), ['Bash(bash:*)', 'Bash(echo:*)']);
+  assert.deepEqual(r.filter((x) => x !== 'Bash(npm:*)' && x !== 'Bash(git:*)' && x !== 'Bash(node:*)').sort(), ['Bash(bash:*)', 'Bash(echo:*)']);
 });
 
 test('validateReleaseConfig rejects the reserved lock name merge', () => {
@@ -195,4 +181,39 @@ test('runPreflight reads settings from CLAUDE_CONFIG_DIR when given', () => {
   writeFileSync(join(cfgDir, 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash'] } }));
   assert.deepEqual(runPreflight(dir, { home, ref: 'rel', configDir: cfgDir }).missingRules, []);
   assert.ok(runPreflight(dir, { home, ref: 'rel' }).missingRules.length > 0);
+});
+
+test('I4: Bash(node:*) is always required, and a narrower node rule does not cover it', () => {
+  assert.ok(requiredRules(good()).includes('Bash(node:*)'));
+  const cfg = { ...good(), gates: [{ name: 'u', cmd: 'node --test', kind: 'tests' }] };
+  const cmds = requiredCommands(cfg);
+  const S = { permissions: { allow: ['Bash(node --test:*)', 'Bash(git:*)', 'Bash(npm:*)'] } };
+  assert.deepEqual(missingRules(Object.keys(cmds), [S], cmds), ['Bash(node:*)']);
+});
+
+test('I5: derived gates default to exit unless the command names a test runner', () => {
+  const kinds = (list) => deriveConfig({ gatesBlockRows: list.map((c, i) => ({ ID: 'G' + i, Command: c })) }).gates.map((g) => g.kind);
+  assert.deepEqual(kinds(['npx eslint .', 'tsc --noEmit', 'npm run typecheck', 'prettier --check .']), ['exit', 'exit', 'exit', 'exit']);
+  assert.deepEqual(kinds(['npm test', 'npm run test:unit', 'npx vitest run', 'pytest -q', 'node --test', 'go test ./...', 'cargo test', 'make test']), Array(8).fill('tests'));
+});
+
+test('I5: a derived config detects the lockfile for install, or warns about the missing install', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const bare = repoWithRoadmap(false);
+  const none = runPreflight(bare.dir, { home });
+  assert.equal(none.config.install, '');
+  assert.ok(none.warnings.some((w) => /install/.test(w)));
+  const locked = repoWithRoadmap(false);
+  writeFileSync(join(locked.root, 'package-lock.json'), '{}');
+  const npm = runPreflight(locked.dir, { home });
+  assert.equal(npm.config.install, 'npm ci');
+  assert.deepEqual(npm.warnings, []);
+  const reviewed = repoWithRoadmap(true);
+  assert.deepEqual(runPreflight(reviewed.dir, { home, ref: 'rel' }).warnings, []);
+});
+
+test('m4: the helpers unused by the workflow are gone', async () => {
+  const mod = await import('./preflight.mjs');
+  assert.equal(mod.quoteArg, undefined);
+  assert.equal(mod.effectiveMaxParallel, undefined);
 });

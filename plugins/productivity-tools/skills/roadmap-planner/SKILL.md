@@ -10,7 +10,7 @@ Build a **living roadmap**: a versioned strategy document plus a tracking folder
 | This skill does | This skill does not |
 |-----------------|---------------------|
 | Clarify the objective, read sources, trace every requirement | Break deliverables into tasks (`superpowers:writing-plans`) |
-| Organize deliverables into phases, tracks and a DAG | Execute deliverables (`plan-coordinator`) |
+| Organize deliverables into phases, tracks and a DAG | Execute deliverables (`plan-coordinator` for one written plan, `roadmap-release` for unattended runs of one or more deliverables) |
 | Write strategy v1.0 + tracking folder, run the checker | Update an existing roadmap (`roadmap-tracker`) |
 | Order work by dependencies | Produce dates, durations or targets nobody supplied |
 

@@ -10,17 +10,17 @@ const run = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budg
 
 const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }];
 const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
-const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
+const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
-async function exec({ cards, over, deliverables, config = {}, args = {} }) {
+async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {} }) {
   const calls = [];
   const agent = async (prompt, o) => {
     const l = o.label;
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], cards };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
@@ -39,7 +39,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {} }) {
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
-    if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2' };
+    if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'e' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -62,7 +62,7 @@ test('happy path merges, persists the log before the re-sync gates, and cleanup 
   assert.ok(labels.indexOf('E1:review-log-resync') > labels.indexOf('E1:delta-review1'));
   assert.ok(labels.indexOf('E1:review-log-resync') < labels.indexOf('E1:regates1-1'));
   const clean = calls.find((c) => c.label === 'E1:cleanup').prompt;
-  assert.match(clean, /_tmp\/E1-\*/);
+  assert.match(clean, /_tmp\/E1-"?\*/);
   assert.doesNotMatch(clean, /_tmp\/E1\*/);
   assert.match(clean, /-dirty/);
   assert.match(clean, /diff --binary HEAD/);
@@ -378,4 +378,159 @@ test('result returns lastGood (the validated tip)', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(typeof r.lastGood, 'string');
   assert.ok(r.lastGood.length > 0);
+});
+
+const three = () => [unfinished(), card('E2'), card('E3')];
+const breakE1 = (l) => { if (/^E1:merge-gates1/.test(l)) return gm('m0', { exit: 1, failedNames: ['new'] }); if (l === 'E1:merge-fix') return null; return undefined; };
+
+test('C1: resumeArgs keeps a broken merge, so the next run validates it first', async () => {
+  const { r } = await exec({ cards: three(), deliverables: ['E1', 'E2', 'E3'], over: breakE1 });
+  assert.equal(e1Of(r).broken, true);
+  assert.deepEqual(r.resumeArgs.deliverables, ['E1', 'E2', 'E3']);
+});
+
+test('C1: a run stops at selection when an interrupted merge is outside it, before any other agent', async () => {
+  const { r, labels } = await exec({ cards: three(), deliverables: ['E2', 'E3'] });
+  assert.equal(r.status, 'needs-operator');
+  assert.deepEqual(labels, ['discovery']);
+  const o = r.operatorActions.find((x) => x.kind === 'unfinished-merge');
+  assert.equal(o.deliverable, 'E1');
+  assert.deepEqual(o.resumeWith.deliverables, ['E1', 'E2', 'E3']);
+});
+
+test('C1: dry-run and plan-only do not merge, so they only note the interrupted merge', async () => {
+  const dry = await exec({ cards: three(), deliverables: ['E2'], args: { mode: 'dry-run' } });
+  assert.equal(dry.r.status, 'done');
+  assert.ok(dry.r.selection.notes.some((n) => /E1/.test(n) && /interrupted/.test(n)));
+  const plan = await exec({ cards: three(), deliverables: ['E2'], args: { mode: 'plan-only' } });
+  assert.ok(!plan.r.operatorActions.some((x) => x.kind === 'unfinished-merge'));
+  assert.ok(plan.labels.includes('E2:spec'));
+});
+
+const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet' }] } : undefined);
+
+test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces still counts', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
+  assert.equal(r.results[0].merged, true);
+  const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
+  assert.match(p, /^AC1: npm test -- a$/m);
+  assert.match(p, /verbatim/i);
+});
+
+test('I1: a command that was not run still fails the evidence', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { maxFixRounds: 0 }, over: (l) => (/:evidence/.test(l) ? { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: 'something else', exit: 0 }] } : undefined) });
+  assert.equal(r.results[0].merged, false);
+  assert.match(r.results[0].error, /command not run/);
+});
+
+test('I2: discovery returns the raw cell; blocked, discarded and segmented rows are read by the script', async () => {
+  const cards = [card('E1', { status: 'blocked (BLQ-3)' }), card('E2', { status: 'discarded (DEC-007)' }), card('E3', { status: 'code: e; acceptance: blocked (BLQ-2)', onTarget: true, mergeFound: true, mergeSha: 'm' }), card('E4', { status: 'a' })];
+  const { r, calls } = await exec({ cards, args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.deepEqual(r.selection.order, ['E4']);
+  assert.match(calls[0].prompt, /Status cell verbatim/i);
+});
+
+test('I3: discovery requires the fields whose absence fails open', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
+  const s = calls[0].opts.schema;
+  assert.ok(['repo', 'wtRoot'].every((k) => s.required.includes(k)));
+  assert.ok(['mergeFound', 'acceptance'].every((k) => s.properties.cards.items.required.includes(k)));
+});
+
+test('I3: a card without mergeFound, a selected card without criteria or no repo stop the run', async () => {
+  const noFlag = card('E1'); delete noFlag.mergeFound;
+  const a = await exec({ cards: [noFlag], deliverables: ['E1'] });
+  assert.equal(a.r.status, 'error');
+  assert.match(a.r.error, /mergeFound/);
+  const b = await exec({ cards: [card('E1', { acceptance: [] }), card('E2')], deliverables: ['E1'] });
+  assert.equal(b.r.status, 'error');
+  assert.match(b.r.error, /E1/);
+  assert.ok(!b.labels.includes('preflight'));
+  const open = await exec({ cards: [card('E1'), card('E2', { acceptance: [] })], deliverables: ['E1'], args: { mode: 'dry-run' } });
+  assert.notEqual(open.r.status, 'error');
+  for (const discOver of [{ repo: undefined }, { wtRoot: undefined }]) assert.equal((await exec({ cards: [card('E1')], deliverables: ['E1'], discOver })).r.status, 'error');
+});
+
+test('I3: args.repo wins over the discovered repo and stands in for it', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { repo: '/given' }, discOver: { repo: undefined } });
+  assert.match(calls.find((c) => c.label === 'preflight').prompt, /git -C "\/given"/);
+});
+
+const redBase = (over) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: over } : undefined);
+
+test('I5: a tests gate with total 0 is not offered acceptRedBaseline', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: redBase(gm('abc1234', { total: 0 })) });
+  const o = r.operatorActions.find((x) => x.kind === 'preflight:red-baseline');
+  assert.doesNotMatch(o.doNow, /acceptRedBaseline/);
+  assert.match(o.doNow, /kind: exit/);
+  assert.match(o.doNow, /unit/);
+});
+
+test('I5: another red gate keeps the offer', async () => {
+  const b = gm('abc1234'); b.gates[0].exit = 1;
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: redBase(b) });
+  assert.match(r.operatorActions.find((x) => x.kind === 'preflight:red-baseline').doNow, /acceptRedBaseline/);
+});
+
+test('m2: the docs are not ok when the panel does not show the status after the merge', async () => {
+  const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(good.r.results[0].merge.docsOk, true);
+  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /state\.md/);
+  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('panelStatus'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'c' } : undefined) });
+  assert.equal(r.results[0].merge.docsOk, false);
+  assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
+});
+
+test('m4: paths are quoted in the docs measure, the integrity run and the cleanup', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: '/w t' }, config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  assert.ok(calls.find((c) => c.label === 'E1:docs-measure1').prompt.includes('node "/w t/_tmp/E1-docs-measure.cjs"'));
+  assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('node "/w t/_tmp/E1-integrity.cjs" "integracao/x"'));
+  const clean = calls.find((c) => c.label === 'E1:cleanup').prompt;
+  assert.ok(clean.includes('mkdir -p "/w t/_tmp/E1-dirty"'));
+  assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
+});
+
+const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet' }] } : undefined);
+
+test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
+  assert.ok(labels.includes('E1:status-blocked'));
+});
+
+test('m6: the report prompt carries the resume args without the config; the result keeps it', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { marker: 'ZZ-MARK' }, over: noHeader });
+  const p = calls.find((c) => c.label === 'report').prompt;
+  assert.doesNotMatch(p, /ZZ-MARK/);
+  assert.match(p, /"deliverables":\["E1"\]/);
+  assert.equal(r.operatorActions.find((o) => o.kind === 'defect').resumeWith.config.marker, 'ZZ-MARK');
+  assert.equal(r.resumeArgs.config.marker, 'ZZ-MARK');
+});
+
+test('m7: reportPath is null when no report file was written', async () => {
+  const ok = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(ok.r.reportPath, /E1-run\.md$/);
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'report' ? null : undefined) });
+  assert.equal(none.r.reportPath, null);
+  const broken = await exec({ cards: three(), deliverables: ['E1', 'E2', 'E3'], over: breakE1 });
+  assert.equal(broken.r.reportPath, null);
+});
+
+test('m8: the inflight row uses the columns of the roadmap format', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  assert.match(p, /Kind/);
+  assert.match(p, /branchLive/);
+  assert.doesNotMatch(p, /type: deliverable/);
+});
+
+test('m9: meta and selection messages are in English, and every phase used is declared', async () => {
+  const titles = [...SRC.slice(0, SRC.indexOf('// roadmap-release workflow')).matchAll(/title: '([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(titles, ['Discovery', 'Preflight', 'Setup', 'Spec', 'Plan', 'Implementation', 'Final review', 'Gates', 'Merge', 'Docs', 'Report']);
+  const used = [...SRC.matchAll(/\bphase(?:\(|: )'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(used.length > 10);
+  for (const t of used) assert.ok(titles.includes(t), t);
+  assert.doesNotMatch(SRC.slice(0, SRC.indexOf('// roadmap-release workflow')), /[^\x00-\x7f]/);
+  const un = await exec({ cards: [card('E1')], deliverables: ['E9'] });
+  assert.match(un.r.error, /unknown deliverables: E9/);
 });

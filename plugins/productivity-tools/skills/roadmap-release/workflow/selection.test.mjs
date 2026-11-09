@@ -92,3 +92,43 @@ test('isUnfinished: merge found without a post-merge status', () => {
   assert.equal(isUnfinished(card('E1', { mergeFound: true, status: 'na-ramificacao' }), pt), false);
   assert.equal(isUnfinished(card('E1', { mergeFound: true, status: 'na-branch' }), pt), true);
 });
+
+const { cardStatus, unfinishedOutside, zeroTestGates } = loadPure();
+const vocab = { integrated: ['integrated', 'released'], onBranch: 'on-branch', blocked: 'blocked', discarded: 'discarded' };
+
+test('I2: cardStatus reads the panel cell with the rules of the checker', () => {
+  const cases = [
+    ['on-branch', 'on-branch'],
+    ['blocked (BLQ-3)', 'blocked'],
+    ['discarded (DEC-007)', 'discarded'],
+    ['spec (waiting on (a) DEC-1)', 'spec'],
+    ['code: on-branch; acceptance: blocked (BLQ-2)', 'on-branch'],
+    ['Code: integrated; acceptance: blocked (BLQ-2)', 'integrated'],
+    ['código: on-branch; aceite: blocked (BLQ-2)', 'on-branch'],
+    ['code: executing; acceptance: blocked (BLQ-2)', 'blocked'],
+    ['piece 1: integrated; piece 2: spec (waiting on DEC-004)', 'spec'],
+    ['piece 1: integrated; piece 2: on-branch', 'integrated'],
+    ['piece 1: discarded; piece 2: spec', 'spec'],
+    ['', ''],
+  ];
+  for (const [cell, want] of cases) assert.equal(cardStatus(cell, vocab), want, cell);
+});
+
+test('I2: a segmented finished row is not unfinished; a blocked one is left out of next', () => {
+  const finished = card('E1', { onTarget: true, mergeFound: true, status: cardStatus('code: on-branch; acceptance: blocked (BLQ-2)', vocab) });
+  assert.equal(isUnfinished(finished, vocab), false);
+  const r = selectDeliverables({ cards: [finished, card('E2', { status: cardStatus('blocked (BLQ-3)', vocab) })], statuses: vocab, selector: 'next' });
+  assert.deepEqual(r.order, []);
+});
+
+test('C1: unfinishedOutside lists an interrupted merge left out of the order', () => {
+  const cards = [card('E1', { mergeFound: true, onTarget: true, status: 'executing' }), card('E2'), card('E3', { mergeFound: true, onTarget: true, status: 'on-branch' })];
+  assert.deepEqual(unfinishedOutside(cards, vocab, ['E2']), ['E1']);
+  assert.deepEqual(unfinishedOutside(cards, vocab, ['E1', 'E2']), []);
+});
+
+test('I5: zeroTestGates names the tests gates that measured no tests', () => {
+  const defs = [{ name: 'a', kind: 'tests' }, { name: 'b', kind: 'exit' }, { name: 'c', kind: 'tests' }, { name: 'd', kind: 'tests', invariant: true }];
+  const base = { a: { ran: true, exit: 0, total: 0 }, b: { ran: true, exit: 1 }, c: { ran: true, exit: 0, total: 4 }, d: { ran: true, exit: 0 } };
+  assert.deepEqual(zeroTestGates(defs, base), ['a']);
+});

@@ -153,3 +153,27 @@ test('contract: schema describes ac as the id alone; plan and plan-fix prompts r
   assert.match(SRC, /Fix the plan[\s\S]*?ONLY the criterion id/);
   assert.match(SRC, /const acTxt = [^\n]*`\[\$\{a\.id\}\]/);
 });
+
+test('m3: parseVerifyTag accepts the grammar of the checker and strips backticks around the evidence', () => {
+  assert.deepEqual(parseVerifyTag('x {verify: human}'), { kind: 'human', evidence: '' });
+  assert.deepEqual(parseVerifyTag('x {verify: blocked BLQ-2}'), { kind: 'blocked', blq: 'BLQ-2', evidence: '' });
+  assert.equal(parseVerifyTag('x {verify: test; evidence: `npm test`}').evidence, 'npm test');
+  assert.equal(parseVerifyTag('x {verify: test; evidence: echo `a` b}').evidence, 'echo `a` b');
+  for (const bad of ['x {verify: test}', 'x {verify: blocked}', 'x {verify: human BLQ-1}', 'x {verify: magic}']) assert.equal(parseVerifyTag(bad).invalid, true, bad);
+});
+
+const P3 = loadPure();
+test('I1: normalizePlanAc resolves a plan row to the card id, preferring the id over a text match', () => {
+  const cards = [{ id: 'AC1', text: 'works' }, { id: 'AC2', text: 'also fast' }];
+  const out = P3.normalizePlanAc(cards, [{ ac: 'AC2: works too', kind: 'test' }, { ac: 'AC1: works', kind: 'test' }, { ac: 'also fast', kind: 'test' }, { ac: 'AC9', kind: 'test' }]);
+  assert.deepEqual(out.map((p) => p.ac), ['AC2', 'AC1', 'AC2', 'AC9']);
+});
+
+test('I1: matchEvidence finds a result by id or position and compares the trimmed command', () => {
+  const row = { ac: 'AC1', command: 'npm test' };
+  assert.equal(P3.matchEvidence([{ ac: 'AC1', command: ' npm test ', exit: 0 }], row, 0).exit, 0);
+  assert.equal(P3.matchEvidence([{ ac: 'AC1: text', command: 'npm test', exit: 3 }], row, 0).exit, 3);
+  assert.equal(P3.matchEvidence([{ ac: 'AC1', command: 'other', exit: 0 }], row, 0), undefined);
+  assert.equal(P3.matchEvidence([{ ac: 'AC7', command: 'npm test', exit: 0 }, { ac: 'AC8', command: 'x', exit: 0 }], row, 1), undefined);
+  assert.equal(P3.matchEvidence([], row, 0), undefined);
+});
