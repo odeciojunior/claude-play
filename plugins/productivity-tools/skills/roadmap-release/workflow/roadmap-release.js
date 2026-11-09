@@ -612,11 +612,12 @@ function isOwnWorktree(path, wtRoot) {
   return /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 }
 function isAuthorized(items, item) { return (items || []).includes(item) }
-// Deterministic 32-bit FNV-1a; 8 hex digits. With a non-empty planBlob (the git blob of the committed plan file) the hash depends only on it:
-// the agent retranscribes the task fields on each run, so they must not move it. Without a blob it falls back to the tasks (n, trimmed title,
+// Deterministic 32-bit FNV-1a; 8 hex digits. With a planBlob that looks like a git object id (40-64 hex; the blob of the committed plan file) the hash depends only on it:
+// the agent retranscribes the task fields on each run, so they must not move it. Without a valid blob it falls back to the tasks (n, trimmed title,
 // sorted files, external, externalDedupe), so a missing blob still fails safe.
 function planFingerprint(tasks, planBlob = '') {
-  const blob = String(planBlob || '').trim()
+  const raw = String(planBlob || '').trim()
+  const blob = /^[0-9a-f]{40,64}$/.test(raw) ? raw : ''
   const str = blob
     ? JSON.stringify([blob])
     : JSON.stringify(['', (tasks || []).map(t => [t.n, String(t.title || '').trim(), [...(t.files || [])].sort(), t.external === undefined ? null : t.external, String(t.externalDedupe || '').trim()])])
@@ -777,7 +778,7 @@ const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisio
 const S_PLAN = { type: 'object', properties: { planPath: STR, planBlob: STR, roadmapHeader: BOOL, reused: BOOL,
   ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR }, required: ['ac', 'kind'] } },
   tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR }, required: ['n', 'title', 'tier', 'external'] } } }, required: ['planPath', 'planBlob', 'tasks'] }
-const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT, measuredPlanBlob: STR }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
 const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } } }, required: ['head', 'clean', 'done'] }
@@ -1307,12 +1308,18 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       ...tasks.flatMap(t => asList(t.needsLock).filter(n => !TASK_LOCKS.includes(n)).map(n => gap(`task ${t.n} needs the unknown lock "${n}" (configured: ${TASK_LOCKS.join(', ') || 'none'})`))),
     ]
   }
+  const planBlobGaps = r => {
+    const m = r && typeof r.measuredPlanBlob === 'string' ? r.measuredPlanBlob.trim() : ''
+    const reported = String(plan.planBlob || '').trim()
+    if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse HEAD:${plan.planPath}); the plan agent reported ${JSON.stringify(reported)}` }]
+    return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan agent (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); return the output of git rev-parse HEAD:${plan.planPath} after the commit` }]
+  }
   const planLoop = await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
+Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), and measuredPlanBlob = the output of git -C "${wt}" rev-parse HEAD:${plan.planPath}, run by you; do not copy it from the plan agent.`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_REVIEW, model: 'opus' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
@@ -1325,7 +1332,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
       return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
     },
-    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planGaps()],
+    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...planGaps()],
     { tier: 'opus', reviewModel: 'opus' })
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
   if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')

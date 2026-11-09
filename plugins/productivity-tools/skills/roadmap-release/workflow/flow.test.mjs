@@ -9,6 +9,8 @@ const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const run = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budget', SRC);
 
+const B1 = '3f2a9c1d8e7b6a5f4c3d2e1f0a9b8c7d6e5f4a3b';
+const B2 = '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d';
 const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }];
 const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
@@ -25,8 +27,9 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
-    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
-    if (/spec-review|plan-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+    if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
+    if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
@@ -431,7 +434,7 @@ test('C1: dry-run and plan-only do not merge, so they only note the interrupted 
   assert.ok(plan.labels.includes('E2:spec'));
 });
 
-const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces still counts', async () => {
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
@@ -546,7 +549,7 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
   assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
 });
 
-const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -621,7 +624,7 @@ test('authorizeExternal with a bad item stops the run before discovery', async (
 });
 
 test('the plan prompt asks for external and externalDedupe and the plan review blocks a gap', async () => {
-  const good = { planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+  const good = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
   const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
       if (l === 'E1:plan') return { ...good, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] };
@@ -637,8 +640,8 @@ test('the plan prompt asks for external and externalDedupe and the plan review b
 // ---- external-effect authorization (Task 4)
 const PU = loadPure();
 const tk = (n, external, extra = {}) => ({ n, title: 't' + n, tier: 'sonnet', external, ...(external ? { externalDedupe: 'checks outbox.log first' } : {}), ...extra });
-const planWith = (tasks) => ({ planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks });
-const fpOf = (tasks) => PU.planFingerprint(tasks, 'b1');
+const planWith = (tasks) => ({ planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks });
+const fpOf = (tasks) => PU.planFingerprint(tasks, B1);
 const ext = (r) => r.operatorActions.filter((a) => a.kind === 'authorize-external');
 const withPlan = (tasks, more) => (l) => (l === 'E1:plan' ? planWith(tasks) : more ? more(l) : undefined);
 
@@ -691,15 +694,26 @@ test('any replanned plan invalidates a bound authorization, even with the same t
 
 test('same blob with retranscribed externalDedupe keeps the authorization; another blob holds', async () => {
   const first = [tk(1, false), tk(2, true, { externalDedupe: 'x' })];
-  const auth = ['E1:T2@' + PU.planFingerprint(first, 'b1')];
+  const auth = ['E1:T2@' + PU.planFingerprint(first, B1)];
   const resumed = [tk(1, false), tk(2, true, { externalDedupe: "'x'" })];
   const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: auth }, over: withPlan(resumed) });
   assert.ok(a.labels.includes('E1:t2:impl'));
   assert.equal(ext(a.r).length, 0);
   const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: auth },
-    over: (l) => (l === 'E1:plan' ? { ...planWith(resumed), planBlob: 'b2' } : undefined) });
+    over: (l) => (l === 'E1:plan' ? { ...planWith(resumed), planBlob: B2 } : /plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B2 } : undefined) });
   assert.ok(!b.labels.includes('E1:t2:impl'));
-  assert.equal(ext(b.r)[0].item, 'E1:T2@' + PU.planFingerprint(resumed, 'b2'));
+  assert.equal(ext(b.r)[0].item, 'E1:T2@' + PU.planFingerprint(resumed, B2));
+});
+
+test('a plan review that measures another blob opens a gap and a missing measurement too', async () => {
+  for (const m of [B2, undefined]) {
+    const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+      over: (l) => (l === 'E1:plan-review1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, ...(m ? { measuredPlanBlob: m } : {}) } : undefined) });
+    assert.ok(labels.includes('E1:plan-fix1'));
+    assert.match(calls.find((c) => c.label === 'E1:plan-fix1').prompt, new RegExp(m ? B2 : 'did not measure'));
+  }
+  const c = (await exec({ cards: [card('E1')], deliverables: ['E1'] })).calls.find((x) => x.label === 'E1:plan-review1');
+  assert.match(c.prompt, /measuredPlanBlob/);
 });
 
 test('every held external task of the plan is listed at the first stop', async () => {
