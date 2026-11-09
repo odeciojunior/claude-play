@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary } = loadPure();
+const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes } = loadPure();
 const RM = 'docs/plans/roadmap-x/';
 const res = (name, o = {}) => ({ name, ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...o });
 
@@ -106,4 +110,26 @@ test('truthDivergences: requires lastGoodReachable, flags not-merged ids present
   assert.equal(d({ ...ok, claims: [] }), 1);
   assert.equal(d({ ...ok, clean: false }), 1);
   assert.equal(d({ ...ok, clean: false }, true), 0);
+});
+
+test('postMergeFixes drops only subjects with another deliverable prefix', () => {
+  const c = (subject) => ({ sha: 'x', subject });
+  assert.deepEqual(postMergeFixes([c('E2 merge-fix: y'), c('E1 T1: z'), c('hotfix'), c('E10 x'), c('E1x y')], 'E1').map((x) => x.subject), ['E1 T1: z', 'hotfix', 'E1x y']);
+});
+
+test('postMergeFixArgs finds an unprefixed fix on a real repo and ignores merges and docs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pmf-'));
+  const git = (...x) => execFileSync('git', x, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const put = (f) => { mkdirSync(join(dir, f, '..'), { recursive: true }); writeFileSync(join(dir, f), 'x'); git('add', '-A'); };
+  git('init', '-q', '-b', 'main'); git('config', 'user.email', 'a@b.c'); git('config', 'user.name', 'a');
+  put('a.js'); git('commit', '-qm', 'base');
+  git('checkout', '-qb', 'e1'); put('b.js'); git('commit', '-qm', 'E1 T1: b');
+  git('checkout', '-q', 'main'); git('merge', '-q', '--no-ff', 'e1', '-m', 'merge: E1');
+  const merge = git('rev-parse', 'HEAD').trim();
+  put('c.js'); git('commit', '-qm', 'hotfix the parser');
+  put('docs/plans/roadmap-x/s.md'); git('commit', '-qm', 'docs only');
+  git('checkout', '-qb', 'e2'); put('d.js'); git('commit', '-qm', 'E2 T1: d');
+  git('checkout', '-q', 'main'); git('merge', '-q', '--no-ff', 'e2', '-m', 'merge: E2');
+  const subjects = git(...postMergeFixArgs(merge, RM, ['docs/'])).split('\n').filter(Boolean).map((l) => l.split('\t')[1]);
+  assert.deepEqual(subjects, ['hotfix the parser']);
 });

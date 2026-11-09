@@ -31,7 +31,7 @@ async function exec({ cards, over, deliverables, config = {} }) {
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
     if (/:resync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
-    if (/:test-integrity$/.test(l)) return { deletedTests: [], removedAsserts: 0, skipsAdded: 0, prodChanged: 1, assertsAdded: 1 };
+    if (/test-integrity$/.test(l)) return { deletedTests: [], removedAsserts: 0, skipsAdded: 0, prodChanged: 1, assertsAdded: 1 };
     if (/merge-gates/.test(l)) return gm('m1');
     if (/gates\d/.test(l) && !/fix/.test(l)) return gm(/:regates/.test(l) ? 'h3' : 'h2');
     if (/:evidence/.test(l)) return { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
@@ -40,7 +40,8 @@ async function exec({ cards, over, deliverables, config = {} }) {
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
     if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2' };
-    if (/:merge-fix-probe$/.test(l)) return { commits: [] };
+    if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
+    if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
@@ -127,7 +128,7 @@ test('git truth requires lastGoodReachable', async () => {
 });
 
 const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
-const fixCommits = { commits: [{ sha: 'f1', subject: 'E1 merge-fix: x' }] };
+const fixCommits = { commits: [{ sha: 'f1', subject: 'E1 merge-fix: x' }], rangeOk: true };
 const resume = (over) => exec({ cards: [unfinished(), card('E2')], deliverables: ['E1', 'E2'], over });
 
 test('finish-merge with merge-fix commits: approved review closes ok', async () => {
@@ -193,4 +194,112 @@ test('cleanup creates the dirty folder and removes the worktree only after the p
 test('git truth schema requires lastGoodReachable', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.ok(calls.find((c) => c.label === 'git-truth').opts.schema.required.includes('lastGoodReachable'));
+});
+
+const probeWith = (commits, extra = {}) => (l) => (/:merge-fix-probe$/.test(l) ? { commits, rangeOk: true, ...extra } : undefined);
+const e1Of = (r) => r.results.find((x) => x.id === 'E1');
+const reviewOf = (over) => (l) => (/:resume-fix-review$/.test(l) ? { issues: [], headSha: 'm9', clean: true, commitsInRange: 2, ...over } : undefined);
+const both = (...fs) => (l, p, o) => { for (const f of fs) { const v = f(l, p, o); if (v !== undefined) return v; } return undefined; };
+
+test('finish-merge: a fix commit with a non-prefixed subject is reviewed; the probe does not filter by subject', async () => {
+  const { r, labels, calls } = await resume(probeWith([{ sha: 'f7', subject: 'hotfix the parser' }]));
+  assert.ok(labels.includes('E1:resume-fix-review'));
+  assert.match(calls.find((c) => c.label === 'E1:resume-fix-review').prompt, /f7/);
+  const probe = calls.find((c) => c.label === 'E1:merge-fix-probe').prompt;
+  assert.match(probe, /--first-parent/);
+  assert.match(probe, /--no-merges/);
+  assert.doesNotMatch(probe, /--grep/);
+  assert.match(probe, /:!docs\/plans\/roadmap-x\//);
+  assert.match(probe, /:!docs\//);
+  assert.equal(e1Of(r).merged, true);
+});
+
+test('finish-merge: commits of another deliverable are dropped, the same deliverable counts', async () => {
+  const other = await resume(probeWith([{ sha: 'o1', subject: 'E2 merge-fix: y' }]));
+  assert.ok(!other.labels.includes('E1:resume-fix-review'));
+  const same = await resume(probeWith([{ sha: 's1', subject: 'E1 T3: late fix' }]));
+  assert.ok(same.labels.includes('E1:resume-fix-review'));
+});
+
+test('finish-merge: a reverted fix judged net-clean closes ok, and the review judges the net state at HEAD', async () => {
+  const { r, calls } = await resume(both(probeWith([{ sha: 'f1', subject: 'bad fix' }, { sha: 'f2', subject: 'Revert "bad fix"' }]), reviewOf({})));
+  assert.equal(e1Of(r).merged, true);
+  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+  assert.ok(!e1Of(r).broken);
+  const p = calls.find((c) => c.label === 'E1:resume-fix-review').prompt;
+  assert.match(p, /net state at HEAD/i);
+  assert.match(p, /reverted or corrected/i);
+});
+
+test('finish-merge: rangeOk false or absent stays broken and runs no review', async () => {
+  for (const extra of [{ rangeOk: false }, { rangeOk: undefined }]) {
+    const { r, labels } = await resume(probeWith([], extra));
+    assert.equal(e1Of(r).broken, true);
+    assert.ok(!labels.includes('E1:resume-fix-review'));
+  }
+});
+
+test('the probe schema requires rangeOk', async () => {
+  const { calls } = await resume();
+  assert.ok(calls.find((c) => c.label === 'E1:merge-fix-probe').opts.schema.required.includes('rangeOk'));
+});
+
+test('finish-merge: a review that read fewer commits than listed, or saw a dirty tree, does not approve', async () => {
+  const two = [{ sha: 'f1', subject: 'a' }, { sha: 'f2', subject: 'b' }];
+  for (const over of [{ commitsInRange: 0 }, { commitsInRange: 1 }, { clean: false }]) {
+    const { r } = await resume(both(probeWith(two), reviewOf(over)));
+    assert.equal(e1Of(r).broken, true, JSON.stringify(over));
+  }
+});
+
+const mergedProbe = (l) => {
+  if (/:pre-merge$/.test(l)) return { head: 'abc1234', clean: true, branchHasTarget: true, branchMerged: true };
+  if (/merge-gates/.test(l)) return gm('abc1234');
+  return undefined;
+};
+
+test('branchMerged: fixes after the located merge are reviewed and the located merge is used', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, probeWith([{ sha: 'f1', subject: 'x' }]), reviewOf({ commitsInRange: 1 })) });
+  assert.ok(labels.includes('E1:resume-fix-review'));
+  assert.match(calls.find((c) => c.label === 'E1:merge-fix-probe').prompt, /m0\.\.HEAD/);
+  assert.match(calls.find((c) => /:docs1$/.test(c.label)).prompt, /merge m0/);
+  assert.equal(r.results[0].merged, true);
+  assert.ok(!r.results[0].broken && !r.results[0].error);
+});
+
+test('branchMerged: a rejected fix stays broken; an unlocated merge stays broken', async () => {
+  const rej = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, probeWith([{ sha: 'f1', subject: 'x' }]), (l) => (/:resume-fix-review$/.test(l) ? { issues: [{ severity: 'critical', category: 'defeito', description: 'd' }], headSha: 'm', clean: true, commitsInRange: 1 } : undefined)) });
+  assert.equal(rej.r.results[0].broken, true);
+  const lost = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, (l) => (/:merge-locate$/.test(l) ? { mergeSha: '', rangeOk: true } : undefined)) });
+  assert.equal(lost.r.results[0].broken, true);
+});
+
+test('finish-merge: the integrity of the merge is measured on its own range and an alert breaks it', async () => {
+  const { r, calls } = await resume((l) => (/:resume-test-integrity$/.test(l) ? { deletedTests: ['t/a.test.js'], removedAsserts: 0, skipsAdded: 0, prodChanged: 0, assertsAdded: 1 } : undefined));
+  assert.equal(e1Of(r).broken, true);
+  assert.ok(r.operatorActions.some((o) => o.deliverable === 'E1' && /t\/a\.test\.js/.test(o.what)));
+  const p = calls.find((c) => c.label === 'E1:resume-test-integrity').prompt;
+  assert.match(p, /m0\^1/);
+  assert.match(p, /--detach/);
+});
+
+test('finish-merge: integrity off, null or unmeasured pushes a concern and does not fail', async () => {
+  const off = await exec({ cards: [unfinished()], deliverables: ['E1'], config: { testIntegrity: false } });
+  assert.equal(e1Of(off.r).merged, true);
+  assert.ok(!e1Of(off.r).broken && !e1Of(off.r).error);
+  assert.ok(e1Of(off.r).concerns.some((c) => /test-count floor/.test(c)));
+  assert.ok(!off.labels.includes('E1:resume-test-integrity'));
+  for (const v of [null, { deletedTests: [], removedAsserts: -1, skipsAdded: 0, prodChanged: 0, assertsAdded: 0 }]) {
+    const { r } = await resume((l) => (/:resume-test-integrity$/.test(l) ? v : undefined));
+    assert.equal(e1Of(r).merged, true);
+  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+    assert.ok(e1Of(r).concerns.some((c) => /test-count floor/.test(c)));
+  }
+});
+
+test('cleanup creates the dirty folder only when there is a patch and removes when none was needed', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:cleanup').prompt;
+  assert.ok(p.indexOf('status --porcelain') < p.indexOf('mkdir -p'));
+  assert.match(p, /no patch was needed/i);
 });

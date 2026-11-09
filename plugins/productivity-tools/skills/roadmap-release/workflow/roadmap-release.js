@@ -470,6 +470,18 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
   }
   return out
 }
+// Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
+function postMergeFixArgs(mergeSha, roadmapDir, docsPaths) {
+  const skip = [...new Set([roadmapDir, ...(docsPaths || [])].filter(Boolean))].map(p => ':!' + p)
+  return ['log', '--first-parent', '--no-merges', '--format=%H%x09%s', mergeSha + '..HEAD', '--', '.', ...skip]
+}
+// Commits of other deliverables are theirs to review; everything else after the merge counts, whatever its subject.
+function postMergeFixes(commits, E) {
+  return (commits || []).filter(c => {
+    const m = /^(E\d+) /.exec(c.subject || '')
+    return !m || m[1] === E
+  })
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -602,7 +614,8 @@ const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHa
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
 const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['checkerErrors', 'clean'] }
-const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } } }, required: ['commits'] }
+const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
+const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL }, required: ['mergeSha', 'rangeOk'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
 const S_INTEG = { type: 'object', properties: { deletedTests: STRS, removedAsserts: INT, skipsAdded: INT, prodChanged: INT, assertsAdded: INT }, required: ['deletedTests', 'removedAsserts', 'skipsAdded', 'prodChanged', 'assertsAdded'] }
 const S_EVID = { type: 'object', properties: { headSha: STR, clean: BOOL, beforeOk: BOOL, results: { type: 'array', items: { type: 'object', properties: { ac: STR, command: STR, exit: INT, log: STR }, required: ['ac', 'command', 'exit'] } } }, required: ['headSha', 'clean', 'results'] }
@@ -918,11 +931,32 @@ Return statusWritten, commit, details.`,
       out.concerns.push(`docs with pending items after 2 rounds: ${JSON.stringify(result.docsMeasure)}`)
       op('docs', E, `docs or roadmap inconsistent after the merge of ${E}: ${JSON.stringify(result.docsMeasure)}`, 'Fix the record and run the roadmap checker on the target', null)
     }
-    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST: mkdir -p ${WT}/_tmp/${E}-dirty; if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, save the patch (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) and confirm the file was written. Only after the patch exists: git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
+    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST: if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, a patch is needed: mkdir -p ${WT}/_tmp/${E}-dirty, save it (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) and confirm the file was written; if it cannot be written, do not remove the worktree and list it in leftovers. Then, when no patch was needed, or only after the patch was written: git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku' })
     if (!cl || !cl.ok) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
     return out
+  }
+
+  // Work committed on the target after the merge was never reviewed: review it on every re-run. Returns null when clear, or the broken result.
+  const reviewFixesAfterMerge = async mergeSha => {
+    const cmd = postMergeFixArgs(mergeSha, RM, DOCS_PATHS).map(a => (/[%:!]/.test(a) ? `'${a}'` : a)).join(' ')
+    const pr = await agent(`Read-only. Run exactly: git -C "${INTWT}" ${cmd}
+rangeOk = true only if that command exited 0. commits = one { sha, subject } per output line (tab-separated), in order, none filtered out; empty list when there is no output.`,
+      { label: `${E}:merge-fix-probe`, phase: 'Merge', schema: S_FIXES, model: 'haiku' })
+    if (!pr || pr.rangeOk !== true) return markBroken(`the probe for commits after the merge ${mergeSha} did not confirm a valid range`, 'infra')
+    const commits = postMergeFixes(pr.commits, E)
+    if (!commits.length) return null
+    const names = commits.map(c => c.sha + ' (' + c.subject + ')').join(', ')
+    const rv = await agent(`${C()}
+
+Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha} of ${E}, never reviewed: ${names}. Read each one with git -C "${INTWT}" show <sha>, then the files they touch as they are at HEAD. Judge the NET STATE AT HEAD of those commits: a defect reverted or corrected by a later commit of this list does not block; report only what remains at HEAD. Changes of other deliverables in those files are not under review. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, editing the baseline, introducing a defect. Measure headSha, clean, commitsInRange (how many of the listed commits you actually read).`,
+      { label: `${E}:resume-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'high' })
+    if (!rv) return markBroken(`the review of the commits after the merge returned nothing: ${names}`, 'infra', `Run again with deliverables:["${E}"] to repeat the review. Commits: ${names}`)
+    const hard = reviewTruth(rv, commits.length, `the ${commits.length} commits listed after ${mergeSha}`).filter(i => isHard(i, blqIds))
+    if (hard.length) return markBroken(`the commits after the merge were rejected: ${fmt(hard)}; commits: ${names}`, 'conteudo', `Correct the problem on ${TARGET} with a later commit, or revert the commits (git -C "${INTWT}" revert <sha>), then run again with deliverables:["${E}"]. The review judges the net state at HEAD, so a defect reverted or corrected later no longer blocks. Commits: ${names}`)
+    acceptRisks('resume-merge-fix', blocking(rv))
+    return null
   }
 
   // A merge already on the target without a post-merge status: validate and document, do not redo the deliverable.
@@ -933,20 +967,15 @@ Return statusWritten, commit, details.`,
       if (integBroken) return { ok: false, kind: 'infra', why: `integration worktree compromised: ${integBroken}` }
       const named = Object.values(BASE).flatMap(r => r.failedNames || [])
       if (named.length && !ACCEPT_RED) return markBroken(`the baseline was measured with this merge already on the target and has named failures that may come from it: ${named.join(', ')}`, 'conteudo', `Compare those failures with the commit before the merge (${card.mergeSha}^1). If they already existed, run again with acceptRedBaseline:true; otherwise fix them on ${TARGET}`)
-      // Commits of this deliverable after the merge (merge-fix) are unreviewed work on the target: review them on every re-run.
-      const fx = await agent(`Read-only. In ${INTWT} (branch ${TARGET}): commits = for each commit of git log --format="%H%x09%s" --grep "^${E} merge-fix" ${card.mergeSha}..HEAD, { sha, subject }. Empty list when none.`,
-        { label: `${E}:merge-fix-probe`, phase: 'Merge', schema: S_FIXES, model: 'haiku' })
-      if (!fx) return markBroken('the probe for merge-fix commits after the merge returned nothing', 'infra')
-      if (fx.commits.length) {
-        const names = fx.commits.map(c => c.sha + ' (' + c.subject + ')').join(', ')
-        const rv = await agent(`${C()}
-
-Review (read-only) the merge-fix commits that sit on ${TARGET} after the merge ${card.mergeSha} of ${E}, never reviewed: ${names}. Use git -C "${INTWT}" show <sha> for each. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, editing the baseline, introducing a defect. Measure headSha, clean, commitsInRange.`,
-          { label: `${E}:resume-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'high' })
-        if (!rv) return markBroken(`the review of the merge-fix commits returned nothing: ${names}`, 'infra', `Revert the commits (git -C "${INTWT}" revert <sha>) or fix them, then run again with deliverables:["${E}"]; a re-run reviews them again. Commits: ${names}`)
-        if (blocking(rv).filter(i => isHard(i, blqIds)).length) return markBroken(`the merge-fix commits were rejected: ${fmt(blocking(rv))}; commits: ${names}`, 'conteudo', `Revert the commits (git -C "${INTWT}" revert <sha>) or fix them on ${TARGET}, then run again with deliverables:["${E}"]. Commits: ${names}`)
-        acceptRisks('resume-merge-fix', blocking(rv))
-      }
+      const badFix = await reviewFixesAfterMerge(card.mergeSha)
+      if (badFix) return badFix
+      // out.brM is null on resume, so the count floor uses a baseline that already holds the merge: measure what the merge did to the tests.
+      const integWt = `${WT}/_tmp/${E}-integrity-wt`
+      const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run: node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" from ${integWt} (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}), delete the file, git -C "${REPO}" worktree remove --force "${integWt}", and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+        { label: `${E}:resume-test-integrity`, phase: 'Merge', schema: S_INTEG, model: 'haiku' }) : null
+      if (!integ || integ.removedAsserts < 0) out.concerns.push(`resume: the test-count floor was not verified for the merge ${card.mergeSha} (test integrity ${TEST_INTEGRITY ? 'not measured' : 'disabled'})`)
+      const integAlerts = integrityAlerts(integ)
+      if (integAlerts.length) return markBroken(`the merge ${card.mergeSha} weakened the tests: ${integAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one; to undo: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`)
       return postMerge(card.mergeSha, 0, markBroken, null)  // commits may exist after the merge
     }))
   }
@@ -1287,7 +1316,14 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, mod
       if (!rg.ok) return { ok: false, kind: rg.kind, why: `gates after the re-sync: ${rg.msg}` }
       validatedHead = rg.head
     }
-    if (probe.branchMerged) return postMerge(preSha, 0, markBroken)
+    if (probe.branchMerged) {
+      const loc = await agent(`Read-only. Run: git -C "${INTWT}" rev-list --first-parent --reverse --ancestry-path ${br}..HEAD. mergeSha = the first line of its output (empty when none); rangeOk = true only if the command exited 0.`,
+        { label: `${E}:merge-locate`, phase: 'Merge', schema: S_LOCATE, model: 'haiku' })
+      if (!loc || loc.rangeOk !== true || !loc.mergeSha) return markBroken(`the branch ${br} is on ${TARGET} but its merge commit could not be located`, 'infra')
+      const badFix = await reviewFixesAfterMerge(loc.mergeSha)
+      if (badFix) return badFix
+      return postMerge(loc.mergeSha, 0, markBroken, preSha)
+    }
     const rollback = async (why, kind = 'conteudo') => {
       const rbPrompt = `ROLLBACK in the integration worktree ${INTWT} (branch ${TARGET}): git merge --abort (if a merge is in progress); git reset --hard ${preSha}; then head = git rev-parse HEAD; clean = git status --porcelain empty; leftovers = files still dirty.`
       let rb = await agent(rbPrompt, { label: `${E}:rollback`, phase: 'Merge', schema: S_ROLLBACK, model: 'haiku' })
