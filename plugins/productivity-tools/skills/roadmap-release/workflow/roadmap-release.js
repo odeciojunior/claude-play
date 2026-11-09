@@ -1572,7 +1572,7 @@ for (const id of order) RESULTS.push(await runs[id])
 
 // ============================================================================ report
 phase('Report')
-const slim = RESULTS.map(r => ({ id: r.id, merged: !!r.merged, broken: !!r.broken, planOnly: !!r.planOnly, skipped: r.skipped, error: r.error, failKind: r.failKind,
+const slim = RESULTS.map(r => ({ id: r.id, merged: !!r.merged, broken: !!r.broken, planOnly: !!r.planOnly, skipped: r.skipped, error: r.error, failKind: r.failKind, held: r.held,
   branch: r.branch, spec: r.spec, plan: r.plan, merge: r.merge ? { commit: r.merge.mergeCommit, conflicts: r.merge.conflicts, gates: r.merge.gates, docsOk: r.merge.docsOk } : undefined,
   tasks: (r.tasks || []).length, concerns: r.concerns || [], acceptedRisks: r.acceptedRisks || [], decisions: (r.decisions || []).length,
   human: (r.human || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).slice(0, 12) }))
@@ -1598,13 +1598,18 @@ const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
 // Authorizations come back bound to the plan they were given for, and end with the delivery they covered.
+const settleAuth = items => {
+  const done = RESULTS.filter(r => r.merged && !r.broken).map(r => r.id)
+  const bound = Object.keys(BOUND).reduce((acc, id) => bindAuthorizations(acc, id, BOUND[id]), items)
+  return bound.filter(i => !done.some(id => i.startsWith(id + ':T')))
+}
 const finalResume = () => {
   const base = resumeArgs || { ...A }
-  if (!A.authorizeExternal) return base
-  const done = RESULTS.filter(r => r.merged && !r.broken).map(r => r.id)
-  const bound = Object.keys(BOUND).reduce((acc, id) => bindAuthorizations(acc, id, BOUND[id]), AUTH.items)
-  return { ...base, authorizeExternal: bound.filter(i => !done.some(id => i.startsWith(id + ':T'))) }
+  return A.authorizeExternal ? { ...base, authorizeExternal: settleAuth(AUTH.items) } : base
 }
+// Every operator action resumes with the same settled authorizations: bound to the approved plan, none for a delivery already merged.
+for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
+const resumeFinal = finalResume()
 const report = await safe(() => mergeLock(() => agent(`${COMMON()}
 
 ${integBroken ? 'The integration worktree is compromised: do NOT write a file or commit, only build the execution report and return the text.' : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
@@ -1612,7 +1617,7 @@ Selection: ${JSON.stringify(selection)}
 Results (summary per deliverable; details in the docs/superpowers/reviews/ log of each branch): ${JSON.stringify(slim)}
 Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConfig(o.resumeWith) })))}
 Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)}
-Resume args: ${JSON.stringify(withoutConfig(resumeArgs))}
+Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
 Be factual. Return the report text.`,
@@ -1620,4 +1625,4 @@ Be factual. Return the report text.`,
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)
-return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: finalResume(), reportPath: report && !integBroken ? reportPath : null, report })
+return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeFinal, reportPath: report && !integBroken ? reportPath : null, report })

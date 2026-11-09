@@ -644,6 +644,7 @@ test('every held external task of the plan is listed at the first stop', async (
   assert.deepEqual(a.map((x) => x.item), ['E1:T2@' + fp, 'E1:T3@' + fp]);
   assert.ok(a.every((x) => x.deliverable === 'E1'));
   assert.match(a[1].what, /t3/);
+  assert.equal(r.results[0].held, 'E1:T2@' + fp);
 });
 
 test('a bare authorization comes back bound in resumeArgs', async () => {
@@ -701,4 +702,24 @@ test('the authorization ends with the deliverable', async () => {
 test('the base rules forbid external effects for every agent', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.match(calls.find((c) => c.label === 'E1:spec').prompt, /NEVER perform an external effect/);
+});
+
+test('a conteudo failure after plan approval resumes with the authorization bound to that plan', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] },
+    over: withPlan(tasks, (l) => (l === 'E1:t2:impl' ? { status: 'BLOCKED', summary: 'stop' } : undefined)) });
+  const d = r.operatorActions.find((a) => a.kind === 'defect');
+  assert.deepEqual(d.resumeWith.authorizeExternal, ['E1:T2@' + fpOf(tasks)]);
+});
+
+test('the restricted-gate action keeps bound items of unfinished deliverables and drops merged ones', async () => {
+  const e2e = { name: 'e2e', cmd: 'npm run e2e', kind: 'exit', restricted: true };
+  const t2 = [tk(1, false), tk(2, true), tk(3, true)];
+  const { r } = await exec({ cards: [card('E1'), card('E2')], deliverables: ['E1', 'E2'], config: { gates: [...GATES, e2e] },
+    args: { authorizeExternal: ['E1:T2', 'E2:T2'] },
+    over: (l) => (l === 'E2:plan' ? planWith(t2) : undefined) });
+  assert.equal(r.results.find((x) => x.id === 'E1').merged, true);
+  const g = ext(r).find((x) => x.item === 'gate:e2e');
+  assert.deepEqual(g.resumeWith.authorizeExternal, ['E2:T2@' + fpOf(t2), 'gate:e2e']);
+  assert.equal(r.results.find((x) => x.id === 'E2').held, 'E2:T3@' + fpOf(t2));
 });
