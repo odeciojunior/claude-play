@@ -22,7 +22,11 @@ Unknown information scores **1**, not 0 — and flag it in the approval summary.
 |-------|-------|--------------|
 | 0–2 | **Inline** if it meets the inline limits below; else **haiku** | Renames, config values, doc edits, boilerplate from an existing example, running a command and summarizing |
 | 3–5 | **sonnet** | Typical feature work, tests for existing code, refactors inside one module, bug fixes with a clear repro |
-| 6–10 | **opus** | Cross-module design, ambiguous specs, concurrency/security-sensitive logic, migrations, debugging without a repro |
+| 6–10 | **opus** only if Blast radius = 2 **and** Ambiguity = 2; otherwise **sonnet** with `effort: high` | Cross-module design, ambiguous specs, concurrency/security-sensitive logic, migrations, debugging without a repro |
+
+**Split, don't promote:** a step that would touch 5 or more files is split into steps of at most 4 files each (disjoint file lists or a declared dependency) before it is scored. Size alone never sends a step to opus.
+
+**Reasoning effort per tier** (not the step-effort hours in the progress file). Pass it as the `Agent` call's `effort`, or set it in the agent's frontmatter: **haiku → `low`**, **sonnet → `medium`**, **opus → `medium`**. A step scored 6–10 that is routed to sonnet runs with `high`. `high` is otherwise reserved for the final whole-branch gate (§4) and for a capability-shortfall retry (§5 step 1). Inline steps run at the orchestrator's own effort.
 
 **Inline limits** — all must hold: the files are docs/config or already read in this conversation, ≤2 files, <~50 changed lines, no dependency install/codegen, no test run longer than a single quick command, Blast radius ≤ 1, and at most 3 inline steps per plan. Inline skips subagent cold start but spends orchestrator context, which is why it's capped. Inline steps run **between waves** (after one wave's gate, before the next launch), never while agents are in flight — an inline edit mid-wave is an undeclared parallel writer.
 
@@ -45,9 +49,10 @@ Add a separate review step (read-only reviewer agent, e.g. a `code-reviewer` typ
 
 Rules:
 
+- **Reviewer tier = executor tier or above, never below.** Per-step review gates run on opus (`effort: medium`); do not move them to another model without measured evidence; the final whole-branch review is always opus with `effort: high`.
 - A gated step is **done** only after the reviewer's PASS. Its dependents don't start before that, and its Handoff is (re)written after any fix-up.
 - The reviewer gets the step card, the executor's report and the changed file paths — never the executor's transcript. Its verdict is PASS or a list of concrete defects.
-- Defects go back to the **same** executor via `SendMessage` (works on finished agents too; they keep their context; `Explore` and `Plan` are one-shot, so for them a fix-up or retry means a fresh agent). **At most 2 fix-up rounds** — a third defect list is a capability shortfall (§5 step 3).
+- Defects go back to the **same** executor via `SendMessage` (works on finished agents too; they keep their context; `Explore` and `Plan` are one-shot, so for them a fix-up or retry means a fresh agent). **At most 2 fix-up rounds** (same tier) — a third defect list is a capability shortfall (§5 step 3), and the third round runs on opus.
 
 ## 5. Escalation ladder (on FAIL, BLOCKED, or exhausted review rounds)
 
