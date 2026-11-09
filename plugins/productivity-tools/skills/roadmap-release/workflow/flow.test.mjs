@@ -1531,13 +1531,51 @@ test('fix round 2: the defect action keeps an answer no approved plan consumed',
 // ---- bloco A, real-run follow-up
 const asksAuth = (l) => (l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what: 'Operator authorization to run ' + deploy + ' (external)' }, { what: 'real API key' }] } : undefined);
 
-test('real run: a request for an authorization already used does not reach the docs', async () => {
+const ranMark = (x) => `[already authorized and run in this run: ${x}]`;
+
+test('I1: a request for an authorization already used is annotated and is not offered as an action', async () => {
   const rows = planRows([extRow]);
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(rows, asksAuth, evOk) });
-  const docs = calls.find((c) => c.label === 'E1:docs1').prompt;
-  assert.ok(!docs.includes('Operator authorization'));
-  assert.ok(docs.includes('real API key'));
-  assert.deepEqual(r.results[0].human, ['real API key']);
+  const annotated = 'Operator authorization to run ' + deploy + ' (external) ' + ranMark(deploy);
+  assert.deepEqual(r.results[0].human, [annotated, 'real API key']);
+  assert.ok(!r.operatorActions.some((o) => JSON.stringify(o).includes('Operator authorization')));
+  const report = calls.find((c) => c.label === 'report').prompt;
+  assert.ok(report.includes(ranMark(deploy)));
+  assert.match(report, /report it as already done and never offer that authorization as an action/);
+  assert.match(report, /any other need the item states stays open/);
+});
+
+test('I1: a genuine input that mentions approval and the command survives and is visible', async () => {
+  const what = 'Real SMTP credentials and approval to send with ' + deploy + ' (placeholder used)';
+  const impl = (l) => (l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what }] } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), impl, evOk) });
+  assert.deepEqual(r.results[0].human, [what + ' ' + ranMark(deploy)]);
+  assert.ok(calls.find((c) => c.label === 'E1:docs1').prompt.includes('Real SMTP credentials'));
+  assert.ok(calls.find((c) => c.label === 'report').prompt.includes('Real SMTP credentials'));
+});
+
+test('I2: an authorized task that returned NEEDS_HUMAN with a placeholder commit is not an effect that ran', async () => {
+  const what = 'Approval of the text for E1:T1';
+  const impl = (l) => (l === 'E1:t1:impl' ? { status: 'NEEDS_HUMAN', summary: 'placeholder', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what }] } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan([tk(1, true)], impl) });
+  assert.ok(!calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+  assert.deepEqual(r.results[0].human, [what], 'not annotated: the effect did not happen');
+});
+
+test('I2: an authorized task with DONE_WITH_CONCERNS and a commit is recorded', async () => {
+  const impl = (l) => (l === 'E1:t1:impl' ? { status: 'DONE_WITH_CONCERNS', summary: 's', concerns: 'c', checks: [{ command: 'x', output: 'y', exit: 0 }] } : undefined);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan([tk(1, true)], impl) });
+  assert.ok(calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+});
+
+test('I2: evidence that exited non-zero is not an effect that ran, and its request stays bare', async () => {
+  const what = 'Write permission on the shared outbox for ' + deploy;
+  const impl = (l) => (l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what }] } : undefined);
+  const evFail = (l) => (/gates-fix/.test(l) ? { status: 'BLOCKED', summary: 'no access' } : /:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'EACCES' }] } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), impl, evFail) });
+  assert.ok(calls.some((c) => /:evidence/.test(c.label)));
+  assert.ok(!calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:AC1"'));
+  assert.deepEqual(r.results[0].human, [what]);
 });
 
 test('real run: the same request stays while the command has not run', async () => {

@@ -374,13 +374,35 @@ test('fix round 2: commandKey is exact inside the command', () => {
   assert.equal(g([{ id: 'AC1', text: 't', tag: null }], [{ ac: 'AC1', kind: 'smoke', command: '""' }], new Set()).length, 1, 'a wrapper around nothing is no command');
 });
 
-test('real run: dropAuthorizedHuman removes only a request for an authorization this run used', () => {
-  const { dropAuthorizedHuman: d } = P4;
-  const run = [{ item: 'E1:AC3', command: 'node scripts/notify.mjs' }, { item: 'E1:T2' }];
-  const whats = (xs) => d(xs.map((what) => ({ what })), run).map((h) => h.what);
-  assert.deepEqual(whats(['Operator authorization to run node  scripts/notify.mjs (external)']), []);
-  assert.deepEqual(whats(['The person must authorize E1:AC3']), []);
-  assert.deepEqual(whats(['Approval for E1:T2 is needed']), []);
+const RAN = (x) => ` [already authorized and run in this run: ${x}]`;
+
+test('I1: an item that matches stays, annotated; nothing is ever removed', () => {
+  const { annotateAuthorizedHuman: a } = P4;
+  const cmd = 'node scripts/notify.mjs';
+  const run = [{ item: 'E1:AC3', command: cmd }, { item: 'E1:T2' }];
+  const whats = (xs) => a(xs.map((what) => ({ what })), run).map((h) => h.what);
+  const raw = 'Operator authorization to run node  scripts/notify.mjs (external)';
+  assert.deepEqual(whats([raw]), [raw + RAN(cmd)]);
+  assert.deepEqual(whats(['The person must authorize E1:AC3']), ['The person must authorize E1:AC3' + RAN(cmd)]);
+  assert.deepEqual(whats(['Approval for E1:T2 is needed']), ['Approval for E1:T2 is needed' + RAN('E1:T2')]);
+  const genuine = `Real SMTP credentials and approval to send with ${cmd} (placeholder used)`;
+  assert.deepEqual(whats([genuine]), [genuine + RAN(cmd)], 'a genuine need that mentions approval and the command survives whole');
   for (const keep of ['Real API key for node scripts/notify.mjs', 'Authorize E1:AC30', 'Authorization to run node other.mjs', 'real key']) assert.deepEqual(whats([keep]), [keep]);
-  assert.deepEqual(d([{ what: 'Authorize E1:AC3' }], []), [{ what: 'Authorize E1:AC3' }]);
+  assert.deepEqual(a([{ what: 'Authorize E1:AC3' }], []), [{ what: 'Authorize E1:AC3' }]);
+  assert.deepEqual(a([{ what: 'Approval for E1:T2', blq: 'BLQ-1', blocking: true }], run), [{ what: 'Approval for E1:T2' + RAN('E1:T2'), blq: 'BLQ-1', blocking: true }], 'the other fields stay');
+});
+
+test('I1: annotating twice changes nothing, and the annotated item keeps its dedupe key', () => {
+  const { annotateAuthorizedHuman: a, humanKey } = P4;
+  const run = [{ item: 'E1:T2' }];
+  const once = a([{ what: 'Approval for E1:T2' }], run);
+  assert.deepEqual(a(once, run), once);
+  assert.equal(humanKey(once[0]), 'Approval for E1:T2');
+  assert.equal(humanKey({ what: '  Approval  for E1:T2 ' }), 'Approval for E1:T2');
+});
+
+test('minor 1: a request in Portuguese is annotated too', () => {
+  const { annotateAuthorizedHuman: a } = P4;
+  const cmd = 'node scripts/notify.mjs';
+  for (const what of [`Autorização do dono para rodar ${cmd}`, `Aprovação para ${cmd}`, `Permissão de escrita para ${cmd}`]) assert.deepEqual(a([{ what }], [{ item: 'E1:AC3', command: cmd }]), [{ what: what + RAN(cmd) }]);
 });

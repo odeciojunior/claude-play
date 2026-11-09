@@ -705,13 +705,25 @@ function evidenceRowGaps(cardAc, planAc, measured) {
 function hideRowGaps(prev) {
   return String(prev || '').split('\n').filter(l => !/evidence row .* \([a-z]+\): "/.test(l)).join('\n')
 }
-// A request to authorize something this run was authorized for and ran is answered: only that goes away. Naming the command alone is not enough,
-// since a real input (a key the command needs) must stay.
-function dropAuthorizedHuman(human, ran) {
+const RAN_MARK = 'already authorized and run in this run'
+// A human item is never removed: one that asks for approval of something this run was authorized for and ran may also carry a real need, so it stays
+// with a mark that the command it names already ran. Naming the command alone does not mark it, since a real input (a key the command needs) is still open.
+function annotateAuthorizedHuman(human, ran) {
   const norm = v => String(v || '').trim().replace(/\s+/g, ' ')
-  const asks = /authori[sz]|approv|permission/i
+  const asks = /authori[sz]|autoriz|approv|aprov|permiss/i
   const names = (what, r) => (!!r.command && what.includes(norm(r.command))) || (!!r.item && new RegExp('(^|[^A-Za-z0-9-])' + r.item + '(?![A-Za-z0-9])').test(what))
-  return (human || []).filter(h => { const what = norm(h.what); return !(asks.test(what) && (ran || []).some(r => names(what, r))) })
+  return (human || []).map(h => {
+    const what = norm(h.what)
+    if (what.includes(RAN_MARK) || !asks.test(what)) return h
+    const r = (ran || []).find(x => names(what, x))
+    return r ? { ...h, what: `${h.what} [${RAN_MARK}: ${r.command || r.item}]` } : h
+  })
+}
+// The mark added by annotateAuthorizedHuman is not part of an item's identity.
+function humanKey(h) {
+  const what = String(h.what || '')
+  const at = what.indexOf(` [${RAN_MARK}`)
+  return (at < 0 ? what : what.slice(0, at)).trim().replace(/\s+/g, ' ')
 }
 // A bound item of a deliverable whose plan this run approved under another fingerprint can never match again.
 function dropStaleBound(items, bound) {
@@ -1107,7 +1119,7 @@ async function runDeliverable(E, idx) {
   const port = 5200 + idx * 10
   const human = []
   const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [] }
-  const pruneHuman = () => { const kept = dropAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
+  const pruneHuman = () => { const kept = annotateAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
 Never write or quote a credential, token or key from the owner instruction in any file, commit message, review finding or report; write 'provided through environment variable <NAME>' instead.` : ''}`
@@ -1142,7 +1154,6 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
   // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
   const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet' })
-  const humanKey = h => String(h.what || '').trim().replace(/\s+/g, ' ')
   const restoreFromLog = rl => {
     human.push(...missingFrom(human, rl.humanInputs, humanKey))
     out.acceptedRisks.push(...missingFrom(out.acceptedRisks, rl.acceptedRisks, x => `${x.stage}|${x.description}`))
@@ -1571,7 +1582,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
     }
     head = lastR.headSha
     taskLog.push({ n: t.n, title: t.title, status: impl.status, commits: lastR.commitsInRange })
-    if (authorizedExt && !resumed) out.externalRun.push({ item: `${E}:T${t.n}`, title: t.title, status: impl.status })
+    if (authorizedExt && !resumed && (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && lastR.commitsInRange >= 1) out.externalRun.push({ item: `${E}:T${t.n}`, title: t.title, status: impl.status })
   }
   out.tasks = taskLog
   pruneHuman()
@@ -1649,7 +1660,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     if (!validEv(ev)) return { ok: false, infra: true, summary: 'evidence measurement null, with a dirty tree, at the wrong commit or with the state preparation failing' }
     for (const [i, p] of rows.entries()) {
       const x = p.external !== false && matchEvidence(ev.results, p, i)
-      if (!x) continue
+      if (!x || x.exit !== 0) continue  // only an effect that happened; a failed re-run does not erase an earlier success
       out.externalRun = out.externalRun.filter(e => !(e.item === `${E}:${p.ac}` && e.command === p.command))
       out.externalRun.push({ item: `${E}:${p.ac}`, command: p.command, exit: x.exit })
     }
@@ -1892,7 +1903,7 @@ Owner review: ${JSON.stringify(ownerReview)}
 Authorizations given for this run: ${JSON.stringify(AUTH.items)}
 External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
-Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
+Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[${RAN_MARK}: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
