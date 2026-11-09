@@ -23,6 +23,7 @@ One recipe per event. Each names the files in the order they change, the cells t
 17. Acceptance pending
 18. Executor decision
 19. Deliverable closed: criteria check
+20. Spec, plan or execution started
 
 Common to every recipe:
 
@@ -83,6 +84,8 @@ The last piece of a deliverable closing also runs § 19.
 
 **When:** a branch with roadmap work is merged into the configured `integrationBranch`. With `releaseBranch` set, a merge into that branch is § 15 instead, and the later merge of the release branch into `integrationBranch` is § 16.
 
+Caller-supplied target: when `releaseBranch` is unset and the caller names the branch the work merged into (for example the target of `roadmap-release`), apply § 15 with that branch: on-branch word, merge SHA in Evidence, the branch named in Next step. Never infer the target from the checked-out branch.
+
 1. Get the SHA that entered the integration branch (the merge commit, or the merged tip for a fast-forward or squash result); ask for it if git cannot show it. Verify with `git cat-file -e <sha>^{commit}` and `git merge-base --is-ancestor <sha> <ref>`, where `<ref>` is the local `integrationBranch` or `origin/<integrationBranch>`: either one passing is enough, so a stale local branch is fine (the checker also accepts either). Neither passes → do not mark integrated; tell the user.
 2. `state.md` panel: the integrated word (position 6 of `deliverableStatuses`) for the pieces it carries (never set a released status here: that goes through § 12, which also records the package). Put that SHA in backticks in Evidence, alongside any branch SHAs of pieces not yet integrated. The checker needs at least one Evidence SHA that is an ancestor of the integration ref when the row has an integrated segment; the other SHAs only need to exist.
 3. `state.md` "in flight": the branch stays `vocab.branchLive` while it exists; deleted → § 4.
@@ -115,8 +118,8 @@ Checker: `branch-deleted-exists`, `branch-live-missing`.
 **Closed:**
 
 1. If a decision closed it, apply § 1 first.
-2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log and the strategy may keep citing a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status (exception, § 17: a row in segments only has its `acceptance` segment updated; `code` and the other segments stay); update panel and `now`; drop `donot` items citing this `BLQ-n`.
-3. `critical-path.md`: remove the gate node, then refresh the next milestone per track (Common).
+2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log and the strategy may keep citing a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status (exception, § 17: a row in segments only has its `acceptance` segment updated; `code` and the other segments stay); update panel and `now`; drop `donot` items citing this `BLQ-n`. Also rewrite every remaining citation of the closed `BLQ-n` in `state.md` (pending, now, panel notes, donot) and in `critical-path.md`. A `pending` item that must continue is reworded without the BLQ id (for example `(owner) ...`), never deleted only because it cited the blocker.
+3. `critical-path.md`: remove the gate node, then refresh the next milestone per track (Common). Also rewrite every remaining citation of the closed `BLQ-n` here and in `state.md` (step 2).
 4. The strategy is not edited: it may keep citing the closed `BLQ-n`, and its Open questions entry for it is cleaned at the next approved revision (§ 9).
 5. `log.md`: "BLQ-n closed: <how>", evidence. No SHA or path (a phone call) → cite `decisions.md` or `state.md`, whichever now holds the change.
 
@@ -188,7 +191,7 @@ On approval, in this order: strategy (`version` anchor, title, changelog entry l
 ### Revision procedure (SKILL.md Step 6)
 
 1. **Propose** strategy vN+1 in the conversation, without writing it: the new version (minor bump, `1.0` → `1.1`, unless the user wants a major one for a changed objective or phases), the `DEC` IDs it absorbs, each section that changes with one line on how, card changes (pieces, acceptance, `reqs`, priority), and requirement or coverage changes. Checklist: the "Review before proposing" list above. If nothing needs changing, say so; the user may still ask for a revision.
-2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") is not the user's approval: with no person present, write only the pending item and say so in the hand-back. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the checklist above). The contradiction warning stays and the run may end with it.
+2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") is not the user's approval: with no person present, write only the pending item and say so in the hand-back. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the checklist above). The contradiction warning stays and the run may end with it. When the event says `no questions`, never ask: write each unanswered question as a `pending` item `(user) <question>` and list them under `Pending for the user:` in the Step 7 hand-back.
 3. **On approval:** update the `version` anchor (`<!-- roadmap:version <N+1> <date> -->`) and the title; add a changelog entry (newest first) listing the absorbed `DEC`; edit the changed sections and cite each absorbed `DEC` ID where it applies; regenerate "Where we are" from `state.md` and `critical-path.md`; add a version-history row. Then update whatever the revision moved (panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, the `state.md` header line), remove the approval pending item, add a `log` row "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, and rerun Step 5.
 4. **Rejected:** the user may change the decision instead; that is a new decision (§ Decision, superseding the old one).
 
@@ -251,15 +254,17 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 `plan-coordinator` invokes this skill with the event "wave N closed (steps …)" after each wave gate, and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`.
 
 1. Read that progress file (the one the caller names; otherwise the `docs/plans/**/progress-*.md` whose `**Roadmap**:` field names this folder): the header (`**Plan**`), the Execution Map table (Wave, Group, Steps, Status), the Steps table, the Wave Execution Log and any recorded commit SHAs. Never edit it.
-2. Find the deliverable: the panel row whose Evidence or Next step cites that plan (or its spec); else the `E<n>` the plan's title or header names; else ask once.
+2. Find the deliverable: the panel row whose Evidence or Next step cites that plan (or its spec); else the `E<n>` the plan's title or header names; else ask once. When the event says `no questions`, never ask: write each unanswered question as a `pending` item `(user) <question>` and list them under `Pending for the user:` in the Step 7 hand-back.
 3. Decide which pieces closed: a piece closes when every plan step that implements it has Status PASS (or an intentional skip). Map steps to pieces from the plan's own text (a step naming the piece, or a plan that covers exactly one piece). When the progress file cannot tell which piece a step belongs to (an unmapped step): on "wave N closed" add one `log` row "wave N closed (steps …)" and set the piece status from the artifacts that exist: a plan file → the configured word for plan (position 3), only a spec file → the word for spec (position 2), else leave the status unchanged; on "plan completed" mark the pieces the plan covers with the word for on-branch (position 5). Never infer the integrated word (position 6) without a SHA that is on the integration branch.
 4. Record per § Piece or step closed. Evidence = the progress file path in backticks plus the commit SHAs it records (each verified with `git cat-file -e <sha>^{commit}`). Read the current branch with `git branch --show-current` and keep its "in flight" row `live`.
-5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping.
+5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping. When the event says `no questions`, never ask: write each unanswered question as a `pending` item `(user) <question>` and list them under `Pending for the user:` in the Step 7 hand-back.
 6. If a piece or the deliverable closed, run the end-of-piece check (Step 6). Hand back to plan-coordinator with the Step 7 report; it continues with the next wave.
 
 ## 15. Merge into the release branch
 
 **When:** `releaseBranch` is set in `roadmap.config.json` and a deliverable (or piece) merges into it. Without `releaseBranch`, use § 3.
+
+Caller-supplied target: when `releaseBranch` is unset and the caller names the branch the work merged into (for example the target of `roadmap-release`), apply § 15 with that branch: on-branch word, merge SHA in Evidence, the branch named in Next step. Never infer the target from the checked-out branch.
 
 1. Get the merge SHA on the release branch and verify it with `git cat-file -e <sha>^{commit}`.
 2. `state.md` panel: Status is the on-branch word (position 5 of `deliverableStatuses`), never the integrated word. Evidence cites the merge SHA in backticks. Next step names the release branch (for example "release/2026-11 merges into main after the release gate"). Write that note in Next step only, not again per deliverable in another cell or in `now`.
@@ -308,3 +313,14 @@ Checker: `contradiction-unabsorbed` once a filled, in-force row exists.
 1. Compare the card's `acceptance` items with the criteria of the spec the executor worked from. Every criterion in the spec that is added, weakened or reinterpreted relative to the card becomes a `pending` item "(owner) card says <A>, spec says <B>: confirm"; never edit the card (rule 6 of SKILL.md).
 2. A review finding labelled "out of scope" becomes a `pending` item with an owner, never stays only in the review text. Someone else's `BLQ`/`DEC` that already holds it counts as the owner: cite it instead of adding an item.
 3. Log the comparison result in the closing `log` row ("criteria compared: none changed" is a valid result).
+
+## 20. Spec, plan or execution started
+
+**When:** a spec is written, a plan is written, or execution of a plan begins for a deliverable, with no piece closed yet.
+
+1. `state.md` panel row of the deliverable: Status is the word at position 2 (spec), 3 (plan) or 4 (executing) of `deliverableStatuses`. Evidence is the path of the spec or the plan in backticks and, for executing, the branch name in backticks. Next step is the next concrete action.
+2. Executing only: `state.md` "in flight": add or keep the row of the working branch with Kind `vocab.branchLive`, after confirming it exists (§ 4 step 4).
+3. `log.md`: one row, "E<n> spec written" / "E<n> plan written" / "E<n> execution started", evidence the spec or plan path.
+4. Close with the refresh of `critical-path.md` (next milestone per track) and the header line (Common).
+
+Checker: `bad-status`, `branch-live-missing`.

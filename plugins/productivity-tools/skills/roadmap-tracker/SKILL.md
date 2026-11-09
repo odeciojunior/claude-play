@@ -110,6 +110,8 @@ Three numbers: `formats.md` formatVersion (its title, `# Roadmap format contract
 | Event | Files, in this order | Recipe (`events.md`) |
 |-------|----------------------|----------------------|
 | A decision is made | `decisions.md` first (Contradicts filled per the contradiction rule), then whatever uses it (`state.md`, `requirements.md`, `critical-path.md`), then `log.md` | § Decision |
+| A spec, a plan or execution starts for a deliverable | `state.md` panel (+ "in flight" when executing), `log.md` | § 20 |
+| The user only asks for the roadmap status | nothing is written | Read-only queries (below) |
 | A piece or plan step closes | `state.md` panel (and `now`), `log.md` | § Piece or step closed |
 | A branch is integrated | `state.md` panel + "in flight", `log.md` | § Integration |
 | A deliverable merges into `releaseBranch` | `state.md` panel (on-branch word, merge SHA, branch in Next step), `log.md` | § Merge into the release branch |
@@ -143,6 +145,10 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 ### Step 4a: Events from plan-coordinator
 
 `plan-coordinator` invokes this skill with "wave N closed (steps …)" after each wave gate and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`. Read the progress file (never edit it), find the deliverable, decide which pieces closed, record per § Piece or step closed, and hand back to plan-coordinator with the Step 7 report. Never infer the integrated word without a SHA that is on the integration branch. Full procedure: `events.md` § Events from plan-coordinator.
+
+### Read-only queries
+
+When the user only asks for status ("roadmap status"): read `state.md` and `critical-path.md`, run the checker, report the panel, the blockers and the next gates. Write nothing: no file, no log row.
 
 ### Step 5: Run the vendored checker
 
