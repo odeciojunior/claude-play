@@ -18,7 +18,7 @@ The main conversation is the orchestrator. It launches waves, checks results, wr
 Waves are **barriers**: a wave's writing groups launch only after the previous wave's gate passed. (Read-only groups — research, review — may launch as soon as their own dependencies are done.)
 
 1. **Read state:** `## Recovery State` + the Execution Map table of the progress file.
-2. **Pre-flight the wave:** re-apply calibration (routing.md §6); confirm no two groups in the wave share a write set, counting implicit writes (SKILL.md Step 5). A group with an `External: yes` step launches only if Issues & Decisions holds that step's authorization and its card has the `Authorized:` line; otherwise stop and return to SKILL.md Step 8 item 4.
+2. **Pre-flight the wave:** re-apply calibration (routing.md §6); confirm no two groups in the wave share a write set, counting implicit writes (SKILL.md Step 5). A group with an `External: yes` step whose status is not `Skip (manual)` or `Waiting (manual)` launches only if Issues & Decisions holds that step's authorization and its card has the `Authorized:` line; otherwise stop and return to SKILL.md Step 8 item 4.
 3. **Allow the checks:** before launching a background wave, propose allow rules for the validation commands (the Shared Brief's build/test/lint commands) to the user in the map report (SKILL.md Step 8) so permission prompts don't stall it, without waiting for an answer; never write settings yourself.
 4. **Mark delegated:** set `Last DELEGATED Wave` and list the groups in `In-Flight Agents` (e.g. `Group C (Steps 3-5, sonnet): launching`) **before** launching, so a compaction mid-launch is recoverable.
 5. **Launch the whole wave in one message:** leave out the `Final gate` row and groups with a `Skip (manual)` or `Waiting (manual)` step; one `Agent` call per remaining group with `subagent_type`, `model: <routed tier>` (always, except `fork` and kept frontmatter pins — routing.md §3), `effort` per routing.md §2 (haiku `low`, sonnet `medium`, a step scored 6–10 on sonnet `high`, opus `medium`), a short `description`, and the prompt from the template below.
@@ -62,7 +62,7 @@ Don't use `isolation: "worktree"` for plan steps: a worktree branches from the d
 <Shared Brief — verbatim>
 
 ## Your task: Step {N} — {title}
-{step card: goal, files to create/modify, inputs, constraints}
+{step card: goal, files to create/modify, inputs, constraints, and its `External:` and `Authorized:` lines when present}
 
 ## What earlier steps produced
 {handoff lines of dependencies, or "Nothing — this step has no upstream dependencies."}
@@ -115,7 +115,7 @@ Keep it terse — the progress file is re-read after every compaction.
 ## Recovery after compaction or restart
 
 1. Read only `## Recovery State` and the Execution Map table.
-2. For each in-flight group: if its notification already arrived in this conversation, process it. Otherwise, if an agent ID is recorded, ask that agent for its report via `SendMessage`. If there's no ID, no answer, or `SendMessage` is refused (stopped agent), check the step card's **Files** list for changes (`git status`/`git diff --stat`) and re-run the card's Done-means check: pass → write the handoff from the files and mark it done; fail or no changes → relaunch the step.
+2. For each in-flight group: if its notification already arrived in this conversation, process it. Otherwise, if an agent ID is recorded, ask that agent for its report via `SendMessage`. If there's no ID, no answer, or `SendMessage` is refused (stopped agent), check the step card's **Files** list for changes (`git status`/`git diff --stat`) and re-run the card's Done-means check: pass → write the handoff from the files and mark it done; fail or no changes → relaunch the step (except an external step: see item 3).
 3. An external step that is in flight or failed is never relaunched or retried automatically, including review fix-ups and escalation: its effect may already have happened and leaves no file to inspect. Record it, set `Status: Blocked` and ask, unless its card states an idempotence check.
 4. Continue at `Next Action`.
 
