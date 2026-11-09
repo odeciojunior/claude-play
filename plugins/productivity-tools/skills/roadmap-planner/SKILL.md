@@ -147,6 +147,7 @@ Report to the user:
   1. `superpowers:brainstorming` (runs per deliverable, not for the whole roadmap). Start it with: "Brainstorm deliverable E<n> of the roadmap at <folder>; its card is in <strategy> (section E<n>): acceptance criteria, REQs <ids>, depends on <ids>. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite E<n>."
   2. `superpowers:writing-plans`: tell it to add the header line `**Roadmap:** <folder>` (it has no such slot; plan-coordinator reads it to call `roadmap-tracker` after each wave). It saves to `docs/superpowers/plans/`, and `plan-coordinator` finds plans there too.
   3. Execution: writing-plans offers only subagent-driven or native execution; when the roadmap is tracked, pick `plan-coordinator` as the executor.
+- **Several deliverables unattended**: `roadmap-release` runs one or more deliverables end to end into a release branch (spec, plan, reviewed tasks, gates, serialized merge). Prefer it when the roadmap has several deliverables to run.
 - **How to execute each deliverable**: `plan-coordinator` handles the plan of one deliverable at a time and approves its own execution map. It does not integrate branches and does not run several deliverables in one go; integration and the next deliverable are separate steps the user (or the owner) starts.
 - **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.
 
