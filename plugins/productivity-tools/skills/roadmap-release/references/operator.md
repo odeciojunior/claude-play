@@ -9,6 +9,7 @@ What to do with the actions a `roadmap-release` run returns.
 - Resuming a run
 - Integrity alerts
 - Releasing parallelism on a generated config
+- Known limits
 
 ## Action kinds
 
@@ -70,3 +71,10 @@ A config derived by the preflight carries `generated: true`, and the run uses `m
 2. Review `locks` and each gate's `needsLock` in `release.config.json`. Every shared resource (a database, a port, a cache) needs a lock, and each gate or task that uses it must name it.
 3. Remove `"generated": true` and commit the file on the target branch.
 4. Run again. `maxParallel` now applies (default 3, or the value in the config or args).
+
+## Known limits
+
+Two limits are left as they are, with no code change:
+
+- `awaitingPerson` can come out empty when the history is misread. It comes from the same reading of the history that `done` already trusts, and a second reader of that history would cost more than it protects.
+- After an interrupted merge, an authorization request that an implementer returned earlier can come back in the report as open. Fixing it needs a new durable record. Nothing is lost: the workflow does not repeat the effect, but a person could run the command by hand.

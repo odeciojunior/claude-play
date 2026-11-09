@@ -44,7 +44,7 @@ export function validateReleaseConfig(cfg) {
       if (!locks.includes(l)) errors.push(`${at}.needsLock cites undeclared lock: ${l}`);
     }
   });
-  if (cfg.gates.every((g) => g && g.restricted === true)) errors.push('every gate is restricted: nothing can run without authorization');
+  if (cfg.gates.every((g) => g && g.restricted === true)) errors.push('every gate is restricted: the preflight needs at least one gate that is not restricted (write local in its Environment or When cell of the gates table, or set restricted to false in release.config.json)');
   return errors;
 }
 
@@ -126,7 +126,8 @@ function firstBlockBody(text, scan, name) {
 // Columns are read by position (ID, Command, Environment, When, Baseline); header words are ignored.
 // A row with another number of columns is skipped and reported in `warnings`.
 export function parseGatesTable(markdown, warnings = []) {
-  const text = String(markdown || '').replace(/\r\n?/g, '\n');
+  // Like the checker's norm(): a leading BOM is dropped, so a fence on line 1 is still a fence.
+  const text = String(markdown || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   const body = firstBlockBody(text, blankFences(text), 'gates');
   if (body === null) return [];
   const rows = body.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|')).map(splitRow);
@@ -173,12 +174,23 @@ export function classifyGate(environment, when) {
   return cells.every(isFree) ? 'free' : 'unknown';
 }
 
+// Which of the two cells is not recognized: neither free nor a restriction mark. Used only to tell the person which cell to edit.
+function unknownCells(environment, when) {
+  const names = [['Environment', environment], ['When', when]];
+  const bad = names.filter(([, c]) => classifyGate(c, '') === 'unknown').map(([n]) => n);
+  return bad;
+}
+
 export function deriveConfig({ gatesBlockRows = [], projectContext = '', install = '', warnings = [] } = {}) {
   const gates = gatesBlockRows
-    .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim(), cls: classifyGate(r.Environment, r.When) }))
+    .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim(), cls: classifyGate(r.Environment, r.When), row: r }))
     .filter((g) => g.name && g.cmd)
-    .map(({ cls, ...g }) => {
-      if (cls === 'unknown') warnings.push(`gate ${g.name}: Environment/When not recognized, treated as restricted (runs only with authorizeExternal ["gate:${g.name}"]); if it is local, write local in that cell of the gates table, or set restricted to false in release.config.json`);
+    .map(({ cls, row, ...g }) => {
+      if (cls === 'unknown') {
+        const bad = unknownCells(row.Environment, row.When);
+        const cell = bad.length === 2 ? 'both the Environment and When cells' : `the ${bad[0]} cell`;
+        warnings.push(`gate ${g.name}: Environment/When not recognized, treated as restricted (runs only with authorizeExternal ["gate:${g.name}"]); if it is local, write local in ${cell} of the gates table, or set restricted to false in release.config.json`);
+      }
       return { ...g, kind: TEST_RUNNER.test(g.cmd) ? 'tests' : 'exit', ...(cls === 'free' ? {} : { restricted: true }) };
     });
   return { generated: true, projectContext, install, locks: [], conflictRules: '', gates };

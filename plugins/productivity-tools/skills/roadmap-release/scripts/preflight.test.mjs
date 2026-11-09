@@ -284,7 +284,7 @@ test('item 4: deriveConfig keeps restricted gates in the config with restricted:
 
 test('item 4: a config where every gate is restricted is an error', () => {
   const cfg = good(); cfg.gates.forEach((g) => { g.restricted = true; });
-  assert.ok(validateReleaseConfig(cfg).some((e) => /every gate is restricted: nothing can run without authorization/.test(e)));
+  assert.ok(validateReleaseConfig(cfg).some((e) => /every gate is restricted/.test(e) && !/without authorization/.test(e)));
   const one = good(); one.gates[0].restricted = true;
   assert.deepEqual(validateReleaseConfig(one), []);
   const bad = good(); bad.gates[0].restricted = 'yes';
@@ -397,5 +397,25 @@ test('B fix 1: a bare pipe line gives no column warning; parity also holds with 
     const b = readBlocks(md, 'gates')[0];
     const expected = b ? parseTable(b.body).filter((r) => r.length === 5 && !['', '-', '—'].includes(r[1])).map((r) => r[0]) : [];
     assert.deepEqual(parseGatesTable(md).map((r) => r.ID), expected, md);
+  }
+});
+
+test('L3-B: the unknown-cell warning names the cell to change (Environment, When, or both)', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const rows = '| a | npm test | ci | every task | green |\n| b | npm test | local | whenever | green |\n| c | npm test | ci | whenever | green |\n| d | npm test | local | dev | green |\n';
+  const repo = repoWithRoadmap(false, rows);
+  const w = runPreflight(repo.dir, { home }).warnings;
+  const of = (n) => w.find((x) => x.startsWith(`gate ${n}:`));
+  assert.match(of('a'), /write local in the Environment cell/);
+  assert.match(of('b'), /write local in the When cell/);
+  assert.match(of('c'), /write local in both the Environment and When cells/);
+  assert.match(of('d'), /write local in the When cell/);
+});
+
+test('L3-B: a BOM before a fence on line 1 is read as the checker reads it (the same gates either way)', () => {
+  const table = '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n| g1 | npm test | local | always | green |\n<!-- /roadmap:gates -->\n';
+  for (const md of ['﻿```\n' + table + '```\n', '﻿' + table, '```\n' + table + '```\n']) {
+    const theirs = readBlocks(md, 'gates').length ? parseTable(readBlocks(md, 'gates')[0].body).length : 0;
+    assert.equal(parseGatesTable(md).length, theirs, JSON.stringify(md.slice(0, 8)));
   }
 });
