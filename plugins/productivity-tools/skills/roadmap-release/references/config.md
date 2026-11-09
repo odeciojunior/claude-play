@@ -21,8 +21,8 @@ Project-specific settings for `roadmap-release`, stored in the roadmap folder ne
 | `gates` | yes | Non-empty list of gate objects, see below. |
 | `locks` | no | Names of shared resources. Gates and tasks that declare `needsLock` serialize on them. |
 | `conflictRules` | no | How to resolve conflicts in generated files. |
-| `docsStage` | no | Instructions for the docs step, and an optional fixed measurement script. |
-| `testIntegrity` | no | Own test-integrity script, or `false` to disable. |
+| `docsStage` | no | Instructions for the docs step: a string, or `{ instructions, measure?, paths? }`. `measure` is a Node script that prints `{"ok":true|false,"details":"..."}`; `paths` are doc prefixes (default `docs/`) whose changes alone skip the late-sync review. |
+| `testIntegrity` | no | Own test-integrity Node script (receives the target branch as `argv[2]`, prints `{deletedTests, removedAsserts, skipsAdded, prodChanged, assertsAdded}`), or `false` to disable. A built-in script is the default. |
 | `acceptRedBaseline` | no | Accept a red baseline instead of stopping the preflight. |
 | `releaseBranch` | no | Target branch for the run. Default is `integracao/<slug>`. |
 | `maxParallel` | no | Parallel deliverables. Default 3. Forced to 1 while `generated` is true. |
