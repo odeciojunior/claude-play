@@ -1119,7 +1119,7 @@ async function runDeliverable(E, idx) {
   const port = 5200 + idx * 10
   const human = []
   const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [] }
-  const pruneHuman = () => { const kept = annotateAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
+  const annotateHuman = () => { const kept = annotateAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
 Never write or quote a credential, token or key from the owner instruction in any file, commit message, review finding or report; write 'provided through environment variable <NAME>' instead.` : ''}`
@@ -1585,7 +1585,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
     if (authorizedExt && !resumed && (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && lastR.commitsInRange >= 1) out.externalRun.push({ item: `${E}:T${t.n}`, title: t.title, status: impl.status })
   }
   out.tasks = taskLog
-  pruneHuman()
+  annotateHuman()
   // Held here, before the final review and the gates: nothing past this point is worth spending without the authorization.
   const evHeld = heldEvidence()
   if (evHeld.length) {
@@ -1664,7 +1664,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
       out.externalRun = out.externalRun.filter(e => !(e.item === `${E}:${p.ac}` && e.command === p.command))
       out.externalRun.push({ item: `${E}:${p.ac}`, command: p.command, exit: x.exit })
     }
-    pruneHuman()
+    annotateHuman()
     const problems = rows.flatMap((p, i) => {
       const x = matchEvidence(ev.results, p, i)
       if (!x) return [`criterion ${p.ac}: command not run`]
