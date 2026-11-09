@@ -46,7 +46,7 @@ This section is the only statement of step states and transitions; every other f
 | 22 | `Skip (manual)`, open entry | same | `no` or `skip` | Entry becomes `Refused:`; row 23 |
 | 23 | `Skip (manual)`, `Refused:` | Rows 6, 22 | A later answer names it; or Completion | Named: as row 20. Completion: stays, not run, does not hold the final gate |
 | 24 | `Waiting (manual)` | Hold | Release: no dependency is held, stopped or waiting; or Completion, behind `Refused:` entries only | `Pending`; Completion: stays, not run |
-| 25 | `PASS` | § Writing back, after verification, review gate, Handoff and commit | Wave gate attributes a failure to its group; or the final gate finds a defect in its external effect, not one accepted in row 15 | Wave gate, non-external: row 10. Otherwise `Stopped`, `Open question:`; stop and ask. With neither: terminal |
+| 25 | `PASS` | § Writing back, after verification, review gate, Handoff and commit | Wave gate attributes a failure to its group; or the final gate finds a defect in its external effect, not one accepted in row 15 | Wave gate, non-external: row 10. Otherwise `Stopped`, `Open question:`; stop and ask. With neither: terminal. A final-gate defect in its files only: stays `PASS`; the fix card omits `External:`, `Pre-launch review:` and `Authorized:` |
 | 26 | `Skip` | Step 1 | None | Terminal; counts as done for dependents only if its outputs exist |
 | 27 | `Final gate` row `Pending` | Step 7 | Completion | `PASS` after the final gate's PASS; `Skip` when no step ran |
 | 28 | `Status: Map ready` | Step 7, before self-approval | Step 8 item 6 (self-approval; the map is never put to the user), or a stop in Step 8 | `In Progress`, or `Blocked` |
@@ -144,7 +144,7 @@ Don't use `isolation: "worktree"` for plan steps: a worktree branches from the d
 - Run targeted checks only ({command}); the orchestrator runs the full suite.
 - Do not spawn subagents: nesting would break the write-set guarantee.
 - Never commit. In a shared worktree, parallel agents' `git add` would be swept into each other's commits; the orchestrator commits.
-- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless this card has `External: yes`, a `Pre-launch review:` line and an `Authorized:` line; then do it exactly as the card says, once.
+- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless this card has `External: yes`, a `Pre-launch review:` line and an `Authorized:` line; then do it exactly as the card says, once. A card without those three lines never causes the effect, even when it fixes the files of an external step.
 
 ## Report (reply with exactly this, ≤25 lines, no diffs)
 STATUS: PASS | FAIL | BLOCKED
