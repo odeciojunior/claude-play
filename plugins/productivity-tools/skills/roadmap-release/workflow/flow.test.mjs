@@ -689,6 +689,19 @@ test('any replanned plan invalidates a bound authorization, even with the same t
   assert.equal(ext(r)[0].item, 'E1:T2@' + fpOf(tasks));
 });
 
+test('same blob with retranscribed externalDedupe keeps the authorization; another blob holds', async () => {
+  const first = [tk(1, false), tk(2, true, { externalDedupe: 'x' })];
+  const auth = ['E1:T2@' + PU.planFingerprint(first, 'b1')];
+  const resumed = [tk(1, false), tk(2, true, { externalDedupe: "'x'" })];
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: auth }, over: withPlan(resumed) });
+  assert.ok(a.labels.includes('E1:t2:impl'));
+  assert.equal(ext(a.r).length, 0);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: auth },
+    over: (l) => (l === 'E1:plan' ? { ...planWith(resumed), planBlob: 'b2' } : undefined) });
+  assert.ok(!b.labels.includes('E1:t2:impl'));
+  assert.equal(ext(b.r)[0].item, 'E1:T2@' + PU.planFingerprint(resumed, 'b2'));
+});
+
 test('every held external task of the plan is listed at the first stop', async () => {
   const tasks = [tk(1, false), tk(2, true), tk(3, true)];
   const fp = fpOf(tasks);

@@ -229,13 +229,24 @@ test('externalGaps flags a missing boolean and a missing dedupe note', () => {
   assert.equal(externalGaps([{ n: 1, external: true, externalDedupe: 'checks outbox.log first' }, { n: 2, external: false }]).length, 0);
 });
 
-test('planFingerprint covers the plan blob, external and externalDedupe', () => {
-  const t = [{ n: 1, title: 'a', files: ['x'], external: true, externalDedupe: 'check outbox' }];
+test('planFingerprint depends only on the plan blob when it is present', () => {
+  const t = [{ n: 1, title: 'a', files: ['x'], external: true, externalDedupe: 'exactly E4 published' }];
   const fp = planFingerprint(t, 'blob1');
-  assert.equal(planFingerprint(JSON.parse(JSON.stringify(t)), 'blob1'), fp);
+  assert.equal(planFingerprint([{ ...t[0], externalDedupe: "exactly 'E4 published'" }], 'blob1'), fp);
+  assert.equal(planFingerprint([{ ...t[0], external: false }], 'blob1'), fp);
+  assert.equal(planFingerprint([{ ...t[0], title: 'other' }], 'blob1'), fp);
+  assert.equal(planFingerprint([{ ...t[0], files: ['y', 'z'] }], 'blob1'), fp);
   assert.notEqual(planFingerprint(t, 'blob2'), fp);
-  assert.notEqual(planFingerprint([{ ...t[0], externalDedupe: 'other check' }], 'blob1'), fp);
-  assert.notEqual(planFingerprint([{ ...t[0], external: false }], 'blob1'), fp);
+});
+
+test('planFingerprint falls back to the task fields when the blob is empty', () => {
+  const t = [{ n: 1, title: 'a', files: ['x'], external: true, externalDedupe: 'check outbox' }];
+  for (const empty of [undefined, '', '   ']) {
+    const fp = planFingerprint(t, empty);
+    assert.notEqual(planFingerprint([{ ...t[0], externalDedupe: 'other check' }], empty), fp);
+    assert.notEqual(planFingerprint([{ ...t[0], external: false }], empty), fp);
+  }
+  assert.notEqual(planFingerprint(t, ''), planFingerprint(t, 'blob1'));
 });
 
 test('item 8: a test tag is not satisfied by a human plan row that repeats its command', () => {

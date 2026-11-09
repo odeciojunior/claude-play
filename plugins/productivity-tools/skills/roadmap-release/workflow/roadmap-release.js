@@ -612,10 +612,14 @@ function isOwnWorktree(path, wtRoot) {
   return /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 }
 function isAuthorized(items, item) { return (items || []).includes(item) }
-// Deterministic 32-bit FNV-1a over the plan blob and the tasks (n, trimmed title, sorted files, external, externalDedupe); 8 hex digits.
+// Deterministic 32-bit FNV-1a; 8 hex digits. With a non-empty planBlob (the git blob of the committed plan file) the hash depends only on it:
+// the agent retranscribes the task fields on each run, so they must not move it. Without a blob it falls back to the tasks (n, trimmed title,
+// sorted files, external, externalDedupe), so a missing blob still fails safe.
 function planFingerprint(tasks, planBlob = '') {
-  const norm = (tasks || []).map(t => [t.n, String(t.title || '').trim(), [...(t.files || [])].sort(), t.external === undefined ? null : t.external, String(t.externalDedupe || '').trim()])
-  const str = JSON.stringify([String(planBlob || ''), norm])
+  const blob = String(planBlob || '').trim()
+  const str = blob
+    ? JSON.stringify([blob])
+    : JSON.stringify(['', (tasks || []).map(t => [t.n, String(t.title || '').trim(), [...(t.files || [])].sort(), t.external === undefined ? null : t.external, String(t.externalDedupe || '').trim()])])
   let h = 0x811c9dc5
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
   return h.toString(16).padStart(8, '0')
