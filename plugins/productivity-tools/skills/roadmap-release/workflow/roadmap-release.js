@@ -94,6 +94,72 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
   for (const id of order) if (byId[id].criticalMissing) notes.push(id + ': card sem atributo critical (tratado como não crítico)')
   return { order, skipped, notes }
 }
+// ---- gates: generic measurement and baseline comparison
+// def = { name, kind: 'exit'|'tests', invariant?, ignoreFailuresWhenChanged?: { paths, failurePrefix } }
+// result = { name, ran, exit, total, skipped, failedNames }; baseline = map name -> result
+function gateSubset(xs, base) {
+  return (xs || []).every(x => (base || []).includes(x))
+}
+function gateShaMatch(x, y) {
+  return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
+}
+function gateResult(m, name) {
+  return ((m && m.gates) || []).find(g => g && g.name === name)
+}
+function gateCoherent(def, r) {
+  if (!r) return false
+  if (def.kind === 'tests') return (r.exit === 0) === !(r.failedNames || []).length
+  return true
+}
+// A measure only counts if taken on a clean tree, at the expected commit, with every gate present and exit/failed names agreeing.
+function validMeasure(m, expectedSha, gateDefs) {
+  return !!m && m.clean === true && (!expectedSha || gateShaMatch(m.headSha, expectedSha))
+    && (gateDefs || []).every(def => gateCoherent(def, gateResult(m, def.name)))
+}
+function gatePasses(def, result, baselineResult) {
+  if (!result || result.ran === false) return false
+  const b = baselineResult || null
+  if (def.invariant) return result.exit === 0
+  if (def.kind === 'exit') return result.exit === 0 || (!!b && b.exit !== 0)
+  const names = result.failedNames || []
+  if (result.exit !== 0 && !names.length) return false
+  if (!(result.exit === 0 || gateSubset(names, b && b.failedNames))) return false
+  return (result.total || 0) >= Math.max(1, (b && b.total) || 0) && (result.skipped || 0) <= ((b && b.skipped) || 0)
+}
+function gateEffective(def, r, changedFiles) {
+  const ign = def.ignoreFailuresWhenChanged
+  if (!r || !ign) return r
+  const touched = (changedFiles || []).some(f => (ign.paths || []).some(p => String(f).startsWith(p)))
+  if (!touched) return r
+  const names = (r.failedNames || []).filter(n => !String(n).startsWith(ign.failurePrefix))
+  return Object.assign({}, r, { failedNames: names, exit: names.length ? r.exit : 0 })
+}
+function allPass(defs, m, baseline, changedFiles) {
+  const failures = (defs || []).filter(def => {
+    const r = gateEffective(def, gateResult(m, def.name), changedFiles)
+    return !gatePasses(def, r, (baseline || {})[def.name])
+  }).map(def => def.name)
+  return { ok: failures.length === 0, failures }
+}
+// Baseline red: an exit gate failing, a tests gate with no tests (or incoherent), or a violated invariant.
+function isRedBaseline(defs, baseline) {
+  return (defs || []).filter(def => {
+    const r = (baseline || {})[def.name]
+    if (!r || r.ran === false) return true
+    if (def.invariant || def.kind === 'exit') return r.exit !== 0
+    return !(r.total > 0) || !gateCoherent(def, r)
+  }).map(def => def.name)
+}
+// Post-merge floor: the target may not have fewer tests than the branch measured (minus baseline failures already unstable).
+function mergeFloor(baseline, branchMeasure) {
+  const floor = JSON.parse(JSON.stringify(baseline || {}))
+  for (const name of Object.keys(floor)) {
+    const br = gateResult(branchMeasure, name)
+    if (!br || typeof br.total !== 'number') continue
+    floor[name].total = Math.max(floor[name].total || 0, br.total - (floor[name].failedNames || []).length)
+  }
+  return floor
+}
 // </pure>
 
 phase('probe');
