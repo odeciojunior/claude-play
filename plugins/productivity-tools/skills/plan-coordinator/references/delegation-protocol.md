@@ -80,6 +80,7 @@ Don't use `isolation: "worktree"` for plan steps: a worktree branches from the d
 - Run targeted checks only ({command}); the orchestrator runs the full suite.
 - Do not spawn subagents: nesting would break the write-set guarantee.
 - Never commit. In a shared worktree, parallel agents' `git add` would be swept into each other's commits; the orchestrator commits.
+- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless this card says `External: yes` and the orchestrator recorded its authorization; then do it exactly as the card says, once.
 
 ## Report (reply with exactly this, ≤25 lines, no diffs)
 STATUS: PASS | FAIL | BLOCKED
