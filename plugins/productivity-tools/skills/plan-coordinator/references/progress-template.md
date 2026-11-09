@@ -19,6 +19,7 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 **Last COMPLETED Wave**: 0
 **Last DELEGATED Wave**: 0
 **In-Flight Agents**: none   <!-- before launch: "Group C (Steps 3-5, sonnet): launching"; after launch: add the agent ID -->
+**Final gate rounds:** 0   <!-- format: <n done> (last verdict: <PASS | defects: ...>); update after every final-gate round -->
 **Next Action**: Self-approve the map (SKILL.md Step 8)   <!-- e.g. "Launch Wave 2 (Groups C, D)" -->
 
 ## Execution Map

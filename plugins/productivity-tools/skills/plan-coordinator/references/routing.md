@@ -60,7 +60,7 @@ Rules:
 1. **Diagnose first.** Read the report: spec gap, environment problem, or capability shortfall? For a shortfall, try a higher per-call `effort` on the `Agent` call before a tier bump.
 2. **Spec gap / environment** → fix the card or environment and retry **same tier**, via `SendMessage` to the same agent (Explore/Plan: fresh agent, same tier). One such retry per step.
 3. **Capability shortfall** (wrong approach, looping, shallow fix) → retry **one tier up** with a fresh agent, including the failed attempt's report as "what was tried and why it failed". Inline → sonnet (skip haiku: the step already proved harder than it looked). Already at opus → one fresh opus retry with the failure report and a narrowed card.
-4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch, record it in Issues & Decisions, and ask the user. Groups that don't depend on it may continue.
+4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch, record it in Issues & Decisions, and ask the user. Before asking the user, set `Status: Blocked` and write the exact question and what each answer does into `Next Action`; the answer restores `Status: In Progress`. Groups that don't depend on it may continue.
 
 Never resend an identical prompt at an identical tier.
 
