@@ -62,6 +62,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'report') return 'REPORT';
     if (/:resume-review-log$/.test(l)) return { found: true, acceptedRisks: [], humanInputs: [] };
     if (/:awaiting-person$/.test(l)) return { ok: true };
+    if (/:launching$/.test(l)) return { ok: true, head: 'L1' };
+    if (/:effect-completed$/.test(l)) return { ok: true };
     if (/review-log/.test(l)) return 'ok';
     throw new Error('unmocked ' + l);
   };
@@ -1322,7 +1324,7 @@ test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at 
   for (const t of [act.what, act.doNow, x.r.results[0].error, x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt]) assert.doesNotMatch(t, /did not complete/);
   assert.ok(!x.labels.includes('E1:t1:spec2'));
   assert.ok(!x.labels.includes('E1:t1:quality1'));
-  assert.ok(!x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+  assert.ok(x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'), 'the implementer reported the effect done: it is recorded (N8)');
 });
 
 test('a fix round with NEEDS_HUMAN on a non-external task keeps the normal path', async () => {
@@ -1870,4 +1872,182 @@ test('plan fix starts at sonnet, the reviewer stays opus, and a repeated finding
   assert.equal(modelOf(calls, 'E1:plan-fix2').model, 'opus');
   assert.equal(modelOf(calls, 'E1:plan-review1').model, 'opus');
   assert.equal(modelOf(calls, 'E1:plan-review2').model, 'opus');
+});
+
+// ---- N5: the progress read of a plan with an external task
+test('N5: progress runs at sonnet/medium and requires the mark lists when the plan has an external task', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  const p = modelOf(calls, 'E1:progress');
+  assert.equal(p.model, 'sonnet');
+  assert.equal(p.effort, 'medium');
+  assert.ok(p.schema.required.includes('launchOpen') && p.schema.required.includes('effectMayHaveRun'));
+});
+
+test('N5: a plan without external tasks keeps the progress read as it was', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
+  const p = calls.find((c) => c.label === 'E1:progress');
+  assert.equal(p.opts.model, 'haiku');
+  assert.equal(p.opts.effort, 'low');
+  assert.ok(!p.opts.schema.required.includes('launchOpen'));
+  assert.doesNotMatch(p.prompt, /launchOpen|launching/);
+});
+
+// ---- N6: a stop in a fix round
+const fixStop = (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 'needs a key', checks: [], humanInputs: [{ what: 'fix key' }] } : reviewIssue(l));
+const mayHaveRun = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [1] } : undefined);
+
+test('N6: a stop in a fix round writes its own subject', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, fixStop) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /--allow-empty -m "E1 T1 awaiting person \(effect may have run\): /);
+});
+
+test('N6: the resume does not launch the implementer again, and its fixes carry no authorization', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(mayHaveRun, (l) => (l === 'E1:t1:spec-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : reviewIssue(l)))) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.ok(!x.labels.includes('E1:t1:launching'));
+  assert.ok(x.labels.includes('E1:t1:spec1'));
+  const fix = x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
+  assert.doesNotMatch(fix, /AUTHORIZED/);
+  assert.match(fix, /Do NOT perform any external effect/);
+  assert.equal(x.r.results[0].merged, true);
+});
+
+test('N6: the mark wins over the awaiting list and over a legacy reading', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [1] } : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+});
+
+test('N6: the progress read also takes the old subject of a fix-round stop as may-have-run', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.match(calls.find((c) => c.label === 'E1:progress').prompt, /effectMayHaveRun = [^\n]*"E1 T<n> awaiting person: a fix round needs a person"/);
+});
+
+test('N6: may have run with no commit of the task stops and asks, never relaunches', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [1] } : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.equal(x.r.results[0].failKind, 'humano');
+});
+
+// ---- N7: the launch mark
+const launchOpen = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [], launchOpen: [1], effectMayHaveRun: [] } : undefined);
+
+test('N7: the launch mark is an empty commit in the worktree, before the implementer', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  const m = x.calls.find((c) => c.label === 'E1:t1:launching').prompt;
+  assert.match(m, /git -C "\/wt\/E1" commit --allow-empty -m "E1 T1 launching"/);
+  assert.ok(x.labels.indexOf('E1:t1:launching') < x.labels.indexOf('E1:t1:impl'));
+  assert.ok(x.labels.indexOf('E1:t1:impl') < x.labels.indexOf('E1:t1:effect-completed'));
+  assert.ok(x.labels.indexOf('E1:t1:effect-completed') < x.labels.indexOf('E1:t1:spec1'));
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:effect-completed').prompt, /--allow-empty -m "E1 T1: external effect completed"/);
+  assert.equal(x.r.results[0].merged, true);
+});
+
+test('N7: the launch mark subject does not look like a task commit to the progress read', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.match(calls.find((c) => c.label === 'E1:progress').prompt, /--grep "\^E1 T<n>:"/);
+  assert.ok(!/^E1 T1:/.test('E1 T1 launching'));
+});
+
+test('N7: without a written launch mark the implementer does not start', async () => {
+  for (const bad of [null, { ok: false }, { ok: true }]) {
+    const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:launching' ? bad : undefined)) });
+    assert.ok(!x.labels.includes('E1:t1:impl'));
+    assert.equal(x.r.results[0].failKind, 'infra');
+  }
+});
+
+test('N7: the review range starts after the launch mark, so the marks do not stand for a commit', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /rev-list --count L1\.\.HEAD/);
+});
+
+test('N7: an implementer that reports DONE with only the completion mark in the range is a defect', async () => {
+  const onlyMark = (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'nothing to commit', checks: [] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, onlyMark) });
+  assert.ok(x.labels.includes('E1:t1:spec-fix1'));
+  assert.equal(x.r.results[0].merged, false);
+});
+
+test('N7: a crash between the effect and the commit stops and asks on resume, with the two ways out', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, launchOpen) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.ok(!x.labels.includes('E1:t1:launching'));
+  assert.ok(!x.labels.includes('E1:merge'));
+  assert.equal(x.r.results[0].failKind, 'humano');
+  const act = x.r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.match(act.what, /task 1/);
+  assert.match(act.doNow, /checks outbox\.log first/);
+  assert.match(act.doNow, /"E1 T1: external effect completed"/);
+  assert.match(act.doNow, /"E1 T1 awaiting person: confirmed not run"/);
+  assert.deepEqual(act.resumeWith.authorizeExternal, ['E1:T1@' + fpOf(ext1)]);
+});
+
+test('N7: an open launch mark stops even when the awaiting list or the done list also name the task', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [1], effectMayHaveRun: [] } : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.equal(x.r.results[0].failKind, 'humano');
+});
+
+test('N7: an implementer that returns BLOCKED or null leaves the launch open: no completion mark', async () => {
+  for (const v of [{ status: 'BLOCKED', summary: 'b', checks: [] }, null]) {
+    const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? v : undefined)) });
+    assert.ok(x.labels.includes('E1:t1:launching'));
+    assert.ok(!x.labels.includes('E1:t1:effect-completed'));
+    assert.ok(!x.labels.includes('E1:merge'));
+  }
+});
+
+test('N7: the implementer stop of NEEDS_HUMAN closes the launch with the awaiting mark, not with a completion', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.ok(x.labels.includes('E1:t1:awaiting-person'));
+  assert.ok(!x.labels.includes('E1:t1:effect-completed'));
+});
+
+test('N7: a completion mark that cannot be written is a concern naming the subject', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:effect-completed' ? null : undefined)) });
+  assert.ok(x.r.results[0].concerns.some((c) => c.includes('"E1 T1: external effect completed"')));
+});
+
+test('N7: a task without external writes no mark at all', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
+  assert.ok(!x.labels.some((l) => /launching|effect-completed/.test(l)));
+});
+
+// ---- N8: the external runs survive in the review log
+const ranLog = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve E1:T1 please' }], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', status: 'DONE', reviewed: false }] } : undefined);
+
+test('N8: the effect is recorded even when the review rejects, and goes to the failed log', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, fixStop) });
+  const log = x.calls.find((c) => c.label === 'E1:review-log-failed').prompt;
+  assert.match(log, /External effects run/);
+  assert.match(log, /"externalRun":\[\{"item":"E1:T1"[^\]]*"reviewed":false/);
+  assert.match(x.calls.find((c) => c.label === 'report').prompt, /"item":"E1:T1"[^\n]*"reviewed":false/);
+});
+
+test('N8: an effect that passed its reviews is recorded as reviewed', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.match(x.calls.find((c) => c.label === 'report').prompt, /"item":"E1:T1"[^\n]*"reviewed":true/);
+});
+
+test('N8: the log is written for a recorded effect even with no review to persist', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (/^E1:(spec|plan)-review/.test(l) ? undefined : /^E1:t1:spec1b?$/.test(l) ? null : undefined)) });
+  assert.ok(x.labels.includes('E1:review-log-failed'));
+});
+
+test('N8: the resume reads the log and the report does not ask again for what ran', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(ranLog, clearedProgress)) });
+  const read = x.calls.find((c) => c.label === 'E1:resume-review-log');
+  assert.match(read.prompt, /externalRun = /);
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /External effects authorized and run: \[\{"item":"E1:T1"/);
+  assert.equal((rep.match(/External effects authorized and run: (.*)/)[1].match(/"item":"E1:T1"/g) || []).length, 1);
+  assert.match(x.r.results[0].human[0], /already authorized and run/);
+});
+
+test('N8: a task without external writes no externalRun data to its log', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
+  for (const c of x.calls.filter((k) => /review-log/.test(k.label) && !/resume/.test(k.label))) assert.doesNotMatch(c.prompt, /externalRun|External effects run/);
 });

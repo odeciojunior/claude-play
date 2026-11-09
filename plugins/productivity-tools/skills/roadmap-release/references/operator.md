@@ -74,7 +74,19 @@ A config derived by the preflight carries `generated: true`, and the run uses `m
 
 ## Known limits
 
-Two limits are left as they are, with no code change:
+An external task leaves empty commits on the deliverable branch; the newest one decides what a resume does:
 
-- `awaitingPerson` can come out empty when the history is misread: the task then counts as done and merges with `externalRun` empty, so check its commits by hand. It comes from the same reading of the history that `done` already trusts, and a second reader of that history would cost more than it protects.
-- After an interrupted merge, an authorization request that an implementer returned earlier can come back in the report as open. Fixing it needs a new durable record. Nothing is lost: the workflow does not repeat the effect, but a person could run the command by hand.
+| Newest mark | Meaning | On resume |
+|---|---|---|
+| `E<n> T<m> launching` | Written before the implementer starts; no conclusion was recorded (a crash, or the implementer returned BLOCKED or nothing). | Stops with a `human-input` action and runs nothing. |
+| `E<n> T<m>: external effect completed` | The implementer reported it done, or a person said so. | Counts as done and goes to review. |
+| `E<n> T<m> awaiting person (effect may have run): ...` | A fix round stopped for a person. | The implementer is not launched again; reviews run and fixes get no authorization. |
+| `E<n> T<m> awaiting person: ...` | The implementer proved the effect did not happen. | Runs again under the normal authorization rules. |
+
+After that stop, check whether the effect happened, then add an empty commit: `E<n> T<m>: external effect completed` if it did, `E<n> T<m> awaiting person: confirmed not run` if it did not. Without one of those commits the run stops there again.
+
+`externalRun` is written to the review log (section "External effects run"), including when a review rejects the task (`reviewed: false`), and read back on resume, so the report does not ask again for what already ran.
+
+One limit is left as it is, with no code change:
+
+- A mark list can come out empty when the history is misread: the task then counts as done and merges with `externalRun` empty, so check its commits by hand. It comes from the same reading of the history that `done` already trusts, and a second reader of that history would cost more than it protects. An external task committed on a branch from before the launch mark existed has no mark at all and also counts as done.
