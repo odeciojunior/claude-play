@@ -1560,10 +1560,18 @@ Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-p
 const safe = fn => Promise.resolve().then(fn).catch(e => { log(`unhandled failure: ${String(e)}`); return null })
 const sem = makeSem(MAXPAR)
 const runs = {}
+// Interrupted merges finish (validate and document) before any new deliverable asks for the semaphore.
+// An interrupted deliverable waits only for dependencies that are also interrupted: waiting for a new one
+// would deadlock, because the new one waits for every interrupted one.
+const FINISH = order.filter(id => MODE === 'run' && resumeAction(byId[id], STATUSES, A.force) === 'finish-merge')
 order.forEach((id, idx) => {
   runs[id] = (async () => {
+    await Promise.resolve()  // every runs[] entry exists after this point
+    const finishing = FINISH.includes(id)
+    if (!finishing) await Promise.all(FINISH.map(f => runs[f]))
     for (const d of byId[id].deps) {
       if (!runs[d]) continue  // dependency already on the target
+      if (finishing && !FINISH.includes(d)) continue
       const r = await runs[d]
       if (!r.ok) return { id, merged: false, ok: false, skipped: true, error: `dependency ${d} did not finish in this run` }
     }
