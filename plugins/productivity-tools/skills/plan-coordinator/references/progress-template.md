@@ -58,6 +58,7 @@ External: none   <!-- or the external steps: "External: Step 7 (deploy to stagin
 <!-- Fixed entry forms; an entry stays open until the user closes it:
      Refused: Step N: <effect>  (does not hold the final gate of the steps that ran)
      Pre-launch review failed: Step N: <defects>
+     Not named: Step N: <effect>
      Open question: Step N: <exact question and what each answer does> -->
 
 ## Issues & Decisions
