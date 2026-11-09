@@ -592,6 +592,12 @@ function parseAuthorizeExternal(v) {
   if (bad !== undefined) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(bad)}` }
   return { items: [...new Set(v)], error: null }
 }
+// True only for <wtRoot>/_integracao: the integration worktree this workflow creates. Any other path is the person's checkout.
+function isOwnWorktree(path, wtRoot) {
+  const norm = p => String(p == null ? '' : p).replace(/[\\]/g, '/').replace(/\/+$/, '')
+  const a = norm(path), b = norm(wtRoot) + '/_integracao'
+  return /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
+}
 function isAuthorized(items, item) { return (items || []).includes(item) }
 // Deterministic 32-bit FNV-1a over the plan blob and the tasks (n, trimmed title, sorted files, external, externalDedupe); 8 hex digits.
 function planFingerprint(tasks, planBlob = '') {
@@ -860,7 +866,7 @@ ${blockersTxt}
   Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.
 - Roadmap "do not" restrictions (violating any is category decisao, severity critical):
 ${donotTxt}
-- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".
+- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}, except the integration worktree of the target when the operator authorized checkout:${TARGET}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".
 - Delivery branches do NOT edit the roadmap folder ${RM} (that is done only in the record and docs stages, on the target).
 - When done, the working tree must be clean (git status --porcelain empty). Line-ending-only differences: git checkout -- <file>.
 - Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; never an unquoted shell heredoc containing backticks.
@@ -882,7 +888,7 @@ const pre = await agent(`${COMMON_BASE}
 
 PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only steps 1, 2 and 5.' : 'You HOLD every lock.'}
 1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
-2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
+2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort only when that worktree is ${WT}/_integracao; in any other path do NOT abort. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
 3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
 4. ${MODE === 'plan-only' ? '(skip)' : `BASELINE in the integration worktree. First, BEFORE any command: clean (git status --porcelain empty) and headSha (git rev-parse HEAD). Install first${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then measure every gate. ${measureTxt(GATES)}`}
 5. envFacts (short, factual text used by every agent): available shells, presence and version of the tools the gates need, measured peculiarities (for example CRLF, scripts that require bash).
@@ -914,9 +920,12 @@ if (MODE === 'run') {
     return mkResult('needs-operator', { selection })
   }
 }
+const FOREIGN = !isOwnWorktree(INTWT, WT)
+const FOREIGN_ITEM = 'checkout:' + TARGET
 const baseTxt = () => GATES.map(d => `${d.name}: ${resultTxt(BASE[d.name])}`).join(' | ')
 const COMMON = () => `${COMMON_BASE}
 ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
+INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN_ITEM} ${authorized(FOREIGN_ITEM) ? 'authorized by the operator' : 'NOT authorized: do not touch it'})` : 'created by this workflow'}.
 CURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${baseTxt()}`
 
 // ---------------------------------------------------------------- gates (numeric, judged by the script)
@@ -950,6 +959,7 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
+let foreignHold = false  // the person's checkout was left untouched: no report file, no commit
 const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
   if (integBroken) return null
   const r = await agent(`${COMMON()}
@@ -996,6 +1006,14 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
     await persistReviews('failed')
     return out
+  }
+  // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
+  if (FOREIGN && !authorized(FOREIGN_ITEM)) {
+    foreignHold = true
+    op('authorize-external', E, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: merging, recording and rolling back there would touch your checkout, so ${E} was not run`,
+      `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
+      { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM], deliverables: [E] }, { item: FOREIGN_ITEM })
+    return fail('externo', `the target ${TARGET} is checked out in ${INTWT} and ${FOREIGN_ITEM} is not authorized`)
   }
 
   const reviewLoop = (...a) => runReviewLoop({ maxFix: MAXFIX, blqIds, reviews: out.reviews, concerns: out.concerns, acceptRisks }, ...a)
@@ -1591,7 +1609,7 @@ const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).m
 const truth = MODE === 'plan-only' ? null : await safe(() => agent(`GIT TRUTH (read-only). Target ${TARGET} in ${INTWT}.
 targetHead = git rev-parse HEAD; clean = git status --porcelain empty on the target; lastGoodReachable = git merge-base --is-ancestor ${lastGood} ${TARGET} (exit 0); mergedIds = deliverables among [${order.join(', ')}] with a commit "merge: <E> in ${TARGET}" in git log --first-parent ${TARGET}; notMergedIds = the others; claims = for each of ${JSON.stringify(claims)}: { id, commit, reachable = the commit is an ancestor of ${TARGET} }; worktrees = git -C "${REPO}" worktree list; strays = files and folders loose in ${WT}/ that are neither registered worktrees nor an empty _tmp.`,
   { label: 'git-truth', phase: 'Report', schema: S_TRUTH, model: 'haiku' }))
-const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!integBroken)
+const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!(integBroken || foreignHold))
 for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
 const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
@@ -1612,7 +1630,7 @@ for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExt
 const resumeFinal = finalResume()
 const report = await safe(() => mergeLock(() => agent(`${COMMON()}
 
-${integBroken ? 'The integration worktree is compromised: do NOT write a file or commit, only build the execution report and return the text.' : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
+${integBroken || foreignHold ? `The integration worktree is ${integBroken ? 'compromised' : "the person's checkout and was not authorized"}: do NOT write a file or commit, only build the execution report and return the text.` : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
 Selection: ${JSON.stringify(selection)}
 Results (summary per deliverable; details in the docs/superpowers/reviews/ log of each branch): ${JSON.stringify(slim)}
 Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConfig(o.resumeWith) })))}
@@ -1625,4 +1643,4 @@ Be factual. Return the report text.`,
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)
-return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeFinal, reportPath: report && !integBroken ? reportPath : null, report })
+return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeFinal, reportPath: report && !integBroken && !foreignHold ? reportPath : null, report })

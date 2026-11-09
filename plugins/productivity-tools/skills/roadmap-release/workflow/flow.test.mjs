@@ -484,7 +484,7 @@ test('m2: the docs are not ok when the panel does not show the status after the 
 });
 
 test('m4: paths are quoted in the docs measure, the integrity run and the cleanup', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: '/w t' }, config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: '/w t' }, over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/w t/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined), config: { docsStage: { instructions: 'x', measure: 'm' } } });
   assert.ok(calls.find((c) => c.label === 'E1:docs-measure1').prompt.includes('node "/w t/_tmp/E1-docs-measure.cjs"'));
   assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('node "/w t/_tmp/E1-integrity.cjs" "integracao/x"'));
   const clean = calls.find((c) => c.label === 'E1:cleanup').prompt;
@@ -722,4 +722,37 @@ test('the restricted-gate action keeps bound items of unfinished deliverables an
   const g = ext(r).find((x) => x.item === 'gate:e2e');
   assert.deepEqual(g.resumeWith.authorizeExternal, ['E2:T2@' + fpOf(t2), 'gate:e2e']);
   assert.equal(r.results.find((x) => x.id === 'E2').held, 'E2:T3@' + fpOf(t2));
+});
+
+const foreignPre = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined);
+
+test("item 6: a target checked out in the person's checkout holds every merge", async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre });
+  for (const bad of ['E1:merge', 'E1:rollback', 'E1:pre-merge', 'E1:setup']) assert.ok(!labels.includes(bad), bad);
+  assert.ok(!labels.some((l) => /^E1:status-/.test(l)));
+  assert.equal(r.results.find((x) => x.id === 'E1').merged, false);
+  const a = r.operatorActions.find((o) => o.kind === 'authorize-external');
+  assert.equal(a.item, 'checkout:integracao/x');
+  assert.equal(a.deliverable, 'E1');
+  assert.match(calls.find((c) => c.label === 'report').prompt, /do NOT write a file/);
+  assert.equal(r.reportPath, null);
+});
+
+test('item 6: with the checkout authorized the merge runs', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre, args: { authorizeExternal: ['checkout:integracao/x'] } });
+  assert.equal(r.results.find((x) => x.id === 'E1').merged, true);
+});
+
+test("item 6: an interrupted merge is not finished in the person's checkout without authorization", async () => {
+  const unf = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+  const { r, labels } = await exec({ cards: [unf], deliverables: ['E1'], over: foreignPre });
+  assert.ok(!labels.some((l) => /^E1:merge-gates/.test(l)));
+  assert.ok(r.operatorActions.some((o) => o.item === 'checkout:integracao/x'));
+});
+
+test('item 6: the base rules no longer say NEVER touch the worktree unconditionally', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre });
+  const p = calls.find((c) => c.label === 'preflight').prompt;
+  assert.doesNotMatch(p, /NEVER touch[^.]*the worktree \/r(?!.*authorized)/);
+  assert.match(p, /checkout:integracao\/x/);
 });

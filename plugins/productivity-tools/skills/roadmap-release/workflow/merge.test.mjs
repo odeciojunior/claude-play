@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes, integrityHardAlerts, integrityHeuristicAlerts, integrityAckMatches } = loadPure();
+const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes, integrityHardAlerts, integrityHeuristicAlerts, integrityAckMatches, isOwnWorktree } = loadPure();
 const RM = 'docs/plans/roadmap-x/';
 const res = (name, o = {}) => ({ name, ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...o });
 
@@ -148,4 +148,13 @@ test('integrityAckMatches needs the exact deliverable and SHA', () => {
   for (const [a, e, s] of [[{ E1: 'abc' }, 'E1', 'abd'], [{ E1: 'abc' }, 'E2', 'abc'], [{ E1: 'ab' }, 'E1', 'abc'], [null, 'E1', 'abc'], [{ E1: true }, 'E1', 'abc'], [{ E1: '' }, 'E1', '']]) {
     assert.equal(integrityAckMatches(a, e, s), false);
   }
+});
+
+test('isOwnWorktree: only <wtRoot>/_integracao, slash- and drive-case-insensitive', () => {
+  assert.equal(isOwnWorktree('/wt/_integracao', '/wt/'), true);
+  assert.equal(isOwnWorktree('/wt/_integracao/', '/wt'), true);
+  assert.equal(isOwnWorktree('/r', '/wt/'), false);
+  assert.equal(isOwnWorktree('/wt/E1', '/wt/'), false);
+  assert.equal(isOwnWorktree('/wt', '/wt/'), false);
+  assert.equal(isOwnWorktree('D:\\wt\\_integracao', 'd:/wt/'), true);
 });
