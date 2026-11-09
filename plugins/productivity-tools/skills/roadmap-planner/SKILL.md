@@ -64,6 +64,8 @@ Copy this checklist into your working notes and tick it off:
 | Fresh-context reviewer | Yes (Step 7) | No; the handoff says none ran |
 | REQ/SRC traceability, vendored checker, tracker | Yes | Yes |
 
+Before fixing the slug, look for `docs/plans/*/planning-draft.md`. If exactly one exists and its objective matches this request, use its folder and resume. If its objective does not match, ask whether to resume it or start new. If more than one exists, ask which one to resume, or to start new.
+
 Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a short kebab-case slug).
 
 | Folder state | Action |
