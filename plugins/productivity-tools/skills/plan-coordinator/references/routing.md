@@ -34,7 +34,7 @@ Unknown information scores **1**, not 0 — and flag it in the approval summary.
 
 1. **Risk floor (always wins):** Blast radius = 2 → implementation at least sonnet **and** a review gate by an opus-tier reviewer. No later override, and neither the Cheaper nor the Safer approval option, can take a step below this.
 2. **Mechanical ceiling:** high Scope, Ambiguity = 0, Reasoning = 0 and Blast radius ≤ 1 (bulk rename of internal names, repetitive edits, formatting, codemod-like changes) → haiku, split into parallel bundles by directory. With Blast radius 2 the floor applies instead: sonnet, bundled, plus review.
-3. **Verification-heavy:** Verifiability = 2 and Reasoning ≥ 1 → one tier up; nothing will catch a subtle mistake.
+3. **Verification-heavy:** Verifiability = 2 and Reasoning ≥ 1 → one tier up; nothing will catch a subtle mistake. A step scored 6–10 does not reach opus through this override: it stays on sonnet with `effort: high` and gets a review gate.
 4. **Research/read-only:** locating code or answering "where/how is X" → `Explore` (read-only, fast); design questions → `Plan` or an opus `general-purpose` agent.
 
 **Passing the tier:** always pass the routed tier as the `Agent` tool's `model` parameter — it's the only reliable way for built-in and plugin agents, whose model you usually can't read. Two exceptions: a project/user agent whose frontmatter pins `model` that you decide to keep (record why), and `fork`, which always inherits the orchestrator's model and so cannot be down-tiered. Only fork when the step needs unwritten conversation context (see the Fork vs fresh section of the delegation protocol, linked from SKILL.md).

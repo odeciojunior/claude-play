@@ -21,7 +21,7 @@ Waves are **barriers**: a wave's writing groups launch only after the previous w
 2. **Pre-flight the wave:** re-apply calibration (routing.md §6); confirm no two groups in the wave share a write set, counting implicit writes (SKILL.md Step 5).
 3. **Allow the checks:** before launching a background wave, propose allow rules for the validation commands (the Shared Brief's build/test/lint commands) to the user in the approval summary so permission prompts don't stall it; never write settings yourself.
 4. **Mark delegated:** set `Last DELEGATED Wave` and list the groups in `In-Flight Agents` (e.g. `Group C (Steps 3-5, sonnet): launching`) **before** launching, so a compaction mid-launch is recoverable.
-5. **Launch the whole wave in one message:** one `Agent` call per group with `subagent_type`, `model: <routed tier>` (always, except `fork` and kept frontmatter pins — routing.md §3), a short `description`, and the prompt from the template below.
+5. **Launch the whole wave in one message:** one `Agent` call per group with `subagent_type`, `model: <routed tier>` (always, except `fork` and kept frontmatter pins — routing.md §3), `effort` per routing.md §2 (haiku `low`, sonnet `medium`, a step scored 6–10 on sonnet `high`, opus `medium`), a short `description`, and the prompt from the template below.
 6. **Record agent IDs** in `In-Flight Agents` right after the launch returns — they are what `SendMessage` needs after a compaction.
 7. **Wait for notifications.** Agents run in the background and notify on completion — don't poll or sleep.
 8. **Verify each report** (§ Verification), launch its review gate if it has one, then write the handoff and status per step.
