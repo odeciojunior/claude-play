@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps } = loadPure();
+const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, closedBlockers, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps } = loadPure();
 const statuses = { onBranch: 'na-branch', integrated: ['integrada', 'publicada'], blocked: 'bloqueada', discarded: 'descartada' };
 
 test('isHard: no category, defeito and decisao are hard; critical is hard unless a registered environment blocker', () => {
@@ -236,4 +236,18 @@ test('planFingerprint covers the plan blob, external and externalDedupe', () => 
   assert.notEqual(planFingerprint(t, 'blob2'), fp);
   assert.notEqual(planFingerprint([{ ...t[0], externalDedupe: 'other check' }], 'blob1'), fp);
   assert.notEqual(planFingerprint([{ ...t[0], external: false }], 'blob1'), fp);
+});
+
+test('item 8: a test tag is not satisfied by a human plan row that repeats its command', () => {
+  const ac = [{ id: 'AC1', text: 'x {verify: test; evidence: npm test -- a}', tag: { kind: 'test', evidence: 'npm test -- a' } }];
+  const g = evidenceGaps(ac, [{ ac: 'AC1', kind: 'human', command: 'npm test -- a' }], new Set());
+  assert.ok(g.some((x) => /AC1/.test(x.description) && /changed the command bound by the card tag/.test(x.description)));
+  assert.deepEqual(evidenceGaps(ac, [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], new Set()), []);
+});
+
+test('item 14: evidenceGaps no longer reports a closed blocker, closedBlockers does', () => {
+  const tg = (blq) => ({ id: 'AC1', text: 't', tag: { kind: 'blocked', evidence: '', blq } });
+  const g = evidenceGaps([tg('BLQ-9')], [{ ac: 'AC1', kind: 'blocked', blq: 'BLQ-9' }], new Set(['BLQ-1']));
+  assert.ok(!g.some((x) => /tagged blocked without a registered blocker/.test(x.description)));
+  assert.deepEqual(closedBlockers([tg('BLQ-9'), { id: 'AC2', text: 't', tag: { kind: 'blocked', evidence: '', blq: 'BLQ-1' } }, tg('BLQ-9')], new Set(['BLQ-1'])), ['BLQ-9']);
 });

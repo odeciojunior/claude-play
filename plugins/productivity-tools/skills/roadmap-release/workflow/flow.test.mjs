@@ -861,3 +861,14 @@ test('item 2: the discovery prompt restricts the ancestor rule', async () => {
   assert.match(calls[0].prompt, /several pieces/);
   assert.match(calls[0].prompt, /ONLY when the code segment is finished/);
 });
+
+test('item 14: a closed BLQ yields a decision action and no correction round', async () => {
+  const { r, labels } = await exec({ cards: [card('E1', { acceptance: [{ id: 'AC1', text: 'waits {verify: blocked BLQ-9; evidence: vendor key}' }] })], deliverables: ['E1'], discOver: { blockers: [] } });
+  assert.equal(r.results.find((x) => x.id === 'E1').failKind, 'decisao');
+  const d = r.operatorActions.filter((o) => o.kind === 'decision' && o.deliverable === 'E1');
+  assert.equal(d.length, 1);
+  assert.match(d[0].doNow, /BLQ-9/);
+  assert.match(d[0].doNow, /revision/);
+  assert.ok(!r.operatorActions.some((o) => o.kind === 'defect'));
+  for (const l of ['E1:setup', 'E1:spec', 'E1:plan-fix1']) assert.ok(!labels.includes(l), l);
+});

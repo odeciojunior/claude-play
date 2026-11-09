@@ -327,14 +327,22 @@ function evidenceGaps(cardAc, planAc, blqIds) {
     if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan (expected ac "${a.id}", the id alone; the plan returned ac values: ${rows.length ? rows.map(p => JSON.stringify(String(p.ac))).join(', ') : 'none'}): ${a.text}`)); continue }
     const t = a.tag
     if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
-    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => String(p.command || '').trim() === t.evidence))
+    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => VERIFY_EXEC.includes(p.kind) && String(p.command || '').trim() === t.evidence))
       out.push(gap(`criterion ${a.id}: the plan changed the command bound by the card tag (${t.evidence})`))
     if (t && (t.kind === 'human' || t.kind === 'blocked') && !mine.some(p => p.kind === t.kind)) out.push(gap(`criterion ${a.id}: the plan replaced the ${t.kind} tag with another kind of evidence`))
-    if (t && t.kind === 'blocked' && !hasBlq(blqIds, t.blq)) out.push(gap(`criterion ${a.id} tagged blocked without a registered blocker (blq=${t.blq || 'empty'})`))
   }
   for (const p of rows) {
     if (VERIFY_EXEC.includes(p.kind) && !p.command) out.push(gap(`criterion ${p.ac} has no evidence command`))
     if (p.kind === 'blocked' && !hasBlq(blqIds, p.blq)) out.push(gap(`criterion ${p.ac} marked blocked without a registered blocker (blq=${p.blq || 'empty'})`))
+  }
+  return out
+}
+// BLQ ids cited by a blocked tag of the card that the roadmap no longer registers (closed): no run until the tag changes.
+function closedBlockers(cardAc, blqIds) {
+  const out = []
+  for (const a of cardAc || []) {
+    const t = a.tag
+    if (t && !t.invalid && t.kind === 'blocked' && t.blq && !hasBlq(blqIds, t.blq) && !out.includes(t.blq)) out.push(t.blq)
   }
   return out
 }
@@ -1182,6 +1190,14 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
     }))
   }
 
+  // A BLQ closed on the roadmap while the card still tags a criterion blocked on it: only a revision (or reopening it) fixes that.
+  const closed = closedBlockers(cardAc, blqIds)
+  if (closed.length) {
+    const b = closed[0]
+    out.doNow = `${closed.join(', ')} ${closed.length > 1 ? 'are' : 'is'} closed on the roadmap but the card still tags a criterion {verify: blocked ${b}}: change the tag through a strategy revision, or reopen ${b}, then run again`
+    return fail('decisao', `the card ${E} tags a criterion as blocked by ${closed.join(', ')}, which is not registered as open on the roadmap`)
+  }
+
   // ---------- Setup
   const setup = await setupLock(() => agent(`${C()}
 
@@ -1599,7 +1615,7 @@ order.forEach((id, idx) => {
         else if (r.failKind === 'infra') op('infra', id, r.error, 'Run again (the stages reuse spec, plan and commits)', { ...A, deliverables: [id] })
         else {
           if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner instruction>' } })
-          if (r.failKind === 'decisao') op('decision', id, r.error, 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
+          if (r.failKind === 'decisao') op('decision', id, r.error, r.doNow || 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
           if (MODE !== 'plan-only') await safe(() => recordStatus(id, STATUSES.blocked, `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`))
         }
       }
