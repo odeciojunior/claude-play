@@ -432,3 +432,13 @@ test('evidenceGaps: a blank command is no command, with or without a wrapper', (
   for (const v of [' ', '   ', '\t', '\n', '` `', '``', '" "', '""', "' '", "''", ' "  " ']) assert.match(gaps(v)[0]?.description || '', /no evidence command/, JSON.stringify(v));
   for (const v of ['npm test', '"./my tool"', '`echo x`']) assert.deepEqual(gaps(v), [], v);
 });
+
+test('evidenceGaps: the card tag is compared with the value that is dispatched', () => {
+  const card = [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence: 'npm x' } }];
+  const changed = (command, tag = card) => evidenceGaps(tag, [{ ac: 'AC1', kind: 'smoke', command }], new Set()).some((x) => /changed the command bound by the card tag/.test(x.description));
+  for (const v of ['npm x', ' npm x ', '`npm x`']) assert.equal(changed(v), false, JSON.stringify(v));
+  for (const v of ['npm x' + String.fromCharCode(160), 'npm x' + String.fromCharCode(9), '"npm x"']) assert.equal(changed(v), true, JSON.stringify(v));
+  const tagged = (evidence) => [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence } }];
+  assert.equal(changed('a\\ ', tagged('a\\')), true);
+  assert.equal(changed('cat <<E\nx\nE ', tagged('cat <<E\nx\nE')), true);
+});

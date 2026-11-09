@@ -1380,7 +1380,7 @@ test('decision 1: an external flag that differs from the file is a defect', asyn
   assert.match(r.results[0].error, /external/);
 });
 
-test('decision 1: a harmless retranscription (quotes, backticks) still runs under the authorization', async () => {
+test('decision 1: a harmless retranscription (backticks) still runs under the authorization', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)] },
     over: both(planRows([cmdRow(deploy)]), reviewRows([cmdRow('`' + deploy + '`')]), evOk) });
   assert.ok(labels.includes('E1:evidence1'));

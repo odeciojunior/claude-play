@@ -327,7 +327,7 @@ function evidenceGaps(cardAc, planAc, blqIds) {
     if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan (expected ac "${a.id}", the id alone; the plan returned ac values: ${rows.length ? rows.map(p => JSON.stringify(String(p.ac))).join(', ') : 'none'}): ${a.text}`)); continue }
     const t = a.tag
     if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
-    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => VERIFY_EXEC.includes(p.kind) && String(p.command || '').trim() === t.evidence))
+    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => VERIFY_EXEC.includes(p.kind) && commandKey(p.command) === commandKey(t.evidence)))
       out.push(gap(`criterion ${a.id}: the plan changed the command bound by the card tag (${t.evidence})`))
     if (t && (t.kind === 'human' || t.kind === 'blocked') && !mine.some(p => p.kind === t.kind)) out.push(gap(`criterion ${a.id}: the plan replaced the ${t.kind} tag with another kind of evidence`))
   }
