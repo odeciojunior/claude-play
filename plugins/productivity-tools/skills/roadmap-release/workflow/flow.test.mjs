@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadPure } from './load-pure.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -25,7 +26,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
-    if (/spec-review|plan-review|:t1:spec|:t1:quality|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (/spec-review|plan-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
@@ -577,4 +578,127 @@ test('the plan prompt asks for external and externalDedupe and the plan review b
   assert.match(p, /externalDedupe/);
   assert.match(p, /when in doubt/i);
   assert.ok(labels.includes('E1:plan-fix1'));
+});
+
+// ---- external-effect authorization (Task 4)
+const PU = loadPure();
+const tk = (n, external, extra = {}) => ({ n, title: 't' + n, tier: 'sonnet', external, ...(external ? { externalDedupe: 'checks outbox.log first' } : {}), ...extra });
+const planWith = (tasks) => ({ planPath: 'docs/p.md', planBlob: 'b1', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks });
+const fpOf = (tasks) => PU.planFingerprint(tasks, 'b1');
+const ext = (r) => r.operatorActions.filter((a) => a.kind === 'authorize-external');
+const withPlan = (tasks, more) => (l) => (l === 'E1:plan' ? planWith(tasks) : more ? more(l) : undefined);
+
+test('external task without authorization stops the deliverable before the task and the others go on', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const fp = fpOf(tasks);
+  const { r, labels } = await exec({ cards: [card('E1'), card('E2')], deliverables: ['E1', 'E2'], over: withPlan(tasks) });
+  assert.ok(labels.includes('E1:t1:impl'));
+  assert.ok(!labels.includes('E1:t2:impl'));
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.merged, false);
+  assert.equal(e1.failKind, 'externo');
+  assert.equal(r.results.find((x) => x.id === 'E2').merged, true);
+  const a = ext(r);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].deliverable, 'E1');
+  assert.equal(a[0].item, 'E1:T2@' + fp);
+  assert.deepEqual(a[0].resumeWith.authorizeExternal, ['E1:T2@' + fp]);
+  assert.deepEqual(a[0].resumeWith.deliverables, ['E1']);
+  assert.ok(!r.operatorActions.some((x) => x.kind === 'defect'));
+  assert.ok(!labels.includes('E1:status-blocked'));
+  assert.equal(r.status, 'needs-operator');
+});
+
+test('authorized external task runs and the authorization survives fix rounds', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  let n = 0;
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] },
+    over: withPlan(tasks, (l) => (l === 'E1:t2:spec1' && n++ === 0 ? { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 2 } : l === 'E1:t2:spec-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
+  assert.ok(labels.includes('E1:t2:impl'));
+  assert.ok(labels.includes('E1:t2:spec-fix1'));
+  assert.equal(ext(r).length, 0);
+  assert.match(calls.find((c) => c.label === 'E1:t2:spec-fix1').prompt, /AUTHORIZED/);
+  assert.match(calls.find((c) => c.label === 'E1:t2:impl').prompt, /checks outbox\.log first/);
+  assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /Do NOT perform any external effect/);
+});
+
+test('a replanned task with another number does not inherit the authorization', async () => {
+  const tasks = [tk(1, false), tk(2, false), tk(3, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] }, over: withPlan(tasks) });
+  assert.equal(ext(r)[0].item, 'E1:T3@' + fpOf(tasks));
+});
+
+test('any replanned plan invalidates a bound authorization, even with the same task number', async () => {
+  const tasks = [tk(1, false), tk(2, true)];
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2@00000000'] }, over: withPlan(tasks) });
+  assert.ok(!labels.includes('E1:t2:impl'));
+  assert.equal(ext(r)[0].item, 'E1:T2@' + fpOf(tasks));
+});
+
+test('every held external task of the plan is listed at the first stop', async () => {
+  const tasks = [tk(1, false), tk(2, true), tk(3, true)];
+  const fp = fpOf(tasks);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(tasks) });
+  assert.ok(!labels.includes('E1:t2:impl'));
+  const a = ext(r);
+  assert.deepEqual(a.map((x) => x.item), ['E1:T2@' + fp, 'E1:T3@' + fp]);
+  assert.ok(a.every((x) => x.deliverable === 'E1'));
+  assert.match(a[1].what, /t3/);
+});
+
+test('a bare authorization comes back bound in resumeArgs', async () => {
+  const tasks = [tk(1, false), tk(2, true), tk(3, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] }, over: withPlan(tasks, (l) => (l === 'E1:t2:impl' ? { status: 'BLOCKED', summary: 'stop' } : undefined)) });
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['E1:T2@' + fpOf(tasks)]);
+});
+
+test('partial release: only the named item runs', async () => {
+  const tasks = [tk(1, false), tk(2, true), tk(3, true)];
+  const fp = fpOf(tasks);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] }, over: withPlan(tasks) });
+  assert.ok(labels.includes('E1:t2:impl'));
+  assert.ok(!labels.includes('E1:t3:impl'));
+  const a = ext(r);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].item, 'E1:T3@' + fp);
+  assert.deepEqual(a[0].resumeWith.authorizeExternal, ['E1:T2@' + fp, 'E1:T3@' + fp]);
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['E1:T2@' + fp]);
+});
+
+test('resume after the authorization runs only the released task and the next ones', async () => {
+  const tasks = [tk(1, false), tk(2, true), tk(3, false)];
+  const first = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(tasks) });
+  const rw = ext(first.r)[0].resumeWith;
+  const done = [{ n: 1, firstParent: 'h0', last: 'c1' }, { n: 2, firstParent: 'c1', last: 'c2' }];
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: rw,
+    over: withPlan(tasks, (l) => (l === 'E1:progress' ? { head: 'c2', clean: true, done } : undefined)) });
+  assert.ok(labels.includes('E1:t3:impl'));
+  assert.ok(!labels.includes('E1:t1:impl'));
+  assert.ok(!labels.includes('E1:t2:impl'));
+});
+
+test('restricted gate is not measured without authorization and is offered as an action', async () => {
+  const e2e = { name: 'e2e', cmd: 'npm run e2e', kind: 'exit', restricted: true };
+  const cfg = { gates: [...GATES, e2e] };
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], config: cfg });
+  assert.doesNotMatch(a.calls.find((c) => c.label === 'preflight').prompt, /npm run e2e/);
+  const act = ext(a.r).find((x) => x.item === 'gate:e2e');
+  assert.ok(act);
+  assert.equal(act.deliverable, null);
+  assert.deepEqual(act.resumeWith.authorizeExternal, ['gate:e2e']);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], config: cfg, args: { authorizeExternal: ['gate:e2e'] },
+    over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: { ...gm('abc1234'), gates: [...gm('abc1234').gates, { name: 'e2e', ran: true, exit: 0 }] } } : undefined) });
+  assert.match(b.calls.find((c) => c.label === 'preflight').prompt, /npm run e2e/);
+  assert.equal(ext(b.r).length, 0);
+});
+
+test('the authorization ends with the deliverable', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2', 'gate:x'] } });
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['gate:x']);
+});
+
+test('the base rules forbid external effects for every agent', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:spec').prompt, /NEVER perform an external effect/);
 });

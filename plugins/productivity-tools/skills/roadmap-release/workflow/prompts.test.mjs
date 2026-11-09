@@ -160,3 +160,11 @@ test('reviewLoop with maxFix 0 never fixes', async () => {
   assert.equal(fixed, 0);
   assert.equal(res.ok, false);
 });
+
+test('buildImplPrompt forbids external effects outside an authorized task and, for an authorized one, carries the dedupe note', () => {
+  assert.match(P.buildImplPrompt(ctx, task), /Do NOT perform any external effect/);
+  const p = P.buildImplPrompt({ ...ctx, authorizedExternal: true }, { ...task, external: true, externalDedupe: 'checks outbox.log first' });
+  assert.match(p, /AUTHORIZED/);
+  assert.match(p, /checks outbox\.log first/);
+  assert.doesNotMatch(p, /Do NOT perform/);
+});

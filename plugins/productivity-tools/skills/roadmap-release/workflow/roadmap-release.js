@@ -436,10 +436,16 @@ function briefing(ctx) {
 function lockNote(locks) {
   return locks && locks.length ? `You HOLD the lock(s): ${locks.join(', ')}.` : 'You hold no lock.'
 }
+function externalNote(authorizedExternal, task) {
+  return authorizedExternal
+    ? `This task is external and AUTHORIZED: perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}.`
+    : 'Do NOT perform any external effect in this task.'
+}
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
 
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}. STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
+${externalNote(ctx.authorizedExternal, task)}
 Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).
 Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
 Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
@@ -621,7 +627,7 @@ const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
 const asList = v => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v])
 const CFG = A.config
 const OPS = []  // operator actions (strictly necessary ones)
-const op = (kind, deliverable, what, doNow, resumeWith) => OPS.push({ kind, deliverable, what, doNow, resumeWith })
+const op = (kind, deliverable, what, doNow, resumeWith, extra) => OPS.push({ kind, deliverable, what, doNow, resumeWith, ...(extra || {}) })
 const MODE = A.mode || 'run'
 const AUTH = parseAuthorizeExternal(A.authorizeExternal)
 if (AUTH.error) return { status: 'error', error: AUTH.error }
@@ -642,7 +648,17 @@ const MAXPAR = CFG.generated ? 1 : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1
 const PREFIX = A.branchPrefix || 'feat/'
 const TRAILER = A.trailer || 'Co-Authored-By: Claude <noreply@anthropic.com>'
 const PROJECT = CFG.projectContext || ''
-const GATES = CFG.gates
+const GATES = CFG.gates.filter(g => !g.restricted || authorized('gate:' + g.name))
+const BOUND = {}  // deliverable id -> plan fingerprint, set when its plan is approved
+const boundItems = E => (BOUND[E] === undefined ? AUTH.items : bindAuthorizations(AUTH.items, E, BOUND[E]))
+for (const g of CFG.gates.filter(g => g.restricted && !authorized('gate:' + g.name))) {
+  if (MODE !== 'run') continue
+  const item = 'gate:' + g.name
+  op('authorize-external', null, `the gate "${g.name}" is restricted (it touches something outside the branch) and was not measured: ${g.cmd}`,
+    `Authorize it by running again with authorizeExternal including "${item}". Until then the deliverables merged by this run were not measured by it`,
+    { ...A, authorizeExternal: [...AUTH.items, item] }, { item })
+}
+if (!GATES.length) return { status: 'error', error: 'every gate is restricted and none is authorized: pass authorizeExternal with "gate:<name>" items', operatorActions: OPS }
 const INSTALL = CFG.install || ''
 const SETUP_CMDS = asList(CFG.setup)
 const ACCEPT_RED = !!(A.acceptRedBaseline || CFG.acceptRedBaseline)
@@ -838,7 +854,7 @@ const gatesTxt = GATES.map(gateDesc).join('; ')
 const COMMON_BASE = `
 FIXED RULES:
 - Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block) are NEVER reopened or contradicted.
-- The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on. Asking the user is FORBIDDEN (do not use AskUserQuestion).
+- The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on, except a strategy revision or migration and any external effect. Asking the user is FORBIDDEN (do not use AskUserQuestion).
 - Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Open roadmap blockers:
 ${blockersTxt}
   Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.
@@ -852,6 +868,7 @@ ${donotTxt}
 - Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.
 - Canonical gates: ${gatesTxt}.
 - Reviewers classify each problem with category: defeito (bug or unmet criterion), decisao (contradicts a registered decision), ambiente (limit of the local environment, not of the code; when a roadmap blocker is registered, cite its id in blq), fora-do-escopo (only a PRE-EXISTING problem outside the deliverable), pelo-plano (the plan foresaw it). A defect introduced by this diff is never fora-do-escopo nor pelo-plano. Excess scope is a defect.
+- NEVER perform an external effect (production, deploy, push, sending e-mail or messages, writing shared data, resetting or rolling back someone's checkout) unless your task is marked external and authorized; when in doubt it is external.
 - Autonomous decisions follow the recommended option and are recorded for the owner (Origin executor, status pending). Contradicting a registered decision, or changing a canonical gate (its command, kind or threshold), is category decisao, severity critical.
 - Write code and generated artifacts in the language of the roadmap, consistent with the project.
 ${CFG.conflictRules ? `- Conflicts in generated files: ${CFG.conflictRules}\n` : ''}PROJECT:
@@ -1251,6 +1268,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   planRef = plan.planPath
   out.acOpen = criteriaOpen(cardAc, plan.ac)
   log(`${E}: plan with ${plan.tasks.length} tasks`)
+  const fp = planFingerprint(plan.tasks, plan.planBlob)
+  BOUND[E] = fp
 
   const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` Also record, as a standing decision with Origin "user (notes)", unless already there, the owner's instruction: ${JSON.stringify(noteE)}.` : ''}`
   if (MODE === 'plan-only') {
@@ -1279,7 +1298,18 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (resumed && t.n < lastDone) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
     const start = resumed ? resumed.firstParent : head
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
-    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t) }))
+    const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
+    if (!resumed) {
+      const held = plan.tasks.filter(x => !doneMap[x.n] && x.n >= t.n).map(x => ({ x, item: externalHold(x, E, AUTH.items, fp) })).filter(h => h.item)
+      if (held.length && held[0].x.n === t.n) {
+        for (const h of held) op('authorize-external', E, `task ${h.x.n} ("${h.x.title}") of ${E} is external and not authorized: it was not run`,
+          `Authorize it by running again with authorizeExternal including "${h.item}" (externalDedupe: ${h.x.externalDedupe || 'none declared'}); the tasks before it are already committed on ${br}`,
+          { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
+        out.held = held[0].item
+        return fail('externo', `external task ${t.n} awaits authorization (${held[0].item})`)
+      }
+    }
+    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t) }))
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       impl = await runImpl(`${E}:t${t.n}:impl`)
@@ -1301,7 +1331,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
 
-In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${externalNote(authorizedExt, t)} STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
 ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
@@ -1526,7 +1556,8 @@ order.forEach((id, idx) => {
       let r
       try { r = await runDeliverable(id, idx) } catch (e) { r = { id, merged: false, ok: false, error: `unexpected error: ${e && e.message ? e.message : e}`, failKind: 'infra' } }
       if (r.error && !r.skipped) {
-        if (r.failKind === 'infra') op('infra', id, r.error, 'Run again (the stages reuse spec, plan and commits)', { ...A, deliverables: [id] })
+        if (r.failKind === 'externo') { /* waiting for the person: no defect, no blocked status */ }
+        else if (r.failKind === 'infra') op('infra', id, r.error, 'Run again (the stages reuse spec, plan and commits)', { ...A, deliverables: [id] })
         else {
           if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner instruction>' } })
           if (r.failKind === 'decisao') op('decision', id, r.error, 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
@@ -1566,6 +1597,14 @@ const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
+// Authorizations come back bound to the plan they were given for, and end with the delivery they covered.
+const finalResume = () => {
+  const base = resumeArgs || { ...A }
+  if (!A.authorizeExternal) return base
+  const done = RESULTS.filter(r => r.merged && !r.broken).map(r => r.id)
+  const bound = Object.keys(BOUND).reduce((acc, id) => bindAuthorizations(acc, id, BOUND[id]), AUTH.items)
+  return { ...base, authorizeExternal: bound.filter(i => !done.some(id => i.startsWith(id + ':T'))) }
+}
 const report = await safe(() => mergeLock(() => agent(`${COMMON()}
 
 ${integBroken ? 'The integration worktree is compromised: do NOT write a file or commit, only build the execution report and return the text.' : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
@@ -1581,4 +1620,4 @@ Be factual. Return the report text.`,
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)
-return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeArgs || { ...A }, reportPath: report && !integBroken ? reportPath : null, report })
+return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: finalResume(), reportPath: report && !integBroken ? reportPath : null, report })
