@@ -228,3 +228,12 @@ test('externalGaps flags a missing boolean and a missing dedupe note', () => {
   assert.match(g2[0].description, /externalDedupe/);
   assert.equal(externalGaps([{ n: 1, external: true, externalDedupe: 'checks outbox.log first' }, { n: 2, external: false }]).length, 0);
 });
+
+test('planFingerprint covers the plan blob, external and externalDedupe', () => {
+  const t = [{ n: 1, title: 'a', files: ['x'], external: true, externalDedupe: 'check outbox' }];
+  const fp = planFingerprint(t, 'blob1');
+  assert.equal(planFingerprint(JSON.parse(JSON.stringify(t)), 'blob1'), fp);
+  assert.notEqual(planFingerprint(t, 'blob2'), fp);
+  assert.notEqual(planFingerprint([{ ...t[0], externalDedupe: 'other check' }], 'blob1'), fp);
+  assert.notEqual(planFingerprint([{ ...t[0], external: false }], 'blob1'), fp);
+});
