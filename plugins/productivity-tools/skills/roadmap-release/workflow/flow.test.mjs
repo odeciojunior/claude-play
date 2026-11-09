@@ -794,6 +794,18 @@ test('item 1: a new deliverable does not merge when the interrupted one ends bro
 });
 
 test('item 1: an interrupted merge that depends on a new deliverable does not deadlock', async () => {
-  const { labels } = await exec({ cards: [card('E1'), interrupted({ deps: ['E1'] })], deliverables: ['E1', 'E2'] });
+  const { r, labels } = await exec({ cards: [card('E1'), interrupted({ deps: ['E1'] })], deliverables: ['E1', 'E2'] });
   assert.ok(labels.includes('E2:merge-gates1-1'));
+  assert.ok(labels.includes('E1:merge'));
+  assert.ok(labels.indexOf('E2:merge-gates1-1') < labels.indexOf('E1:merge'));
+  assert.equal(r.results.find((x) => x.id === 'E1').merged, true);
+});
+
+test('item 1: a resume that throws also stops new merges', async () => {
+  const { r, labels } = await exec({ cards: [card('E1'), interrupted()], deliverables: ['E1', 'E2'],
+    over: (l) => { if (l === 'E2:merge-fix-probe') throw new Error('boom'); return undefined; } });
+  assert.ok(!labels.includes('E1:merge'));
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.ok(e1.skipped);
+  assert.match(e1.error, /compromised/);
 });

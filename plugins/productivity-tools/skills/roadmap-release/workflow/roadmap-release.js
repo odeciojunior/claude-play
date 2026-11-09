@@ -1580,6 +1580,8 @@ order.forEach((id, idx) => {
       if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) return { id, merged: false, ok: false, skipped: true, error: 'token budget too low' }
       let r
       try { r = await runDeliverable(id, idx) } catch (e) { r = { id, merged: false, ok: false, error: `unexpected error: ${e && e.message ? e.message : e}`, failKind: 'infra' } }
+      // An interrupted merge that did not finish validated (including a thrown error) stops every later merge.
+      if (FINISH.includes(id) && !r.ok && !integBroken) integBroken = `the interrupted merge of ${id} did not finish validation: ${r.error || 'not ok'}`
       if (r.error && !r.skipped) {
         if (r.failKind === 'externo') { /* waiting for the person: no defect, no blocked status */ }
         else if (r.failKind === 'infra') op('infra', id, r.error, 'Run again (the stages reuse spec, plan and commits)', { ...A, deliverables: [id] })
