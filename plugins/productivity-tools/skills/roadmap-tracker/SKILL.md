@@ -24,7 +24,7 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 
 ## Rules
 
-1. **Never commit**, never stash, reset or check out. Edit in the working tree only, so the update lands in the same commit as the event; the author or the orchestrator commits.
+1. **Never commit**, never stash, reset or check out. Edit in the working tree only, so the update lands in the same commit as the event; the author or the orchestrator commits (`plan-coordinator` commits the roadmap folder and progress file when its commit policy is `per step`).
 2. **One fact in one place.** The strategy holds no state; `state.md` holds no history (it is overwritten); `log.md` and `decisions.md` are append-only. Old decision rows change only in Status and Revisit when.
 3. **Never invent numbers.** No dates, durations, metrics, estimates or costs that the user or a source did not supply. Date cells hold the date the event happened (today's date unless the user or a source gives another); never deadlines or forecasts. A value nobody supplied is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
 4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
