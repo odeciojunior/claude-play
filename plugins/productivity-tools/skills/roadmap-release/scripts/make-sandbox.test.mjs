@@ -70,3 +70,22 @@ test('requires a directory argument', () => {
   const r = spawnSync(process.execPath, [make], { encoding: 'utf8' });
   assert.equal(r.status, 2);
 });
+
+test('sandbox: E4 declares the external delivery step and the folder still passes the checker', () => withTemp((root) => {
+  const dir = join(root, 'repo');
+  const r = spawnSync(process.execPath, [make, dir], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const folder = join(dir, 'docs', 'plans', 'roadmap-sandbox');
+  const chk = spawnSync(process.execPath, [join(folder, 'check-roadmap.mjs')], { encoding: 'utf8', cwd: dir });
+  assert.equal(chk.status, 0, chk.stdout + chk.stderr);
+  assert.doesNotMatch(chk.stdout, /\b[1-9]\d* error/i);
+  const strategy = readFileSync(join(folder, 'strategy.md'), 'utf8');
+  assert.match(strategy, /id=E4 [^>]*depends=- reqs=REQ-004/);
+  assert.ok(strategy.includes('../outbox.log'));
+  assert.ok(strategy.includes('E4 published'));
+  assert.ok(strategy.includes('{verify: test; evidence: node --test tests/e4.test.mjs}'));
+  assert.match(readFileSync(join(folder, 'requirements.md'), 'utf8'), /REQ-004/);
+  assert.match(readFileSync(join(folder, 'state.md'), 'utf8'), /\| E4 \|/);
+  const pf = spawnSync(process.execPath, [preflight, folder], { encoding: 'utf8', cwd: dir });
+  assert.deepEqual(JSON.parse(pf.stdout).errors, []);
+}));

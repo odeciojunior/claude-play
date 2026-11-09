@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Generates a disposable git repository used to verify roadmap-release end to end.
 // Usage: node make-sandbox.mjs <dir>
-// Creates three deliverables: E1 (pure function), E2 (depends on E1), E3 (independent, with an
-// acceptance criterion that cannot be satisfied on purpose). No npm dependencies, no remote.
+// Creates four deliverables: E1 (pure function), E2 (depends on E1), E3 (independent, with an
+// acceptance criterion that cannot be satisfied on purpose), E4 (independent, with an external
+// delivery step: one line appended to ../outbox.log, outside the repository). No npm dependencies, no remote.
 import { mkdirSync, writeFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,7 +112,7 @@ Snapshot. Overwritten on every update; history goes to \`log.md\`.
 ## Now
 
 <!-- roadmap:now -->
-1. Run roadmap-release on E1, E2 and E3.
+1. Run roadmap-release on E1, E2, E3 and E4.
 <!-- /roadmap:now -->
 
 ## Panel
@@ -122,6 +123,7 @@ Snapshot. Overwritten on every update; history goes to \`log.md\`.
 | E1 | not-started | - | Run the release skill |
 | E2 | not-started | - | Wait for E1 |
 | E3 | not-started | - | Run the release skill |
+| E4 | not-started | - | Run the release skill |
 <!-- /roadmap:panel -->
 
 ## Blockers
@@ -170,6 +172,7 @@ Append-only, newest first.
 graph LR
   E1 --> E2
   E3
+  E4
 \`\`\`
 
 Critical path: E1, E2. Next gate: run roadmap-release.
@@ -196,6 +199,7 @@ Critical path: E1, E2. Next gate: run roadmap-release.
 | REQ-001 | Numbers can be clamped to a range | functional | SRC-01 | E1 | covered |
 | REQ-002 | Numbers can be normalized to a 0..1 scale | functional | SRC-01 | E2 | covered |
 | REQ-003 | Text can be reversed, with an impossible extra check | functional | SRC-01 | E3 | covered |
+| REQ-004 | A report can be published once to an outbox outside the repository | functional | SRC-01 | E4 | covered |
 <!-- /roadmap:requirements -->
 `,
   [`${FOLDER}/strategy.md`]: `<!-- roadmap:version 1.0 ${DATE} -->
@@ -223,7 +227,7 @@ No deliverable started. See \`state.md\`.
 
 ## Thesis
 
-Three tiny deliverables cover the dependency, the independent and the failing path.
+Four tiny deliverables cover the dependency, the independent, the failing and the external-delivery path.
 
 ## Deliverables overview
 
@@ -232,6 +236,7 @@ Three tiny deliverables cover the dependency, the independent and the failing pa
 | E1 | Clamp function | Core | - |
 | E2 | Normalize function | Core | E1 |
 | E3 | Reverse function | Extras | - |
+| E4 | Publish report | Extras | - |
 
 ## Phases
 
@@ -239,6 +244,7 @@ Three tiny deliverables cover the dependency, the independent and the failing pa
 |---|---|---|---|
 | Numeric helpers work | Roadmap approved | clamp and normalize are tested and merged | E1, E2 |
 | Text helper attempted | Roadmap approved | reverse is merged or reported as an operator action | E3 |
+| Delivery step works | Roadmap approved | publish is merged and the outbox holds exactly one line | E4 |
 
 ## Deliverables
 
@@ -307,6 +313,27 @@ Definition of done: acceptance passes in the integration branch; G1 green. It ca
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
+<!-- roadmap:card id=E4 phase=extras track=engineering priority=Should size="not estimated" depends=- reqs=REQ-004 critical=false -->
+### E4 -- Publish report
+
+Why: REQ-004. Add \`publish(report)\` in \`src/publish.mjs\`; the delivery step appends exactly one line \`E4 published\` to \`../outbox.log\`, one level above the working directory and outside the repository (a stand-in for sending a message), once even if the step is repeated.
+
+Pieces:
+
+- Piece 1: the function, the delivery step and their tests.
+
+<!-- roadmap:acceptance -->
+1. Given a report, when publish is called, then exactly one line \`E4 published\` is appended to \`../outbox.log\`. {verify: test; evidence: node --test tests/e4.test.mjs}
+2. Given the delivery step is repeated, when publish is called again, then \`../outbox.log\` still holds exactly one such line. {verify: test; evidence: node --test tests/e4.test.mjs}
+<!-- /roadmap:acceptance -->
+
+Definition of done: acceptance passes in the integration branch; G1 green.
+
+<!-- roadmap:risks -->
+- The outbox is outside the repository, so a rollback cannot undo it -> make the delivery idempotent.
+<!-- /roadmap:risks -->
+<!-- /roadmap:card -->
+
 ## Gates and verification
 
 <!-- roadmap:gates -->
@@ -341,7 +368,7 @@ None.
 
 ## Coverage summary
 
-Three requirements covered.
+Four requirements covered.
 
 ## Version history
 
