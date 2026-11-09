@@ -332,7 +332,7 @@ function evidenceGaps(cardAc, planAc, blqIds) {
     if (t && (t.kind === 'human' || t.kind === 'blocked') && !mine.some(p => p.kind === t.kind)) out.push(gap(`criterion ${a.id}: the plan replaced the ${t.kind} tag with another kind of evidence`))
   }
   for (const p of rows) {
-    if (VERIFY_EXEC.includes(p.kind) && !p.command) out.push(gap(`criterion ${p.ac} has no evidence command`))
+    if (VERIFY_EXEC.includes(p.kind) && !commandKey(p.command)) out.push(gap(`criterion ${p.ac} has no evidence command`))
     if (p.kind === 'blocked' && !hasBlq(blqIds, p.blq)) out.push(gap(`criterion ${p.ac} marked blocked without a registered blocker (blq=${p.blq || 'empty'})`))
   }
   return out
@@ -653,7 +653,7 @@ function evidenceHolds(rows, E, items, fp) {
     const bare = `${E}:${p.ac}`
     if (isAuthorized(items, bare) || isAuthorized(items, `${bare}@${fp}`)) continue
     const h = out.get(bare) || { item: `${bare}@${fp}`, ac: p.ac, commands: [], dedupe: [] }
-    h.commands.push(String(p.command || ''))
+    h.commands.push(commandKey(p.command))
     if (p.externalDedupe) h.dedupe.push(String(p.externalDedupe))
     out.set(bare, h)
   }
@@ -668,27 +668,19 @@ function evidenceExternalGaps(cardAc, planAc) {
     ...(p.external === true && !(ids.includes(p.ac) && /^AC[1-9]\d*$/.test(p.ac)) ? [gap(`external evidence row ${p.ac} must use a criterion id of the card (AC<n>), which is what the authorization names`)] : []),
   ])
 }
-// The comparison key of an evidence command: only what a retranscription adds harmlessly goes away (surrounding backticks or quotes,
-// runs of spaces and tabs outside quotes). A line break, an escaped character and whitespace inside quotes are part of the command; when in doubt, unequal.
+// The command as compared and as dispatched. Exact inside: only ASCII spaces around the value go away (never an escaped one), plus one
+// wrapper of matching backticks or quotes around the whole value, which a retranscription adds and which a shell would otherwise execute.
 function commandKey(s) {
-  let t = String(s == null ? '' : s).trim()
-  for (let prev = null; prev !== t;) {
-    prev = t
-    const bt = /^(`+)([^`]*)\1$/.exec(t)
-    if (bt) t = bt[2].trim()
-    else if (t.length > 1 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0] && !t.slice(1, -1).includes(t[0])) t = t.slice(1, -1).trim()
-  }
-  let out = '', q = '', inRun = false
-  for (let i = 0; i < t.length; i++) {
-    const ch = t[i]
-    if (ch === '\\' && q !== "'" && i + 1 < t.length) { out += ch + t[++i]; inRun = false; continue }
-    if (q) { out += ch; if (ch === q) q = ''; continue }
-    if (ch === '"' || ch === "'" || ch === '`') { q = ch; out += ch; inRun = false; continue }
-    if (ch === ' ' || ch === '\t') { if (!inRun) out += ' '; inRun = true; continue }
-    out += ch
-    inRun = false
-  }
-  return out
+  const t = String(s == null ? '' : s)
+  const oddSlashes = (x, end) => { let n = 0; while (end - n - 1 >= 0 && x[end - n - 1] === '\\') n++; return n % 2 === 1 }
+  let start = 0, end = t.length
+  while (start < end && t[start] === ' ') start++
+  while (end > start && t[end - 1] === ' ' && !oddSlashes(t, end - 1)) end--
+  const v = t.slice(start, end)
+  const c = v[0]
+  if (v.length < 2 || !['`', '"', "'"].includes(c) || v[v.length - 1] !== c) return v
+  const inner = v.slice(1, -1)
+  return inner.includes(c) || oddSlashes(v, v.length - 1) ? v : inner
 }
 // The blob does not cover the JSON the code runs, so the rows the plan agent transcribed must equal the rows another agent read
 // from the plan file at the measured blob. A row or command on one side only is a defect, never a run.
@@ -1622,7 +1614,8 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IM
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
 
   // ---------- Gates on the branch (+ reviewed fix). Every acceptance criterion is proved by a command that ran.
-  const acExec = () => normalizePlanAc(cardAc, plan.ac).filter(p => VERIFY_EXEC.includes(p.kind) && p.command)
+  // The value compared with the plan file is the value dispatched.
+  const acExec = () => normalizePlanAc(cardAc, plan.ac).filter(p => VERIFY_EXEC.includes(p.kind) && p.command).map(p => ({ ...p, command: commandKey(p.command) }))
   const externalEvidenceNote = () => {
     const rows = acExec().filter(p => p.external !== false)
     return rows.length ? `\nThe person AUTHORIZED the external effect of these evidence commands: ${rows.map(p => p.command).join(' ; ')}. Run one again only if that command is what failed, and only after its duplicate check: ${rows.map(p => `${p.ac}: ${p.externalDedupe || 'none declared'}`).join('; ')}.` : ''
@@ -1810,7 +1803,7 @@ order.forEach((id, idx) => {
         if (r.failKind === 'externo') { /* waiting for the person: no defect, no blocked status */ }
         else if (r.failKind === 'infra') op('infra', id, r.error, 'Run again (the stages reuse spec, plan and commits)', { ...A, deliverables: [id] })
         else {
-          if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner instruction>' } })
+          if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: A.notes && A.notes[id] && !NOTES_READ.includes(id) ? A.notes[id] : '<owner instruction>' } })
           if (r.failKind === 'decisao') op('decision', id, r.error, r.doNow || 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
           if (MODE !== 'plan-only') await safe(() => recordStatus(id, STATUSES.blocked, `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`))
         }

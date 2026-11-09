@@ -307,9 +307,9 @@ const P4 = loadPure();
 const acCard = [{ id: 'AC1', text: 'works', tag: null }];
 const row = (command, external = true, ac = 'AC1') => ({ ac, kind: 'smoke', command, external, externalDedupe: 'd' });
 
-test('commandKey ignores only surrounding quotes or backticks and whitespace outside quotes', () => {
+test('commandKey ignores only one whole wrapper of quotes or backticks and the spaces outside it', () => {
   const { commandKey: k } = P4;
-  for (const v of ['npm test', '  npm test ', '`npm test`', '``npm test``', '"npm test"', "'npm test'", '"`npm test`"', 'npm   test']) assert.equal(k(v), 'npm test', v);
+  for (const v of ['npm test', '  npm test ', '`npm test`', '"npm test"', "'npm test'", ' "npm test" ']) assert.equal(k(v), 'npm test', v);
   assert.notEqual(k('grep "a  b" f'), k('grep "a b" f'));
   assert.notEqual(k('npm test -- a'), k('npm test -- b'));
   assert.equal(k('echo "a"'), 'echo "a"');
@@ -353,8 +353,6 @@ test('fix 1: commandKey keeps apart commands the shell runs differently', () => 
   assert.notEqual(k('curl ok\r\nrm prod'), k('curl ok rm prod'));
   assert.notEqual(k('touch a\\  b'), k('touch a\\ b'));
   assert.notEqual(k('echo \\" "a  b"'), k('echo \\" "a b"'));
-  assert.equal(k('npm\t  test'), 'npm test');
-  assert.equal(k("echo 'a\\'  b"), k("echo 'a\\' b"));
 });
 
 test('fix 1 minor 5: hideRowGaps removes only the row comparison findings', () => {
@@ -363,4 +361,15 @@ test('fix 1 minor 5: hideRowGaps removes only the row comparison findings', () =
   assert.equal(h(line), '');
   assert.equal(h(line + '\n2. [critical/defeito]  a wrong needsLock'), '2. [critical/defeito]  a wrong needsLock');
   assert.equal(h(null), '');
+});
+
+test('fix round 2: commandKey is exact inside the command', () => {
+  const { commandKey: k, evidenceGaps: g } = P4;
+  const differ = [['npm   test', 'npm test'], ['npm\ttest', 'npm test'], ['echo "$(echo "a  b")"', 'echo "$(echo "a b")"'], ["echo $'a\\'  b'", "echo $'a\\' b"], ['printf %s a\\ ', 'printf %s a\\'], ['a\u00a0', 'a'], ['a\t', 'a'], ['a\n', 'a']];
+  for (const [x, y] of differ) assert.notEqual(k(x), k(y), JSON.stringify([x, y]));
+  assert.equal(k('``npm test``'), '``npm test``', 'only one wrapper, and it must wrap the whole value');
+  assert.equal(k('"`npm test`"'), '`npm test`', 'one wrapper only');
+  assert.equal(k('"a\\"'), '"a\\"', 'an escaped closing quote is not a wrapper');
+  assert.equal(k('" npm test "'), ' npm test ', 'exact inside the wrapper');
+  assert.equal(g([{ id: 'AC1', text: 't', tag: null }], [{ ac: 'AC1', kind: 'smoke', command: '""' }], new Set()).length, 1, 'a wrapper around nothing is no command');
 });

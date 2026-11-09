@@ -1504,3 +1504,26 @@ test('minor 7: restored human inputs differing only in spacing are one item', as
   const { calls } = await resumedRun((l) => (l === 'E1:resume-review-log' ? { found: true, humanInputs: [{ what: 'H-ONE' }, { what: '  H-ONE ' }], acceptedRisks: [], ac: [] } : undefined));
   assert.equal(calls.find((c) => c.label === 'E1:docs1').prompt.split('H-ONE').length, 2);
 });
+
+// ---- bloco A, fix round 2
+const wrapped = '`echo echo PWNED`';
+
+test('fix round 2: a wrapped command is dispatched and shown unwrapped', async () => {
+  const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')])) });
+  assert.ok(!ext(held.r)[0].what.includes('`echo'));
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
+    over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
+  const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
+  assert.match(p, /^AC1: echo echo PWNED$/m);
+});
+
+test('fix round 2: extra interior spaces are a defect and never run', async () => {
+  const { r, labels } = await mism([cmdRow('curl  ok')], [cmdRow('curl ok')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.equal(r.results[0].failKind, 'conteudo');
+});
+
+test('fix round 2: the defect action keeps an answer no approved plan consumed', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  assert.equal(r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, 'answer');
+});
