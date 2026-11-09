@@ -18,9 +18,16 @@ One recipe per event. Each names the files in the order they change, the cells t
 12. Package published
 13. Do not do now
 14. Events from plan-coordinator
+15. Merge into the release branch
+16. Release branch integrated
+17. Acceptance pending
+18. Executor decision
+19. Deliverable closed: criteria check
 
 Common to every recipe:
 
+- **Compound events and incidents in the log**: one `log` row per compound event is accepted when it lists every ID it recorded (for example "DEC-012, BLQ-3 recorded; E2 piece 1 closed"). Incidents are logged too, not only completions: a gate that fails after a merge, a rollback, rework.
+- **Lean panel**: panel Evidence holds SHAs, gate IDs and path references only. Counts and lists of resolved items go in `log.md`, not in the panel. The `pending-limit` warning (`limits.pendingItems` exceeded): group the `pending` items by origin and retire the ones that already have an owner elsewhere (a `BLQ`, a `DEC` row, a card), logging what was retired; never delete an item nobody else owns.
 - **Log row**: insert in the `log` table below any rows with a newer date and above rows with an older or equal date (newest first, dates descending; a past-dated event goes under newer rows). Columns: Date, Deliverable (`E<n>` or `-`), What happened (≤ `limits.cellChars`), Evidence (a SHA, path or URL in backticks, never empty, never "this commit" or another `bannedPhrases` entry).
 - **Next ID**: the highest ID of that kind ever used, in any file (the log included), plus one. Never reuse, never renumber.
 - **Words**: statuses, coverage, decision status and branch kind use the exact `vocab` words of the config, which may be localized.
@@ -43,10 +50,11 @@ Common to every recipe:
    - Decision: what was chosen, one sentence. Discarded alternative: what was not chosen; if nobody stated one, write `none stated` rather than invent one.
    - **Contradicts:** read the strategy text the decision touches: the card's pieces, acceptance, definition of done, attrs (`priority`, `phase`, `track`, `depends`, `reqs`), and the objective, non-goals, thesis and deliverables overview. If the decision overrides any of them, name it, for example `E2 (pieces)`, `E3 (priority)`, `Non-goals`. If it only fills in detail the strategy leaves open, write `-`. If unsure, ask once and recommend the filled cell.
    - Revisit when: a condition ("the owner reprioritizes sharing"), not a date unless one was supplied.
-   - Origin: `user`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone.
+   - Origin: `user`, `executor`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone.
    - A decision row may cite the `BLQ-n` it closes (decisions may cite retired ids, like the log); apply § 5 "Closed" for the blocker itself.
 2. **Supersedes an earlier decision?** Only when the new decision replaces the old one's choice on the same question (the old row's Decision would now be answered differently). Touching the same deliverable, or making the old choice moot, is not enough. If unsure, ask the user, recommending "not superseded". When it does supersede, set the old row's Status to `<vocab.decisionSupersededBy> DEC-NNN` (the new ID). Status and Revisit when are the only cells of an old row that may change.
 3. Then whatever uses it: `state.md` (remove the pending item it resolves, adjust panel Next step and `now`; the strategy's Open questions entry for it stays until the next approved revision, § 9), `requirements.md` (a coverage change that touches no card: `out-of-scope: <reason citing DEC-NNN>`, or `needs-clarification`), `critical-path.md` (a changed gate, then refresh the next milestone per track, Common). A decision that forbids an action → also § 13. Changes to a card wait for the revision.
+   - **A pending decision that affects a gate:** update the decision-trail row in `critical-path.md` and the panel Next step line of the affected deliverables so both say the gate waits for that `DEC`. The checker does not detect this; it is a text update.
    - **A deliverable discarded** (the decision drops a whole card): panel Status `vocab.discardedStatus` (Common), Next step cites the DEC; the card keeps its place and gets priority `Won't` in the strategy **only after the revision is approved**; until then the `pending` approval item names the card ("(user) approve strategy v<N+1> (absorbs DEC-…; discards E<n>)"). Mark the node discarded in `critical-path.md` and remove gates that only it held. Re-check REQ coverage (next bullet). The revision touches these strategy sections: overview of deliverables, phases (membership and exit criteria), non-goals (add what was dropped when it is now out of scope), coverage summary, and the card itself (priority `Won't`, pieces and `reqs` left as history). Include them in the proposal (§ 9).
    - **A piece dropped or moved:** list the `REQ` that piece served (the card's `reqs` and the `requirements.md` rows whose Deliverables name that card) and re-check each one's coverage. Still served by another piece or deliverable → leave it and say so in the revision proposal. No longer served → set Coverage to `<vocab.coverageOutOfScope>: <reason citing DEC-NNN>` if the decision drops it from scope, otherwise `vocab.coverageNeedsClarification`; if unclear which, ask (recommend `needs-clarification`). Card `reqs` change only in the revision.
 4. `log.md`: "DEC-NNN recorded: <short decision>", evidence `` `decisions.md` ``.
@@ -69,9 +77,11 @@ Checker: a filled Contradicts on an in-force decision → `contradiction-unabsor
 
 Checker: `bad-status` (word not in vocab), `integrated-no-sha`, `sha-missing`, `now-limit`, `cell-limit`.
 
+The last piece of a deliverable closing also runs § 19.
+
 ## 3. Integration
 
-**When:** a branch with roadmap work is merged into the configured `integrationBranch`.
+**When:** a branch with roadmap work is merged into the configured `integrationBranch`. With `releaseBranch` set, a merge into that branch is § 15 instead, and the later merge of the release branch into `integrationBranch` is § 16.
 
 1. Get the SHA that entered the integration branch (the merge commit, or the merged tip for a fast-forward or squash result); ask for it if git cannot show it. Verify with `git cat-file -e <sha>^{commit}` and `git merge-base --is-ancestor <sha> <ref>`, where `<ref>` is the local `integrationBranch` or `origin/<integrationBranch>`: either one passing is enough, so a stale local branch is fine (the checker also accepts either). Neither passes → do not mark integrated; tell the user.
 2. `state.md` panel: the integrated word (position 6 of `deliverableStatuses`) for the pieces it carries (never set a released status here: that goes through § 12, which also records the package). Put that SHA in backticks in Evidence, alongside any branch SHAs of pieces not yet integrated. The checker needs at least one Evidence SHA that is an ancestor of the integration ref when the row has an integrated segment; the other SHAs only need to exist.
@@ -96,15 +106,16 @@ Checker: `branch-deleted-exists`, `branch-live-missing`.
 
 **Opened:**
 
-1. `state.md` blockers: next `BLQ-n` (search `state.md`, `log.md`, `critical-path.md` and the strategy). Columns: Blocker, Affects (`E<n>` list), Since (the day it started), Unblocks when (a condition).
+1. `state.md` blockers: next `BLQ-n` (search `state.md`, `log.md`, `critical-path.md` and the strategy). Columns: Blocker, Affects (`E<n>` list), Since (the day it started), Unblocks when (a condition). A blocker with a deadline writes it as `(due YYYY-MM-DD)` in Unblocks when, a date the user or a source supplied. The `blocker-overdue` warning (the date is before today) is handled by proposing to escalate to the blocker's owner; the checker never closes it.
 2. `state.md`: a deliverable the blocker blocks gets the status `vocab.blockedStatus` (Common; a blocked segment cites the `BLQ-n` in its note or Next step). Before overwriting, record the previous status in the BLQ row ("Unblocks when" or note, for example "restores E2 to `piece 1: on-branch`"). Also update Next step of the affected deliverables and `now`. If the blocker forbids an action, also § 13.
+   - Exception (§ 17, acceptance pending): the row is already in segments (`code: ...; acceptance: blocked (BLQ-n)`). Keep the segments when opening; do not overwrite the row with the bare blocked word, and record no previous status to restore.
 3. `critical-path.md`: the gate it holds, then refresh the next milestone per track (Common).
 4. `log.md`: "BLQ-n opened: <short>", evidence a path, URL or SHA.
 
 **Closed:**
 
 1. If a decision closed it, apply § 1 first.
-2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log and the strategy may keep citing a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status; update panel and `now`; drop `donot` items citing this `BLQ-n`.
+2. `state.md`: read the previous status recorded in the BLQ row, then remove the row (the log keeps the history; the log and the strategy may keep citing a retired `BLQ-n`); restore each affected deliverable from `vocab.blockedStatus` to that previous status (exception, § 17: a row in segments only has its `acceptance` segment updated; `code` and the other segments stay); update panel and `now`; drop `donot` items citing this `BLQ-n`.
 3. `critical-path.md`: remove the gate node, then refresh the next milestone per track (Common).
 4. The strategy is not edited: it may keep citing the closed `BLQ-n`, and its Open questions entry for it is cleaned at the next approved revision (§ 9).
 5. `log.md`: "BLQ-n closed: <how>", evidence. No SHA or path (a phone call) → cite `decisions.md` or `state.md`, whichever now holds the change.
@@ -245,3 +256,55 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 4. Record per § Piece or step closed. Evidence = the progress file path in backticks plus the commit SHAs it records (each verified with `git cat-file -e <sha>^{commit}`). Read the current branch with `git branch --show-current` and keep its "in flight" row `live`.
 5. Ask the user only for what the progress file cannot tell, such as an integration SHA (a plan that completed on a branch is `on-branch`, not integrated) or an ambiguous step-to-piece mapping.
 6. If a piece or the deliverable closed, run the end-of-piece check (Step 6). Hand back to plan-coordinator with the Step 7 report; it continues with the next wave.
+
+## 15. Merge into the release branch
+
+**When:** `releaseBranch` is set in `roadmap.config.json` and a deliverable (or piece) merges into it. Without `releaseBranch`, use § 3.
+
+1. Get the merge SHA on the release branch and verify it with `git cat-file -e <sha>^{commit}`.
+2. `state.md` panel: Status is the on-branch word (position 5 of `deliverableStatuses`), never the integrated word. Evidence cites the merge SHA in backticks. Next step names the release branch (for example "release/2026-11 merges into main after the release gate"). Write that note in Next step only, not again per deliverable in another cell or in `now`.
+3. `log.md`: "E<n> merged into <releaseBranch>", evidence the merge SHA. Several deliverables merged in one go → one row listing them (Common).
+4. Refresh `critical-path.md` and the header line (Common).
+
+Checker: `integrated-no-sha` does not fire for the on-branch word; the `integrated-pending` warning appears later, once the release branch reaches `integrationBranch` (§ 16).
+
+## 16. Release branch integrated
+
+**When:** the release branch is merged into `integrationBranch`, or the checker warns `integrated-pending` (a row whose segments are all on-branch and whose SHAs are already ancestors of the integration branch). At cold start, that warning leads to proposing this recipe to the user.
+
+1. Take one SHA that entered the integration branch (the merge or merged tip); verify as in § 3 step 1. Ask for it if git cannot show it.
+2. `state.md` panel: turn every affected row, in one batch, to the integrated word (position 6), and cite that SHA in Evidence next to the existing ones. Only rows whose pieces the merge carried change; others stay.
+3. `state.md` "in flight": the release branch stays live while it exists; deleted → § 4.
+4. `log.md`: one row "E<a>, E<b> integrated into <integrationBranch> via <releaseBranch>", evidence the SHA.
+5. Refresh `critical-path.md`, then § 2 step 4 (phase exit criteria) and the header line.
+
+Checker: `not-integrated`, `integrated-no-sha`; `integrated-pending` should disappear.
+
+## 17. Acceptance pending
+
+**When:** the code of a deliverable is ready but the acceptance (usually human, for example a client sign-off or a smoke test in an environment nobody has yet) is not done.
+
+1. `state.md` panel Status in segments: `code: on-branch; acceptance: blocked (BLQ-n)` (words from `vocab`; segment rules in formats.md § 4). The `BLQ-n` is a real blockers row: open it per § 5 if it does not exist.
+2. Evidence cites the code SHA and the gate; Next step names who must accept and what the evidence will be.
+3. Human acceptance is never recorded as done without evidence: a sign-off message, a path to the signed record, or a command output the user supplies. No evidence → the acceptance segment stays blocked.
+4. When the evidence arrives: update the segment, close the blocker (§ 5), log the acceptance with that evidence. If the card's acceptance items carry `{verify: ...}` tags, the item's tag and evidence must match what was shown (`ac-verify-invalid` / `ac-verify-missing` are the warnings to watch).
+
+## 18. Executor decision
+
+**When:** an executor (an implementing agent or a developer working a plan) made a choice the roadmap did not settle, such as picking a library, a name or a trade-off.
+
+1. `decisions.md`: one row per choice (never bundle two choices in one row). Origin `executor`. Status is the `vocab.decisionPending` word until the owner ratifies it. Discarded alternative: what the executor says it dropped, else `none stated`.
+2. If the choice diverges from an existing in-force `DEC`, fill Contradicts with that ID. The executor never replaces an existing decision alone: the row goes to the owner, and the old row stays in force until the owner ratifies (§ 1 step 2 then supersedes it).
+3. `state.md` `pending`: one item "(owner) ratify DEC-NNN: <choice>".
+4. If the pending decision affects a gate, update the critical-path decision-trail row and the panel Next step (§ 1 step 3).
+5. `log.md`: "DEC-NNN recorded (pending ratification)", evidence `` `decisions.md` ``. On ratification: Status to the in-force word, remove the pending item, log it.
+
+Checker: `contradiction-unabsorbed` once a filled, in-force row exists.
+
+## 19. Deliverable closed: criteria check
+
+**When:** the last piece of a deliverable closes (§ 2 step 4) or a review of the deliverable is handed back.
+
+1. Compare the card's `acceptance` items with the criteria of the spec the executor worked from. Every criterion in the spec that is added, weakened or reinterpreted relative to the card becomes a `pending` item "(owner) card says <A>, spec says <B>: confirm"; never edit the card (rule 6 of SKILL.md).
+2. A review finding labelled "out of scope" becomes a `pending` item with an owner, never stays only in the review text. Someone else's `BLQ`/`DEC` that already holds it counts as the owner: cite it instead of adding an item.
+3. Log the comparison result in the closing `log` row ("criteria compared: none changed" is a valid result).

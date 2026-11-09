@@ -71,13 +71,13 @@ The folder is the directory holding `roadmap.config.json`. Take it, in this orde
 
 Read, before anything else:
 
-1. `roadmap.config.json`: file names, strategy path, `integrationBranch`, `vocab` (exact, case-sensitive words), `tracks`, `limits`, `formatVersion`.
+1. `roadmap.config.json`: file names, strategy path, `integrationBranch`, `releaseBranch` (optional), `vocab` (exact, case-sensitive words), `tracks`, `limits`, `formatVersion`.
 2. `state.md`: the header line (strategy version + date), `now`, `panel`, `blockers`, `pending`, `inflight`, and the optional `donot` and `releases` blocks when present.
 3. The 10 newest rows of the `log` block (the top 10 rows: the log is newest first).
 4. The `decisions` rows whose Status is `vocab.decisionPending`, plus any in-force row whose Contradicts cell is filled.
 5. The strategy's `version` anchor and the cards (`card` blocks) of the deliverables this event touches.
 
-Then apply layers 1 and 3 (Steps 2 and 3) before writing anything.
+Then apply layers 1 and 3 (Steps 2 and 3) before writing anything. If the checker run in Step 2 or at cold start shows `integrated-pending` (rows still on-branch whose SHAs already reached the integration branch), propose the batch turn to the integrated word (`events.md` § 16) instead of leaving the panel stale.
 
 ### Step 2: Layer 1 -- refresh the vendored checker
 
@@ -112,6 +112,11 @@ Three numbers: `formats.md` formatVersion (its title, `# Roadmap format contract
 | A decision is made | `decisions.md` first (Contradicts filled per the contradiction rule), then whatever uses it (`state.md`, `requirements.md`, `critical-path.md`), then `log.md` | § Decision |
 | A piece or plan step closes | `state.md` panel (and `now`), `log.md` | § Piece or step closed |
 | A branch is integrated | `state.md` panel + "in flight", `log.md` | § Integration |
+| A deliverable merges into `releaseBranch` | `state.md` panel (on-branch word, merge SHA, branch in Next step), `log.md` | § Merge into the release branch |
+| The release branch is integrated (or `integrated-pending`) | `state.md` panel (batch to the integrated word) + "in flight", `log.md` | § Release branch integrated |
+| Code ready, acceptance pending | `state.md` panel (`code: ...; acceptance: blocked (BLQ-n)`) + blockers, `log.md` | § Acceptance pending |
+| An executor made a choice nobody settled | `decisions.md` (Origin `executor`, pending), `state.md` pending, `log.md` | § Executor decision |
+| The last piece of a deliverable closes | card vs spec criteria; `state.md` pending, `log.md` | § Deliverable closed: criteria check |
 | A branch is deleted (or started) | `state.md` "in flight", `log.md` | § Branch deleted |
 | A blocker opens or closes | `state.md` blockers (+ panel, `now`), `critical-path.md`, `log.md` | § Blocker opened or closed |
 | A paid run or a measurement | `measurements.md` (only when `files.measurements` is set), `log.md` | § Measurement |
@@ -144,7 +149,13 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 `node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing. If `node` is missing or older than 18, do not claim the folder verified: stop and hand back "checker not run (Node ≥18 missing)" in the Checker line of the report.
 
 - **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask, with a recommended fix. If no user answer is available (a caller like plan-coordinator, or the user defers), hand back `errors remain: <codes>` with one recommended fix per error (for example "now-limit: drop item 6, the least urgent") and do not claim 0 errors. Never hide an error.
-- **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run.
+- **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run. What to do with the newer warnings:
+  - `integrated-pending`: propose the batch turn to the integrated word (`events.md` § 16).
+  - `pending-limit`: group `pending` by origin and retire items that already have an owner elsewhere (`events.md` Common, lean panel).
+  - `blocker-overdue`: propose escalating to the blocker's owner (`events.md` § 5); do not close it.
+  - `decisions-cell-long`: informational (`decisions.md` is append-only); keep new rows short, do not rewrite old ones.
+  - `ac-verify-missing` / `ac-verify-invalid`: acceptance `{verify: ...}` tags in the strategy; report them and, on the next approved revision, add or fix the tags (`blocked` needs a `BLQ-n`, executable kinds need a command). Never edit the strategy outside a revision.
+  - `gate-no-command`: the strategy's gates table has a row with no command; report it and add it to the next revision.
 
 ### Step 6: Revision
 

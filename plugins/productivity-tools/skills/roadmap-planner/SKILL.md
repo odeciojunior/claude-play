@@ -60,7 +60,7 @@ Copy this checklist into your working notes and tick it off:
 |---|------|-------|
 | Clarification | ≤5 questions per round, more rounds with consent | ≤3 questions, one round |
 | Sources | Discovered and read (Step 1) | Only those passed |
-| Card | All attributes of `formats.md` §5 | Acceptance (≥2), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track` defaults to the first track (`engineering`), but use `measurement`, `external` or `decisions` when the card is clearly that kind, `critical` from the DAG; critical cards still get ≥1 risk line |
+| Card | All attributes of `formats.md` §5 | Acceptance (≥2, each with its verification tag), `depends`, `reqs`; defaults `priority=Must`, `size="not estimated"`, `track` defaults to the first track (`engineering`), but use `measurement`, `external` or `decisions` when the card is clearly that kind, `critical` from the DAG; critical cards still get ≥1 risk line |
 | Fresh-context reviewer | Yes (Step 7) | No; the handoff says none ran |
 | REQ/SRC traceability, vendored checker, tracker | Yes | Yes |
 
@@ -76,6 +76,7 @@ Also settle now:
 
 - **Language** of the documents (Rule 7).
 - **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask which branch the work will integrate into (default `main`); the checker then skips git checks with one `no-git` warning, which is expected and listed in the handoff.
+- **Release branch** (config `releaseBranch`): ask whether deliverables merge into an intermediate release branch before the integration branch. If yes, record its name; if no, omit the key.
 
 ### Step 1: Intake and sources
 
@@ -95,7 +96,7 @@ Also settle now:
 
 ### Step 2: Clarify
 
-Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as "Open questions" entries in the strategy, prefixed `E<n>:`, for `superpowers:brainstorming` (`clarify.md` §8).
+Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask capacity and date constraints before or together with the scope decisions (showing the accumulated cost when a sourced estimate exists), settle the executor autonomy policy (`clarify.md` §7), ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as "Open questions" entries in the strategy, prefixed `E<n>:`, for `superpowers:brainstorming` (`clarify.md` §8).
 
 Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give.
 
@@ -105,7 +106,7 @@ Extract `REQ-NNN` from the source summaries and the answers, per `references/dec
 
 ### Step 4: Decompose
 
-Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, a definition of done and, when critical, at least one risk. Light mode: cards are minimal (acceptance ≥2, `depends`, `reqs`) with the defaults of the Step 0 table; critical cards still get ≥1 risk.
+Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, each with its verification tag, a definition of done citing gate IDs and, when critical, at least one risk; split a deliverable that mixes automatic work with human acceptance or an external environment (`decompose.md` §10). A requirement that closes a class of defects needs the closed ID list and its sweeping gate (`decompose.md` §11). Light mode: cards are minimal (acceptance ≥2, each still with its verification tag, `depends`, `reqs`) with the defaults of the Step 0 table; critical cards still get ≥1 risk.
 
 Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways. A `needs-clarification` requirement still lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed and keeps it traced.
 
@@ -116,6 +117,8 @@ MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (
 ### Step 6: Write the files
 
 Write every file listed in `${CLAUDE_SKILL_DIR}/references/decompose.md` §13, each from its template in `references/formats.md` and in the project's language.
+
+**Gates.** Always write the strategy's "Gates and verification" section (the gates table of `formats.md`), copying the commands from the project's CLAUDE.md and the sources; never invent one. The cards' Definition of done cites the gate IDs. Write the Metrics and Flags sections only when they are not empty. New roadmaps write `limits.pendingItems: 20` in the config.
 
 **Volatile values.** A value that changes over time (counts, test totals, versions, "current" status) is written once, with the command that measures it and the date; every other file points to that place instead of repeating the value.
 
@@ -144,6 +147,7 @@ Report to the user:
   1. `superpowers:brainstorming` (runs per deliverable, not for the whole roadmap). Start it with: "Brainstorm deliverable E<n> of the roadmap at <folder>; its card is in <strategy> (section E<n>): acceptance criteria, REQs <ids>, depends on <ids>. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite E<n>."
   2. `superpowers:writing-plans`: tell it to add the header line `**Roadmap:** <folder>` (it has no such slot; plan-coordinator reads it to call `roadmap-tracker` after each wave). It saves to `docs/superpowers/plans/`, and `plan-coordinator` finds plans there too.
   3. Execution: writing-plans offers only subagent-driven or native execution; when the roadmap is tracked, pick `plan-coordinator` as the executor.
+- **How to execute each deliverable**: `plan-coordinator` handles the plan of one deliverable at a time and approves its own execution map. It does not integrate branches and does not run several deliverables in one go; integration and the next deliverable are separate steps the user (or the owner) starts.
 - **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.
 
 The files stay in the working tree for the user to review and commit.

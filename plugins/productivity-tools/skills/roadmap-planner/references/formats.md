@@ -31,7 +31,7 @@ File names may be localized; the config maps roles to names. One fact lives in o
 
 ## 2. Config: `roadmap.config.json`
 
-All keys are required except the optional `vocab.releasedStatuses`, `vocab.blockedStatus` and `vocab.discardedStatus` (a new roadmap sets all three); only `files.measurements` may be `null`.
+All keys are required except the optional `vocab.releasedStatuses`, `vocab.blockedStatus`, `vocab.discardedStatus`, `releaseBranch` and `limits.pendingItems` (a new roadmap sets the first three and `limits.pendingItems`, and sets `releaseBranch` only when the project merges through an intermediate branch); only `files.measurements` may be `null`.
 
 ```json
 {
@@ -39,6 +39,7 @@ All keys are required except the optional `vocab.releasedStatuses`, `vocab.block
   "language": "en",
   "strategy": "../2026-01-01-roadmap-sample.md",
   "integrationBranch": "main",
+  "releaseBranch": "release/2026-01",
   "files": { "readme": "README.md", "state": "state.md", "decisions": "decisions.md", "log": "log.md",
              "criticalPath": "critical-path.md", "measurements": null, "sources": "sources.md", "requirements": "requirements.md" },
   "vocab": {
@@ -52,7 +53,7 @@ All keys are required except the optional `vocab.releasedStatuses`, `vocab.block
     "markers": ["ASSUMPTION", "UNSOURCED"], "bannedPhrases": ["this commit"]
   },
   "tracks": ["engineering", "decisions", "external", "release", "measurement"],
-  "limits": { "nowItems": 5, "cellChars": 300 }
+  "limits": { "nowItems": 5, "cellChars": 300, "pendingItems": 20 }
 }
 ```
 
@@ -60,13 +61,15 @@ All keys are required except the optional `vocab.releasedStatuses`, `vocab.block
 - `vocab` values are exact strings. Localize them freely (`"integrada"`, `"vigente"`, `"substituída por"`) and use the same words in the files. Comparison is exact and case-sensitive.
 - `formatVersion` changes only with a migration recipe in `roadmap-tracker/references/events.md`. A checker older than the folder's `formatVersion` errors instead of guessing.
 - `deliverableStatuses` is positional: its entries keep the canonical order of the default list above (1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the `blockedStatus` and `discardedStatus` words). A localized roadmap replaces the words but keeps the order, so the Nth word always means the Nth canonical status. The checker does not verify the order; the planner writes it and the tracker relies on it.
+- `releaseBranch` (optional): a non-empty string naming the intermediate branch where deliverables merge before `integrationBranch`. The checker only validates the value (an empty or non-string value is an `ERROR config`); it does not check that the branch exists. Convention for a merge into it: section 6.
+- `limits.pendingItems` (optional; a new roadmap sets 20): maximum items in the `pending` block. When present, a longer block gives the warning `pending-limit`; when absent nothing is checked. Like every `limits` value it must be a positive number.
 - `integratedStatuses` is the subset of statuses that claim code is on the integration branch.
 - `releasedStatuses` (optional; default `["released", "measured"]` when absent) is the subset of statuses that claim a deliverable shipped in a package; it matters only when `state.md` has a `releases` block (section 6).
 - `blockedStatus` and `discardedStatus` (optional; defaults `"blocked"` and `"discarded"`) are the localized words the tracker writes for those two states. When present, each must be a non-empty string contained in `deliverableStatuses`. A folder created before 1.3.0 adds the word to `deliverableStatuses` and these keys before first use.
 - `releasedStatuses` and `integratedStatuses`, when present, must only contain elements of `deliverableStatuses`. When `releasedStatuses` is absent and neither default (`released`, `measured`) is in `deliverableStatuses`, the checker warns `vocab-default-missing` (only if a `releases` block exists): the released-package check is then inactive, so set `releasedStatuses` to the localized words.
 - Two statuses beyond the delivery line: `blocked` (a `blocked` segment should cite a `BLQ-n` in its note or in Next step) and `discarded` (dropped by a `DEC`; the card is kept, with priority `Won't`). Older format-1 folders that lack them in `deliverableStatuses` keep working; add them to use them.
 - Card priority is not configurable: `Must`, `Should`, `Could`, `Won't`.
-- The checker validates the config before reading anything else, and reports `ERROR config: <key> ...` (exit 1) when: `formatVersion` is not an integer >= 1; any vocab string or array element, or any `tracks` element, is empty or not a string; `deliverableStatuses` or `tracks` is empty; a `limits` value is not a positive number (the string `"5"` is rejected); a `files` value (or `strategy`) is absolute or escapes its allowed root (`files` stay inside the roadmap folder; `strategy` may be `../<file>` but must stay inside the git top level when git resolves it, or inside the folder's parent when there is no git); a `releasedStatuses`, `integratedStatuses`, `blockedStatus` or `discardedStatus` value is not in `deliverableStatuses`; two roles (including `strategy`) point to the same file.
+- The checker validates the config before reading anything else, and reports `ERROR config: <key> ...` (exit 1) when: `formatVersion` is not an integer >= 1; any vocab string or array element, or any `tracks` element, is empty or not a string; `deliverableStatuses` or `tracks` is empty; a `limits` value is not a positive number (the string `"5"` is rejected); a `files` value (or `strategy`) is absolute or escapes its allowed root (`files` stay inside the roadmap folder; `strategy` may be `../<file>` but must stay inside the git top level when git resolves it, or inside the folder's parent when there is no git); `releaseBranch` is present but empty or not a string; a `releasedStatuses`, `integratedStatuses`, `blockedStatus` or `discardedStatus` value is not in `deliverableStatuses`; two roles (including `strategy`) point to the same file.
 
 ## 3. Anchors and tables
 
@@ -86,8 +89,9 @@ Tables inside a block are **position-mapped**: the checker ignores header text a
 |---|---|---|
 | strategy | `version` | single comment: `1.0 2026-01-01` |
 | strategy | `card` (attrs `id phase track priority size depends reqs critical`) | one per deliverable; wraps the card |
-| strategy, inside a card | `acceptance` | ordered list; each top-level item is one criterion |
+| strategy, inside a card | `acceptance` | ordered list; each top-level item is one criterion, optionally ending in a verification tag (section 5) |
 | strategy, inside a card | `risks` | list; each item "risk -> mitigation" |
+| strategy (optional) | `gates` | ID, Command, Environment, When, Baseline |
 | state | `now` | ordered list |
 | state | `panel` | Deliverable, Status, Evidence, Next step |
 | state | `blockers` | ID, Blocker, Affects, Since, Unblocks when |
@@ -110,14 +114,15 @@ An empty table has its header and separator only. A literal `|` inside a cell is
 
 - IDs: `E<n>` (deliverable), `REQ-NNN`, `SRC-NN`, `DEC-NNN`, `BLQ-n`. Never reused, never renumbered. The checker flags any cited ID without a definition (`unknown-id`) and any duplicate definition. Because IDs are never reused, `log.md` (append-only history) may cite a retired `BLQ-n` or a dropped `E<n>` without error; `decisions.md` is append-only too and gets the same allowance. The strategy may also keep citing a retired `BLQ-n` (for example in "Where we are" or an Open questions entry) until the next approved revision, because closing a blocker removes its row but the strategy changes only through a revision; it may not cite a dropped `E<n>`. `REQ`, `SRC` and `DEC` citations in all three must still exist. IDs inside fenced code blocks are ignored, except ` ```mermaid ` blocks, which are checked.
 - Status cell (panel): segments separated by `;`, each `[<label>:] <status>[ (note)]`, for example `piece 1: integrated; piece 2: spec (waiting on DEC-004)`. Notes must not contain `;` (nested balanced parentheses are fine). Every status must be in `vocab.deliverableStatuses`.
-- Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). In a shallow clone these git checks are skipped with one `shallow-clone` warning.
+- Evidence: commit SHAs (7 to 40 hex digits), paths and URLs, each in backticks. A backticked SHA in the panel must exist (`sha-missing`, error). In `log.md` a missing SHA is only a warning: the append-only log may cite branch commits that vanish after a squash, a rebase or a fresh clone, and the row cannot be edited. A panel row with an `integratedStatuses` status must have at least one SHA (`integrated-no-sha`) and at least one of its SHAs must be an ancestor of the integration branch or of `origin/<integrationBranch>` (the other SHAs, for example a sibling piece still on a branch, only need to exist). The opposite lag is a warning: a row whose every status segment is the on-branch word (`deliverableStatuses[4]`, the fifth canonical status), with at least one existing SHA where every existing SHA is an ancestor of the integration branch or of `origin/<integrationBranch>`, gives `integrated-pending` (the code is already integrated, so the status should move on). A row with any other segment, for example `code: on-branch; acceptance: blocked (BLQ-2)`, never triggers it. In a shallow clone these git checks are skipped with one `shallow-clone` warning.
 - Coverage cell: the `coverageCovered` word (and at least one deliverable in Deliverables), `coverageOutOfScope: <reason>` (reason required), or the `coverageNeedsClarification` word.
 - Decision Status: `decisionInForce`, `decisionPending`, or `decisionSupersededBy DEC-NNN` (the target must exist).
 - Contradicts cell: empty, `-` or `—` when the decision fits the roadmap; otherwise it names the section or deliverable it overrides. An in-force decision with a filled cell is *absorbed* once the strategy text cites its ID as a whole token (`DEC-001` is not absorbed by a citation of `DEC-0010`). The same `-` / `—` (meaning "none") is allowed in Discarded alternative and Revisit when.
 - Volatile values: a value that changes over time (counts, balances, quotas) is written once, together with the command that measures it and the date, and every other file points to that place instead of repeating the number.
 - Inflight Kind must be the `branchLive` or `branchDeleted` word (`bad-kind` otherwise).
 - Encoding: files must be UTF-8; invalid bytes produce a warning (`invalid-utf8`) and are replaced while reading.
-- Length: state and log cells at most `limits.cellChars`; `now` at most `limits.nowItems` items.
+- Length: state and log cells at most `limits.cellChars`; `now` at most `limits.nowItems` items. `decisions.md` is append-only, so a long cell there is never an error: one aggregated warning `decisions-cell-long` counts the rows with a cell above `limits.cellChars` and names the first few IDs.
+- Panel Evidence holds references only (SHAs, gate IDs, paths); counts and lists of resolved items belong in `log.md`.
 - Never write dates, durations, metrics or estimates that the user or a source did not supply. Unsourced claims carry `ASSUMPTION` or `UNSOURCED`; the checker reports their count in the strategy as a warning.
 
 ## 5. Strategy document and deliverable card
@@ -133,15 +138,16 @@ The strategy is versioned (v1.0, v1.1, ...), carries no state, and starts with t
 7. Deliverables overview (ID, title, phase, depends on)
 8. Phases: in order, each with its name (by outcome), entry criteria, exit criteria and deliverables
 9. Deliverable cards
-10. Metrics and targets (sourced only; otherwise "none supplied")
-11. Flags
-12. Cross-cutting risks
-13. Decisions: a pointer to `decisions.md`; cites a `DEC` only where it absorbs it
-14. External pending items
-15. Open questions
-16. Coverage summary
-17. Version history
-18. Sources: a pointer to `sources.md`
+10. Gates and verification: the `gates` table (below); a new roadmap always writes it
+11. Metrics and targets (sourced only; otherwise "none supplied"); may be omitted when empty
+12. Flags; may be omitted when empty
+13. Cross-cutting risks
+14. Decisions: a pointer to `decisions.md`; cites a `DEC` only where it absorbs it
+15. External pending items
+16. Open questions
+17. Coverage summary
+18. Version history
+19. Sources: a pointer to `sources.md`
 
 Strategy skeleton (headings translated into the project's language):
 
@@ -181,8 +187,15 @@ Strategy skeleton (headings translated into the project's language):
 ## Deliverables
 <one card per deliverable, see below>
 
+## Gates and verification
+<!-- roadmap:gates -->
+| ID | Command | Environment | When | Baseline |
+|---|---|---|---|---|
+| G1 | `<exact command, copied from the project CLAUDE.md or a source>` | <where it runs> | <every task, before merge, ...> | <expected result today> |
+<!-- /roadmap:gates -->
+
 ## Metrics and targets
-None supplied.
+None supplied. (Omit this section and Flags when empty.)
 
 ## Flags
 <feature flags or "none">
@@ -226,11 +239,11 @@ Pieces (vertical slices, each shippable alone):
 - Piece 2: ...
 
 <!-- roadmap:acceptance -->
-1. Given <context>, when <action>, then <observable result>.
-2. Given <context>, when <action>, then <observable result>.
+1. Given <context>, when <action>, then <observable result>. {verify: test; evidence: <exact command>}
+2. Given <context>, when <action>, then <observable result>. {verify: human; evidence: <who confirms, and where>}
 <!-- /roadmap:acceptance -->
 
-Definition of done: <verifiable condition>.
+Definition of done: <verifiable condition; cite the gate IDs that must be green, e.g. G1, G2>.
 
 <!-- roadmap:risks -->
 - <risk> -> <mitigation>
@@ -240,9 +253,13 @@ Definition of done: <verifiable condition>.
 
 The template is the first card; for later cards change `id`, list earlier cards in `depends` and add the matching `REQ` ids. Card attrs: `depends` and `reqs` are comma lists or `-`; `critical` is `true` or `false`; `track` is one of `tracks`; `priority` is MoSCoW; `size` is a range with its basis, or `"not estimated"`. At least one `REQ`, at least two acceptance items, one panel row per card. A critical card needs at least one risk (warning). Specs and plans are not in the card; the panel points to them.
 
+**Acceptance verification tag.** An acceptance item may end with ` {verify: <kind>[ BLQ-n]; evidence: <command or artifact>}`. Kinds: `test`, `smoke`, `integration` (evidence is an exact command that exits 0 only if the criterion holds), `human` (evidence names who confirms and where) and `blocked` (must cite a `BLQ-n`, for example `{verify: blocked BLQ-2; evidence: waits for the vendor key}`). The tag is stripped when reading an item, so it never changes the item count. Two warnings: `ac-verify-invalid` (unknown kind, `blocked` without a `BLQ-n`, empty evidence on `test`, `smoke` or `integration`, `BLQ-n` on a kind other than `blocked`, or a tag that is not closed, with no closing brace) and `ac-verify-missing` (one per card with untagged items). `ac-verify-missing` follows an adoption rule: it fires only when at least one acceptance item anywhere in the strategy carries a tag, so roadmaps written before 1.5.0 stay quiet until they adopt tags. A new roadmap tags every item.
+
+**Gates and verification.** The optional `gates` block (5 columns: ID, Command, Environment, When, Baseline; rows follow the normal `bad-row` rule) records the commands that prove a change is good. A new roadmap always writes it, copying the commands from the project `CLAUDE.md` and the sources; a card Definition of done cites gate IDs (`G1`). A row with an empty, `-` or `—` Command gives the warning `gate-no-command`. The section sits right after the cards.
+
 ## 6. State, decisions, log
 
-`state.md` is overwritten on every update: a header line with the strategy version and date (not checked by the script, but always present), then `now` (at most five items), `panel`, `blockers`, `pending` and `inflight`, plus the optional `donot` and `releases` blocks. Shape of a `now` item (guidance, not checked): `<action>. Runs: <who>. Approves: <who>. Depends on: <ids>.` Template:
+`state.md` is overwritten on every update: a header line with the strategy version and date (not checked by the script, but always present), then `now` (at most five items), `panel`, `blockers`, `pending` and `inflight`, plus the optional `donot` and `releases` blocks. Conventions (not checked): code ready with acceptance pending is written as panel segments, `code: on-branch; acceptance: blocked (BLQ-2)`; a merge into `releaseBranch` sets the on-branch word, cites the merge SHA in Evidence and names the branch in Next step; the `pending` block holds at most `limits.pendingItems` items. Shape of a `now` item (guidance, not checked): `<action>. Runs: <who>. Approves: <who>. Depends on: <ids>.` Template:
 
 ```markdown
 Strategy v<version> -- <ISO date>
@@ -283,11 +300,11 @@ Optional blocks of `state.md`; when absent the checker reports nothing:
 <!-- /roadmap:releases -->
 ```
 
-- `blockers`: when a deliverable is set to the blocked status, "Unblocks when" ends with "restores E<n> to <previous status>" (the status before it was blocked; a deliverable created blocked restores to the first `deliverableStatuses` word). Closing the blocker reads it back (`events.md` § 5).
+- `blockers`: an "Unblocks when" cell may carry `(due YYYY-MM-DD)`; once that date is before today the warning `blocker-overdue` appears (the checker takes today from the system clock). When a deliverable is set to the blocked status, "Unblocks when" ends with "restores E<n> to <previous status>" (the status before it was blocked; a deliverable created blocked restores to the first `deliverableStatuses` word). Closing the blocker reads it back (`events.md` § 5).
 - `donot` ("Do not do now"): a list; each item cites at least one `BLQ-n` or `DEC-NNN` (`donot-no-ref` otherwise). Cited IDs must exist (`unknown-id`).
 - `releases`: when the block exists, every panel row with a segment status in `vocab.releasedStatuses` must appear in the Deliverables cell of some row (`released-no-package`). A backticked Stamped SHA follows the panel SHA rules (it must exist: `sha-missing`, error). Cell length limits apply as in the rest of `state.md`.
 
-`decisions.md` is append-only, global IDs, never reused. Rows are never edited except Status (to `superseded by DEC-NNN`) and Revisit when. One row per choice: the decision, the discarded alternative, who or what originated it (`SRC`, `REQ` or "user"). Template:
+`decisions.md` is append-only, global IDs, never reused. Rows are never edited except Status (to `superseded by DEC-NNN`) and Revisit when. One row per choice: the decision, the discarded alternative, who or what originated it (`SRC`, `REQ`, "user" or `executor`). A decision taken by an executor (Origin `executor`) has the `decisionPending` word as Status until the owner ratifies it. A decision that diverges from an existing `DEC`, or that changes a gate, fills Contradicts where it applies and is never taken by the executor alone: it stays pending for the owner. Template:
 
 ```markdown
 # Decisions
@@ -317,7 +334,7 @@ Optional blocks of `state.md`; when absent the checker reports nothing:
 
 `requirements.md`: one `REQ-NNN` row per requirement, traced to `SRC`/`DEC`, with Deliverables and Coverage. Requirement and card must agree: if a requirement lists `E2`, the `E2` card lists the requirement (warning `req-card-asymmetry` otherwise).
 
-`critical-path.md`: a Mermaid graph of deliverables and gates plus the next gate per track. Gates may appear as nodes: blockers (`BLQ-n`, defined in `state.md`) and decision gates (`DEC-NNN`, defined in `decisions.md`). Write a gate node with a hyphen-free node id and the real ID in its label (`BLQ1["BLQ-1: <gate>"]`), because the checker reads IDs in Mermaid labels and every cited ID must exist. Ordering only; no dates unless the user supplied them. The checker only verifies that the IDs cited exist.
+`critical-path.md`: a Mermaid graph of deliverables and gates plus the next gate per track; that line points to `state.md` instead of restating state. Gates may appear as nodes: blockers (`BLQ-n`, defined in `state.md`) and decision gates (`DEC-NNN`, defined in `decisions.md`). Write a gate node with a hyphen-free node id and the real ID in its label (`BLQ1["BLQ-1: <gate>"]`), because the checker reads IDs in Mermaid labels and every cited ID must exist. Ordering only; no dates unless the user supplied them. The checker only verifies that the IDs cited exist.
 
 `measurements.md` (optional): runs, costs and measurement milestones. Recorded and Billed are separate columns.
 
@@ -423,10 +440,12 @@ Errors:
 Warnings:
 
 - `contradiction-unabsorbed`, `needs-clarification`, `critical-no-risk`, `vocab-default-missing`, `markers`, `req-card-asymmetry`.
+- Verification and gates (since 1.5.0): `ac-verify-missing`, `ac-verify-invalid`, `gate-no-command`.
+- Limits and dates (since 1.5.0): `pending-limit` (the `pending` block is longer than `limits.pendingItems`), `blocker-overdue` (a `(due YYYY-MM-DD)` date has passed), `decisions-cell-long` (one aggregated warning for `decisions.md` rows with a cell above `limits.cellChars`).
 - `unclosed-fence` (a fenced code block never closes), `invalid-utf8` (a file has invalid UTF-8 bytes).
-- Git: `no-git` (not inside a git repository), `git-unavailable` (git is missing from PATH or failed for a reason other than "not a git repository"), `shallow-clone`, `integration-branch-missing`. With `--require-git`, `no-git` and `git-unavailable` are errors.
+- Git: `no-git` (not inside a git repository), `git-unavailable` (git is missing from PATH or failed for a reason other than "not a git repository"), `shallow-clone`, `integration-branch-missing`, `integrated-pending` (section 4). With `--require-git`, `no-git` and `git-unavailable` are errors.
 - `checker-stale` (a newer checker exists in the plugin cache).
 
-The `integration-branch-missing` warning appears only when a panel row claims an integrated status with commit evidence and neither `<integrationBranch>` nor `origin/<integrationBranch>` exists.
+The `integration-branch-missing` warning appears only when a panel row claims an integrated or on-branch status with commit evidence and neither `<integrationBranch>` nor `origin/<integrationBranch>` exists.
 
 Performance: all commit SHAs are resolved with one `git cat-file --batch-check` process; ancestry checks switch to one `git rev-list` listing after a few single checks, so large logs do not cost one process per SHA.

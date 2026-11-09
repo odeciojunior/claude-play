@@ -3,6 +3,7 @@
   "language": "en",
   "strategy": "strategy.md",
   "integrationBranch": "main",
+  "releaseBranch": "release/sample",
   "files": {
     "readme": "README.md",
     "state": "state.md",
@@ -28,5 +29,5 @@
     "bannedPhrases": ["this commit"]
   },
   "tracks": ["engineering", "decisions", "external", "release", "measurement"],
-  "limits": { "nowItems": 5, "cellChars": 300 }
+  "limits": { "nowItems": 5, "cellChars": 300, "pendingItems": 20 }
 }

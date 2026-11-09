@@ -127,7 +127,9 @@ Never a point estimate, never a duration, never a number without a basis.
 
 - At least two criteria per card, Given-When-Then, in plain language a stakeholder can check without reading code: "Given <context>, when <action>, then <observable result>".
 - Criteria describe behaviour, not implementation. No unsourced numbers in them (Rule 2 of `SKILL.md`).
-- The definition of done is one verifiable condition beyond acceptance (for example "acceptance passes on the integration branch").
+- Every criterion carries the verification tag defined in `formats.md` (kind and evidence). A criterion that can be tested by a command is `test`, `smoke` or `integration`, never `human` or `blocked`; `human` is for judgment only a person can give, `blocked` cites its `BLQ-n`.
+- Split a deliverable that mixes automatic work with human acceptance or an external environment, so each piece closes on its own kind of evidence.
+- The definition of done is one verifiable condition beyond acceptance (for example "acceptance passes on the integration branch"), citing the gate IDs from the "Gates and verification" section. It separates "within the deliverable" from "depends on an owner or date".
 - Each risk is "risk -> mitigation"; the mitigation is an action, not a hope.
 
 ## 11. Coverage pass
@@ -137,9 +139,10 @@ Before writing the files:
 1. **Forward**: every `REQ` lists ≥1 deliverable with coverage `covered`, or is `out-of-scope: <reason>`, or `needs-clarification` with an open question. A `needs-clarification` requirement lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed.
 2. **Backward**: every card's `reqs` lists ≥1 `REQ`.
 3. **Symmetry**: if `REQ-004` lists `E2`, the `E2` card lists `REQ-004`, and the other way round.
-4. **Sources consumed**: every `SRC` is cited by at least one `REQ` or `DEC`, or the strategy says why it was read but not used.
+4. **Closed classes**: a requirement that closes a class of defects ("all high findings closed") cites the closed list of IDs in the source and the gate that sweeps it. Without the list, its coverage is `needs-clarification`.
+5. **Sources consumed**: every `SRC` is cited by at least one `REQ` or `DEC`, or the strategy says why it was read but not used.
 
-The checker verifies 1 to 3 mechanically; 4 and the quality of each criterion are for you and the reviewer.
+The checker verifies 1 to 3 mechanically; 4, 5 and the quality of each criterion are for you and the reviewer.
 
 ## 12. Light mode
 
@@ -151,8 +154,8 @@ Each file is written from its template in `formats.md`, in the project's languag
 
 | File | Content at creation | formats.md |
 |------|---------------------|------------|
-| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, all 18 sections (including Phases), one card per deliverable | §5 |
-| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits | §2 |
+| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, every section of the template (including Phases and "Gates and verification"; Metrics and Flags may be omitted when empty), one card per deliverable | §5 |
+| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, `releaseBranch` when Step 0 found one, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits (with `pendingItems: 20`) | §2 |
 | `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
 | `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (the first `deliverableStatuses` word; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2, and that BLQ row's "Unblocks when" records "restores E<n> to <the first `deliverableStatuses` word>", which `events.md` § 5 reads on closing), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
 | `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
