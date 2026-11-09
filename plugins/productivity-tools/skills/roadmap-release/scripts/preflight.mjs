@@ -68,8 +68,58 @@ export function effectiveMaxParallel(cfg, requested) {
   return Math.max(1, Math.floor(n));
 }
 
-function subcommands(cmd) {
-  return String(cmd).split(/&&|\|\||;|\|/).map((s) => s.trim()).filter(Boolean);
+// Index of the closer matching an opener at `from` (just after it), quote-aware; -1 when unbalanced.
+function findClose(s, from, open, close) {
+  let depth = 1;
+  let q = null;
+  for (let i = from; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === '\\' && q !== "'") { i += 1; continue; }
+    if (q) { if (c === q) q = null; continue; }
+    if (c === "'" || c === '"') q = c;
+    else if (open !== close && c === open) depth += 1;
+    else if (c === close) { depth -= 1; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// Splits a shell line into the subcommands Claude Code evaluates separately: separators are
+// newline ; & && | || |& outside quotes, subshell parens are dropped, and the contents of
+// $(...) and backticks are extracted as their own subcommands.
+export function subcommands(cmd) {
+  const s = String(cmd);
+  const out = [];
+  let cur = '';
+  let q = null;
+  const flush = () => { const t = cur.trim(); if (t) out.push(t); cur = ''; };
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (q === "'") { cur += c; if (c === "'") q = null; continue; }
+    if (c === '\\') { cur += c + (s[i + 1] ?? ''); i += 1; continue; }
+    if (c === '$' && s[i + 1] === '(') {
+      const end = findClose(s, i + 2, '(', ')');
+      const stop = end === -1 ? s.length : end;
+      out.push(...subcommands(s.slice(i + 2, stop)));
+      cur += '_';
+      i = stop;
+      continue;
+    }
+    if (c === '`') {
+      const end = findClose(s, i + 1, '`', '`');
+      const stop = end === -1 ? s.length : end;
+      out.push(...subcommands(s.slice(i + 1, stop)));
+      cur += '_';
+      i = stop;
+      continue;
+    }
+    if (q === '"') { cur += c; if (c === '"') q = null; continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === '&' && (s[i - 1] === '>' || s[i - 1] === '<' || s[i + 1] === '>')) { cur += c; continue; }
+    if ('\n;&|()'.includes(c)) { flush(); continue; }
+    cur += c;
+  }
+  flush();
+  return out;
 }
 const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 

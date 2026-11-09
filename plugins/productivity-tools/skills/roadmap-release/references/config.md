@@ -50,7 +50,7 @@ While `generated` is true the run uses `maxParallel: 1`, because an undetected s
 
 `node scripts/preflight.mjs <roadmap-folder>` prints `{ configPath, generated, errors, missingRules, config }` and exits 1 when `errors` is not empty. It reads `permissions.allow` from `~/.claude/settings.json`, `<repo>/.claude/settings.json` and `<repo>/.claude/settings.local.json`; a missing file counts as empty. It never changes them.
 
-Required rules have the form `Bash(<first word>:*)` for every subcommand of every gate, `install`, `setup` and `beforeEvidence`, split on `&&`, `||`, `;` and `|`, plus `Bash(git:*)`. A rule is covered by `Bash`, `Bash(*)`, the rule itself, an exact `Bash(<command>)`, or a prefix rule such as `Bash(npm run:*)` that matches every command needing it. If rules are missing, the skill stops once, before launching any agent, and shows the exact rules to add.
+Required rules have the form `Bash(<first word>:*)` for every subcommand of every gate, `install`, `setup` and `beforeEvidence`, split on newline, `;`, `&`, `&&`, `|`, `||` and `|&` outside quotes (subshell parens dropped, `$(...)` and backtick contents required too), plus `Bash(git:*)`. A rule is covered by `Bash`, `Bash(*)`, the rule itself, an exact `Bash(<command>)`, or a prefix rule such as `Bash(npm run:*)` that matches every command needing it. If rules are missing, the skill stops once, before launching any agent, and shows the exact rules to add.
 
 ## Minimal example
 

@@ -108,3 +108,27 @@ test('quoteArg quotes paths with spaces and escapes quotes', () => {
   assert.equal(quoteArg('a"b'), '"a\\"b"');
   assert.equal(quoteArg('x$y'), '"x\\$y"');
 });
+
+const rulesFor = (install) => requiredRules({ ...good(), install });
+
+test('requiredRules treats a newline as a separator', () => {
+  assert.ok(rulesFor('make a\nrm -rf x').includes('Bash(rm:*)'));
+});
+
+test('requiredRules treats single & and |& as separators and strips subshell parens', () => {
+  const r = rulesFor('(cd x && npm t) & curl y');
+  assert.ok(r.includes('Bash(curl:*)') && r.includes('Bash(cd:*)'));
+  assert.ok(!r.some((x) => x.startsWith('Bash((')));
+  assert.ok(rulesFor('a |& tee b').includes('Bash(tee:*)'));
+});
+
+test('requiredRules extracts $() and backtick substitutions', () => {
+  assert.ok(rulesFor('echo $(whoami)').includes('Bash(whoami:*)'));
+  assert.ok(rulesFor('echo `hostname`').includes('Bash(hostname:*)'));
+  assert.ok(rulesFor('echo "x $(id -u)"').includes('Bash(id:*)'));
+});
+
+test('requiredRules respects quotes and redirects', () => {
+  const r = rulesFor('bash -c "a && b; c" && echo \'x | y\' 2>&1');
+  assert.deepEqual(r.filter((x) => x !== 'Bash(npm:*)' && x !== 'Bash(git:*)').sort(), ['Bash(bash:*)', 'Bash(echo:*)']);
+});
