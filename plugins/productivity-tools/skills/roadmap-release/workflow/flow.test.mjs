@@ -61,6 +61,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'git-truth') return { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
     if (l === 'report') return 'REPORT';
     if (/:resume-review-log$/.test(l)) return { found: true, acceptedRisks: [], humanInputs: [] };
+    if (/:awaiting-person$/.test(l)) return { ok: true };
     if (/review-log/.test(l)) return 'ok';
     throw new Error('unmocked ' + l);
   };
@@ -1172,11 +1173,108 @@ test('minor 1: an authorized external task that needs a human with zero commits 
   assert.deepEqual(h.resumeWith.authorizeExternal, ['E1:T1@' + fp]);
 });
 
-test('minor 1: NEEDS_HUMAN on a non-external task, or with commits, still follows the normal path', async () => {
+test('minor 1: NEEDS_HUMAN on a non-external task follows the normal path, with or without commits', async () => {
   const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
   assert.equal(a.r.results[0].merged, true);
-  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan([tk(1, true)], (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.ok(!a.labels.includes('E1:t1:awaiting-person'));
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
   assert.equal(b.r.results[0].merged, true);
+  assert.ok(b.labels.includes('E1:t1:spec1'));
+});
+
+// ---- authorized external task with NEEDS_HUMAN: never merges
+const ext1 = [tk(1, true)];
+const extArgs = { authorizeExternal: ['E1:T1'] };
+const noInputs = { status: 'NEEDS_HUMAN', summary: 'placeholder only', checks: [] };
+const assertStopped = (x, input) => {
+  const { r, labels } = x;
+  assert.ok(!labels.includes('E1:merge'));
+  assert.equal(r.results[0].merged, false);
+  assert.equal(r.results[0].failKind, 'humano');
+  const h = r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.ok(h, 'human-input action');
+  assert.match(h.what, /external effect did not complete/);
+  assert.match(h.what, /task 1/);
+  assert.match(h.what, input);
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['E1:T1@' + fpOf(ext1)]);
+  assert.deepEqual(h.resumeWith.authorizeExternal, ['E1:T1@' + fpOf(ext1)]);
+  assert.ok(!labels.some((l) => /:t1:(spec|quality)-fix/.test(l)), 'no fix round');
+  assert.ok(!x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'), 'not recorded as run');
+};
+
+test('authorized external NEEDS_HUMAN with a commit and no humanInputs stops, naming the task', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? noInputs : undefined)) });
+  assertStopped(x, /placeholder only/);
+});
+
+test('authorized external NEEDS_HUMAN with a commit and humanInputs stops', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assertStopped(x, /prod key/);
+});
+
+test('authorized external NEEDS_HUMAN with zero commits stops the same way', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
+  assertStopped(x, /prod key/);
+});
+
+test('the stop leaves a durable mark on the branch, and the progress read reports it', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.match(calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /--allow-empty.*E1 T1 awaiting person:/);
+  const prog = calls.find((c) => c.label === 'E1:progress');
+  assert.match(prog.prompt, /awaitingPerson/);
+  assert.ok(prog.opts.schema.required.includes('awaitingPerson'));
+});
+
+test('a mark that cannot be written is said in the action', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : /awaiting-person/.test(l) ? null : undefined)) });
+  assert.equal(x.r.results[0].merged, false);
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /count this task as done/);
+});
+
+const pendingProgress = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1] } : undefined);
+
+test('resume: a task that stopped with commits runs again and a repeated NEEDS_HUMAN stops once more', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => pendingProgress(l) || (l === 'E1:t1:impl' ? noInputs : undefined)) });
+  assertStopped(x, /placeholder only/);
+  assert.equal(x.labels.filter((l) => l === 'E1:t1:impl').length, 1);
+});
+
+test('resume: a task that stopped with commits does not count as done, and is recorded only when it completes', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, pendingProgress) });
+  assert.equal(x.labels.filter((l) => l === 'E1:t1:impl').length, 1);
+  assert.equal(x.r.results[0].merged, true);
+  assert.ok(x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+});
+
+test('resume: without the mark a committed task keeps the resume path', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [] } : undefined)) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+});
+
+test('resume: without the authorization the pending task is held, not relaunched', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(ext1, pendingProgress) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.equal(x.r.results[0].failKind, 'externo');
+});
+
+const reviewIssue = (l) => (l === 'E1:t1:spec1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 } : undefined);
+
+test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at once', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 'needs a key', checks: [], humanInputs: [{ what: 'fix key' }] } : reviewIssue(l))) });
+  assert.equal(x.r.results[0].merged, false);
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').what, /external effect did not complete.*fix key/);
+  assert.ok(!x.labels.includes('E1:t1:spec2'));
+  assert.ok(!x.labels.includes('E1:t1:quality1'));
+  assert.ok(!x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+});
+
+test('a fix round with NEEDS_HUMAN on a non-external task keeps the normal path', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 's', checks: [] } : l === 'E1:t1:spec2' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : reviewIssue(l))) });
+  assert.equal(x.r.results[0].merged, true);
+  assert.ok(x.labels.includes('E1:t1:spec2'));
 });
 
 test('minor 2: the merge agent is told when the checkout is authorized', async () => {

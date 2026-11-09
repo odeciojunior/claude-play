@@ -420,6 +420,7 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
     if (!fx) { record(r, iss); return { ok: false, kind: 'infra', msg: `${stage}: null fix` } }
     if (fx.status === 'BLOCKED') { record(r, iss); return { ok: false, kind: 'conteudo', msg: `${stage}: fix BLOCKED: ${fx.summary}` } }
     if (fx.concerns) env.concerns.push(`${stage} fix${k}: ${fx.concerns}`)
+    if (opt.haltOn && opt.haltOn(fx)) { record(r, iss); return { ok: false, halted: fx } }
     const fixTier = tier
     r = await review(k + 1, fmt(iss))
     note(k + 1, fixTier)
@@ -887,7 +888,8 @@ const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, mea
 const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, required: ['head'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
-const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } } }, required: ['head', 'clean', 'done'] }
+const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } }, awaitingPerson: { type: 'array', items: INT } }, required: ['head', 'clean', 'done', 'awaitingPerson'] }
+const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
@@ -1494,11 +1496,13 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }.`,
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of that list whose newest commit in ${TARGET}..HEAD with a subject starting "${E} T<n>:" or "${E} T<n> awaiting person:" is one of the latter (empty list when none).`,
     { label: `${E}:progress`, phase: 'Implementation', schema: S_PROGRESS, model: 'haiku' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
-  const doneMap = Object.fromEntries((prog.done || []).map(d => [d.n, d]))
+  // A task stopped for a person has commits but not its effect: it is a gap, so it runs again under the normal authorization rules.
+  const awaitingPerson = prog.awaitingPerson || []
+  const doneMap = Object.fromEntries((prog.done || []).filter(d => !awaitingPerson.includes(d.n)).map(d => [d.n, d]))
   const lastDone = lastContiguousDone(plan.tasks, doneMap)  // a gap is where the run resumes; the last committed task is reviewed again
   if (Object.keys(doneMap).length || setup.reused || plan.reused) {  // any sign of an earlier run: its log holds what this run must not lose
     const rl = await readPersistedLog(wt, 'Implementation')
@@ -1521,6 +1525,19 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     opEvidence(heldEvidence())
     out.held = lateExternal[0].item
     return fail('externo', `committed task ${lateExternal[0].x.n} is now declared external and awaits authorization (${lateExternal[0].item})`)
+  }
+  // An authorized external task that stopped for a person did not do its effect: the authorization is not spent and nothing merges.
+  const stopForPerson = async (t, res) => {
+    human.push(...missingFrom(human, res.humanInputs, humanKey))
+    const needed = (res.humanInputs || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; ') || res.summary
+    // Without this mark a resume finds the task's commits and takes it for done.
+    const mark = await agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${E} T${t.n} awaiting person: external effect did not complete". Change nothing else. Return ok = true only if that commit is now HEAD.`,
+      { label: `${E}:t${t.n}:awaiting-person`, phase: 'Implementation', schema: S_MARK, model: 'haiku' })
+    const markWarn = mark && mark.ok ? '' : ` WARNING: the mark commit could not be written, so a resume would count this task as done: before running again, add an empty commit on ${br} with the subject "${E} T${t.n} awaiting person: external effect did not complete"`
+    op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but its external effect did not complete; it needs a person first: ${needed}`,
+      `Provide the data (or the decision) and run again passing the answer in notes; the task runs again and any commits it made stay on ${br}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
+      { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
+    return fail('humano', `authorized external task ${t.n} needs a person; its external effect did not complete: ${needed}`)
   }
   let head = prog.head
   const taskLog = []
@@ -1552,6 +1569,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       human.push(...missingFrom(human, impl.humanInputs, humanKey))
       if (impl.concerns) out.concerns.push(`T${t.n}: ${impl.concerns}`)
       if (impl.status === 'BLOCKED') return fail('conteudo', `task ${t.n} BLOCKED: ${impl.summary}`)
+      if (authorizedExt && impl.status === 'NEEDS_HUMAN') return stopForPerson(t, impl)
     }
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
@@ -1568,17 +1586,10 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
           return fx
         }),
         r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1, `${start}..HEAD`),
-        { tier: implModel(t), reviewModel: reviewModelFor(t) })
+        { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
+      if (loop.halted) return stopForPerson(t, loop.halted)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
       lastR = loop.r
-    }
-    // An authorized external task that stopped for a person did not do its effect: the authorization is not spent and nothing merges.
-    if (authorizedExt && !resumed && impl.status === 'NEEDS_HUMAN' && lastR.commitsInRange === 0) {
-      const needed = (impl.humanInputs || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; ') || impl.summary
-      op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized but needs a person first and committed nothing: ${needed}`,
-        'Provide the data (or the decision) and run again passing the answer in notes; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it',
-        { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
-      return fail('humano', `authorized external task ${t.n} needs a person and made no commit: ${needed}`)
     }
     head = lastR.headSha
     taskLog.push({ n: t.n, title: t.title, status: impl.status, commits: lastR.commitsInRange })
