@@ -21,7 +21,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
@@ -450,6 +450,37 @@ test('I3: a card without mergeFound, a selected card without criteria or no repo
   const open = await exec({ cards: [card('E1'), card('E2', { acceptance: [] })], deliverables: ['E1'], args: { mode: 'dry-run' } });
   assert.notEqual(open.r.status, 'error');
   for (const discOver of [{ repo: undefined }, { wtRoot: undefined }]) assert.equal((await exec({ cards: [card('E1')], deliverables: ['E1'], discOver })).r.status, 'error');
+});
+
+test('item 5: discovery without integrationBranch stops the run, with targetBranch develop and no merge', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { targetBranch: 'develop' }, discOver: { integrationBranch: undefined } });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /integrationBranch/);
+  assert.deepEqual(labels, ['discovery']);
+});
+
+test('item 5: each missing discovery field stops the run', async () => {
+  const cases = [
+    ['integratedStatuses', {}, { integratedStatuses: undefined }],
+    ['deliverableStatuses', {}, { deliverableStatuses: undefined }],
+    ['deliverableStatuses', {}, { deliverableStatuses: ['a', 'b'] }],
+    ['roadmapDir', {}, { roadmapDir: undefined }],
+    ['strategy', {}, { strategy: undefined }],
+    ['checker', {}, { checker: undefined }],
+    ['today', { today: undefined }, { today: undefined }],
+  ];
+  for (const [field, args, discOver] of cases) {
+    const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args, discOver });
+    assert.equal(r.status, 'error', field);
+    assert.match(r.error, new RegExp(field), field);
+    assert.deepEqual(labels, ['discovery'], field);
+  }
+});
+
+test('item 5: the schema requires the fields', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const req = calls[0].opts.schema.required;
+  for (const f of ['cards', 'repo', 'wtRoot', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker']) assert.ok(req.includes(f), f);
 });
 
 test('I3: args.repo wins over the discovered repo and stands in for it', async () => {

@@ -747,7 +747,7 @@ const S_DISC = { type: 'object', properties: {
   blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
   donot: STRS,
   donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
-}, required: ['cards', 'repo', 'wtRoot'] }
+}, required: ['cards', 'repo', 'wtRoot', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker'] }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
@@ -788,6 +788,7 @@ phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const disc = await agent(`DISCOVERY task (read-only; change nothing). Answer with measured data.
 1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
+2. ALL of these fields are REQUIRED: repo, today, wtRoot, roadmapDir, strategy, checker, integrationBranch, integratedStatuses and deliverableStatuses (at least 5 items); never invent a default, return error if one is missing. integratedStatuses and deliverableStatuses come from the vocab of roadmap.config.json.
 2. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
 3. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
 4. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
@@ -801,6 +802,12 @@ if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: '
 const noMergeFlag = disc.cards.filter(c => typeof c.mergeFound !== 'boolean').map(c => c.id)
 if (noMergeFlag.length) return { status: 'error', error: `discovery failed: mergeFound not reported for ${noMergeFlag.join(', ')}` }
 if (!(A.repo || disc.repo) || !(A.wtRoot || disc.wtRoot)) return { status: 'error', error: 'discovery failed: repo or wtRoot not reported' }
+for (const f of ['integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'roadmapDir', 'strategy', 'checker']) {
+  const v = disc[f]
+  if (!v || (Array.isArray(v) && !v.length)) return { status: 'error', error: `discovery failed: ${f} not reported` }
+}
+if ((disc.deliverableStatuses || []).length < 5) return { status: 'error', error: 'discovery failed: deliverableStatuses not reported (needs at least 5 items)' }
+if (!(A.today || disc.today)) return { status: 'error', error: 'discovery failed: today not reported' }
 disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
 
 const TODAY = A.today || disc.today
@@ -808,14 +815,14 @@ const REPO = A.repo || disc.repo
 const WT = String(A.wtRoot || disc.wtRoot).replace(/\/+$/, '')
 const RM = disc.roadmapDir
 const STRAT = disc.strategy
-const INTEG = disc.integrationBranch || 'main'
+const INTEG = disc.integrationBranch
 const BASEBR = A.baseBranch || INTEG
 const TARGET = A.targetBranch || CFG.releaseBranch || disc.releaseBranch || `integracao/${disc.roadmapSlug}`
 const STATUSES = {
-  integrated: disc.integratedStatuses && disc.integratedStatuses.length ? disc.integratedStatuses : ['integrada', 'publicada', 'medida'],
-  plan: (disc.deliverableStatuses || [])[2] || 'plano',
-  executing: (disc.deliverableStatuses || [])[3] || 'executando',
-  onBranch: (disc.deliverableStatuses || [])[4] || 'na-branch',
+  integrated: disc.integratedStatuses,
+  plan: disc.deliverableStatuses[2],
+  executing: disc.deliverableStatuses[3],
+  onBranch: disc.deliverableStatuses[4],
   discarded: disc.discardedStatus || 'discarded',
   blocked: disc.blockedStatus || 'blocked',
 }
