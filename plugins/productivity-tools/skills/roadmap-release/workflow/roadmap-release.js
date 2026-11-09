@@ -705,6 +705,14 @@ function evidenceRowGaps(cardAc, planAc, measured) {
 function hideRowGaps(prev) {
   return String(prev || '').split('\n').filter(l => !/evidence row .* \([a-z]+\): "/.test(l)).join('\n')
 }
+// A request to authorize something this run was authorized for and ran is answered: only that goes away. Naming the command alone is not enough,
+// since a real input (a key the command needs) must stay.
+function dropAuthorizedHuman(human, ran) {
+  const norm = v => String(v || '').trim().replace(/\s+/g, ' ')
+  const asks = /authori[sz]|approv|permission/i
+  const names = (what, r) => (!!r.command && what.includes(norm(r.command))) || (!!r.item && new RegExp('(^|[^A-Za-z0-9-])' + r.item + '(?![A-Za-z0-9])').test(what))
+  return (human || []).filter(h => { const what = norm(h.what); return !(asks.test(what) && (ran || []).some(r => names(what, r))) })
+}
 // A bound item of a deliverable whose plan this run approved under another fingerprint can never match again.
 function dropStaleBound(items, bound) {
   return (items || []).filter(i => {
@@ -974,7 +982,7 @@ const COMMON_BASE = `
 FIXED RULES:
 - Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block) are NEVER reopened or contradicted.
 - The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on, except a strategy revision or migration and any external effect. Asking the user is FORBIDDEN (do not use AskUserQuestion).
-- Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Open roadmap blockers:
+- Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Authorization of an external effect is never a humanInput: the workflow asks the person for it. Open roadmap blockers:
 ${blockersTxt}
   Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.
 - Roadmap "do not" restrictions (violating any is category decisao, severity critical):
@@ -1098,7 +1106,8 @@ async function runDeliverable(E, idx) {
   const br = `${PREFIX}${E}`
   const port = 5200 + idx * 10
   const human = []
-  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [] }
+  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [] }
+  const pruneHuman = () => { const kept = dropAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
 Never write or quote a credential, token or key from the owner instruction in any file, commit message, review finding or report; write 'provided through environment variable <NAME>' instead.` : ''}`
@@ -1238,7 +1247,7 @@ DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TA
 4. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''} and the panel row of ${E} shows "${STATUS_AFTER_MERGE}".` : ''}
 Return statusWritten, commit, details.`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet' })
-      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run node "${WT}/_tmp/${E}-docs-measure.cjs" from "${INTWT}", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run node "${disc.checker}" from "${INTWT}" and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD; panelStatus = the Status cell of the row ${E} in the panel of ${RM}state.md, verbatim.`,
+      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly: cd "${INTWT}" && node "${disc.checker}" and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD; panelStatus = the Status cell of the row ${E} in the panel of ${RM}state.md, verbatim.`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku' })
       if (docs && measureOk(meas)) break
     }
@@ -1303,7 +1312,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
       if (badFix) return badFix
       // out.brM is null on resume, so the count floor uses a baseline that already holds the merge: measure what the merge did to the tests.
       const integWt = `${WT}/_tmp/${E}-integrity-wt`
-      const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. First, ignoring errors: git -C "${REPO}" worktree remove --force "${integWt}". Then git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run: node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" from ${integWt} (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}). Always, even if the program fails: delete the file and run git -C "${REPO}" worktree remove --force "${integWt}". Return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+      const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. First, ignoring errors: git -C "${REPO}" worktree remove --force "${integWt}". Then git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run exactly: cd "${integWt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}). Always, even if the program fails: delete the file and run git -C "${REPO}" worktree remove --force "${integWt}". Return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
         { label: `${E}:resume-test-integrity`, phase: 'Merge', schema: S_INTEG, model: 'haiku' }) : null
       if (!integ || integ.removedAsserts < 0) out.concerns.push(`resume: the test-count floor was not verified for the merge ${card.mergeSha} (test integrity ${TEST_INTEGRITY ? 'not measured' : 'disabled'})`)
       for (const a of integrityHeuristicAlerts(integ)) out.concerns.push(`resume: test integrity of the merge ${card.mergeSha}: ${a}`)
@@ -1562,8 +1571,10 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
     }
     head = lastR.headSha
     taskLog.push({ n: t.n, title: t.title, status: impl.status, commits: lastR.commitsInRange })
+    if (authorizedExt && !resumed) out.externalRun.push({ item: `${E}:T${t.n}`, title: t.title, status: impl.status })
   }
   out.tasks = taskLog
+  pruneHuman()
   // Held here, before the final review and the gates: nothing past this point is worth spending without the authorization.
   const evHeld = heldEvidence()
   if (evHeld.length) {
@@ -1585,7 +1596,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
   if (!sync || !sync.ok) return fail(sync ? 'conteudo' : 'infra', `sync with ${TARGET} failed: ${sync ? sync.details : 'null agent'}`)
 
-  const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" from "${wt}", delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+  const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
     { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku' }) : null
   if (TEST_INTEGRITY && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
@@ -1636,6 +1647,13 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     let ev = await once(`${E}:evidence${++evRound}`)
     if (!validEv(ev)) ev = await once(`${E}:evidence${evRound}-retry`)
     if (!validEv(ev)) return { ok: false, infra: true, summary: 'evidence measurement null, with a dirty tree, at the wrong commit or with the state preparation failing' }
+    for (const [i, p] of rows.entries()) {
+      const x = p.external !== false && matchEvidence(ev.results, p, i)
+      if (!x) continue
+      out.externalRun = out.externalRun.filter(e => !(e.item === `${E}:${p.ac}` && e.command === p.command))
+      out.externalRun.push({ item: `${E}:${p.ac}`, command: p.command, exit: x.exit })
+    }
+    pruneHuman()
     const problems = rows.flatMap((p, i) => {
       const x = matchEvidence(ev.results, p, i)
       if (!x) return [`criterion ${p.ac}: command not run`]
@@ -1871,8 +1889,10 @@ Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConf
 Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)}
 Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
+Authorizations given for this run: ${JSON.stringify(AUTH.items)}
+External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
-Be factual. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
+Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 

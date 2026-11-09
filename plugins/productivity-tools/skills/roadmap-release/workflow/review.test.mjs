@@ -373,3 +373,14 @@ test('fix round 2: commandKey is exact inside the command', () => {
   assert.equal(k('" npm test "'), ' npm test ', 'exact inside the wrapper');
   assert.equal(g([{ id: 'AC1', text: 't', tag: null }], [{ ac: 'AC1', kind: 'smoke', command: '""' }], new Set()).length, 1, 'a wrapper around nothing is no command');
 });
+
+test('real run: dropAuthorizedHuman removes only a request for an authorization this run used', () => {
+  const { dropAuthorizedHuman: d } = P4;
+  const run = [{ item: 'E1:AC3', command: 'node scripts/notify.mjs' }, { item: 'E1:T2' }];
+  const whats = (xs) => d(xs.map((what) => ({ what })), run).map((h) => h.what);
+  assert.deepEqual(whats(['Operator authorization to run node  scripts/notify.mjs (external)']), []);
+  assert.deepEqual(whats(['The person must authorize E1:AC3']), []);
+  assert.deepEqual(whats(['Approval for E1:T2 is needed']), []);
+  for (const keep of ['Real API key for node scripts/notify.mjs', 'Authorize E1:AC30', 'Authorization to run node other.mjs', 'real key']) assert.deepEqual(whats([keep]), [keep]);
+  assert.deepEqual(d([{ what: 'Authorize E1:AC3' }], []), [{ what: 'Authorize E1:AC3' }]);
+});

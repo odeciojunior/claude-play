@@ -1527,3 +1527,52 @@ test('fix round 2: the defect action keeps an answer no approved plan consumed',
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
   assert.equal(r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, 'answer');
 });
+
+// ---- bloco A, real-run follow-up
+const asksAuth = (l) => (l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what: 'Operator authorization to run ' + deploy + ' (external)' }, { what: 'real API key' }] } : undefined);
+
+test('real run: a request for an authorization already used does not reach the docs', async () => {
+  const rows = planRows([extRow]);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(rows, asksAuth, evOk) });
+  const docs = calls.find((c) => c.label === 'E1:docs1').prompt;
+  assert.ok(!docs.includes('Operator authorization'));
+  assert.ok(docs.includes('real API key'));
+  assert.deepEqual(r.results[0].human, ['real API key']);
+});
+
+test('real run: the same request stays while the command has not run', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([extRow]), asksAuth) });
+  assert.ok(r.results[0].human.some((h) => /Operator authorization/.test(h)));
+});
+
+test('real run: spec, plan and implementer are told an authorization is never a human input', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const l of ['E1:spec', 'E1:plan', 'E1:t1:impl']) assert.match(calls.find((c) => c.label === l).prompt, /Authorization of an external effect is never a humanInput/, l);
+});
+
+test('real run: the report gets the effects that ran and may not invent an action', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), evOk) });
+  const p = calls.find((c) => c.label === 'report').prompt;
+  assert.ok(p.includes('External effects authorized and run'));
+  assert.ok(p.includes('"item":"E1:AC1"') && p.includes(deploy) && p.includes('"exit":0'));
+  assert.ok(p.includes('Authorizations given for this run: ["E1:AC1"]'));
+  assert.match(p, /only from Operator actions and the open human items/);
+  assert.match(p, /never invent an action or resume args/);
+  assert.match(p, /never ask for it again/);
+});
+
+test('real run: an authorized task that ran is reported too', async () => {
+  const tasks = [tk(1, true)];
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan(tasks) });
+  assert.ok(calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+});
+
+test('real run: programs that need a directory are run with cd, since a Bash call may start elsewhere', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('cd "/wt/E1" && node "/wt/_tmp/E1-integrity.cjs" "integracao/x"'));
+  const m = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
+  assert.ok(m.includes('cd "/wt/_integracao" && node "/wt/_tmp/E1-docs-measure.cjs"'));
+  assert.ok(m.includes('cd "/wt/_integracao" && node "docs/plans/roadmap-x/check.mjs"'));
+  const res = await exec({ cards: [unfinished()], deliverables: ['E1'] });
+  assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "m0^1"'));
+});
