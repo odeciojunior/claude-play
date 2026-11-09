@@ -263,6 +263,78 @@ function lastContiguousDone(tasks, doneMap) {
 function resumeAction(card, statuses, force) {
   return isUnfinished(card, statuses) && !force ? 'finish-merge' : 'run'
 }
+// ---- issues and per-task prompts
+const SEV = s => s === 'critical' || s === 'important'
+function blocking(r) {
+  return r && Array.isArray(r.issues) ? r.issues.filter(i => SEV(i.severity)) : []
+}
+function fmt(iss) {
+  return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.description}`).join('\n')
+}
+function compact(iss) {
+  return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
+}
+// What the script itself verifies about a review: blocking issues plus a commit in the range and a clean tree.
+function reviewTruth(r, minCommits, label) {
+  const iss = [...blocking(r)]
+  if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `no commit in the range (${label})` })
+  if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
+  return iss
+}
+// The plan's tier drives the implementer; the reviewer is sonnet unless the plan marks blast radius 2 (reviewTier opus).
+function implModel(task) {
+  return ['haiku', 'sonnet', 'opus'].includes(task && task.tier) ? task.tier : 'sonnet'
+}
+function reviewModelFor(task) {
+  return task && task.reviewTier === 'opus' ? 'opus' : 'sonnet'
+}
+// Criteria that no command proves: human acts and registered blockers. Tag first, plan rows when the card has no tag.
+function criteriaOpen(cardAc, planAc) {
+  const exec = ['test', 'smoke', 'integration']
+  const out = []
+  for (const a of cardAc || []) {
+    const rows = (planAc || []).filter(p => p.ac === a.id)
+    const kinds = [...(a.tag && !a.tag.invalid ? [a.tag.kind] : []), ...rows.map(p => p.kind)]
+    if (kinds.some(k => exec.includes(k))) continue
+    const row = rows.find(p => p.kind === 'human' || p.kind === 'blocked')
+    const kind = a.tag && !a.tag.invalid && !exec.includes(a.tag.kind) ? a.tag.kind : row ? row.kind : null
+    if (kind) out.push({ ac: a.id, kind, blq: (a.tag && a.tag.blq) || (row && row.blq) })
+  }
+  return out
+}
+// ctx = { base, envFacts, baseline, E, wt, planPath, specPath, start, locks[], round?, prev? }
+function briefing(ctx) {
+  return `${ctx.base}\nENVIRONMENT MEASURED IN THE PREFLIGHT: ${ctx.envFacts || '(not reported)'}\nCURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${ctx.baseline || '(none)'}`
+}
+function lockNote(locks) {
+  return locks && locks.length ? `You HOLD the lock(s): ${locks.join(', ')}.` : 'You hold no lock.'
+}
+function buildImplPrompt(ctx, task) {
+  return `${briefing(ctx)}
+
+Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}. STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
+Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).
+Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
+Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
+}
+function fmtChecks(checks) {
+  if (!checks || !checks.length) return '(no checks reported: unless the summary says the task was resumed from a previous run, a task that claims to be done without any check output is a defect)'
+  return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${String(c.output || '').slice(0, 3000)}`).join('\n---\n')
+}
+function buildTaskReviewPrompt(ctx, task, kind, impl) {
+  const spec = kind === 'spec'
+  return `${briefing(ctx)}
+
+Review of ${spec ? 'SPEC COMPLIANCE' : 'CODE QUALITY'} (read-only; do not trust the implementer's report, read the code) of Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
+Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.
+${spec
+    ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
+    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block), a fragile test. Also confirm there is no regression against the spec.'}
+IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). Implementer summary: ${(impl && impl.summary) || '(none)'}
+${fmtChecks(impl && impl.checks)}
+Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them):\n${ctx.prev}` : ''}
+Measure: headSha, clean, commitsInRange (git -C "${ctx.wt}" rev-list --count ${ctx.start}..HEAD).`
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -343,6 +415,21 @@ const S_PRE = { type: 'object', properties: {
   integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE,
 }, required: ['ok'] }
 const S_SETUP = { type: 'object', properties: { ok: BOOL, error: STR, worktree: STR, branch: STR, baseCommit: STR, head: STR, reused: BOOL, clean: BOOL }, required: ['ok'] }
+const HUMAN = { type: 'array', items: { type: 'object', properties: { blq: STR, what: STR, workaround: STR, blocking: BOOL }, required: ['what'] } }
+const ISSUES = { type: 'array', items: { type: 'object', properties: {
+  severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
+  category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
+  description: STR, file: STR, blq: STR }, required: ['severity', 'description'] } }
+const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
+const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
+const S_PLAN = { type: 'object', properties: { planPath: STR, roadmapHeader: BOOL, reused: BOOL,
+  ac: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR }, required: ['ac', 'kind'] } },
+  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS }, required: ['n', 'title', 'tier'] } } }, required: ['planPath', 'tasks'] }
+const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
+const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
+const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } } }, required: ['head', 'clean', 'done'] }
+const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
 const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
 
 // ---------------------------------------------------------------- discovery
@@ -372,6 +459,8 @@ const BASEBR = A.baseBranch || INTEG
 const TARGET = A.targetBranch || CFG.releaseBranch || disc.releaseBranch || `integracao/${disc.roadmapSlug}`
 const STATUSES = {
   integrated: disc.integratedStatuses && disc.integratedStatuses.length ? disc.integratedStatuses : ['integrada', 'publicada', 'medida'],
+  plan: (disc.deliverableStatuses || [])[2] || 'plano',
+  executing: (disc.deliverableStatuses || [])[3] || 'executando',
   onBranch: (disc.deliverableStatuses || [])[4] || 'na-branch',
   discarded: disc.discardedStatus || 'descartada',
   blocked: disc.blockedStatus || 'bloqueada',
@@ -426,6 +515,7 @@ ${donotTxt}
 - Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.
 - Canonical gates: ${gatesTxt}.
 - Reviewers classify each problem with category: defeito (bug or unmet criterion), decisao (contradicts a registered decision), ambiente (limit of the local environment, not of the code; when a roadmap blocker is registered, cite its id in blq), fora-do-escopo (only a PRE-EXISTING problem outside the deliverable), pelo-plano (the plan foresaw it). A defect introduced by this diff is never fora-do-escopo nor pelo-plano. Excess scope is a defect.
+- Autonomous decisions follow the recommended option and are recorded for the owner (Origin executor, status pending). Contradicting a registered decision, or changing a canonical gate (its command, kind or threshold), is category decisao, severity critical.
 - Write code and generated artifacts in the language of the roadmap, consistent with the project.
 ${CFG.conflictRules ? `- Conflicts in generated files: ${CFG.conflictRules}\n` : ''}PROJECT:
 ${PROJECT}`
@@ -473,8 +563,20 @@ const COMMON = () => `${COMMON_BASE}
 ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
 CURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${baseTxt()}`
 
-// ============================================================================ one deliverable
+// ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
+const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
+  if (integBroken) return null
+  const r = await agent(`${COMMON()}
+
+RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Use the skill productivity-tools:roadmap-tracker to record deliverable ${E} with status "${status}" (vocabulary: ${(disc.deliverableStatuses || []).join(', ')}), evidence: ${evidence}.${extraTxt ? '\n' + extraTxt : ''}
+Run node ${disc.checker} and leave it with 0 errors. Commit only files of ${RM}. Return checkerErrors, statusWritten, commit, head (git rev-parse HEAD after the commit), details.`,
+    { label: `${E}:status-${status}`, phase: 'Plano', schema: S_STATUS, model: 'sonnet' })
+  if (r && r.head) lastGood = r.head  // a record-only commit does not invalidate what was already validated
+  return r
+})
+
+// ============================================================================ one deliverable
 async function runDeliverable(E, idx) {
   const card = byId[E]
   const wt = `${WT}/${E}`
@@ -482,12 +584,76 @@ async function runDeliverable(E, idx) {
   const port = 5200 + idx * 10
   const human = []
   const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [] }
-  const C = () => `${COMMON()}
+  const baseOf = () => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}` : ''}`
-  const fail = (kind, msg) => {
+  const ctxFor = extra => ({ base: baseOf(), envFacts: pre.envFacts, baseline: baseTxt(), E, wt, planPath: plan && plan.planPath, specPath: spec && spec.specPath, locks: [], ...extra })
+  const C = () => briefing(ctxFor())
+  const cardRef = `card ${E} in ${STRAT} (section ${E}; REQs ${card.reqs.join(', ')}; depends on ${card.deps.join(', ') || '-'}${card.critical ? '; CRITICAL' : ''})`
+  const noteE = A.notes && A.notes[E]
+  const cardAc = (card.acceptance || []).map(a => ({ id: a.id, text: a.text, tag: parseVerifyTag(a.text) }))
+  const TASK_LOCKS = LOCK_ORDER.filter(n => n !== 'merge')
+  let slug = 'entrega'
+  let spec = null, plan = null
+  let specRef = null, planRef = null  // null while recovering an interrupted merge
+  const fmtRisk = x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`
+  const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
+  const persistReviews = async tag => {
+    if (!out.reviews.length) return
+    await agent(`${C()}
+
+Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log: per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns and gates. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, failure: out.error || null })}
+Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
+      { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plano', model: 'sonnet' })
+  }
+  const fail = async (kind, msg) => {
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
+    await persistReviews('failed')
     return out
   }
+
+  // Review, fix, re-review. A finding that reappears after a fix escalates the fixer one tier (nextTier);
+  // a repeat at opus stops the deliverable. Issues that are not hard become accepted risks.
+  async function reviewLoop(stage, review, fix, truth, opt = {}) {
+    let tier = opt.tier || 'opus'
+    const rm = opt.reviewModel || 'sonnet'
+    const rounds = []
+    const note = (round, fixTier) => rounds.push({ round, reviewModel: rm, fixTier: fixTier || null })
+    const record = (r, iss) => out.reviews.push({ stage, rounds, ...compact(r && r.issues), unresolved: iss })
+    let r = await review(1, null)
+    note(1)
+    if (!r) { r = await review('1b', null); note('1b') }
+    if (!r) return { ok: false, kind: 'infra', msg: `${stage}: null review` }
+    let iss = truth(r)
+    for (let k = 1; iss.length && k <= MAXFIX; k++) {
+      const fixable = iss.filter(i => isHard(i, blqIds))  // ambiente/fora-do-escopo/pelo-plano do not spend a fix
+      if (!fixable.length) break
+      const fx = await fix(fixable, k, tier)
+      if (!fx) return { ok: false, kind: 'infra', msg: `${stage}: null fix` }
+      if (fx.status === 'BLOCKED') return { ok: false, kind: 'conteudo', msg: `${stage}: fix BLOCKED: ${fx.summary}` }
+      if (fx.concerns) out.concerns.push(`${stage} fix${k}: ${fx.concerns}`)
+      const fixTier = tier
+      r = await review(k + 1, fmt(iss))
+      note(k + 1, fixTier)
+      if (!r) return { ok: false, kind: 'infra', msg: `${stage}: null re-review` }
+      iss = truth(r)
+      if (sameFinding(fixable, iss, blqIds)) {
+        const up = nextTier(tier, true)
+        if (!up) {
+          record(r, iss)
+          const hard = iss.filter(i => isHard(i, blqIds))
+          return { ok: false, kind: hard.some(i => i.category === 'decisao') ? 'decisao' : 'conteudo', msg: `${stage}: the same finding reappeared after a fix at opus:\n${fmt(hard)}` }
+        }
+        tier = up
+      }
+    }
+    record(r, iss)
+    if (!iss.length) return { ok: true, r }
+    const hard = iss.filter(i => isHard(i, blqIds))
+    if (hard.length) return { ok: false, kind: hard.some(i => i.category === 'decisao') ? 'decisao' : 'conteudo', msg: `${stage} has open issues after ${MAXFIX} fixes:\n${fmt(hard)}` }
+    acceptRisks(stage, iss)
+    return { ok: true, r }
+  }
+
   // Clears uncommitted files left by an interrupted run; the patch is kept in _tmp.
   const sanitize = async stage => {
     const dir = `${WT}/_tmp/${E}-dirty`
@@ -520,9 +686,169 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Stages Spec onward are implemented in Tasks 7 and 8.
+  // ---------- Spec
+  spec = await agent(`${C()}
+
+If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it, reassess humanInputs (an answered input stops being blocking), commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
+Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
+- You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block, the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
+- Parts that are human acts: produce the artifacts and leave the acceptance to the human.
+- For each human input set blocking=true ONLY if no useful part of the card can be delivered without it (a placeholder does not count); otherwise blocking=false with the workaround.
+- Save to docs/superpowers/specs/${TODAY}-${E}-<slug>-design.md (short kebab-case slug, WITHOUT the ID), written in the language of the roadmap, with: the card's acceptance criteria (verbatim, including any {verify: ...} tag), the design, "Autonomous decisions (reviewable by the owner)" and "Depends on human input".
+- Commit only the spec. Do not write the plan. Stop after the commit.
+Return specPath, slug (without the ID), decisions (one line per autonomous decision), humanInputs, reused.`,
+    { label: `${E}:spec`, phase: 'Spec', schema: S_SPEC, model: 'opus' })
+  if (!spec) return fail('infra', 'spec: null agent')
+  const specLoop = await reviewLoop('spec',
+    (round, prev) => agent(`${C()}
+
+Review (read-only) the spec ${wt}/${spec.specPath} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block.
+Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round:\n${prev}` : ''}
+Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
+      { label: `${E}:spec-review${round}`, phase: 'Spec', schema: S_REVIEW, model: 'opus' }),
+    async (iss, k, tier) => {
+      const fx = await agent(`${C()}
+
+Fix the spec ${spec.specPath} according to the review below, in autonomous mode, and commit. Stop after the commit.
+${fmt(iss)}
+Return specPath, slug (without the ID), decisions (full list), humanInputs (full list).`,
+        { label: `${E}:spec-fix${k}`, phase: 'Spec', schema: S_SPEC, model: tier })
+      if (fx) spec = { ...spec, ...fx }
+      return fx ? { status: 'DONE' } : null
+    },
+    r => reviewTruth(r, spec.reused ? 0 : 1, `${TARGET}..HEAD`),
+    { tier: 'opus', reviewModel: 'opus' })
+  if (!specLoop.ok) return fail(specLoop.kind, specLoop.msg)
+  human.push(...(spec.humanInputs || []))
+  out.spec = spec.specPath
+  specRef = spec.specPath
+  out.decisions = spec.decisions
+  slug = cleanSlug(spec.slug || spec.specPath.split('/').pop().replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/-design\.md$/, ''), E)
+  const blockingHuman = (spec.humanInputs || []).filter(h => h.blocking)
+  if (blockingHuman.length) {
+    op('human-input', E, blockingHuman.map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; '),
+      'Provide the data (or the decision) and run again passing the answer in notes', { ...A, deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
+    return fail('humano', `blocking human input: ${blockingHuman.map(h => h.what).join('; ')}`)
+  }
+
+  // ---------- Plan
+  const planName = `docs/superpowers/plans/${TODAY}-${E}-${slug}.md`
+  const acTxt = (card.acceptance || []).map(a => `${a.id}: ${a.text}`).join('\n')
+  plan = await agent(`${C()}
+
+If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true).'}
+Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
+- Header with the exact line: **Roadmap:** ${RM}
+- Save to ${planName}, in the language of the roadmap.
+- Small tasks, with TDD and the exact verification commands, using the canonical gates and respecting the MEASURED ENVIRONMENT. Each task lists the files it touches and the locks it needs (needsLock: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses). For each verification, the expected result; a baseline failure is named as expected.
+- Per task, declare "tier" (the implementer's model) by the routing scoring rules of the plan-coordinator skill (references/routing.md) when available: haiku for mechanical work, sonnet by default, opus only when ambiguity AND blast radius are both high. Declare "reviewTier": opus ONLY for blast radius 2 (authentication, secrets, writes to a production backend, data migration, push); otherwise sonnet.
+- Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. Criteria:
+${acTxt || '(card without extracted criteria: use the ones in the spec)'}
+- Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
+- Task commits start with "${E} T<n>:".
+- Ignore the skill's execution-mode question. Commit the plan and stop.
+Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section: ac, kind, command, testRef, blq) and tasks (n, title, files, tier, reviewTier, needsLock).`,
+    { label: `${E}:plan`, phase: 'Plano', schema: S_PLAN, model: 'opus' })
+  if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
+  const planGaps = () => {
+    const gap = description => ({ severity: 'critical', category: 'defeito', description })
+    const tasks = plan.tasks || []
+    return [
+      ...evidenceGaps(cardAc, plan.ac, blqIds),
+      ...tasks.filter((t, i) => t.n !== i + 1).map(t => gap(`task numbers must run 1..N in order (found ${t.n} at position ${tasks.indexOf(t) + 1})`)),
+      ...tasks.flatMap(t => asList(t.needsLock).filter(n => !TASK_LOCKS.includes(n)).map(n => gap(`task ${t.n} needs the unknown lock "${n}" (configured: ${TASK_LOCKS.join(', ') || 'none'})`))),
+    ]
+  }
+  const planLoop = await reviewLoop('plan',
+    (round, prev) => agent(`${C()}
+
+Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
+Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round:\n${prev}` : ''}
+Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
+      { label: `${E}:plan-review${round}`, phase: 'Plano', schema: S_REVIEW, model: 'opus' }),
+    async (iss, k, tier) => {
+      const fx = await agent(`${C()}
+
+Fix the plan ${plan.planPath} according to the review below and commit. Stop after the commit.
+${fmt(iss)}
+Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, reviewTier and needsLock).`,
+        { label: `${E}:plan-fix${k}`, phase: 'Plano', schema: S_PLAN, model: tier })
+      if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
+      return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
+    },
+    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planGaps()],
+    { tier: 'opus', reviewModel: 'opus' })
+  if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
+  if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')
+  out.plan = plan.planPath
+  planRef = plan.planPath
+  out.acOpen = criteriaOpen(cardAc, plan.ac)
+  log(`${E}: plan with ${plan.tasks.length} tasks`)
+
+  const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` Also record, as a standing decision with Origin "user (notes)", unless already there, the owner's instruction: ${JSON.stringify(noteE)}.` : ''}`
+  if (MODE === 'plan-only') {
+    await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
+    out.planOnly = true
+    out.ok = true
+    return out
+  }
+  await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
+    `${decisionsTxt}\nAdd ${br} to the inflight block (type: deliverable, note: automatic execution).`)
+
+  // ---------- Tasks (resumable)
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }.`,
+    { label: `${E}:progress`, phase: 'Implementação', schema: S_PROGRESS, model: 'haiku' })
+  if (!prog) return fail('infra', 'progress read: null agent')
+  if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
+  const doneMap = Object.fromEntries((prog.done || []).map(d => [d.n, d]))
+  const lastDone = lastContiguousDone(plan.tasks, doneMap)  // a gap is where the run resumes; the last committed task is reviewed again
+  let head = prog.head
+  const taskLog = []
+  for (const t of plan.tasks) {
+    const resumed = doneMap[t.n]
+    if (resumed && t.n < lastDone) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
+    const start = resumed ? resumed.firstParent : head
+    let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
+    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks }), t), { label, phase: 'Implementação', schema: S_IMPL, model: implModel(t) }))
+    let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
+    if (!resumed) {
+      impl = await runImpl(`${E}:t${t.n}:impl`)
+      if (impl && impl.status === 'BLOCKED' && impl.needsLock && TASK_LOCKS.includes(impl.needsLock) && !locks.includes(impl.needsLock)) {
+        locks = [...locks, impl.needsLock]
+        impl = await runImpl(`${E}:t${t.n}:impl-lock`)
+      }
+      if (!impl) return fail('infra', `task ${t.n}: null implementer`)
+      human.push(...(impl.humanInputs || []))
+      if (impl.concerns) out.concerns.push(`T${t.n}: ${impl.concerns}`)
+      if (impl.status === 'BLOCKED') return fail('conteudo', `task ${t.n} BLOCKED: ${impl.summary}`)
+    }
+    const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
+    let lastR = null
+    for (const kind of ['spec', 'quality']) {
+      const loop = await reviewLoop(`T${t.n}:${kind}`,
+        (round, prev) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev }), t, kind, cur),
+          { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementação', schema: S_REVIEW, model: reviewModelFor(t) }),
+        (iss, k, tier) => withLocks(locks, async () => {
+          const fx = await agent(`${C()}
+
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
+${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementação', schema: S_IMPL, model: tier })
+          if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
+          return fx
+        }),
+        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1, `${start}..HEAD`),
+        { tier: implModel(t), reviewModel: reviewModelFor(t) })
+      if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
+      lastR = loop.r
+    }
+    head = lastR.headSha
+    taskLog.push({ n: t.n, title: t.title, status: impl.status, commits: lastR.commitsInRange })
+  }
+  out.tasks = taskLog
+
+  // Sync, final review, gates, merge and docs are implemented in Task 8.
   out.status = 'partial'
-  return fail('infra', 'not implemented')
+  return fail('infra', 'not implemented (sync, gates and merge)')
 }
 
 // ============================================================================ scheduling
@@ -540,6 +866,6 @@ order.forEach((id, idx) => {
   })()
 })
 for (const id of order) RESULTS.push(await runs[id])
-const merged = RESULTS.filter(r => r.merged).length
+const merged = RESULTS.filter(r => r.merged || r.planOnly).length
 return mkResult(merged === order.length ? 'done' : OPS.length && !merged ? 'needs-operator' : 'partial',
   { selection, error: RESULTS.some(r => r.error) ? 'not implemented' : undefined })
