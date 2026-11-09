@@ -342,13 +342,18 @@ test('acceptIntegrityAlerts is ignored for another SHA, another deliverable, a S
 });
 
 test('hard integrity alerts: the operator action offers the acknowledgement with the SHA, alongside revert; the run never sets it', async () => {
-  const { r } = await resumeArgs({});
+  const full = 'a'.repeat(40);
+  const { r, calls } = await exec({ cards: [card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: full })], deliverables: ['E1'], over: hardInteg });
   const o = r.operatorActions.find((x) => x.deliverable === 'E1' && x.kind === 'merge-rejected');
   assert.match(o.doNow, /acceptIntegrityAlerts/);
-  assert.match(o.doNow, /"E1":"m0"/);
-  assert.match(o.doNow, /revert -m 1 m0/);
-  assert.deepEqual(o.resumeWith.acceptIntegrityAlerts, { E1: 'm0' });
+  assert.ok(o.doNow.includes(full));
+  assert.ok(o.doNow.includes('revert -m 1 ' + full));
+  assert.equal(o.resumeWith.acceptIntegrityAlerts, undefined);
+  assert.deepEqual(o.resumeWith.deliverables, ['E1']);
   assert.equal(r.resumeArgs.acceptIntegrityAlerts, undefined);
+  const disc = calls.find((c) => c.label === 'discovery');
+  assert.match(disc.prompt, /mergeSha = the full 40-character output of git rev-parse/);
+  assert.match(disc.opts.schema.properties.cards.items.properties.mergeSha.description, /40-character/);
 });
 
 test('resume integrity: the temporary worktree is removed before the add and always after', async () => {

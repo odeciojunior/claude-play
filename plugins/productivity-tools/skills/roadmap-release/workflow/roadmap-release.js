@@ -594,7 +594,7 @@ const S_DISC = { type: 'object', properties: {
   targetExists: BOOL, readFrom: STR, trackerAvailable: BOOL, checkerExists: BOOL,
   cards: { type: 'array', items: { type: 'object', properties: {
     id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
-    status: STR, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: STR, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget'] } },
+    status: STR, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget'] } },
   blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
   donot: STRS,
   donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
@@ -643,7 +643,7 @@ const disc = await agent(`DISCOVERY task (read-only; change nothing). Answer wit
 3. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
 4. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
 5. Status: the <!-- roadmap:panel --> block of the state.md read; mergeCommit = first hash in backticks in the Evidence column, if any.
-6. Per card (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the status is in integratedStatuses and the integrationBranch is an ancestor of the target. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
+6. Per card (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the status is in integratedStatuses and the integrationBranch is an ancestor of the target. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 7. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
 8. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
 9. wtRoot: ${A.wtRoot || 'if git worktree list shows worktrees outside the repo, their common parent directory; otherwise <repo parent>/<repo name>-wt'} (with "/").`,
@@ -877,10 +877,10 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
   }
 
   // A merge already on the target that failed validation: it cannot be undone without a human decision (work may sit on top).
-  const markBroken = async (why, kind = 'conteudo', doNow = null, resumeExtra = null) => {
+  const markBroken = async (why, kind = 'conteudo', doNow = null) => {
     // The merge is already on the target: whatever the failure kind, it stays unvalidated and later merges must stop.
     integBroken = `the merge of ${E} is already on ${TARGET} and ${kind === 'infra' ? 'could not be validated' : 'failed validation'}: ${why}`
-    op('merge-rejected', E, integBroken, doNow || (kind === 'infra' ? `Fix the environment and run again with deliverables:["${E}"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "${INTWT}" revert -m 1 <merge>` : `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`), { ...A, deliverables: [E], ...(resumeExtra || {}) })
+    op('merge-rejected', E, integBroken, doNow || (kind === 'infra' ? `Fix the environment and run again with deliverables:["${E}"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "${INTWT}" revert -m 1 <merge>` : `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`), { ...A, deliverables: [E] })
     return { ok: false, broken: true, kind, why }
   }
 
@@ -992,7 +992,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
         if (integrityAckMatches(A.acceptIntegrityAlerts, E, card.mergeSha)) out.concerns.push(`the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge ${card.mergeSha}: ${hardAlerts.join('; ')}`)
         else {
           const ack = { ...(A.acceptIntegrityAlerts || {}), [E]: card.mergeSha }
-          return markBroken(`the merge ${card.mergeSha} weakened the tests: ${hardAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch); or, if you accept the merge as it is, run again with deliverables:["${E}"] and acceptIntegrityAlerts:${JSON.stringify(ack)}`, { acceptIntegrityAlerts: ack })
+          return markBroken(`the merge ${card.mergeSha} weakened the tests: ${hardAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch); or, only if you decide to accept the merge as it is, add acceptIntegrityAlerts:${JSON.stringify(ack)} yourself to the args and run again with deliverables:["${E}"] (the resume args below leave it out on purpose, so they re-measure and stay broken)`)
         }
       }
       return postMerge(card.mergeSha, 0, markBroken, null)  // commits may exist after the merge
