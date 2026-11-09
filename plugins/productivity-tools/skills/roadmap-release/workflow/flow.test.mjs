@@ -1453,3 +1453,54 @@ test('ledger: a finished code segment counts with mergeFound false', async () =>
   const { r } = await exec({ cards: [card('E3', { status: 'code: integrada; acceptance: blocked (BLQ-2)', onTarget: true, mergeFound: false })], args: { mode: 'dry-run' }, deliverables: 'next' });
   assert.ok(!r.selection.order.includes('E3'));
 });
+
+// ---- bloco A, fix round 1
+test('fix 1: a command with a line break does not match the same words on one line', async () => {
+  const { r, labels } = await mism([cmdRow('curl ok\nrm prod')], [cmdRow('curl ok rm prod')]);
+  assert.ok(!labels.some((l) => /:evidence/.test(l)));
+  assert.equal(r.results[0].merged, false);
+  assert.match(r.results[0].error, /rm prod/);
+});
+
+test('fix 2: a fix on a committed external task is told not to perform the effect', async () => {
+  const tasks = [tk(1, true), tk(2, false)];
+  let n = 0;
+  const { calls, labels } = await resumedRun(withPlan(tasks, (l) => {
+    if (l === 'E1:t1:spec1' && n++ === 0) return { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (l === 'E1:t1:spec-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    return undefined;
+  }), { authorizeExternal: ['E1:T1'] });
+  assert.ok(!labels.includes('E1:t1:impl'));
+  const p = calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
+  assert.match(p, /Do NOT perform any external effect/);
+  assert.doesNotMatch(p, /perform the effect at most once/);
+});
+
+test('minor 2: both agents return a table-escaped pipe as the pipe that must run', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const l of ['E1:plan', 'E1:plan-review1']) assert.ok(calls.find((c) => c.label === l).prompt.includes(String.raw`table-escaped \| written as |`), l);
+});
+
+test('minor 3: a reused worktree with no committed task also restores the log', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, reused: true } : loggedRun(l)) });
+  assert.ok(calls.find((c) => c.label === 'E1:docs1').prompt.includes('RISK-X'));
+  assert.ok(r.ownerReview.acceptedRisks.some((x) => x.description === 'RISK-X'));
+});
+
+test('minor 4: a note stays for the resume when the plan review rejects the plan', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  assert.equal(r.results[0].merged, false);
+  assert.equal(r.resumeArgs.notes.E1, 'answer');
+});
+
+test('minor 5: the next plan review does not receive the transcribed command', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 1 },
+    over: both((l) => (l === 'E1:plan-fix1' ? { ...planWith(safeTasks), ac: [cmdRow('cmd-A')] } : undefined), planRows([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')]), reviewRows([cmdRow('cmd-A')])) });
+  assert.ok(calls.find((c) => c.label === 'E1:plan-fix1').prompt.includes('cmd-B-not-shown'));
+  assert.ok(!calls.find((c) => c.label === 'E1:plan-review2').prompt.includes('cmd-B-not-shown'));
+});
+
+test('minor 7: restored human inputs differing only in spacing are one item', async () => {
+  const { calls } = await resumedRun((l) => (l === 'E1:resume-review-log' ? { found: true, humanInputs: [{ what: 'H-ONE' }, { what: '  H-ONE ' }], acceptedRisks: [], ac: [] } : undefined));
+  assert.equal(calls.find((c) => c.label === 'E1:docs1').prompt.split('H-ONE').length, 2);
+});

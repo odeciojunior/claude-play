@@ -346,3 +346,21 @@ test('evidenceGaps: a plan row of kind blocked needs a registered blocker', () =
   assert.deepEqual(evidenceGaps(card, [{ ac: 'AC1', kind: 'blocked', blq: 'BLQ-1' }], new Set(['BLQ-1'])), []);
   for (const blq of ['BLQ-9', undefined]) assert.match(evidenceGaps(card, [{ ac: 'AC1', kind: 'blocked', blq }], new Set(['BLQ-1']))[0].description, /without a registered blocker/);
 });
+
+test('fix 1: commandKey keeps apart commands the shell runs differently', () => {
+  const { commandKey: k } = P4;
+  assert.notEqual(k('curl ok\nrm prod'), k('curl ok rm prod'));
+  assert.notEqual(k('curl ok\r\nrm prod'), k('curl ok rm prod'));
+  assert.notEqual(k('touch a\\  b'), k('touch a\\ b'));
+  assert.notEqual(k('echo \\" "a  b"'), k('echo \\" "a b"'));
+  assert.equal(k('npm\t  test'), 'npm test');
+  assert.equal(k("echo 'a\\'  b"), k("echo 'a\\' b"));
+});
+
+test('fix 1 minor 5: hideRowGaps removes only the row comparison findings', () => {
+  const { hideRowGaps: h, evidenceRowGaps: g } = P4;
+  const line = '1. [critical/defeito]  ' + g(acCard, [row('secret-cmd')], [])[0].description;
+  assert.equal(h(line), '');
+  assert.equal(h(line + '\n2. [critical/defeito]  a wrong needsLock'), '2. [critical/defeito]  a wrong needsLock');
+  assert.equal(h(null), '');
+});

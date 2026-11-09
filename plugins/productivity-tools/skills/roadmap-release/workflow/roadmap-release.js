@@ -669,7 +669,7 @@ function evidenceExternalGaps(cardAc, planAc) {
   ])
 }
 // The comparison key of an evidence command: only what a retranscription adds harmlessly goes away (surrounding backticks or quotes,
-// whitespace outside quotes). Whitespace inside quotes is part of the command, and anything else counts as a different command.
+// runs of spaces and tabs outside quotes). A line break, an escaped character and whitespace inside quotes are part of the command; when in doubt, unequal.
 function commandKey(s) {
   let t = String(s == null ? '' : s).trim()
   for (let prev = null; prev !== t;) {
@@ -678,12 +678,15 @@ function commandKey(s) {
     if (bt) t = bt[2].trim()
     else if (t.length > 1 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0] && !t.slice(1, -1).includes(t[0])) t = t.slice(1, -1).trim()
   }
-  let out = '', q = ''
-  for (const ch of t) {
+  let out = '', q = '', inRun = false
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i]
+    if (ch === '\\' && q !== "'" && i + 1 < t.length) { out += ch + t[++i]; inRun = false; continue }
     if (q) { out += ch; if (ch === q) q = ''; continue }
-    if (ch === '"' || ch === "'" || ch === '`') { q = ch; out += ch; continue }
-    if (/\s/.test(ch)) { if (!out.endsWith(' ')) out += ' '; continue }
+    if (ch === '"' || ch === "'" || ch === '`') { q = ch; out += ch; inRun = false; continue }
+    if (ch === ' ' || ch === '\t') { if (!inRun) out += ' '; inRun = true; continue }
     out += ch
+    inRun = false
   }
   return out
 }
@@ -705,6 +708,10 @@ function evidenceRowGaps(cardAc, planAc, measured) {
   }
   for (const x of left) out.push(gap(`evidence row ${show(x.m)} is in the plan file at the measured blob but not in the plan JSON`))
   return out
+}
+// The reviewer measures the rows on its own, so the next round must not hand it the transcription through a finding of the comparison.
+function hideRowGaps(prev) {
+  return String(prev || '').split('\n').filter(l => !/evidence row .* \([a-z]+\): "/.test(l)).join('\n')
 }
 // A bound item of a deliverable whose plan this run approved under another fingerprint can never match again.
 function dropStaleBound(items, bound) {
@@ -1134,8 +1141,9 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
   // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
   const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet' })
+  const humanKey = h => String(h.what || '').trim().replace(/\s+/g, ' ')
   const restoreFromLog = rl => {
-    human.push(...missingFrom(human, rl.humanInputs, h => h.what))
+    human.push(...missingFrom(human, rl.humanInputs, humanKey))
     out.acceptedRisks.push(...missingFrom(out.acceptedRisks, rl.acceptedRisks, x => `${x.stage}|${x.description}`))
   }
   // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
@@ -1403,10 +1411,9 @@ ${acTxt}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
     { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
-  if (noteE) NOTES_READ.push(E)
   const planGaps = () => {
     const gap = description => ({ severity: 'critical', category: 'defeito', description })
     const tasks = plan.tasks || []
@@ -1429,8 +1436,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; a canonical gate changed (decisao, critical).
-THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external flags decide what is held, so compare each one with the plan file, and a flag that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan agent; and evidenceRows = every row of the "## Acceptance criteria evidence" section, read from the output of git -C "${wt}" show <measuredPlanBlob>, in order: ac (the criterion id alone), kind, command (the exact text of the row; none for human or blocked), blq, external (the boolean the row declares). The script compares these rows with the rows it would run, so list only what you read in that output, even if a previous issue names another row.`,
+THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external flags decide what is held, so compare each one with the plan file, and a flag that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${hideRowGaps(prev) ? `\nIssues from the previous round (${repeatRule()}):\n${hideRowGaps(prev)}` : ''}
+Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan agent; and evidenceRows = every row of the "## Acceptance criteria evidence" section, read from the output of git -C "${wt}" show <measuredPlanBlob>, in order: ac (the criterion id alone), kind, command (the exact text of the row, with a table-escaped \\| written as |; none for human or blocked), blq, external (the boolean the row declares). The script compares these rows with the rows it would run, so list only what you read in that output, even if a previous issue names another row.`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
@@ -1438,7 +1445,7 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
 Fix the plan ${plan.planPath} according to the review below and commit. Stop after the commit.
 ${fmt(iss)}
 Every ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, with external and externalDedupe) and tasks (full list, with tier, reviewTier, needsLock, external and externalDedupe).`,
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, each command copied verbatim from the file with a table-escaped \\| written as |, with external and externalDedupe) and tasks (full list, with tier, reviewTier, needsLock, external and externalDedupe).`,
         { label: `${E}:plan-fix${k}`, phase: 'Plan', schema: S_PLAN, model: tier })
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
       return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
@@ -1446,6 +1453,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...evidenceRowGaps(cardAc, plan.ac, r && r.evidenceRows), ...planGaps()],
     { tier: 'opus', reviewModel: 'opus' })
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
+  if (noteE) NOTES_READ.push(E)  // only an approved plan has consumed the note
   if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')
   out.plan = plan.planPath
   planRef = plan.planPath
@@ -1480,7 +1488,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   const doneMap = Object.fromEntries((prog.done || []).map(d => [d.n, d]))
   const lastDone = lastContiguousDone(plan.tasks, doneMap)  // a gap is where the run resumes; the last committed task is reviewed again
-  if (Object.keys(doneMap).length) {
+  if (Object.keys(doneMap).length || setup.reused || plan.reused) {  // any sign of an earlier run: its log holds what this run must not lose
     const rl = await readPersistedLog(wt, 'Implementation')
     if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
     else restoreFromLog(rl)
@@ -1509,6 +1517,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (resumed && t.n < lastDone) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
     const start = resumed ? resumed.firstParent : head
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
+    // A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
     const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
     if (!resumed) {
       const held = plan.tasks.filter(x => !doneMap[x.n] && x.n >= t.n).map(x => ({ x, item: externalHold(x, E, AUTH.items, fp) })).filter(h => h.item)
@@ -1528,7 +1537,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         impl = await runImpl(`${E}:t${t.n}:impl-lock`)
       }
       if (!impl) return fail('infra', `task ${t.n}: null implementer`)
-      human.push(...missingFrom(human, impl.humanInputs, h => h.what))
+      human.push(...missingFrom(human, impl.humanInputs, humanKey))
       if (impl.concerns) out.concerns.push(`T${t.n}: ${impl.concerns}`)
       if (impl.status === 'BLOCKED') return fail('conteudo', `task ${t.n} BLOCKED: ${impl.summary}`)
     }
@@ -1541,7 +1550,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
 
-In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${externalNote(authorizedExt, t)} STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${externalNote(authorizedExt && !resumed, t)} STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
 ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
