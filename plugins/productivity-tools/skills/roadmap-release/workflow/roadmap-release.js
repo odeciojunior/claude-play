@@ -246,6 +246,7 @@ function evidenceGaps(cardAc, planAc, blqIds) {
     if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
     if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => String(p.command || '').trim() === t.evidence))
       out.push(gap(`criterion ${a.id}: the plan changed the command bound by the card tag (${t.evidence})`))
+    if (t && (t.kind === 'human' || t.kind === 'blocked') && !mine.some(p => p.kind === t.kind)) out.push(gap(`criterion ${a.id}: the plan replaced the ${t.kind} tag with another kind of evidence`))
     if (t && t.kind === 'blocked' && !hasBlq(blqIds, t.blq)) out.push(gap(`criterion ${a.id} tagged blocked without a registered blocker (blq=${t.blq || 'empty'})`))
   }
   for (const p of rows) {
@@ -288,19 +289,67 @@ function implModel(task) {
 function reviewModelFor(task) {
   return task && task.reviewTier === 'opus' ? 'opus' : 'sonnet'
 }
-// Criteria that no command proves: human acts and registered blockers. Tag first, plan rows when the card has no tag.
+// Criteria left open for a human: a human/blocked tag or any human/blocked plan row opens it, even next to a test row.
+// Plan rows that match no card criterion are walked too.
 function criteriaOpen(cardAc, planAc) {
-  const exec = ['test', 'smoke', 'integration']
+  const open = k => k === 'human' || k === 'blocked'
   const out = []
+  const seen = new Set()
+  const add = (ac, kind, blq) => { if (!seen.has(ac)) { seen.add(ac); out.push({ ac, kind, blq }) } }
   for (const a of cardAc || []) {
-    const rows = (planAc || []).filter(p => p.ac === a.id)
-    const kinds = [...(a.tag && !a.tag.invalid ? [a.tag.kind] : []), ...rows.map(p => p.kind)]
-    if (kinds.some(k => exec.includes(k))) continue
-    const row = rows.find(p => p.kind === 'human' || p.kind === 'blocked')
-    const kind = a.tag && !a.tag.invalid && !exec.includes(a.tag.kind) ? a.tag.kind : row ? row.kind : null
-    if (kind) out.push({ ac: a.id, kind, blq: (a.tag && a.tag.blq) || (row && row.blq) })
+    const t = a.tag && !a.tag.invalid ? a.tag : null
+    const row = (planAc || []).find(p => p.ac === a.id && open(p.kind))
+    if (t && open(t.kind)) add(a.id, t.kind, t.blq || (row && row.kind === t.kind ? row.blq : undefined))
+    else if (row) add(a.id, row.kind, row.blq)
   }
+  for (const p of planAc || []) if (open(p.kind) && !(cardAc || []).some(a => a.id === p.ac)) add(p.ac, p.kind, p.blq)
   return out
+}
+// One review/fix cycle. env = { maxFix, blqIds, reviews, concerns, acceptRisks(stage, issues) }.
+// A finding that reappears after a fix escalates the fixer one tier (nextTier); the first escalation earns one extra
+// round so a haiku task can reach opus; a repeat at opus stops the deliverable.
+async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
+  let tier = opt.tier || 'opus'
+  const rm = opt.reviewModel || 'sonnet'
+  const rounds = []
+  const note = (round, fixTier) => rounds.push({ round, reviewModel: rm, fixTier: fixTier || null })
+  const record = (r, iss) => env.reviews.push({ stage, rounds, ...compact(r && r.issues), unresolved: iss || [] })
+  const kindOf = hard => (hard.some(i => i.category === 'decisao') ? 'decisao' : 'conteudo')
+  let r = await review(1, null)
+  note(1)
+  if (!r) { r = await review('1b', null); note('1b') }
+  if (!r) { record(r); return { ok: false, kind: 'infra', msg: `${stage}: null review` } }
+  let iss = truth(r)
+  let bonus = false
+  for (let k = 1; iss.length && env.maxFix > 0 && k <= env.maxFix + (bonus ? 1 : 0); k++) {
+    const fixable = iss.filter(i => isHard(i, env.blqIds))  // ambiente/fora-do-escopo/pelo-plano do not spend a fix
+    if (!fixable.length) break
+    const fx = await fix(fixable, k, tier)
+    if (!fx) { record(r, iss); return { ok: false, kind: 'infra', msg: `${stage}: null fix` } }
+    if (fx.status === 'BLOCKED') { record(r, iss); return { ok: false, kind: 'conteudo', msg: `${stage}: fix BLOCKED: ${fx.summary}` } }
+    if (fx.concerns) env.concerns.push(`${stage} fix${k}: ${fx.concerns}`)
+    const fixTier = tier
+    r = await review(k + 1, fmt(iss))
+    note(k + 1, fixTier)
+    if (!r) { record(r, iss); return { ok: false, kind: 'infra', msg: `${stage}: null re-review` } }
+    iss = truth(r)
+    if (sameFinding(fixable, iss, env.blqIds)) {
+      const up = nextTier(tier, true)
+      if (!up) {
+        record(r, iss)
+        const hard = iss.filter(i => isHard(i, env.blqIds))
+        return { ok: false, kind: kindOf(hard), msg: `${stage}: the same finding reappeared after a fix at opus:\n${fmt(hard)}` }
+      }
+      tier = up
+      bonus = true
+    }
+  }
+  record(r, iss)
+  if (!iss.length) return { ok: true, r }
+  const hard = iss.filter(i => isHard(i, env.blqIds))
+  if (hard.length) return { ok: false, kind: kindOf(hard), msg: `${stage} has open issues after ${env.maxFix} fixes:\n${fmt(hard)}` }
+  env.acceptRisks(stage, iss)
+  return { ok: true, r }
 }
 // ctx = { base, envFacts, baseline, E, wt, planPath, specPath, start, locks[], round?, prev? }
 function briefing(ctx) {
@@ -317,9 +366,17 @@ Follow TDD (superpowers:test-driven-development). Run the task's checks; a failu
 Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
 Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
 }
+// Failures show at the end of the output, so a long output keeps its tail.
+function tailOf(output) {
+  const o = String(output || '')
+  return o.length > 3000 ? '[...truncated...]\n' + o.slice(-3000) : o
+}
+function repeatRule() {
+  return 'If an item of the previous round is still unresolved, report it again with the exact same file and description as listed (same wording), so the script can detect the repeat; do not reword it.'
+}
 function fmtChecks(checks) {
   if (!checks || !checks.length) return '(no checks reported: unless the summary says the task was resumed from a previous run, a task that claims to be done without any check output is a defect)'
-  return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${String(c.output || '').slice(0, 3000)}`).join('\n---\n')
+  return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`).join('\n---\n')
 }
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
   const spec = kind === 'spec'
@@ -330,9 +387,9 @@ Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.
 ${spec
     ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
     : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block), a fragile test. Also confirm there is no regression against the spec.'}
-IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). Implementer summary: ${(impl && impl.summary) || '(none)'}
+IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). You hold no lock: do not re-run a check that needs a resource protected by a shared lock; judge it from the reported output. Implementer summary: ${(impl && impl.summary) || '(none)'}
 ${fmtChecks(impl && impl.checks)}
-Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them):\n${ctx.prev}` : ''}
+Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them; ${repeatRule()}):\n${ctx.prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${ctx.wt}" rev-list --count ${ctx.start}..HEAD).`
 }
 // </pure>
@@ -611,48 +668,7 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     return out
   }
 
-  // Review, fix, re-review. A finding that reappears after a fix escalates the fixer one tier (nextTier);
-  // a repeat at opus stops the deliverable. Issues that are not hard become accepted risks.
-  async function reviewLoop(stage, review, fix, truth, opt = {}) {
-    let tier = opt.tier || 'opus'
-    const rm = opt.reviewModel || 'sonnet'
-    const rounds = []
-    const note = (round, fixTier) => rounds.push({ round, reviewModel: rm, fixTier: fixTier || null })
-    const record = (r, iss) => out.reviews.push({ stage, rounds, ...compact(r && r.issues), unresolved: iss })
-    let r = await review(1, null)
-    note(1)
-    if (!r) { r = await review('1b', null); note('1b') }
-    if (!r) return { ok: false, kind: 'infra', msg: `${stage}: null review` }
-    let iss = truth(r)
-    for (let k = 1; iss.length && k <= MAXFIX; k++) {
-      const fixable = iss.filter(i => isHard(i, blqIds))  // ambiente/fora-do-escopo/pelo-plano do not spend a fix
-      if (!fixable.length) break
-      const fx = await fix(fixable, k, tier)
-      if (!fx) return { ok: false, kind: 'infra', msg: `${stage}: null fix` }
-      if (fx.status === 'BLOCKED') return { ok: false, kind: 'conteudo', msg: `${stage}: fix BLOCKED: ${fx.summary}` }
-      if (fx.concerns) out.concerns.push(`${stage} fix${k}: ${fx.concerns}`)
-      const fixTier = tier
-      r = await review(k + 1, fmt(iss))
-      note(k + 1, fixTier)
-      if (!r) return { ok: false, kind: 'infra', msg: `${stage}: null re-review` }
-      iss = truth(r)
-      if (sameFinding(fixable, iss, blqIds)) {
-        const up = nextTier(tier, true)
-        if (!up) {
-          record(r, iss)
-          const hard = iss.filter(i => isHard(i, blqIds))
-          return { ok: false, kind: hard.some(i => i.category === 'decisao') ? 'decisao' : 'conteudo', msg: `${stage}: the same finding reappeared after a fix at opus:\n${fmt(hard)}` }
-        }
-        tier = up
-      }
-    }
-    record(r, iss)
-    if (!iss.length) return { ok: true, r }
-    const hard = iss.filter(i => isHard(i, blqIds))
-    if (hard.length) return { ok: false, kind: hard.some(i => i.category === 'decisao') ? 'decisao' : 'conteudo', msg: `${stage} has open issues after ${MAXFIX} fixes:\n${fmt(hard)}` }
-    acceptRisks(stage, iss)
-    return { ok: true, r }
-  }
+  const reviewLoop = (...a) => runReviewLoop({ maxFix: MAXFIX, blqIds, reviews: out.reviews, concerns: out.concerns, acceptRisks }, ...a)
 
   // Clears uncommitted files left by an interrupted run; the patch is kept in _tmp.
   const sanitize = async stage => {
@@ -703,7 +719,7 @@ Return specPath, slug (without the ID), decisions (one line per autonomous decis
     (round, prev) => agent(`${C()}
 
 Review (read-only) the spec ${wt}/${spec.specPath} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block.
-Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round:\n${prev}` : ''}
+Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
       { label: `${E}:spec-review${round}`, phase: 'Spec', schema: S_REVIEW, model: 'opus' }),
     async (iss, k, tier) => {
@@ -763,7 +779,7 @@ Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
-Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round:\n${prev}` : ''}
+Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
       { label: `${E}:plan-review${round}`, phase: 'Plano', schema: S_REVIEW, model: 'opus' }),
     async (iss, k, tier) => {
@@ -787,13 +803,16 @@ Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, 
 
   const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` Also record, as a standing decision with Origin "user (notes)", unless already there, the owner's instruction: ${JSON.stringify(noteE)}.` : ''}`
   if (MODE === 'plan-only') {
-    await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
+    const rec = await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
+    if (!rec || rec.checkerErrors > 0) return fail('infra', `plan-only: the roadmap record failed (${rec ? 'checkerErrors=' + rec.checkerErrors : 'null agent or integration worktree broken'})`)
     out.planOnly = true
     out.ok = true
     return out
   }
-  await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
+  const recRun = await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
     `${decisionsTxt}\nAdd ${br} to the inflight block (type: deliverable, note: automatic execution).`)
+
+  if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
   const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }.`,

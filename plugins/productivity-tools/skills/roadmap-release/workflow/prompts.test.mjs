@@ -84,3 +84,79 @@ test('workflow script has no project-specific terms and no nondeterministic call
   assert.doesNotMatch(src, /supabase|\bdeno\b|\bRLS\b|docker|\budv\b|estado-atual/i);
   assert.doesNotMatch(src, /Date\.now\(|Math\.random\(|new Date\(\)|^import /m);
 });
+
+test('criteriaOpen: a human/blocked tag or row always opens the criterion', () => {
+  const t = (kind, evidence = 'x', blq) => ({ kind, evidence, ...(blq ? { blq } : {}) });
+  assert.deepEqual(P.criteriaOpen([{ id: 'A1', tag: t('human') }], [{ ac: 'A1', kind: 'test', command: 'x' }]), [{ ac: 'A1', kind: 'human', blq: undefined }]);
+  assert.deepEqual(P.criteriaOpen([{ id: 'A1', tag: t('blocked', 'k', 'BLQ-2') }], [{ ac: 'A1', kind: 'test', command: 'x' }]), [{ ac: 'A1', kind: 'blocked', blq: 'BLQ-2' }]);
+  assert.deepEqual(P.criteriaOpen([{ id: 'A1', tag: null }], [{ ac: 'A1', kind: 'test', command: 'x' }, { ac: 'A1', kind: 'human' }]), [{ ac: 'A1', kind: 'human', blq: undefined }]);
+  assert.deepEqual(P.criteriaOpen([], [{ ac: 'A9', kind: 'human' }, { ac: 'A8', kind: 'blocked', blq: 'BLQ-1' }, { ac: 'A7', kind: 'test', command: 'x' }]),
+    [{ ac: 'A9', kind: 'human', blq: undefined }, { ac: 'A8', kind: 'blocked', blq: 'BLQ-1' }]);
+  assert.equal(P.criteriaOpen([{ id: 'A1', tag: null }], [{ ac: 'A1', kind: 'human' }, { ac: 'A1', kind: 'human' }]).length, 1);
+});
+
+test('evidenceGaps: a plan row cannot replace a human/blocked tag with another kind', () => {
+  const tg = (kind, evidence, blq) => ({ kind, evidence, ...(blq ? { blq } : {}) });
+  const g = P.evidenceGaps([{ id: 'A1', text: 't', tag: tg('human', 'Ana') }], [{ ac: 'A1', kind: 'test', command: 'x' }], new Set());
+  assert.equal(g.length, 1);
+  assert.deepEqual(P.evidenceGaps([{ id: 'A1', text: 't', tag: tg('human', 'Ana') }], [{ ac: 'A1', kind: 'human' }], new Set()), []);
+  assert.equal(P.evidenceGaps([{ id: 'A1', text: 't', tag: tg('blocked', 'k', 'BLQ-1') }], [{ ac: 'A1', kind: 'test', command: 'x' }], new Set(['BLQ-1'])).length, 1);
+});
+
+test('fmtChecks keeps the tail of long output; review prompt tells reviewers about locks and exact repeats', () => {
+  const out = 'HEAD'.padEnd(5000, '.') + 'FAILURE-AT-THE-END';
+  const p = P.buildTaskReviewPrompt(ctx, task, 'quality', { status: 'DONE', summary: 's', checks: [{ command: 'c', output: out, exit: 1 }] });
+  assert.match(p, /FAILURE-AT-THE-END/);
+  assert.doesNotMatch(p, /HEAD\.\.\./);
+  assert.match(p, /shared lock/i);
+  assert.match(p, /exact same `?file`? and `?description`?/i);
+  assert.match(P.repeatRule(), /exact same/);
+});
+
+const mkEnv = (over = {}) => ({ maxFix: 2, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {}, ...over });
+const bug = { severity: 'critical', category: 'defeito', description: 'same bug', file: 'a.js' };
+const rev = (issues = [bug]) => ({ issues, headSha: 'h', clean: true, commitsInRange: 1 });
+
+test('reviewLoop escalates haiku -> sonnet -> opus on a repeated finding and gets one extra round', async () => {
+  const tiers = [];
+  const res = await P.runReviewLoop(mkEnv(), 'T1:spec', async () => rev(), async (iss, k, tier) => { tiers.push(tier); return { status: 'DONE' }; }, r => r.issues, { tier: 'haiku', reviewModel: 'sonnet' });
+  assert.deepEqual(tiers, ['haiku', 'sonnet', 'opus']);
+  assert.equal(res.ok, false);
+  assert.match(res.msg, /reappeared after a fix at opus/);
+  assert.equal(res.kind, 'conteudo');
+});
+
+test('reviewLoop with a fixer already at opus stops on the first repeat; decisao kind is kept', async () => {
+  const env = mkEnv();
+  const d = { severity: 'critical', category: 'decisao', description: 'breaks DEC-1', file: 'p.md' };
+  const res = await P.runReviewLoop(env, 'spec', async () => rev([d]), async () => ({ status: 'DONE' }), r => r.issues, { tier: 'opus', reviewModel: 'opus' });
+  assert.equal(res.ok, false);
+  assert.equal(res.kind, 'decisao');
+  assert.equal(env.reviews.length, 1);
+  assert.deepEqual(env.reviews[0].rounds.map(x => x.fixTier), [null, 'opus']);
+});
+
+test('reviewLoop passes when the fix resolves it, logs rounds with models, and logs early exits', async () => {
+  const env = mkEnv();
+  let n = 0;
+  const ok = await P.runReviewLoop(env, 's', async () => rev(n++ ? [] : [bug]), async () => ({ status: 'DONE' }), r => r.issues, { tier: 'sonnet', reviewModel: 'opus' });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(env.reviews[0].rounds, [{ round: 1, reviewModel: 'opus', fixTier: null }, { round: 2, reviewModel: 'opus', fixTier: 'sonnet' }]);
+  for (const [fix, kind] of [[async () => null, 'infra'], [async () => ({ status: 'BLOCKED', summary: 'x' }), 'conteudo']]) {
+    const e = mkEnv();
+    const r = await P.runReviewLoop(e, 's', async () => rev(), fix, r => r.issues, { tier: 'sonnet' });
+    assert.equal(r.kind, kind);
+    assert.equal(e.reviews.length, 1, 'early exit is logged');
+  }
+  const e2 = mkEnv();
+  const nr = await P.runReviewLoop(e2, 's', async () => null, async () => ({}), r => r.issues, {});
+  assert.equal(nr.kind, 'infra');
+  assert.equal(e2.reviews.length, 1);
+});
+
+test('reviewLoop with maxFix 0 never fixes', async () => {
+  let fixed = 0;
+  const res = await P.runReviewLoop(mkEnv({ maxFix: 0 }), 's', async () => rev(), async () => { fixed++; return {}; }, r => r.issues, { tier: 'haiku' });
+  assert.equal(fixed, 0);
+  assert.equal(res.ok, false);
+});
