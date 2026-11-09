@@ -29,7 +29,7 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 3. **Never invent numbers.** No dates, durations, metrics, estimates or costs that the user or a source did not supply. Date cells hold the date the event happened (today's date unless the user or a source gives another); never deadlines or forecasts. A value nobody supplied is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
 4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
 5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
-6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval.
+6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") never covers a strategy revision or a migration. With no person present, write only the pending item and say so in the hand-back.
 7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
 8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
 
@@ -159,7 +159,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 ### Step 6: Revision
 
-Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). Procedure, proposal format and checklist: `events.md` § End of piece or phase.
+Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). A caller's or orchestrator's pre-approval never covers a revision: with no person present, write only the pending item and say so in the hand-back. Procedure, proposal format and checklist: `events.md` § End of piece or phase.
 
 ## Red flags
 

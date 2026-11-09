@@ -933,3 +933,18 @@ test('item 7: every prompt that receives the notes carries the secrets warning',
     assert.match(p, /Never write or quote a credential/, l);
   }
 });
+
+test('item 11: the record and docs prompts forbid a strategy revision', async () => {
+  const planOnly = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' } });
+  const full = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const prompts = [
+    planOnly.calls.find((c) => c.label === 'E1:status-c').prompt,
+    full.calls.find((c) => c.label === 'E1:status-d').prompt,
+    full.calls.find((c) => c.label === 'E1:docs1').prompt,
+  ];
+  for (const p of prompts) {
+    assert.match(p, /Do NOT propose, write or approve a strategy revision/);
+    assert.match(p, /pre-approval never covers them/);
+  }
+  assert.match(full.calls.find((c) => c.label === 'E1:spec').prompt, /except a strategy revision or migration/);
+});

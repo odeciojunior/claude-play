@@ -188,7 +188,7 @@ On approval, in this order: strategy (`version` anchor, title, changelog entry l
 ### Revision procedure (SKILL.md Step 6)
 
 1. **Propose** strategy vN+1 in the conversation, without writing it: the new version (minor bump, `1.0` → `1.1`, unless the user wants a major one for a changed objective or phases), the `DEC` IDs it absorbs, each section that changes with one line on how, card changes (pieces, acceptance, `reqs`, priority), and requirement or coverage changes. Checklist: the "Review before proposing" list above. If nothing needs changing, say so; the user may still ask for a revision.
-2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the checklist above). The contradiction warning stays and the run may end with it.
+2. **Ask for approval** (AskUserQuestion when available). Until the user approves, write nothing to the strategy. The proposal lives only in the conversation plus one pending item "(user) approve strategy v<N+1> (absorbs DEC-…)"; nothing else is written. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") is not the user's approval: with no person present, write only the pending item and say so in the hand-back. After a compaction or in a new session, regenerate the proposal from the `DEC` rows the pending item names (and the checklist above). The contradiction warning stays and the run may end with it.
 3. **On approval:** update the `version` anchor (`<!-- roadmap:version <N+1> <date> -->`) and the title; add a changelog entry (newest first) listing the absorbed `DEC`; edit the changed sections and cite each absorbed `DEC` ID where it applies; regenerate "Where we are" from `state.md` and `critical-path.md`; add a version-history row. Then update whatever the revision moved (panel rows for new or dropped cards, `requirements.md`, `critical-path.md`, the `state.md` header line), remove the approval pending item, add a `log` row "strategy v<N+1>: absorbs DEC-…" with the strategy path as evidence, and rerun Step 5.
 4. **Rejected:** the user may change the decision instead; that is a new decision (§ Decision, superseding the old one).
 
@@ -207,7 +207,7 @@ When the refresh and the event both add log rows in one run, both carry the same
 
 ## 11. Migration
 
-**When:** the `formatVersion` in `formats.md` is greater than the config's `formatVersion` (SKILL.md Step 3).
+**When:** the `formatVersion` in `formats.md` is greater than the config's `formatVersion` (SKILL.md Step 3). A pre-approval given by a caller or an orchestrator never covers a migration: with no person present, add only a pending item and say so in the hand-back.
 
 `formatVersion 1` has no migration: it is the first format. Each future format adds one section below, `### Migration <N-1> → <N>`, written with that format change and applied in order (1 → 2, then 2 → 3). Template:
 
