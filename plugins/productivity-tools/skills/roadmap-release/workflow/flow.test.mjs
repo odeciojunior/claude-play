@@ -2115,7 +2115,40 @@ test('I3: NEEDS_HUMAN after an authorized launch writes the unknown mark, which 
 
 test('I3: the authorized implementer is told when NEEDS_HUMAN is allowed', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
-  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /return NEEDS_HUMAN only if the effect has not started; if it started, report DONE_WITH_CONCERNS/);
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished/);
+});
+
+// An agent that follows the note: a partial effect is reported as the note orders.
+const followsNote = (p, needs) => (/report DONE or DONE_WITH_CONCERNS only when the effect finished/.test(p)
+  ? { status: 'NEEDS_HUMAN', summary: 'effect started, needs a key', checks: [], humanInputs: [{ what: needs }] }
+  : { status: 'DONE_WITH_CONCERNS', summary: 'partial', checks: [], humanInputs: [{ what: needs }] });
+
+test('R1: a partial effect that needs a person does not merge', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: (l, p) => (l === 'E1:plan' ? planWith(ext1) : l === 'E1:t1:impl' ? followsNote(p, 'deploy key') : undefined) });
+  assert.equal(x.r.results[0].merged, false);
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.ok(x.labels.includes('E1:t1:awaiting-person'));
+  assert.ok(!x.labels.includes('E1:t1:effect-completed'));
+  assert.ok(!x.labels.includes('E1:merge'));
+});
+
+test('R1: NEEDS_HUMAN in a fix round stops again', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: (l, p) => (l === 'E1:plan' ? planWith(ext1) : l === 'E1:t1:spec-fix1' ? followsNote(p, 'fix key') : reviewIssue(l)) });
+  assert.equal(x.r.results[0].merged, false);
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /awaiting person \(effect may have run\):/);
+  assert.ok(!x.labels.includes('E1:merge'));
+});
+
+test('R2: with an open launch an old log line does not reach the report as an effect that ran', async () => {
+  const stale = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve E1:T1 please [already authorized and run in this run: E1:T1]' }], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', status: 'DONE', reviewed: false }] } : undefined);
+  const prog = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [], launchOpen: [1], effectMayHaveRun: [], effectCompleted: [] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(prog, stale)) });
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /External effects authorized and run: \[\]/);
+  assert.doesNotMatch(x.r.results[0].human[0], /already authorized and run/);
 });
 
 const notRun = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);

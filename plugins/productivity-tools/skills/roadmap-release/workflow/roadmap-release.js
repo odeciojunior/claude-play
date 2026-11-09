@@ -463,7 +463,7 @@ function lockNote(locks) {
 }
 function externalNote(authorizedExternal, task) {
   return authorizedExternal
-    ? `This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. Once launched, return NEEDS_HUMAN only if the effect has not started; if it started, report DONE_WITH_CONCERNS.`
+    ? `This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished.`
     : 'Do NOT perform any external effect in this task.'
 }
 function buildImplPrompt(ctx, task) {
@@ -1176,11 +1176,11 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
   // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
   const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet', effort: 'medium' })
-  const restoreFromLog = (rl, notRun = []) => {
-    const strip = h => notRun.reduce((x, item) => ({ ...x, what: String(x.what || '').replace(` [${RAN_MARK}: ${item}]`, '') }), h)
+  const restoreFromLog = (rl, unsettled = []) => {
+    const strip = h => unsettled.reduce((x, item) => ({ ...x, what: String(x.what || '').replace(` [${RAN_MARK}: ${item}]`, '') }), h)
     human.push(...missingFrom(human, (rl.humanInputs || []).map(strip), humanKey))
     out.acceptedRisks.push(...missingFrom(out.acceptedRisks, rl.acceptedRisks, x => `${x.stage}|${x.description}`))
-    out.externalRun.push(...missingFrom(out.externalRun, (rl.externalRun || []).filter(e => !notRun.includes(e.item)), x => `${x.item}|${x.command || ''}`))
+    out.externalRun.push(...missingFrom(out.externalRun, (rl.externalRun || []).filter(e => !unsettled.includes(e.item)), x => `${x.item}|${x.command || ''}`))
     annotateHuman()  // what an earlier run already did must not come back as a request
   }
   // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
@@ -1554,7 +1554,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   if (Object.keys(doneMap).length || setup.reused || plan.reused) {  // any sign of an earlier run: its log holds what this run must not lose
     const rl = await readPersistedLog(wt, 'Implementation')
     if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
-    else restoreFromLog(rl, awaitingPerson.map(n => `${E}:T${n}`))
+    else restoreFromLog(rl, [...awaitingPerson, ...launchOpen].map(n => `${E}:T${n}`))  // an old line must not state an effect that a person denied or that is now in doubt
   }
   // A completed mark is the record of the effect when the log has none (a person's commit, or a crash before the first log).
   out.externalRun.push(...missingFrom(out.externalRun, plan.tasks.filter(t => effectCompleted.includes(t.n)).map(t => ({ item: `${E}:T${t.n}`, title: t.title, status: 'confirmed by mark', reviewed: false })), x => `${x.item}|${x.command || ''}`))
