@@ -191,7 +191,7 @@ Strategy skeleton (headings translated into the project's language):
 <!-- roadmap:gates -->
 | ID | Command | Environment | When | Baseline |
 |---|---|---|---|---|
-| G1 | `<exact command, copied from the project CLAUDE.md or a source>` | <where it runs> | <every task, before merge, ...> | <expected result today> |
+| G1 | `<exact command, copied from the project CLAUDE.md or a source>` | <local, staging or prod> | <every task, before merge, ...> | <expected result today> |
 <!-- /roadmap:gates -->
 
 ## Metrics and targets

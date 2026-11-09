@@ -357,6 +357,13 @@ test('B ledger: a row with the wrong number of columns is skipped with a warning
   assert.ok(runPreflight(repo.dir, { home }).warnings.some((w) => /g2/.test(w) && /expected 5/.test(w)));
 });
 
+test('minor 4: the warning of an unknown cell names the fix available before any config file exists', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const repo = repoWithRoadmap(false, '| a | npm test | ci | dev | green |\n');
+  const w = runPreflight(repo.dir, { home }).warnings.filter((x) => /gate a\b/.test(x));
+  assert.ok(w.some((x) => /gates table/.test(x) && /local/.test(x)), JSON.stringify(w));
+});
+
 test('B ledger: an unknown derived gate yields one warning, with the rule to add', () => {
   const home = mkdtempSync(join(tmpdir(), 'home-'));
   const repo = repoWithRoadmap(false, '| a | npm test | local | every task | green |\n| k | kubectl diff | lab | whenever | green |\n');

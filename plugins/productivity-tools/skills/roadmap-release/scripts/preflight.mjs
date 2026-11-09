@@ -178,7 +178,7 @@ export function deriveConfig({ gatesBlockRows = [], projectContext = '', install
     .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim(), cls: classifyGate(r.Environment, r.When) }))
     .filter((g) => g.name && g.cmd)
     .map(({ cls, ...g }) => {
-      if (cls === 'unknown') warnings.push(`gate ${g.name}: Environment/When not recognized, treated as restricted (runs only with authorizeExternal ["gate:${g.name}"]); set restricted to false in release.config.json if it is local`);
+      if (cls === 'unknown') warnings.push(`gate ${g.name}: Environment/When not recognized, treated as restricted (runs only with authorizeExternal ["gate:${g.name}"]); if it is local, write local in that cell of the gates table, or set restricted to false in release.config.json`);
       return { ...g, kind: TEST_RUNNER.test(g.cmd) ? 'tests' : 'exit', ...(cls === 'free' ? {} : { restricted: true }) };
     });
   return { generated: true, projectContext, install, locks: [], conflictRules: '', gates };
