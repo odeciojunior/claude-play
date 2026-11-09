@@ -35,11 +35,13 @@ export function validateReleaseConfig(cfg) {
     else seen.add(g.name);
     if (typeof g.cmd !== 'string' || !g.cmd.trim()) errors.push(`${at}.cmd is required`);
     if (!KINDS.includes(g.kind)) errors.push(`${at}.kind must be one of ${KINDS.join(', ')}`);
+    if (g.restricted != null && typeof g.restricted !== 'boolean') errors.push(`${at}.restricted must be a boolean`);
     for (const l of asList(g.needsLock)) {
       if (l === 'merge') { errors.push(`${at}.needsLock cites the reserved lock name: merge`); continue; }
       if (!locks.includes(l)) errors.push(`${at}.needsLock cites undeclared lock: ${l}`);
     }
   });
+  if (cfg.gates.every((g) => g && g.restricted === true)) errors.push('every gate is restricted: nothing can run without authorization');
   return errors;
 }
 
@@ -99,11 +101,28 @@ function detectInstall(root) {
   return hit ? hit[1] : '';
 }
 
-export function deriveConfig({ gatesBlockRows = [], projectContext = '', install = '' } = {}) {
+const RESTRICT_MARKS = ['prod', 'produção', 'producao', 'staging', 'owner', 'dono'];
+const LOCAL_MARKS = ['local', 'every', 'each', 'before', 'merge', 'task', 'cada', 'todo', 'antes', 'always', 'sempre'];
+
+// Classifies a gate row by its Environment and When cells, cell by cell. A restriction mark in either cell wins;
+// otherwise both cells must be free (empty, a dash, or a local mark): anything else is unknown, treated as restricted.
+export function classifyGate(environment, when) {
+  const cells = [environment, when].map((c) => String(c ?? '').trim().toLowerCase());
+  const tokens = (c) => c.split(/[^\p{L}]+/u).filter(Boolean);
+  const starts = (c, marks) => tokens(c).some((t) => marks.some((m) => t.startsWith(m)));
+  if (cells.some((c) => starts(c, RESTRICT_MARKS) || /(^|[^\p{L}])release\s+only(?![\p{L}])/u.test(c))) return 'restricted';
+  const isFree = (c) => ['', '-', '—'].includes(c) || starts(c, LOCAL_MARKS);
+  return cells.every(isFree) ? 'free' : 'unknown';
+}
+
+export function deriveConfig({ gatesBlockRows = [], projectContext = '', install = '', warnings = [] } = {}) {
   const gates = gatesBlockRows
-    .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim() }))
+    .map((r) => ({ name: String(r.ID ?? '').trim(), cmd: String(r.Command ?? '').trim().replace(/^`+|`+$/g, '').trim(), cls: classifyGate(r.Environment, r.When) }))
     .filter((g) => g.name && g.cmd)
-    .map((g) => ({ ...g, kind: TEST_RUNNER.test(g.cmd) ? 'tests' : 'exit' }));
+    .map(({ cls, ...g }) => {
+      if (cls === 'unknown') warnings.push(`gate ${g.name}: Environment/When not recognized, treated as restricted (runs only with authorizeExternal ["gate:${g.name}"]); set restricted to false in release.config.json if it is local`);
+      return { ...g, kind: TEST_RUNNER.test(g.cmd) ? 'tests' : 'exit', ...(cls === 'free' ? {} : { restricted: true }) };
+    });
   return { generated: true, projectContext, install, locks: [], conflictRules: '', gates };
 }
 
@@ -164,7 +183,7 @@ const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 
 export function requiredCommands(cfg) {
   const cmds = [];
-  for (const g of cfg?.gates || []) cmds.push(g.cmd);
+  for (const g of cfg?.gates || []) if (g.restricted !== true) cmds.push(g.cmd);
   cmds.push(cfg?.install, ...asList(cfg?.setup), ...asList(cfg?.beforeEvidence));
   const out = {};
   const add = (rule, sub) => {
@@ -261,7 +280,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       try { ctx = readFileSync(join(root, 'CLAUDE.md'), 'utf8'); } catch { /* no project CLAUDE.md */ }
       const install = detectInstall(root);
       if (!install) warnings.push('no lockfile at the repository root, so the derived install is empty and worktrees get no dependencies: set "install" in release.config.json if the project needs one');
-      config = deriveConfig({ gatesBlockRows: rows, projectContext: ctx, install });
+      config = deriveConfig({ gatesBlockRows: rows, projectContext: ctx, install, warnings });
       generated = true;
     }
   }
@@ -272,6 +291,10 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       .concat([join(root, '.claude', 'settings.json'), join(root, '.claude', 'settings.local.json')]).map(readJson);
     const cmds = requiredCommands(config);
     missing = missingRules(Object.keys(cmds), settings, cmds);
+    for (const g of config.gates.filter((x) => x.restricted === true)) {
+      const extra = Object.keys(requiredCommands({ gates: [{ ...g, restricted: false }] })).filter((r) => !(r in cmds));
+      warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; if authorized, add permission rule(s): ${extra.length ? extra.join(', ') : '(none beyond the required ones)'}`);
+    }
   }
   return { configPath, generated, errors, missingRules: missing, warnings, config };
 }

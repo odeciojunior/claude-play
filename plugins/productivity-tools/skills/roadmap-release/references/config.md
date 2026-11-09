@@ -30,13 +30,14 @@ Project-specific settings for `roadmap-release`, stored in the roadmap folder ne
 
 ## Gates
 
-Each gate is `{ name, cmd, kind, needsLock?, invariant?, ignoreFailuresWhenChanged? }`.
+Each gate is `{ name, cmd, kind, needsLock?, invariant?, ignoreFailuresWhenChanged?, restricted? }`.
 
 - `name` is unique. `cmd` is the exact command.
 - `kind` is `exit` (only the exit code matters, as for lint and build) or `tests` (an agent reads the output and returns `{ name, ran, exit, total, skipped, failedNames }`).
 - `needsLock` is a lock name or a list of names. Each must appear in `locks`.
 - `invariant` marks a project invariant, such as schema drift or migration policy. It has no baseline.
 - `ignoreFailuresWhenChanged` describes exceptions, such as a smoke test that exercises old code.
+- `restricted` (optional boolean) marks a gate that touches a restricted environment. The derivation sets it from the strategy table's `Environment` and `When` cells, cell by cell, on lowercase tokens matched by prefix. A restriction mark (`prod`, `produção`, `producao`, `staging`, `owner`, `dono`, or the phrase `release only`) in either cell makes the gate `restricted`, even beside a local word. A cell is free when it is empty, `-`, `—`, or has a local mark (`local`, `every`, `each`, `before`, `merge`, `task`, `cada`, `todo`, `antes`, `always`, `sempre`); the gate is free only when both cells are free. Anything else is `unknown`, which counts as restricted and adds a `warnings` entry; a free cell does not absolve the other one. A restricted gate stays in the config, needs no permission rule until it is authorized, and the preflight warns with the rule to add. A restricted gate only runs with `authorizeExternal: ["gate:<id>"]`. The preflight fails with `every gate is restricted: nothing can run without authorization` when all gates are restricted.
 
 A red baseline stops the preflight: an `exit` gate with a non-zero code, a `tests` gate with total zero, or a violated invariant, unless `acceptRedBaseline` is set. An explicit `acceptRedBaseline` is honoured, but a `tests` gate with total zero fails any deliverable that adds no tests, so fix the gate or set `kind: exit`. A gate is green when its failing names are a subset of the baseline and the counts do not drop.
 

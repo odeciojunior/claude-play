@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  validateReleaseConfig, deriveConfig,
+  validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight,
 } from './preflight.mjs';
 import { readBlocks, parseTable } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
@@ -174,14 +174,14 @@ test('missingRules accepts the space-star wildcard form', () => {
   assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(git:*)'] } }], cmds), ['Bash(npm:*)']);
 });
 
-function repoWithRoadmap(releaseCfgOnRef) {
+function repoWithRoadmap(releaseCfgOnRef, gateRows = '| g1 | npm run lint | - | always | green |\n') {
   const root = mkdtempSync(join(tmpdir(), 'pf-'));
   const git = (...a) => execFileSync('git', ['-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { cwd: root, stdio: 'ignore' });
   git('init', '-q', '-b', 'main');
   const dir = join(root, 'docs', 'plans', 'roadmap-x');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'roadmap.config.json'), JSON.stringify({ strategy: 's.md' }));
-  writeFileSync(join(dir, 's.md'), '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n| g1 | npm run lint | - | always | green |\n<!-- /roadmap:gates -->\n');
+  writeFileSync(join(dir, 's.md'), '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n' + gateRows + '<!-- /roadmap:gates -->\n');
   git('add', '.'); git('commit', '-qm', 'init');
   git('branch', 'rel');
   if (releaseCfgOnRef) {
@@ -253,4 +253,61 @@ test('m4: the helpers unused by the workflow are gone', async () => {
   const mod = await import('./preflight.mjs');
   assert.equal(mod.quoteArg, undefined);
   assert.equal(mod.effectiveMaxParallel, undefined);
+});
+
+test('item 4: classifyGate', () => {
+  for (const [e, w] of [['local', 'every task'], ['', '-'], ['-', '—'], ['local', 'before merge'], ['', 'cada tarefa']]) assert.equal(classifyGate(e, w), 'free', `${e}|${w}`);
+  for (const [e, w] of [['prod', 'every task'], ['Produção', 'before merge'], ['staging', ''], ['owner laptop', 'merge'], ['Release only', '']]) assert.equal(classifyGate(e, w), 'restricted', `${e}|${w}`);
+  for (const [e, w] of [['kubernetes cluster', 'nightly'], ['CI runner', ''], ['kubernetes cluster', 'every task'], ['local', 'nightly']]) assert.equal(classifyGate(e, w), 'unknown', `${e}|${w}`);
+});
+
+test('item 4: always and sempre are free', () => {
+  assert.equal(classifyGate('', 'always'), 'free');
+  assert.equal(classifyGate('local', 'sempre'), 'free');
+  assert.equal(classifyGate('prod', 'always'), 'restricted');
+});
+
+test('item 4: deriveConfig keeps restricted gates in the config with restricted: true and warns on unknown', () => {
+  const warnings = [];
+  const cfg = deriveConfig({
+    gatesBlockRows: [
+      { ID: 'G1', Command: 'npm run lint', Environment: 'local', When: 'every task' },
+      { ID: 'G2', Command: 'npm run e2e', Environment: 'prod', When: 'before merge' },
+      { ID: 'G3', Command: 'kubectl get pods', Environment: 'kubernetes cluster', When: 'nightly' },
+    ],
+    warnings,
+  });
+  assert.deepEqual(cfg.gates.map((g) => g.restricted === true), [false, true, true]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /G3/);
+});
+
+test('item 4: a config where every gate is restricted is an error', () => {
+  const cfg = good(); cfg.gates.forEach((g) => { g.restricted = true; });
+  assert.ok(validateReleaseConfig(cfg).some((e) => /every gate is restricted: nothing can run without authorization/.test(e)));
+  const one = good(); one.gates[0].restricted = true;
+  assert.deepEqual(validateReleaseConfig(one), []);
+  const bad = good(); bad.gates[0].restricted = 'yes';
+  assert.ok(validateReleaseConfig(bad).some((e) => /restricted must be a boolean/.test(e)));
+});
+
+test('item 4: runPreflight on a roadmap with a free and a restricted gate returns both, the restricted one flagged, and no error', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const mixed = repoWithRoadmap(false, '| g1 | npm run lint | local | every task | green |\n| g2 | npm run e2e | prod | before merge | green |\n');
+  const r = runPreflight(mixed.dir, { home });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.config.gates.map((g) => [g.name, g.restricted === true]), [['g1', false], ['g2', true]]);
+  const all = repoWithRoadmap(false, '| g1 | npm run lint | prod | every task | green |\n| g2 | npm run e2e | staging | before merge | green |\n');
+  assert.ok(runPreflight(all.dir, { home }).errors.some((e) => /every gate is restricted/.test(e)));
+});
+
+test('item 4: a restricted gate needs no permission rule until authorized', () => {
+  const cfg = { ...good(), gates: [{ name: 'a', cmd: 'npm test', kind: 'tests' }, { name: 'k', cmd: 'kubectl apply', kind: 'exit', restricted: true }], locks: [] };
+  assert.ok(!requiredRules(cfg).includes('Bash(kubectl:*)'));
+  assert.ok(requiredRules(cfg).includes('Bash(npm:*)'));
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const repo = repoWithRoadmap(false, '| a | npm test | local | every task | green |\n| k | kubectl apply | prod | before merge | green |\n');
+  const r = runPreflight(repo.dir, { home });
+  assert.ok(r.warnings.some((w) => /\bk\b/.test(w) && /Bash\(kubectl:\*\)/.test(w)));
+  assert.ok(!r.missingRules.includes('Bash(kubectl:*)'));
 });
