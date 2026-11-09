@@ -118,7 +118,7 @@ Three numbers: `formats.md` formatVersion (its title, `# Roadmap format contract
 | A deliverable merges into `releaseBranch` | `state.md` panel (on-branch word, merge SHA, branch in Next step), `log.md` | § Merge into the release branch |
 | The release branch is integrated (or `integrated-pending`) | `state.md` panel (batch to the integrated word) + "in flight", `log.md` | § Release branch integrated |
 | Code ready, acceptance pending | `state.md` panel (`code: ...; acceptance: blocked (BLQ-n)`) + blockers, `log.md` | § Acceptance pending |
-| An executor made a choice nobody settled | `decisions.md` (Origin `executor`, pending), `state.md` pending, `log.md` | § Executor decision |
+| An executor made a choice nobody settled | `decisions.md` (Origin `executor`, pending) only when the autonomy answer allows it; under "no" only a `state.md` pending item `(owner) ratify: <choice>`; `log.md` | § Executor decision |
 | The last piece of a deliverable closes | card vs spec criteria; `state.md` pending, `log.md` | § Deliverable closed: criteria check |
 | A branch is deleted (or started) | `state.md` "in flight", `log.md` | § Branch deleted |
 | A blocker opens or closes | `state.md` blockers (+ panel, `now`), `critical-path.md`, `log.md` | § Blocker opened or closed |
