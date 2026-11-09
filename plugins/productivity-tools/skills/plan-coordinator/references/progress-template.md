@@ -19,7 +19,7 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 **Last COMPLETED Wave**: 0
 **Last DELEGATED Wave**: 0
 **In-Flight Agents**: none   <!-- before launch: "Group C (Steps 3-5, sonnet): launching"; after launch: add the agent ID -->
-**Final gate rounds:** 0   <!-- format: <n done> (last verdict: <PASS | defects: ...>); update after every final-gate round -->
+**Final gate rounds:** 0   <!-- format: <n done> (last verdict: <PASS | defects: ...>); update after every final-gate round; a round is one fix, commit, full check and re-review; n counts completed rounds; the first review with no fix is round 0; read this field before launching a fix, and after each round write the intended next step into Next Action -->
 **Next Action**: Self-approve the map (SKILL.md Step 8)   <!-- e.g. "Launch Wave 2 (Groups C, D)" -->
 
 ## Execution Map
