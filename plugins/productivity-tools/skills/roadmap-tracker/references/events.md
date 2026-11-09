@@ -34,6 +34,7 @@ Common to every recipe:
 - **Words**: statuses, coverage, decision status and branch kind use the exact `vocab` words of the config, which may be localized.
 - **State is a snapshot**: rewrite the affected rows and lists; do not keep history in `state.md`. Keep `now` within `limits.nowItems`.
 - **Strategy**: no recipe edits the strategy except § 9 after approval.
+- **`no questions`**: the override of SKILL.md rule 8 reaches every "ask" in these recipes, not only §§ 9 and 14. Never ask; write each unanswered question as a `pending` item `(user) <question>`, list it under `Pending for the user:`, and take the safe default: § 1 Contradicts unsure → write the filled cell, supersession unsure → not superseded; §§ 3 and 16 SHA that git cannot show → do not mark integrated; § 6 measurements file not enabled → log the event only.
 - **Critical path refresh**: a recipe that changes a deliverable's status, a blocker or a decision ends with "refresh `critical-path.md`'s next milestone per track". When the next gate of a track is unknown, write `unknown - ask at next event` (this wording, for every recipe) and ask at the next event; never invent a gate.
 - **Header line**: update the `state.md` header line (strategy version + date) on every event and every revision.
 - **Pruning** (on every event): drop `now` items that are done or stale (log the done ones in the event's `log` row or their own); drop `inflight` rows of kind `vocab.branchDeleted` at the next event after the deletion was logged; drop `donot` items whose `BLQ`/`DEC` is resolved or superseded.
@@ -82,7 +83,7 @@ The last piece of a deliverable closing also runs § 19.
 
 ## 3. Integration
 
-**When:** a branch with roadmap work is merged into the configured `integrationBranch`. With `releaseBranch` set, a merge into that branch is § 15 instead, and the later merge of the release branch into `integrationBranch` is § 16.
+**When:** a branch with roadmap work is merged into the configured `integrationBranch`. With `releaseBranch` set, a merge into that branch is § 15 instead, and the later merge of the release branch into `integrationBranch` is § 16. Decide first, once: `releaseBranch` set or a caller-supplied target (below) → § 15, else this recipe; § 15 never sends the event back here.
 
 Caller-supplied target: when `releaseBranch` is unset and the caller names the branch the work merged into (for example the target of `roadmap-release`), apply § 15 with that branch: on-branch word, merge SHA in Evidence, the branch named in Next step. Never infer the target from the checked-out branch.
 
@@ -262,7 +263,7 @@ Rules: never set the config's `formatVersion` above the vendored checker's `form
 
 ## 15. Merge into the release branch
 
-**When:** `releaseBranch` is set in `roadmap.config.json` and a deliverable (or piece) merges into it. Without `releaseBranch`, use § 3.
+**When:** `releaseBranch` is set in `roadmap.config.json` and a deliverable (or piece) merges into it. Without `releaseBranch` and without a caller-supplied target (below), use § 3. Order, once: check `releaseBranch` and the caller's target first; § 3 and § 15 never hand the event back and forth.
 
 Caller-supplied target: when `releaseBranch` is unset and the caller names the branch the work merged into (for example the target of `roadmap-release`), apply § 15 with that branch: on-branch word, merge SHA in Evidence, the branch named in Next step. Never infer the target from the checked-out branch.
 
@@ -318,7 +319,7 @@ Checker: `contradiction-unabsorbed` once a filled, in-force row exists.
 
 **When:** a spec is written, a plan is written, or execution of a plan begins for a deliverable, with no piece closed yet.
 
-1. `state.md` panel row of the deliverable: Status is the word at position 2 (spec), 3 (plan) or 4 (executing) of `deliverableStatuses`. Evidence is the path of the spec or the plan in backticks and, for executing, the branch name in backticks. Next step is the next concrete action.
+1. `state.md` panel row of the deliverable: Status is the word at position 2 (spec), 3 (plan) or 4 (executing) of `deliverableStatuses`. Evidence is the path of the spec or the plan in backticks and, for executing, the branch name in backticks. Next step is the next concrete action. **Segmented row** (Status already per piece, such as `piece 1: integrated; piece 2: spec`): change only the segment of the piece this event concerns, and only to a later word than it has now; keep every other segment as written. Never write one word over a segmented row and never lower a segment (`piece 1: integrated` stays when a spec or plan for piece 2 is recorded).
 2. Executing only: `state.md` "in flight": add or keep the row of the working branch with Kind `vocab.branchLive`, after confirming it exists (§ 4 step 4).
 3. `log.md`: one row, "E<n> spec written" / "E<n> plan written" / "E<n> execution started", evidence the spec or plan path.
 4. Close with the refresh of `critical-path.md` (next milestone per track) and the header line (Common).
