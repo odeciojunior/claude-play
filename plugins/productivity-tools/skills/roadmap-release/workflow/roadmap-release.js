@@ -1614,6 +1614,11 @@ const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
+if (foreignHold && MODE !== 'plan-only' && !OPS.some(o => o.item === FOREIGN_ITEM)) {
+  op('authorize-external', null, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: nothing was written there, and no execution report file was committed`,
+    `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
+    { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM] }, { item: FOREIGN_ITEM })
+}
 // Authorizations come back bound to the plan they were given for, and end with the delivery they covered.
 const settleAuth = items => {
   const done = RESULTS.filter(r => r.merged && !r.broken).map(r => r.id)
@@ -1641,10 +1646,5 @@ Be factual. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
-if (foreignHold && MODE !== 'plan-only' && !OPS.some(o => o.item === FOREIGN_ITEM)) {
-  op('authorize-external', null, `the target ${TARGET} is checked out in ${INTWT}, which is not the integration worktree of this workflow: nothing was written there, and no execution report file was committed`,
-    `Authorize it by running again with authorizeExternal including "${FOREIGN_ITEM}" (or free the branch ${TARGET} in ${INTWT} so the workflow uses its own worktree)`,
-    { ...A, authorizeExternal: [...AUTH.items, FOREIGN_ITEM] }, { item: FOREIGN_ITEM })
-}
 const allOk = slim.every(r => r.merged || r.planOnly)
 return mkResult(OPS.length ? 'needs-operator' : allOk ? 'done' : 'partial', { selection, results: slim, ownerReview, truth, lastGood, resumeArgs: resumeFinal, reportPath: report && !integBroken && !foreignHold ? reportPath : null, report })

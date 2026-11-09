@@ -764,6 +764,7 @@ test("item 6: the report never commits in the person's checkout when the budget 
   assert.equal(r.results.find((x) => x.id === 'E1').skipped, true);
   assert.match(calls.find((c) => c.label === 'report').prompt, /do NOT write a file/);
   assert.equal(r.reportPath, null);
+  assert.match(calls.find((c) => c.label === 'report').prompt, /"item":"checkout:integracao\/x"/);
   const a = r.operatorActions.filter((o) => o.kind === 'authorize-external' && o.item === 'checkout:integracao/x');
   assert.equal(a.length, 1);
   assert.equal(a[0].deliverable, null);
