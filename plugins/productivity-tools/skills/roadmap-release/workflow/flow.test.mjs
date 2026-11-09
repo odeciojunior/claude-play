@@ -13,7 +13,7 @@ const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['s
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
-async function exec({ cards, over, deliverables, config = {} }) {
+async function exec({ cards, over, deliverables, config = {}, args = {} }) {
   const calls = [];
   const agent = async (prompt, o) => {
     const l = o.label;
@@ -41,7 +41,7 @@ async function exec({ cards, over, deliverables, config = {} }) {
     if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
     if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
-    if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true };
+    if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
@@ -51,7 +51,7 @@ async function exec({ cards, over, deliverables, config = {} }) {
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09' },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', ...args },
     agent, parallel, () => {}, () => {}, { total: null });
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -225,7 +225,6 @@ test('finish-merge: a reverted fix judged net-clean closes ok, and the review ju
   const { r, calls } = await resume(both(probeWith([{ sha: 'f1', subject: 'bad fix' }, { sha: 'f2', subject: 'Revert "bad fix"' }]), reviewOf({})));
   assert.equal(e1Of(r).merged, true);
   assert.ok(!e1Of(r).broken && !e1Of(r).error);
-  assert.ok(!e1Of(r).broken);
   const p = calls.find((c) => c.label === 'E1:resume-fix-review').prompt;
   assert.match(p, /net state at HEAD/i);
   assert.match(p, /reverted or corrected/i);
@@ -292,7 +291,7 @@ test('finish-merge: integrity off, null or unmeasured pushes a concern and does 
   for (const v of [null, { deletedTests: [], removedAsserts: -1, skipsAdded: 0, prodChanged: 0, assertsAdded: 0 }]) {
     const { r } = await resume((l) => (/:resume-test-integrity$/.test(l) ? v : undefined));
     assert.equal(e1Of(r).merged, true);
-  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+    assert.ok(!e1Of(r).broken && !e1Of(r).error);
     assert.ok(e1Of(r).concerns.some((c) => /test-count floor/.test(c)));
   }
 });
@@ -302,4 +301,70 @@ test('cleanup creates the dirty folder only when there is a patch and removes wh
   const p = calls.find((c) => c.label === 'E1:cleanup').prompt;
   assert.ok(p.indexOf('status --porcelain') < p.indexOf('mkdir -p'));
   assert.match(p, /no patch was needed/i);
+});
+
+const hardInteg = (l) => (/:resume-test-integrity$/.test(l) ? { deletedTests: ['t/a.test.js'], removedAsserts: 0, skipsAdded: 0, prodChanged: 0, assertsAdded: 1 } : undefined);
+const resumeArgs = (args, over = hardInteg, config = {}) => exec({ cards: [unfinished()], deliverables: ['E1'], over, args, config });
+
+test('finish-merge: heuristic-only integrity alerts close ok with a concern', async () => {
+  const { r } = await resume((l) => (/:resume-test-integrity$/.test(l) ? { deletedTests: [], removedAsserts: 0, skipsAdded: 0, prodChanged: 2, assertsAdded: 0 } : undefined));
+  assert.equal(e1Of(r).merged, true);
+  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+  assert.ok(e1Of(r).concerns.some((c) => /no new assertion/.test(c)));
+  assert.ok(r.results.find((x) => x.id === 'E2').merged);
+});
+
+test('finish-merge: removed assertions and added skips stay broken', async () => {
+  for (const f of [{ removedAsserts: 1, skipsAdded: 0 }, { removedAsserts: 0, skipsAdded: 1 }]) {
+    const { r } = await resume((l) => (/:resume-test-integrity$/.test(l) ? { deletedTests: [], prodChanged: 0, assertsAdded: 1, ...f } : undefined));
+    assert.equal(e1Of(r).broken, true);
+  }
+});
+
+test('acceptIntegrityAlerts with the matching deliverable and SHA closes ok with a concern naming the acceptance', async () => {
+  const { r } = await resumeArgs({ acceptIntegrityAlerts: { E1: 'm0' } });
+  assert.equal(e1Of(r).merged, true);
+  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+  assert.ok(e1Of(r).concerns.some((c) => /operator/i.test(c) && /acceptIntegrityAlerts/.test(c) && /t\/a\.test\.js/.test(c)));
+});
+
+test('acceptIntegrityAlerts is ignored for another SHA, another deliverable, a SHA prefix or when it comes from config', async () => {
+  const cases = [
+    [{ acceptIntegrityAlerts: { E1: 'other' } }, {}],
+    [{ acceptIntegrityAlerts: { E2: 'm0' } }, {}],
+    [{ acceptIntegrityAlerts: { E1: 'm' } }, {}],
+    [{}, { acceptIntegrityAlerts: { E1: 'm0' } }],
+  ];
+  for (const [args, config] of cases) {
+    const { r } = await resumeArgs(args, hardInteg, config);
+    assert.equal(e1Of(r).broken, true, JSON.stringify([args, config]));
+  }
+});
+
+test('hard integrity alerts: the operator action offers the acknowledgement with the SHA, alongside revert; the run never sets it', async () => {
+  const { r } = await resumeArgs({});
+  const o = r.operatorActions.find((x) => x.deliverable === 'E1' && x.kind === 'merge-rejected');
+  assert.match(o.doNow, /acceptIntegrityAlerts/);
+  assert.match(o.doNow, /"E1":"m0"/);
+  assert.match(o.doNow, /revert -m 1 m0/);
+  assert.deepEqual(o.resumeWith.acceptIntegrityAlerts, { E1: 'm0' });
+  assert.equal(r.resumeArgs.acceptIntegrityAlerts, undefined);
+});
+
+test('resume integrity: the temporary worktree is removed before the add and always after', async () => {
+  const { calls } = await resume();
+  const p = calls.find((c) => c.label === 'E1:resume-test-integrity').prompt;
+  const add = p.indexOf('worktree add');
+  assert.ok(p.indexOf('worktree remove --force') < add);
+  assert.ok(p.lastIndexOf('worktree remove --force') > add);
+  assert.match(p, /ignor\w+ errors/i);
+  assert.match(p, /even if the program fails/i);
+});
+
+test('branchMerged: a located commit whose second parent is not the branch counts as not located', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, (l) => (/:merge-locate$/.test(l) ? { mergeSha: 'm0', rangeOk: true, secondParent: 'zz', branchTip: 'b9' } : undefined)) });
+  assert.equal(r.results[0].broken, true);
+  assert.ok(!labels.includes('E1:merge-fix-probe'));
+  const loc = calls.find((c) => c.label === 'E1:merge-locate');
+  assert.ok(['secondParent', 'branchTip'].every((k) => loc.opts.schema.required.includes(k)));
 });

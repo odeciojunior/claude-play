@@ -34,6 +34,8 @@ export const meta = {
 //   overrideDonot: ["E19"] releases a deliverable vetoed by the roadmap "do not" block
 //   acceptRisks: ["E18"] accepts a critical risk on a direct merge into the integrationBranch
 //   acceptRedBaseline (false): lets the run go on with a red baseline
+//   acceptIntegrityAlerts: { "E18": "<full merge SHA>" } on resume, accepts the hard test-integrity alerts of exactly that merge
+//     of that deliverable (they become a concern); another SHA is ignored. Only read from args, never set by the workflow itself
 //   roadmap, repo, wtRoot, today: detected when absent
 //   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
 //   trailer, branchPrefix ("feat/")
@@ -435,14 +437,24 @@ function refreshBaseline(base, defs, m, changedFiles) {
   return next
 }
 // integ = { deletedTests, removedAsserts, skipsAdded, prodChanged, assertsAdded }; removedAsserts -1 means unmeasured.
-function integrityAlerts(integ) {
+function integrityHardAlerts(integ) {
   if (!integ || integ.removedAsserts < 0) return []
   return [
     ...((integ.deletedTests || []).length ? ['deleted test files: ' + integ.deletedTests.join(', ')] : []),
     ...(integ.removedAsserts > 0 ? [integ.removedAsserts + ' assertions removed without replacement'] : []),
     ...(integ.skipsAdded > 0 ? [integ.skipsAdded + ' tests skipped, focused or commented out'] : []),
-    ...(integ.prodChanged > 0 && integ.assertsAdded === 0 ? [integ.prodChanged + ' code files changed with no new assertion'] : []),
   ]
+}
+function integrityHeuristicAlerts(integ) {
+  if (!integ || integ.removedAsserts < 0) return []
+  return integ.prodChanged > 0 && integ.assertsAdded === 0 ? [integ.prodChanged + ' code files changed with no new assertion'] : []
+}
+function integrityAlerts(integ) {
+  return [...integrityHardAlerts(integ), ...integrityHeuristicAlerts(integ)]
+}
+// The operator's acknowledgement covers one deliverable at one exact merge SHA, never a prefix or another merge.
+function integrityAckMatches(ack, E, sha) {
+  return !!ack && typeof ack === 'object' && typeof ack[E] === 'string' && !!sha && ack[E] === sha
 }
 const resultTxt = r => (r ? 'exit ' + r.exit + (typeof r.total === 'number' ? ', total ' + r.total + ', skipped ' + (r.skipped || 0) + ', failing [' + (r.failedNames || []).join(', ') + ']' : '') : 'not measured')
 function gateSummary(defs, m, base) {
@@ -615,7 +627,7 @@ const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: S
 const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
 const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['checkerErrors', 'clean'] }
 const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
-const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL }, required: ['mergeSha', 'rangeOk'] }
+const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, secondParent: STR, branchTip: STR }, required: ['mergeSha', 'rangeOk', 'secondParent', 'branchTip'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
 const S_INTEG = { type: 'object', properties: { deletedTests: STRS, removedAsserts: INT, skipsAdded: INT, prodChanged: INT, assertsAdded: INT }, required: ['deletedTests', 'removedAsserts', 'skipsAdded', 'prodChanged', 'assertsAdded'] }
 const S_EVID = { type: 'object', properties: { headSha: STR, clean: BOOL, beforeOk: BOOL, results: { type: 'array', items: { type: 'object', properties: { ac: STR, command: STR, exit: INT, log: STR }, required: ['ac', 'command', 'exit'] } } }, required: ['headSha', 'clean', 'results'] }
@@ -865,10 +877,10 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
   }
 
   // A merge already on the target that failed validation: it cannot be undone without a human decision (work may sit on top).
-  const markBroken = async (why, kind = 'conteudo', doNow = null) => {
+  const markBroken = async (why, kind = 'conteudo', doNow = null, resumeExtra = null) => {
     // The merge is already on the target: whatever the failure kind, it stays unvalidated and later merges must stop.
     integBroken = `the merge of ${E} is already on ${TARGET} and ${kind === 'infra' ? 'could not be validated' : 'failed validation'}: ${why}`
-    op('merge-rejected', E, integBroken, doNow || (kind === 'infra' ? `Fix the environment and run again with deliverables:["${E}"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "${INTWT}" revert -m 1 <merge>` : `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`), { ...A, deliverables: [E] })
+    op('merge-rejected', E, integBroken, doNow || (kind === 'infra' ? `Fix the environment and run again with deliverables:["${E}"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "${INTWT}" revert -m 1 <merge>` : `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`), { ...A, deliverables: [E], ...(resumeExtra || {}) })
     return { ok: false, broken: true, kind, why }
   }
 
@@ -971,11 +983,18 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
       if (badFix) return badFix
       // out.brM is null on resume, so the count floor uses a baseline that already holds the merge: measure what the merge did to the tests.
       const integWt = `${WT}/_tmp/${E}-integrity-wt`
-      const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run: node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" from ${integWt} (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}), delete the file, git -C "${REPO}" worktree remove --force "${integWt}", and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+      const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. First, ignoring errors: git -C "${REPO}" worktree remove --force "${integWt}". Then git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run: node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" from ${integWt} (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}). Always, even if the program fails: delete the file and run git -C "${REPO}" worktree remove --force "${integWt}". Return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
         { label: `${E}:resume-test-integrity`, phase: 'Merge', schema: S_INTEG, model: 'haiku' }) : null
       if (!integ || integ.removedAsserts < 0) out.concerns.push(`resume: the test-count floor was not verified for the merge ${card.mergeSha} (test integrity ${TEST_INTEGRITY ? 'not measured' : 'disabled'})`)
-      const integAlerts = integrityAlerts(integ)
-      if (integAlerts.length) return markBroken(`the merge ${card.mergeSha} weakened the tests: ${integAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one; to undo: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`)
+      for (const a of integrityHeuristicAlerts(integ)) out.concerns.push(`resume: test integrity of the merge ${card.mergeSha}: ${a}`)
+      const hardAlerts = integrityHardAlerts(integ)
+      if (hardAlerts.length) {
+        if (integrityAckMatches(A.acceptIntegrityAlerts, E, card.mergeSha)) out.concerns.push(`the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge ${card.mergeSha}: ${hardAlerts.join('; ')}`)
+        else {
+          const ack = { ...(A.acceptIntegrityAlerts || {}), [E]: card.mergeSha }
+          return markBroken(`the merge ${card.mergeSha} weakened the tests: ${hardAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch); or, if you accept the merge as it is, run again with deliverables:["${E}"] and acceptIntegrityAlerts:${JSON.stringify(ack)}`, { acceptIntegrityAlerts: ack })
+        }
+      }
       return postMerge(card.mergeSha, 0, markBroken, null)  // commits may exist after the merge
     }))
   }
@@ -1317,9 +1336,9 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, mod
       validatedHead = rg.head
     }
     if (probe.branchMerged) {
-      const loc = await agent(`Read-only. Run: git -C "${INTWT}" rev-list --first-parent --reverse --ancestry-path ${br}..HEAD. mergeSha = the first line of its output (empty when none); rangeOk = true only if the command exited 0.`,
+      const loc = await agent(`Read-only. Run: git -C "${INTWT}" rev-list --first-parent --reverse --ancestry-path ${br}..HEAD. mergeSha = the first line of its output (empty when none); rangeOk = true only if the command exited 0; secondParent = git -C "${INTWT}" rev-parse <mergeSha>^2 (empty when it has none); branchTip = git -C "${INTWT}" rev-parse ${br}.`,
         { label: `${E}:merge-locate`, phase: 'Merge', schema: S_LOCATE, model: 'haiku' })
-      if (!loc || loc.rangeOk !== true || !loc.mergeSha) return markBroken(`the branch ${br} is on ${TARGET} but its merge commit could not be located`, 'infra')
+      if (!loc || loc.rangeOk !== true || !loc.mergeSha || !loc.secondParent || !gateShaMatch(loc.secondParent, loc.branchTip)) return markBroken(`the branch ${br} is on ${TARGET} but its merge commit could not be located`, 'infra')
       const badFix = await reviewFixesAfterMerge(loc.mergeSha)
       if (badFix) return badFix
       return postMerge(loc.mergeSha, 0, markBroken, preSha)

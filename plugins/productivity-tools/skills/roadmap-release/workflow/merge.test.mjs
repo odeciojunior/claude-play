@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes } = loadPure();
+const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes, integrityHardAlerts, integrityHeuristicAlerts, integrityAckMatches } = loadPure();
 const RM = 'docs/plans/roadmap-x/';
 const res = (name, o = {}) => ({ name, ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...o });
 
@@ -132,4 +132,20 @@ test('postMergeFixArgs finds an unprefixed fix on a real repo and ignores merges
   git('checkout', '-q', 'main'); git('merge', '-q', '--no-ff', 'e2', '-m', 'merge: E2');
   const subjects = git(...postMergeFixArgs(merge, RM, ['docs/'])).split('\n').filter(Boolean).map((l) => l.split('\t')[1]);
   assert.deepEqual(subjects, ['hotfix the parser']);
+});
+
+test('integrity alerts split into hard and heuristic', () => {
+  const i = { deletedTests: ['a'], removedAsserts: 1, skipsAdded: 1, prodChanged: 1, assertsAdded: 0 };
+  assert.equal(integrityHardAlerts(i).length, 3);
+  assert.equal(integrityHeuristicAlerts(i).length, 1);
+  assert.equal(integrityAlerts(i).length, 4);
+  assert.deepEqual(integrityHardAlerts({ ...i, removedAsserts: -1 }), []);
+  assert.deepEqual(integrityHeuristicAlerts(null), []);
+});
+
+test('integrityAckMatches needs the exact deliverable and SHA', () => {
+  assert.equal(integrityAckMatches({ E1: 'abc' }, 'E1', 'abc'), true);
+  for (const [a, e, s] of [[{ E1: 'abc' }, 'E1', 'abd'], [{ E1: 'abc' }, 'E2', 'abc'], [{ E1: 'ab' }, 'E1', 'abc'], [null, 'E1', 'abc'], [{ E1: true }, 'E1', 'abc'], [{ E1: '' }, 'E1', '']]) {
+    assert.equal(integrityAckMatches(a, e, s), false);
+  }
 });
