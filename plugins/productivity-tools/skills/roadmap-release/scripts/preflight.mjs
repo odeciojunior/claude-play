@@ -31,9 +31,11 @@ export function validateReleaseConfig(cfg) {
     const at = `gates[${i}]`;
     if (!g || typeof g !== 'object') { errors.push(`${at} must be an object`); return; }
     if (typeof g.name !== 'string' || !g.name) errors.push(`${at}.name is required`);
-    else if (g.restricted === true && /\s/.test(g.name)) errors.push(`${at}.name must not contain spaces: ${g.name} (a restricted gate becomes an authorizeExternal item)`);
-    else if (seen.has(g.name)) errors.push(`${at}.name duplicate: ${g.name}`);
-    else seen.add(g.name);
+    else {
+      if (g.restricted === true && /\s/.test(g.name)) errors.push(`${at}.name must not contain spaces: ${g.name} (a restricted gate becomes an authorizeExternal item)`);
+      if (seen.has(g.name)) errors.push(`${at}.name duplicate: ${g.name}`);
+      else seen.add(g.name);
+    }
     if (typeof g.cmd !== 'string' || !g.cmd.trim()) errors.push(`${at}.cmd is required`);
     if (!KINDS.includes(g.kind)) errors.push(`${at}.kind must be one of ${KINDS.join(', ')}`);
     if (g.restricted != null && typeof g.restricted !== 'boolean') errors.push(`${at}.restricted must be a boolean`);
@@ -130,7 +132,7 @@ export function parseGatesTable(markdown, warnings = []) {
   const rows = body.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|')).map(splitRow);
   const isSep = (r) => r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
   return rows.slice(1).filter((r) => {
-    if (isSep(r)) return false;
+    if (isSep(r) || (r.length === 1 && r[0] === '')) return false;
     if (r.length !== 5) {
       warnings.push(`gates table row "${r[0] || '(empty)'}" has ${r.length} columns, expected 5 (ID, Command, Environment, When, Baseline): row skipped, so that gate is missing from the derived config (write a pipe inside a cell as \\|)`);
       return false;
@@ -153,18 +155,19 @@ function detectInstall(root) {
   return hit ? hit[1] : '';
 }
 
-// 'prod', 'production', 'produção' and 'producao' must be whole words (not "product"); the others match by prefix.
-const RESTRICT_WORDS = ['prod', 'production', 'produção', 'producao'];
+// The prod family fails toward restricted: any token starting with "prod" restricts (prods, produções, proddb), except words that are
+// really something else (product, produto, produce, produzir). Staging, owner and dono match by prefix.
+const NOT_PROD = /^(product(?!ion)|produto|produtiv|produce|produz)/;
 const RESTRICT_MARKS = ['staging', 'owner', 'dono'];
 const LOCAL_MARKS = ['local', 'every', 'each', 'before', 'merge', 'task', 'cada', 'todo', 'antes', 'always', 'sempre'];
 
 // Classifies a gate row by its Environment and When cells, cell by cell. A restriction mark in either cell wins;
 // otherwise both cells must be free (empty, a dash, or a local mark): anything else is unknown, treated as restricted.
 export function classifyGate(environment, when) {
-  const cells = [environment, when].map((c) => String(c ?? '').trim().toLowerCase());
+  const cells = [environment, when].map((c) => String(c ?? '').normalize('NFC').trim().toLowerCase());
   const tokens = (c) => c.split(/[^\p{L}]+/u).filter(Boolean);
   const starts = (c, marks) => tokens(c).some((t) => marks.some((m) => t.startsWith(m)));
-  const restrictedCell = (c) => tokens(c).some((t) => RESTRICT_WORDS.includes(t)) || starts(c, RESTRICT_MARKS);
+  const restrictedCell = (c) => tokens(c).some((t) => t.startsWith('prod') && !NOT_PROD.test(t)) || starts(c, RESTRICT_MARKS);
   if (cells.some((c) => restrictedCell(c) || /(^|[^\p{L}])release\s+only(?![\p{L}])/u.test(c))) return 'restricted';
   const isFree = (c) => ['', '-', '—'].includes(c) || starts(c, LOCAL_MARKS);
   return cells.every(isFree) ? 'free' : 'unknown';

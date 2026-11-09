@@ -364,3 +364,31 @@ test('B ledger: an unknown derived gate yields one warning, with the rule to add
   assert.equal(w.length, 1);
   assert.ok(/not recognized/.test(w[0]) && /Bash\(kubectl:\*\)/.test(w[0]) && /gate:k/.test(w[0]));
 });
+
+test('B fix 1: the prod family fails toward restricted, NFC-normalized; only real other words are free', () => {
+  const nfd = 'produção'.normalize('NFD');
+  for (const [e, w] of [['local e ' + nfd, 'merge'], ['local produções', 'merge'], ['prods', ''], ['producoes', 'every task'], ['local', 'produção'.normalize('NFD')], ['proddb', ''], ['PRODUCAO', '']]) assert.equal(classifyGate(e, w), 'restricted', `${e}|${w}`);
+  for (const [e, w] of [['product', 'merge'], ['local products', 'merge'], ['local', 'produto'], ['productivity', 'every'], ['local', 'producer']]) assert.notEqual(classifyGate(e, w), 'restricted', `${e}|${w}`);
+});
+
+test('B fix 1: a duplicate name is flagged even when a restricted name has a space', () => {
+  const c = good(); c.gates[0].name = 'my gate'; c.gates[0].restricted = true; c.gates[1].name = 'my gate';
+  assert.ok(validateReleaseConfig(c).some((e) => /duplicate/.test(e)));
+});
+
+test('B fix 1: a bare pipe line gives no column warning; parity also holds with CRLF, fences and nested openers', () => {
+  const w = [];
+  assert.deepEqual(parseGatesTable(gatesMd([ROW1, '|']), w).map((r) => r.ID), ['G1']);
+  assert.deepEqual(w, []);
+  const cases = [
+    gatesMd([ROW1, '| G2 | `make a` | local | merge | ok |']).replace(/\n/g, '\r\n'),
+    ['```', '<!-- roadmap:gates -->', '```', gatesMd([ROW1, '| G2 | `make a` | l | w | b |'])].join('\n'),
+    ['<!-- roadmap:gates <!-- roadmap:gates -->', ...HEAD, ROW1, '| G2 | `make a` | l | w | b |', '<!-- /roadmap:gates -->'].join('\n'),
+    ['~~~~', gatesMd([ROW1]), '~~~', gatesMd(['| G2 | `make a` | l | w | b |', '| G3 | `x` | l | w | b |']), '~~~~'].join('\n'),
+  ];
+  for (const md of cases) {
+    const b = readBlocks(md, 'gates')[0];
+    const expected = b ? parseTable(b.body).filter((r) => r.length === 5 && !['', '-', '—'].includes(r[1])).map((r) => r[0]) : [];
+    assert.deepEqual(parseGatesTable(md).map((r) => r.ID), expected, md);
+  }
+});
