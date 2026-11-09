@@ -1,0 +1,110 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  validateReleaseConfig, deriveConfig, effectiveMaxParallel,
+  requiredRules, requiredCommands, missingRules, quoteArg, parseGatesTable,
+} from './preflight.mjs';
+
+const good = () => ({
+  projectContext: 'ctx',
+  install: 'npm ci',
+  gates: [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }],
+  locks: ['db'],
+});
+
+test('validateReleaseConfig accepts a valid config', () => {
+  assert.deepEqual(validateReleaseConfig(good()), []);
+});
+
+test('validateReleaseConfig rejects invalid kind, empty gates, undeclared lock', () => {
+  const a = good(); a.gates[0].kind = 'weird';
+  assert.ok(validateReleaseConfig(a).some((e) => /kind/.test(e)));
+  const b = good(); b.gates = [];
+  assert.ok(validateReleaseConfig(b).some((e) => /gates/.test(e)));
+  const c = good(); c.locks = [];
+  assert.ok(validateReleaseConfig(c).some((e) => /lock/.test(e) && /db/.test(e)));
+  assert.ok(validateReleaseConfig(null).length > 0);
+});
+
+test('validateReleaseConfig checks optional fields and duplicate gate names', () => {
+  const a = good(); a.gates.push({ name: 'lint', cmd: 'x', kind: 'exit' });
+  assert.ok(validateReleaseConfig(a).some((e) => /duplicate/.test(e)));
+  const b = good(); b.gates[0].cmd = '';
+  assert.ok(validateReleaseConfig(b).some((e) => /cmd/.test(e)));
+});
+
+test('parseGatesTable reads the roadmap:gates block', () => {
+  const md = ['x', '<!-- roadmap:gates -->', '| ID | Command | Environment | When | Baseline |', '|---|---|---|---|---|',
+    '| G1 | `npm run lint` | local | every task | green |', '| G2 | `npm test` | local | merge | 68 passing |', '<!-- /roadmap:gates -->'].join('\n');
+  const rows = parseGatesTable(md);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].ID, 'G1');
+  assert.equal(rows[1].Command, '`npm test`');
+});
+
+test('deriveConfig marks generated and classifies lint/build as exit, others tests', () => {
+  const cfg = deriveConfig({
+    gatesBlockRows: [
+      { ID: 'G1', Command: '`npm run lint`' }, { ID: 'G2', Command: '`npm run build`' },
+      { ID: 'G3', Command: '`npm test`' }, { ID: 'G4', Command: '`pytest -q`' },
+    ],
+    projectContext: 'rules',
+  });
+  assert.equal(cfg.generated, true);
+  assert.equal(cfg.projectContext, 'rules');
+  assert.deepEqual(cfg.gates.map((g) => g.kind), ['exit', 'exit', 'tests', 'tests']);
+  assert.equal(cfg.gates[0].cmd, 'npm run lint');
+  assert.deepEqual(validateReleaseConfig(cfg), []);
+});
+
+test('effectiveMaxParallel is 1 when generated', () => {
+  assert.equal(effectiveMaxParallel({ generated: true }, 5), 1);
+  assert.equal(effectiveMaxParallel({}, 5), 5);
+  assert.equal(effectiveMaxParallel({}), 3);
+  assert.equal(effectiveMaxParallel({ maxParallel: 2 }), 2);
+  assert.equal(effectiveMaxParallel({}, 0), 1);
+});
+
+test('requiredRules covers gates, install, setup, beforeEvidence and git', () => {
+  const cfg = {
+    ...good(), install: 'pnpm install', setup: ['redis-server --daemonize yes'], beforeEvidence: 'make reset && make seed; echo ok',
+  };
+  const r = requiredRules(cfg);
+  for (const x of ['Bash(npm:*)', 'Bash(pnpm:*)', 'Bash(redis-server:*)', 'Bash(make:*)', 'Bash(echo:*)', 'Bash(git:*)']) assert.ok(r.includes(x), x);
+  assert.equal(new Set(r).size, r.length);
+});
+
+test('requiredRules splits && and ; and skips env assignments', () => {
+  const r = requiredRules({ ...good(), install: 'FOO=1 yarn && cd x; npm ci' });
+  assert.ok(r.includes('Bash(yarn:*)') && r.includes('Bash(cd:*)'));
+});
+
+const S = (...allow) => ({ permissions: { allow } });
+
+test('missingRules understands wildcards across settings', () => {
+  const req = ['Bash(npm:*)', 'Bash(git:*)', 'Bash(make:*)'];
+  assert.deepEqual(missingRules(req, [S('Bash(npm:*)'), S('Bash(git:*)')]), ['Bash(make:*)']);
+  assert.deepEqual(missingRules(req, [S('Bash(*)')]), []);
+  assert.deepEqual(missingRules(req, [S('Bash')]), []);
+  assert.deepEqual(missingRules(req, [{}, null, undefined]), req);
+});
+
+test('missingRules accepts exact-command allows when commands are given', () => {
+  const cmds = { 'Bash(npm:*)': ['npm run lint'] };
+  assert.deepEqual(missingRules(['Bash(npm:*)'], [S('Bash(npm run lint)')], cmds), []);
+  assert.deepEqual(missingRules(['Bash(npm:*)'], [S('Bash(npm run build)')], cmds), ['Bash(npm:*)']);
+  assert.deepEqual(missingRules(['Bash(npm:*)'], [S('Bash(npm run:*)')], cmds), []);
+  assert.deepEqual(missingRules(['Bash(npm:*)'], [S('Bash(npm run lint)')]), ['Bash(npm:*)']);
+});
+
+test('requiredCommands maps rules to commands', () => {
+  const m = requiredCommands(good());
+  assert.ok(m['Bash(npm:*)'].includes('npm run lint'));
+  assert.ok(m['Bash(git:*)']);
+});
+
+test('quoteArg quotes paths with spaces and escapes quotes', () => {
+  assert.equal(quoteArg('D:/a b/c'), '"D:/a b/c"');
+  assert.equal(quoteArg('a"b'), '"a\\"b"');
+  assert.equal(quoteArg('x$y'), '"x\\$y"');
+});
