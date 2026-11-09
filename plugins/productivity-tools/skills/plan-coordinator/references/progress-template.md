@@ -44,6 +44,7 @@ External: none   <!-- or the external steps: "External: Step 7 (deploy to stagin
 - **Glossary**: [domain terms an agent would otherwise guess at]
 
 ## Steps
+<!-- Status: Pending | Launched (effect or work started; never launched again) | PASS | Skip | Skip (manual) | Waiting (manual) -->
 | # | Step | Status | Tier · Attempts | Score (S/A/R/B/V) | Note |
 |---|------|--------|-----------------|-------------------|------|
 | 1 | Add data model types | Pending | haiku · 0 | 1 (0/0/0/1/0) | — |
