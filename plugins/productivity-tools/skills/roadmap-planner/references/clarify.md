@@ -121,7 +121,7 @@ Whatever remains is recorded as a deferred question (§7): an "Open questions" e
 
 When the user picks an option other than the recommended one, note the cost of that choice in the `DEC` row (from the sourced estimate; if none exists, say it was not estimated).
 
-**Autonomy policy.** Decide it during clarification and record it as a `DEC` (Origin `user`): the executor may take delivery decisions by the recommended option. Each such decision is a `DEC` row with Origin `executor` and Status = the `decisionPending` word until the owner ratifies it. A decision that diverges from an existing `DEC`, or that changes a gate, is never the executor's alone: it needs the owner.
+**Autonomy policy.** Decide it during clarification and record it as a `DEC` (Origin `user`): the executor may take delivery decisions by the recommended option. Each such decision is a `DEC` row with Origin `executor` and Status = the `decisionPending` word until the owner ratifies it. A decision that diverges from an existing `DEC`, or that changes a gate, is never the executor's alone: it needs the owner. If the user says no, record a `DEC` (Origin `user`) saying the executor does not decide alone; every executor choice becomes a `pending` item waiting for the owner, with no `DEC` row of Origin `executor`. The `DEC` guides planning; the autonomy of `roadmap-release` is decided when it is invoked, not by this `DEC`. The autonomy question is a clarification question and counts toward the budget (light mode: one of the 3; full mode: one of the round's 5), unlike the mode question.
 
 Record only what the user actually answered. When the user accepts a recommendation, the decision is still the user's (Origin `user`). Requirements derived from an answer cite its `DEC`.
 
