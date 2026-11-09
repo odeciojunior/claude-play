@@ -31,7 +31,7 @@ Read `formats.md` before the first edit of a run; never write a file from memory
 5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
 6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") never covers a strategy revision or a migration. With no person present, write only the pending item and say so in the hand-back.
 7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
-8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer.
+8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer. When the event says `no questions`, this rule is overridden: never ask; follow `events.md` § 14 and report the items under `Pending for the user:`.
 
 ## Hand-back report (Step 7)
 
@@ -46,6 +46,7 @@ Checker: <vendored version> -> check-roadmap: <E> error(s), <W> warning(s)
 Warnings: <one line each, or none>
 Awaiting approval: <revision proposal summary, or none>
 Questions: <anything only the user can answer, or none>
+Pending for the user: <(user) items written under no-questions, or none>
 ```
 
 ## Workflow
@@ -148,7 +149,7 @@ One event may chain several recipes (a piece that ends a phase also triggers the
 
 ### Read-only queries
 
-When the user only asks for status ("roadmap status"): read `state.md` and `critical-path.md`, run the checker, report the panel, the blockers and the next gates. Write nothing: no file, no log row.
+When the user only asks for status ("roadmap status"): read `state.md` and `critical-path.md`, run the checker, report the panel, the blockers and the next gates. Write nothing: no file, no log row. Skip the writes of Steps 2 and 3 (no checker copy, no log row, no migration); report a stale checker or a format mismatch as a warning only.
 
 ### Step 5: Run the vendored checker
 
