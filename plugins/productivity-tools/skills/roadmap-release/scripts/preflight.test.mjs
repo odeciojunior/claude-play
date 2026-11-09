@@ -429,3 +429,17 @@ test('L3-B: a BOM before a fence on line 1 is read as the checker reads it (the 
     assert.equal(parseGatesTable(md).length, theirs, JSON.stringify(md.slice(0, 8)));
   }
 });
+
+test('A1: a derived config points to CLAUDE.md instead of copying it', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const withDoc = repoWithRoadmap(false);
+  const big = 'SENTINEL-RULE-TEXT '.repeat(5000);
+  writeFileSync(join(withDoc.root, 'CLAUDE.md'), big);
+  const r = runPreflight(withDoc.dir, { home });
+  assert.equal(r.config.projectContext, 'Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).');
+  assert.ok(r.config.projectContext.length < 200);
+  assert.ok(JSON.stringify(r.config).length < 4096);
+  assert.ok(!JSON.stringify(r).includes('SENTINEL-RULE-TEXT'));
+  const without = repoWithRoadmap(false);
+  assert.equal(runPreflight(without.dir, { home }).config.projectContext, '');
+});

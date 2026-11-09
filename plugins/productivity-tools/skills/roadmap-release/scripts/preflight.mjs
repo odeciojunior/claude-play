@@ -346,8 +346,8 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       try { md = readFileSync(sp, 'utf8'); } catch { errors.push(`strategy not readable: ${sp}`); }
       const rows = parseGatesTable(md, warnings);
       if (md && rows.length === 0) errors.push('strategy has no roadmap:gates table rows');
-      let ctx = '';
-      try { ctx = readFileSync(join(root, 'CLAUDE.md'), 'utf8'); } catch { /* no project CLAUDE.md */ }
+      // A pointer, not a copy: CLAUDE.md is already in the agents' context and a copy would bloat the config and every return.
+      const ctx = existsSync(join(root, 'CLAUDE.md')) ? 'Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).' : '';
       const install = detectInstall(root);
       if (!install) warnings.push('no lockfile at the repository root, so the derived install is empty and worktrees get no dependencies: set "install" in release.config.json if the project needs one');
       config = deriveConfig({ gatesBlockRows: rows, projectContext: ctx, install, warnings });
