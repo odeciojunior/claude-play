@@ -895,3 +895,32 @@ test('item 14: a closed BLQ yields a decision action and no correction round', a
   assert.ok(!r.operatorActions.some((o) => o.kind === 'defect'));
   for (const l of ['E1:setup', 'E1:spec', 'E1:plan-fix1']) assert.ok(!labels.includes(l), l);
 });
+
+test('item 7: the owner notes never reach the record or the docs prompts', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'API_KEY=sk-live-123' } } });
+  for (const c of calls.filter((x) => /:status-|:docs\d$|^report$/.test(x.label))) assert.ok(!c.prompt.includes('sk-live-123'), c.label);
+  const spec = calls.find((c) => c.label === 'E1:spec').prompt;
+  assert.ok(spec.includes('sk-live-123'));
+  assert.match(spec, /Never write a credential/);
+  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /Never write a credential/);
+  assert.match(calls.find((c) => /^E1:status-/.test(c.label)).prompt, /answered for E1 in the run notes/);
+});
+
+test('item 7: the merge-fix prompts carry no owner notes', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'API_KEY=sk-live-123' } },
+    over: (l) => {
+      if (/^E1:merge-gates1/.test(l)) return gm('m1', { exit: 1, failedNames: ['t'] });
+      if (/:merge-fix$/.test(l)) return { status: 'DONE', summary: 's', checks: [] };
+      if (/:merge-fix-review$/.test(l)) return { issues: [], headSha: 'm1', clean: true, commitsInRange: 1 };
+      return undefined;
+    } });
+  const fixes = calls.filter((c) => /:merge-fix(-review)?$/.test(c.label));
+  assert.ok(fixes.length > 0);
+  for (const c of fixes) assert.ok(!c.prompt.includes('sk-live-123'), c.label);
+});
+
+test('item 7: the human-input action forbids secrets in notes', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'key', blocking: true }] } : undefined) });
+  const o = r.operatorActions.find((x) => x.kind === 'human-input');
+  assert.match(o.doNow, /Never put a secret in notes/);
+});

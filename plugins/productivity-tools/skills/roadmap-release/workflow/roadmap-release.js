@@ -580,7 +580,7 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
 // Resume args as shown to the report agent: the config is long and already known to the caller.
 function withoutConfig(resumeWith) {
   if (!resumeWith) return resumeWith
-  const { config, ...rest } = resumeWith
+  const { config, notes, ...rest } = resumeWith
   return rest
 }
 // Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
@@ -1000,10 +1000,12 @@ async function runDeliverable(E, idx) {
   const port = 5200 + idx * 10
   const human = []
   const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [] }
-  const baseOf = () => `${COMMON_BASE}
-DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}` : ''}`
+  const baseOf = (withNotes = true) => `${COMMON_BASE}
+DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}` : ''}`
   const ctxFor = extra => ({ base: baseOf(), envFacts: pre.envFacts, baseline: baseTxt(), E, wt, planPath: plan && plan.planPath, specPath: spec && spec.specPath, locks: [], ...extra })
   const C = () => briefing(ctxFor())
+  // Briefing without the owner notes, for every stage that writes to a committed record (docs, review log, merge-fix).
+  const Cn = () => briefing({ ...ctxFor(), base: baseOf(false) })
   const cardRef = `card ${E} in ${STRAT} (section ${E}; REQs ${card.reqs.join(', ')}; depends on ${card.deps.join(', ') || '-'}${card.critical ? '; CRITICAL' : ''})`
   const noteE = A.notes && A.notes[E]
   const cardAc = (card.acceptance || []).map(a => ({ id: a.id, text: a.text, tag: parseVerifyTag(a.text) }))
@@ -1016,7 +1018,7 @@ DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.$
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
     if (!setupOk || !out.reviews.length) return
-    const w = await agent(`${C()}
+    const w = await agent(`${Cn()}
 
 Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log: per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns and gates. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, failure: out.error || null })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
@@ -1085,7 +1087,7 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
       if (g.ok) break
       if (k >= 1 || g.nullAgent) return onBad(`post-merge gates failed: ${g.summary}`, g.nullAgent ? 'infra' : 'conteudo')
       const preFix = g.m.headSha
-      const fx = await withLocks(TASK_LOCKS, () => agent(`${C()}
+      const fx = await withLocks(TASK_LOCKS, () => agent(`${Cn()}
 
 Integration worktree ${INTWT} (branch ${TARGET}). ${lockNote(TASK_LOCKS)} The post-merge gates of ${E} failed:
 ${g.summary}
@@ -1093,7 +1095,7 @@ Failing output: ${String(g.m.log || '').slice(0, 3000)}
 Use superpowers:systematic-debugging; fix on ${TARGET} with a test and commit "${E} merge-fix: ...". Do not mask failures.`,
         { label: `${E}:merge-fix`, phase: 'Merge', schema: S_IMPL, model: 'sonnet' }))
       if (!fx || fx.status === 'BLOCKED') return onBad(`post-merge fix ${fx ? 'BLOCKED: ' + fx.summary : 'null'}`, fx ? 'conteudo' : 'infra')
-      const rr = await agent(`${C()}
+      const rr = await agent(`${Cn()}
 
 Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, introducing a defect. Measure headSha, clean, commitsInRange.`,
         { label: `${E}:merge-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus' })
@@ -1107,7 +1109,7 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     let docs = null, meas = null
     const measureOk = x => !!x && x.checkerErrors === 0 && x.clean !== false && (!DOCS.measure || x.measureOk === true) && cardStatus(x.panelStatus, STATUSES) === STATUS_AFTER_MERGE
     for (let k = 0; k < 2; k++) {
-      docs = await agent(`${C()}
+      docs = await agent(`${Cn()}
 
 DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}); merge ${mergeCommit}. Only this stage edits the project docs and ${RM}.
 1. Project docs: ${DOCS.instructions || '(no project docs instructions configured: skip this item)'}
@@ -1226,6 +1228,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   spec = await agent(`${C()}
 
 If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it, reassess humanInputs (an answered input stops being blocking), commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
+Never write a credential, token or key from the owner instruction into any file; write 'provided through environment variable <NAME>' instead.
 Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
 - You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block, the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
 - Parts that are human acts: produce the artifacts and leave the acceptance to the human.
@@ -1263,7 +1266,7 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
   const blockingHuman = (spec.humanInputs || []).filter(h => h.blocking)
   if (blockingHuman.length) {
     op('human-input', E, blockingHuman.map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; '),
-      'Provide the data (or the decision) and run again passing the answer in notes', { ...A, deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
+      'Provide the data (or the decision) and run again passing the answer in notes. Never put a secret in notes: set an environment variable and name it', { ...A, deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
     return fail('humano', `blocking human input: ${blockingHuman.map(h => h.what).join('; ')}`)
   }
 
@@ -1273,6 +1276,7 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
   plan = await agent(`${C()}
 
 If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
+Never write a credential, token or key from the owner instruction into any file; write 'provided through environment variable <NAME>' instead.
 Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Header with the exact line: **Roadmap:** ${RM}
 - Save to ${planName}, in the language of the roadmap.
@@ -1326,7 +1330,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const fp = planFingerprint(plan.tasks, plan.planBlob)
   BOUND[E] = fp
 
-  const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` Also record, as a standing decision with Origin "user (notes)", unless already there, the owner's instruction: ${JSON.stringify(noteE)}.` : ''}`
+  const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` The owner answered for ${E} in the run notes on ${TODAY} (the text is deliberately not copied here).` : ''}`
   if (MODE === 'plan-only') {
     const rec = await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
     if (!rec || rec.checkerErrors > 0) return fail('infra', `plan-only: the roadmap record failed (${rec ? 'checkerErrors=' + rec.checkerErrors : 'null agent or integration worktree broken'})`)
