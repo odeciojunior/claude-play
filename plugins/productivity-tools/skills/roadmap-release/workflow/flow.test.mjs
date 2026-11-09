@@ -1837,3 +1837,37 @@ test('the docs stage explains the mark: a fulfilled request leaves pending, any 
   assert.ok(docs.includes(ranMark(deploy)));
   assert.match(docs, /marked "\[already authorized and run in this run: \.\.\.\]"[^\n]*only[^\n]*leave it out of pending[^\n]*any other need the item states stays open in pending/);
 });
+
+// ---- A2/A4: review model by task, plan-fix tier
+const issueRev = (iss) => ({ issues: iss, headSha: 'h1', clean: true, commitsInRange: 2 });
+const defect = { severity: 'critical', category: 'defeito', description: 'same defect', file: 'a.js' };
+const modelOf = (calls, label) => calls.find((c) => c.label === label).opts;
+
+test('task review model: opus task and external task are reviewed by opus, a plain sonnet task by sonnet', async () => {
+  const tasks = [tk(1, false), tk(2, false, { tier: 'opus' }), tk(3, true)];
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T3'] }, over: withPlan(tasks) });
+  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t2:spec1').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:t3:spec1').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:t3:spec1').effort, 'medium');
+});
+
+test('re-review after a fix escalated to opus runs at opus', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: withPlan([tk(1, false)], (l) => (/^E1:t1:spec[12]$/.test(l) ? issueRev([defect]) : /^E1:t1:spec-fix/.test(l) ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
+  assert.equal(modelOf(calls, 'E1:t1:spec-fix1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t1:spec2').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t1:spec-fix2').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:t1:spec3').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:t1:spec3').effort, 'medium');
+});
+
+test('plan fix starts at sonnet, the reviewer stays opus, and a repeated finding escalates the fix to opus', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (/^E1:plan-review[12]$/.test(l) ? { ...issueRev([defect]), measuredPlanBlob: B1 } : /^E1:plan-fix/.test(l) ? planWith([tk(1, false)]) : undefined) });
+  assert.equal(modelOf(calls, 'E1:plan-fix1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:plan-fix1').effort, 'medium');
+  assert.equal(modelOf(calls, 'E1:plan-fix2').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:plan-review1').model, 'opus');
+  assert.equal(modelOf(calls, 'E1:plan-review2').model, 'opus');
+});

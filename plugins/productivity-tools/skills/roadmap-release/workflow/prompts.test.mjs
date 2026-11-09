@@ -40,10 +40,14 @@ test('review prompt hands the implementer checks (command, exit, output) to the 
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'spec', { status: 'DONE', summary: 'x', checks: [] }), /no checks/i);
 });
 
-test('reviewer model: opus only for reviewTier opus; implementer model comes from the plan tier', () => {
+test('reviewer model: opus for reviewTier opus, an opus task or an external task; implementer model comes from the plan tier', () => {
   assert.equal(P.reviewModelFor({ reviewTier: 'opus' }), 'opus');
   assert.equal(P.reviewModelFor({ reviewTier: 'sonnet' }), 'sonnet');
   assert.equal(P.reviewModelFor({}), 'sonnet');
+  assert.equal(P.reviewModelFor({ tier: 'opus', reviewTier: 'sonnet' }), 'opus');
+  assert.equal(P.reviewModelFor({ tier: 'sonnet', external: true, reviewTier: 'sonnet' }), 'opus');
+  assert.equal(P.reviewModelFor({ tier: 'sonnet', external: false }), 'sonnet');
+  assert.equal(P.reviewModelFor(null), 'sonnet');
   assert.equal(P.implModel({ tier: 'haiku' }), 'haiku');
   assert.equal(P.implModel({ tier: 'opus' }), 'opus');
   assert.equal(P.implModel({ tier: 'fable' }), 'sonnet');
@@ -178,4 +182,31 @@ test('minor 1: externalNote says the person authorized it and that no humanInput
 test('minor 3: the reviewer does not re-run a check with an external effect', () => {
   const p = P.buildTaskReviewPrompt(ctx, task, 'spec', { summary: 's', checks: [] });
   assert.match(p, /do not re-run a check with an external effect/i);
+});
+
+test('effortFor: haiku low, sonnet and opus medium', () => {
+  assert.equal(P.effortFor('haiku'), 'low');
+  assert.equal(P.effortFor('sonnet'), 'medium');
+  assert.equal(P.effortFor('opus'), 'medium');
+});
+
+test('reviewLoop re-reviews an escalated fix at the larger of reviewer model and fix tier', async () => {
+  const env = mkEnv();
+  const seen = [];
+  const res = await P.runReviewLoop(env, 'T1:spec', async (round, prev, m) => { seen.push(m); return rev(); }, async () => ({ status: 'DONE' }), r => r.issues, { tier: 'sonnet', reviewModel: 'sonnet' });
+  assert.equal(res.ok, false);
+  // round 1 has no override; re-review after the sonnet fix stays sonnet; after the opus fix it is opus
+  assert.deepEqual(seen, [undefined, 'sonnet', 'opus']);
+  assert.deepEqual(env.reviews[0].rounds.map(x => x.reviewModel), ['sonnet', 'sonnet', 'opus']);
+  const hi = []; // an opus reviewer is never lowered by a sonnet fix
+  await P.runReviewLoop(mkEnv(), 's', async (r, p, m) => { hi.push(m); return rev(hi.length > 1 ? [] : [bug]); }, async () => ({ status: 'DONE' }), r => r.issues, { tier: 'sonnet', reviewModel: 'opus' });
+  assert.deepEqual(hi, [undefined, 'opus']);
+});
+
+test('every agent call that passes a model also passes an explicit effort', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').split(/\r?\n/);
+  const withModel = src.map((l, i) => [i + 1, l]).filter(([, l]) => /\bmodel: /.test(l));
+  assert.ok(withModel.length >= 40, 'found the agent option objects');
+  for (const [n, l] of withModel) assert.match(l, /model: [^}]*effort: /, 'line ' + n + ' has model without effort');
+  assert.equal(src.join('\n').match(/effort: 'high'/g).length, 4);
 });
