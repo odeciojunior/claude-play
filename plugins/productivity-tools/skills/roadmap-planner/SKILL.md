@@ -82,7 +82,7 @@ Also settle now:
 
 1. Take the objective and the sources passed as arguments. When the user supplies only an objective (or a brief in the conversation), register it as `SRC-01` (What it is: user brief) so requirements can cite it (`decompose.md` §1).
 2. **Discover** related sources (light mode: skip; use only the sources passed): repo docs, specs, issues, git history (`git log` on the relevant paths). Use the web only if the user allows it; ask once.
-3. **Read** them. With a subagent tool, delegate the reading to subagents with `model: sonnet` (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format below in each Agent prompt, then wait for its completion notification before using the result. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
+3. **Read** them. With a subagent tool, delegate the reading to subagents with `model: sonnet`, `effort: medium` (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format below in each Agent prompt, then wait for its completion notification before using the result. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
 
    ```
    SRC-NN | <path or URL> | <what it is> | read <full|partial: which sections>
@@ -134,7 +134,7 @@ The `--version` output reads `<version> format <n>`; `<n>` must equal `formatVer
 ### Step 7: Verify
 
 1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker. If `node` is missing or older than 18, do not claim the folder verified: stop, or hand off saying "checker not run (Node ≥18 missing)".
-2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, with the roadmap folder, the strategy path and the source paths, and exactly this brief (it is read-only; tell it "do not edit files"): *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
+2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, with the roadmap folder, the strategy path and the source paths, and exactly this brief (it is read-only; tell it "do not edit files"): *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
 3. Fix what the reviewer found, then run the checker again until 0 errors.
 
 ### Step 8: Hand off
