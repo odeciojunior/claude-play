@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, lastContiguousDone, resumeAction } = loadPure();
+const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps } = loadPure();
 const statuses = { onBranch: 'na-branch', integrated: ['integrada', 'publicada'], blocked: 'bloqueada', discarded: 'descartada' };
 
 test('isHard: no category, defeito and decisao are hard; critical is hard unless a registered environment blocker', () => {
@@ -176,4 +176,55 @@ test('I1: matchEvidence finds a result by id or position and compares the trimme
   assert.equal(P3.matchEvidence([{ ac: 'AC1', command: 'other', exit: 0 }], row, 0), undefined);
   assert.equal(P3.matchEvidence([{ ac: 'AC7', command: 'npm test', exit: 0 }, { ac: 'AC8', command: 'x', exit: 0 }], row, 1), undefined);
   assert.equal(P3.matchEvidence([], row, 0), undefined);
+});
+
+test('parseAuthorizeExternal accepts the three item shapes and drops duplicates', () => {
+  const r = parseAuthorizeExternal(['gate:G3', 'E18:T4', 'checkout:release/x', 'gate:G3']);
+  assert.equal(r.items.length, 3);
+  assert.equal(r.error, null);
+  assert.deepEqual(parseAuthorizeExternal(undefined), { items: [], error: null });
+});
+
+test('parseAuthorizeExternal rejects a typo, a leading zero and a non-list', () => {
+  for (const bad of [['E18:T04'], ['G3'], 'gate:G3']) {
+    const r = parseAuthorizeExternal(bad);
+    assert.notEqual(r.error, null);
+    assert.deepEqual(r.items, []);
+  }
+});
+
+test('externalHold: a bare or a matching bound item passes, anything else holds', () => {
+  const fp = 'aaaaaaaa';
+  assert.equal(externalHold({ n: 4, external: true }, 'E18', ['E18:T4'], fp), null);
+  assert.equal(externalHold({ n: 4, external: true }, 'E18', ['E18:T4@aaaaaaaa'], fp), null);
+  assert.equal(externalHold({ n: 4, external: true }, 'E18', ['E18:T4@bbbbbbbb'], fp), 'E18:T4@aaaaaaaa');
+  assert.equal(externalHold({ n: 5, external: true }, 'E18', ['E18:T4'], fp), 'E18:T5@aaaaaaaa');
+  assert.equal(externalHold({ n: 4, external: false }, 'E18', [], fp), null);
+  assert.equal(externalHold({ n: 1 }, 'E1', [], fp), 'E1:T1@aaaaaaaa');
+});
+
+test('planFingerprint changes when a task changes and ignores key order and spacing', () => {
+  const a = [{ n: 1, title: 'a', files: ['x', 'y'] }, { n: 2, title: 'b', files: [] }];
+  const same = [{ files: ['y', 'x'], title: ' a ', n: 1 }, { title: 'b', n: 2, files: [] }];
+  const fp = planFingerprint(a);
+  assert.match(fp, /^[0-9a-f]{8}$/);
+  assert.equal(planFingerprint(same), fp);
+  assert.notEqual(planFingerprint([{ ...a[0], title: 'c' }, a[1]]), fp);
+  assert.notEqual(planFingerprint([{ ...a[0], files: ['x'] }, a[1]]), fp);
+  assert.notEqual(planFingerprint([...a, { n: 3, title: 'z', files: [] }]), fp);
+});
+
+test('bindAuthorizations binds only the bare items of that deliverable', () => {
+  assert.deepEqual(bindAuthorizations(['E1:T2', 'E2:T1', 'gate:x', 'E1:T3@bbbbbbbb'], 'E1', 'aaaaaaaa'),
+    ['E1:T2@aaaaaaaa', 'E2:T1', 'gate:x', 'E1:T3@bbbbbbbb']);
+});
+
+test('externalGaps flags a missing boolean and a missing dedupe note', () => {
+  const g1 = externalGaps([{ n: 2 }]);
+  assert.equal(g1.length, 1);
+  assert.match(g1[0].description, /boolean/);
+  const g2 = externalGaps([{ n: 1, external: true, externalDedupe: '  ' }]);
+  assert.equal(g2.length, 1);
+  assert.match(g2[0].description, /externalDedupe/);
+  assert.equal(externalGaps([{ n: 1, external: true, externalDedupe: 'checks outbox.log first' }, { n: 2, external: false }]).length, 0);
 });

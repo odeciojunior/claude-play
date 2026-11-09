@@ -37,6 +37,8 @@ export const meta = {
 //   acceptIntegrityAlerts: { "E18": "<full merge SHA>" } on resume, accepts the hard test-integrity alerts of exactly that merge
 //     of that deliverable (they become a concern); another SHA is ignored. Only read from args, never set by the workflow itself
 //   roadmap, repo, wtRoot, today: detected when absent
+//   authorizeExternal: ["gate:G3", "E18:T4", "E18:T4@<fp>", "checkout:<target>"]: external effects the owner authorizes (only a person sets it; silence is never authorization).
+//     A bare E18:T4 binds to the plan fingerprint on first use; any redone plan invalidates the binding
 //   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
 //   trailer, branchPrefix ("feat/")
 //
@@ -574,6 +576,43 @@ function postMergeFixes(commits, E) {
     return !m || m[1] === E
   })
 }
+
+// External-effect authorization. Items: "gate:<name>", "<E>:T<n>" (bare, binds on first use), "<E>:T<n>@<fp>", "checkout:<target>".
+function parseAuthorizeExternal(v) {
+  if (v == null || v === '') return { items: [], error: null }
+  if (!Array.isArray(v)) return { items: [], error: 'authorizeExternal must be a list of items such as "gate:G3", "E18:T4" or "checkout:<target>"' }
+  const re = /^(gate:\S+|[A-Za-z][A-Za-z0-9-]*:T[1-9]\d*(@[0-9a-f]{8})?|checkout:\S+)$/
+  const bad = v.find(i => typeof i !== 'string' || !re.test(i))
+  if (bad !== undefined) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(bad)}` }
+  return { items: [...new Set(v)], error: null }
+}
+function isAuthorized(items, item) { return (items || []).includes(item) }
+// Deterministic 32-bit FNV-1a over the plan tasks (n, trimmed title, sorted files); 8 hex digits.
+function planFingerprint(tasks) {
+  const norm = (tasks || []).map(t => [t.n, String(t.title || '').trim(), [...(t.files || [])].sort()])
+  const str = JSON.stringify(norm)
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h.toString(16).padStart(8, '0')
+}
+// The item to ask for when an external task is not authorized yet (null when it may run). A missing flag counts as external.
+function externalHold(task, E, items, fp) {
+  if (task.external === false) return null
+  const bare = `${E}:T${task.n}`
+  const bound = `${bare}@${fp}`
+  return isAuthorized(items, bare) || isAuthorized(items, bound) ? null : bound
+}
+function bindAuthorizations(items, E, fp) {
+  const re = /:T[1-9]\d*$/
+  return (items || []).map(i => (i.startsWith(E + ':T') && re.test(i) && i.indexOf('@') < 0 ? `${i}@${fp}` : i))
+}
+function externalGaps(tasks) {
+  const gap = description => ({ severity: 'critical', category: 'defeito', description })
+  return (tasks || []).flatMap(t => [
+    ...(typeof t.external !== 'boolean' ? [gap(`task ${t.n} must declare external as a boolean (true when it touches anything outside the branch; when in doubt, true)`)] : []),
+    ...(t.external === true && !(typeof t.externalDedupe === 'string' && t.externalDedupe.trim()) ? [gap(`external task ${t.n} must declare externalDedupe: how running it twice avoids a duplicate effect`)] : []),
+  ])
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -584,6 +623,9 @@ const CFG = A.config
 const OPS = []  // operator actions (strictly necessary ones)
 const op = (kind, deliverable, what, doNow, resumeWith) => OPS.push({ kind, deliverable, what, doNow, resumeWith })
 const MODE = A.mode || 'run'
+const AUTH = parseAuthorizeExternal(A.authorizeExternal)
+if (AUTH.error) return { status: 'error', error: AUTH.error }
+const authorized = item => isAuthorized(AUTH.items, item)
 const RESULTS = []
 const mkResult = (status, extra) => ({
   status, mode: MODE, operatorActions: OPS, resumeArgs: { ...A }, selection: null, results: RESULTS,
@@ -695,7 +737,7 @@ const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_PLAN = { type: 'object', properties: { planPath: STR, roadmapHeader: BOOL, reused: BOOL,
   ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR }, required: ['ac', 'kind'] } },
-  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS }, required: ['n', 'title', 'tier'] } } }, required: ['planPath', 'tasks'] }
+  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR }, required: ['n', 'title', 'tier', 'external'] } } }, required: ['planPath', 'tasks'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
@@ -1158,7 +1200,7 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
   const acTxt = (card.acceptance || []).map(a => `[${a.id}] ${a.text}`).join('\n')
   plan = await agent(`${C()}
 
-If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true).'}
+If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
 Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Header with the exact line: **Roadmap:** ${RM}
 - Save to ${planName}, in the language of the roadmap.
@@ -1166,10 +1208,11 @@ Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Per task, declare "tier" (the implementer's model) by the routing scoring rules of the plan-coordinator skill (references/routing.md) when available: haiku for mechanical work, sonnet by default, opus only when ambiguity AND blast radius are both high. Declare "reviewTier": opus ONLY for blast radius 2 (authentication, secrets, writes to a production backend, data migration, push); otherwise sonnet.
 - Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. The ac of each evidence row is ONLY the criterion id (the text inside the brackets, e.g. AC1): never the id followed by text, never the criterion text. Criteria:
 ${acTxt}
+- Per task declare external (true when the task touches anything outside the branch: production, deploy, push, e-mail or message, shared data, someone's checkout; when in doubt, true). An external task also declares externalDedupe: how running it twice avoids a duplicate effect (idempotency key or an existence check before acting).
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section: ac, kind, command, testRef, blq) and tasks (n, title, files, tier, reviewTier, needsLock).`,
+Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section: ac, kind, command, testRef, blq) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
     { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
   const planGaps = () => {
@@ -1177,6 +1220,7 @@ Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused
     const tasks = plan.tasks || []
     return [
       ...evidenceGaps(cardAc, plan.ac, blqIds),
+      ...externalGaps(tasks),
       ...tasks.filter((t, i) => t.n !== i + 1).map(t => gap(`task numbers must run 1..N in order (found ${t.n} at position ${tasks.indexOf(t) + 1})`)),
       ...tasks.flatMap(t => asList(t.needsLock).filter(n => !TASK_LOCKS.includes(n)).map(n => gap(`task ${t.n} needs the unknown lock "${n}" (configured: ${TASK_LOCKS.join(', ') || 'none'})`))),
     ]
@@ -1185,7 +1229,7 @@ Return planPath, roadmapHeader (the file contains the line **Roadmap:**), reused
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
-Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
+Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a canonical gate changed (decisao, critical).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_REVIEW, model: 'opus' }),
     async (iss, k, tier) => {
@@ -1194,7 +1238,7 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
 Fix the plan ${plan.planPath} according to the review below and commit. Stop after the commit.
 ${fmt(iss)}
 Every ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.
-Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, reviewTier and needsLock).`,
+Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, reviewTier, needsLock, external and externalDedupe).`,
         { label: `${E}:plan-fix${k}`, phase: 'Plan', schema: S_PLAN, model: tier })
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
       return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null

@@ -24,7 +24,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
-    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet' }] };
+    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/spec-review|plan-review|:t1:spec|:t1:quality|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
@@ -407,7 +407,7 @@ test('C1: dry-run and plan-only do not merge, so they only note the interrupted 
   assert.ok(plan.labels.includes('E2:spec'));
 });
 
-const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet' }] } : undefined);
+const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces still counts', async () => {
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
@@ -491,7 +491,7 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
   assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
 });
 
-const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet' }] } : undefined);
+const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -556,4 +556,25 @@ test('the zero-test wording says an accepted red baseline is honoured but such a
   const cfg = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'references', 'config.md'), 'utf8');
   assert.match(cfg, /explicit .acceptRedBaseline. is honoured, but a .tests. gate with total zero fails any deliverable that adds no tests/);
   assert.doesNotMatch(cfg, /fails on every deliverable/);
+});
+
+test('authorizeExternal with a bad item stops the run before discovery', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E18:T04'] } });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /E18:T04/);
+  assert.deepEqual(labels, []);
+});
+
+test('the plan prompt asks for external and externalDedupe and the plan review blocks a gap', async () => {
+  const good = { planPath: 'docs/p.md', roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+  const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => {
+      if (l === 'E1:plan') return { ...good, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] };
+      if (l === 'E1:plan-fix1') return good;
+      return undefined;
+    } });
+  const p = calls.find((c) => c.label === 'E1:plan').prompt;
+  assert.match(p, /externalDedupe/);
+  assert.match(p, /when in doubt/i);
+  assert.ok(labels.includes('E1:plan-fix1'));
 });
