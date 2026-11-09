@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 
 function tmpScript(text) {
@@ -26,4 +27,11 @@ test('loadPure fails with a clear message without markers', () => {
 
 test('loadPure loads the bundled script by default', () => {
   assert.equal(typeof loadPure(), 'object');
+});
+
+test('bundled script starts with `export const meta = {` as its first statement', () => {
+  const dir = dirname(fileURLToPath(import.meta.url));
+  const text = readFileSync(join(dir, 'roadmap-release.js'), 'utf8').replace(/^﻿/, '');
+  assert.match(text, /^export const meta = \{/);
+  assert.match(text, /phases:\s*\[\s*\{\s*title:\s*'probe'\s*\}\s*\]/);
 });
