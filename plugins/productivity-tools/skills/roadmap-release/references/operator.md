@@ -76,5 +76,5 @@ A config derived by the preflight carries `generated: true`, and the run uses `m
 
 Two limits are left as they are, with no code change:
 
-- `awaitingPerson` can come out empty when the history is misread. It comes from the same reading of the history that `done` already trusts, and a second reader of that history would cost more than it protects.
+- `awaitingPerson` can come out empty when the history is misread: the task then counts as done and merges with `externalRun` empty, so check its commits by hand. It comes from the same reading of the history that `done` already trusts, and a second reader of that history would cost more than it protects.
 - After an interrupted merge, an authorization request that an implementer returned earlier can come back in the report as open. Fixing it needs a new durable record. Nothing is lost: the workflow does not repeat the effect, but a person could run the command by hand.
