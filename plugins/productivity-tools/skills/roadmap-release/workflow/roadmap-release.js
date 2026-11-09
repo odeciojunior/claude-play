@@ -396,7 +396,8 @@ Measure: headSha, clean, commitsInRange (git -C "${ctx.wt}" rev-list --count ${c
 // Delta of the target brought in by a late sync: only docs or roadmap files need no review. An empty delta needs none.
 function needsDeltaReview(changedFiles, roadmapDir, docsPrefixes) {
   const prefixes = [roadmapDir, ...(docsPrefixes || [])].filter(Boolean)
-  return (changedFiles || []).some(f => !prefixes.some(p => String(f).startsWith(p)))
+  if (!Array.isArray(changedFiles)) return true  // an unknown delta is never skipped
+  return changedFiles.some(f => !prefixes.some(p => String(f).startsWith(p)))
 }
 // Why a measure does not count, naming the offending gate; empty when valid.
 function measureProblems(m, expectedSha, gateDefs) {
@@ -448,6 +449,27 @@ function gateSummary(defs, m, base) {
   if (!m) return 'not measured'
   return (defs || []).map(d => d.name + ': ' + resultTxt(gateResult(m, d.name)) + ' (baseline: ' + resultTxt((base || {})[d.name]) + ')').join(' | ')
 }
+// A merge counts only if its first parent is the pre-merge target and its second parent is the validated branch head.
+function mergeParentsOk(mg, preSha, validatedSha) {
+  return !!mg && !!mg.mergeCommit && gateShaMatch(mg.firstParent, preSha) && gateShaMatch(mg.secondParent, validatedSha)
+}
+// What the agents claimed against git itself. slim = [{ id, merged, broken }], claims = [{ id, commit }].
+function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
+  if (!truth) return ['the git truth agent returned nothing: verify the target branch by hand']
+  const out = []
+  if (truth.clean === false && !integBroken) out.push('the target ' + target + ' has uncommitted files')
+  if (truth.lastGoodReachable !== true) out.push('the validated tip claimed by the run (' + lastGood + ') is not confirmed as an ancestor of ' + target)
+  const onTarget = truth.mergedIds || []
+  for (const r of slim) {
+    if (r.merged && !r.broken && !onTarget.includes(r.id)) out.push(r.id + ': the result says merged, but there is no "merge: ' + r.id + ' in ' + target + '" in the history')
+    if (!r.merged && !r.planOnly && onTarget.includes(r.id)) out.push(r.id + ': the result says not merged, but its merge commit is on ' + target)
+  }
+  for (const c of claims) {
+    const t = (truth.claims || []).find(x => x.id === c.id)
+    if (!t || t.reachable !== true) out.push(c.id + ': the claimed merge commit ' + c.commit + ' is not on ' + target)
+  }
+  return out
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -486,7 +508,7 @@ const DOCS_PATHS = Array.isArray(DOCS.paths) && DOCS.paths.length ? DOCS.paths :
 const TEST_INTEGRITY_DEFAULT = String.raw`const { execFileSync } = require('node:child_process')
 const rng = process.argv[2] + '...HEAD'
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8', maxBuffer: 1 << 28 })
-const isTest = f => /(\.test\.|\.spec\.|_test\.|\/tests?\/|\/__tests__\/)/.test(f)
+const isTest = f => /(\.test\.|\.spec\.|_test\.|(^|\/)test_[^/]*\.py$|(^|\/)(tests?|__tests__)\/)/.test(f)
 const files = git('diff', '--name-status', rng).split('\n').filter(Boolean).map(l => l.split('\t'))
 const last = f => f[f.length - 1]
 const deletedTests = files.filter(f => f[0] === 'D' && isTest(last(f))).map(last)
@@ -537,7 +559,6 @@ const withLocks = (names, fn) => {
   const need = LOCK_ORDER.filter(n => asList(names).includes(n))
   return need.reduceRight((inner, n) => () => LOCKS[n](inner), fn)()
 }
-const gateLocks = def => asList(def.needsLock)
 let blqIds = new Set()  // blockers registered on the roadmap (filled after discovery)
 
 // ---------------------------------------------------------------- schemas
@@ -576,9 +597,9 @@ const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
 const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } } }, required: ['head', 'clean', 'done'] }
 const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
-const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved'] }
+const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
-const S_MERGE = { type: 'object', properties: { mergeCommit: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts'] }
+const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
 const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['checkerErrors', 'clean'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
@@ -651,7 +672,7 @@ if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BU
 blqIds = new Set((disc.blockers || []).map(b => b.id))
 const donotTxt = (disc.donot || []).map(d => `  * ${d}`).join('\n') || '  (none)'
 const blockersTxt = (disc.blockers || []).map(b => `${b.id}: ${b.text}`).join('\n') || '(none)'
-const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${gateLocks(def).length ? `, needs lock ${gateLocks(def).join('+')}` : ''}): ${def.cmd}`
+const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${lockList(def).length ? `, needs lock ${lockList(def).join('+')}` : ''}): ${def.cmd}`
 const gatesTxt = GATES.map(gateDesc).join('; ')
 const COMMON_BASE = `
 FIXED RULES:
@@ -677,7 +698,7 @@ ${PROJECT}`
 
 // ---------------------------------------------------------------- preflight
 phase('Preflight')
-const measureTxt = defs => `${BEFORE_EVIDENCE.length && defs.some(d => gateLocks(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
+const measureTxt = defs => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
 ` : ''}For each gate run its command and report { name, ran, exit, total, skipped, failedNames }:\n${defs.map(d => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (only name, ran and exit matter)'}`).join('\n')}\nFor "tests" gates read the output: total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
 const pre = await agent(`${COMMON_BASE}
 
@@ -784,11 +805,12 @@ DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.$
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
     if (!setupOk || !out.reviews.length) return
-    await agent(`${C()}
+    const w = await agent(`${C()}
 
 Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log: per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns and gates. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, failure: out.error || null })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plano', model: 'sonnet' })
+    if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
   const fail = async (kind, msg) => {
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
@@ -822,6 +844,7 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
 Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -C "${dir}" show --cc ${sha}. Blocks (defeito): a part of one of the branches lost, duplicated code, a generated file resolved by hand, inconsistent counts in docs. Measure headSha, clean, commitsInRange=1.`,
       { label, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'high' })
     if (!cr) return { ok: false, kind: 'infra', why: 'conflict resolution review: null agent' }
+    out.reviews.push({ stage: label, rounds: [{ round: 1, reviewModel: 'opus', fixTier: null }], ...compact(cr.issues), unresolved: blocking(cr) })
     if (blocking(cr).filter(i => isHard(i, blqIds)).length) return { ok: false, kind: 'conteudo', why: `conflict resolution rejected: ${fmt(blocking(cr))}` }
     acceptRisks(label, blocking(cr))
     return { ok: true }
@@ -829,9 +852,9 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
 
   // A merge already on the target that failed validation: it cannot be undone without a human decision (work may sit on top).
   const markBroken = async (why, kind = 'conteudo', doNow = null) => {
-    if (kind === 'infra') return { ok: false, kind, why }
-    integBroken = `the merge of ${E} is already on ${TARGET} and failed validation: ${why}`
-    op('merge-rejected', E, integBroken, doNow || `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`, { ...A, deliverables: [E] })
+    // The merge is already on the target: whatever the failure kind, it stays unvalidated and later merges must stop.
+    integBroken = `the merge of ${E} is already on ${TARGET} and ${kind === 'infra' ? 'could not be validated' : 'failed validation'}: ${why}`
+    op('merge-rejected', E, integBroken, doNow || (kind === 'infra' ? `Fix the environment and run again with deliverables:["${E}"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "${INTWT}" revert -m 1 <merge>` : `Fix it on ${TARGET} and run again with deliverables:["${E}"]. To undo: git -C "${INTWT}" revert -m 1 <merge>, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch)`), { ...A, deliverables: [E] })
     return { ok: false, broken: true, kind, why }
   }
 
@@ -894,7 +917,7 @@ Return statusWritten, commit, details.`,
       out.concerns.push(`docs with pending items after 2 rounds: ${JSON.stringify(result.docsMeasure)}`)
       op('docs', E, `docs or roadmap inconsistent after the merge of ${E}: ${JSON.stringify(result.docsMeasure)}`, 'Fix the record and run the roadmap checker on the target', null)
     }
-    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}*, except the folder ${WT}/_tmp/${E}-dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
+    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST, if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, save the patch (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) BEFORE removing anything; then git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku' })
     if (!cl || !cl.ok) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
@@ -1190,12 +1213,15 @@ Review (read-only) the gates fix: git -C "${wt}" diff ${preFix}..HEAD. Blocks (d
       if (!rr) return { ok: false, kind: 'infra', msg: 'gates fix review: null agent' }
       if (blocking(rr).filter(i => isHard(i, blqIds)).length) return { ok: false, kind: 'conteudo', msg: `gates fix rejected: ${fmt(blocking(rr))}` }
       acceptRisks(`${tag}gates-fix${k + 1}`, blocking(rr))
-      exp = rr.headSha
+      out.reviews.push({ stage: `${tag}gates-fix${k + 1}`, rounds: [{ round: 1, reviewModel: 'opus', fixTier: 'sonnet' }], ...compact(rr.issues), unresolved: blocking(rr) })
+      await persistReviews('gates')  // log committed before re-measuring; the next measurement takes whatever head results
+      exp = null
     }
   }
   await persistReviews('')  // the review log is committed BEFORE the final measurement, so the measured head includes it
   const bg = await branchGates('', null)
   if (!bg.ok) return fail(bg.kind, bg.msg)
+  let validatedHead = bg.head  // the branch head the gates and evidence measured
 
   // ---------- Merge + post-merge gates + docs (serialized)
   if (TARGET === INTEG) {
@@ -1222,7 +1248,6 @@ Review (read-only) the gates fix: git -C "${wt}" diff ${preFix}..HEAD. Blocks (d
         const rc = await reviewConflicts(rs.head, wt, `${E}:resync-review`)
         if (!rc.ok) return rc
       }
-      let tip = rs.head
       if (needsDeltaReview(rs.deltaFiles, RM, DOCS_PATHS)) {
         const prevSync = syncAt
         const dl = await reviewLoop('delta',
@@ -1239,12 +1264,13 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, mod
           r => reviewTruth(r, 0, ''),
           { tier: 'sonnet', reviewModel: 'opus' })
         if (!dl.ok) return { ok: false, kind: dl.kind, why: `late-sync review: ${dl.msg}` }
-        tip = (dl.r && dl.r.headSha) || tip
       }
       syncAt = rs.targetTip || syncAt
       myBase = snapshotBase()
-      const rg = await branchGates('re', tip)
+      await persistReviews('resync')  // conflict and delta reviews go into the log before the final measurement
+      const rg = await branchGates('re', null)
       if (!rg.ok) return { ok: false, kind: rg.kind, why: `gates after the re-sync: ${rg.msg}` }
+      validatedHead = rg.head
     }
     if (probe.branchMerged) return postMerge(preSha, 0, markBroken)
     const rollback = async (why, kind = 'conteudo') => {
@@ -1260,9 +1286,10 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, mod
     const mg = await agent(`${C()}
 
 MERGE STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}): git merge --no-ff ${br} -m "merge: ${E} in ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource.
-Return mergeCommit (git rev-parse HEAD after the commit), conflicts (how many files), clean (status --porcelain empty at the end), details. If you cannot finish, git merge --abort.`,
+Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-parse HEAD^1), secondParent (git rev-parse HEAD^2), conflicts (how many files), clean (status --porcelain empty at the end), details. If you cannot finish, git merge --abort.`,
       { label: `${E}:merge`, phase: 'Merge', schema: S_MERGE, model: 'sonnet' })
     if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? mg.details : 'null agent'}`, mg ? 'conteudo' : 'infra')
+    if (!mergeParentsOk(mg, preSha, validatedHead)) return rollback(`the merge commit ${mg.mergeCommit} has first parent ${mg.firstParent} and second parent ${mg.secondParent}, expected ${preSha} and the validated head ${validatedHead}: the second parent does not match`, 'conteudo')
     if (mg.conflicts !== 0) {
       const rc = await reviewConflicts(mg.mergeCommit, INTWT, `${E}:merge-review`)
       if (!rc.ok) return rollback(rc.why, rc.kind)
@@ -1323,17 +1350,8 @@ const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).m
 const truth = MODE === 'plan-only' ? null : await safe(() => agent(`GIT TRUTH (read-only). Target ${TARGET} in ${INTWT}.
 targetHead = git rev-parse HEAD; clean = git status --porcelain empty on the target; lastGoodReachable = git merge-base --is-ancestor ${lastGood} ${TARGET} (exit 0); mergedIds = deliverables among [${order.join(', ')}] with a commit "merge: <E> in ${TARGET}" in git log --first-parent ${TARGET}; notMergedIds = the others; claims = for each of ${JSON.stringify(claims)}: { id, commit, reachable = the commit is an ancestor of ${TARGET} }; worktrees = git -C "${REPO}" worktree list; strays = files and folders loose in ${WT}/ that are neither registered worktrees nor an empty _tmp.`,
   { label: 'git-truth', phase: 'Relatório', schema: S_TRUTH, model: 'haiku' }))
-const divergences = []
-if (MODE !== 'plan-only') {
-  if (!truth) divergences.push('the git truth agent returned nothing: verify the target branch by hand')
-  else {
-    if (truth.clean === false && !integBroken) divergences.push(`the target ${TARGET} has uncommitted files`)
-    if (truth.lastGoodReachable === false) divergences.push(`the validated tip claimed by the run (${lastGood}) is not an ancestor of ${TARGET}`)
-    for (const r of slim) if (r.merged && !r.broken && !(truth.mergedIds || []).includes(r.id)) divergences.push(`${r.id}: the result says merged, but there is no "merge: ${r.id} in ${TARGET}" in the history`)
-    for (const c of claims) { const t = (truth.claims || []).find(x => x.id === c.id); if (!t || t.reachable !== true) divergences.push(`${c.id}: the claimed merge commit ${c.commit} is not on ${TARGET}`) }
-  }
-  for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
-}
+const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!integBroken)
+for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
 const ids = order.join('-').slice(0, 60)
 const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
 const resumeIds = [...slim.filter(r => !r.merged && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]

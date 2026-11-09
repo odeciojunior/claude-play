@@ -132,3 +132,10 @@ test('requiredRules respects quotes and redirects', () => {
   const r = rulesFor('bash -c "a && b; c" && echo \'x | y\' 2>&1');
   assert.deepEqual(r.filter((x) => x !== 'Bash(npm:*)' && x !== 'Bash(git:*)').sort(), ['Bash(bash:*)', 'Bash(echo:*)']);
 });
+
+test('validateReleaseConfig rejects the reserved lock name merge', () => {
+  const a = good(); a.locks = ['db', 'merge'];
+  assert.ok(validateReleaseConfig(a).some((e) => /merge/.test(e) && /reserved/.test(e)));
+  const b = good(); b.locks = ['db', 'merge']; b.gates[1].needsLock = ['merge'];
+  assert.ok(validateReleaseConfig(b).some((e) => /needsLock/.test(e) && /reserved/.test(e)));
+});

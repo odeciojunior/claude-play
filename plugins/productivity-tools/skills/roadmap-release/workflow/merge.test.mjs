@@ -17,7 +17,6 @@ test('needsDeltaReview: true with any other file', () => {
   assert.equal(needsDeltaReview(['src/x.js'], RM, ['docs/']), true);
   assert.equal(needsDeltaReview(['docsx/a.md'], RM, ['docs/']), true);
   assert.equal(needsDeltaReview(['docs/a.md'], RM, []), true);
-  assert.equal(needsDeltaReview(null, RM, ['docs/']), false);
 });
 
 test('measureProblems names the offending gate and the tree/sha problems', () => {
@@ -73,4 +72,38 @@ test('gateSummary shows each gate against its baseline and handles a null measur
   assert.match(s, /total 7/);
   assert.match(s, /total 5/);
   assert.match(gateSummary(defs, null, {}), /not measured/);
+});
+
+const { mergeParentsOk, truthDivergences } = loadPure();
+
+test('needsDeltaReview: a missing file list needs review (fail closed); an empty list does not', () => {
+  assert.equal(needsDeltaReview(undefined, RM, ['docs/']), true);
+  assert.equal(needsDeltaReview(null, RM, ['docs/']), true);
+  assert.equal(needsDeltaReview([], RM, ['docs/']), false);
+});
+
+test('mergeParentsOk requires first parent = pre-merge sha and second parent = validated sha', () => {
+  const mg = { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3' };
+  assert.equal(mergeParentsOk(mg, 'abc1234', 'h3'), true);
+  assert.equal(mergeParentsOk(mg, 'abc', 'h3'), true);
+  assert.equal(mergeParentsOk(mg, 'abc1234', 'h4'), false);
+  assert.equal(mergeParentsOk(mg, 'fff', 'h3'), false);
+  assert.equal(mergeParentsOk({ mergeCommit: 'm1' }, 'abc1234', 'h3'), false);
+  assert.equal(mergeParentsOk(null, 'abc1234', 'h3'), false);
+});
+
+test('truthDivergences: requires lastGoodReachable, flags not-merged ids present on the target', () => {
+  const slim = [{ id: 'E1', merged: true }, { id: 'E2', merged: false }];
+  const ok = { clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
+  const claims = [{ id: 'E1', commit: 'm1' }];
+  const d = (t, broken = false) => truthDivergences(t, slim, claims, 'T', 'lg', broken).length;
+  assert.equal(d(ok), 0);
+  assert.equal(d(null), 1);
+  assert.equal(d({ ...ok, lastGoodReachable: undefined }), 1);
+  assert.equal(d({ ...ok, lastGoodReachable: false }), 1);
+  assert.equal(d({ ...ok, mergedIds: ['E1', 'E2'] }), 1);
+  assert.equal(d({ ...ok, mergedIds: [] }), 1);
+  assert.equal(d({ ...ok, claims: [] }), 1);
+  assert.equal(d({ ...ok, clean: false }), 1);
+  assert.equal(d({ ...ok, clean: false }, true), 0);
 });

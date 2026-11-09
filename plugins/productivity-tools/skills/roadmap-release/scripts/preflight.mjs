@@ -21,6 +21,7 @@ export function validateReleaseConfig(cfg) {
   }
   const locks = Array.isArray(cfg.locks) ? cfg.locks : [];
   if (cfg.locks != null && !Array.isArray(cfg.locks)) errors.push('locks must be a list of names');
+  if (locks.includes('merge')) errors.push('locks cites the reserved lock name: merge (the workflow always owns it)');
   if (!Array.isArray(cfg.gates) || cfg.gates.length === 0) {
     errors.push('gates must be a non-empty list');
     return errors;
@@ -35,6 +36,7 @@ export function validateReleaseConfig(cfg) {
     if (typeof g.cmd !== 'string' || !g.cmd.trim()) errors.push(`${at}.cmd is required`);
     if (!KINDS.includes(g.kind)) errors.push(`${at}.kind must be one of ${KINDS.join(', ')}`);
     for (const l of asList(g.needsLock)) {
+      if (l === 'merge') { errors.push(`${at}.needsLock cites the reserved lock name: merge`); continue; }
       if (!locks.includes(l)) errors.push(`${at}.needsLock cites undeclared lock: ${l}`);
     }
   });
