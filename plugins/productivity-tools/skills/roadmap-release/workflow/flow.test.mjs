@@ -48,6 +48,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
     if (l === 'git-truth') return { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
     if (l === 'report') return 'REPORT';
+    if (/:resume-review-log$/.test(l)) return { found: true, acceptedRisks: [], humanInputs: [] };
     if (/review-log/.test(l)) return 'ok';
     throw new Error('unmocked ' + l);
   };
@@ -129,6 +130,28 @@ test('git truth requires lastGoodReachable', async () => {
 });
 
 const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+test('item 9: a resumed merge keeps the human act of the card tag', async () => {
+  const c = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0', acceptance: [{ id: 'AC1', text: 'ok {verify: human; evidence: owner approves}' }] });
+  const { r } = await exec({ cards: [c], deliverables: ['E1'] });
+  const act = r.operatorActions.find((o) => o.kind === 'human-act' && o.deliverable === 'E1');
+  assert.ok(act);
+  assert.match(act.what, /AC1/);
+  assert.equal(r.ownerReview.criteriaOpen[0].ac, 'AC1');
+  assert.equal(r.ownerReview.criteriaOpen[0].kind, 'human');
+});
+
+test('item 9: accepted risks of the review log come back on resume', async () => {
+  const { r } = await exec({ cards: [unfinished()], deliverables: ['E1'],
+    over: (l) => (/:resume-review-log$/.test(l) ? { found: true, acceptedRisks: [{ stage: 'final', severity: 'critical', category: 'defeito', description: 'd' }], humanInputs: [] } : undefined) });
+  assert.equal(r.ownerReview.acceptedRisks.length, 1);
+  assert.equal(r.ownerReview.acceptedRisks[0].id, 'E1');
+});
+
+test('item 9: a null review-log agent is a concern', async () => {
+  const { r } = await exec({ cards: [unfinished()], deliverables: ['E1'], over: (l) => (/:resume-review-log$/.test(l) ? null : undefined) });
+  assert.ok(r.results[0].concerns.some((c) => /review log not read/.test(c)));
+});
+
 const fixCommits = { commits: [{ sha: 'f1', subject: 'E1 merge-fix: x' }], rangeOk: true };
 const resume = (over) => exec({ cards: [unfinished(), card('E2')], deliverables: ['E1', 'E2'], over });
 

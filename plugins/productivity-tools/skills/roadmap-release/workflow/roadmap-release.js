@@ -789,6 +789,7 @@ const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, detai
 const S_INTEG = { type: 'object', properties: { deletedTests: STRS, removedAsserts: INT, skipsAdded: INT, prodChanged: INT, assertsAdded: INT }, required: ['deletedTests', 'removedAsserts', 'skipsAdded', 'prodChanged', 'assertsAdded'] }
 const S_EVID = { type: 'object', properties: { headSha: STR, clean: BOOL, beforeOk: BOOL, results: { type: 'array', items: { type: 'object', properties: { ac: STR, command: STR, exit: INT, log: STR }, required: ['ac', 'command', 'exit'] } } }, required: ['headSha', 'clean', 'results'] }
 const S_TRUTH = { type: 'object', properties: { targetHead: STR, clean: BOOL, lastGoodReachable: BOOL, mergedIds: STRS, notMergedIds: STRS, claims: { type: 'array', items: { type: 'object', properties: { id: STR, commit: STR, reachable: BOOL }, required: ['id', 'commit', 'reachable'] } }, worktrees: STRS, strays: STRS }, required: ['targetHead', 'clean', 'lastGoodReachable', 'mergedIds', 'claims'] }
+const S_RESUMELOG = { type: 'object', properties: { found: BOOL, acceptedRisks: { type: 'array', items: { type: 'object', properties: { stage: STR, severity: STR, category: STR, description: STR, file: STR }, required: ['description'] } }, humanInputs: HUMAN }, required: ['found', 'acceptedRisks', 'humanInputs'] }
 const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
 
 // ---------------------------------------------------------------- discovery
@@ -1166,6 +1167,15 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   if (resumeAction(card, STATUSES, A.force) === 'finish-merge' && MODE === 'run') {
     log(`${E}: merge ${card.mergeSha || '?'} already on the target without a record; validating and documenting`)
     if (!card.mergeSha) return closeOut(await markBroken('a merge of this deliverable is on the target but the discovery did not identify its commit, so it cannot be validated', 'conteudo', `Identify the merge commit (git -C "${INTWT}" log --first-parent --grep "^merge: ${E} "), then revert it (git revert -m 1) or fix the roadmap record, and run again with deliverables:["${E}"]`))
+    // The run that was interrupted held the human acts and accepted risks in memory: recompute them from the card tags and the persisted files.
+    out.acOpen = criteriaOpen(cardAc, [])
+    const rl = await agent(`Read-only. In "${INTWT}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log) and docs/superpowers/specs/*-${E}-*-design.md (the spec). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); empty list when none. humanInputs = every item of the "Depends on human input" section of the spec (what, blq when named, workaround, blocking); empty list when there are none or the section is absent. Transcribe faithfully, do not invent.`,
+      { label: `${E}:resume-review-log`, phase: 'Merge', schema: S_RESUMELOG, model: 'sonnet' })
+    if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs may be missing')
+    else {
+      human.push(...(rl.humanInputs || []))
+      out.acceptedRisks.push(...(rl.acceptedRisks || []))
+    }
     return closeOut(await mergeLock(async () => {
       if (integBroken) return { ok: false, kind: 'infra', why: `integration worktree compromised: ${integBroken}` }
       const named = Object.values(BASE).flatMap(r => r.failedNames || [])
