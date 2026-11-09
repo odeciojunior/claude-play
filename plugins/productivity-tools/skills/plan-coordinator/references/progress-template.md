@@ -24,6 +24,7 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 
 ## Execution Map
 **Steps**: N (execute M, skip K) | **Waves**: W | **Effort**: Xh | **Tiers**: inline a · haiku b · sonnet c · opus d | **Review gates**: R
+External: none   <!-- or the external steps: "External: Step 7 (deploy to staging); Step 9 (send release e-mail)" -->
 
 | Wave | Group | Steps | Agent | Tier | Score | Mode | Depends On | Writes | Status |
 |------|-------|-------|-------|------|-------|------|------------|--------|--------|
@@ -54,11 +55,19 @@ Path: `docs/plans/<topic>/progress-<plan-name>.md`. Sections are ordered for rec
 
 ## Manual Actions Required
 - [Action needed from the user, or "none"]
+<!-- Fixed entry forms; an entry stays open until the user closes it:
+     Refused: Step N: <effect>  (does not hold the final gate of the steps that ran)
+     Pre-launch review failed: Step N: <defects>
+     Open question: Step N: <exact question and what each answer does> -->
 
 ## Issues & Decisions
 - [Routing rationale for every opus/inline step, write-set overlaps and how they were resolved, escalations, user decisions]
 
 ## Step Cards
+<!-- An external step's card adds, after Route:
+     - External: yes
+     - Pre-launch review: <Issues & Decisions entry>   (added on PASS, before the authorization question)
+     - Authorized: <Issues & Decisions entry>          (added once the user authorized the step) -->
 
 ### Step 1: Add data model types
 - **Route**: general-purpose · haiku · score 1 — exact spec, one file; shared types (Blast 1), typecheck proves it so no review gate
