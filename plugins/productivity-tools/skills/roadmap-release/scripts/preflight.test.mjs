@@ -312,7 +312,55 @@ test('item 4: a restricted gate needs no permission rule until authorized', () =
   assert.ok(!r.missingRules.includes('Bash(kubectl:*)'));
 });
 
-test('minor 5: validateReleaseConfig rejects a gate name with a space', () => {
-  const c = good(); c.gates[0].name = 'my gate';
+test('minor 5: validateReleaseConfig rejects a restricted gate name with a space', () => {
+  const c = good(); c.gates[0].name = 'my gate'; c.gates[0].restricted = true;
   assert.ok(validateReleaseConfig(c).some((e) => /name/.test(e) && /space/i.test(e)));
+});
+
+test('B re-review minor 4: a space in the name is rejected only for a restricted gate', () => {
+  const c = good(); c.gates[0].name = 'unit tests';
+  assert.deepEqual(validateReleaseConfig(c), []);
+  c.gates[0].restricted = true;
+  assert.ok(validateReleaseConfig(c).some((e) => /space/i.test(e)));
+});
+
+test('B ledger: prod restricts "prod", "production" and "produção", not "product"', () => {
+  for (const [e, w] of [['prod', ''], ['Production', 'merge'], ['produção', ''], ['eu-prod', ''], ['', 'on prod.']]) assert.equal(classifyGate(e, w), 'restricted', `${e}|${w}`);
+  for (const [e, w] of [['product', 'merge'], ['', 'product release']]) assert.notEqual(classifyGate(e, w), 'restricted', `${e}|${w}`);
+});
+
+test('B ledger: gate opener and closer follow the checker comment scan (malformed opener, trailing text)', () => {
+  const cases = [
+    ['<!-- roadmap:gates', ...HEAD, '<!-- note -->', '| ID | Command | Environment | When | Baseline |', ROW1, '<!-- /roadmap:gates -->'].join('\n'),
+    [ '<!-- roadmap:gates -->', ...HEAD, ROW1, '<!-- /roadmap:gates extra -->', '<!-- /roadmap:gates -->'].join('\n'),
+    [ '<!-- roadmap:gates -->', ...HEAD, ROW1, '<!-- /roadmap:gates', '<!-- /roadmap:gates -->'].join('\n'),
+    [ '<!--roadmap:gates-->', ...HEAD, ROW1, '<!--/roadmap:gates-->'].join('\n'),
+    [ '<!-- roadmap:gatesx -->', ...HEAD, ROW1, '<!-- /roadmap:gates -->'].join('\n'),
+    gatesMd([ROW1]),
+  ];
+  for (const md of cases) {
+    const b = readBlocks(md, 'gates')[0];
+    const expected = b ? parseTable(b.body).filter((r) => r.length === 5 && !['', '-', '—'].includes(r[1])).map((r) => r[0]) : [];
+    assert.deepEqual(parseGatesTable(md).map((r) => r.ID), expected, md);
+  }
+});
+
+test('B ledger: a row with the wrong number of columns is skipped with a warning', () => {
+  const warnings = [];
+  const rows = parseGatesTable(gatesMd([ROW1, '| G2 | `npm run lint` | local |', '| G3 | `a | b` | local | merge | ok |']), warnings);
+  assert.deepEqual(rows.map((r) => r.ID), ['G1']);
+  assert.equal(warnings.length, 2);
+  assert.ok(warnings.every((w) => /expected 5/.test(w)));
+  assert.ok(/G2/.test(warnings[0]) && /G3/.test(warnings[1]));
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const repo = repoWithRoadmap(false, '| g1 | npm run lint | local | always | green |\n| g2 | npm test |\n');
+  assert.ok(runPreflight(repo.dir, { home }).warnings.some((w) => /g2/.test(w) && /expected 5/.test(w)));
+});
+
+test('B ledger: an unknown derived gate yields one warning, with the rule to add', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const repo = repoWithRoadmap(false, '| a | npm test | local | every task | green |\n| k | kubectl diff | lab | whenever | green |\n');
+  const w = runPreflight(repo.dir, { home }).warnings.filter((x) => /gate k\b/.test(x));
+  assert.equal(w.length, 1);
+  assert.ok(/not recognized/.test(w[0]) && /Bash\(kubectl:\*\)/.test(w[0]) && /gate:k/.test(w[0]));
 });

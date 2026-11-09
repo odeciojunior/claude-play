@@ -31,7 +31,7 @@ export function validateReleaseConfig(cfg) {
     const at = `gates[${i}]`;
     if (!g || typeof g !== 'object') { errors.push(`${at} must be an object`); return; }
     if (typeof g.name !== 'string' || !g.name) errors.push(`${at}.name is required`);
-    else if (/\s/.test(g.name)) errors.push(`${at}.name must not contain spaces: ${g.name} (it becomes an authorizeExternal item)`);
+    else if (g.restricted === true && /\s/.test(g.name)) errors.push(`${at}.name must not contain spaces: ${g.name} (a restricted gate becomes an authorizeExternal item)`);
     else if (seen.has(g.name)) errors.push(`${at}.name duplicate: ${g.name}`);
     else seen.add(g.name);
     if (typeof g.cmd !== 'string' || !g.cmd.trim()) errors.push(`${at}.cmd is required`);
@@ -72,20 +72,71 @@ function splitRow(line) {
   return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
 }
 
+// One linear pass over the comments of a text, the same logic as scanComments in the vendored checker (check-roadmap.mjs):
+// a comment whose `-->` comes after the next `<!--` is malformed.
+function scanComments(text) {
+  const out = [];
+  let closeAt = -2;
+  let openAt = -2;
+  let i = text.indexOf('<!--');
+  while (i !== -1) {
+    const from = i + 4;
+    if (closeAt !== -1 && closeAt < from) closeAt = text.indexOf('-->', from);
+    if (openAt !== -1 && openAt < from) openAt = text.indexOf('<!--', from);
+    const malformed = closeAt === -1 || (openAt !== -1 && openAt < closeAt);
+    const end = malformed ? (openAt === -1 ? text.length : openAt) : closeAt;
+    out.push({ start: i, innerStart: from, end, after: malformed ? end : closeAt + 3, malformed });
+    if (malformed) i = openAt;
+    else {
+      if (openAt !== -1 && openAt < closeAt + 3) openAt = text.indexOf('<!--', closeAt + 3);
+      i = openAt;
+    }
+  }
+  return out;
+}
+
+// Body of the first block `name`, found the way the checker's readBlocks finds it: the opener is a comment that starts with
+// roadmap:<name> followed by whitespace or its end, the closer a later well-formed comment that is exactly /roadmap:<name>.
+// A malformed opener or a missing closer gives null.
+function firstBlockBody(text, scan, name) {
+  const comments = scanComments(scan);
+  const skip = (from, end) => { let k = from; while (k < end && /\s/.test(scan[k])) k += 1; return k; };
+  const openTag = `roadmap:${name}`;
+  const closeTag = `/roadmap:${name}`;
+  for (let idx = 0; idx < comments.length; idx += 1) {
+    const c = comments[idx];
+    const k = skip(c.innerStart, c.end);
+    if (!scan.startsWith(openTag, k)) continue;
+    const after = k + openTag.length;
+    if (after < c.end && !/\s/.test(scan[after])) continue;
+    if (c.malformed) return null;
+    for (let j = idx + 1; j < comments.length; j += 1) {
+      const d = comments[j];
+      if (d.malformed) continue;
+      const dk = skip(d.innerStart, d.end);
+      if (scan.startsWith(closeTag, dk) && scan.slice(dk + closeTag.length, d.end).trim() === '') return text.slice(c.after, d.start);
+    }
+    return null;
+  }
+  return null;
+}
+
 // Columns are read by position (ID, Command, Environment, When, Baseline); header words are ignored.
-export function parseGatesTable(markdown) {
+// A row with another number of columns is skipped and reported in `warnings`.
+export function parseGatesTable(markdown, warnings = []) {
   const text = String(markdown || '').replace(/\r\n?/g, '\n');
-  const scan = blankFences(text);
-  const open = /<!--\s*roadmap:gates(?=\s|-->)[\s\S]*?-->/.exec(scan);
-  if (!open) return [];
-  const from = open.index + open[0].length;
-  const close = /<!--\s*\/roadmap:gates\s*-->/.exec(scan.slice(from));
-  if (!close) return [];
-  const body = text.slice(from, from + close.index);
+  const body = firstBlockBody(text, blankFences(text), 'gates');
+  if (body === null) return [];
   const rows = body.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|')).map(splitRow);
   const isSep = (r) => r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
-  return rows.slice(1).filter((r) => !isSep(r) && r.length === 5 && !['', '-', '—'].includes(r[1]))
-    .map(([ID, Command, Environment, When, Baseline]) => ({ ID, Command, Environment, When, Baseline }));
+  return rows.slice(1).filter((r) => {
+    if (isSep(r)) return false;
+    if (r.length !== 5) {
+      warnings.push(`gates table row "${r[0] || '(empty)'}" has ${r.length} columns, expected 5 (ID, Command, Environment, When, Baseline): row skipped, so that gate is missing from the derived config (write a pipe inside a cell as \\|)`);
+      return false;
+    }
+    return !['', '-', '—'].includes(r[1]);
+  }).map(([ID, Command, Environment, When, Baseline]) => ({ ID, Command, Environment, When, Baseline }));
 }
 
 // A derived gate is a tests gate only when its command names a test runner: anything else has no test count to read.
@@ -102,7 +153,9 @@ function detectInstall(root) {
   return hit ? hit[1] : '';
 }
 
-const RESTRICT_MARKS = ['prod', 'produção', 'producao', 'staging', 'owner', 'dono'];
+// 'prod', 'production', 'produção' and 'producao' must be whole words (not "product"); the others match by prefix.
+const RESTRICT_WORDS = ['prod', 'production', 'produção', 'producao'];
+const RESTRICT_MARKS = ['staging', 'owner', 'dono'];
 const LOCAL_MARKS = ['local', 'every', 'each', 'before', 'merge', 'task', 'cada', 'todo', 'antes', 'always', 'sempre'];
 
 // Classifies a gate row by its Environment and When cells, cell by cell. A restriction mark in either cell wins;
@@ -111,7 +164,8 @@ export function classifyGate(environment, when) {
   const cells = [environment, when].map((c) => String(c ?? '').trim().toLowerCase());
   const tokens = (c) => c.split(/[^\p{L}]+/u).filter(Boolean);
   const starts = (c, marks) => tokens(c).some((t) => marks.some((m) => t.startsWith(m)));
-  if (cells.some((c) => starts(c, RESTRICT_MARKS) || /(^|[^\p{L}])release\s+only(?![\p{L}])/u.test(c))) return 'restricted';
+  const restrictedCell = (c) => tokens(c).some((t) => RESTRICT_WORDS.includes(t)) || starts(c, RESTRICT_MARKS);
+  if (cells.some((c) => restrictedCell(c) || /(^|[^\p{L}])release\s+only(?![\p{L}])/u.test(c))) return 'restricted';
   const isFree = (c) => ['', '-', '—'].includes(c) || starts(c, LOCAL_MARKS);
   return cells.every(isFree) ? 'free' : 'unknown';
 }
@@ -275,7 +329,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       const sp = isAbsolute(rc.strategy) ? rc.strategy : resolve(dir, rc.strategy);
       let md = '';
       try { md = readFileSync(sp, 'utf8'); } catch { errors.push(`strategy not readable: ${sp}`); }
-      const rows = parseGatesTable(md);
+      const rows = parseGatesTable(md, warnings);
       if (md && rows.length === 0) errors.push('strategy has no roadmap:gates table rows');
       let ctx = '';
       try { ctx = readFileSync(join(root, 'CLAUDE.md'), 'utf8'); } catch { /* no project CLAUDE.md */ }
@@ -294,7 +348,11 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     missing = missingRules(Object.keys(cmds), settings, cmds);
     for (const g of config.gates.filter((x) => x.restricted === true)) {
       const extra = Object.keys(requiredCommands({ gates: [{ ...g, restricted: false }] })).filter((r) => !(r in cmds));
-      warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; if authorized, add permission rule(s): ${extra.length ? extra.join(', ') : '(none beyond the required ones)'}`);
+      const rulesTxt = `if authorized, add permission rule(s): ${extra.length ? extra.join(', ') : '(none beyond the required ones)'}`;
+      // A gate the derivation already warned about as unrecognized gets one combined warning.
+      const at = warnings.findIndex((w) => w.startsWith(`gate ${g.name}: Environment/When not recognized`));
+      if (at >= 0) warnings[at] += `; ${rulesTxt}`;
+      else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
   return { configPath, generated, errors, missingRules: missing, warnings, config };
