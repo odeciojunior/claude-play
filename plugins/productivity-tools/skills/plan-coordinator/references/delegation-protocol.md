@@ -24,34 +24,35 @@ This section is the only statement of step states and transitions; every other f
 |---|-------|------------------|-------|------|
 | 1 | `Pending` | Step 7; or a row below, before what it allows | Wave loop item 4 selects its group | `Launched` |
 | 2 | `Pending` | same | Inline group: item 10 runs it | Done-means passes: `PASS`. Fails: `Pending`, re-routed off Inline per routing.md §5 step 3 |
-| 3 | `Pending` | same | A manual action opens on it, or pre-flight lacks its upstream parameter | `Skip (manual)`, by Hold |
+| 3 | `Pending` | same | A manual action opens on it, pre-flight lacks its upstream parameter, or a dependency is a `Skip` with no outputs | `Skip (manual)`, by Hold |
 | 4 | `Pending` | same | A dependency is held, stopped or waiting | `Waiting (manual)`, by Hold |
-| 5 | `Pending`, external, no `Pre-launch review:` line | same | Review (Step 8 item 4) | PASS: line written. Defects after 2 rounds: `Skip (manual)`, `Pre-launch review failed:`, no question for this step |
+| 5 | `Pending`, external, no `Pre-launch review:` line | same | Review (Step 8 item 4) | PASS: line written. Defects after 2 rounds since its last entry closed: `Skip (manual)`, `Pre-launch review failed:`, no question for this step |
 | 6 | `Pending`, external, reviewed, no `Authorized:` line | same | The request or an earlier answer names it; otherwise stop and ask | Named: line written, row 1. Refused: `Skip (manual)`, `Refused:`. Not named: `Skip (manual)`, `Not named:` |
 | 7 | `Pending`, external, with either line | same | A card line other than `Handoff`, `Pre-launch review:` or `Authorized:` changes | `Pre-launch review:` removed, `Authorized:` too if the effect changed; row 5 |
 | 8 | `Launched` | Wave loop item 4, **before** the `Agent` call | Agent still running | `Launched`: wait for its notification; after a compaction, ask it once for its report |
-| 9 | `Launched` | same | Verified PASS report | No review gate: `PASS`. Review gate: `Review owed` |
+| 9 | `Launched` | same | Verified PASS report | No review gate: `PASS`. Review gate: `Review owed`, the report's EVIDENCE line in the Note |
 | 10 | `Launched`, non-external | same | FAIL or BLOCKED (routing.md §5) | Retry: `Launched`, attempts + 1. §5 step 4: `Skip (manual)`, `Open question:` |
 | 11 | `Launched`, non-external | same | No report and no live agent (§ Recovery) | Done-means passes on the card's Files: a report, through § Verification and § Writing back (row 9). Otherwise relaunched, `Launched` |
 | 12 | `Launched`, external | same | FAIL, BLOCKED, or no report (no agent, no answer, `launching` with no ID); files never close it | `Stopped`, `Open question:`; stop and ask |
-| 13 | `Review owed` | § Writing back, after verification and before the reviewer launches | Reviewer PASS; or reviewer lost | `PASS`; or launch the read-only review again |
-| 14 | `Review owed` | same | Defects | Non-external: `Launched`, fix-up per routing.md §4. External: `Stopped`, `Open question:`; stop and ask |
-| 15 | `Stopped` (external, launched once, result failed, unknown or rejected) | Rows 12, 14, 24, before the question | `it is done` | `PASS`, the user's word in Issues & Decisions |
-| 16 | `Stopped` | same | `no`, `skip`, `leave it` | `Stopped`, entry becomes `Refused:`; reported as launched once, outcome unconfirmed |
-| 17 | `Stopped` | same | `run it again` | `Skip`, Note `replaced by Step Nr`. New row Nr: `Pending`, external, no `Pre-launch review:` line, `Authorized:` from the answer; dependents depend on Nr |
+| 13 | `Review owed` | § Writing back, after verification and before the reviewer launches | Reviewer PASS; or reviewer lost | `PASS`; or launch the read-only review again, from the Note and the card's Files |
+| 14 | `Review owed` | same | Defects | Non-external: `Launched`, fix-up round in the Note, per routing.md §4; rounds exhausted: row 10. External: `Stopped`, `Open question:`; stop and ask |
+| 15 | `Stopped` (external, launched once, result failed, unknown or rejected) | Rows 12, 14, 25, before the question | `it is done` | `PASS`, the user's word in Issues & Decisions; the effect is named to the final gate as accepted |
+| 16 | `Stopped` | same | `no`, `skip`, `leave it` | `Stopped`, entry becomes `Refused:`; reported, and named to the final gate, as launched once, outcome unconfirmed, not a defect |
+| 17 | `Stopped` | same | `run it again` | `Skip`, Note `replaced by Step Nr`. Nr is a new effect: new `## Steps` row, card and map row (its own group, before its dependents' waves), `Pending`, external, no card lines; dependents depend on it. Rows 5-6 apply: it needs its own yes, and that question says the effect may already be partly done |
 | 18 | `Skip (manual)`, open entry | Hold, before any question | Manual action finished, or `Pre-launch review failed:` closed (authorizes nothing) | `Pending` |
-| 19 | `Skip (manual)`, open entry | same | The answer names it or says run it (not a `Pre-launch review failed:` entry) | `Pending`, with `Authorized:` if external |
-| 20 | `Skip (manual)`, open entry | same | `it is done` | `PASS`, the user's word in Issues & Decisions |
-| 21 | `Skip (manual)`, open entry | same | `no` or `skip` | Entry becomes `Refused:`; row 22 |
-| 22 | `Skip (manual)`, `Refused:` | Rows 6, 21 | A later answer names it; or Completion | Named: as row 19. Completion: stays, not run, does not hold the final gate |
-| 23 | `Waiting (manual)` | Hold | Release: no dependency is held, stopped or waiting; or Completion, behind `Refused:` entries only | `Pending`; Completion: stays, not run |
-| 24 | `PASS` | § Writing back, after verification, review gate, Handoff and commit | Wave gate attributes a failure to its group | Non-external: row 10. External: `Stopped`, `Open question:`; stop and ask. Otherwise terminal |
-| 25 | `Skip` | Step 1 | None | Terminal; counts as done for dependents only if its outputs exist |
-| 26 | `Final gate` row `Pending` | Step 7 | Completion | `PASS` after the final gate's PASS; `Skip` when no step ran |
-| 27 | `Status: Map ready` | Step 7, before self-approval | Step 8 item 6 (self-approval; the map is never put to the user), or a stop in Step 8 | `In Progress`, or `Blocked` |
-| 28 | `Status: In Progress` | Step 8 item 6, or an answer | Stop and ask; or Completion closes | `Blocked`; or `Completed` |
-| 29 | `Status: Blocked` | Stop and ask, before the question | The answer | Apply it; `In Progress`; continue at `Next Action` |
-| 30 | `Status: Completed` | After the final gate's PASS or `Skip` | None (Step 0 asks before re-running) | Terminal |
+| 19 | `Skip (manual)`, `Open question:` on a missing parameter | same | The answer supplies the value | Value written to the card; `Pending`. External: `Pre-launch review:` removed, `Authorized:` too if the effect changed; row 5 |
+| 20 | `Skip (manual)`, open entry | same | The answer names it or says run it (not a `Pre-launch review failed:` entry) | `Pending`, with `Authorized:` if external |
+| 21 | `Skip (manual)`, open entry | same | `it is done` | `PASS`, the user's word in Issues & Decisions |
+| 22 | `Skip (manual)`, open entry | same | `no` or `skip` | Entry becomes `Refused:`; row 23 |
+| 23 | `Skip (manual)`, `Refused:` | Rows 6, 22 | A later answer names it; or Completion | Named: as row 20. Completion: stays, not run, does not hold the final gate |
+| 24 | `Waiting (manual)` | Hold | Release: no dependency is held, stopped or waiting; or Completion, behind `Refused:` entries only | `Pending`; Completion: stays, not run |
+| 25 | `PASS` | § Writing back, after verification, review gate, Handoff and commit | Wave gate attributes a failure to its group; or the final gate finds a defect in its external effect, not one accepted in row 15 | Wave gate, non-external: row 10. Otherwise `Stopped`, `Open question:`; stop and ask. With neither: terminal |
+| 26 | `Skip` | Step 1 | None | Terminal; counts as done for dependents only if its outputs exist |
+| 27 | `Final gate` row `Pending` | Step 7 | Completion | `PASS` after the final gate's PASS; `Skip` when no step ran |
+| 28 | `Status: Map ready` | Step 7, before self-approval | Step 8 item 6 (self-approval; the map is never put to the user), or a stop in Step 8 | `In Progress`, or `Blocked` |
+| 29 | `Status: In Progress` | Step 8 item 6, or an answer | Stop and ask; or Completion closes | `Blocked`; or `Completed` |
+| 30 | `Status: Blocked` | Stop and ask, before the question | The answer | Apply it; `In Progress`; continue at `Next Action` |
+| 31 | `Status: Completed` | After the final gate's PASS or `Skip` | None (Step 0 asks before re-running) | Terminal |
 
 **Hold.** Write `Skip (manual)` and the entry under Manual Actions (template forms), from the moment the entry opens. Mark every step depending on a held or stopped step, directly or transitively, `Waiting (manual)`, and split any group holding both held and other steps so the others can run.
 
@@ -59,9 +60,9 @@ This section is the only statement of step states and transitions; every other f
 
 **When to ask.** An external step's question is asked at once (row 3 included). A non-external hold leaves `Status` as it is while independent groups can run; Completion asks when nothing else can.
 
-**While `Status` is `Blocked`, nothing starts:** no launch, retry, fix-up, review gate, wave gate, Advance or external action, `SendMessage` included, except asking an in-flight agent for its report. Step 8's read-only reviews are self-approval and are not barred. Groups in flight finish and are recorded: a failure is noted in `## Steps` and joins the question, a passed report waits as `Review owed`.
+**While `Status` is `Blocked`, nothing starts:** no launch, retry, fix-up, review gate, wave gate, Advance or external action, `SendMessage` included, except asking an in-flight agent for its report. Step 8's read-only reviews are self-approval and are not barred. Groups in flight finish and are recorded: a failure is noted in `## Steps` and joins the question, a passed report follows row 9, its review gate waiting.
 
-**Applying an answer.** It names a step by number or title; a bare yes names every step the question listed. An answer that names nothing authorizes nothing and leaves its entries open; silence is never an answer. Record an authorization as in SKILL.md Step 8 item 4. Then release (row 23), set `Status: In Progress` and continue at `Next Action`.
+**Applying an answer.** It names a step by number or title; a bare yes names every step the question listed; a value answers the question that asked for it (row 19). An answer that names nothing authorizes nothing and leaves its entries open; silence is never an answer. Record an authorization as in SKILL.md Step 8 item 4. Then release (row 24), set `Status: In Progress` and continue at `Next Action`.
 
 **What the table guarantees.**
 
@@ -72,8 +73,8 @@ This section is the only statement of step states and transitions; every other f
 **Older progress files** are brought into this table before anything else (SKILL.md Step 0):
 
 - Read the step status from `## Steps`: a legacy `In Progress` or similar is `Launched`. A map `Status` column is no longer read, and the `Final gate` row is added to `## Steps` as `Pending`. `Last DELEGATED Wave` above `Last COMPLETED Wave` becomes `Wave gate owed: <that wave>`, otherwise `none`.
-- With no `External:` line, classify the unfinished steps (SKILL.md Step 1) and write the line (`External: none` if there are none) and the cards' `External: yes` lines. Then re-apply routing.md §3 to each newly external step, rewrite its card `Route` and map row, and split its group if needed (SKILL.md Step 5).
-- An external step recorded as in flight enters at `Launched`; one held by an `Open question:` entry enters at `Stopped`; any other keeps its state.
+- With no `External:` line, classify the unfinished steps (SKILL.md Step 1) and write the line (`External: none` if there are none) and the cards' `External: yes` lines. Then re-apply routing.md §3 to each newly external step, rewrite its card `Route` and map row, and make it its own group (SKILL.md Step 5).
+- Every step of a group recorded as in flight enters at `Launched`, and in a mixed group all of them follow the external rows, so a retry cannot repeat the effect. An external step held by an `Open question:` entry, or by a `Refused:` entry after a recorded launch, enters at `Stopped`; any other keeps its state.
 - Process in-flight groups (§ Recovery), then by status at that point: `Map ready` or legacy `Awaiting approval` runs all of Step 8; `In Progress` runs Step 8 items 3 to 6; `Blocked` keeps its `Status` and `Next Action`, asks that question first, and appends "then run Step 8 items 3 to 6 before any launch".
 
 ## Wave loop
@@ -88,7 +89,7 @@ Waves are **barriers**: a wave's writing groups launch only after the previous w
 6. **Record agent IDs** in `In-Flight Agents` right after the launch returns.
 7. **Wait for notifications.** Agents run in the background and notify on completion — don't poll or sleep.
 8. **Verify each report** (§ Verification), then follow § Step lifecycle: write the state, launch the review gate if there is one (its agent ID in `In-Flight Agents`), write the handoff.
-9. **Wave gate:** with `Wave gate owed: none` the wave advances without one. When every launched group in the wave is done (review gates included) and nothing is in flight, run the project's full check once (the build/test command from the Shared Brief). A held or stopped group counts as finished for this gate; a failure in its files is added to its Manual Actions entry and does not stop the wave. Compare the result against Baseline (SKILL.md Step 2): only a failure outside Baseline counts. If the gate fails outside Baseline, attribute it before escalating: run each group's targeted check again and diff the failing paths against each group's FILES; the owning group gets a FAIL with the gate output as evidence (row 24). If no group owns it, record it in Issues & Decisions, stop and ask.
+9. **Wave gate:** with `Wave gate owed: none` the wave advances without one. When every launched group in the wave is done (review gates included) and nothing is in flight, run the project's full check once (the build/test command from the Shared Brief). A held or stopped group counts as finished for this gate; a failure in its files is added to its Manual Actions entry and does not stop the wave. Compare the result against Baseline (SKILL.md Step 2): only a failure outside Baseline counts. If the gate fails outside Baseline, attribute it before escalating: run each group's targeted check again and diff the failing paths against each group's FILES; the owning group gets a FAIL with the gate output as evidence (row 25). If no group owns it, record it in Issues & Decisions, stop and ask.
 10. **Inline steps:** in every wave, after item 3 and before item 4, with nothing in flight, run the wave's inline steps that are `Pending`, wave 1 included; a held inline step does not run. Then run their Done-means checks.
 11. **Advance:** set `Wave gate owed: none`, clear `In-Flight Agents`, set `Next Action`, append a row to the Wave Execution Log; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event `"wave N closed (steps …); no questions, return pending items"`; the tracker never blocks the run. Keep the pending items it returns for the final report in Completion. Then start the lowest wave with a `Pending` step (the `Final gate` row aside), or go to Completion when none is left.
 
@@ -189,5 +190,5 @@ Completion starts when no step is `Pending`, `Launched` or `Review owed` (the `F
 2. **Nothing ran.** If no step ran, there is no change to review: mark the `Final gate` row `Skip` and go to item 5, without the check or the review.
 3. **Full check**, compared against Baseline as in Wave loop item 9.
 4. **Final gate**, a read-only reviewer at opus with `effort: high`. It gets the plan's goal and acceptance criteria, the Shared Brief, every Handoff, `git diff <Base>` and the untracked files from `git ls-files --others --exclude-standard`, and looks for what per-step reviews miss: broken contracts between steps, regressions outside the changed files, and acceptance criteria with no test. Refused steps and their dependents are named to the reviewer as not run, and their acceptance criteria are not defects; a `Stopped` step is named as launched once with its outcome unconfirmed.
-   Defects go to a fresh executor at the owning step's tier, followed by a commit under the Shared Brief's policy, the full check and a new final review, at most 2 rounds; a third round runs on opus. A defect in an external step's effect goes to no executor: stop and ask. Record each round in `**Final gate rounds:** <n done> (last verdict: <PASS | defects: ...>)` in Recovery State, updated after every round. A round is one fix, commit, full check and re-review; `n` counts completed rounds; the first review with no fix is round 0. Read this field before launching a fix, and after each round write the intended next step into `Next Action`. If defects remain after that, stop and ask, with "then re-run the final gate".
+   Defects go to a fresh executor at the owning step's tier, followed by a commit under the Shared Brief's policy, the full check and a new final review, at most 2 rounds; a third round runs on opus. A defect in an external step's effect goes to no executor (row 25). Record each round in `**Final gate rounds:** <n done> (last verdict: <PASS | defects: ...>)` in Recovery State, updated after every round. A round is one fix, commit, full check and re-review; `n` counts completed rounds; the first review with no fix is round 0. Read this field before launching a fix, and after each round write the intended next step into `Next Action`. If defects remain after that, stop and ask, with "then re-run the final gate".
 5. **Close out**, only after the final gate's PASS (or that `Skip`): mark the `Final gate` row PASS unless it is `Skip`, and set `Status: Completed`; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event `"plan completed; no questions, return pending items"`; add a tier summary (planned vs actual tier, retries, escalations) to Issues & Decisions, save non-obvious lessons to memory if available (SKILL.md Rule 8), and report to the user, including each external step with what happened to it (effect performed and review gate result, `refused`, `pre-launch review failed`, `launched once, outcome unconfirmed`) and the pending items the tracker returned. Do not push unless asked, except an authorized external step; per-step commits follow § Writing back.
