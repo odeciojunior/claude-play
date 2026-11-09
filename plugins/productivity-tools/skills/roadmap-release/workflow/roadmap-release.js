@@ -161,6 +161,72 @@ function mergeFloor(baseline, branchMeasure) {
   }
   return floor
 }
+// ---- reviews, acceptance evidence and resume
+// Issue = { severity, category?, description, file?, blq? }
+const hasBlq = (blqIds, id) => (blqIds instanceof Set ? blqIds.has(id) : (blqIds || []).includes(id))
+// A critical issue always needs a fix, unless it is an environment limit already registered as a roadmap blocker.
+function isHard(issue, blqIds) {
+  const i = issue || {}
+  return !i.category || i.category === 'defeito' || i.category === 'decisao'
+    || (i.severity === 'critical' && !(i.category === 'ambiente' && hasBlq(blqIds, i.blq)))
+}
+function nextTier(tier, sameFindingAgain) {
+  if (!sameFindingAgain) return tier
+  if (tier === 'haiku') return 'sonnet'
+  if (tier === 'sonnet') return 'opus'
+  return null
+}
+function sameFinding(prevIssues, issues, blqIds) {
+  const norm = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ')
+  return (issues || []).filter(i => isHard(i, blqIds)).some(i =>
+    (prevIssues || []).some(p => (p.file || '') === (i.file || '') && norm(p.description) === norm(i.description)))
+}
+const VERIFY_EXEC = ['test', 'smoke', 'integration']
+// Reads the suffix tag from the last "{verify:" up to the item's final "}", so evidence may hold ";", "}" and quotes.
+function parseVerifyTag(item) {
+  const text = String(item || '').trim()
+  const at = text.lastIndexOf('{verify:')
+  if (at === -1) return null
+  if (!text.endsWith('}')) return { invalid: true }
+  const body = text.slice(at + '{verify:'.length, -1)
+  const m = /^\s*([a-z]+)(?:\s+(BLQ-\d+))?\s*;\s*evidence:([\s\S]*)$/.exec(body)
+  if (!m) return { invalid: true }
+  const kind = m[1]
+  const out = { kind, evidence: m[3].trim() }
+  if (m[2]) out.blq = m[2]
+  const known = [...VERIFY_EXEC, 'human', 'blocked'].includes(kind)
+  if (!known || (kind === 'blocked') !== !!m[2] || (VERIFY_EXEC.includes(kind) && !out.evidence)) out.invalid = true
+  return out
+}
+// cardAc = [{ id, text, tag }]; planAc = [{ ac, kind, command?, testRef?, blq? }]
+function evidenceGaps(cardAc, planAc, blqIds) {
+  const gap = description => ({ severity: 'critical', category: 'defeito', description })
+  const rows = planAc || []
+  const out = []
+  for (const a of cardAc || []) {
+    const mine = rows.filter(p => p.ac === a.id)
+    if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan: ${a.text}`)); continue }
+    const t = a.tag
+    if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
+    if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => String(p.command || '').trim() === t.evidence))
+      out.push(gap(`criterion ${a.id}: the plan changed the command bound by the card tag (${t.evidence})`))
+    if (t && t.kind === 'blocked' && !hasBlq(blqIds, t.blq)) out.push(gap(`criterion ${a.id} tagged blocked without a registered blocker (blq=${t.blq || 'empty'})`))
+  }
+  for (const p of rows) {
+    if (VERIFY_EXEC.includes(p.kind) && !p.command) out.push(gap(`criterion ${p.ac} has no evidence command`))
+    if (p.kind === 'blocked' && !hasBlq(blqIds, p.blq)) out.push(gap(`criterion ${p.ac} marked blocked without a registered blocker (blq=${p.blq || 'empty'})`))
+  }
+  return out
+}
+// Highest k such that tasks 1..k are all committed; a gap is where the run resumes.
+function lastContiguousDone(tasks, doneMap) {
+  let last = 0
+  for (const t of tasks || []) { if ((doneMap || {})[t.n]) last = t.n; else break }
+  return last
+}
+function resumeAction(card, statuses, force) {
+  return isUnfinished(card, statuses) && !force ? 'finish-merge' : 'run'
+}
 // </pure>
 
 phase('probe');
