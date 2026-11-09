@@ -282,6 +282,16 @@ test('item 4: deriveConfig keeps restricted gates in the config with restricted:
   assert.match(warnings[0], /G3/);
 });
 
+test('the all-restricted error gives a fix that works: both cells of one gate, with no restriction mark left', () => {
+  const cfg = good(); cfg.gates.forEach((g) => { g.restricted = true; });
+  const e = validateReleaseConfig(cfg).find((x) => /every gate is restricted/.test(x));
+  assert.match(e, /both its Environment and When cells/);
+  assert.match(e, /no restriction mark/);
+  assert.equal(classifyGate('local', 'every task'), 'free');
+  assert.equal(classifyGate('local', ''), 'free');
+  assert.equal(classifyGate('prod local', 'every'), 'restricted');
+});
+
 test('item 4: a config where every gate is restricted is an error', () => {
   const cfg = good(); cfg.gates.forEach((g) => { g.restricted = true; });
   assert.ok(validateReleaseConfig(cfg).some((e) => /every gate is restricted/.test(e) && !/without authorization/.test(e)));

@@ -44,7 +44,7 @@ export function validateReleaseConfig(cfg) {
       if (!locks.includes(l)) errors.push(`${at}.needsLock cites undeclared lock: ${l}`);
     }
   });
-  if (cfg.gates.every((g) => g && g.restricted === true)) errors.push('every gate is restricted: the preflight needs at least one gate that is not restricted (write local in its Environment or When cell of the gates table, or set restricted to false in release.config.json)');
+  if (cfg.gates.every((g) => g && g.restricted === true)) errors.push('every gate is restricted: the preflight needs at least one gate that is not restricted (on one row of the gates table, leave no restriction mark and make both its Environment and When cells free: empty, a dash or a local mark such as local; or set restricted to false in release.config.json)');
   return errors;
 }
 

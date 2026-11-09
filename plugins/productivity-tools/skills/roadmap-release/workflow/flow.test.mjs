@@ -1807,6 +1807,24 @@ test('decision 3: a quoted command is dispatched with its quotes', async () => {
   assert.match(calls.find((c) => c.label === 'E1:evidence1').prompt, /^AC1: "\.\/my tool"$/m);
 });
 
+test('the progress read names the task numbers that awaitingPerson covers, so a mark-only task is not missed', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan([tk(1, true), tk(2, true)]) });
+  assert.match(calls.find((c) => c.label === 'E1:progress').prompt, /awaitingPerson = every n of \[1, 2\] with a commit/);
+});
+
+const clearedProgress = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [] } : undefined);
+
+test('resume after the mark was cleared: the review of an external task still gets the bookkeeping note', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, clearedProgress) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /awaiting person:[^\n]*not extra scope/);
+});
+
+test('resume of a task that is not external gets no bookkeeping note', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], clearedProgress) });
+  assert.ok(!x.calls.find((c) => c.label === 'E1:t1:spec1').prompt.includes('awaiting person:'));
+});
+
 test('decision 3: a quoted command against its bare form is a defect and never runs', async () => {
   const { r, labels } = await mism([cmdRow('"./my tool"')], [cmdRow('./my tool')]);
   assert.ok(!labels.some((l) => /:evidence/.test(l)));

@@ -1505,7 +1505,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   // ---------- Tasks (resumable)
   // Only this subject ends the wait: a re-run that commits and then fails is still waiting for the person.
   const effectDone = n => `${E} T${n}: external effect completed`
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of that list with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).`,
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).`,
     { label: `${E}:progress`, phase: 'Implementation', schema: S_PROGRESS, model: 'haiku' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -1567,7 +1567,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     const start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const rangeNote = earlier ? ` The range holds this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.` : ''
+    const rangeNote = earlier || (resumed && t.external !== false) ? ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.` : ''
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
     // A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
     const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
