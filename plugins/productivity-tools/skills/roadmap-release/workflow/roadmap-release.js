@@ -236,14 +236,28 @@ function parseVerifyTag(item) {
   if (!known || (kind === 'blocked') !== !!m[2] || (VERIFY_EXEC.includes(kind) && !out.evidence)) out.invalid = true
   return out
 }
+// A plan evidence row belongs to a card criterion when its ac is the id, the id plus a separator ("AC1: ...", "AC1 - ..."),
+// or the criterion text (with or without the {verify...} tag). "AC10" never matches "AC1".
+function matchesCriterion(rowAc, card) {
+  const norm = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ')
+  const v = norm(rowAc)
+  const id = norm(card && card.id)
+  if (!v || !id) return false
+  if (v === id) return true
+  if (v.startsWith(id) && !/[A-Za-z0-9]/.test(v.charAt(id.length))) return true
+  const full = norm(card.text)
+  const at = full.lastIndexOf('{verify:')
+  const bare = at === -1 ? full : norm(full.slice(0, at))
+  return [full, bare].some(t => t && (v === t || v.includes(t)))
+}
 // cardAc = [{ id, text, tag }]; planAc = [{ ac, kind, command?, testRef?, blq? }]
 function evidenceGaps(cardAc, planAc, blqIds) {
   const gap = description => ({ severity: 'critical', category: 'defeito', description })
   const rows = planAc || []
   const out = []
   for (const a of cardAc || []) {
-    const mine = rows.filter(p => p.ac === a.id)
-    if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan: ${a.text}`)); continue }
+    const mine = rows.filter(p => matchesCriterion(p.ac, a))
+    if (!mine.length) { out.push(gap(`criterion ${a.id} has no evidence row in the plan (expected ac "${a.id}", the id alone; the plan returned ac values: ${rows.length ? rows.map(p => JSON.stringify(String(p.ac))).join(', ') : 'none'}): ${a.text}`)); continue }
     const t = a.tag
     if (t && t.invalid) { out.push(gap(`criterion ${a.id} has an invalid {verify:} tag`)); continue }
     if (t && VERIFY_EXEC.includes(t.kind) && !mine.some(p => String(p.command || '').trim() === t.evidence))
@@ -300,11 +314,11 @@ function criteriaOpen(cardAc, planAc) {
   const add = (ac, kind, blq) => { if (!seen.has(ac)) { seen.add(ac); out.push({ ac, kind, blq }) } }
   for (const a of cardAc || []) {
     const t = a.tag && !a.tag.invalid ? a.tag : null
-    const row = (planAc || []).find(p => p.ac === a.id && open(p.kind))
+    const row = (planAc || []).find(p => matchesCriterion(p.ac, a) && open(p.kind))
     if (t && open(t.kind)) add(a.id, t.kind, t.blq || (row && row.kind === t.kind ? row.blq : undefined))
     else if (row) add(a.id, row.kind, row.blq)
   }
-  for (const p of planAc || []) if (open(p.kind) && !(cardAc || []).some(a => a.id === p.ac)) add(p.ac, p.kind, p.blq)
+  for (const p of planAc || []) if (open(p.kind) && !(cardAc || []).some(a => matchesCriterion(p.ac, a))) add(p.ac, p.kind, p.blq)
   return out
 }
 // One review/fix cycle. env = { maxFix, blqIds, reviews, concerns, acceptRisks(stage, issues) }.
@@ -614,7 +628,7 @@ const ISSUES = { type: 'array', items: { type: 'object', properties: {
 const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_PLAN = { type: 'object', properties: { planPath: STR, roadmapHeader: BOOL, reused: BOOL,
-  ac: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR }, required: ['ac', 'kind'] } },
+  ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR }, required: ['ac', 'kind'] } },
   tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS }, required: ['n', 'title', 'tier'] } } }, required: ['planPath', 'tasks'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
@@ -1060,7 +1074,7 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
 
   // ---------- Plan
   const planName = `docs/superpowers/plans/${TODAY}-${E}-${slug}.md`
-  const acTxt = (card.acceptance || []).map(a => `${a.id}: ${a.text}`).join('\n')
+  const acTxt = (card.acceptance || []).map(a => `[${a.id}] ${a.text}`).join('\n')
   plan = await agent(`${C()}
 
 If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true).'}
@@ -1069,7 +1083,7 @@ Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Save to ${planName}, in the language of the roadmap.
 - Small tasks, with TDD and the exact verification commands, using the canonical gates and respecting the MEASURED ENVIRONMENT. Each task lists the files it touches and the locks it needs (needsLock: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses). For each verification, the expected result; a baseline failure is named as expected.
 - Per task, declare "tier" (the implementer's model) by the routing scoring rules of the plan-coordinator skill (references/routing.md) when available: haiku for mechanical work, sonnet by default, opus only when ambiguity AND blast radius are both high. Declare "reviewTier": opus ONLY for blast radius 2 (authentication, secrets, writes to a production backend, data migration, push); otherwise sonnet.
-- Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. Criteria:
+- Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. The ac of each evidence row is ONLY the criterion id (the text inside the brackets, e.g. AC1): never the id followed by text, never the criterion text. Criteria:
 ${acTxt || '(card without extracted criteria: use the ones in the spec)'}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
@@ -1098,6 +1112,7 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
 
 Fix the plan ${plan.planPath} according to the review below and commit. Stop after the commit.
 ${fmt(iss)}
+Every ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.
 Return planPath, roadmapHeader, ac (full list) and tasks (full list, with tier, reviewTier and needsLock).`,
         { label: `${E}:plan-fix${k}`, phase: 'Plano', schema: S_PLAN, model: tier })
       if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }

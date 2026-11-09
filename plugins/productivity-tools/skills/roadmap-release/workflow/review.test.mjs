@@ -92,3 +92,64 @@ test('resumeAction finishes an interrupted merge unless forced', () => {
   assert.equal(resumeAction({ status: 'integrada', mergeFound: true }, statuses, false), 'run');
   assert.equal(resumeAction({ status: 'planejada', mergeFound: false }, statuses, false), 'run');
 });
+
+// ---- plan evidence rows are matched to card criteria by id (tolerant) ----
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
+const P2 = loadPure();
+const TEXT = 'Given a number, when doubled, then it is even';
+const card1 = { id: 'AC1', text: `${TEXT} {verify: test; evidence: npm test}` };
+
+test('matchesCriterion accepts the id, id plus separator and the criterion text with or without the tag', () => {
+  const m = P2.matchesCriterion;
+  assert.equal(m('AC1', card1), true);
+  assert.equal(m(' AC1 ', card1), true);
+  assert.equal(m(`AC1: ${TEXT}`, card1), true);
+  assert.equal(m(`AC1 - ${TEXT}`, card1), true);
+  assert.equal(m(card1.text, card1), true);
+  assert.equal(m(TEXT, card1), true);
+  assert.equal(m(`  ${TEXT.replace(/ /g, '   ')} `, card1), true);
+  assert.equal(m('AC10', card1), false);
+  assert.equal(m('AC1x', card1), false);
+  assert.equal(m('something unrelated', card1), false);
+  assert.equal(m('', card1), false);
+  assert.equal(m(undefined, card1), false);
+  assert.equal(m('anything', { id: 'AC2', text: '{verify: test; evidence: x}' }), false);
+});
+
+test('evidenceGaps and criteriaOpen agree on tolerant ac values', () => {
+  for (const ac of ['AC1', `AC1: ${TEXT}`, card1.text]) {
+    assert.deepEqual(P2.evidenceGaps([card1], [{ ac, kind: 'test', command: 'x' }], new Set()), [], ac);
+  }
+  const h = { id: 'AC1', text: `${TEXT} {verify: human; evidence: Ana}`, tag: { kind: 'human', evidence: 'Ana' } };
+  assert.deepEqual(P2.criteriaOpen([h], [{ ac: `AC1: ${TEXT}`, kind: 'human' }]), [{ ac: 'AC1', kind: 'human', blq: undefined }]);
+  // a tolerant row for a card criterion is not an unmatched row: no duplicate entry
+  assert.equal(P2.criteriaOpen([{ id: 'AC1', text: TEXT, tag: null }], [{ ac: `AC1: ${TEXT}`, kind: 'human' }]).length, 1);
+  assert.equal(P2.criteriaOpen([{ id: 'AC1', text: TEXT, tag: null }], [{ ac: 'AC1', kind: 'human' }, { ac: `AC1: ${TEXT}`, kind: 'human' }]).length, 1);
+});
+
+test('no-evidence gap names the expected id and the ac values the plan returned', () => {
+  const g = P2.evidenceGaps([card1], [{ ac: 'AC9', kind: 'test', command: 'x' }, { ac: 'oops', kind: 'test', command: 'y' }], new Set());
+  assert.equal(g.length, 1);
+  assert.match(g[0].description, /expected ac "AC1"/);
+  assert.match(g[0].description, /"AC9"/);
+  assert.match(g[0].description, /"oops"/);
+  assert.match(P2.evidenceGaps([card1], [], new Set())[0].description, /none/);
+});
+
+test('the same no-evidence gap repeats as the same finding while id and received values are unchanged', () => {
+  const a = P2.evidenceGaps([card1], [{ ac: 'AC1x', kind: 'test', command: 'x' }], new Set());
+  const b = P2.evidenceGaps([card1], [{ ac: 'AC1x', kind: 'test', command: 'other cmd' }], new Set());
+  assert.equal(P2.sameFinding(a, b, new Set()), true);
+  const c = P2.evidenceGaps([card1], [{ ac: 'AC1y', kind: 'test', command: 'x' }], new Set());
+  assert.equal(P2.sameFinding(a, c, new Set()), false);
+});
+
+test('contract: schema describes ac as the id alone; plan and plan-fix prompts require it', () => {
+  assert.match(SRC, /const S_PLAN[\s\S]*?ac: \{ \.\.\.STR, description: 'the exact criterion id, e\.g\. AC1, nothing else'/);
+  assert.match(SRC, /ac of each evidence row is ONLY the criterion id/);
+  assert.match(SRC, /Fix the plan[\s\S]*?ONLY the criterion id/);
+  assert.match(SRC, /const acTxt = [^\n]*`\[\$\{a\.id\}\]/);
+});
