@@ -272,3 +272,32 @@ test('item 14: evidenceGaps no longer reports a closed blocker, closedBlockers d
   assert.ok(!g.some((x) => /tagged blocked without a registered blocker/.test(x.description)));
   assert.deepEqual(closedBlockers([tg('BLQ-9'), { id: 'AC2', text: 't', tag: { kind: 'blocked', evidence: '', blq: 'BLQ-1' } }, tg('BLQ-9')], new Set(['BLQ-1'])), ['BLQ-9']);
 });
+
+test('I2: parseAuthorizeExternal accepts criterion items only in the numbered form', () => {
+  const P2 = loadPure();
+  assert.equal(P2.parseAuthorizeExternal(['E18:AC1', 'E18:AC12@abcd1234']).error, null);
+  for (const bad of ['E18:AC0', 'E18:AC1@xyz', 'E18:AC']) assert.ok(P2.parseAuthorizeExternal([bad]).error, bad);
+});
+
+test('I2: evidenceHolds holds external and flagless command rows, one item per criterion, and respects bare and bound items', () => {
+  const { evidenceHolds } = loadPure();
+  const rows = [{ ac: 'AC1', kind: 'smoke', command: 'a', external: true, externalDedupe: 'd' }, { ac: 'AC1', kind: 'smoke', command: 'b', external: true }, { ac: 'AC2', kind: 'test', command: 'c' }, { ac: 'AC3', kind: 'test', command: 'x', external: false }, { ac: 'AC4', kind: 'human' }];
+  assert.deepEqual(evidenceHolds(rows, 'E1', [], 'ff').map((h) => [h.item, h.commands]), [['E1:AC1@ff', ['a', 'b']], ['E1:AC2@ff', ['c']]]);
+  assert.deepEqual(evidenceHolds(rows, 'E1', ['E1:AC1', 'E1:AC2@ff'], 'ff'), []);
+  assert.equal(evidenceHolds(rows, 'E1', ['E1:AC1@00', 'E1:AC2@00'], 'ff').length, 2);
+});
+
+test('I2: evidenceExternalGaps rejects a missing flag, an external row with no dedupe and one that names no criterion', () => {
+  const { evidenceExternalGaps } = loadPure();
+  const cards = [{ id: 'AC1', text: 'w' }];
+  const gaps = (r) => evidenceExternalGaps(cards, r).map((g) => g.description).join('|');
+  assert.match(gaps([{ ac: 'AC1', kind: 'test', command: 'a' }]), /must declare external/);
+  assert.match(gaps([{ ac: 'AC1', kind: 'test', command: 'a', external: true }]), /externalDedupe/);
+  assert.match(gaps([{ ac: 'other', kind: 'test', command: 'a', external: true, externalDedupe: 'd' }]), /criterion id/);
+  assert.equal(gaps([{ ac: 'AC1', kind: 'test', command: 'a', external: false }, { ac: 'AC1', kind: 'human' }]), '');
+});
+
+test('I2: bindAuthorizations binds bare criterion items of that deliverable only', () => {
+  const { bindAuthorizations } = loadPure();
+  assert.deepEqual(bindAuthorizations(['E1:AC1', 'E10:AC1', 'E1:AC2@aa', 'gate:E1:AC1'], 'E1', 'ff'), ['E1:AC1@ff', 'E10:AC1', 'E1:AC2@aa', 'gate:E1:AC1']);
+});

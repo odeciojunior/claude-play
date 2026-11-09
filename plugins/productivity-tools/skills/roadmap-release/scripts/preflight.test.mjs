@@ -311,3 +311,8 @@ test('item 4: a restricted gate needs no permission rule until authorized', () =
   assert.ok(r.warnings.some((w) => /\bk\b/.test(w) && /Bash\(kubectl:\*\)/.test(w)));
   assert.ok(!r.missingRules.includes('Bash(kubectl:*)'));
 });
+
+test('minor 5: validateReleaseConfig rejects a gate name with a space', () => {
+  const c = good(); c.gates[0].name = 'my gate';
+  assert.ok(validateReleaseConfig(c).some((e) => /name/.test(e) && /space/i.test(e)));
+});

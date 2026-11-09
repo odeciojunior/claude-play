@@ -31,6 +31,7 @@ export function validateReleaseConfig(cfg) {
     const at = `gates[${i}]`;
     if (!g || typeof g !== 'object') { errors.push(`${at} must be an object`); return; }
     if (typeof g.name !== 'string' || !g.name) errors.push(`${at}.name is required`);
+    else if (/\s/.test(g.name)) errors.push(`${at}.name must not contain spaces: ${g.name} (it becomes an authorizeExternal item)`);
     else if (seen.has(g.name)) errors.push(`${at}.name duplicate: ${g.name}`);
     else seen.add(g.name);
     if (typeof g.cmd !== 'string' || !g.cmd.trim()) errors.push(`${at}.cmd is required`);

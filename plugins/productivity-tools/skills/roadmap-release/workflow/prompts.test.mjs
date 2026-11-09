@@ -168,3 +168,14 @@ test('buildImplPrompt forbids external effects outside an authorized task and, f
   assert.match(p, /checks outbox\.log first/);
   assert.doesNotMatch(p, /Do NOT perform/);
 });
+
+test('minor 1: externalNote says the person authorized it and that no humanInput should ask for it', () => {
+  const n = P.externalNote(true, { externalDedupe: 'x' });
+  assert.match(n, /the person AUTHORIZED/);
+  assert.match(n, /already given/);
+});
+
+test('minor 3: the reviewer does not re-run a check with an external effect', () => {
+  const p = P.buildTaskReviewPrompt(ctx, task, 'spec', { summary: 's', checks: [] });
+  assert.match(p, /do not re-run a check with an external effect/i);
+});

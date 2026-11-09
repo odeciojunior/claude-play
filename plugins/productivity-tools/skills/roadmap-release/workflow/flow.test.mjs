@@ -27,7 +27,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
-    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+    if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
@@ -434,7 +434,7 @@ test('C1: dry-run and plan-only do not merge, so they only note the interrupted 
   assert.ok(plan.labels.includes('E2:spec'));
 });
 
-const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac, kind: 'test', command }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac, kind: 'test', command, external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces still counts', async () => {
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
@@ -549,7 +549,7 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
   assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
 });
 
-const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -624,7 +624,7 @@ test('authorizeExternal with a bad item stops the run before discovery', async (
 });
 
 test('the plan prompt asks for external and externalDedupe and the plan review blocks a gap', async () => {
-  const good = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+  const good = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
   const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
       if (l === 'E1:plan') return { ...good, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] };
@@ -640,7 +640,7 @@ test('the plan prompt asks for external and externalDedupe and the plan review b
 // ---- external-effect authorization (Task 4)
 const PU = loadPure();
 const tk = (n, external, extra = {}) => ({ n, title: 't' + n, tier: 'sonnet', external, ...(external ? { externalDedupe: 'checks outbox.log first' } : {}), ...extra });
-const planWith = (tasks) => ({ planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a' }], tasks });
+const planWith = (tasks) => ({ planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks });
 const fpOf = (tasks) => PU.planFingerprint(tasks, B1);
 const ext = (r) => r.operatorActions.filter((a) => a.kind === 'authorize-external');
 const withPlan = (tasks, more) => (l) => (l === 'E1:plan' ? planWith(tasks) : more ? more(l) : undefined);
@@ -777,7 +777,7 @@ test('restricted gate is not measured without authorization and is offered as an
 test('the authorization ends with the deliverable', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2', 'gate:x'] } });
   assert.equal(r.results[0].merged, true);
-  assert.deepEqual(r.resumeArgs.authorizeExternal, ['gate:x']);
+  assert.deepEqual(r.resumeArgs.authorizeExternal, []);
 });
 
 test('the base rules forbid external effects for every agent', async () => {
@@ -974,4 +974,213 @@ test('item 11: the record and docs prompts forbid a strategy revision', async ()
     assert.match(p, /pre-approval never covers them/);
   }
   assert.match(full.calls.find((c) => c.label === 'E1:spec').prompt, /except a strategy revision or migration/);
+});
+
+// ---- final-review fixes (I1-I5, minors)
+const foreignNoBase = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: 'abc1234', clean: true, envFacts: 'x' } : undefined);
+
+test('I1: an unauthorized foreign checkout returns no baseline and only the hold follows', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignNoBase });
+  assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.equal(r.operatorActions.find((o) => o.kind === 'authorize-external').item, 'checkout:integracao/x');
+  assert.ok(!labels.some((l) => /gates|setup/.test(l)));
+  assert.equal(r.status, 'needs-operator');
+});
+
+test('I1: without authorization the preflight prompt stops after locating a foreign worktree', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignNoBase });
+  const p = calls.find((c) => c.label === 'preflight').prompt;
+  assert.match(p, /If that path is not \/wt\/_integracao[\s\S]*STOP here/);
+  assert.match(p, /no setup, no install, no beforeEvidence and no gates/);
+  assert.match(p, /Only if step 2 did not stop/);
+});
+
+test('I1: with the checkout authorized the preflight may run in it and a missing baseline is still invalid', async () => {
+  const args = { authorizeExternal: ['checkout:integracao/x'] };
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre, args });
+  const p = a.calls.find((c) => c.label === 'preflight').prompt;
+  assert.doesNotMatch(p, /STOP here/);
+  assert.match(p, /AUTHORIZED checkout:integracao\/x/);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignNoBase, args });
+  assert.ok(b.r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+});
+
+const deploy = 'curl -X POST https://prod.example/deploy';
+const extRow = { ac: 'AC1', kind: 'smoke', command: deploy, external: true, externalDedupe: 'GET /deploys first' };
+const safeTasks = [tk(1, false)];
+const planRows = (ac, tasks = safeTasks, blob = B1) => (l) => (l === 'E1:plan' ? { ...planWith(tasks), planBlob: blob, ac } : undefined);
+const blobReview = (blob, fn) => (l, p, o) => (/plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: blob } : fn(l, p, o));
+const evOk = (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] } : undefined);
+
+test('I2: an unauthorized external evidence row is held before any final review, gate or evidence run', async () => {
+  const fp = fpOf(safeTasks);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([extRow]) });
+  for (const bad of ['E1:sync', 'E1:gates1-1', 'E1:evidence1', 'E1:merge']) assert.ok(!labels.includes(bad), bad);
+  assert.ok(!labels.some((l) => /fix/.test(l)));
+  assert.ok(labels.includes('E1:t1:impl'));
+  const res = r.results.find((x) => x.id === 'E1');
+  assert.equal(res.merged, false);
+  assert.equal(res.failKind, 'externo');
+  assert.ok(!r.operatorActions.some((o) => o.kind === 'defect'));
+  const a = ext(r);
+  assert.equal(a.length, 1);
+  assert.equal(a[0].item, 'E1:AC1@' + fp);
+  assert.equal(a[0].deliverable, 'E1');
+  assert.ok(a[0].what.includes(deploy));
+  assert.match(a[0].doNow, /GET \/deploys first/);
+  assert.deepEqual(a[0].resumeWith.authorizeExternal, ['E1:AC1@' + fp]);
+  assert.deepEqual(a[0].resumeWith.deliverables, ['E1']);
+});
+
+test('I2: an authorized evidence row runs, is told it is authorized, and the authorization ends with the merge', async () => {
+  for (const item of ['E1:AC1', 'E1:AC1@' + fpOf(safeTasks)]) {
+    const rows = planRows([extRow]);
+    const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: [item] }, over: (l) => rows(l) ?? evOk(l) });
+    assert.equal(r.results[0].merged, true);
+    const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
+    assert.ok(p.includes('AC1: ' + deploy));
+    assert.match(p, /AUTHORIZED[\s\S]*GET \/deploys first/);
+    assert.deepEqual(r.resumeArgs.authorizeExternal, []);
+  }
+});
+
+test('I2: an authorization bound to another plan does not release the row', async () => {
+  const B3 = 'a'.repeat(40);
+  const item = 'E1:AC1@' + PU.planFingerprint(safeTasks, B1);
+  const rows = planRows([extRow], safeTasks, B3);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: [item] }, over: blobReview(B3, rows) });
+  assert.ok(!labels.includes('E1:evidence1'));
+  assert.equal(ext(r)[0].item, 'E1:AC1@' + PU.planFingerprint(safeTasks, B3));
+});
+
+test('I2: the first external stop lists held tasks and held evidence together', async () => {
+  const tasks = [tk(1, true)];
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([extRow], tasks) });
+  assert.deepEqual(ext(r).map((a) => a.item).sort(), ['E1:AC1@' + fpOf(tasks), 'E1:T1@' + fpOf(tasks)].sort());
+});
+
+test('I2: a row without the flag rejects the plan, and two rows of one criterion make one item', async () => {
+  const noFlag = { ac: 'AC1', kind: 'test', command: 'npm test -- a' };
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([noFlag]) });
+  assert.ok(a.labels.includes('E1:plan-fix1'));
+  assert.ok(!a.labels.includes('E1:evidence1'));
+  assert.equal(a.r.results[0].merged, false);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([extRow, { ...extRow, command: 'curl b' }]) });
+  assert.equal(ext(b.r).length, 1);
+  assert.ok(ext(b.r)[0].what.includes('curl b'));
+});
+
+test('I2: human and blocked rows need no flag and are never held', async () => {
+  const c = card('E1', { acceptance: [{ id: 'AC1', text: 'works' }, { id: 'AC2', text: 'ok' }] });
+  const { r } = await exec({ cards: [c], deliverables: ['E1'], over: planRows([{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }, { ac: 'AC2', kind: 'human' }]) });
+  assert.equal(r.results[0].merged, true);
+  assert.equal(ext(r).length, 0);
+});
+
+test('I2: the plan prompts ask each evidence row for external', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /each evidence row[^\n]*external/i);
+  assert.equal(calls.find((c) => c.label === 'E1:plan').opts.schema.properties.ac.items.properties.external.type, 'boolean');
+});
+
+test('I2/I3: the plan review checks the flags against the JSON the code acts on', async () => {
+  const rows = planRows([extRow], [tk(1, false, { title: 'deploy to prod' })]);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: rows });
+  const p = calls.find((c) => c.label === 'E1:plan-review1').prompt;
+  assert.match(p, /steps touch anything outside the branch but which declares external false/);
+  assert.match(p, /evidence row[^;]*command[^;]*outside the branch[^;]*external false/);
+  assert.ok(p.includes('deploy to prod') && p.includes(deploy));
+  assert.ok(p.includes('"external":false') && p.includes('"external":true'));
+});
+
+test('I4: the gate action says it only covers later merges and that the gate repeats', async () => {
+  const e2e = { name: 'e2e', cmd: 'npm run e2e', kind: 'exit', restricted: true };
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { gates: [...GATES, e2e] } });
+  const a = ext(r).find((x) => x.item === 'gate:e2e');
+  assert.match(a.doNow, /only to deliverables merged after/);
+  assert.match(a.doNow, /measures nothing for deliverables already merged/);
+  assert.match(a.doNow, /several times per deliverable: baseline, branch, post-merge and retries/);
+  assert.doesNotMatch(a.doNow, /Until then/);
+});
+
+test('I4/I2: SKILL.md and operator.md describe the gate question and the evidence item', async () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..');
+  for (const f of ['SKILL.md', join('references', 'operator.md')]) {
+    const t = readFileSync(join(dir, f), 'utf8');
+    assert.match(t, /only to deliverables merged after/, f);
+    assert.match(t, /measures nothing for deliverables already merged/, f);
+    assert.match(t, /several times per deliverable/, f);
+    assert.match(t, /E<n>:AC<k>|E18:AC1/, f);
+    assert.match(t, /missing the flag counts as external/, f);
+  }
+});
+
+test('I5: the review log data carries the human inputs of the implementers', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (l === 'E1:t1:impl' ? { status: 'NEEDS_HUMAN', summary: 's', checks: [], humanInputs: [{ what: 'real API key', blocking: false }] } : undefined) });
+  const log = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.ok(log.includes('real API key'));
+  assert.match(log, /"humanInputs":\[/);
+});
+
+test('I5: finish-merge reads the logged human inputs and the plan evidence rows', async () => {
+  const { r, calls } = await exec({ cards: [unfinished()], deliverables: ['E1'],
+    over: (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'real API key' }, { what: 'real API key' }], ac: [{ ac: 'AC1', kind: 'human' }] } : undefined) });
+  const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.match(p, /docs\/superpowers\/plans\/\*-E1-\*\.md/);
+  assert.match(p, /Acceptance criteria evidence/);
+  assert.match(p, /humanInputs[^.]*review log/);
+  assert.ok(calls.find((c) => c.label === 'E1:resume-review-log').opts.schema.required.includes('ac'));
+  const act = r.operatorActions.find((o) => o.kind === 'human-act' && o.deliverable === 'E1');
+  assert.ok(act);
+  assert.match(act.what, /AC1/);
+  assert.equal(r.results[0].human.filter((h) => /real API key/.test(h)).length, 1);
+});
+
+test('I5: a human plan row gives the same action on resume as in the normal path', async () => {
+  const normal = await exec({ cards: [card('E1')], deliverables: ['E1'], over: planRows([{ ac: 'AC1', kind: 'human' }]) });
+  const resumed = await exec({ cards: [unfinished()], deliverables: ['E1'],
+    over: (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [], ac: [{ ac: 'AC1', kind: 'human' }] } : undefined) });
+  const pick = (x) => x.r.operatorActions.filter((o) => o.kind === 'human-act').map((o) => [o.what, o.doNow]);
+  assert.equal(pick(normal).length, 1);
+  assert.deepEqual(pick(resumed), pick(normal));
+});
+
+const needsHuman = { status: 'NEEDS_HUMAN', summary: 'needs a key', checks: [], humanInputs: [{ what: 'prod key' }] };
+const zeroCommits = (l) => (/:t\d+:(spec|quality)/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 0 } : undefined);
+
+test('minor 1: an authorized external task that needs a human with zero commits holds the merge and keeps the authorization', async () => {
+  const tasks = [tk(1, true)];
+  const fp = fpOf(tasks);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] },
+    over: withPlan(tasks, (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
+  assert.ok(!labels.includes('E1:merge'));
+  assert.equal(r.results[0].merged, false);
+  assert.equal(r.results[0].failKind, 'humano');
+  assert.deepEqual(r.resumeArgs.authorizeExternal, ['E1:T1@' + fp]);
+  const h = r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.ok(h && /prod key/.test(h.what));
+  assert.deepEqual(h.resumeWith.authorizeExternal, ['E1:T1@' + fp]);
+});
+
+test('minor 1: NEEDS_HUMAN on a non-external task, or with commits, still follows the normal path', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
+  assert.equal(a.r.results[0].merged, true);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan([tk(1, true)], (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.equal(b.r.results[0].merged, true);
+});
+
+test('minor 2: the merge agent is told when the checkout is authorized', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre, args: { authorizeExternal: ['checkout:integracao/x'] } });
+  assert.match(a.calls.find((c) => c.label === 'E1:merge').prompt, /The operator authorized checkout:integracao\/x/);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.doesNotMatch(b.calls.find((c) => c.label === 'E1:merge').prompt, /The operator authorized checkout:/);
+});
+
+test('minor 4: gate and checkout items leave resumeArgs when no deliverable remains, and stay otherwise', async () => {
+  const items = ['gate:x', 'checkout:integracao/x'];
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: items } });
+  assert.deepEqual(a.r.resumeArgs.authorizeExternal, []);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: items }, over: withPlan([tk(1, true)]) });
+  assert.deepEqual(b.r.resumeArgs.authorizeExternal, items);
 });
