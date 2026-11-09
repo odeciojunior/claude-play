@@ -87,3 +87,15 @@ test('mergeFloor raises totals to the branch measure discounting baseline flaky 
   assert.equal(lower.unit.total, 10);
   assert.deepEqual(mergeFloor(base, null).unit, base.unit);
 });
+
+test('ignoreFailuresWhenChanged does not turn an incoherent tests failure green', () => {
+  const smoke = { name: 'smoke', kind: 'tests', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 'smoke:' } };
+  const m = meas([res('smoke', { exit: 1, failedNames: [] })]);
+  assert.equal(allPass([smoke], m, { smoke: res('smoke') }, ['functions/x.ts']).ok, false);
+});
+
+test('ignoreFailuresWhenChanged on an exit gate never erases a failure', () => {
+  const lint = { name: 'lint', kind: 'exit', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 'x:' } };
+  const m = meas([res('lint', { exit: 1 })]);
+  assert.equal(allPass([lint], m, { lint: res('lint') }, ['functions/x.ts']).ok, false);
+});

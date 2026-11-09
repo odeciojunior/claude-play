@@ -132,7 +132,8 @@ function gateEffective(def, r, changedFiles) {
   const touched = (changedFiles || []).some(f => (ign.paths || []).some(p => String(f).startsWith(p)))
   if (!touched) return r
   const names = (r.failedNames || []).filter(n => !String(n).startsWith(ign.failurePrefix))
-  return Object.assign({}, r, { failedNames: names, exit: names.length ? r.exit : 0 })
+  const allIgnored = (r.failedNames || []).length > 0 && names.length === 0
+  return Object.assign({}, r, { failedNames: names, exit: allIgnored ? 0 : r.exit })
 }
 function allPass(defs, m, baseline, changedFiles) {
   const failures = (defs || []).filter(def => {
