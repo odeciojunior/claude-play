@@ -602,10 +602,11 @@ const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHa
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
 const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['checkerErrors', 'clean'] }
+const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } } }, required: ['commits'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
 const S_INTEG = { type: 'object', properties: { deletedTests: STRS, removedAsserts: INT, skipsAdded: INT, prodChanged: INT, assertsAdded: INT }, required: ['deletedTests', 'removedAsserts', 'skipsAdded', 'prodChanged', 'assertsAdded'] }
 const S_EVID = { type: 'object', properties: { headSha: STR, clean: BOOL, beforeOk: BOOL, results: { type: 'array', items: { type: 'object', properties: { ac: STR, command: STR, exit: INT, log: STR }, required: ['ac', 'command', 'exit'] } } }, required: ['headSha', 'clean', 'results'] }
-const S_TRUTH = { type: 'object', properties: { targetHead: STR, clean: BOOL, lastGoodReachable: BOOL, mergedIds: STRS, notMergedIds: STRS, claims: { type: 'array', items: { type: 'object', properties: { id: STR, commit: STR, reachable: BOOL }, required: ['id', 'commit', 'reachable'] } }, worktrees: STRS, strays: STRS }, required: ['targetHead', 'clean', 'mergedIds', 'claims'] }
+const S_TRUTH = { type: 'object', properties: { targetHead: STR, clean: BOOL, lastGoodReachable: BOOL, mergedIds: STRS, notMergedIds: STRS, claims: { type: 'array', items: { type: 'object', properties: { id: STR, commit: STR, reachable: BOOL }, required: ['id', 'commit', 'reachable'] } }, worktrees: STRS, strays: STRS }, required: ['targetHead', 'clean', 'lastGoodReachable', 'mergedIds', 'claims'] }
 const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
 
 // ---------------------------------------------------------------- discovery
@@ -917,7 +918,7 @@ Return statusWritten, commit, details.`,
       out.concerns.push(`docs with pending items after 2 rounds: ${JSON.stringify(result.docsMeasure)}`)
       op('docs', E, `docs or roadmap inconsistent after the merge of ${E}: ${JSON.stringify(result.docsMeasure)}`, 'Fix the record and run the roadmap checker on the target', null)
     }
-    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST, if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, save the patch (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) BEFORE removing anything; then git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
+    const cl = await agent(`CLEANUP of deliverable ${E}: end processes whose command contains "${wt}" or that listen on the ports ${port}-${port + 9}; stop any service you find that was started for ${E}; FIRST: mkdir -p ${WT}/_tmp/${E}-dirty; if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, save the patch (git -C "${wt}" diff --binary HEAD > ${WT}/_tmp/${E}-dirty/cleanup.patch, plus the untracked files list and copies) and confirm the file was written. Only after the patch exists: git -C "${REPO}" worktree remove --force "${wt}"; delete ${WT}/_tmp/${E}-* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku' })
     if (!cl || !cl.ok) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
@@ -927,11 +928,25 @@ Return statusWritten, commit, details.`,
   // A merge already on the target without a post-merge status: validate and document, do not redo the deliverable.
   if (resumeAction(card, STATUSES, A.force) === 'finish-merge' && MODE === 'run') {
     log(`${E}: merge ${card.mergeSha || '?'} already on the target without a record; validating and documenting`)
-    if (!card.mergeSha) return fail('infra', 'interrupted merge without the commit identified in the discovery')
+    if (!card.mergeSha) return closeOut(await markBroken('a merge of this deliverable is on the target but the discovery did not identify its commit, so it cannot be validated', 'conteudo', `Identify the merge commit (git -C "${INTWT}" log --first-parent --grep "^merge: ${E} "), then revert it (git revert -m 1) or fix the roadmap record, and run again with deliverables:["${E}"]`))
     return closeOut(await mergeLock(async () => {
       if (integBroken) return { ok: false, kind: 'infra', why: `integration worktree compromised: ${integBroken}` }
       const named = Object.values(BASE).flatMap(r => r.failedNames || [])
       if (named.length && !ACCEPT_RED) return markBroken(`the baseline was measured with this merge already on the target and has named failures that may come from it: ${named.join(', ')}`, 'conteudo', `Compare those failures with the commit before the merge (${card.mergeSha}^1). If they already existed, run again with acceptRedBaseline:true; otherwise fix them on ${TARGET}`)
+      // Commits of this deliverable after the merge (merge-fix) are unreviewed work on the target: review them on every re-run.
+      const fx = await agent(`Read-only. In ${INTWT} (branch ${TARGET}): commits = for each commit of git log --format="%H%x09%s" --grep "^${E} merge-fix" ${card.mergeSha}..HEAD, { sha, subject }. Empty list when none.`,
+        { label: `${E}:merge-fix-probe`, phase: 'Merge', schema: S_FIXES, model: 'haiku' })
+      if (!fx) return markBroken('the probe for merge-fix commits after the merge returned nothing', 'infra')
+      if (fx.commits.length) {
+        const names = fx.commits.map(c => c.sha + ' (' + c.subject + ')').join(', ')
+        const rv = await agent(`${C()}
+
+Review (read-only) the merge-fix commits that sit on ${TARGET} after the merge ${card.mergeSha} of ${E}, never reviewed: ${names}. Use git -C "${INTWT}" show <sha> for each. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, editing the baseline, introducing a defect. Measure headSha, clean, commitsInRange.`,
+          { label: `${E}:resume-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'high' })
+        if (!rv) return markBroken(`the review of the merge-fix commits returned nothing: ${names}`, 'infra', `Revert the commits (git -C "${INTWT}" revert <sha>) or fix them, then run again with deliverables:["${E}"]; a re-run reviews them again. Commits: ${names}`)
+        if (blocking(rv).filter(i => isHard(i, blqIds)).length) return markBroken(`the merge-fix commits were rejected: ${fmt(blocking(rv))}; commits: ${names}`, 'conteudo', `Revert the commits (git -C "${INTWT}" revert <sha>) or fix them on ${TARGET}, then run again with deliverables:["${E}"]. Commits: ${names}`)
+        acceptRisks('resume-merge-fix', blocking(rv))
+      }
       return postMerge(card.mergeSha, 0, markBroken, null)  // commits may exist after the merge
     }))
   }

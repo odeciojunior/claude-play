@@ -40,6 +40,8 @@ async function exec({ cards, over, deliverables, config = {} }) {
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
     if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2' };
+    if (/:merge-fix-probe$/.test(l)) return { commits: [] };
+    if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
     if (l === 'git-truth') return { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
@@ -122,4 +124,73 @@ test('git truth requires lastGoodReachable', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => (l === 'git-truth' ? { targetHead: 'm2', clean: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] } : undefined) });
   assert.ok(r.operatorActions.some((o) => o.kind === 'divergence' && /validated tip/.test(o.what)));
+});
+
+const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+const fixCommits = { commits: [{ sha: 'f1', subject: 'E1 merge-fix: x' }] };
+const resume = (over) => exec({ cards: [unfinished(), card('E2')], deliverables: ['E1', 'E2'], over });
+
+test('finish-merge with merge-fix commits: approved review closes ok', async () => {
+  const { r, labels, calls } = await resume((l) => (/:merge-fix-probe$/.test(l) ? fixCommits : undefined));
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.merged, true);
+  assert.ok(!e1.broken);
+  assert.ok(labels.includes('E1:resume-fix-review'));
+  assert.equal(calls.find((c) => c.label === 'E1:resume-fix-review').opts.model, 'opus');
+  assert.ok(labels.indexOf('E1:resume-fix-review') < labels.indexOf('E1:merge-gates1-1') || labels.indexOf('E1:resume-fix-review') < labels.indexOf('E1:merge-gates1'));
+});
+
+test('finish-merge with merge-fix commits: rejected review stays broken, names the commits, stops E2', async () => {
+  const { r } = await resume((l) => {
+    if (/:merge-fix-probe$/.test(l)) return fixCommits;
+    if (/:resume-fix-review$/.test(l)) return { issues: [{ severity: 'critical', category: 'defeito', description: 'masks a test' }], headSha: 'm9', clean: true, commitsInRange: 1 };
+    return undefined;
+  });
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.merged, true);
+  assert.equal(e1.broken, true);
+  assert.ok(r.results.find((x) => x.id === 'E2').skipped);
+  assert.ok(r.operatorActions.some((o) => o.deliverable === 'E1' && /f1/.test(o.what + o.doNow)));
+});
+
+test('finish-merge with merge-fix commits: null review stays broken', async () => {
+  const { r } = await resume((l) => {
+    if (/:merge-fix-probe$/.test(l)) return fixCommits;
+    if (/:resume-fix-review$/.test(l)) return null;
+    return undefined;
+  });
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.broken, true);
+  assert.ok(r.results.find((x) => x.id === 'E2').skipped);
+});
+
+test('finish-merge without merge-fix commits proceeds and runs no review', async () => {
+  const { r, labels } = await resume();
+  assert.equal(r.results.find((x) => x.id === 'E1').merged, true);
+  assert.ok(!labels.includes('E1:resume-fix-review'));
+});
+
+test('finish-merge with a null probe stays broken', async () => {
+  const { r } = await resume((l) => (/:merge-fix-probe$/.test(l) ? null : undefined));
+  assert.equal(r.results.find((x) => x.id === 'E1').broken, true);
+});
+
+test('mergeFound without mergeSha sets integBroken', async () => {
+  const c = card('E1', { status: 'executando', onTarget: true, mergeFound: true });
+  const { r } = await exec({ cards: [c, card('E2')], deliverables: ['E1', 'E2'] });
+  assert.equal(r.results.find((x) => x.id === 'E1').broken, true);
+  assert.ok(r.results.find((x) => x.id === 'E2').skipped);
+});
+
+test('cleanup creates the dirty folder and removes the worktree only after the patch', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:cleanup').prompt;
+  assert.match(p, /mkdir -p [^ ]*E1-dirty/);
+  assert.ok(p.indexOf('mkdir -p') < p.indexOf('worktree remove'));
+  assert.match(p, /only after the patch/i);
+});
+
+test('git truth schema requires lastGoodReachable', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(calls.find((c) => c.label === 'git-truth').opts.schema.required.includes('lastGoodReachable'));
 });
