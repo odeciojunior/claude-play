@@ -463,7 +463,7 @@ function lockNote(locks) {
 }
 function externalNote(authorizedExternal, task) {
   return authorizedExternal
-    ? `This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it.`
+    ? `This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. Once launched, return NEEDS_HUMAN only if the effect has not started; if it started, report DONE_WITH_CONCERNS.`
     : 'Do NOT perform any external effect in this task.'
 }
 function buildImplPrompt(ctx, task) {
@@ -906,7 +906,7 @@ const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, requi
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
 const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done: { type: 'array', items: { type: 'object', properties: { n: INT, firstParent: STR, last: STR }, required: ['n', 'firstParent', 'last'] } }, awaitingPerson: { type: 'array', items: INT } }, required: ['head', 'clean', 'done', 'awaitingPerson'] }
-const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun'] }
+const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
 const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
@@ -1176,10 +1176,11 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
   // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
   const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet', effort: 'medium' })
-  const restoreFromLog = rl => {
-    human.push(...missingFrom(human, rl.humanInputs, humanKey))
+  const restoreFromLog = (rl, notRun = []) => {
+    const strip = h => notRun.reduce((x, item) => ({ ...x, what: String(x.what || '').replace(` [${RAN_MARK}: ${item}]`, '') }), h)
+    human.push(...missingFrom(human, (rl.humanInputs || []).map(strip), humanKey))
     out.acceptedRisks.push(...missingFrom(out.acceptedRisks, rl.acceptedRisks, x => `${x.stage}|${x.description}`))
-    out.externalRun.push(...missingFrom(out.externalRun, rl.externalRun, x => `${x.item}|${x.command || ''}`))
+    out.externalRun.push(...missingFrom(out.externalRun, (rl.externalRun || []).filter(e => !notRun.includes(e.item)), x => `${x.item}|${x.command || ''}`))
     annotateHuman()  // what an earlier run already did must not come back as a request
   }
   // The target is checked out in the person's checkout: every stage commits, merges or resets there, so nothing runs without authorization.
@@ -1238,6 +1239,19 @@ Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the
 Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev-parse HEAD after the commit) and commit.`,
       { label: `${E}:merge-risks`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
     if (!w || !w.head) { out.concerns.push(`merge-stage accepted risks not committed to the review log: ${fresh.map(fmtRisk).join('; ')}`); return exp }
+    return w.head
+  }
+
+  // Evidence effects run after the last branch log: commit them on the target, where a finish-merge reads them. Returns the head the next measure must expect.
+  const persistMergeEffects = async exp => {
+    const ran = out.externalRun.filter(e => e.command)
+    if (!ran.length) return exp
+    const w = await agent(`${Cn()}
+
+Integration worktree ${INTWT} (branch ${TARGET}). In the section "External effects run" of the review log of ${E} on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create the section, or docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), add one line per entry (item, command, exit) that is not there yet, keeping everything the file holds: ${JSON.stringify(ran)}
+Commit only that file ("${E}: external effects of the acceptance evidence"). Return head (git rev-parse HEAD after the commit) and commit.`,
+      { label: `${E}:merge-effects`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
+    if (!w || !w.head) { out.concerns.push(`external effects not committed to the review log, so a resume of this merge would not know they ran: ${ran.map(e => e.item).join(', ')}`); return exp }
     return w.head
   }
 
@@ -1524,7 +1538,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const confirmedNotRun = n => `${E} T${n} awaiting person: confirmed not run`
   const mayHaveRunMark = n => `${E} T${n} awaiting person (effect may have run)`
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
-  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
+  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
   const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
@@ -1534,13 +1548,17 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const launchOpen = prog.launchOpen || []
   const mayHaveRun = prog.effectMayHaveRun || []
   const awaitingPerson = (prog.awaitingPerson || []).filter(n => !launchOpen.includes(n) && !mayHaveRun.includes(n))
+  const effectCompleted = prog.effectCompleted || []
   const doneMap = Object.fromEntries((prog.done || []).filter(d => !awaitingPerson.includes(d.n)).map(d => [d.n, d]))
   const lastDone = lastContiguousDone(plan.tasks, doneMap)  // a gap is where the run resumes; the last committed task is reviewed again
   if (Object.keys(doneMap).length || setup.reused || plan.reused) {  // any sign of an earlier run: its log holds what this run must not lose
     const rl = await readPersistedLog(wt, 'Implementation')
     if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
-    else restoreFromLog(rl)
+    else restoreFromLog(rl, awaitingPerson.map(n => `${E}:T${n}`))
   }
+  // A completed mark is the record of the effect when the log has none (a person's commit, or a crash before the first log).
+  out.externalRun.push(...missingFrom(out.externalRun, plan.tasks.filter(t => effectCompleted.includes(t.n)).map(t => ({ item: `${E}:T${t.n}`, title: t.title, status: 'confirmed by mark', reviewed: false })), x => `${x.item}|${x.command || ''}`))
+  annotateHuman()
   // In doubt whether an external effect happened: stop and ask, never repeat it. Only the person's commit reopens or closes the task.
   const doubtful = plan.tasks.filter(t => launchOpen.includes(t.n) || (mayHaveRun.includes(t.n) && !doneMap[t.n]))
   if (doubtful.length) {
@@ -1566,23 +1584,22 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     out.held = lateExternal[0].item
     return fail('externo', `committed task ${lateExternal[0].x.n} is now declared external and awaits authorization (${lateExternal[0].item})`)
   }
-  // An authorized external task that stopped for a person did not do its effect: the authorization is not spent and nothing merges.
-  // fromFix: the implementer reported the task done, so its effect may have run; only the implementer's own stop proves it did not.
+  // An authorized external task that stopped for a person: nothing merges, and only a person can say the effect did not happen.
+  // fromFix: the implementer reported the task done, so its effect may have run.
   const stopForPerson = async (t, res, fromFix = false) => {
     human.push(...missingFrom(human, res.humanInputs, humanKey))
     const needed = (res.humanInputs || []).map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; ') || res.summary
-    const reason = fromFix ? 'a fix round needs a person' : 'external effect did not complete'
-    const subject = fromFix ? `${mayHaveRunMark(t.n)}: ${reason}` : `${E} T${t.n} awaiting person: ${reason}`
+    const subject = fromFix ? `${mayHaveRunMark(t.n)}: a fix round needs a person` : `${E} T${t.n} awaiting person (effect unknown): the implementer needs a person`
     // Without this mark a resume finds the task's commits and takes it for done.
     const mark = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${subject}". Change nothing else. Return ok = true only if that commit is now HEAD.`,
       { label: `${E}:t${t.n}:awaiting-person`, phase: 'Implementation', schema: S_MARK, model: 'haiku', effort: 'low' }))
-    const markWarn = mark && mark.ok ? '' : ` WARNING: the mark commit could not be written, so a resume would count this task as done: before running again, add an empty commit on ${br} with the subject "${subject}"`
-    const state = fromFix ? 'a fix round needs a person first, and the external effect may already have happened' : 'its external effect did not complete; it needs a person first'
-    const check = fromFix ? `Check whether the effect already happened before repeating it (externalDedupe: ${t.externalDedupe || 'none declared'}). ` : ''
+    const markWarn = mark && mark.ok ? '' : ` WARNING: the mark commit could not be written, ${fromFix ? 'so a resume would count this task as done' : 'so a resume will stop and ask, because the launch stays open'}: before running again, add an empty commit on ${br} with the subject "${subject}"`
+    const state = fromFix ? 'a fix round needs a person first, and the external effect may already have happened' : 'its implementer stopped for a person and it is not known whether the external effect started'
+    const check = `Check whether the effect already happened before repeating it (externalDedupe: ${t.externalDedupe || 'none declared'}). `
     op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but ${state}: ${needed}`,
-      `${check}Provide the data (or the decision) and run again passing the answer in notes; ${fromFix ? `the implementer is not launched again: the task's commits stay on ${br}, its reviews run again and any fix runs without authorization for the effect (to run it again, first confirm it did not happen and add an empty commit with the subject "${confirmedNotRun(t.n)}")` : `the task runs again and any commits it made stay on ${br}`}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it. The task stays awaiting until a commit with a subject starting "${effectDone(t.n)}" exists: the run writes it when the task completes, so add it yourself (an empty commit on ${br}) only if you performed the effect by hand.${markWarn}`,
+      `${check}Provide the data (or the decision) and run again passing the answer in notes; ${fromFix ? `the implementer is not launched again: the task's commits stay on ${br}, its reviews run again and any fix runs without authorization for the effect (to run it again, first confirm it did not happen and add an empty commit with the subject "${confirmedNotRun(t.n)}")` : `any commits it made stay on ${br}, and the resume stops and asks until you add an empty commit: "${confirmedNotRun(t.n)}" if the effect did not start (the task then runs again), or "${effectDone(t.n)}" if it did`}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
       { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
-    return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person, and the external effect may already have happened: ${needed}` : `authorized external task ${t.n} needs a person; its external effect did not complete: ${needed}`)
+    return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person, and the external effect may already have happened: ${needed}` : `authorized external task ${t.n} needs a person; whether its external effect started is unknown: ${needed}`)
   }
   // Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again.
   const closeEffect = async (t, wasAwaiting) => {
@@ -1604,10 +1621,10 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   for (const t of plan.tasks) {
     const resumed = doneMap[t.n]
     // A later task stopped for a person ran after this one passed its reviews, and its commits are not this task's scope.
-    if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); continue }
+    if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); const seen = out.externalRun.find(e => e.item === `${E}:T${t.n}`); if (seen) seen.reviewed = true; continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     let start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${launchSubject(t.n)}", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
+    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
     let rangeNote = earlier || (resumed && t.external !== false) ? bookkeepingNote : ''
     let completionInRange = 0  // the completion mark of this run sits inside the range and is not the implementer's commit
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
@@ -1889,6 +1906,7 @@ Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-p
       if (!rc.ok) return rollback(rc.why, rc.kind)
       firstExp = await persistMergeRisks(riskFrom, firstExp)
     }
+    firstExp = await persistMergeEffects(firstExp)
     return postMerge(mg.mergeCommit, mg.conflicts, rollback, firstExp)
   })
   return closeOut(result)

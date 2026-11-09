@@ -64,6 +64,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:awaiting-person$/.test(l)) return { ok: true };
     if (/:launching$/.test(l)) return { ok: true, head: 'L1' };
     if (/:effect-completed$/.test(l)) return { ok: true };
+    if (/:merge-effects$/.test(l)) return { head: 'm1', commit: 'm1' };
     if (/review-log/.test(l)) return 'ok';
     throw new Error('unmocked ' + l);
   };
@@ -1195,7 +1196,7 @@ const assertStopped = (x, input) => {
   assert.equal(r.results[0].failKind, 'humano');
   const h = r.operatorActions.find((o) => o.kind === 'human-input');
   assert.ok(h, 'human-input action');
-  assert.match(h.what, /external effect did not complete/);
+  assert.match(h.what, /not known whether the external effect started/);
   assert.match(h.what, /task 1/);
   assert.match(h.what, input);
   assert.deepEqual(r.resumeArgs.authorizeExternal, ['E1:T1@' + fpOf(ext1)]);
@@ -1221,7 +1222,7 @@ test('authorized external NEEDS_HUMAN with zero commits stops the same way', asy
 
 test('the stop leaves a durable mark on the branch, and the progress read reports it', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
-  assert.match(calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /--allow-empty.*E1 T1 awaiting person:/);
+  assert.match(calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /--allow-empty.*E1 T1 awaiting person \(effect unknown\):/);
   const prog = calls.find((c) => c.label === 'E1:progress');
   assert.match(prog.prompt, /awaitingPerson/);
   assert.ok(prog.opts.schema.required.includes('awaitingPerson'));
@@ -1230,7 +1231,7 @@ test('the stop leaves a durable mark on the branch, and the progress read report
 test('a mark that cannot be written is said in the action', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : /awaiting-person/.test(l) ? null : undefined)) });
   assert.equal(x.r.results[0].merged, false);
-  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /count this task as done/);
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /launch stays open/);
 });
 
 const pendingProgress = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1] } : undefined);
@@ -1307,7 +1308,7 @@ test('a mark agent that rejects still ends in the human stop, with the warning',
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
     over: withPlan(ext1, (l) => { if (/awaiting-person/.test(l)) throw new Error('boom'); return l === 'E1:t1:impl' ? needsHuman : undefined; }) });
   assert.equal(x.r.results[0].failKind, 'humano');
-  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /count this task as done/);
+  assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /launch stays open/);
 });
 
 const reviewIssue = (l) => (l === 'E1:t1:spec1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 } : undefined);
@@ -2045,6 +2046,100 @@ test('N8: the resume reads the log and the report does not ask again for what ra
   assert.match(rep, /External effects authorized and run: \[\{"item":"E1:T1"/);
   assert.equal((rep.match(/External effects authorized and run: (.*)/)[1].match(/"item":"E1:T1"/g) || []).length, 1);
   assert.match(x.r.results[0].human[0], /already authorized and run/);
+});
+
+// ---- final-gate corrections
+const evMock = (l) => (l === 'E1:merge-effects' ? { head: 'm1', commit: 'm1' } : undefined);
+test('I1: an external evidence effect reaches the log on the target right after the merge', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), evOk, evMock) });
+  assert.ok(x.labels.indexOf('E1:merge') < x.labels.indexOf('E1:merge-effects'));
+  assert.ok(x.labels.indexOf('E1:merge-effects') < x.labels.indexOf('E1:docs1'));
+  const p = x.calls.find((c) => c.label === 'E1:merge-effects').prompt;
+  assert.match(p, /External effects run/);
+  assert.ok(p.includes('"item":"E1:AC1"') && p.includes(deploy));
+  assert.equal(x.r.results[0].merged, true);
+});
+
+test('I1: no evidence effect means no extra agent; a failed write is a concern', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.ok(!a.labels.includes('E1:merge-effects'));
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), evOk, (l) => (l === 'E1:merge-effects' ? null : undefined)) });
+  assert.ok(b.r.results[0].concerns.some((c) => /External effects run|external effects/i.test(c) && c.includes('E1:AC1')));
+});
+
+test('I1: a finish-merge reads the effect back and marks the human item', async () => {
+  const log = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve ' + deploy }], ac: [], externalRun: [{ item: 'E1:AC1', command: deploy, exit: 0 }] } : undefined);
+  const x = await exec({ cards: [unfinished()], deliverables: ['E1'], over: log });
+  assert.ok(x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:AC1"'));
+  assert.match(x.r.results[0].human[0], /already authorized and run/);
+});
+
+const completedMark = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [], effectCompleted: [1] } : undefined);
+const askLog = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve E1:T1 please' }], ac: [] } : undefined);
+
+test('I2: a completed mark with nothing in the log is recorded, reviewed, and marks the human item', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(completedMark, askLog)) });
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /"item":"E1:T1"[^\n]*"status":"confirmed by mark"[^\n]*"reviewed":true/);
+  assert.match(x.r.results[0].human[0], /already authorized and run/);
+  assert.ok(x.calls.find((c) => c.label === 'E1:progress').opts.schema.required.includes('effectCompleted'));
+});
+
+test('I2: an entry already restored from the log is not replaced by the mark', async () => {
+  const log = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', status: 'DONE', reviewed: false }] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(completedMark, log)) });
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.doesNotMatch(rep, /confirmed by mark"/);
+  assert.equal((rep.match(/External effects authorized and run: (.*)/)[1].match(/"item":"E1:T1"/g) || []).length, 1);
+});
+
+test('I2: a confirmed task skipped as already reviewed is reported as reviewed', async () => {
+  const tasks = [tk(1, true), tk(2, false)];
+  const prog = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p1', last: 'c1' }, { n: 2, firstParent: 'p2', last: 'c2' }], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [], effectCompleted: [1] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(tasks, prog) });
+  assert.ok(!x.labels.includes('E1:t1:spec1'));
+  assert.match(x.calls.find((c) => c.label === 'report').prompt, /"item":"E1:T1"[^\n]*"reviewed":true/);
+});
+
+test('I3: NEEDS_HUMAN after an authorized launch writes the unknown mark, which the resume reads as doubt', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt, /-m "E1 T1 awaiting person \(effect unknown\): /);
+  const p = x.calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.match(p, /launchOpen = [^\n]*"E1 T<n> awaiting person \(effect unknown\):"[^\n]*"E1 T<n> awaiting person: external effect did not complete"/);
+  const act = x.r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.match(act.doNow, /"E1 T1 awaiting person: confirmed not run"/);
+  assert.doesNotMatch(act.what + act.doNow + x.r.results[0].error, /did not complete|the task runs again and/);
+  assert.ok(!x.calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:T1"'));
+});
+
+test('I3: the authorized implementer is told when NEEDS_HUMAN is allowed', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /return NEEDS_HUMAN only if the effect has not started; if it started, report DONE_WITH_CONCERNS/);
+});
+
+const notRun = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
+const staleLog = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve E1:T1 please [already authorized and run in this run: E1:T1]' }], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', status: 'DONE', reviewed: false }] } : undefined);
+
+test('I4: after confirmed not run the restored entry and its human mark are gone', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(ext1, both(notRun, staleLog, (l) => (/:setup$/.test(l) ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, reused: true } : undefined))) });
+  assert.equal(x.r.results[0].failKind, 'externo');
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /External effects authorized and run: \[\]/);
+  assert.doesNotMatch(x.r.results[0].human[0], /already authorized and run/);
+  assert.ok(x.r.operatorActions.some((o) => o.kind === 'authorize-external'));
+});
+
+test('I4: a relaunch after confirmed not run records the effect again', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(notRun, staleLog)) });
+  assert.match(x.calls.find((c) => c.label === 'report').prompt, /"item":"E1:T1"[^\n]*"reviewed":true/);
+});
+
+test('M5/M6: the texts of a stop match what a resume does', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, fixStop) });
+  assert.doesNotMatch(a.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /stays awaiting/);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : /awaiting-person/.test(l) ? null : undefined)) });
+  assert.match(b.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /stop and ask/);
 });
 
 test('N8: a task without external writes no externalRun data to its log', async () => {
