@@ -33,5 +33,6 @@ test('bundled script starts with `export const meta = {` as its first statement'
   const dir = dirname(fileURLToPath(import.meta.url));
   const text = readFileSync(join(dir, 'roadmap-release.js'), 'utf8').replace(/^﻿/, '');
   assert.match(text, /^export const meta = \{/);
-  assert.match(text, /phases:\s*\[\s*\{\s*title:\s*'probe'\s*\}\s*\]/);
+  assert.match(text, /phases:\s*\[\s*\{\s*title:\s*'Descoberta'/);
+  assert.doesNotMatch(text, /title:\s*'probe'/);
 });

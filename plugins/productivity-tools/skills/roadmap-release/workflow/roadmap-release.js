@@ -1,11 +1,47 @@
 export const meta = {
   name: 'roadmap-release',
-  description: 'Runs tracked roadmap deliverables end to end',
-  phases: [{ title: 'probe' }],
-};
+  description: 'Executa entregas E<n> de um roadmap acompanhado: descoberta, spec, plano, tarefas com revisão dupla, revisão final, gates contra baseline, merge serializado com rollback, docs e roadmap',
+  whenToUse: 'Automatizar uma ou mais entregas de docs/plans/roadmap-*/. Exemplos de args: {"deliverables":["E18"],"targetBranch":"release/2026-11-24"} | {"deliverables":"next","phase":"r1-1"} | {"mode":"dry-run"} | {"mode":"plan-only","deliverables":["E19"]}',
+  phases: [
+    { title: 'Descoberta', detail: 'reads config, cards and panel on the target; computes selection and dependencies' },
+    { title: 'Preflight', detail: 'target, integration worktree, setup commands, environment and baseline of every gate' },
+    { title: 'Setup', detail: 'worktree and install per deliverable' },
+    { title: 'Spec', detail: 'autonomous brainstorming, review loop, human-input gate' },
+    { title: 'Plano', detail: 'writing-plans, review loop, "running" record' },
+    { title: 'Implementação', detail: 'one task per implementer, spec review, quality review, git truth' },
+    { title: 'Revisão final', detail: 'sync with the target and review of the whole branch (2 lenses if critical)' },
+    { title: 'Gates', detail: 'numeric gates against the baseline; locked resources serialized; reviewed fixes' },
+    { title: 'Merge', detail: 're-sync, merge, conflict review, post-merge gates, verified rollback' },
+    { title: 'Docs', detail: 'docs stage, roadmap-tracker and independent measurement' },
+    { title: 'Relatório', detail: 'git truth, report and operator actions' },
+  ],
+}
 
-// roadmap-release workflow script. Self-contained: no imports.
+// roadmap-release workflow script. Self-contained: no imports, no filesystem or Node API.
 // Runtime API: agent(prompt, {label, phase, model, schema}), phase(), log(), args, budget, parallel().
+// All project-specific settings come from args.config (the object validated by scripts/preflight.mjs).
+//
+// ARGS (all optional except config)
+//   config: release config validated by preflight.mjs (gates, install, setup, locks, projectContext, conflictRules...)
+//   deliverables: string[] | "next" | "ready" | "all" (default "next")
+//   phase, priority, track: filters on card attributes
+//   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>")
+//   baseBranch: where the target is created from when missing (default: the roadmap integrationBranch)
+//   allowIntegrationBranch (false): allows targetBranch == integrationBranch
+//   mode: "run" | "plan-only" | "dry-run"   autoDeps (false)   force (false)
+//   maxParallel (3, forced to 1 while config.generated)   maxFixRounds (2)   keepBranches (false)   maxDeliverables (12)
+//   minBudgetPerDeliverable (700000; 150000 in plan-only): only with a token goal; checked before the preflight
+//   overrideDonot: ["E19"] releases a deliverable vetoed by the roadmap "do not" block
+//   acceptRisks: ["E18"] accepts a critical risk on a direct merge into the integrationBranch
+//   acceptRedBaseline (false): lets the run go on with a red baseline
+//   roadmap, repo, wtRoot, today: detected when absent
+//   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
+//   trailer, branchPrefix ("feat/")
+//
+// RETURN: { status: done|partial|needs-operator|error, operatorActions[], resumeArgs, selection,
+//           results[], ownerReview { acceptedRisks[], decisionsPending[], criteriaOpen[] }, truth, reportPath }
+// The workflow never asks during the run: it stops the run (preflight) or the deliverable (blocking human
+// input, decision against a DEC, defect without a fix) and returns operatorActions with resumeArgs.
 
 // <pure>
 function cleanSlug(s, id) {
@@ -229,8 +265,281 @@ function resumeAction(card, statuses, force) {
 }
 // </pure>
 
-phase('probe');
-const probe = await agent('Reply with exactly the text: ok', { label: 'probe', phase: 'probe', model: 'haiku' });
-log(`probe: ${probe}`);
+// ---------------------------------------------------------------- args and config
+const A = args || {}
+const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
+const asList = v => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v])
+const CFG = A.config
+const OPS = []  // operator actions (strictly necessary ones)
+const op = (kind, deliverable, what, doNow, resumeWith) => OPS.push({ kind, deliverable, what, doNow, resumeWith })
+const MODE = A.mode || 'run'
+const RESULTS = []
+const mkResult = (status, extra) => ({
+  status, mode: MODE, operatorActions: OPS, resumeArgs: { ...A }, selection: null, results: RESULTS,
+  ownerReview: { acceptedRisks: [], decisionsPending: [], criteriaOpen: [] }, truth: null, reportPath: null, ...(extra || {}),
+})
+if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
+  return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
+}
+if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
+const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
+if (unfilledNotes.length) return { status: 'error', error: `notes still hold the template text, without the owner's answer: ${unfilledNotes.join(', ')}` }
+const MAXFIX = intArg(A.maxFixRounds, 2, 0)
+const MAXPAR = CFG.generated ? 1 : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1)  // a generated config may hide a shared resource
+const PREFIX = A.branchPrefix || 'feat/'
+const TRAILER = A.trailer || 'Co-Authored-By: Claude <noreply@anthropic.com>'
+const PROJECT = CFG.projectContext || ''
+const GATES = CFG.gates
+const INSTALL = CFG.install || ''
+const SETUP_CMDS = asList(CFG.setup)
+const ACCEPT_RED = !!(A.acceptRedBaseline || CFG.acceptRedBaseline)
 
-return { status: 'done', args };
+// ---------------------------------------------------------------- utilities
+function makeLock() {
+  let tail = Promise.resolve()
+  return fn => { const run = tail.then(() => fn()); tail = run.then(() => {}, () => {}); return run }
+}
+function makeSem(n) {
+  let active = 0
+  const q = []
+  const pump = () => {
+    if (active >= n || !q.length) return
+    active++
+    const { fn, res, rej } = q.shift()
+    Promise.resolve().then(fn).then(res, rej).finally(() => { active--; pump() })
+  }
+  return fn => new Promise((res, rej) => { q.push({ fn, res, rej }); pump() })
+}
+// One lock per configured name, "merge" always first. Locks are always taken in this fixed order, never the inverse.
+const LOCK_ORDER = ['merge', ...asList(CFG.locks).filter(n => n !== 'merge')]
+const LOCKS = Object.fromEntries(LOCK_ORDER.map(n => [n, makeLock()]))
+const mergeLock = LOCKS.merge  // integration worktree: merges, records and docs
+const setupLock = makeLock()   // git worktree add and install are not concurrency-safe
+const withLocks = (names, fn) => {
+  const need = LOCK_ORDER.filter(n => asList(names).includes(n))
+  return need.reduceRight((inner, n) => () => LOCKS[n](inner), fn)()
+}
+const gateLocks = def => asList(def.needsLock)
+let blqIds = new Set()  // blockers registered on the roadmap (filled after discovery)
+
+// ---------------------------------------------------------------- schemas
+const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boolean' }
+const STRS = { type: 'array', items: STR }
+const S_DISC = { type: 'object', properties: {
+  error: STR, repo: STR, today: STR, wtRoot: STR, roadmapDir: STR, roadmapSlug: STR, strategy: STR, checker: STR,
+  integrationBranch: STR, releaseBranch: STR, target: STR, integratedStatuses: STRS, discardedStatus: STR, blockedStatus: STR, deliverableStatuses: STRS,
+  targetExists: BOOL, readFrom: STR, trackerAvailable: BOOL, checkerExists: BOOL,
+  cards: { type: 'array', items: { type: 'object', properties: {
+    id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
+    status: STR, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: STR, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget'] } },
+  blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
+  donot: STRS,
+  donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
+}, required: ['cards'] }
+const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
+const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR }, required: ['headSha', 'clean', 'gates'] }
+const S_PRE = { type: 'object', properties: {
+  ok: BOOL, errorKind: { type: 'string', enum: ['dirty', 'setup', 'target', 'other'] }, error: STR,
+  integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE,
+}, required: ['ok'] }
+const S_SETUP = { type: 'object', properties: { ok: BOOL, error: STR, worktree: STR, branch: STR, baseCommit: STR, head: STR, reused: BOOL, clean: BOOL }, required: ['ok'] }
+const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
+
+// ---------------------------------------------------------------- discovery
+phase('Descoberta')
+const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
+const disc = await agent(`DISCOVERY task (read-only; change nothing). Answer with measured data.
+1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
+2. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
+3. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
+4. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
+5. Status: the <!-- roadmap:panel --> block of the state.md read; mergeCommit = first hash in backticks in the Evidence column, if any.
+6. Per card (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the status is in integratedStatuses and the integrationBranch is an ancestor of the target. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
+7. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
+8. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
+9. wtRoot: ${A.wtRoot || 'if git worktree list shows worktrees outside the repo, their common parent directory; otherwise <repo parent>/<repo name>-wt'} (with "/").`,
+  { label: 'discovery', phase: 'Descoberta', schema: S_DISC, model: 'sonnet' })
+if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
+disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
+
+const TODAY = A.today || disc.today
+const REPO = disc.repo
+const WT = String(A.wtRoot || disc.wtRoot).replace(/\/+$/, '')
+const RM = disc.roadmapDir
+const STRAT = disc.strategy
+const INTEG = disc.integrationBranch || 'main'
+const BASEBR = A.baseBranch || INTEG
+const TARGET = A.targetBranch || CFG.releaseBranch || disc.releaseBranch || `integracao/${disc.roadmapSlug}`
+const STATUSES = {
+  integrated: disc.integratedStatuses && disc.integratedStatuses.length ? disc.integratedStatuses : ['integrada', 'publicada', 'medida'],
+  onBranch: (disc.deliverableStatuses || [])[4] || 'na-branch',
+  discarded: disc.discardedStatus || 'descartada',
+  blocked: disc.blockedStatus || 'bloqueada',
+}
+const STATUS_AFTER_MERGE = TARGET === INTEG ? STATUSES.integrated[0] : STATUSES.onBranch
+if (TARGET === INTEG && !A.allowIntegrationBranch) return { status: 'error', error: `targetBranch (${TARGET}) is the integrationBranch; pass allowIntegrationBranch: true to merge into it.` }
+if (disc.trackerAvailable === false) return { status: 'error', error: 'the skill productivity-tools:roadmap-tracker is not available to the subagents' }
+if (disc.checkerExists === false) return { status: 'error', error: `checker ${disc.checker} does not exist` }
+
+// ---------------------------------------------------------------- selection
+const byId = Object.fromEntries(disc.cards.map(c => [c.id, c]))
+const heldMap = new Map((disc.donotHolds || []).flatMap(h => (h.affects || []).filter(id => byId[id]).map(id => [id, h.text])))
+const picked = selectDeliverables({
+  cards: disc.cards, statuses: STATUSES, selector: A.deliverables,
+  filters: { phase: A.phase, priority: A.priority, track: A.track },
+  heldBy: MODE === 'plan-only' ? new Map() : heldMap,
+  overrideDonot: A.overrideDonot, autoDeps: !!A.autoDeps, force: !!A.force, maxDeliverables: A.maxDeliverables,
+})
+if (picked.error) return { status: 'error', error: picked.error }
+const order = picked.order
+const notes = [...picked.notes, ...(disc.donot || []).map(d => `roadmap "do not" restriction (check before running): ${d}`)]
+const isDone = c => !!c && ((c.onTarget && !isUnfinished(c, STATUSES)) || c.status === STATUSES.discarded)
+const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, readFrom: disc.readFrom, statusAfterMerge: STATUS_AFTER_MERGE, order, skippedUpfront: picked.skipped, notes,
+  deps: Object.fromEntries(order.map(id => [id, byId[id].deps.map(d => `${d}:${isDone(byId[d]) ? 'on target' : 'in this run'}`)])) }
+log(`selection: ${order.join(' -> ') || '(empty)'}${picked.skipped.length ? ` | skipped: ${picked.skipped.map(s => s.id).join(', ')}` : ''}`)
+if (MODE === 'dry-run' || !order.length) return mkResult(order.length ? 'done' : 'partial', { selection })
+const MIN_BUDGET = intArg(A.minBudgetPerDeliverable, MODE === 'plan-only' ? 150000 : 700000, 0)
+if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) {
+  return mkResult('partial', { error: `remaining budget (${budget.remaining()}) is below the minimum per deliverable (${MIN_BUDGET})`, selection })
+}
+
+// ---------------------------------------------------------------- shared briefing
+blqIds = new Set((disc.blockers || []).map(b => b.id))
+const donotTxt = (disc.donot || []).map(d => `  * ${d}`).join('\n') || '  (none)'
+const blockersTxt = (disc.blockers || []).map(b => `${b.id}: ${b.text}`).join('\n') || '(none)'
+const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${gateLocks(def).length ? `, needs lock ${gateLocks(def).join('+')}` : ''}): ${def.cmd}`
+const gatesTxt = GATES.map(gateDesc).join('; ')
+const COMMON_BASE = `
+FIXED RULES:
+- Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block) are NEVER reopened or contradicted.
+- The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on. Asking the user is FORBIDDEN (do not use AskUserQuestion).
+- Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Open roadmap blockers:
+${blockersTxt}
+  Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.
+- Roadmap "do not" restrictions (violating any is category decisao, severity critical):
+${donotTxt}
+- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".
+- Delivery branches do NOT edit the roadmap folder ${RM} (that is done only in the record and docs stages, on the target).
+- When done, the working tree must be clean (git status --porcelain empty). Line-ending-only differences: git checkout -- <file>.
+- Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; never an unquoted shell heredoc containing backticks.
+- Processes: start servers only if the task needs them, in your deliverable's port range; stop everything you started before returning.
+- Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.
+- Canonical gates: ${gatesTxt}.
+- Reviewers classify each problem with category: defeito (bug or unmet criterion), decisao (contradicts a registered decision), ambiente (limit of the local environment, not of the code; when a roadmap blocker is registered, cite its id in blq), fora-do-escopo (only a PRE-EXISTING problem outside the deliverable), pelo-plano (the plan foresaw it). A defect introduced by this diff is never fora-do-escopo nor pelo-plano. Excess scope is a defect.
+- Write code and generated artifacts in the language of the roadmap, consistent with the project.
+${CFG.conflictRules ? `- Conflicts in generated files: ${CFG.conflictRules}\n` : ''}PROJECT:
+${PROJECT}`
+
+// ---------------------------------------------------------------- preflight
+phase('Preflight')
+const measureTxt = defs => `For each gate run its command and report { name, ran, exit, total, skipped, failedNames }:\n${defs.map(d => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (only name, ran and exit matter)'}`).join('\n')}\nFor "tests" gates read the output: total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
+const pre = await agent(`${COMMON_BASE}
+
+PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only steps 1, 2 and 5.' : 'You HOLD every lock.'}
+1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
+2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
+3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
+4. ${MODE === 'plan-only' ? '(skip)' : `BASELINE in the integration worktree. First, BEFORE any command: clean (git status --porcelain empty) and headSha (git rev-parse HEAD). Install first${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then measure every gate. ${measureTxt(GATES)}`}
+5. envFacts (short, factual text used by every agent): available shells, presence and version of the tools the gates need, measured peculiarities (for example CRLF, scripts that require bash).
+Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : ', baseline { headSha, clean, gates }'}.`,
+  { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet' })
+if (!pre || !pre.ok || !pre.integrationWorktree || (MODE !== 'plan-only' && !pre.baseline)) {
+  const kind = pre ? pre.errorKind || 'other' : 'other'
+  op(`preflight:${kind}`, null, pre ? pre.error || 'incomplete preflight' : 'null preflight agent',
+    kind === 'dirty' ? `Clean or commit the listed files in the integration worktree of ${TARGET}` : kind === 'setup' ? 'Fix the environment setup command and run again' : 'Read the error and fix the environment',
+    { ...A })
+  return mkResult('needs-operator', { selection })
+}
+const INTWT = pre.integrationWorktree
+const BASE = {}  // baseline: gate name -> GateResult
+for (const g of (pre.baseline && pre.baseline.gates) || []) if (g && g.name) BASE[g.name] = g
+let lastGood = pre.targetHead || TARGET  // target tip already validated; only changes inside the merge lock
+if (MODE === 'run') {
+  if (!validMeasure(pre.baseline, pre.targetHead, GATES)) {
+    op('preflight:baseline-invalid', null, 'the baseline measure is invalid (dirty tree, wrong commit or a gate with inconsistent exit and failing names)',
+      'Check the integration worktree and the gate commands, then run again', { ...A })
+    return mkResult('needs-operator', { selection })
+  }
+  const red = isRedBaseline(GATES, BASE)
+  if (red.length && !ACCEPT_RED) {
+    op('preflight:red-baseline', null, `baseline of ${TARGET} is red in: ${red.join(', ')}`,
+      'Fix the target (or the environment) before running; with a red baseline the matching gates stop blocking regressions. To accept it anyway, pass acceptRedBaseline:true', { ...A })
+    return mkResult('needs-operator', { selection })
+  }
+}
+const resultTxt = r => (r ? `exit ${r.exit}${typeof r.total === 'number' ? `, total ${r.total}, skipped ${r.skipped || 0}, failing [${(r.failedNames || []).join(', ')}]` : ''}` : 'not measured')
+const baseTxt = () => GATES.map(d => `${d.name}: ${resultTxt(BASE[d.name])}`).join(' | ')
+const COMMON = () => `${COMMON_BASE}
+ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
+CURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${baseTxt()}`
+
+// ============================================================================ one deliverable
+let integBroken = null
+async function runDeliverable(E, idx) {
+  const card = byId[E]
+  const wt = `${WT}/${E}`
+  const br = `${PREFIX}${E}`
+  const port = 5200 + idx * 10
+  const human = []
+  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [] }
+  const C = () => `${COMMON()}
+DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}` : ''}`
+  const fail = (kind, msg) => {
+    out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
+    return out
+  }
+  // Clears uncommitted files left by an interrupted run; the patch is kept in _tmp.
+  const sanitize = async stage => {
+    const dir = `${WT}/_tmp/${E}-dirty`
+    const r = await agent(`RESUME CLEANUP in worktree ${wt} (branch ${br}), left with uncommitted files from an interrupted run. Only in this worktree:
+1. mkdir -p "${dir}"; git -C "${wt}" diff --binary HEAD > "${dir}/${stage}.patch"; git -C "${wt}" ls-files --others --exclude-standard > "${dir}/${stage}-untracked.txt" and copy those files into "${dir}/${stage}-untracked/".
+2. git -C "${wt}" reset --hard HEAD; git -C "${wt}" clean -fd.
+3. Return ok, head (git rev-parse HEAD), clean (status --porcelain empty), leftovers.`,
+      { label: `${E}:clean-${stage}`, phase: 'Setup', schema: S_ROLLBACK, model: 'haiku' })
+    if (!r || !r.ok || r.clean === false) return false
+    out.concerns.push(`resume: uncommitted files from a previous run were discarded; patch in ${dir}`)
+    return true
+  }
+
+  // A merge already on the target without a post-merge status: Task 8 finishes validation and docs.
+  if (resumeAction(card, STATUSES, A.force) === 'finish-merge' && MODE === 'run') {
+    out.status = 'partial'
+    return fail('infra', 'not implemented (finish-merge)')
+  }
+
+  // ---------- Setup
+  const setup = await setupLock(() => agent(`${C()}
+
+SETUP of deliverable ${E} (mechanical; do not change tracked files).
+1. If ${wt} is already a registered worktree, reuse it (reused=true). Otherwise, if the branch ${br} exists: git -C "${REPO}" worktree add "${wt}" ${br}; else: git -C "${REPO}" worktree add "${wt}" -b ${br} ${lastGood}.
+2. Install${INSTALL ? `: ${INSTALL}` : ': nothing to install'}.
+3. baseCommit = git -C "${wt}" merge-base ${br} ${TARGET}; head = git -C "${wt}" rev-parse HEAD; clean = git -C "${wt}" status --porcelain empty (do not clean anything here).
+Return ok (true only if baseCommit and head are not empty), worktree, branch, baseCommit, head, reused, clean.`,
+    { label: `${E}:setup`, phase: 'Setup', schema: S_SETUP, model: 'haiku' }))
+  if (!setup || !setup.ok || !setup.baseCommit) return fail('infra', `setup failed: ${setup ? setup.error : 'null agent'}`)
+  if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
+  out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
+
+  // Stages Spec onward are implemented in Tasks 7 and 8.
+  out.status = 'partial'
+  return fail('infra', 'not implemented')
+}
+
+// ============================================================================ scheduling
+const sem = makeSem(MAXPAR)
+const runs = {}
+order.forEach((id, idx) => {
+  runs[id] = (async () => {
+    for (const d of byId[id].deps) {
+      if (!runs[d]) continue  // dependency already on the target
+      const r = await runs[d]
+      if (!r.ok) return { id, merged: false, ok: false, skipped: true, error: `dependency ${d} did not finish in this run` }
+    }
+    try { return await sem(() => runDeliverable(id, idx)) }
+    catch (e) { return { id, merged: false, ok: false, error: `unexpected error: ${e && e.message ? e.message : e}` } }
+  })()
+})
+for (const id of order) RESULTS.push(await runs[id])
+const merged = RESULTS.filter(r => r.merged).length
+return mkResult(merged === order.length ? 'done' : OPS.length && !merged ? 'needs-operator' : 'partial',
+  { selection, error: RESULTS.some(r => r.error) ? 'not implemented' : undefined })
