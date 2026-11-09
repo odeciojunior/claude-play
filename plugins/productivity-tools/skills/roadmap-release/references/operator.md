@@ -4,23 +4,32 @@ What to do with the actions a `roadmap-release` run returns.
 
 ## Contents
 
-- Failure kinds
+- Action kinds
 - Resuming a run
 - Integrity alerts
 - Releasing parallelism on a generated config
 
-## Failure kinds
+## Action kinds
 
-Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `resumeWith` (the args to run again, or null). The failure of one deliverable stops only that deliverable, not the others.
+Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `resumeWith` (the args to run again, or null). A failure in one deliverable stops only that deliverable.
 
-| Kind | Meaning | Typical action |
+| Kind | Meaning | What to do |
 |---|---|---|
-| `infra` | Environment or tooling failed: null agent, broken integration worktree, low budget, gates that could not run. | Fix the environment and run again with `resumeWith`. Stages already done (spec, plan, commits) are reused. |
-| `conteudo` | A defect the review loop could not fix within `maxFixRounds`, or a fix that stayed blocked. | Read the review log on the deliverable branch, adjust the spec or plan or give an instruction in `notes`, and run again. |
-| `decisao` | The work would contradict a recorded decision (DEC). | Decide: write a new DEC or revise the existing one, then run again with the decision in `notes`. |
-| `humano` | A step needs a human: blocking input, or acceptance criteria that need a human act (credentials, acceptance, go/no-go). | Do the act yourself. Nothing records it for you. Then run again. |
+| `preflight:<errorKind>` | The preflight agent failed (`dirty`, `setup`, `other`). No deliverable ran. | Clean the integration worktree, fix the setup command or the environment, run again. |
+| `preflight:baseline-invalid` | The baseline measure was unusable. | Fix the environment and run again. |
+| `preflight:red-baseline` | The baseline of the target is red. | Fix the target, or pass `acceptRedBaseline: true` if a person accepts it. |
+| `infra` | Environment or tooling failure in a deliverable (null agent, unexpected error). | Run again with `resumeWith`; spec, plan and commits are reused. |
+| `defect` | The review loop could not fix a content defect within `maxFixRounds`. | Read the review log on the deliverable branch, adjust the spec or plan or add an instruction in `notes`, run again. |
+| `decision` | The work would contradict a recorded decision (DEC). | Decide (new DEC or revision), then run again with the decision in `notes`. |
+| `human-input` | A step needs data or a decision from a person. | Provide it in `notes` and run again. |
+| `human-act` | Merged or planned deliverable has criteria that need a human act (credentials, acceptance, go/no-go). | Do the act and record it yourself. Nothing records it for you. |
+| `merge-rejected` | The merge is on the target but failed validation or could not be validated; later merges stop. | Fix on the target and run again with the deliverable, or undo with `git revert -m 1 <merge>` as `doNow` says. |
+| `docs` | Docs or roadmap are inconsistent after a merge. | Fix the record and run the roadmap checker on the target. |
+| `integration` | The integration worktree is dirty or compromised. | Follow `doNow` (clean it, or reset it to the pre-merge SHA), then run again. |
+| `divergence` | The git truth disagrees with what agents claimed. | Check `git log` and `git status` of the target by hand. |
+| `report` | The report agent returned nothing. | Rebuild the report from the result. |
 
-Some actions are not tied to a deliverable (`preflight:*`, `integration`, `divergence`, `report`). They tell you to check the target branch by hand or to fix the environment before any deliverable runs.
+The internal failure class (`infra`, `conteudo`, `decisao`, `humano`) shows up only in `results[].failKind` and in the "blocked" status the run records for a stopped deliverable; `conteudo` becomes the `defect` action and `decisao` the `decision` action.
 
 ## Resuming a run
 

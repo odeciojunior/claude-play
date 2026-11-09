@@ -9,7 +9,7 @@ Runs one or more deliverables of a tracked roadmap through the bundled Workflow 
 
 ## Rules
 
-- The workflow never asks the user during execution. This skill stops at most once, before any agent runs, and only for preflight problems (step 2).
+- The workflow never asks the user during execution. The only questions this skill may ask are the roadmap-folder clarification in step 1 and one stop before any agent runs (step 2), where preflight `errors` and `missingRules` are reported together.
 - Never push. Never edit settings files (`settings.json`, `settings.local.json`); only show the rules to add.
 - Never touch the integration branch unless the user passed `allowIntegrationBranch`.
 - Never record human acts (credentials, acceptance, go/no-go) as done. Only the person does them.
@@ -20,10 +20,9 @@ Runs one or more deliverables of a tracked roadmap through the bundled Workflow 
 
 1. **Locate the roadmap folder.** It is the `docs/plans/roadmap-*/` folder that holds `roadmap.config.json`. If there are several, use the one the user named; otherwise ask once.
 2. **Preflight.** Run `node <dir>/scripts/preflight.mjs <roadmap-folder>`, where `<dir>` is this skill's base directory. It prints `{configPath, generated, errors, missingRules, config}`, exits 1 when `errors` is non-empty and never writes anything.
-   - `errors` non-empty: stop and show them. Do not call the Workflow.
-   - `missingRules` non-empty: stop once and show the exact rules, one per line, for the person to add to their permissions. Do not edit any settings file. Resume after they confirm.
-   - Otherwise continue without asking.
-3. **Generated config.** If `generated` is true, write `config` to `configPath` and commit it on the target branch (`release.config.json` only), then go on without asking. The run uses `maxParallel: 1` until a person reviews the file and removes `generated: true` (operator.md). If the target branch does not exist yet, create it from `baseBranch` first.
+   - `errors` or `missingRules` non-empty: stop once, before any agent, and show both together. For `errors`, show them as printed. For `missingRules`, show the exact rules, one per line, for the person to add to their permissions. Do not edit any settings file and do not call the Workflow. Resume after they confirm.
+   - Both empty: continue without asking.
+3. **Generated config.** If `generated` is true, write `config` to `configPath` and commit it on the target branch (`release.config.json` only), then go on without asking. The run uses `maxParallel: 1` until a person reviews the file and removes `generated: true` (operator.md). Resolve the branches the way the workflow does: target = `args.targetBranch`, else the config's `releaseBranch`, else `integracao/<slug>`; base = `args.baseBranch` if given, else the roadmap's `integrationBranch`. Commit in a temporary `git worktree` of the target (created from the base when the target does not exist), then remove that worktree, so the user's checkout stays untouched. Never commit to the integration branch this way unless `allowIntegrationBranch` was passed.
 4. **Run the workflow.** Call the `Workflow` tool with `scriptPath` and `args` set to the user's args plus `config` (the object from preflight). The path is `<dir>/workflow/roadmap-release.js` (absolute), built from the line "Base directory for this skill: <dir>" printed when this skill loads. Never hardcode it. Typical args:
    - `{"deliverables":["E18"],"targetBranch":"release/2026-11-24"}`
    - `{"deliverables":"next","phase":"r1-1"}`
@@ -32,6 +31,8 @@ Runs one or more deliverables of a tracked roadmap through the bundled Workflow 
 5. **Verify with direct git.** The result has `status` (`done`, `partial`, `needs-operator`, `error`), `results`, `truth`, `operatorActions` and `resumeArgs`. Check against `truth` yourself, in the repository, before reporting:
    - `git rev-parse <targetBranch>` equals `truth.targetHead`.
    - Each id in `truth.mergedIds` has a first-parent merge commit on the target, not later reverted: `git log --first-parent <targetBranch> --grep "^merge: <id> "`. Ids in `notMergedIds` have none.
-   - The target worktree is clean (`git status --porcelain` empty) when `truth.clean` is true, and the validated tip is an ancestor of the target.
+   - The target worktree is clean (`git status --porcelain` empty) when `truth.clean` is true.
+   - `truth.lastGoodReachable` is true: the validated tip the run claims is an ancestor of the target (`git merge-base --is-ancestor`).
+   - In `plan-only`, `truth` is null: skip these checks. In `dry-run` the run stops after selection (status `done` or `partial`, no `truth`, no merges): report the selection only.
    - A `status: error` result carries `error` and no truth; report it as is.
 6. **Report.** Give the status, the per-deliverable outcome, every divergence you found (a divergence outranks any agent claim), then the `operatorActions`, deduplicated and in order, each with its `doNow` and, when present, `resumeWith`. The person may be offered a `resumeWith`; run it only on their go-ahead. Point to `reportPath`. State plainly that merging the target into the integration branch and the push are for the owner.
