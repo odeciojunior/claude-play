@@ -8,6 +8,7 @@ import {
   validateReleaseConfig, deriveConfig,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight,
 } from './preflight.mjs';
+import { readBlocks, parseTable } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 
 const good = () => ({
   projectContext: 'ctx',
@@ -44,6 +45,42 @@ test('parseGatesTable reads the roadmap:gates block', () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0].ID, 'G1');
   assert.equal(rows[1].Command, '`npm test`');
+});
+
+const HEAD = ['| ID | Comando | Ambiente | Quando | Linha de base |', '|:--|---|---|---|---|'];
+const gatesMd = (rows, open = '<!-- roadmap:gates -->') => [open, ...HEAD, ...rows, '<!-- /roadmap:gates -->'].join('\n');
+const ROW1 = '| G1 | `npm test \\| tee out.txt` | local | cada tarefa | verde |';
+
+test('item 3: columns are read by position, whatever the header words say', () => {
+  const rows = parseGatesTable(gatesMd([ROW1]));
+  assert.equal(rows[0].ID, 'G1');
+  assert.equal(rows[0].When, 'cada tarefa');
+  assert.equal(deriveConfig({ gatesBlockRows: rows }).gates[0].cmd, 'npm test | tee out.txt');
+});
+
+test('item 3: an anchor with attributes opens the block', () => {
+  const rows = parseGatesTable(gatesMd([ROW1], '<!-- roadmap:gates v=2 -->'));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ID, 'G1');
+  assert.equal(rows[0].When, 'cada tarefa');
+});
+
+test('item 3: a gates block inside a code fence before the real one is ignored', () => {
+  const fenced = ['```md', gatesMd(['| G9 | `echo no` | local | x | y |']), '```'].join('\n');
+  const rows = parseGatesTable(`${fenced}\n\n${gatesMd([ROW1])}`);
+  assert.deepEqual(rows.map((r) => r.ID), ['G1']);
+});
+
+test('item 3: rows with an empty, "-" or "—" command are dropped', () => {
+  const rows = parseGatesTable(gatesMd([ROW1, '| G2 |  | local | x | y |', '| G3 | - | local | x | y |', '| G4 | — | local | x | y |']));
+  assert.deepEqual(rows.map((r) => r.ID), ['G1']);
+});
+
+test('item 3: parity with the checker', () => {
+  const md = ['```', gatesMd(['| G9 | `x` | l | w | b |']), '```', gatesMd([ROW1, '| G2 | `make a` | local | merge | ok |', '| G3 | - | local | x | y |'])].join('\n');
+  const rows = parseGatesTable(md);
+  const checker = parseTable(readBlocks(md, 'gates')[0].body).map((r) => r[1]).filter((c) => c && c !== '-' && c !== '—');
+  assert.deepEqual(checker, rows.map((r) => r.Command));
 });
 
 test('deriveConfig marks generated and classifies lint/build as exit, others tests', () => {

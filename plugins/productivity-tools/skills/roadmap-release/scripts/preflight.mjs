@@ -43,17 +43,46 @@ export function validateReleaseConfig(cfg) {
   return errors;
 }
 
+// Blanks fenced code (same length, newlines kept) with the checker's fence rule: 3+ backticks or tildes, closed by the same char and a length >= the opener.
+function blankFences(text) {
+  const lines = text.split('\n');
+  let open = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (open === null) {
+      const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (m && !(m[1][0] === '`' && m[2].includes('`'))) open = { ch: m[1][0], len: m[1].length };
+    } else {
+      const m = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (m && m[1][0] === open.ch && m[1].length >= open.len) open = null;
+      else lines[i] = ' '.repeat(line.length);
+    }
+  }
+  return lines.join('\n');
+}
+
+// Same cell split as the checker: `\|` is an escaped pipe inside a cell.
+function splitRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
+}
+
+// Columns are read by position (ID, Command, Environment, When, Baseline); header words are ignored.
 export function parseGatesTable(markdown) {
-  const m = /<!--\s*roadmap:gates\s*-->([\s\S]*?)<!--\s*\/roadmap:gates\s*-->/.exec(markdown || '');
-  if (!m) return [];
-  const rows = m[1].split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
-  const cells = (l) => l.replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-  if (rows.length < 2) return [];
-  const head = cells(rows[0]);
-  return rows.slice(1).filter((l) => !/^\|[\s:|-]+\|?$/.test(l)).map((l) => {
-    const c = cells(l);
-    return Object.fromEntries(head.map((h, i) => [h, c[i] ?? '']));
-  });
+  const text = String(markdown || '').replace(/\r\n?/g, '\n');
+  const scan = blankFences(text);
+  const open = /<!--\s*roadmap:gates(?=\s|-->)[\s\S]*?-->/.exec(scan);
+  if (!open) return [];
+  const from = open.index + open[0].length;
+  const close = /<!--\s*\/roadmap:gates\s*-->/.exec(scan.slice(from));
+  if (!close) return [];
+  const body = text.slice(from, from + close.index);
+  const rows = body.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|')).map(splitRow);
+  const isSep = (r) => r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
+  return rows.slice(1).filter((r) => !isSep(r) && r.length === 5 && !['', '-', '—'].includes(r[1]))
+    .map(([ID, Command, Environment, When, Baseline]) => ({ ID, Command, Environment, When, Baseline }));
 }
 
 // A derived gate is a tests gate only when its command names a test runner: anything else has no test count to read.
