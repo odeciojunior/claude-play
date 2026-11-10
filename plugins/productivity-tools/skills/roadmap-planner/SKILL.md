@@ -70,7 +70,8 @@ Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a s
 
 | Folder state | Action |
 |--------------|--------|
-| Has `roadmap.config.json` | **Stop.** This is an existing roadmap. Offer `roadmap-tracker` to update it, or to propose a strategy revision. Write nothing. |
+| Has `roadmap.config.json` and `planning-draft.md` | Step 6 was interrupted: finish Step 6 from the draft, run Step 7, then delete the draft |
+| Has `roadmap.config.json`, no `planning-draft.md` | **Stop.** This is an existing roadmap. Offer `roadmap-tracker` to update it, or to propose a strategy revision. Write nothing. |
 | Has `planning-draft.md`, no `roadmap.config.json` | **Resume** from the draft (see "Planning draft"); do not redo the questions it records |
 | Exists without `roadmap.config.json` | Ask before writing into it, or pick another folder |
 | Does not exist | Continue |

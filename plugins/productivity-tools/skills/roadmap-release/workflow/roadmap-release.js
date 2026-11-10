@@ -495,7 +495,7 @@ Review of ${spec ? 'SPEC COMPLIANCE' : 'CODE QUALITY'} (read-only; do not trust 
 Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.${ctx.rangeNote || ''}
 ${spec
     ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
-    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block), a fragile test. Also confirm there is no regression against the spec.'}
+    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block (or the file it points to)), a fragile test. Also confirm there is no regression against the spec.'}
 IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). You hold no lock: do not re-run a check that needs a resource protected by a shared lock; judge it from the reported output. Do not re-run a check with an external effect (production, deploy, push, e-mail or message, shared data, someone's checkout); judge it from the reported output too. Implementer summary: ${(impl && impl.summary) || '(none)'}
 ${fmtChecks(impl && impl.checks)}
 Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them; ${repeatRule()}):\n${ctx.prev}` : ''}
@@ -1013,7 +1013,7 @@ const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant'
 const gatesTxt = GATES.map(gateDesc).join('; ')
 const COMMON_BASE = `
 FIXED RULES:
-- Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block) are NEVER reopened or contradicted.
+- Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block (or the file it points to)) are NEVER reopened or contradicted.
 - The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on, except a strategy revision or migration and any external effect. Asking the user is FORBIDDEN (do not use AskUserQuestion).
 - Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Authorization of an external effect is never a humanInput: the workflow asks the person for it. Open roadmap blockers:
 ${blockersTxt}
@@ -1403,7 +1403,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
 
 If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it, reassess humanInputs (an answered input stops being blocking), commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
 Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
-- You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block, the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
+- You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block (or the file it points to), the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
 - Parts that are human acts: produce the artifacts and leave the acceptance to the human.
 - For each human input set blocking=true ONLY if no useful part of the card can be delivered without it (a placeholder does not count); otherwise blocking=false with the workaround.
 - Save to docs/superpowers/specs/${TODAY}-${E}-<slug>-design.md (short kebab-case slug, WITHOUT the ID), written in the language of the roadmap, with: the card's acceptance criteria (verbatim, including any {verify: ...} tag), the design, "Autonomous decisions (reviewable by the owner)" and "Depends on human input".
@@ -1414,7 +1414,7 @@ Return specPath, slug (without the ID), decisions (one line per autonomous decis
   const specLoop = await reviewLoop('spec',
     (round, prev) => agent(`${C()}
 
-Review (read-only) the spec ${wt}/${spec.specPath} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block.
+Review (read-only) the spec ${wt}/${spec.specPath} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block (or the file it points to).
 Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
       { label: `${E}:spec-review${round}`, phase: 'Spec', schema: S_REVIEW, model: 'opus', effort: 'medium' }),
@@ -1723,7 +1723,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
   const integTxt = alerts.length ? `\nALERTS MEASURED IN THE TESTS (check each one; weakening a test without justification is a critical defect): ${alerts.join('; ')}.` : ''
 
   const lenses = card.critical
-    ? ['correctness across layers and the card acceptance criteria', 'security: authorization, secrets, sensitive data, injection and any security rule of the PROJECT block']
+    ? ['correctness across layers and the card acceptance criteria', 'security: authorization, secrets, sensitive data, injection and any security rule of the PROJECT block (or the file it points to)']
     : ['correctness across layers, the card acceptance criteria and security']
   const finalLoop = await reviewLoop('final',
     async (round, prev) => {
