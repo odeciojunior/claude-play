@@ -2296,7 +2296,7 @@ test('FF/I4: wtRoot comes from the skill; without it the run stops before discov
   assert.doesNotMatch(x.calls[0].prompt, /common parent directory/);
   assert.ok(!x.calls[0].opts.schema.required.includes('wtRoot'));
   const skill = ffRead('SKILL.md');
-  assert.ok(skill.includes('`wtRoot`: `<dirname(repo)>/<basename(repo)>-wt`'));
+  assert.ok(skill.includes('Let `wtRoot` be `<dirname(repo)>/<basename(repo)>-wt`'));
   assert.ok(skill.includes('checked out somewhere other than `<wtRoot>/_integracao`'));
   assert.ok(skill.includes('outside `repo` and outside `<wtRoot>`'));
 });
@@ -2321,6 +2321,49 @@ test('FF/M8: a local task that waited for a person closes with a neutral mark, w
   assert.match(m, /--allow-empty -m "E1 T1: resumed after awaiting person"/);
   assert.doesNotMatch(m, /external effect completed/);
   assert.match(x.calls.find((c) => c.label === 'E1:progress').prompt, /"E1 T<n>: external effect completed" or "E1 T<n>: resumed after awaiting person"/);
+});
+
+// Fable review 2 (F2).
+test('F2/I-A: a note that changed no file stays in resumeWith; a note written into the plan is consumed', async () => {
+  const reused = (v) => (l) => (l === 'E1:spec' ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [], reused: v }
+    : l === 'E1:plan' ? { ...planWith([tk(1, false)]), reused: v }
+    : l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'stop', checks: [] } : undefined);
+  const kept = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(true) });
+  assert.equal(kept.r.resumeArgs.notes && kept.r.resumeArgs.notes.E1, 'the key is in DEPLOY_KEY');
+  const consumed = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(false) });
+  assert.ok(!(consumed.r.resumeArgs.notes && consumed.r.resumeArgs.notes.E1));
+});
+
+test('F2/m1: the neutral resume mark is bookkeeping for the task reviews', async () => {
+  const prog = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], prog) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1 T1: resumed after awaiting person"/);
+});
+
+test('F2/m2: an authorized task item of any deliverable id without a runToken stops before discovery', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['UDV-3:T1'], runToken: undefined } });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /runToken/);
+  assert.equal(x.labels.length, 0);
+});
+
+test('F2/m3, m5: wtRoot is defined in step 1, before step 3 uses it; step 6.6 points to operator.md', () => {
+  const skill = ffRead('SKILL.md');
+  const def = skill.indexOf('Let `wtRoot` be `<dirname(repo)>/<basename(repo)>-wt`');
+  assert.ok(def > 0 && def < skill.indexOf('3. **Generated config.**'));
+  assert.match(skill, /6\. \*\*No source\.\*\*[^\n]*Details: operator\.md item 3\./);
+});
+
+test('F2/m4: a first sync that resolved conflicts goes through the conflict review, like the late sync', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 2, targetTip: 'abc1234', deltaFiles: [] } : l === 'E1:sync-review' ? { issues: [], headSha: 'h2', clean: true, commitsInRange: 0 } : undefined) });
+  assert.ok(x.labels.includes('E1:sync-review'), x.labels.join(','));
+  assert.ok(x.labels.indexOf('E1:sync-review') < x.labels.indexOf('E1:test-integrity'));
+});
+
+test('F2/B7: a stop for authorization counts the tasks already done', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false), tk(2, true)]) });
+  assert.ok(x.r.operatorActions.some((o) => o.kind === 'authorize-external'));
+  assert.equal(x.r.results[0].tasks, 1);
 });
 
 test('B4/I-A: an implementer BLOCKED for a lock writes nothing, and the impl-lock retry runs the effect exactly once', async () => {

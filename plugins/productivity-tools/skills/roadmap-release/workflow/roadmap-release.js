@@ -805,7 +805,7 @@ if (unfilledNotes.length) return { status: 'error', error: `notes still hold the
 // The worktree root decides where worktrees go and which checkout is the workflow's own: the skill passes it, nothing guesses it.
 if (!A.wtRoot) return { status: 'error', error: 'args.wtRoot is missing: the skill passes <dirname(repo)>/<basename(repo)>-wt (or the folder the user named)' }
 // An authorized task is never launched without a run token: fail before paying for discovery, preflight and the plan.
-if (MODE === 'run' && !RUN_TOKEN && AUTH.items.some(i => /^E\d+:T\d+/.test(i))) return { status: 'error', error: 'runToken is missing: run preflight again and pass its runToken (an authorized external task is never launched without it)' }
+if (MODE === 'run' && !RUN_TOKEN && AUTH.items.some(i => /^(?!gate:|checkout:)[^:]+:T[1-9]\d*/.test(i))) return { status: 'error', error: 'runToken is missing: run preflight again and pass its runToken (an authorized external task is never launched without it)' }
 const MAXFIX = intArg(A.maxFixRounds, 2, 0)
 const MAXPAR = CFG.generated ? 1 : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1)  // a generated config may hide a shared resource
 const PREFIX = A.branchPrefix || 'feat/'
@@ -1559,7 +1559,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...evidenceRowGaps(cardAc, plan.ac, r && r.evidenceRows), ...planGaps()],
     { tier: 'sonnet', reviewModel: 'opus' })
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
-  if (noteE) NOTES_READ.push(E)  // only an approved plan has consumed the note
+  // A note is consumed only when it was written into the spec or the plan; one that changed no file stays in resumeWith.
+  if (noteE && !(spec.reused === true && plan.reused === true)) NOTES_READ.push(E)
   if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')
   out.plan = plan.planPath
   planRef = plan.planPath
@@ -1680,13 +1681,14 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   }
   let head = prog.head
   const taskLog = []
+  out.tasks = taskLog  // a stop inside the loop still reports the tasks already done
   for (const t of plan.tasks) {
     const resumed = doneMap[t.n]
     // A later task stopped for a person ran after this one passed its reviews, and its commits are not this task's scope.
     if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); const seen = out.externalRun.find(e => e.item === `${E}:T${t.n}`); if (seen) seen.reviewed = true; continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     let start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${startedSubject(t.n)}", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
+    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${startedSubject(t.n)}", "${effectDone(t.n)}", "${E} T${t.n}: resumed after awaiting person" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
     let rangeNote = earlier || (resumed && t.external !== false) ? bookkeepingNote : ''
     let completionInRange = 0  // the completion mark of this run sits inside the range and is not the implementer's commit
     let startedInRange = 0  // so does the started mark the implementer writes first
@@ -1780,6 +1782,10 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
   let myBase = snapshotBase()  // baseline matching syncAt (captured together, no await between them)
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
   if (!sync || !sync.ok) return fail(sync ? 'conteudo' : 'infra', `sync with ${TARGET} failed: ${sync ? sync.details : 'null agent'}`)
+  if (sync.conflictsResolved !== 0) {  // as on the late sync: a resolution is reviewed with the full briefing
+    const rc = await reviewConflicts(sync.head, wt, `${E}:sync-review`)
+    if (!rc.ok) return fail(rc.kind, rc.why)
+  }
 
   const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
     { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
