@@ -82,7 +82,7 @@ Also settle now:
 - **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask which branch the work will integrate into (default `main`); the checker then skips git checks with one `no-git` warning, which is expected and listed in the handoff.
 - **Release branch** (config `releaseBranch`): ask whether deliverables merge into an intermediate release branch before the integration branch. If yes, record its name; if no, omit the key.
 
-**Planning draft.** `<roadmap-folder>/planning-draft.md` keeps the answers across a crash or `/clear`. Write it (create the folder if it does not exist; the draft is then its only file) after Step 1, after Step 2, and after each round of questions (one batch of questions, including the Step 5 priority question), overwriting it with: objective, mode, language and branches, sources read (paths), questions asked, the user's answers verbatim, the `DEC` and `REQ` rows so far, and the next step. Never put a secret the user pasted (token, password, key) in it; write "[omitted: secret]" instead. If the draft exists at Step 0, tell the user you are resuming from it, read it, skip the mode question and any question it records as answered, and continue at its next step. Step 6 deletes it.
+**Planning draft.** `<roadmap-folder>/planning-draft.md` keeps the answers across a crash or `/clear`. Write it (create the folder if it does not exist; the draft is then its only file) after Step 1, after Step 2, and after each round of questions (one batch of questions, including the Step 5 priority question), overwriting it with: objective, mode, language and branches, sources read (paths), questions asked, the user's answers verbatim, the `DEC` and `REQ` rows so far, and the next step. Never put a secret the user pasted (token, password, key) in it; write "[omitted: secret]" instead. If the draft exists at Step 0, tell the user you are resuming from it, read it, skip the mode question and any question it records as answered, and continue at its next step. Step 7 deletes it once the checker and the reviewer pass.
 
 ### Step 1: Intake and sources
 
@@ -138,13 +138,14 @@ node "<roadmap-folder>/check-roadmap.mjs" --version
 
 The `--version` output reads `<version> format <n>`; `<n>` must equal `formatVersion`.
 
-When the definitive files are written, delete `<roadmap-folder>/planning-draft.md`.
+Keep `<roadmap-folder>/planning-draft.md` until Step 7 ends: if the session drops before then, the draft is what lets the next run finish the verification (Step 0).
 
 ### Step 7: Verify
 
 1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker. If `node` is missing or older than 18, do not claim the folder verified: stop, or hand off saying "checker not run (Node ≥18 missing)".
 2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, with the roadmap folder, the strategy path and the source paths, and exactly this brief (it is read-only; tell it "do not edit files"): *"Report only correctness errors, uncovered requirements, untraced claims and invented numbers; no style."* Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
 3. Fix what the reviewer found, then run the checker again until 0 errors.
+4. Delete `<roadmap-folder>/planning-draft.md`.
 
 ### Step 8: Hand off
 

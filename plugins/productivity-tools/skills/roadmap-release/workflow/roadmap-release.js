@@ -1013,7 +1013,7 @@ const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant'
 const gatesTxt = GATES.map(gateDesc).join('; ')
 const COMMON_BASE = `
 FIXED RULES:
-- Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block (or the file it points to)) are NEVER reopened or contradicted.
+- Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block, or the file it points to) are NEVER reopened or contradicted.
 - The owner PRE-APPROVED: when a skill asks for confirmation or a choice, take the recommended option, record it and go on, except a strategy revision or migration and any external effect. Asking the user is FORBIDDEN (do not use AskUserQuestion).
 - Inputs only humans can provide: do not invent the data; use a configurable placeholder or a marked synthetic fixture and report it in humanInputs. Authorization of an external effect is never a humanInput: the workflow asks the person for it. Open roadmap blockers:
 ${blockersTxt}
