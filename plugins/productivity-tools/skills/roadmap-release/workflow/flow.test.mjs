@@ -1943,7 +1943,7 @@ test('N6: the resume does not launch the implementer again, and its fixes carry 
   assert.ok(!x.labels.includes('E1:t1:launching'));
   assert.ok(x.labels.includes('E1:t1:spec1'));
   const fix = x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
-  assert.doesNotMatch(fix, /AUTHORIZED/);
+  assert.doesNotMatch(fix, /the person AUTHORIZED it/);
   assert.match(fix, /Do NOT perform any external effect/);
   assert.equal(x.r.results[0].merged, true);
 });
@@ -2166,6 +2166,79 @@ test('R3: the count finding hints at a missing mark when the minimum includes ma
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
     over: withPlan(ext1, (l) => (/^E1:t1:spec1$/.test(l) ? rev(1) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   assert.match(x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt, /1 < 3; the started and completion marks count; missing a started or completion mark\?\)/);
+});
+
+// Final gate (portão final) of the branch.
+const OWNER_PUSH = "except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act)";
+test('PF/I1: push is the owner\'s except for an authorized external task; spec and plan rules exempt the merge and push of the target', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  const P = (l) => x.calls.find((c) => c.label === l).prompt;
+  assert.match(P('E1:t1:impl'), /NEVER push, except the effect of a task you were told is external and AUTHORIZED\./);
+  for (const l of ['E1:spec-review1', 'E1:plan', 'E1:plan-review1']) assert.ok(P(l).includes(OWNER_PUSH), l);
+  const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'SKILL.md'), 'utf8');
+  assert.match(skill, /Never push yourself; only an authorized external task of the plan may \(operator\.md\)\./);
+});
+
+test('PF/I2 and M12: the plan orders an external task after the code it ships, and the question warns when a task effect and an evidence row run', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const plan = x.calls.find((c) => c.label === 'E1:plan').prompt;
+  assert.match(plan, /Order an external task after every task whose code it ships\./);
+  assert.match(plan, /runs again after every gates fix and every late sync/);
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..');
+  for (const f of ['SKILL.md', join('references', 'operator.md')]) {
+    const t = readFileSync(join(dir, f), 'utf8');
+    assert.ok(t.includes('For a task item the question also says that the effect runs on the deliverable branch before its final review, gates and merge, so a later review may reject code that already took effect.'), f);
+    assert.ok(t.includes('it runs again after every gates fix and late sync, after its duplicate check'), f);
+  }
+});
+
+test('PF/I3 and M1, M5, M10, M11: the docs point to CLAUDE.md, agree on the fix round, the resume token, the marks and the source rules', () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const cfg = readFileSync(join(dir, 'references', 'config.md'), 'utf8');
+  assert.ok(cfg.includes('Project rules for every briefing. Prefer the one-line pointer the preflight derives (`Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).`): the text is pasted into every agent prompt, about 40 per deliverable. May be an empty string.'));
+  assert.ok(!cfg.includes('a hand-written config is unchanged'));
+  const skill = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+  assert.ok(!skill.includes('across every fix round and resume'));
+  assert.ok(skill.includes('A fix round never runs the effect again: it stops for a person.'));
+  assert.ok(skill.includes('replacing `config` and `runToken` with the ones from the new preflight'));
+  assert.match(skill, /For a `human-input` about an open launch \(it asks for an empty commit [^)]*confirmed not run`\), write that empty commit only when the person states the outcome in their own message; never infer it\./);
+  const op = readFileSync(join(dir, 'references', 'operator.md'), 'utf8');
+  assert.ok(skill.includes('If the names are lost too, resume without new items') && op.includes('If the names are lost too, resume without new items'));
+  assert.ok(op.includes('(not `Resume args` of the report, which holds only what was already authorized)'));  // kept out of SKILL.md on purpose (prompts.test)
+});
+
+test('PF/M2: the late-sync fixer may not edit the spec or the plan, and its re-review blocks it', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (l === 'E1:delta-review1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h3', clean: true, commitsInRange: 0 } : l === 'E1:delta-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined) });
+  assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:delta-review2').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan made by a fix round/);
+});
+
+test('PF/M3: the plan fix returns files and noCommit with the plan stage rule', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (/^E1:plan-review1$/.test(l) ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix/.test(l) ? planWith([tk(1, false)]) : undefined) });
+  assert.match(x.calls.find((c) => c.label === 'E1:plan-fix1').prompt, /tasks \(full list, with files copied from the plan, noCommit \(same rule as the plan stage\), tier, reviewTier, needsLock, external and externalDedupe\)/);
+});
+
+test('PF/M6: the common briefing drops the delivery-stage and integration-worktree sentences; spec, plan and implementer keep them', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const c of x.calls.filter((k) => /^(git-truth|E1:cleanup|E1:gates1-1|E1:merge)$/.test(k.label))) {
+    assert.doesNotMatch(c.prompt, /there is no other delivery stage/, c.label);
+    assert.doesNotMatch(c.prompt, /No task of the plan runs there/, c.label);
+  }
+  for (const l of ['E1:spec', 'E1:plan']) assert.match(x.calls.find((c) => c.label === l).prompt, /there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan/, l);
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /no task of the plan runs in the integration worktree/);
+});
+
+test('PF/M7, M8, M9: report wording for unreviewed entries, one entry per task item, and a BLOCKED launch says how to close it', async () => {
+  const log = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', command: 't1', status: 'DONE', reviewed: false }] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, both(completedMark, log)) });
+  const rep = x.calls.find((c) => c.label === 'report').prompt;
+  assert.equal((rep.match(/External effects authorized and run: (.*)/)[1].match(/"item":"E1:T1"/g) || []).length, 1);
+  const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'no', checks: [] } : l === 'E1:t1:spec1' ? undefined : undefined)) });
+  assert.match(y.r.results[0].error, /its launch mark stays open: before running again add `E1 T1 awaiting person: confirmed not run` if the effect did not start/);
+  const z = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  assert.match(z.calls.find((c) => c.label === 'report').prompt, /has not passed review in this run \(it may not have been reviewed yet\)/);
 });
 
 test('B4/I-A: an implementer BLOCKED for a lock writes nothing, and the impl-lock retry runs the effect exactly once', async () => {
@@ -2426,12 +2499,13 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
     assert.match(p, rule, l);
     assert.doesNotMatch(p, /\$\{wt\}|\$\{br\}|undefined/, l);
   }
-  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /`external: true`; "not a task of this plan" does not apply to it/);
+  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /`external: true`, except merging the target into the integration branch and pushing it, which are the owner's \(a criterion that needs them is a human act\); "not a task of this plan" does not apply to it/);
   assert.match(calls.find((c) => c.label === 'E1:spec-review1').prompt, /a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target \(defeito\)/);
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
   const planP = calls.find((c) => c.label === 'E1:plan').prompt;
   assert.match(planP, /only reads a local file outside the branch[^\n]*is not external; when in doubt, true/);
   assert.equal((planP.match(/only reads a local file outside the branch/g) || []).length, 2, 'task rule and evidence-row rule');
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
-  assert.ok(calls.some((c) => /No task of the plan runs there: every task runs in the deliverable worktree before the merge \(the workflow's own merge, post-merge gates and docs stages run in the integration worktree\)/.test(c.prompt)), 'briefing');
+  assert.ok(!calls.some((c) => /No task of the plan runs there/.test(c.prompt)), 'not in the common briefing (M6)');
+  assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /in the deliverable worktree \(no task of the plan runs in the integration worktree\)/);
 });

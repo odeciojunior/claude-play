@@ -213,9 +213,10 @@ test('every agent call that passes a model also passes an explicit effort', () =
 
 test('an external effect the card requires is a plan task: common rule, plan prompt and plan review say so', () => {
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
-  assert.match(src, /the workflow asks the person for it when it reaches a plan task or an acceptance-evidence row declared external; there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan \(an external evidence row may check that effect, never replaces the task\)\./);
-  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan \(defeito\); a design or autonomous decision that has a task/);
-  assert.match(src, /Every external effect the card or the spec requires is a task of the plan with \\`external: true\\`; "not a task of this plan" does not apply to it/);
+  assert.match(src, /the workflow asks the person for it when it reaches a plan task or an acceptance-evidence row declared external\. Open roadmap blockers/);
+  assert.equal((src.match(/- Delivery: there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan \(an external evidence row may check that effect, never replaces the task\)\./g) || []).length, 2, 'spec and plan prompts');
+  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan, except merging the target into the integration branch and pushing it, which are the owner's \(a criterion that needs them is a human act\) \(defeito\); a design or autonomous decision that has a task/);
+  assert.match(src, /Every external effect the card or the spec requires is a task of the plan with \\`external: true\\`, except merging the target[^;]*; "not a task of this plan" does not apply to it/);
   assert.match(src, /Blocks \(defeito\):[^\n]*an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.doesNotMatch(src, /the workflow asks the person for it\. Open roadmap blockers/);
 });
@@ -224,7 +225,7 @@ test('reviews block a task or effect run after the merge; the briefing says the 
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
   assert.match(src, /Blocks \(defeito\):[^\n]*a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
   assert.match(src, /Blocks:[^\n]*a design or autonomous decision that has a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target \(defeito\)/);
-  assert.match(src, /No task of the plan runs there: every task runs in the deliverable worktree before the merge \(the workflow's own merge, post-merge gates and docs stages run in the integration worktree\)/);
+  assert.match(src, /no task of the plan runs in the integration worktree \(the workflow's own merge, post-merge gates and docs stages run there\)/);
 });
 
 test('externalNote: an authorized external task runs in the deliverable worktree, only reads before the effect, and fixtures are allowed', () => {

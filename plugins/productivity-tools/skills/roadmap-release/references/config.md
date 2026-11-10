@@ -14,7 +14,7 @@ Project-specific settings for `roadmap-release`, stored in the roadmap folder ne
 
 | Field | Required | Meaning |
 |---|---|---|
-| `projectContext` | yes | Project rules, pasted into every briefing. May be an empty string. |
+| `projectContext` | yes | Project rules for every briefing. Prefer the one-line pointer the preflight derives (`Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).`): the text is pasted into every agent prompt, about 40 per deliverable. May be an empty string. |
 | `install` | yes | Command that installs dependencies in a fresh worktree. Empty string when none is needed. |
 | `setup` | no | Command or list of commands that prepare the environment in the preflight, such as starting services. |
 | `beforeEvidence` | no | Command or list run before measuring gates that declare `needsLock` and before the acceptance evidence commands, such as recreating a database. Gates without a lock do not run it. |
@@ -43,7 +43,7 @@ A red baseline stops the preflight: an `exit` gate with a non-zero code, a `test
 
 ## Generated config
 
-When the file does not exist, `scripts/preflight.mjs` derives one from the strategy's `<!-- roadmap:gates -->` table (columns ID, Command, Environment, When, Baseline). `projectContext` is a one-line pointer to the repository's `CLAUDE.md` when that file exists (its content is not copied), and empty otherwise; a hand-written config is unchanged. Commands that name a test runner (such as `npm test`, `vitest`, `pytest`, `node --test`, `go test`) become `tests`; all others become `exit`. `install` comes from a lockfile at the repository root (for example `package-lock.json` gives `npm ci`); with none it stays empty and the preflight adds a `warnings` entry. The result carries `generated: true`, and the preflight prints it as `config` in its JSON. A row of that table with other than five columns is skipped and the preflight adds a `warnings` entry naming it (a pipe inside a cell is written `\|`). The block is found the way the roadmap checker finds it, so a malformed opening comment gives no rows. The script never writes it: persisting and committing the file on the target branch is the skill's job.
+When the file does not exist, `scripts/preflight.mjs` derives one from the strategy's `<!-- roadmap:gates -->` table (columns ID, Command, Environment, When, Baseline). `projectContext` is a one-line pointer to the repository's `CLAUDE.md` when that file exists (its content is not copied), and empty otherwise; a hand-written config keeps its own text. Commands that name a test runner (such as `npm test`, `vitest`, `pytest`, `node --test`, `go test`) become `tests`; all others become `exit`. `install` comes from a lockfile at the repository root (for example `package-lock.json` gives `npm ci`); with none it stays empty and the preflight adds a `warnings` entry. The result carries `generated: true`, and the preflight prints it as `config` in its JSON. A row of that table with other than five columns is skipped and the preflight adds a `warnings` entry naming it (a pipe inside a cell is written `\|`). The block is found the way the roadmap checker finds it, so a malformed opening comment gives no rows. The script never writes it: persisting and committing the file on the target branch is the skill's job.
 
 While `generated` is true the run uses `maxParallel: 1`, because an undetected shared resource would corrupt parallel runs. Review `locks` and `needsLock`, then remove the flag to release parallelism.
 

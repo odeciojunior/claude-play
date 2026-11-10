@@ -371,7 +371,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
-  // New on every call, never inside config: the workflow puts it in its progress read so a resume reads git again instead of a cached answer.
+  // New on every call, never inside config: the workflow puts it in its discovery read (the first agent call) so a resume reads git again instead of a cached answer.
   const runToken = `${new Date().toISOString()}-${randomBytes(6).toString('hex')}`;
   return { configPath, generated, errors, missingRules: missing, warnings, config, runToken };
 }
