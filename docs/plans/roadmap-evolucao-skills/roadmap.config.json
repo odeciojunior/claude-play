@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "language": "pt-BR",
+  "strategy": "../2026-11-10-roadmap-evolucao-skills.md",
+  "integrationBranch": "main",
+  "releaseBranch": "release/roadmap-skills-v2",
+  "files": {
+    "readme": "README.md",
+    "state": "state.md",
+    "decisions": "decisions.md",
+    "log": "log.md",
+    "criticalPath": "critical-path.md",
+    "measurements": "measurements.md",
+    "sources": "sources.md",
+    "requirements": "requirements.md"
+  },
+  "vocab": {
+    "deliverableStatuses": ["nao-iniciado", "spec", "plano", "executando", "na-branch", "integrado", "publicado", "medido", "bloqueado", "descartado"],
+    "integratedStatuses": ["integrado", "publicado", "medido"],
+    "releasedStatuses": ["publicado", "medido"],
+    "blockedStatus": "bloqueado",
+    "discardedStatus": "descartado",
+    "decisionInForce": "vigente",
+    "decisionPending": "pendente",
+    "decisionSupersededBy": "substituída por",
+    "coverageCovered": "coberto",
+    "coverageOutOfScope": "fora-de-escopo",
+    "coverageNeedsClarification": "a-esclarecer",
+    "branchLive": "viva",
+    "branchDeleted": "removida",
+    "markers": ["ASSUMPTION", "UNSOURCED"],
+    "bannedPhrases": ["this commit", "este commit"]
+  },
+  "tracks": ["engineering", "decisions", "external", "release", "measurement"],
+  "limits": { "nowItems": 5, "cellChars": 300, "pendingItems": 20 }
+}

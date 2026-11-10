@@ -1,0 +1,6 @@
+{
+  "name": "wfprobe",
+  "description": "Throwaway probe: what gates a Workflow launch (E14 piece 3)",
+  "version": "0.0.1",
+  "workflows": ["./skills/launch/workflow/probe-run.js"]
+}

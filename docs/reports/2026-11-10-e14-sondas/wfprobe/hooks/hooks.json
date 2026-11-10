@@ -1,0 +1,31 @@
+{
+  "description": "Probe: logs every Workflow tool call; approves it only when WFPROBE_ALLOW=1 is in the environment",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/log-and-decide.mjs"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/log-and-decide.mjs"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

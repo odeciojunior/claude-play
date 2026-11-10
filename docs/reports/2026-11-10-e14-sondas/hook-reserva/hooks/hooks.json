@@ -1,0 +1,18 @@
+{
+  "description": "Opt-in: approves the launch of this plugin's own workflows (does nothing unless auto_approve_workflows is true)",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/approve-own-workflow.mjs", "${user_config.auto_approve_workflows}"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
