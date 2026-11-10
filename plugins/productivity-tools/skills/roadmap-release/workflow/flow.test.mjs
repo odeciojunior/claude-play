@@ -2079,25 +2079,62 @@ test('B4/I1: a kill after the merge of E3, then a resume with the same cache: th
 });
 
 // I2: a guard in the implementer itself, for a resume whose prefix (launch mark included) all came from the cache.
+// The implementer follows the guard where the prompt puts it: right before the effect, after any lock need (git.needsLock).
 const startedRepo = (git) => (l, p) => {
   if (l === 'E1:t1:launching') { git.marks.push('launching'); return { ok: true, head: 'L' + git.marks.length }; }
   if (l === 'E1:progress') return { head: 'h9', clean: true, done: [], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] };
-  if (l === 'E1:t1:impl') {
-    assert.match(p, /FIRST, before anything else: in integracao\/x\.\.HEAD, if a commit whose subject starts "E1 T1 started" is newer than the newest one starting "E1 T1 launching", return NEEDS_HUMAN/);
+  if (/^E1:t1:impl/.test(l)) {
+    git.impls = (git.impls || 0) + 1;
+    assert.match(p, /Immediately before the effect \(before its duplicate check, after any code, test or lock need, so a BLOCKED for a lock writes nothing\): in integracao\/x\.\.HEAD, if a commit whose subject starts "E1 T1 started" is newer than the newest one starting "E1 T1 launching", return NEEDS_HUMAN at once/);
+    assert.doesNotMatch(p, /FIRST, before anything else/);
+    if (git.needsLock && !p.includes('You HOLD the lock(s): ' + git.needsLock)) return { status: 'BLOCKED', summary: 'needs the lock', needsLock: git.needsLock, checks: [] };
     if (git.marks.lastIndexOf('started') > git.marks.lastIndexOf('launching')) return { status: 'NEEDS_HUMAN', summary: 'the effect may have started in an earlier run', checks: [], humanInputs: [{ what: 'did the effect run?' }] };
     git.marks.push('started');
-    if (git.dieBeforeEffect) return { status: 'DONE', summary: 'unreachable', checks: [] };
     git.effects += 1;
     return { status: 'DONE', summary: 'published', checks: [] };
   }
   return undefined;
 };
 
+// B5: a task whose plan lists no file makes no commit of its own; only the marks may be in its range.
+const rev = (n) => ({ issues: [], headSha: 'h1', clean: true, commitsInRange: n });
+test('B5: an external task with no files passes with only its started and completion marks in the range, no fix round', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan([tk(1, true, { files: [] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(2) : undefined)) });
+  assert.ok(!x.labels.some((l) => /^E1:t1:.*fix/.test(l)), x.labels.join(','));
+  assert.equal(x.r.results[0].merged, true);
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /changes no file: make no commit of your own/);
+});
+
+test('B5: a local task with no files passes with an empty range; a task with files still needs its own commit', async () => {
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: [] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : undefined)) });
+  assert.ok(!none.labels.some((l) => /^E1:t1:.*fix/.test(l)));
+  const some = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: ['src/a.js'] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  assert.ok(some.labels.includes('E1:t1:spec-fix1'));
+});
+
+test('B5: the count finding says what was expected, marks included, and a task fix may not edit the spec or the plan', async () => {
+  let fixIssue = '';
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l, p) => (/^E1:t1:spec1$/.test(l) ? rev(1) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  fixIssue = x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
+  assert.match(fixIssue, /fewer commits than expected in the range \(L1\.\.HEAD: 1 < 3; the started and completion marks count\)/);
+  assert.match(fixIssue, /Never edit the spec or the plan to satisfy a finding/);
+});
+
+test('B4/I-A: an implementer BLOCKED for a lock writes nothing, and the impl-lock retry runs the effect exactly once', async () => {
+  const git = { marks: [], effects: 0, needsLock: 'db' };
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both(withPlan(ext1), startedRepo(git)) });
+  assert.ok(x.labels.includes('E1:t1:impl-lock'));
+  assert.equal(git.effects, 1);
+  assert.ok(!x.r.operatorActions.some((o) => o.kind === 'human-input'));
+  assert.equal(x.r.results[0].merged, true);
+});
+
 test('B4/I2: a resume with the SAME token as the dead run: the implementer finds its own started mark and stops, no second effect', async () => {
   const git = { marks: [], effects: 0 };
   const j = makeJournal();
   await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start('E1:t1:impl', true) }).catch(() => null);
-  assert.equal(git.effects, 1);
+  assert.equal(git.effects, 1, 'the dead run had already run the effect');
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start() });
   assert.equal(git.effects, 1, 'no second effect');
   assert.ok(!x.labels.includes('E1:t1:launching'), 'the launch mark came from the cache');

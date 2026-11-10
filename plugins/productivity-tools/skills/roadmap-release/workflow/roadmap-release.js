@@ -373,7 +373,7 @@ function compact(iss) {
 // What the script itself verifies about a review: blocking issues plus a commit in the range and a clean tree.
 function reviewTruth(r, minCommits, label) {
   const iss = [...blocking(r)]
-  if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `no commit in the range (${label})` })
+  if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `fewer commits than expected in the range (${label}: ${r.commitsInRange} < ${minCommits}; the started and completion marks count)` })
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
@@ -464,19 +464,23 @@ function briefing(ctx) {
 function lockNote(locks) {
   return locks && locks.length ? `You HOLD the lock(s): ${locks.join(', ')}.` : 'You hold no lock.'
 }
-// mark = { E, target }: the implementer guard of a launch; it is the first live call when a resume replayed every call before it.
+// mark = { E, target }: the implementer guard of a launch, right before the effect; it is the first live call when a resume replayed every call before it.
 function externalNote(authorizedExternal, task, mark) {
-  const first = mark && mark.E && mark.target ? `FIRST, before anything else: in ${mark.target}..HEAD, if a commit whose subject starts "${mark.E} T${task.n} started" is newer than the newest one starting "${mark.E} T${task.n} launching", return NEEDS_HUMAN at once, say the effect may have started in an earlier run, and do nothing else. Otherwise commit --allow-empty "${mark.E} T${task.n} started" (git reset -q first) and only then go on. ` : ''
+  const first = mark && mark.E && mark.target ? `Immediately before the effect (before its duplicate check, after any code, test or lock need, so a BLOCKED for a lock writes nothing): in ${mark.target}..HEAD, if a commit whose subject starts "${mark.E} T${task.n} started" is newer than the newest one starting "${mark.E} T${task.n} launching", return NEEDS_HUMAN at once, say the effect may have started in an earlier run, and do not run the effect. Otherwise commit --allow-empty "${mark.E} T${task.n} started" (git reset -q first) and only then run the duplicate check and the effect. ` : ''
   return authorizedExternal
     ? `${first}This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished. Run it from the deliverable worktree you work in: the integration worktree does not have this branch's code until the merge. Before the effect, only read (the duplicate check is a read); never run the effect command itself, nor a script that runs it against the real target, as a pre-check or a test. Tests on a fixture or a fake target are not the effect.`
     : 'Do NOT perform any external effect in this task.'
+}
+// A task whose plan lists no file makes no commit of its own: only marks may be in its review range.
+function noFiles(task) {
+  return !!task && Array.isArray(task.files) && task.files.length === 0
 }
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
 
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}. STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).
+Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}
 Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
 Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
 }
@@ -1472,7 +1476,7 @@ ${acTxt}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files, tier, reviewTier, needsLock, external, externalDedupe).`,
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files (an empty list only when the plan says the task changes no file and makes no commit), tier, reviewTier, needsLock, external, externalDedupe).`,
     { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus', effort: 'medium' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
   const planGaps = () => {
@@ -1660,7 +1664,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (!resumed) {
       if (authorizedExt) {
         // Without a run token the reads above may be the cached answers of a dead run, blind to its launch mark.
-        if (!RUN_TOKEN) return fail('infra', `task ${t.n}: no runToken, so the progress read may be a cached result of an earlier invocation that cannot see an open launch mark; the external task was not started. Run preflight again and pass its runToken`)
+        if (!RUN_TOKEN) return fail('infra', `task ${t.n}: no runToken, so every read of this invocation may be a cached result of an earlier one (the run token is in the discovery read) that cannot see an open launch mark; the external task was not started. Run preflight again and pass its runToken`)
         // Durable proof that the effect may have started, written before it can start: without it the implementer does not run.
         const m = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${launchSubject(t.n)}". Change nothing else. Return ok = true only if that commit is now HEAD, and head = git -C "${wt}" rev-parse HEAD.`,
           { label: `${E}:t${t.n}:launching`, phase: 'Implementation', schema: S_LAUNCH, model: 'haiku', effort: 'low' }))
@@ -1695,12 +1699,12 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
 
-In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} Never edit the spec or the plan to satisfy a finding: they are approved, so if an item can only be met by changing them (for example a commit the plan does not call for), do not apply it and explain in concerns. If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
 ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier, effort: effortFor(tier) })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
-        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1 + completionInRange + startedInRange, `${start}..HEAD`),
+        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`),
         { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
       if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
