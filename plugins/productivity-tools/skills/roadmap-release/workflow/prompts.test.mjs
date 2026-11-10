@@ -214,8 +214,29 @@ test('every agent call that passes a model also passes an explicit effort', () =
 test('an external effect the card requires is a plan task: common rule, plan prompt and plan review say so', () => {
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
   assert.match(src, /the workflow asks the person for it when it reaches a plan task or an acceptance-evidence row declared external; there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan \(an external evidence row may check that effect, never replaces the task\)\./);
-  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan \(defeito\); a design that is not viable/);
+  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan \(defeito\); a design or autonomous decision that has a task/);
   assert.match(src, /Every external effect the card or the spec requires is a task of the plan with \\`external: true\\`; "not a task of this plan" does not apply to it/);
   assert.match(src, /Blocks \(defeito\):[^\n]*an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.doesNotMatch(src, /the workflow asks the person for it\. Open roadmap blockers/);
+});
+
+test('every task runs in the deliverable worktree before the merge: spec, plan, both reviews, briefing and external note say so', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
+  const rule = /Every task of the plan, the external ones included, runs in the deliverable worktree \$\{wt\} on \$\{br\} before the merge; nothing runs in the integration worktree/;
+  assert.equal(src.match(new RegExp(rule.source, 'g')).length, 2, 'spec prompt and plan prompt');
+  assert.match(src, /Blocks \(defeito\):[^\n]*a task or an effect marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
+  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that has a task or an effect run after the merge, in the integration worktree or in the target \(defeito\)/);
+  assert.match(src, /No task runs there: every task runs in the deliverable worktree before the merge/);
+});
+
+test('externalNote: an authorized external task runs in the deliverable worktree and never runs the effect as a pre-check', () => {
+  const p = P.buildImplPrompt({ ...ctx, authorizedExternal: true }, { ...task, external: true, externalDedupe: 'checks outbox.log first' });
+  assert.match(p, /deliverable worktree/);
+  assert.match(p, /Never run the effect command, or any part of it, as a pre-check or a test: checks only read/);
+});
+
+test('SKILL.md: the authorization message promises the git show and the resume compares with the report', () => {
+  const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'SKILL.md'), 'utf8');
+  assert.match(skill, /End the authorization message with this sentence, literally: "Before resuming I will run `git show <target>:<reportPath>`/);
+  assert.match(skill, /if they diverge, or the report is unavailable, ask again/);
 });
