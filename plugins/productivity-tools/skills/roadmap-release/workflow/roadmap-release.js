@@ -23,8 +23,9 @@ export const meta = {
 //
 // ARGS (all optional except config)
 //   config: release config validated by preflight.mjs (gates, install, setup, locks, projectContext, conflictRules...)
-//   runToken: from the preflight of this call, new each time; only in the progress read, so a resume never takes a cached
-//     answer for git; never returned in resumeArgs/resumeWith. Without it no authorized external task is launched
+//   runToken: from the preflight of this call, new each time; only in the discovery read (the first agent call), so a resume
+//     with resumeFromRunId reruns everything live, at the cost of a resume without it; never returned in resumeArgs/resumeWith.
+//     Without it no authorized external task is launched
 //   deliverables: string[] | "next" | "ready" | "all" (default "next")
 //   phase, priority, track: filters on card attributes
 //   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>")
@@ -463,16 +464,18 @@ function briefing(ctx) {
 function lockNote(locks) {
   return locks && locks.length ? `You HOLD the lock(s): ${locks.join(', ')}.` : 'You hold no lock.'
 }
-function externalNote(authorizedExternal, task) {
+// mark = { E, target }: the implementer guard of a launch; it is the first live call when a resume replayed every call before it.
+function externalNote(authorizedExternal, task, mark) {
+  const first = mark && mark.E && mark.target ? `FIRST, before anything else: in ${mark.target}..HEAD, if a commit whose subject starts "${mark.E} T${task.n} started" is newer than the newest one starting "${mark.E} T${task.n} launching", return NEEDS_HUMAN at once, say the effect may have started in an earlier run, and do nothing else. Otherwise commit --allow-empty "${mark.E} T${task.n} started" (git reset -q first) and only then go on. ` : ''
   return authorizedExternal
-    ? `This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished. Run it from the deliverable worktree you work in: the integration worktree does not have this branch's code until the merge. Before the effect, only read (the duplicate check is a read); never run the effect command itself, nor a script that runs it against the real target, as a pre-check or a test. Tests on a fixture or a fake target are not the effect.`
+    ? `${first}This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished. Run it from the deliverable worktree you work in: the integration worktree does not have this branch's code until the merge. Before the effect, only read (the duplicate check is a read); never run the effect command itself, nor a script that runs it against the real target, as a pre-check or a test. Tests on a fixture or a fake target are not the effect.`
     : 'Do NOT perform any external effect in this task.'
 }
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
 
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}. STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
-${externalNote(ctx.authorizedExternal, task)}
+${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
 Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).
 Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
 Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
@@ -933,7 +936,8 @@ const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: B
 // ---------------------------------------------------------------- discovery
 phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
-const disc = await agent(`DISCOVERY task (read-only; change nothing). Answer with measured data.
+// The run token is in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
+const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token: ${RUN_TOKEN || 'none'} (only makes this read run again on every invocation; ignore it). Answer with measured data.
 1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
 2. ALL of these fields are REQUIRED: repo, today, wtRoot, roadmapDir, strategy, checker, integrationBranch, integratedStatuses and deliverableStatuses (at least 5 items); never invent a default, return error if one is missing. integratedStatuses and deliverableStatuses come from the vocab of roadmap.config.json.
 3. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
@@ -1150,7 +1154,7 @@ async function runDeliverable(E, idx) {
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
 Never write or quote a credential, token or key from the owner instruction in any file, commit message, review finding or report; write 'provided through environment variable <NAME>' instead.` : ''}`
-  const ctxFor = extra => ({ base: baseOf(), envFacts: pre.envFacts, baseline: baseTxt(), E, wt, planPath: plan && plan.planPath, specPath: spec && spec.specPath, locks: [], ...extra })
+  const ctxFor = extra => ({ base: baseOf(), envFacts: pre.envFacts, baseline: baseTxt(), E, target: TARGET, wt, planPath: plan && plan.planPath, specPath: spec && spec.specPath, locks: [], ...extra })
   const C = () => briefing(ctxFor())
   // Briefing without the owner notes, for every stage that writes to a committed record (docs, review log, merge-fix).
   const Cn = () => briefing({ ...ctxFor(), base: baseOf(false) })
@@ -1542,12 +1546,12 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   // Only this subject ends the wait: a re-run that commits and then fails is still waiting for the person.
   const effectDone = n => `${E} T${n}: external effect completed`
   const launchSubject = n => `${E} T${n} launching`
+  const startedSubject = n => `${E} T${n} started`  // written by the implementer itself, first thing
   const confirmedNotRun = n => `${E} T${n} awaiting person: confirmed not run`
   const mayHaveRunMark = n => `${E} T${n} awaiting person (effect may have run)`
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
-  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
-  // The run token makes this read run live on every invocation: a cached answer could hide a launch mark written after it.
-  const prog = await agent(`Read-only. Run token: ${RUN_TOKEN || 'none'} (only makes this read run again on every invocation; ignore it). In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
+  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -1635,9 +1639,10 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); const seen = out.externalRun.find(e => e.item === `${E}:T${t.n}`); if (seen) seen.reviewed = true; continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     let start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
+    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${startedSubject(t.n)}", "${effectDone(t.n)}" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
     let rangeNote = earlier || (resumed && t.external !== false) ? bookkeepingNote : ''
     let completionInRange = 0  // the completion mark of this run sits inside the range and is not the implementer's commit
+    let startedInRange = 0  // so does the started mark the implementer writes first
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
     // A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
     const authorizedExt = t.external !== false && externalHold(t, E, AUTH.items, fp) === null
@@ -1654,13 +1659,13 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       if (authorizedExt) {
-        // Without a run token the progress read above may be the cached answer of a dead run, blind to its launch mark.
+        // Without a run token the reads above may be the cached answers of a dead run, blind to its launch mark.
         if (!RUN_TOKEN) return fail('infra', `task ${t.n}: no runToken, so the progress read may be a cached result of an earlier invocation that cannot see an open launch mark; the external task was not started. Run preflight again and pass its runToken`)
         // Durable proof that the effect may have started, written before it can start: without it the implementer does not run.
         const m = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${launchSubject(t.n)}". Change nothing else. Return ok = true only if that commit is now HEAD, and head = git -C "${wt}" rev-parse HEAD.`,
           { label: `${E}:t${t.n}:launching`, phase: 'Implementation', schema: S_LAUNCH, model: 'haiku', effort: 'low' }))
         if (!m || !m.ok || !m.head) return fail('infra', `task ${t.n}: the launch mark could not be written, so the external task was not started`)
-        if (!earlier) start = m.head  // the mark is not this task's commit
+        if (!earlier) { start = m.head; startedInRange = 1 }  // the marks are not this task's commits
         rangeNote = bookkeepingNote
       }
       impl = await runImpl(`${E}:t${t.n}:impl`)
@@ -1695,7 +1700,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
-        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1 + completionInRange, `${start}..HEAD`),
+        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : 1 + completionInRange + startedInRange, `${start}..HEAD`),
         { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
       if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)

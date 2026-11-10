@@ -18,11 +18,12 @@ const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta'
 
 // The Workflow runtime's resume cache: an agent() call is keyed on (prompt, opts, previous key); while every call so far
 // matched, a completed call returns its journaled result without running; the first miss and every call after it run live.
-// start(killAt) begins one invocation; killAt names the label at which the process dies (that call and later ones never finish).
+// start(killAt, ranFirst) begins one invocation; killAt (a label or a RegExp) is where the process dies: that call never finishes
+// (with ranFirst it runs, so its side effects happen, but its result is never journaled) and later calls never run.
 function makeJournal() {
   const results = new Map();
   return {
-    start(killAt) {
+    start(killAt, ranFirst = false) {
       let prev = '', live = false, dead = false;
       const cached = [];
       return {
@@ -33,7 +34,7 @@ function makeJournal() {
           prev = key;
           if (!live && results.has(key)) { cached.push(o.label); return results.get(key); }
           live = true;
-          if (o.label === killAt) { dead = true; throw new Error('process killed'); }
+          if (killAt instanceof RegExp ? killAt.test(o.label) : o.label === killAt) { if (ranFirst) await run(); dead = true; throw new Error('process killed'); }
           const v = await run();
           if (!dead) results.set(key, v);
           return v;
@@ -60,12 +61,14 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
+    // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
+    if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
@@ -2060,12 +2063,80 @@ test('B4: without a runToken the progress read may be a cached result, so an aut
   assert.match(x.r.results[0].error, /runToken/);
 });
 
+test('B4/I1: a kill after the merge of E3, then a resume with the same cache: the fresh discovery sees the merge and the unfinished-merge guard fires', async () => {
+  const git = { e3merged: false };
+  const cards = () => [git.e3merged ? card('E3', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm1' }) : card('E3'), card('E4')];
+  const merges = (l) => { if (l === 'E3:merge') git.e3merged = true; return undefined; };
+  const j = makeJournal();
+  await exec({ cards, deliverables: ['E3'], args: { runToken: 'pf-1' }, over: merges, journal: j.start(/^E3:merge-gates1/) }).catch(() => null);
+  assert.ok(git.e3merged, 'E3 merged before the kill');
+  const x = await exec({ cards, deliverables: ['E4'], args: { runToken: 'pf-2' }, over: merges, journal: j.start() });
+  assert.ok(x.labels.includes('discovery'), 'the discovery runs live');
+  const act = x.r.operatorActions.find((o) => o.kind === 'unfinished-merge');
+  assert.ok(act, 'unfinished-merge');
+  assert.equal(act.deliverable, 'E3');
+  assert.ok(!x.labels.some((l) => /^E4:/.test(l)), 'E4 does not start on an unvalidated target');
+});
+
+// I2: a guard in the implementer itself, for a resume whose prefix (launch mark included) all came from the cache.
+const startedRepo = (git) => (l, p) => {
+  if (l === 'E1:t1:launching') { git.marks.push('launching'); return { ok: true, head: 'L' + git.marks.length }; }
+  if (l === 'E1:progress') return { head: 'h9', clean: true, done: [], awaitingPerson: [], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] };
+  if (l === 'E1:t1:impl') {
+    assert.match(p, /FIRST, before anything else: in integracao\/x\.\.HEAD, if a commit whose subject starts "E1 T1 started" is newer than the newest one starting "E1 T1 launching", return NEEDS_HUMAN/);
+    if (git.marks.lastIndexOf('started') > git.marks.lastIndexOf('launching')) return { status: 'NEEDS_HUMAN', summary: 'the effect may have started in an earlier run', checks: [], humanInputs: [{ what: 'did the effect run?' }] };
+    git.marks.push('started');
+    if (git.dieBeforeEffect) return { status: 'DONE', summary: 'unreachable', checks: [] };
+    git.effects += 1;
+    return { status: 'DONE', summary: 'published', checks: [] };
+  }
+  return undefined;
+};
+
+test('B4/I2: a resume with the SAME token as the dead run: the implementer finds its own started mark and stops, no second effect', async () => {
+  const git = { marks: [], effects: 0 };
+  const j = makeJournal();
+  await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start('E1:t1:impl', true) }).catch(() => null);
+  assert.equal(git.effects, 1);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start() });
+  assert.equal(git.effects, 1, 'no second effect');
+  assert.ok(!x.labels.includes('E1:t1:launching'), 'the launch mark came from the cache');
+  assert.equal(x.r.results[0].failKind, 'humano');
+  assert.ok(x.r.operatorActions.some((o) => o.kind === 'human-input'));
+  assert.ok(!x.labels.includes('E1:merge'));
+});
+
+test('B4/I2: a death after the launch mark but before started relaunches with the same token, and the effect runs once', async () => {
+  const git = { marks: [], effects: 0 };
+  const j = makeJournal();
+  await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start('E1:t1:impl') }).catch(() => null);
+  assert.deepEqual(git.marks, ['launching']);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: both(withPlan(ext1), startedRepo(git)), journal: j.start() });
+  assert.equal(git.effects, 1);
+  assert.equal(x.r.results[0].merged, true);
+});
+
+test('B4/I2: the started mark is a launch mark for the progress read, bookkeeping for the reviews, and counts in the review range', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1) });
+  const p = x.calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.match(p, /take the newest commit[^\n]*"E1 T<n> started"/);
+  assert.match(p, /launchOpen = the n whose newest such commit starts "E1 T<n> launching", "E1 T<n> started"/);
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1 T1 started"/);
+  // launch mark .. HEAD holds started + the task commit + the completion mark: two commits are a defect, three pass.
+  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  assert.ok(two.labels.includes('E1:t1:spec-fix1'));
+  const three = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (/^E1:t1:(spec|quality)1$/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 } : undefined)) });
+  assert.ok(!three.labels.includes('E1:t1:spec-fix1'));
+  assert.equal(three.r.results[0].merged, true);
+});
+
 test('B4: the runToken never comes back in resume args, so a resume must take a fresh one from its preflight', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, launchOpen) });
   assert.equal(!!x.r.resumeArgs && 'runToken' in x.r.resumeArgs, false);
   for (const o of x.r.operatorActions) assert.equal(!!o.resumeWith && 'runToken' in o.resumeWith, false, o.kind);
-  assert.match(x.calls.find((c) => c.label === 'E1:progress').prompt, /pf-test/);
-  assert.ok(x.calls.filter((c) => c.label !== 'E1:progress').every((c) => !c.prompt.includes('pf-test')), 'the token is only in the progress read');
+  assert.equal(x.labels[0], 'discovery');
+  assert.match(x.calls[0].prompt, /pf-test/);
+  assert.ok(x.calls.slice(1).every((c) => !c.prompt.includes('pf-test')), 'the token is only in the discovery read (the first agent call)');
 });
 
 test('N7: an open launch mark stops even when the awaiting list or the done list also name the task', async () => {
