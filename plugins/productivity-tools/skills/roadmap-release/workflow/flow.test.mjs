@@ -688,7 +688,7 @@ test('authorized external task runs and the authorization survives fix rounds', 
   assert.ok(labels.includes('E1:t2:spec-fix1'));
   assert.equal(ext(r).length, 0);
   const fix = calls.find((c) => c.label === 'E1:t2:spec-fix1').prompt;
-  assert.match(fix, /The external effect of this task already ran \(mark "E1 T2: external effect completed"\): do not run it again, not even through its duplicate check; checks only read\. If this fix needs the effect run again, return NEEDS_HUMAN/);
+  assert.match(fix, /The external effect of this task already ran \((the implementer reported it done)\): do not run it again, not even through its duplicate check; checks only read\. If this fix needs the effect run again, return NEEDS_HUMAN/);
   assert.doesNotMatch(fix, /perform the effect at most once/);
   assert.doesNotMatch(fix, /\$\{/);
   assert.match(calls.find((c) => c.label === 'E1:t2:impl').prompt, /checks outbox\.log first/);
@@ -1322,9 +1322,9 @@ test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at 
   assert.equal(x.r.results[0].merged, false);
   assert.equal(x.r.results[0].failKind, 'humano');
   const act = x.r.operatorActions.find((o) => o.kind === 'human-input');
-  assert.match(act.what, /task 1.*fix round needs a person.*may already have happened.*fix key/);
+  assert.match(act.what, /task 1.*fix round needs a person.*reported the external effect done.*fix key/);
   assert.match(act.doNow, /before repeating it.*checks outbox\.log first/);
-  assert.match(x.r.results[0].error, /may already have happened/);
+  assert.match(x.r.results[0].error, /reported the external effect done/);
   for (const t of [act.what, act.doNow, x.r.results[0].error, x.calls.find((c) => c.label === 'E1:t1:awaiting-person').prompt]) assert.doesNotMatch(t, /did not complete/);
   assert.ok(!x.labels.includes('E1:t1:spec2'));
   assert.ok(!x.labels.includes('E1:t1:quality1'));

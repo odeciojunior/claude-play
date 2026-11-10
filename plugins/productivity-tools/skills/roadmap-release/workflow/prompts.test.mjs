@@ -238,8 +238,10 @@ test('externalNote: an authorized external task runs in the deliverable worktree
 test('SKILL.md: the authorization message names the git show; the resume takes the items from the operator actions; reportPath null is handled', () => {
   const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'SKILL.md'), 'utf8');
   assert.match(skill, /End the authorization message with one sentence, in the person's language, that names the exact command with the real values/);
-  assert.match(skill, /come from the `resumeWith` of the authorized `authorize-external` actions in the report's operator actions/);
+  assert.match(skill, /are the union of the `resumeWith` of the authorized `authorize-external` actions, never taken from a summary/);
   assert.doesNotMatch(skill, /Resume args/);
-  assert.match(skill, /or `reportPath` was not null and the report is unavailable, ask again/);
-  assert.match(skill, /When `reportPath` is null, leave that sentence out and resume with the `resumeWith` of the result in this conversation; if that result is no longer in context \(after a compaction\), ask again/);
+  assert.match(skill, /While the Workflow result is still in this conversation it is the source and the report .{0,80}only a check: if they diverge, resume with the result and report the divergence\. After a compaction the report is the source\./);
+  assert.match(skill, /With no source \(the report unavailable although `reportPath` was not null, or `reportPath` null and the result out of context\), resume with the short items the person approved by name \(`E<n>:T<m>`, `E<n>:AC<k>`, `gate:<id>`, `checkout:<target>`\), which bind to the current plan on first use/);
+  assert.match(skill, /When `reportPath` is null, leave that sentence out/);
+  assert.doesNotMatch(skill, /ask again\. When|compaction\), ask again/);
 });
