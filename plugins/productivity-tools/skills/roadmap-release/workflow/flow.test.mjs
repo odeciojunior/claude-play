@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
@@ -15,12 +16,40 @@ const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'uni
 const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
+// The Workflow runtime's resume cache: an agent() call is keyed on (prompt, opts, previous key); while every call so far
+// matched, a completed call returns its journaled result without running; the first miss and every call after it run live.
+// start(killAt) begins one invocation; killAt names the label at which the process dies (that call and later ones never finish).
+function makeJournal() {
+  const results = new Map();
+  return {
+    start(killAt) {
+      let prev = '', live = false, dead = false;
+      const cached = [];
+      return {
+        cached,
+        call: async (prompt, o, run) => {
+          if (dead) throw new Error('process killed');
+          const key = createHash('sha256').update(JSON.stringify([prev, prompt, o])).digest('hex');
+          prev = key;
+          if (!live && results.has(key)) { cached.push(o.label); return results.get(key); }
+          live = true;
+          if (o.label === killAt) { dead = true; throw new Error('process killed'); }
+          const v = await run();
+          if (!dead) results.set(key, v);
+          return v;
+        },
+      };
+    },
+  };
+}
+
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
-async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null } }) {
+async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
   const lastAc = {};
+  const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
   // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
-  const agent = async (prompt, o) => {
+  const liveAgent = async (prompt, o) => {
     const v = await answerOf(prompt, o);
     const id = (/^(E\d+):/.exec(o.label) || [])[1];
     if (/:plan(-fix\d+)?$/.test(o.label) && v && v.ac) lastAc[id] = v.ac;
@@ -69,7 +98,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', ...args },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', ...args },
     agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -1986,6 +2015,57 @@ test('N7: a crash between the effect and the commit stops and asks on resume, wi
   assert.match(act.doNow, /"E1 T1: external effect completed"/);
   assert.match(act.doNow, /"E1 T1 awaiting person: confirmed not run"/);
   assert.deepEqual(act.resumeWith.authorizeExternal, ['E1:T1@' + fpOf(ext1)]);
+});
+
+// ---- B4: the process dies after the launch mark and the resume replays the cache of the dead run
+test('B4: kill after the launch mark, resume with the same cache: a fresh read stops for a person, nothing runs or commits again', async () => {
+  const git = { launched: false, completed: false };
+  const repo = (l) => {
+    if (l === 'E1:t1:launching') { git.launched = true; return { ok: true, head: 'L1' }; }
+    if (l === 'E1:progress') {
+      return { head: git.launched ? 'L1' : 'h9', clean: true, done: git.completed ? [{ n: 1, firstParent: 'L1', last: 'C1' }] : [], awaitingPerson: [],
+        launchOpen: git.launched && !git.completed ? [1] : [], effectMayHaveRun: [], effectCompleted: git.completed ? [1] : [] };
+    }
+    return undefined;
+  };
+  const j = makeJournal();
+  // Run 1: authorized, writes the launch mark, dies while the implementer runs.
+  await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-1' }, over: withPlan(ext1, repo), journal: j.start('E1:t1:impl') }).catch(() => null);
+  assert.ok(git.launched, 'the launch mark was written before the kill');
+  // Run 2: same script, same args, same cache; only the preflight of this call is new.
+  const s2 = j.start();
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-2' }, over: withPlan(ext1, repo), journal: s2 });
+  assert.ok(x.labels.includes('E1:progress'), 'the progress read runs live, not from the cache');
+  assert.ok(!x.labels.includes('E1:t1:launching') && !s2.cached.includes('E1:t1:launching'), 'the launch step is not reached');
+  assert.ok(!x.labels.includes('E1:t1:impl'), 'no new implementer');
+  assert.ok(!x.labels.some((l) => /^E1:(review-log|awaiting-person|t1:effect-completed)/.test(l)), 'no commit on the branch');
+  assert.equal(x.r.results[0].failKind, 'humano');
+  const act = x.r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.match(act.what, /task 1/);
+  assert.match(act.doNow, /"E1 T1: external effect completed"/);
+  // Run 3: the person confirmed the effect with the completion mark.
+  git.completed = true;
+  const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: 'pf-3' }, over: withPlan(ext1, repo), journal: j.start() });
+  assert.ok(!y.labels.includes('E1:t1:impl') && !y.labels.includes('E1:t1:launching'));
+  assert.match(y.calls.find((c) => c.label === 'report').prompt, /"item":"E1:T1"[^\n]*"status":"confirmed by mark"/);
+  assert.match(y.calls.find((c) => c.label === 'E1:review-log').prompt, /External effects run[\s\S]*"status":"confirmed by mark"/, 'the branch review log records it (B.L5 greps docs/)');
+  assert.equal(y.r.results[0].merged, true);
+});
+
+test('B4: without a runToken the progress read may be a cached result, so an authorized external task is not launched', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: undefined }, over: withPlan(ext1) });
+  assert.ok(!x.labels.includes('E1:t1:launching'));
+  assert.ok(!x.labels.includes('E1:t1:impl'));
+  assert.equal(x.r.results[0].failKind, 'infra');
+  assert.match(x.r.results[0].error, /runToken/);
+});
+
+test('B4: the runToken never comes back in resume args, so a resume must take a fresh one from its preflight', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, launchOpen) });
+  assert.equal(!!x.r.resumeArgs && 'runToken' in x.r.resumeArgs, false);
+  for (const o of x.r.operatorActions) assert.equal(!!o.resumeWith && 'runToken' in o.resumeWith, false, o.kind);
+  assert.match(x.calls.find((c) => c.label === 'E1:progress').prompt, /pf-test/);
+  assert.ok(x.calls.filter((c) => c.label !== 'E1:progress').every((c) => !c.prompt.includes('pf-test')), 'the token is only in the progress read');
 });
 
 test('N7: an open launch mark stops even when the awaiting list or the done list also name the task', async () => {

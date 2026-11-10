@@ -5,6 +5,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, isAbsolute, relative, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const KINDS = ['exit', 'tests'];
@@ -370,7 +371,9 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
       else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
-  return { configPath, generated, errors, missingRules: missing, warnings, config };
+  // New on every call, never inside config: the workflow puts it in its progress read so a resume reads git again instead of a cached answer.
+  const runToken = `${new Date().toISOString()}-${randomBytes(6).toString('hex')}`;
+  return { configPath, generated, errors, missingRules: missing, warnings, config, runToken };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

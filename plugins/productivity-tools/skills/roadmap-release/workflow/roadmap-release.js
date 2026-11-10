@@ -23,6 +23,8 @@ export const meta = {
 //
 // ARGS (all optional except config)
 //   config: release config validated by preflight.mjs (gates, install, setup, locks, projectContext, conflictRules...)
+//   runToken: from the preflight of this call, new each time; only in the progress read, so a resume never takes a cached
+//     answer for git; never returned in resumeArgs/resumeWith. Without it no authorized external task is launched
 //   deliverables: string[] | "next" | "ready" | "all" (default "next")
 //   phase, priority, track: filters on card attributes
 //   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>")
@@ -765,7 +767,11 @@ function dropConsumedNotes(args, consumed) {
 // </pure>
 
 // ---------------------------------------------------------------- args and config
-const A = args || {}
+// runToken comes fresh from each preflight. On a resume (resumeFromRunId) the runtime returns cached results for the
+// unchanged prefix of agent() calls, so a git read would repeat what the dead run saw: the token makes the progress read
+// differ on every invocation. It never goes back into resume args, so a resume cannot reuse an old one.
+const { runToken: RUN_TOKEN_ARG, ...A } = args || {}
+const RUN_TOKEN = typeof RUN_TOKEN_ARG === 'string' ? RUN_TOKEN_ARG.trim() : ''
 const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
 const asList = v => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v])
 const CFG = A.config
@@ -1540,7 +1546,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const mayHaveRunMark = n => `${E} T${n} awaiting person (effect may have run)`
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
   const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
+  // The run token makes this read run live on every invocation: a cached answer could hide a launch mark written after it.
+  const prog = await agent(`Read-only. Run token: ${RUN_TOKEN || 'none'} (only makes this read run again on every invocation; ignore it). In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -1566,7 +1573,10 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     for (const t of doubtful) op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} was launched and no conclusion was recorded: its external effect may or may not have happened, and nothing was run again`,
       `Check whether the effect happened (externalDedupe: ${t.externalDedupe || 'none declared'}). If it did, add an empty commit on ${br} with the subject "${effectDone(t.n)}"; the task then counts as done and goes to review. If you confirmed it did not, add an empty commit with the subject "${confirmedNotRun(t.n)}"; the task then runs again. Then run with this resumeWith. Without one of those commits the run stops here again.`,
       { ...A, authorizeExternal: boundItems(E), deliverables: [E] })
-    return fail('humano', `external task ${doubtful[0].n} was launched with no recorded conclusion: its external effect may have happened`)
+    // Nothing is written on the branch while the effect is in doubt (not even the review log): the open mark stays the newest commit for the person to judge.
+    out.error = `external task ${doubtful[0].n} was launched with no recorded conclusion: its external effect may have happened`
+    out.failKind = 'humano'; out.branch = br; out.worktree = wt
+    return out
   }
   const opTasks = held => {
     for (const h of held) op('authorize-external', E, `task ${h.x.n} ("${h.x.title}") of ${E} is external and not authorized: it was not run`,
@@ -1644,6 +1654,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       if (authorizedExt) {
+        // Without a run token the progress read above may be the cached answer of a dead run, blind to its launch mark.
+        if (!RUN_TOKEN) return fail('infra', `task ${t.n}: no runToken, so the progress read may be a cached result of an earlier invocation that cannot see an open launch mark; the external task was not started. Run preflight again and pass its runToken`)
         // Durable proof that the effect may have started, written before it can start: without it the implementer does not run.
         const m = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${launchSubject(t.n)}". Change nothing else. Return ok = true only if that commit is now HEAD, and head = git -C "${wt}" rev-parse HEAD.`,
           { label: `${E}:t${t.n}:launching`, phase: 'Implementation', schema: S_LAUNCH, model: 'haiku', effort: 'low' }))

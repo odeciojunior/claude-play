@@ -211,6 +211,16 @@ test('runPreflight --ref falls back to regeneration when the ref has no config',
   assert.equal(runPreflight(dir, { home, ref: 'no-such-branch' }).generated, true);
 });
 
+test('B4: every preflight gives a new runToken, outside config (config may be committed)', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const a = runPreflight(dir, { home, ref: 'rel' });
+  const b = runPreflight(dir, { home, ref: 'rel' });
+  assert.match(a.runToken, /\S{8,}/);
+  assert.notEqual(a.runToken, b.runToken);
+  assert.equal('runToken' in a.config, false);
+});
+
 test('runPreflight reads settings from CLAUDE_CONFIG_DIR when given', () => {
   const { dir } = repoWithRoadmap(true);
   const home = mkdtempSync(join(tmpdir(), 'home-'));
