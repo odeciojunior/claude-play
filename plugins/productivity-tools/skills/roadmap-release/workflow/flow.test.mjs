@@ -2194,6 +2194,9 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
   assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /`external: true`; "not a task of this plan" does not apply to it/);
   assert.match(calls.find((c) => c.label === 'E1:spec-review1').prompt, /a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target \(defeito\)/);
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
+  const planP = calls.find((c) => c.label === 'E1:plan').prompt;
+  assert.match(planP, /only reads a local file outside the branch[^\n]*is not external; when in doubt, true/);
+  assert.equal((planP.match(/only reads a local file outside the branch/g) || []).length, 2, 'task rule and evidence-row rule');
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.ok(calls.some((c) => /No task of the plan runs there: every task runs in the deliverable worktree before the merge \(the workflow's own merge, post-merge gates and docs stages run in the integration worktree\)/.test(c.prompt)), 'briefing');
 });
