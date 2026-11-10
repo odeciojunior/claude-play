@@ -495,7 +495,7 @@ Review of ${spec ? 'SPEC COMPLIANCE' : 'CODE QUALITY'} (read-only; do not trust 
 Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.${ctx.rangeNote || ''}
 ${spec
     ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
-    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block (or the file it points to)), a fragile test. Also confirm there is no regression against the spec.'}
+    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block, or the file it points to), a fragile test. Also confirm there is no regression against the spec.'}
 IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). You hold no lock: do not re-run a check that needs a resource protected by a shared lock; judge it from the reported output. Do not re-run a check with an external effect (production, deploy, push, e-mail or message, shared data, someone's checkout); judge it from the reported output too. Implementer summary: ${(impl && impl.summary) || '(none)'}
 ${fmtChecks(impl && impl.checks)}
 Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them; ${repeatRule()}):\n${ctx.prev}` : ''}
