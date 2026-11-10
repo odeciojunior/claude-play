@@ -371,9 +371,10 @@ function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
 }
 // What the script itself verifies about a review: blocking issues plus a commit in the range and a clean tree.
-function reviewTruth(r, minCommits, label) {
+// marks = how many of minCommits are bookkeeping marks (started, completion), named in the finding so a fix does not invent a commit.
+function reviewTruth(r, minCommits, label, marks = 0) {
   const iss = [...blocking(r)]
-  if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `fewer commits than expected in the range (${label}: ${r.commitsInRange} < ${minCommits}; the started and completion marks count)` })
+  if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `fewer commits than expected in the range (${label}: ${r.commitsInRange} < ${minCommits}${marks > 0 ? '; the started and completion marks count; missing a started or completion mark?' : ''})` })
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
@@ -471,9 +472,10 @@ function externalNote(authorizedExternal, task, mark) {
     ? `${first}This task is external and the person AUTHORIZED it (authorizeExternal): perform the effect at most once, first applying its duplicate check: ${task.externalDedupe}. That authorization is already given: do not return a humanInput asking for it. If you need a person, return NEEDS_HUMAN and say in the summary whether the effect started; report DONE or DONE_WITH_CONCERNS only when the effect finished. Run it from the deliverable worktree you work in: the integration worktree does not have this branch's code until the merge. Before the effect, only read (the duplicate check is a read); never run the effect command itself, nor a script that runs it against the real target, as a pre-check or a test. Tests on a fixture or a fake target are not the effect.`
     : 'Do NOT perform any external effect in this task.'
 }
-// A task whose plan lists no file makes no commit of its own: only marks may be in its review range.
+// A task whose plan says it changes no file and makes no commit (noCommit, checked by the plan review, and an empty files list)
+// makes no commit of its own: only marks may be in its review range. An empty list alone may be a reading failure.
 function noFiles(task) {
-  return !!task && Array.isArray(task.files) && task.files.length === 0
+  return !!task && task.noCommit === true && Array.isArray(task.files) && task.files.length === 0
 }
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
@@ -910,7 +912,7 @@ const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_PLAN = { type: 'object', properties: { planPath: STR, planBlob: STR, roadmapHeader: BOOL, reused: BOOL,
   ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR, external: BOOL, externalDedupe: STR }, required: ['ac', 'kind'] } },
-  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR }, required: ['n', 'title', 'tier', 'external'] } } }, required: ['planPath', 'planBlob', 'tasks'] }
+  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR, noCommit: { ...BOOL, description: 'true only when the plan file says this task changes no file and makes no commit' } }, required: ['n', 'title', 'tier', 'external', 'noCommit'] } } }, required: ['planPath', 'planBlob', 'tasks'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
 const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR,
   evidenceRows: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, blq: STR, external: BOOL }, required: ['ac', 'kind'] } } },
@@ -1170,6 +1172,8 @@ Never write or quote a credential, token or key from the owner instruction in an
   let spec = null, plan = null
   let specRef = null, planRef = null  // null while recovering an interrupted merge
   let setupOk = false  // the worktree exists: only then can the review log be written there
+  // Fixers outside the spec and plan stages: an approved spec or plan is never edited to make a finding go away.
+  const noSpecEdit = () => `Never edit the spec${specRef ? ' ' + specRef : ''} or the plan${planRef ? ' ' + planRef : ''} to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns.`
   const fmtRisk = x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
@@ -1283,12 +1287,12 @@ Commit only that file ("${E}: external effects of the acceptance evidence"). Ret
 Integration worktree ${INTWT} (branch ${TARGET}). ${lockNote(TASK_LOCKS)} The post-merge gates of ${E} failed:
 ${g.summary}
 Failing output: ${String(g.m.log || '').slice(0, 3000)}
-Use superpowers:systematic-debugging; fix on ${TARGET} with a test and commit "${E} merge-fix: ...". Do not mask failures.`,
+Use superpowers:systematic-debugging; fix on ${TARGET} with a test and commit "${E} merge-fix: ...". Do not mask failures. ${noSpecEdit()}`,
         { label: `${E}:merge-fix`, phase: 'Merge', schema: S_IMPL, model: 'sonnet', effort: 'medium' }))
       if (!fx || fx.status === 'BLOCKED') return onBad(`post-merge fix ${fx ? 'BLOCKED: ' + fx.summary : 'null'}`, fx ? 'conteudo' : 'infra')
       const rr = await agent(`${Cn()}
 
-Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, introducing a defect. Measure headSha, clean, commitsInRange.`,
+Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, introducing a defect, an edit to the spec or the plan. Measure headSha, clean, commitsInRange.`,
         { label: `${E}:merge-fix-review`, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'medium' })
       if (!rr || blocking(rr).filter(i => isHard(i, blqIds)).length) return onBad(`post-merge fix rejected: ${rr ? fmt(blocking(rr)) : 'null agent'}`, rr ? 'conteudo' : 'infra')
       const riskFrom = out.acceptedRisks.length
@@ -1476,7 +1480,7 @@ ${acTxt}
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files (an empty list only when the plan says the task changes no file and makes no commit), tier, reviewTier, needsLock, external, externalDedupe).`,
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files (copied from the plan's file list for the task), noCommit (true only when the plan file says, in words, that the task changes no file and makes no commit, e.g. "Files: none"; false otherwise, and false when unsure), tier, reviewTier, needsLock, external, externalDedupe).`,
     { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus', effort: 'medium' })
   if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
   const planGaps = () => {
@@ -1500,8 +1504,8 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
-Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; an external effect that the card or the spec requires (a delivery, a send, a deploy) and that no task declared external performs (defeito, critical); a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target (defeito, critical); a canonical gate changed (decisao, critical).
-THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external flags decide what is held, so compare each one with the plan file, and a flag that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${hideRowGaps(prev) ? `\nIssues from the previous round (${repeatRule()}):\n${hideRowGaps(prev)}` : ''}
+Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; a task with noCommit true whose steps change or commit a file; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; an external effect that the card or the spec requires (a delivery, a send, a deploy) and that no task declared external performs (defeito, critical); a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target (defeito, critical); a canonical gate changed (decisao, critical).
+THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${hideRowGaps(prev) ? `\nIssues from the previous round (${repeatRule()}):\n${hideRowGaps(prev)}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan agent; and evidenceRows = every row of the "## Acceptance criteria evidence" section, read from the output of git -C "${wt}" show <measuredPlanBlob>, in order: ac (the criterion id alone), kind, command (the exact text of the row, with a table-escaped \\| written as |; none for human or blocked), blq, external (the boolean the row declares). The script compares these rows with the rows it would run, so list only what you read in that output, even if a previous issue names another row.`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus', effort: 'medium' }),
     async (iss, k, tier) => {
@@ -1704,7 +1708,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
-        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`),
+        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`, impl.status === 'NEEDS_HUMAN' ? 0 : completionInRange + startedInRange),
         { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
       if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
@@ -1752,7 +1756,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
       const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
 
 FINAL REVIEW OF THE WHOLE BRANCH (mandatory; read-only), lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD (branch already synced with the target).
-Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}` : ''}
+Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}\nBlocks (defeito): an edit to the spec or the plan made by a fix round.` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
         { label: `${E}:final-${li + 1}-r${round}`, phase: 'Final review', schema: S_REVIEW, model: 'opus', effort: 'high' })))
       if (rs.some(x => !x)) return null
@@ -1760,7 +1764,7 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
     },
     (iss, k, tier) => withLocks(planLocks, () => agent(`${C()}
 
-Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} If you disagree technically, do not apply the item and explain in concerns.
+Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()} If you disagree technically, do not apply the item and explain in concerns.
 ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IMPL, model: tier, effort: effortFor(tier) })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
     { tier: 'sonnet', reviewModel: 'opus' })
@@ -1822,7 +1826,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
       const preFix = g.m.headSha
       const fx = await withLocks(planLocks, () => agent(`${C()}
 
-${lockNote(planLocks)} The gates failed against the baseline:
+${lockNote(planLocks)} ${noSpecEdit()} The gates failed against the baseline:
 ${failText}
 Failing output: ${String(g.m.log || '').slice(0, 3000)}
 Use superpowers:systematic-debugging: root cause, a fix with a test when it is a defect, run the failed gate again and commit "${E} gates-fix: ...". A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.${externalEvidenceNote()}`,
@@ -1832,7 +1836,7 @@ Use superpowers:systematic-debugging: root cause, a fix with a test when it is a
       if (fx.concerns) out.concerns.push(`${tag}gates-fix${k + 1}: ${fx.concerns}`)
       const rr = await agent(`${C()}
 
-Review (read-only) the gates fix: git -C "${wt}" diff ${preFix}..HEAD. Blocks (defeito): a fix that masks a test, relaxes an assertion, skips a suite, edits the baseline or introduces a defect. Measure headSha, clean, commitsInRange (git rev-list --count ${preFix}..HEAD).`,
+Review (read-only) the gates fix: git -C "${wt}" diff ${preFix}..HEAD. Blocks (defeito): a fix that masks a test, relaxes an assertion, skips a suite, edits the baseline or introduces a defect, an edit to the spec or the plan. Measure headSha, clean, commitsInRange (git rev-list --count ${preFix}..HEAD).`,
         { label: `${E}:${tag}gates-fix${k + 1}-review`, phase: 'Gates', schema: S_REVIEW, model: 'opus', effort: 'medium' })
       if (!rr) return { ok: false, kind: 'infra', msg: 'gates fix review: null agent' }
       if (blocking(rr).filter(i => isHard(i, blqIds)).length) return { ok: false, kind: 'conteudo', msg: `gates fix rejected: ${fmt(blocking(rr))}` }

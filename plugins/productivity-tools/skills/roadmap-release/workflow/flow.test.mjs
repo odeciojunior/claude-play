@@ -2099,14 +2099,14 @@ const startedRepo = (git) => (l, p) => {
 // B5: a task whose plan lists no file makes no commit of its own; only the marks may be in its range.
 const rev = (n) => ({ issues: [], headSha: 'h1', clean: true, commitsInRange: n });
 test('B5: an external task with no files passes with only its started and completion marks in the range, no fix round', async () => {
-  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan([tk(1, true, { files: [] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(2) : undefined)) });
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan([tk(1, true, { files: [], noCommit: true })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(2) : undefined)) });
   assert.ok(!x.labels.some((l) => /^E1:t1:.*fix/.test(l)), x.labels.join(','));
   assert.equal(x.r.results[0].merged, true);
   assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /changes no file: make no commit of your own/);
 });
 
 test('B5: a local task with no files passes with an empty range; a task with files still needs its own commit', async () => {
-  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: [] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : undefined)) });
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: [], noCommit: true })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : undefined)) });
   assert.ok(!none.labels.some((l) => /^E1:t1:.*fix/.test(l)));
   const some = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: ['src/a.js'] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   assert.ok(some.labels.includes('E1:t1:spec-fix1'));
@@ -2117,8 +2117,55 @@ test('B5: the count finding says what was expected, marks included, and a task f
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
     over: withPlan(ext1, (l, p) => (/^E1:t1:spec1$/.test(l) ? rev(1) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   fixIssue = x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
-  assert.match(fixIssue, /fewer commits than expected in the range \(L1\.\.HEAD: 1 < 3; the started and completion marks count\)/);
+  assert.match(fixIssue, /fewer commits than expected in the range \(L1\.\.HEAD: 1 < 3; the started and completion marks count; missing a started or completion mark\?\)/);
   assert.match(fixIssue, /Never edit the spec or the plan to satisfy a finding/);
+});
+
+// Review 3, I-1: an empty files list alone may be a reading failure; only an explicit noCommit lowers the minimum.
+test('R3/I-1: files [] without noCommit still needs its own commit and the implementer is told to commit', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false, { files: [] })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(0) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  assert.ok(x.labels.includes('E1:t1:spec-fix1'));
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /Commit "E1 T1: \.\.\."/);
+});
+
+test('R3/I-1: noCommit is required in the plan schema, asked of the plan agent and checked by the plan review', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = x.calls.find((c) => c.label === 'E1:plan');
+  assert.ok(p.opts.schema.properties.tasks.items.required.includes('noCommit'));
+  assert.match(p.prompt, /noCommit \(true only when the plan file says, in words, that the task changes no file and makes no commit, e\.g\. "Files: none"; false otherwise, and false when unsure\)/);
+  const r = x.calls.find((c) => c.label === 'E1:plan-review1').prompt;
+  assert.match(r, /these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect/);
+  assert.match(r, /a task with noCommit true whose steps change or commit a file/);
+});
+
+// Review 3, I-2: no fixer edits the approved spec or plan to satisfy a finding.
+test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and their reviews block it', async () => {
+  let g = 0;
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => {
+      if (l === 'E1:gates1-1' && g++ === 0) return gm('h2', { exit: 1, failedNames: ['new'] });
+      if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+      if (l === 'E1:final-1-r1') return { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 };
+      if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+      return undefined;
+    } });
+  const rule = /Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
+  for (const l of ['E1:gates-fix1', 'E1:final-fix1']) assert.match(x.calls.find((c) => c.label === l).prompt, rule, l);
+  assert.match(x.calls.find((c) => c.label === 'E1:gates-fix1-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
+  assert.match(x.calls.find((c) => c.label === 'E1:final-1-r2').prompt, /Blocks \(defeito\): an edit to the spec or the plan/);
+});
+
+test('R3/I-2: the post-merge fixer may not edit the spec or the plan, and its review blocks it', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (/^E1:merge-gates1/.test(l) ? gm('m1', { exit: 1, failedNames: ['new'] }) : l === 'E1:merge-fix' ? { status: 'DONE', summary: 'x', checks: [] } : undefined) });
+  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
+});
+
+test('R3: the count finding hints at a missing mark when the minimum includes marks', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
+    over: withPlan(ext1, (l) => (/^E1:t1:spec1$/.test(l) ? rev(1) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  assert.match(x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt, /1 < 3; the started and completion marks count; missing a started or completion mark\?\)/);
 });
 
 test('B4/I-A: an implementer BLOCKED for a lock writes nothing, and the impl-lock retry runs the effect exactly once', async () => {
