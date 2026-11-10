@@ -101,7 +101,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', ...args },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', ...args },
     agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -505,7 +505,7 @@ test('I2: discovery returns the raw cell; blocked, discarded and segmented rows 
 test('I3: discovery requires the fields whose absence fails open', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
   const s = calls[0].opts.schema;
-  assert.ok(['repo', 'wtRoot'].every((k) => s.required.includes(k)));
+  assert.ok(s.required.includes('repo'));  // wtRoot comes from the skill (FF/I4)
   assert.ok(['mergeFound', 'acceptance'].every((k) => s.properties.cards.items.required.includes(k)));
 });
 
@@ -520,7 +520,7 @@ test('I3: a card without mergeFound, a selected card without criteria or no repo
   assert.ok(!b.labels.includes('preflight'));
   const open = await exec({ cards: [card('E1'), card('E2', { acceptance: [] })], deliverables: ['E1'], args: { mode: 'dry-run' } });
   assert.notEqual(open.r.status, 'error');
-  for (const discOver of [{ repo: undefined }, { wtRoot: undefined }]) assert.equal((await exec({ cards: [card('E1')], deliverables: ['E1'], discOver })).r.status, 'error');
+  for (const discOver of [{ repo: undefined }]) assert.equal((await exec({ cards: [card('E1')], deliverables: ['E1'], discOver })).r.status, 'error');
 });
 
 test('item 5: discovery without integrationBranch stops the run, with targetBranch develop and no merge', async () => {
@@ -551,7 +551,7 @@ test('item 5: each missing discovery field stops the run', async () => {
 test('item 5: the schema requires the fields', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const req = calls[0].opts.schema.required;
-  for (const f of ['cards', 'repo', 'wtRoot', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker']) assert.ok(req.includes(f), f);
+  for (const f of ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker']) assert.ok(req.includes(f), f);
 });
 
 test('I3: args.repo wins over the discovered repo and stands in for it', async () => {
@@ -1508,7 +1508,7 @@ test('rereview minor 2: a local evidence command adds no such clause', async () 
 test('rereview minor 3: the authorization sentence is conditional on the plan not changing', async () => {
   const tasks = [tk(1, true)];
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T1'] }, over: withPlan(tasks, (l) => (l === 'E1:t1:impl' ? needsHuman : zeroCommits(l))) });
-  assert.match(r.operatorActions.find((o) => o.kind === 'human-input').doNow, /stays valid unless the answer changes the plan/);
+  assert.match(r.operatorActions.find((o) => o.kind === 'human-input').doNow, /stays valid only if the spec and plan files come out unchanged/);
 });
 
 test('minor 6: force does not take an interrupted merge out of FINISH', async () => {
@@ -2059,8 +2059,8 @@ test('B4: without a runToken the progress read may be a cached result, so an aut
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: undefined }, over: withPlan(ext1) });
   assert.ok(!x.labels.includes('E1:t1:launching'));
   assert.ok(!x.labels.includes('E1:t1:impl'));
-  assert.equal(x.r.results[0].failKind, 'infra');
-  assert.match(x.r.results[0].error, /runToken/);
+  assert.equal(x.r.status, 'error');  // FF/M6: stops before discovery
+  assert.match(x.r.error, /runToken/);
 });
 
 test('B4/I1: a kill after the merge of E3, then a resume with the same cache: the fresh discovery sees the merge and the unfinished-merge guard fires', async () => {
@@ -2185,11 +2185,13 @@ test('PF/I2 and M12: the plan orders an external task after the code it ships, a
   assert.match(plan, /Order an external task after every task whose code it ships\./);
   assert.match(plan, /runs again after every gates fix and every late sync/);
   const dir = join(dirname(fileURLToPath(import.meta.url)), '..');
-  for (const f of ['SKILL.md', join('references', 'operator.md')]) {
-    const t = readFileSync(join(dir, f), 'utf8');
-    assert.ok(t.includes('For a task item the question also says that the effect runs on the deliverable branch before its final review, gates and merge, so a later review may reject code that already took effect.'), f);
-    assert.ok(t.includes('it runs again after every gates fix and late sync, after its duplicate check'), f);
-  }
+  const op = readFileSync(join(dir, 'references', 'operator.md'), 'utf8');
+  assert.ok(op.includes('For a task item the question also says that the effect runs on the deliverable branch before its final review, gates and merge, so a later review may reject code that already took effect.'));
+  assert.ok(op.includes('it runs again after every gates fix and late sync, after its duplicate check'));
+  // SKILL.md step 6 keeps the short form and points to operator.md (FF/I3).
+  const skill = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+  assert.ok(skill.includes('A task item runs its effect on the deliverable branch before its final review, gates and merge.'));
+  assert.ok(skill.includes('An `E<n>:AC<k>` item runs again after every gates fix and late sync.'));
 });
 
 test('PF/I3 and M1, M5, M10, M11: the docs point to CLAUDE.md, agree on the fix round, the resume token, the marks and the source rules', () => {
@@ -2239,6 +2241,86 @@ test('PF/M7, M8, M9: report wording for unreviewed entries, one entry per task i
   assert.match(y.r.results[0].error, /its launch mark stays open: before running again add `E1 T1 awaiting person: confirmed not run` if the effect did not start/);
   const z = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   assert.match(z.calls.find((c) => c.label === 'report').prompt, /has not passed review in this run \(it may not have been reviewed yet\)/);
+});
+
+// Fable final review (FF).
+const FF_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ffRead = (f) => readFileSync(join(FF_DIR, f), 'utf8');
+const KEEP_IF_SAME = 'If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.';
+test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fingerprint and the authorization', async () => {
+  const run1 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
+  const hi = run1.r.operatorActions.find((o) => o.kind === 'human-input');
+  assert.match(hi.doNow, /stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again \(pass the bare `E1:T1` in your own message to re-authorize together with the answer\)/);
+  const { config, ...rw } = hi.resumeWith;
+  const reused = (l) => (l === 'E1:spec' ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [], reused: true }
+    : l === 'E1:plan' ? { ...planWith(ext1), reused: true }
+    : l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
+  const run2 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...rw, notes: { E1: 'the key is in DEPLOY_KEY' }, runToken: 'pf-2' }, over: reused });
+  for (const l of ['E1:spec', 'E1:plan']) assert.ok(run2.calls.find((c) => c.label === l).prompt.includes(KEEP_IF_SAME), l);
+  assert.ok(!run2.r.operatorActions.some((o) => o.kind === 'authorize-external'));
+  assert.ok(run2.labels.includes('E1:t1:launching') && run2.labels.includes('E1:t1:impl'));
+  for (const f of ['SKILL.md', join('references', 'operator.md')]) assert.ok(ffRead(f).includes('An answer in `notes` that changes the spec or the plan is a replan: the bound item is dropped and the question comes back.'), f);
+});
+
+const MECH = ['E1:gates1-1', 'E1:regates1-1', 'E1:merge-gates1-1', 'E1:evidence1', 'E1:sync', 'E1:resync', 'E1:merge', 'E1:review-log', 'report'];
+test('FF/I2: mechanical agents get the slim briefing with the rules they act on; deciding agents and docs keep the full one', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { conflictRules: 'regen lockfiles' } });
+  const P = (l) => { const c = x.calls.find((k) => k.label === l); assert.ok(c, l); return c.prompt; };
+  for (const l of MECH) {
+    const p = P(l);
+    assert.match(p, /FIXED RULES \(mechanical stage\):/, l);
+    for (const s of ['NEVER push', 'NEVER use git stash or git add -A', 'Never write or quote a credential, token or key', 'Temporary files only in /wt/_tmp/', 'NEVER perform an external effect', 'only agents told they HOLD a lock', 'Asking the user is FORBIDDEN', 'Conflicts in generated files: regen lockfiles', 'PROJECT:', 'INTEGRATION WORKTREE']) assert.ok(p.includes(s), `${l}: ${s}`);
+    for (const s of ['Reviewers classify each problem', 'Roadmap "do not" restrictions', 'Tracked roadmap in']) assert.ok(!p.includes(s), `${l} has ${s}`);
+  }
+  for (const l of ['E1:spec', 'E1:plan', 'E1:t1:impl', 'E1:t1:spec1', 'E1:final-1-r1', 'E1:docs1']) assert.match(P(l), /FIXED RULES:\n- Tracked roadmap in/, l);
+  assert.ok(ffRead(join('references', 'operator.md')).includes('A resume never uses the Workflow cache'));
+});
+
+test('FF/I3: SKILL.md step 6 is short numbered sub-items pointing to operator.md, which holds the full wording', () => {
+  const skill = ffRead('SKILL.md');
+  const step6 = skill.slice(skill.indexOf('6. **Report.**'));
+  assert.ok(step6.split('\n').every((line) => line.length <= 600), 'no long line in step 6');
+  assert.ok((step6.match(/\n {3}\d\. \*\*/g) || []).length >= 5, 'numbered sub-items');
+  assert.ok(!skill.includes('actions; Deduplicate'));
+  assert.doesNotMatch(skill, /Resume args/);
+  const op = ffRead(join('references', 'operator.md'));
+  for (const s of ['Name a `gate:<id>` item by the gate id and its command', 'Offer any other `resumeWith` to the person and run it only on their go-ahead', 'for `gate:` and `checkout:` items, the `deliverables` of the run being resumed', 'Never answer from memory', 'Before resuming I will run git show']) assert.ok(op.includes(s), s);
+});
+
+test('FF/I4: wtRoot comes from the skill; without it the run stops before discovery, and the discovery no longer guesses it', async () => {
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: undefined } });
+  assert.equal(none.r.status, 'error');
+  assert.match(none.r.error, /wtRoot/);
+  assert.equal(none.labels.length, 0);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
+  assert.doesNotMatch(x.calls[0].prompt, /common parent directory/);
+  assert.ok(!x.calls[0].opts.schema.required.includes('wtRoot'));
+  const skill = ffRead('SKILL.md');
+  assert.ok(skill.includes('`wtRoot`: `<dirname(repo)>/<basename(repo)>-wt`'));
+  assert.ok(skill.includes('checked out somewhere other than `<wtRoot>/_integracao`'));
+  assert.ok(skill.includes('outside `repo` and outside `<wtRoot>`'));
+});
+
+test('FF/M2, M3, M9: resume notes without an answer, preflight output, the human-input row', () => {
+  assert.ok(ffRead('SKILL.md').includes('when the person gives no answer, remove the `notes` entry that still holds `<...>` before resuming'));
+  assert.ok(ffRead(join('references', 'config.md')).includes('{ configPath, generated, errors, missingRules, warnings, config, runToken }'));
+  assert.ok(ffRead(join('references', 'operator.md')).includes('Provide it in `notes` and run again; for an open launch (the `doNow` names an empty commit) write that commit instead.'));
+});
+
+test('FF/M6: an authorized task item without a runToken stops before discovery', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...extArgs, runToken: undefined } });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /runToken/);
+  assert.equal(x.labels.length, 0);
+});
+
+test('FF/M8: a local task that waited for a person closes with a neutral mark, which also clears the wait', async () => {
+  const prog = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], prog) });
+  const m = x.calls.find((c) => c.label === 'E1:t1:clear-awaiting').prompt;
+  assert.match(m, /--allow-empty -m "E1 T1: resumed after awaiting person"/);
+  assert.doesNotMatch(m, /external effect completed/);
+  assert.match(x.calls.find((c) => c.label === 'E1:progress').prompt, /"E1 T<n>: external effect completed" or "E1 T<n>: resumed after awaiting person"/);
 });
 
 test('B4/I-A: an implementer BLOCKED for a lock writes nothing, and the impl-lock retry runs the effect exactly once', async () => {

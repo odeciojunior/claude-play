@@ -39,7 +39,8 @@ export const meta = {
 //   acceptRedBaseline (false): lets the run go on with a red baseline
 //   acceptIntegrityAlerts: { "E18": "<full merge SHA>" } on resume, accepts the hard test-integrity alerts of exactly that merge
 //     of that deliverable (they become a concern); another SHA is ignored. Only read from args, never set by the workflow itself
-//   roadmap, repo, wtRoot, today: detected when absent
+//   wtRoot (required): where the workflow creates its worktrees; the skill passes <dirname(repo)>/<basename(repo)>-wt
+//   roadmap, repo, today: detected when absent
 //   authorizeExternal: ["gate:G3", "E18:T4", "E18:T4@<fp>", "E18:AC1", "E18:AC1@<fp>", "checkout:<target>"]: external effects the owner authorizes (only a person sets it; silence is never authorization).
 //     A bare E18:T4 or E18:AC1 binds to the plan fingerprint on first use; any redone plan invalidates the binding
 //   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
@@ -801,6 +802,10 @@ if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.l
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
 if (unfilledNotes.length) return { status: 'error', error: `notes still hold the template text, without the owner's answer: ${unfilledNotes.join(', ')}` }
+// The worktree root decides where worktrees go and which checkout is the workflow's own: the skill passes it, nothing guesses it.
+if (!A.wtRoot) return { status: 'error', error: 'args.wtRoot is missing: the skill passes <dirname(repo)>/<basename(repo)>-wt (or the folder the user named)' }
+// An authorized task is never launched without a run token: fail before paying for discovery, preflight and the plan.
+if (MODE === 'run' && !RUN_TOKEN && AUTH.items.some(i => /^E\d+:T\d+/.test(i))) return { status: 'error', error: 'runToken is missing: run preflight again and pass its runToken (an authorized external task is never launched without it)' }
 const MAXFIX = intArg(A.maxFixRounds, 2, 0)
 const MAXPAR = CFG.generated ? 1 : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1)  // a generated config may hide a shared resource
 const PREFIX = A.branchPrefix || 'feat/'
@@ -895,7 +900,7 @@ const S_DISC = { type: 'object', properties: {
   blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
   donot: STRS,
   donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
-}, required: ['cards', 'repo', 'wtRoot', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker'] }
+}, required: ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker'] }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
@@ -945,7 +950,7 @@ const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 // The run token is in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
 const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token: ${RUN_TOKEN || 'none'} (only makes this read run again on every invocation; ignore it). Answer with measured data.
 1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
-2. ALL of these fields are REQUIRED: repo, today, wtRoot, roadmapDir, strategy, checker, integrationBranch, integratedStatuses and deliverableStatuses (at least 5 items); never invent a default, return error if one is missing. integratedStatuses and deliverableStatuses come from the vocab of roadmap.config.json.
+2. ALL of these fields are REQUIRED: repo, today, roadmapDir, strategy, checker, integrationBranch, integratedStatuses and deliverableStatuses (at least 5 items); never invent a default, return error if one is missing. integratedStatuses and deliverableStatuses come from the vocab of roadmap.config.json.
 3. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
 4. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
 5. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
@@ -953,12 +958,12 @@ const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token:
 7. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The ancestor rules (mergeCommit or integrationBranch an ancestor of the target) count ONLY when the code segment is finished. A card with several pieces (labels other than "code", like "piece 1: integrated; piece 2: spec") or whose Status is not an integrated or on-branch word is NOT onTarget by those rules, whatever commit its Evidence cites. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 8. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
 9. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
-10. wtRoot: ${A.wtRoot || 'if git worktree list shows worktrees outside the repo, their common parent directory; otherwise <repo parent>/<repo name>-wt'} (with "/").`,
+`,
   { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet', effort: 'medium' })
 if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
 const noMergeFlag = disc.cards.filter(c => typeof c.mergeFound !== 'boolean').map(c => c.id)
 if (noMergeFlag.length) return { status: 'error', error: `discovery failed: mergeFound not reported for ${noMergeFlag.join(', ')}` }
-if (!(A.repo || disc.repo) || !(A.wtRoot || disc.wtRoot)) return { status: 'error', error: 'discovery failed: repo or wtRoot not reported' }
+if (!(A.repo || disc.repo)) return { status: 'error', error: 'discovery failed: repo not reported' }
 for (const f of ['integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'roadmapDir', 'strategy', 'checker']) {
   const v = disc[f]
   if (!v || (Array.isArray(v) && !v.length)) return { status: 'error', error: `discovery failed: ${f} not reported` }
@@ -969,7 +974,7 @@ disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
 
 const TODAY = A.today || disc.today
 const REPO = A.repo || disc.repo
-const WT = String(A.wtRoot || disc.wtRoot).replace(/\/+$/, '')
+const WT = String(A.wtRoot).replace(/\/+$/, '')
 const RM = disc.roadmapDir
 const STRAT = disc.strategy
 const INTEG = disc.integrationBranch
@@ -1027,6 +1032,15 @@ const donotTxt = (disc.donot || []).map(d => `  * ${d}`).join('\n') || '  (none)
 const blockersTxt = (disc.blockers || []).map(b => `${b.id}: ${b.text}`).join('\n') || '(none)'
 const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${lockList(def).length ? `, needs lock ${lockList(def).join('+')}` : ''}): ${def.cmd}`
 const gatesTxt = GATES.map(gateDesc).join('; ')
+// Rule lines shared by the full briefing (COMMON_BASE) and the slim one (COMMON_SLIM_BASE).
+const RULE_GIT = `- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push, except the effect of a task you were told is external and AUTHORIZED. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}, except the integration worktree of the target when the operator authorized checkout:${TARGET}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".`
+const RULE_RM = `- Delivery branches do NOT edit the roadmap folder ${RM} (that is done only in the record and docs stages, on the target).`
+const RULE_CLEAN = `- When done, the working tree must be clean (git status --porcelain empty). Line-ending-only differences: git checkout -- <file>.`
+const RULE_TMP = `- Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; never an unquoted shell heredoc containing backticks.`
+const RULE_PROC = `- Processes: start servers only if the task needs them, in your deliverable's port range; stop everything you started before returning.`
+const RULE_LOCKS = `- Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.`
+const RULE_EXT = `- NEVER perform an external effect (production, deploy, push, sending e-mail or messages, writing shared data, resetting or rolling back someone's checkout) unless your task is marked external and authorized; when in doubt it is external.`
+const RULE_CONFLICT = CFG.conflictRules ? `- Conflicts in generated files: ${CFG.conflictRules}\n` : ''
 const COMMON_BASE = `
 FIXED RULES:
 - Tracked roadmap in ${RM} (strategy: ${STRAT}). Registered decisions (${RM}decisions.md and those cited in the PROJECT block, or the file it points to) are NEVER reopened or contradicted.
@@ -1036,18 +1050,34 @@ ${blockersTxt}
   Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.
 - Roadmap "do not" restrictions (violating any is category decisao, severity critical):
 ${donotTxt}
-- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push, except the effect of a task you were told is external and AUTHORIZED. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}, except the integration worktree of the target when the operator authorized checkout:${TARGET}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".
-- Delivery branches do NOT edit the roadmap folder ${RM} (that is done only in the record and docs stages, on the target).
-- When done, the working tree must be clean (git status --porcelain empty). Line-ending-only differences: git checkout -- <file>.
-- Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; never an unquoted shell heredoc containing backticks.
-- Processes: start servers only if the task needs them, in your deliverable's port range; stop everything you started before returning.
-- Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.
+${RULE_GIT}
+${RULE_RM}
+${RULE_CLEAN}
+${RULE_TMP}
+${RULE_PROC}
+${RULE_LOCKS}
 - Canonical gates: ${gatesTxt}.
 - Reviewers classify each problem with category: defeito (bug or unmet criterion), decisao (contradicts a registered decision), ambiente (limit of the local environment, not of the code; when a roadmap blocker is registered, cite its id in blq), fora-do-escopo (only a PRE-EXISTING problem outside the deliverable), pelo-plano (the plan foresaw it). A defect introduced by this diff is never fora-do-escopo nor pelo-plano. Excess scope is a defect.
-- NEVER perform an external effect (production, deploy, push, sending e-mail or messages, writing shared data, resetting or rolling back someone's checkout) unless your task is marked external and authorized; when in doubt it is external.
+${RULE_EXT}
 - Autonomous decisions follow the recommended option and are recorded for the owner (Origin executor, status pending). Contradicting a registered decision, or changing a canonical gate (its command, kind or threshold), is category decisao, severity critical.
 - Write code and generated artifacts in the language of the roadmap, consistent with the project.
-${CFG.conflictRules ? `- Conflicts in generated files: ${CFG.conflictRules}\n` : ''}PROJECT:
+${RULE_CONFLICT}PROJECT:
+${PROJECT}`
+
+// Mechanical stages (gates, evidence, sync, merge, review log, merge records, report) decide nothing about the roadmap,
+// decisions, scope or review categories: they get only the rules they act on.
+const COMMON_SLIM_BASE = `
+FIXED RULES (mechanical stage):
+${RULE_GIT}
+${RULE_RM}
+- Never write or quote a credential, token or key in any file, commit message, log or report; write 'provided through environment variable <NAME>' instead.
+${RULE_CLEAN}
+${RULE_TMP}
+${RULE_PROC}
+${RULE_LOCKS}
+${RULE_EXT}
+- Asking the user is FORBIDDEN (do not use AskUserQuestion).
+${RULE_CONFLICT}PROJECT:
 ${PROJECT}`
 
 // ---------------------------------------------------------------- preflight
@@ -1103,11 +1133,14 @@ const COMMON = () => `${COMMON_BASE}
 ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
 INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN_ITEM} ${authorized(FOREIGN_ITEM) ? 'authorized by the operator' : 'NOT authorized: do not touch it'})` : 'created by this workflow'}.
 CURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${baseTxt()}`
+const COMMON_SLIM = () => `${COMMON_SLIM_BASE}
+ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
+INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN_ITEM} ${authorized(FOREIGN_ITEM) ? 'authorized by the operator' : 'NOT authorized: do not touch it'})` : 'created by this workflow'}.`
 
 // ---------------------------------------------------------------- gates (numeric, judged by the script)
 // B = baseline to measure against: the branch uses the snapshot taken at its last sync; post-merge uses the live BASE.
 const snapshotBase = () => JSON.parse(JSON.stringify(BASE))
-const gateOnce = (g, dir, label, ph, range) => withLocks(g.locks, () => agent(`${COMMON()}
+const gateOnce = (g, dir, label, ph, range) => withLocks(g.locks, () => agent(`${COMMON_SLIM()}
 
 MEASURE the gates below in ${dir} (fix nothing). ${lockNote(g.locks)} First, BEFORE any command: clean (git status --porcelain empty; line-ending-only differences: git checkout -- <file>) and headSha (git rev-parse HEAD). Install first if a dependency manifest changed${INSTALL ? ` (${INSTALL})` : ''}.
 ${measureTxt(g.defs)}
@@ -1164,6 +1197,8 @@ Never write or quote a credential, token or key from the owner instruction in an
   const C = () => briefing(ctxFor())
   // Briefing without the owner notes, for every stage that writes to a committed record (docs, review log, merge-fix).
   const Cn = () => briefing({ ...ctxFor(), base: baseOf(false) })
+  // Slim briefing of this deliverable, for its mechanical stages (no owner notes: several of them write committed records).
+  const Cs = () => `${COMMON_SLIM()}\nDELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.`
   const cardRef = `card ${E} in ${STRAT} (section ${E}; REQs ${card.reqs.join(', ')}; depends on ${card.deps.join(', ') || '-'}${card.critical ? '; CRITICAL' : ''})`
   const noteE = A.notes && A.notes[E]
   const cardAc = (card.acceptance || []).map(a => ({ id: a.id, text: a.text, tag: parseVerifyTag(a.text) }))
@@ -1179,7 +1214,7 @@ Never write or quote a credential, token or key from the owner instruction in an
   const persistReviews = async tag => {
     if (!setupOk || (!out.reviews.length && !out.externalRun.length)) return
     const ranTxt = out.externalRun.length ? ', plus a section "External effects run" with one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the lines an earlier run wrote there' : ''
-    const w = await agent(`${Cn()}
+    const w = await agent(`${Cs()}
 
 Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
@@ -1251,7 +1286,7 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
   const persistMergeRisks = async (from, exp) => {
     const fresh = out.acceptedRisks.slice(from)
     if (!fresh.length) return exp
-    const w = await agent(`${Cn()}
+    const w = await agent(`${Cs()}
 
 Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the merge of ${E}. Add them to the accepted risks of its review log on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), keeping everything the file holds: ${JSON.stringify(fresh)}
 Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev-parse HEAD after the commit) and commit.`,
@@ -1264,7 +1299,7 @@ Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev
   const persistMergeEffects = async exp => {
     const ran = out.externalRun.filter(e => e.command)
     if (!ran.length) return exp
-    const w = await agent(`${Cn()}
+    const w = await agent(`${Cs()}
 
 Integration worktree ${INTWT} (branch ${TARGET}). In the section "External effects run" of the review log of ${E} on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create the section, or docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), add one line per entry (item, command, exit) that is not there yet, keeping everything the file holds: ${JSON.stringify(ran)}
 Commit only that file ("${E}: external effects of the acceptance evidence"). Return head (git rev-parse HEAD after the commit) and commit.`,
@@ -1419,7 +1454,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   // ---------- Spec
   spec = await agent(`${C()}
 
-If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it, reassess humanInputs (an answered input stops being blocking), commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
+If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it and reassess humanInputs (an answered input stops being blocking). If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
 Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
 - You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block (or the file it points to), the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
 - Parts that are human acts: produce the artifacts and leave the acceptance to the human.
@@ -1468,7 +1503,7 @@ Return specPath, slug (without the ID), decisions (full list), humanInputs (full
   const acTxt = (card.acceptance || []).map(a => `[${a.id}] ${a.text}`).join('\n')
   plan = await agent(`${C()}
 
-If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec, commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks or command evidence rows do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
+If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec. If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks or command evidence rows do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
 Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
 - Header with the exact line: **Roadmap:** ${RM}
 - Save to ${planName}, in the language of the roadmap.
@@ -1561,7 +1596,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const mayHaveRunMark = n => `${E} T${n} awaiting person (effect may have run)`
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
   const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed" or "${E} T<n>: resumed after awaiting person"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -1622,17 +1657,19 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
     const state = fromFix ? 'a fix round needs a person first; the implementer reported the external effect done' : 'its implementer stopped for a person and it is not known whether the external effect started'
     const check = `Check whether the effect already happened before repeating it (externalDedupe: ${t.externalDedupe || 'none declared'}). `
     op('human-input', E, `external task ${t.n} ("${t.title}") of ${E} is authorized, but ${state}: ${needed}`,
-      `${check}Provide the data (or the decision) and run again passing the answer in notes; ${fromFix ? `the implementer is not launched again: the task's commits stay on ${br}, its reviews run again and any fix runs without authorization for the effect (if the fix needs the effect run again, run it yourself after its duplicate check, or add "${confirmedNotRun(t.n)}" only if you undid the first effect)` : `any commits it made stay on ${br}, and the resume stops and asks until you add an empty commit: "${confirmedNotRun(t.n)}" if the effect did not start (the task then runs again), or "${effectDone(t.n)}" if it did`}; the authorization of this task stays valid unless the answer changes the plan file (a new plan asks again). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
+      `${check}Provide the data (or the decision) and run again passing the answer in notes; ${fromFix ? `the implementer is not launched again: the task's commits stay on ${br}, its reviews run again and any fix runs without authorization for the effect (if the fix needs the effect run again, run it yourself after its duplicate check, or add "${confirmedNotRun(t.n)}" only if you undid the first effect)` : `any commits it made stay on ${br}, and the resume stops and asks until you add an empty commit: "${confirmedNotRun(t.n)}" if the effect did not start (the task then runs again), or "${effectDone(t.n)}" if it did`}; the authorization of this task stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again (pass the bare \`${E}:T${t.n}\` in your own message to re-authorize together with the answer). Never put a secret in notes: set an environment variable and name it.${markWarn}`,
       { ...A, authorizeExternal: boundItems(E), deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
     return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person; the implementer reported the external effect done: ${needed}` : `authorized external task ${t.n} needs a person; whether its external effect started is unknown: ${needed}`)
   }
   // Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again.
+  // A local task has no effect to close: its wait ends with a neutral mark, never with a completion that would read as an effect.
+  const closeSubject = (t, wasAwaiting) => (t.external === false ? `${E} T${t.n}: resumed after awaiting person` : `${effectDone(t.n)}${wasAwaiting ? ', clears the awaiting-person mark' : ''}`)
   const closeEffect = async (t, wasAwaiting) => {
-    const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${effectDone(t.n)}${wasAwaiting ? ', clears the awaiting-person mark' : ''}". Change nothing else. Return ok = true only if that commit is now HEAD.`,
+    const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${closeSubject(t, wasAwaiting)}". Change nothing else. Return ok = true only if that commit is now HEAD.`,
       { label: `${E}:t${t.n}:${wasAwaiting ? 'clear-awaiting' : 'effect-completed'}`, phase: 'Implementation', schema: S_MARK, model: 'haiku', effort: 'low' }))
     const ok = !!(r && r.ok)
     if (!ok) out.concerns.push(wasAwaiting
-      ? `T${t.n}: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on ${br} with the subject "${effectDone(t.n)}"`
+      ? `T${t.n}: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on ${br} with the subject "${closeSubject(t, false)}"`
       : `T${t.n}: the launch was not closed, so a later resume will stop and ask about this task: before running again, add an empty commit on ${br} with the subject "${effectDone(t.n)}"`)
     return ok
   }
@@ -1733,7 +1770,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
 
   // ---------- Sync + final review
   const planLocks = [...new Set(plan.tasks.flatMap(t => asList(t.needsLock)))].filter(n => TASK_LOCKS.includes(n))
-  const syncBranch = (label, ref, from) => agent(`${C()}
+  const syncBranch = (label, ref, from) => agent(`${Cs()}
 
 Bring the target state into the branch: headBefore = git -C "${wt}" rev-parse HEAD; git -C "${wt}" merge --no-ff ${ref} -m "${E}: sync with ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource. Nothing to merge: ok=true without a commit.
 Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in).`,
@@ -1784,7 +1821,7 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IM
     const rows = acExec()
     if (!rows.length && !BEFORE_EVIDENCE.length) return { ok: true, summary: '' }
     const validEv = x => !!x && x.clean === true && (!exp || gateShaMatch(x.headSha, exp)) && (!BEFORE_EVIDENCE.length || x.beforeOk === true)
-    const once = label => withLocks(TASK_LOCKS, () => agent(`${C()}
+    const once = label => withLocks(TASK_LOCKS, () => agent(`${Cs()}
 
 ${lockNote(TASK_LOCKS)} Fix nothing. In the worktree ${wt}:
 1. BEFORE any command: clean (git status --porcelain empty) and headSha.
@@ -1920,7 +1957,7 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, mod
       }
       return { ok: false, kind, why }
     }
-    const mg = await agent(`${C()}
+    const mg = await agent(`${Cs()}
 
 MERGE STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}).${FOREIGN ? ` The operator authorized ${FOREIGN_ITEM}: this merge may be done in that checkout.` : ''} Run: git merge --no-ff ${br} -m "merge: ${E} in ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource.
 Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-parse HEAD^1), secondParent (git rev-parse HEAD^2), conflicts (how many files), clean (status --porcelain empty at the end), details. If you cannot finish, git merge --abort.`,
@@ -2029,7 +2066,7 @@ const finalResume = () => {
 for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
 for (const o of OPS) if (o.resumeWith) o.resumeWith = dropConsumedNotes(o.resumeWith, NOTES_READ)
 const resumeFinal = finalResume()
-const report = await safe(() => mergeLock(() => agent(`${COMMON()}
+const report = await safe(() => mergeLock(() => agent(`${COMMON_SLIM()}
 
 ${integBroken || foreignHold ? `The integration worktree is ${integBroken ? 'compromised' : "the person's checkout and was not authorized"}: do NOT write a file or commit, only build the execution report and return the text.` : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
 Selection: ${JSON.stringify(selection)}
