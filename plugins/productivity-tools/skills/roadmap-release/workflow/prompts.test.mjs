@@ -210,3 +210,11 @@ test('every agent call that passes a model also passes an explicit effort', () =
   for (const [n, l] of withModel) assert.match(l, /model: [^}]*effort: /, 'line ' + n + ' has model without effort');
   assert.equal(src.join('\n').match(/effort: 'high'/g).length, 4);
 });
+
+test('an external effect the card requires is a plan task: common rule, plan prompt and plan review say so', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
+  assert.match(src, /the workflow asks the person for it when it reaches a plan task declared external; there is no other delivery stage, so an external effect the card requires is performed by an external task of the plan\./);
+  assert.match(src, /Every external effect the card or the spec requires is a task of the plan with \\`external: true\\`; "not a task of this plan" does not apply to it/);
+  assert.match(src, /an external effect that the card or the spec requires and that no task declared external performs/);
+  assert.doesNotMatch(src, /the workflow asks the person for it\. Open roadmap blockers/);
+});
