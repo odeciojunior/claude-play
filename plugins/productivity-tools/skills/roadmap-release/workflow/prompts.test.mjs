@@ -220,23 +220,26 @@ test('an external effect the card requires is a plan task: common rule, plan pro
   assert.doesNotMatch(src, /the workflow asks the person for it\. Open roadmap blockers/);
 });
 
-test('every task runs in the deliverable worktree before the merge: spec, plan, both reviews, briefing and external note say so', () => {
+test('reviews block a task or effect run after the merge; the briefing says the integration worktree runs only the workflow stages', () => {
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
-  const rule = /Every task of the plan, the external ones included, runs in the deliverable worktree \$\{wt\} on \$\{br\} before the merge; nothing runs in the integration worktree/;
-  assert.equal(src.match(new RegExp(rule.source, 'g')).length, 2, 'spec prompt and plan prompt');
-  assert.match(src, /Blocks \(defeito\):[^\n]*a task or an effect marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
-  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that has a task or an effect run after the merge, in the integration worktree or in the target \(defeito\)/);
-  assert.match(src, /No task runs there: every task runs in the deliverable worktree before the merge/);
+  assert.match(src, /Blocks \(defeito\):[^\n]*a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
+  assert.match(src, /Blocks:[^\n]*a design or autonomous decision that has a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target \(defeito\)/);
+  assert.match(src, /No task of the plan runs there: every task runs in the deliverable worktree before the merge \(the workflow's own merge, post-merge gates and docs stages run in the integration worktree\)/);
 });
 
-test('externalNote: an authorized external task runs in the deliverable worktree and never runs the effect as a pre-check', () => {
+test('externalNote: an authorized external task runs in the deliverable worktree, only reads before the effect, and fixtures are allowed', () => {
   const p = P.buildImplPrompt({ ...ctx, authorizedExternal: true }, { ...task, external: true, externalDedupe: 'checks outbox.log first' });
   assert.match(p, /deliverable worktree/);
-  assert.match(p, /Never run the effect command, or any part of it, as a pre-check or a test: checks only read/);
+  assert.match(p, /only read \(the duplicate check is a read\); never run the effect command itself, nor a script that runs it against the real target/);
+  assert.match(p, /Tests on a fixture or a fake target are not the effect/);
+  assert.doesNotMatch(p, /any part of it/);
 });
 
-test('SKILL.md: the authorization message promises the git show and the resume compares with the report', () => {
+test('SKILL.md: the authorization message names the git show; the resume takes the items from the operator actions; reportPath null is handled', () => {
   const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'SKILL.md'), 'utf8');
-  assert.match(skill, /End the authorization message with this sentence, literally: "Before resuming I will run `git show <target>:<reportPath>`/);
-  assert.match(skill, /if they diverge, or the report is unavailable, ask again/);
+  assert.match(skill, /End the authorization message with one sentence, in the person's language, that names the exact command with the real values/);
+  assert.match(skill, /come from the `resumeWith` of the authorized `authorize-external` actions in the report's operator actions/);
+  assert.doesNotMatch(skill, /Resume args/);
+  assert.match(skill, /or `reportPath` was not null and the report is unavailable, ask again/);
+  assert.match(skill, /When `reportPath` is null, leave that sentence out and resume with the `resumeWith` of the result in this conversation; if that result is no longer in context \(after a compaction\), ask again/);
 });

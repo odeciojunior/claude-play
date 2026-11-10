@@ -687,7 +687,10 @@ test('authorized external task runs and the authorization survives fix rounds', 
   assert.ok(labels.includes('E1:t2:impl'));
   assert.ok(labels.includes('E1:t2:spec-fix1'));
   assert.equal(ext(r).length, 0);
-  assert.match(calls.find((c) => c.label === 'E1:t2:spec-fix1').prompt, /AUTHORIZED/);
+  const fix = calls.find((c) => c.label === 'E1:t2:spec-fix1').prompt;
+  assert.match(fix, /The external effect of this task already ran \(mark "E1 T2: external effect completed"\): do not run it again, not even through its duplicate check; checks only read\. If this fix needs the effect run again, return NEEDS_HUMAN/);
+  assert.doesNotMatch(fix, /perform the effect at most once/);
+  assert.doesNotMatch(fix, /\$\{/);
   assert.match(calls.find((c) => c.label === 'E1:t2:impl').prompt, /checks outbox\.log first/);
   assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /Do NOT perform any external effect/);
 });
@@ -2119,7 +2122,7 @@ test('I3: the authorized implementer is told when NEEDS_HUMAN is allowed', async
 });
 
 // An agent that follows the note: a partial effect is reported as the note orders.
-const followsNote = (p, needs) => (/report DONE or DONE_WITH_CONCERNS only when the effect finished/.test(p)
+const followsNote = (p, needs) => (/report DONE or DONE_WITH_CONCERNS only when the effect finished|If this fix needs the effect run again, return NEEDS_HUMAN/.test(p)
   ? { status: 'NEEDS_HUMAN', summary: 'effect started, needs a key', checks: [], humanInputs: [{ what: needs }] }
   : { status: 'DONE_WITH_CONCERNS', summary: 'partial', checks: [], humanInputs: [{ what: needs }] });
 
@@ -2178,4 +2181,19 @@ test('M5/M6: the texts of a stop match what a resume does', async () => {
 test('N8: a task without external writes no externalRun data to its log', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
   for (const c of x.calls.filter((k) => /review-log/.test(k.label) && !/resume/.test(k.label))) assert.doesNotMatch(c.prompt, /externalRun|External effects run/);
+});
+
+test('assembled prompts: every task runs in the deliverable worktree before the merge (spec, plan, both reviews)', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const rule = /runs in the deliverable worktree \S+ on \S+ before the merge; no task of the plan runs in the integration worktree \(the workflow's own merge, post-merge gates and docs stages run there\)/;
+  for (const l of ['E1:spec', 'E1:plan']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.match(p, rule, l);
+    assert.doesNotMatch(p, /\$\{wt\}|\$\{br\}|undefined/, l);
+  }
+  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /`external: true`; "not a task of this plan" does not apply to it/);
+  assert.match(calls.find((c) => c.label === 'E1:spec-review1').prompt, /a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target \(defeito\)/);
+  assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target \(defeito, critical\)/);
+  assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
+  assert.ok(calls.some((c) => /No task of the plan runs there: every task runs in the deliverable worktree before the merge \(the workflow's own merge, post-merge gates and docs stages run in the integration worktree\)/.test(c.prompt)), 'briefing');
 });
