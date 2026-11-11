@@ -878,14 +878,117 @@ export function checkRoadmap(r, git, opts = {}) {
   void conflicts;
   void measurements;
 
+  // ---- new checks (format 1, E2): status order, state, sources, decisions; always after the older ones ----
+  const extraChecks = () => {
+    const blockedWord = v.blockedStatus || 'blocked';
+    const discardedWord = v.discardedStatus || 'discarded';
+    const releasedWords = v.releasedStatuses || ['released', 'measured'];
+    const stateFile = fileName('state');
+    const word = (w) => new RegExp(`(?<![\\p{L}\\p{N}-])${escapeRe(w)}(?![\\p{L}\\p{N}-])`, 'u');
+    const segments = (cell) => (cell || '').split(';').map((s) => s.trim()).filter(Boolean).map((raw) => {
+      const noNote = stripNote(raw);
+      const idx = noNote.indexOf(':');
+      return { raw, word: (idx >= 0 ? noNote.slice(idx + 1) : noNote).trim() };
+    });
+    const pos = (w) => v.deliverableStatuses.indexOf(w) + 1;
+
+    // status-order
+    {
+      const file = 'roadmap.config.json';
+      const ds = v.deliverableStatuses;
+      if (ds.length < 8) add('warning', 'status-order', file, `deliverableStatuses has ${ds.length} words; the canonical order has at least 8`);
+      for (const w of v.integratedStatuses) if (pos(w) > 0 && (pos(w) < 6 || pos(w) > 8)) add('warning', 'status-order', file, `integrated status "${w}" is at position ${pos(w)}; expected 6-8`);
+      for (const w of releasedWords) if (pos(w) > 0 && (pos(w) < 7 || pos(w) > 8)) add('warning', 'status-order', file, `released status "${w}" is at position ${pos(w)}; expected 7-8`);
+      if (pos(blockedWord) > 0 && pos(blockedWord) !== 9) add('warning', 'status-order', file, `blocked status "${blockedWord}" is at position ${pos(blockedWord)}; expected 9`);
+      if (pos(discardedWord) > 0 && pos(discardedWord) !== 10) add('warning', 'status-order', file, `discarded status "${discardedWord}" is at position ${pos(discardedWord)}; expected 10`);
+    }
+
+    // pending-no-owner
+    for (const t of pendingItems) {
+      if (!/^\(\s*[^)\s][^)]*\)/.test(t)) add('warning', 'pending-no-owner', stateFile, `Pending item has no (owner) prefix: ${t.slice(0, 60)}`);
+    }
+
+    // state-header
+    if (parsed.version && typeof r.files.state === 'string') {
+      const ver = parsed.version._0;
+      const st = r.files.state;
+      const cut = st.search(/<!--\s*roadmap:/);
+      const head = cut === -1 ? st : st.slice(0, cut);
+      if (ver && !new RegExp(`(?<![\\p{L}\\p{N}.])v${escapeRe(ver)}(?![\\p{L}\\p{N}]|\\.\\d)`, 'u').test(head)) {
+        add('warning', 'state-header', stateFile, `the state header does not name the strategy version v${ver}`);
+      }
+    }
+
+    // blocked-no-blq
+    if (v.deliverableStatuses.includes(blockedWord)) {
+      for (const row of panel) {
+        const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
+        for (const seg of segments(row[1])) {
+          if (seg.word === blockedWord && !/\bBLQ-\d+\b/.test(seg.raw) && !/\bBLQ-\d+\b/.test(row[3])) {
+            add('warning', 'blocked-no-blq', stateFile, `${id} is "${blockedWord}" but cites no BLQ-n in the status note or the Next step`);
+          }
+        }
+      }
+    }
+
+    // blocker-no-restore
+    for (const row of blockers) {
+      for (const e of idsIn(row[2], /\bE\d+\b/g)) {
+        const prow = panel.find((x) => (x[0].match(/\bE\d+\b/) || [])[0] === e);
+        if (!prow || !segments(prow[1]).some((s) => s.word === blockedWord)) continue;
+        const m = word(e).exec(row[4]);
+        const rest = m ? row[4].slice(m.index + e.length) : '';
+        if (!v.deliverableStatuses.some((w) => w !== blockedWord && word(w).test(rest))) {
+          add('warning', 'blocker-no-restore', stateFile, `${row[0]} affects ${e}, which is "${blockedWord}", but "Unblocks when" does not say which status ${e} returns to`);
+        }
+      }
+    }
+
+    // source-uncited
+    {
+      const cited = new Set();
+      const roles = ['state', 'decisions', 'log', 'criticalPath', 'measurements', 'requirements'];
+      const texts = [[r.strategy, true], ...roles.map((role) => [r.files[role], false])];
+      for (const [text, isStrategy] of texts) {
+        if (typeof text !== 'string') continue;
+        for (const id of idsIn(blankCommandText(scanFences(text, true).text, isStrategy), ID_RE)) cited.add(id);
+      }
+      for (const row of sources) {
+        if (/^SRC-\d+$/.test(row[0]) && !cited.has(row[0])) add('warning', 'source-uncited', fileName('sources'), `${row[0]} is defined but no other roadmap file cites it`);
+      }
+    }
+
+    // strategy-plan-suffix
+    if (/-plan\.md$/i.test(cfg.strategy)) add('warning', 'strategy-plan-suffix', 'roadmap.config.json', `strategy file "${cfg.strategy}" ends in -plan.md, which collides with the task plans convention`);
+
+    // executor-decision-pending
+    {
+      const statusOf = new Map(panel.map((row) => [(row[0].match(/\bE\d+\b/) || [])[0], segments(row[1]).map((s) => s.word)]));
+      for (const row of decisions) {
+        if (row[7] !== 'executor' || row[8] !== v.decisionPending) continue;
+        const local = /\b(?:Alcance|Scope)\s*:\s*local\s*\.?\s*$/i.test(row[3].trim());
+        const es = idsIn(row[2], /\bE\d+\b/g);
+        if (!local) {
+          const dependents = cards.filter((c) => c.depends.some((d) => es.includes(d)));
+          const hit = dependents.find((c) => (statusOf.get(c.id) || []).some((w) => pos(w) >= 2 && pos(w) <= 8));
+          if (hit) add('warning', 'executor-decision-pending', fileName('decisions'), `${row[0]} (executor, pending, contract scope) is unreviewed while ${hit.id}, which depends on ${es.join(', ')}, is already under way`);
+        }
+        const rel = es.find((e) => (statusOf.get(e) || []).some((w) => releasedWords.includes(w)));
+        if (rel) add('warning', 'executor-decision-pending', fileName('decisions'), `${row[0]} (executor, pending) is unreviewed while ${rel} is already released`);
+      }
+    }
+  };
+
   // ---- git ----
   const gitSeverity = opts.requireGit ? 'error' : 'warning';
   if (git && git.unavailable) {
     add(gitSeverity, 'git-unavailable', 'roadmap.config.json', `git could not be used (${git.reason || 'unknown reason'}); git checks skipped`);
+    extraChecks();
     return problems;
   }
   if (git === null || git === undefined) {
     add(gitSeverity, 'no-git', 'roadmap.config.json', 'not inside a git repository; git checks skipped');
+    extraChecks();
     return problems;
   }
 
@@ -948,6 +1051,7 @@ export function checkRoadmap(r, git, opts = {}) {
     if (row[1] === v.branchDeleted && exists) add('error', 'branch-deleted-exists', fileName('state'), `branch ${name} is marked deleted but still exists`);
   }
 
+  extraChecks();
   return problems;
 }
 

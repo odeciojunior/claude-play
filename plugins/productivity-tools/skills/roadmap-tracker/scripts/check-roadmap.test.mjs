@@ -1484,3 +1484,100 @@ test('parseRoadmap equals parseRoadmapTexts on the valid fixture', () => {
   const expected = fmt.parseRoadmapTexts({ strategy: files[config.strategy], files: texts });
   assert.deepEqual(parseRoadmap(loadRoadmap(VALID)), expected);
 });
+
+// ---------- E2 T5: eight new config, state, source and decision checks ----------
+
+const t5HasCode = (dir, code) => codes(run(dir)).includes(code);
+
+test('status-order warns once per violation and is clean on the fixture', () => {
+  assert.ok(!t5HasCode(fixture(), 'status-order'));
+  const dir = fixture((f) => rep(f, 'roadmap.config.json', '"blocked", "discarded"', '"discarded", "blocked"'));
+  const hits = run(dir).filter((p) => p.code === 'status-order');
+  assert.equal(hits.length, 2);
+  expectCode(hits, 'status-order', 'warning');
+  assert.equal(hits[0].file, 'roadmap.config.json');
+});
+
+test('status-order warns on fewer than 8 statuses', () => {
+  const dir = fixture((f) => {
+    rep(f, 'roadmap.config.json', '"deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"]', '"deliverableStatuses": ["not-started", "spec", "integrated", "released"]');
+    rep(f, 'roadmap.config.json', '"integratedStatuses": ["integrated", "released", "measured"]', '"integratedStatuses": ["integrated", "released"]');
+  });
+  assert.ok(t5HasCode(dir, 'status-order'));
+});
+
+test('pending-no-owner', () => {
+  assert.ok(!t5HasCode(fixture(), 'pending-no-owner'));
+  const dir = fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'));
+  expectCode(run(dir), 'pending-no-owner', 'warning');
+});
+
+test('state-header', () => {
+  assert.ok(!t5HasCode(fixture(), 'state-header'));
+  const dir = fixture((f) => rep(f, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy v0.9 -- 2026-01-01'));
+  expectCode(run(dir), 'state-header', 'warning');
+});
+
+const T5_BLQ_ROW = '| BLQ-1 | Storage vendor undecided | E3 | 2026-01-02 | the owner picks a vendor; restores E3 to not-started |\n';
+function t5BlockE3(f, { blq, unblock }) {
+  rep(f, 'state.md', '| E3 | not-started | - | Wait for E2 |', `| E3 | blocked${blq ? ' (BLQ-1)' : ''} | - | Wait for E2 |`);
+  if (blq) rep(f, 'state.md', '<!-- /roadmap:blockers -->', T5_BLQ_ROW.replace('the owner picks a vendor; restores E3 to not-started', unblock) + '<!-- /roadmap:blockers -->');
+}
+
+test('blocked-no-blq', () => {
+  expectCode(run(fixture((f) => t5BlockE3(f, { blq: false }))), 'blocked-no-blq', 'warning');
+  const clean = fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor; restores E3 to not-started' }));
+  assert.ok(!t5HasCode(clean, 'blocked-no-blq'));
+});
+
+test('blocker-no-restore', () => {
+  expectCode(run(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor' }))), 'blocker-no-restore', 'warning');
+  assert.ok(!t5HasCode(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor; restores E3 to not-started' })), 'blocker-no-restore'));
+  assert.ok(!t5HasCode(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'o dono escolhe; restaura E3 a not-started' })), 'blocker-no-restore'));
+});
+
+test('source-uncited', () => {
+  assert.ok(!t5HasCode(fixture(), 'source-uncited'));
+  const dir = fixture((f) => rep(f, 'sources.md', '<!-- /roadmap:sources -->', '| SRC-03 | `docs/extra.md` | Extra notes | 2026-01-01 | Informal |\n<!-- /roadmap:sources -->'));
+  const hit = run(dir).find((p) => p.code === 'source-uncited');
+  assert.ok(hit && hit.message.includes('SRC-03'));
+  assert.equal(hit.severity, 'warning');
+});
+
+test('strategy-plan-suffix', () => {
+  assert.ok(!t5HasCode(fixture(), 'strategy-plan-suffix'));
+  const dir = fixture((f) => {
+    f['roadmap-plan.md'] = f['strategy.md'];
+    delete f['strategy.md'];
+    rep(f, 'roadmap.config.json', '"strategy": "strategy.md"', '"strategy": "roadmap-plan.md"');
+  });
+  expectCode(run(dir), 'strategy-plan-suffix', 'warning');
+});
+
+const T5_EXEC_ROW = (scope) => `| DEC-002 | 2026-01-03 | E1 | Items are stored as JSON files.${scope} | A database | - | Volume grows | executor | pending |\n`;
+function t5AddExec(f, scope) {
+  rep(f, 'decisions.md', '<!-- /roadmap:decisions -->', T5_EXEC_ROW(scope) + '<!-- /roadmap:decisions -->');
+}
+
+test('executor-decision-pending', () => {
+  assert.ok(!t5HasCode(fixture((f) => t5AddExec(f, ' Alcance: contrato.')), 'executor-decision-pending'));
+  const advance = (f) => rep(f, 'state.md', '| E2 | not-started |', '| E2 | plan |');
+  expectCode(run(fixture((f) => { t5AddExec(f, ' Alcance: contrato.'); advance(f); })), 'executor-decision-pending', 'warning');
+  expectCode(run(fixture((f) => { t5AddExec(f, ' Scope: contract.'); advance(f); })), 'executor-decision-pending', 'warning');
+  assert.ok(!t5HasCode(fixture((f) => { t5AddExec(f, ' Alcance: local.'); advance(f); }), 'executor-decision-pending'));
+  expectCode(run(fixture((f) => {
+    t5AddExec(f, ' Alcance: local.');
+    rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `docs/spec-e1.md` abc1234def |');
+  })), 'executor-decision-pending', 'warning');
+});
+
+test('executor-decision-pending reads English Scope: local as local', () => {
+  assert.ok(!t5HasCode(fixture((f) => { t5AddExec(f, ' Scope: local.'); rep(f, 'state.md', '| E2 | not-started |', '| E2 | plan |'); }), 'executor-decision-pending'));
+});
+
+test('new checks run after git early returns', () => {
+  const dir = fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'));
+  const p = checkRoadmap(loadRoadmap(dir), null);
+  assert.ok(codes(p).includes('no-git') && codes(p).includes('pending-no-owner'));
+  assert.ok(codes(p).indexOf('no-git') < codes(p).indexOf('pending-no-owner'));
+});
