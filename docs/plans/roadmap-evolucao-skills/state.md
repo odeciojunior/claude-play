@@ -18,7 +18,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E1 | na-branch | `21d1979fb70266b94508ec2b8a64da29a1c2af0f`; `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `docs/superpowers/reviews/2026-11-10-E1-ferramentas-medicao-cenario-reviews.md` | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E2 | na-branch | `0202e00f1be5032c95d759a41883de84c57e54b3`; `docs/superpowers/specs/2026-11-11-E2-formato-roadmap-verificado-design.md`; `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md`; `docs/superpowers/reviews/2026-11-11-E2-formato-roadmap-verificado-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E3 | na-branch | `ee7a3d70995f903f260b897327361b2573d5c624`; `docs/superpowers/specs/2026-11-11-E3-cli-eventos-tracker-design.md`; `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md`; `docs/superpowers/reviews/2026-11-11-E3-cli-eventos-tracker-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; E18 e E22 esperam a ratificação das decisões de contrato (DEC-030) |
-| E4 | nao-iniciado | - | Aguardar E2 |
+| E4 | executando | `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4` | Execução do plano na branch `feat/E4`; depois o merge em `release/roadmap-skills-v2` |
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | nao-iniciado | - | Aguardar E2 e E5 |
 | E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
@@ -76,6 +76,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) criterion AC2 has no automatic evidence (human)
 - (dono) criterion AC3 has no automatic evidence (human)
 - (dono) criterion AC4 has no automatic evidence (human)
+- (dono) Aceite do critério 4 de E4 (o revisor devolve achado estruturado para cada defeito plantado): conferir o relatório comportamental em `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md`.
+- (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
+- (dono) Ratificação das decisões autônomas de E4 (DEC-158 a DEC-175); as de alcance contrato (DEC-158, DEC-159, DEC-160, DEC-162, DEC-167, DEC-169) seguram o início de E20.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -83,4 +86,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E4 | viva | execução automática |
 <!-- /roadmap:inflight -->
