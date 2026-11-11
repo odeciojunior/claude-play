@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { readDataBlock } from '../lib/data-block.mjs';
 import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
 import { checkSpec, checkRecords } from './spec-tool.mjs';
@@ -25,6 +26,12 @@ export const EXTERNAL_PATTERNS = [
   '\\b(npm|pnpm|yarn)\\s+publish\\b',
   '\\bdeploy\\b',
   '\\bcurl\\b.*\\s-X\\s*(POST|PUT|PATCH|DELETE)\\b',
+  // curl que envia corpo ou formulário é escrita; GET de leitura não é efeito externo.
+  '\\bcurl\\b.*\\s(-d|--data(-[a-z]+)?|-F|--form(-string)?)(\\s|=|@|\\x27|")',
+  // PowerShell: só com método de escrita (sem -Method o padrão é GET).
+  '\\bInvoke-(RestMethod|WebRequest)\\b.*-Method\\s+(POST|PUT|PATCH|DELETE)\\b',
+  '\\bscp\\b',
+  '\\bsqlcmd\\b',
   '\\bkubectl\\s+(apply|delete|create|patch|rollout)\\b',
   '\\bterraform\\s+(apply|destroy)\\b',
   '\\bdocker\\s+push\\b',
@@ -523,8 +530,11 @@ export function buildMap(plan, levels, { maxWidth = 4 } = {}) {
   };
 }
 
+// DEC-206: gate verdadeiro significa revisor opus no coordinator, qualquer que seja reviewTier.
+const reviewLabel = (t) => `revisor ${t.reviewTier}${t.gate ? '; portão opus' : ''}`;
+
 const waveLine = (w) =>
-  `Onda ${w.n}: ` + w.tasks.map((t) => `T${t.n} (${t.tier}/${t.effort}, revisor ${t.reviewTier}${t.gate ? ', portão' : ''}${t.external ? ', externa' : ''})`).join(', ');
+  `Onda ${w.n}: ` + w.tasks.map((t) => `T${t.n} (${t.tier}/${t.effort}, ${reviewLabel(t)}${t.external ? ', externa' : ''})`).join(', ');
 
 // Seção "### Tarefa n:" da prosa, sem o título, até o próximo título de nível 1 a 3.
 function proseSection(prose, n) {
@@ -554,7 +564,7 @@ export function buildBriefs(plan, { spec = null, prose = '', waves = new Map() }
     out.push('', '## Tarefa', '');
     out.push('- Número: T' + t.n, '- Título: ' + t.title);
     out.push('- Onda: ' + (waves.get(t.n) ?? t.wave ?? '-'));
-    out.push('- Roteamento: tier ' + r.tier + ', effort ' + r.effort + ', reviewTier ' + r.reviewTier + ', gate ' + r.gate);
+    out.push('- Roteamento: tier ' + r.tier + ', effort ' + r.effort + ', reviewTier ' + r.reviewTier + ', gate ' + r.gate + (r.gate ? ' (portão do coordinator: opus)' : ''));
     out.push('- Arquivos a criar: ' + list(t.files.create), '- Arquivos a modificar: ' + list(t.files.modify), '- Arquivos de teste: ' + list(t.files.test));
     out.push('- Escritas implícitas (writes): ' + list(t.writes));
     out.push('- Dependências: ' + list(t.deps.map((d) => 'T' + d)));
@@ -574,7 +584,25 @@ export function buildBriefs(plan, { spec = null, prose = '', waves = new Map() }
   });
 }
 
-export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null, specPath = null, maxWidth = 4 } = {}) {
+// Raiz do repositório git que contém a pasta do plano; null fora de git.
+function gitRoot(dir) {
+  try {
+    const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' });
+    if (r.status === 0 && r.stdout.trim()) return path.resolve(r.stdout.trim());
+  } catch {
+    // sem git: cai para a pasta do plano
+  }
+  return null;
+}
+
+// DEC-205: source.path é relativo à raiz do repositório (fora de git, à pasta do plano), nunca ao cwd.
+function sourcePath(planPath, root) {
+  const abs = path.resolve(planPath);
+  const base = root ? path.resolve(root) : (gitRoot(path.dirname(abs)) ?? path.dirname(abs));
+  return normPath(path.relative(base, abs));
+}
+
+export function emitPlan(text, { planPath, root = null, specText = null, specPath = null, maxWidth = 4 } = {}) {
   const r = checkPlan(text, { planPath, specText, specPath });
   if (r.errors.length) return { errors: r.errors, warnings: r.warnings, out: null };
   const data = r.data;
@@ -585,9 +613,9 @@ export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null,
     wave: waveOf.get(t.n),
     fileCount: new Set([...t.files.create, ...t.files.modify, ...t.files.test].map(normPath)).size,
   }));
-  const plan = { ...data, tasks };
+  const plan = { ...data, tasks, maxWidth };
   const source = {
-    path: normPath(path.relative(cwd, path.resolve(planPath))),
+    path: sourcePath(planPath, root),
     textDigest: fnv1a(normalizeText(text)),
   };
   return {
@@ -597,7 +625,7 @@ export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null,
   };
 }
 
-const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--out <pasta>] [--task <n>]';
+const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -620,7 +648,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     else if (a === '--spec') {
       if (i + 1 >= rest.length) return bad(`--spec exige um caminho\n${USAGE}`);
       specPath = rest[++i];
-    } else if (a === '--max-width' && cmd === 'map') {
+    } else if (a === '--max-width' && cmd !== 'check') {
       const v = rest[++i];
       if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1) return bad('--max-width exige um inteiro >= 1\n' + USAGE);
       maxWidth = Number(v);
@@ -667,7 +695,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     return 0;
   }
   if (cmd === 'emit') {
-    const e = emitPlan(text, { planPath: file, specPath });
+    const e = emitPlan(text, { planPath: file, specPath, maxWidth });
     if (e.errors.length) {
       for (const x of e.errors) io.stderr.write(`ERROR ${x.code} ${x.ref}: ${x.message}
 `);
