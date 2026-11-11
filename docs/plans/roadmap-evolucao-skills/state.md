@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Executar o plano de E1 na branch `feat/E1` pelo release; antes, o dono resolve as regras de permissão que o preflight acusa como ausentes. Executa: executor. Aprova: dono. Depende de: DEC-087.
+1. Acompanhar a execução automática do plano de E1 na branch `feat/E1`; ao terminar, o release registra a entrega. Executa: executor. Aprova: dono. Depende de: DEC-087.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -15,7 +15,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E1 | plano | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md` (branch `feat/E1`) | Executar o plano; ratificar as decisões de contrato antes de E15 |
+| E1 | executando | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `feat/E1` | Concluir a execução do plano na branch e registrar a entrega |
 | E2 | nao-iniciado | - | Escrever o spec |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
@@ -75,4 +75,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| `feat/E1` | viva | Execução automática |
 <!-- /roadmap:inflight -->
