@@ -1014,3 +1014,143 @@ for (const [name, opts] of [['LF', {}], ['CRLF com BOM e NFD', { eol: '\r\n', bo
     }
   });
 }
+
+// ---------- CLI (Tarefa 7): AC1, varredura de bytes por comando de escrita ----------
+
+const CHECKER = path.join(here, 'check-roadmap.mjs');
+
+// Reescreve um arquivo da pasta preservando o final de linha e o BOM da variante.
+function editFile(f, opts, name, fn) {
+  const eol = opts.eol || '\n';
+  const had = f.read(name).startsWith('﻿');
+  const text = fn(f.read(name).replace(/^﻿/, '').replace(/\r\n/g, '\n'));
+  f.write(name, (had ? '﻿' : '') + text.replace(/\n/g, eol));
+}
+
+function snapshotBuf(dir) {
+  const out = {};
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isFile()) out[e.name] = fs.readFileSync(path.join(dir, e.name));
+  }
+  return out;
+}
+
+// Alinha antes e depois pelas linhas exatas (texto + terminador); o resto é o que o comando tocou.
+function changedLines(beforeBuf, afterBuf) {
+  const b = splitLines(beforeBuf.toString('utf8')).lines.map((l) => l.text + l.eol);
+  const a = splitLines(afterBuf.toString('utf8')).lines.map((l) => l.text + l.eol);
+  const dp = Array.from({ length: b.length + 1 }, () => new Array(a.length + 1).fill(0));
+  for (let i = b.length - 1; i >= 0; i--) {
+    for (let j = a.length - 1; j >= 0; j--) {
+      dp[i][j] = b[i] === a[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const removed = [];
+  const added = [];
+  let i = 0;
+  let j = 0;
+  while (i < b.length && j < a.length) {
+    if (b[i] === a[j]) { i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) removed.push(b[i++]); else added.push(a[j++]);
+  }
+  while (i < b.length) removed.push(b[i++]);
+  while (j < a.length) added.push(a[j++]);
+  return { removed, added, after: a };
+}
+
+const MD_FILES = ['state.md', 'log.md', 'decisions.md', 'strategy.md'];
+const addInflight = (x) => x.replace('|---|---|---|\n<!-- /roadmap:inflight -->', '|---|---|---|\n| side | live | E1 work |\n<!-- /roadmap:inflight -->');
+const addDeleted = (x) => x.replace('|---|---|---|\n<!-- /roadmap:inflight -->', '|---|---|---|\n| feat/x | deleted | - |\n<!-- /roadmap:inflight -->');
+const prepDec2 = (f, o) => {
+  editFile(f, o, 'decisions.md', withDec2()['decisions.md']);
+  editFile(f, o, 'state.md', withDec2()['state.md']);
+};
+
+// prep(f, opts) deixa a pasta pronta para o comando gravar algo; args(f) é o argv do comando;
+// expect: por arquivo, [máximo de linhas removidas, máximo de acrescentadas, regex que cada linha tocada cumpre].
+const AC1_CASES = [
+  { name: 'log', args: () => ['log', '--deliverable', 'E1', '--what', 'Note', '--evidence', 'a.md', '--date', '2026-01-05'], expect: { 'log.md': [0, 1, /\| Note \|/] } },
+  { name: 'set-status', args: () => ['set-status', 'E2', 'plan', '--piece', 'piece 2', '--evidence', 'docs/plan.md'], expect: { 'state.md': [1, 1, /^\| E2 \|/] } },
+  {
+    name: 'integrate',
+    prep: (f, o) => editFile(f, o, 'state.md', (x) => x.replace('| E1 | spec | `docs/spec-e1.md` |', `| E1 | on-branch | \`${f.shas.main}\` |`)),
+    args: (f) => ['integrate', '--sha', f.shas.main, '--date', '2026-01-05'],
+    expect: { 'state.md': [1, 1, /^\| E1 \|/], 'log.md': [0, 1, /E1 integrated/] },
+  },
+  {
+    name: 'block-open',
+    args: () => ['block-open', '--what', 'Vendor down', '--affects', 'E1', '--unblocks', 'vendor answers', '--date', '2026-01-05'],
+    expect: { 'state.md': [1, 2, /^\| (E1|BLQ-1) \|/], 'log.md': [0, 1, /BLQ-1 opened/] },
+  },
+  {
+    name: 'block-close',
+    prep: (f) => assert.equal(cli(f.dir, 'block-open', '--what', 'Vendor down', '--affects', 'E1', '--unblocks', 'vendor answers', '--date', '2026-01-05').exitCode, 0),
+    args: () => ['block-close', 'BLQ-1', '--how', 'vendor answered', '--date', '2026-01-06'],
+    expect: { 'state.md': [2, 1, /^\| (E1|BLQ-1) \|/], 'log.md': [0, 1, /BLQ-1 closed/] },
+  },
+  { name: 'prune', prep: (f, o) => editFile(f, o, 'state.md', addDeleted), args: () => ['prune'], expect: { 'state.md': [1, 0, /feat\/x/] } },
+  { name: 'refresh-checker', args: () => ['refresh-checker', '--date', '2026-01-07'], expect: { 'log.md': [0, 1, /checker updated/] } },
+  {
+    name: 'add-decision',
+    args: () => ['add-decision', '--deliverable', 'E1', '--decision', 'Use SQLite', '--scope', 'local', '--date', '2026-01-06'],
+    expect: { 'decisions.md': [0, 1, /^\| DEC-002 \|/] },
+  },
+  { name: 'add-pending', args: () => ['add-pending', '--owner', 'owner', '--text', 'Check the plan'], expect: { 'state.md': [0, 1, /Check the plan/] } },
+  { name: 'inflight-add', args: () => ['inflight-add', 'side', '--note', 'E1 work'], expect: { 'state.md': [0, 1, /side/] } },
+  { name: 'inflight-remove', prep: (f, o) => editFile(f, o, 'state.md', addInflight), args: () => ['inflight-remove', 'side'], expect: { 'state.md': [1, 0, /side/] } },
+  {
+    name: 'ratify',
+    prep: prepDec2,
+    args: () => ['ratify', 'DEC-002', '--date', '2026-01-07'],
+    expect: { 'decisions.md': [1, 1, /^\| DEC-002 \|/], 'state.md': [1, 0, /Ratify DEC-002/], 'log.md': [0, 1, /DEC-002 ratified/] },
+  },
+  {
+    name: 'reject',
+    prep: prepDec2,
+    args: () => ['reject', 'DEC-002', '--decision', 'Use Postgres', '--date', '2026-01-08'],
+    expect: { 'decisions.md': [1, 2, /^\| DEC-00[23] \|/], 'state.md': [1, 0, /Ratify DEC-002/], 'log.md': [0, 1, /DEC-002 rejected/] },
+  },
+];
+
+for (const [variant, opts] of [['LF', { eol: '\n' }], ['CRLF com BOM e NFD', { eol: '\r\n', bom: true, nfdLine: true }]]) {
+  for (const c of AC1_CASES) {
+    test(`AC1: ${c.name} grava só as linhas tocadas, checker sem erro (${variant})`, (t) => {
+      const f = withSegmentedE2(t, opts);
+      if (c.prep) c.prep(f, opts);
+      const eol = opts.eol;
+      const before = snapshotBuf(f.dir);
+      const r = cli(f.dir, ...c.args(f));
+      assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+      assert.ok(r.output.changed.length > 0, 'changed vazio');
+      const chk = spawnSync(process.execPath, [CHECKER, f.dir, '--json'], { encoding: 'utf8' });
+      assert.equal(JSON.parse(chk.stdout).summary.errors, 0, chk.stdout);
+      const after = snapshotBuf(f.dir);
+      for (const name of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (!r.output.changed.includes(name)) {
+          assert.ok(before[name] && after[name] && before[name].equals(after[name]), `${name} fora de changed mudou`);
+          continue;
+        }
+        if (!before[name]) {
+          assert.equal(name, 'check-roadmap.mjs');
+          assert.ok(after[name].equals(fs.readFileSync(CHECKER)));
+          continue;
+        }
+        assert.ok(MD_FILES.includes(name), `arquivo inesperado em changed: ${name}`);
+        const [maxRemoved, maxAdded, touch] = c.expect[name] || [0, 0, /^$/];
+        const d = changedLines(before[name], after[name]);
+        assert.ok(d.removed.length <= maxRemoved, `${name}: ${d.removed.length} removidas`);
+        assert.ok(d.added.length <= maxAdded, `${name}: ${d.added.length} acrescentadas`);
+        for (const l of [...d.removed, ...d.added]) assert.match(l.replace(/[\r\n]+$/, ''), touch);
+        // toda linha do arquivo gravado, as novas também, usa o terminador da variante
+        d.after.forEach((l, i) => {
+          const end = /\r\n$|\n$/.exec(l);
+          if (end) assert.equal(end[0], eol, `${name} linha ${i}`);
+          else assert.equal(i, d.after.length - 1);
+        });
+        assert.equal(after[name].subarray(0, 3).toString('hex') === 'efbbbf', before[name].subarray(0, 3).toString('hex') === 'efbbbf', `${name}: BOM`);
+      }
+      if (opts.bom) assert.equal(after['state.md'].subarray(0, 3).toString('hex'), 'efbbbf');
+      if (opts.nfdLine) assert.ok(after['state.md'].toString('utf8').includes('# State Café' + eol));
+      for (const name of Object.keys(c.expect)) assert.ok(r.output.changed.includes(name), `${name} não está em changed`);
+    });
+  }
+}
