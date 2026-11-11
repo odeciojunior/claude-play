@@ -151,7 +151,7 @@ Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required
 
 ## 13. Files to write (roadmap-planner Step 6)
 
-The model carries the content and `scripts/scaffold.mjs` writes every file of the folder and the strategy from it, in the project's language (`references/model.md` §9 lists what it derives; templates are `formats.md §5`-§8, read only when a field asks). Do not write these files by hand.
+The model carries the content and `scripts/scaffold.mjs` writes every file of the folder and the strategy from it, in the project's language (`model.md` §9 lists what it derives; templates are `formats.md §5`-§8, read only when a field asks). Do not write these files by hand.
 
 ## 14. Worked examples
 

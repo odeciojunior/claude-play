@@ -25,7 +25,7 @@ Default root: `docs/plans/roadmap-<topic>/` (the user may override it).
 <root>/README.md
 <root>/state.md  decisions.md  log.md  critical-path.md  sources.md  requirements.md
 <root>/measurements.md     optional; config "measurements": null when absent
-<root>/planning-model.json  temporary, planner only: the planning model (references/model.md of roadmap-planner); deleted after Step 7 passes; the checker ignores it
+<root>/planning-model.json  temporary, planner only: the planning model (model.md of roadmap-planner); deleted after Step 7 passes; the checker ignores it
 ```
 
 File names may be localized; the config maps roles to names. One fact lives in one place: the strategy holds no state, `state.md` holds no history, `log.md` and `decisions.md` are append-only.
@@ -140,7 +140,7 @@ The strategy is versioned (v1.0, v1.1, ...), carries no state, and starts with t
 7. Deliverables overview (ID, title, phase, depends on)
 8. Phases: in order, each with its name (by outcome), entry criteria, exit criteria and deliverables
 9. Deliverable cards
-10. Gates and verification: the `gates` table (below); a new roadmap always writes it
+10. Gates and verification: the `gates` table (below), written when there are gates (none in `CLAUDE.md` or the sources: omitted, and the handoff says so)
 11. Metrics and targets (sourced only; otherwise "none supplied"); may be omitted when empty
 12. Flags; may be omitted when empty
 13. Cross-cutting risks
@@ -261,7 +261,7 @@ The template is the first card; for later cards change `id`, list earlier cards 
 
 **Acceptance verification tag.** An acceptance item may end with ` {verify: <kind>[ BLQ-n]; evidence: <command or artifact>}`. Kinds: `test`, `smoke`, `integration` (evidence is an exact command that exits 0 only if the criterion holds), `human` (evidence names who confirms and where) and `blocked` (must cite a `BLQ-n`, for example `{verify: blocked BLQ-2; evidence: waits for the vendor key}`). The tag is stripped when reading an item, so it never changes the item count. Two warnings: `ac-verify-invalid` (unknown kind, `blocked` without a `BLQ-n`, empty evidence on `test`, `smoke` or `integration`, `BLQ-n` on a kind other than `blocked`, or a tag that is not closed, with no closing brace) and `ac-verify-missing` (one per card with untagged items). `ac-verify-missing` follows an adoption rule: it fires only when at least one acceptance item anywhere in the strategy carries a tag, so roadmaps written before 1.5.0 stay quiet until they adopt tags. A new roadmap tags every item. For code not yet written, see decompose.md § 10 for how to derive the evidence command from the gates.
 
-**Gates and verification.** The optional `gates` block (5 columns: ID, Command, Environment, When, Baseline; rows follow the normal `bad-row` rule) records the commands that prove a change is good. A new roadmap always writes it, copying the commands from the project `CLAUDE.md` and the sources; a card Definition of done cites gate IDs (`G1`). A row with an empty, `-` or `—` Command gives the warning `gate-no-command`. The section sits right after the cards.
+**Gates and verification.** The optional `gates` block (5 columns: ID, Command, Environment, When, Baseline; rows follow the normal `bad-row` rule) records the commands that prove a change is good. When it has gates it writes the block, copying the commands from the project `CLAUDE.md` and the sources; a card Definition of done cites gate IDs (`G1`). A row with an empty, `-` or `—` Command gives the warning `gate-no-command`. The section sits right after the cards.
 
 ## 6. State, decisions, log
 

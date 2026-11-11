@@ -7,7 +7,6 @@ Contract of the file the planner writes after each step and the scaffold reads a
 `modelVersion` (1), `date` (ISO, creation date: a fact), `topic` (kebab-case), `title`, `language`, `mode` (`full` or `light`), `strategyPath` (relative to the folder), `integrationBranch`, `releaseBranch` (optional), `nextStep` (number of the next skill step; every write sets it).
 
 ## 2. Optional fields with a default
-
 Each default applied is listed in `defaulted` of the output.
 
 | Field | Default |
@@ -82,7 +81,7 @@ The base fields except `releaseBranch` and `nextStep`; `requirements` (at least 
 
 It never reads stdin, never asks, never commits and never deletes the model. It writes only when the generated folder has 0 checker errors; running it again rewrites the folder from the model with the same bytes.
 
-`--json` prints `{tool, model, folder, written[], defaulted[], errors[], warnings[], summary: {errors, warnings, exitCode}}`; each error is `{path, code, message}` with the JSON path of the field. `defaulted` is `[{path, value}]`; `warnings` are the checker's. Exit 0 generated (warnings do not change it), 1 refused with nothing written, 2 usage or write failure.
+`--json` prints `{tool, model, folder, written[], defaulted[], errors[], warnings[], summary: {errors, warnings, exitCode}}`; each error is `{path, code, message}` with the JSON path of the field. `defaulted` is `[{path, value}]`; `warnings` are the checker's. Exit 0 generated (warnings do not change it), 1 refused with nothing written, 2 usage, read, write or internal failure.
 
 ## 11. Refusals (exit 1, nothing written)
 
@@ -97,5 +96,5 @@ It never reads stdin, never asks, never commits and never deletes the model. It 
 | `acceptance-min` | a card has fewer than 2 criteria |
 | `verify-missing`, `verify-blocked-no-blq` | a criterion lacks `verify`, its `kind`, its `evidence`, or the BLQ of a `blocked` kind |
 | `multiline-cell` | a table-cell value has a line break (a `|` is escaped instead) |
-| `existing-roadmap` | the folder has `roadmap.config.json` and no model |
+| `existing-roadmap` | the folder has `roadmap.config.json` and no model, or a log row or DEC the model lacks |
 | checker codes | the generated folder has a checker error (same codes as `check-roadmap.mjs`) |
