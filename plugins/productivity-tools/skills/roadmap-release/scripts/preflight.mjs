@@ -301,7 +301,7 @@ function readRoadmapTexts(root, dir, ref, warnings) {
   let text = (name) => { try { return norm(readFileSync(join(dir, name), 'utf8')); } catch { return null; } };
   const onRef = ref ? readRef(root, ref, at('roadmap.config.json')) : null;
   if (onRef !== null) text = (name) => { const t = readRef(root, ref, at(name)); return t === null ? null : norm(t); };
-  else if (ref) warnings.push(`roadmap cards read from the working tree (${ref} has no ${rel || '.'})`);
+  else warnings.push(ref ? `roadmap cards read from the working tree (${ref} has no ${rel || '.'})` : 'roadmap cards read from the working tree (no --ref given)');
   const config = JSON.parse(text('roadmap.config.json'));
   const strategy = text(config.strategy);
   if (strategy === null) throw new Error(`strategy not readable: ${config.strategy}`);

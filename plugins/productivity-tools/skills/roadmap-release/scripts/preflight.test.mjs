@@ -259,7 +259,7 @@ test('I5: a derived config detects the lockfile for install, or warns about the 
   writeFileSync(join(locked.root, 'package-lock.json'), '{}');
   const npm = runPreflight(locked.dir, { home });
   assert.equal(npm.config.install, 'npm ci');
-  assert.deepEqual(npm.warnings, []);
+  assert.deepEqual(npm.warnings, ['roadmap cards read from the working tree (no --ref given)']);
   const reviewed = repoWithRoadmap(true);
   assert.deepEqual(runPreflight(reviewed.dir, { home, ref: 'rel' }).warnings, []);
 });
@@ -591,6 +591,7 @@ test('sem ref a lista vem da árvore de trabalho e há aviso de origem', () => {
   const { dir } = pendingRepo();
   const r = runPreflight(dir, pfOpts());
   assert.ok(!r.pendingDecisions.some((d) => d.id === 'DEC-002'));
+  assert.ok(r.warnings.some((w) => /working tree/.test(w)), r.warnings.join());
   const r2 = runPreflight(dir, pfOpts({ ref: 'inexistente' }));
   assert.ok(r2.warnings.some((w) => /working tree/.test(w)), r2.warnings.join());
   assert.ok(!r2.pendingDecisions.some((d) => d.id === 'DEC-002'));
