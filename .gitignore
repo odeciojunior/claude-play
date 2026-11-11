@@ -17,3 +17,6 @@ CLAUDE.local.md
 
 # Output of wsl-health-check's health-report.sh --save
 health_report_*.txt
+
+# Measurement outputs (carry session ids)
+tools/measure/out/
