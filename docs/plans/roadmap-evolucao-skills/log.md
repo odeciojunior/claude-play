@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E6 | O dono ratificou DEC-210 (padrões de efeito externo do plan-tool). | `decisions.md` |
 | 2026-11-11 | E3, E6 | O dono decidiu Contradiz "-" na linha de emenda de ratify --amend (DEC-209); DEC-210 registrada, de origem executor e pendente, sobre os padrões de efeito externo do plan-tool. | `decisions.md` |
 | 2026-11-11 | - | BLQ-2 e BLQ-3 fechados pela ratificação; E18 e E22 voltam a `nao-iniciado`. BLQ-2 não listava DEC-137 a DEC-139, de que E18 também depende; ficaram cobertas pela mesma ratificação. | `decisions.md` |
 | 2026-11-11 | - | Desvio de DEC-030 registrado: E3 e E6 foram mesclados e E4 rodou 8 tarefas com decisões de contrato de E2 (e de E5 para E6) ainda pendentes; só E18 e E22 pararam. Sem retrabalho segundo a revisão; até E8 (DEC-031), o orquestrador confere `pending-decisions` antes de iniciar cada entregável. | `decisions.md` |
