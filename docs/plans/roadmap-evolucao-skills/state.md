@@ -32,7 +32,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
-| E18 | nao-iniciado | - | Aguardar E3 |
+| E18 | bloqueado (BLQ-2) | `c137ac190b801f255572648d40261f021139a437`; `feat/E18` | Esperar a ratificação das decisões de contrato de E3 (BLQ-2); depois retomar na `feat/E18` |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
@@ -50,6 +50,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
 | BLQ-1 | A execução automática de E4 parou na tarefa 9: ela exige subagentes novos (revisor opus/medium, executor sonnet do fluxo, revisor adversarial opus/medium) e o executor não tinha ferramenta de subagente | E4 | 2026-11-11 | O orquestrador despacha o revisor e passa a saída literal ao executor (restrição da linha 33 do plano) e a tarefa 9 roda; restaura E4 para `executando` |
+| BLQ-2 | E18 parou (humano): falta o dono ratificar as decisões de contrato de E3 (CLI, comandos, `--json`, códigos de saída; DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153) em que E18 se apoia (DEC-030, DEC-031) | E18 | 2026-11-11 | O dono ratifica essas decisões; restaura E18 para `nao-iniciado` |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -89,4 +90,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | Branch | Tipo | Nota |
 |---|---|---|
 | feat/E4 | viva | execução parada na tarefa 9 (BLQ-1); worktree `D:/projects/claude-play-wt/E4` mantido |
+| feat/E18 | viva | execução parada (BLQ-2); worktree `D:/projects/claude-play-wt/E18` mantido |
 <!-- /roadmap:inflight -->

@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E18 | BLQ-2 aberto: a execução automática de E18 parou por entrada humana (ratificação pelo dono das decisões de contrato de E3 ainda pendentes: DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153). E18 passa a bloqueado; `feat/E18` mantida em `D:/projects/claude-play-wt/E18`. | `c137ac190b801f255572648d40261f021139a437` |
 | 2026-11-11 | E6 | E6 entrou em `release/roadmap-skills-v2` (merge da `feat/E6`); gates iguais à linha de base: G1 exit 0 com 1138 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-176 a DEC-192 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `db19e0e37dcef2965d210f9c20732b6184b55239` |
 | 2026-11-11 | E6 | Execução do plano iniciada na branch `feat/E6`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md` |
 | 2026-11-11 | E6 | DEC-176 a DEC-192 registradas, de origem executor e pendentes de ratificação, vindas do spec de E6. | `decisions.md` |
