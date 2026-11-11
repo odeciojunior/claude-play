@@ -67,7 +67,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
 - (executor) Depois que E1 integrar, acrescentar `tools/**/*.test.mjs` ao gate G1 em `release.config.json` e na tabela de gates da estratégia, antes de E2 rodar (DEC-032, DEC-077).
 - (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
-- (dono) Primeira execução real do lançador de E1 contra `claude -p`, paga.
+- (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl`.
+- (dono) Ratificar DEC-085 a DEC-087, de contrato, antes de E15 (DEC-030).
 <!-- /roadmap:pending -->
 
 ## Em andamento

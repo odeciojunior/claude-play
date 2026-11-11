@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-10 | E1 | Registro do plano de E1 conferido (status plano, spec e plano na branch `feat/E1`). DEC-085 a DEC-087 registradas, de origem executor e pendentes de ratificação, vindas do spec de E1. | `decisions.md` |
 | 2026-11-10 | E1 | DEC-062 a DEC-080 registradas, de origem executor e pendentes de ratificação, vindas do spec de E1. | `decisions.md` |
 | 2026-11-10 | E1 | Plano escrito, na branch `feat/E1`. | `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md` |
 | 2026-11-10 | E1 | Spec escrito, na branch `feat/E1`. | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md` |
