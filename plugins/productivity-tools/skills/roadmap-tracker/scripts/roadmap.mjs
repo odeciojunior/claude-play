@@ -145,7 +145,9 @@ export function nextId(folder, strategyPath, kind) {
     }
     for (const m of text.matchAll(spec.re)) max = Math.max(max, Number(m[1]));
   };
-  for (const f of walkFiles(folder)) scan(f);
+  // The vendored checker at the folder root is code, not a record: an id quoted in one of its comments is not a used id (owner amendment to DEC-145).
+  const vendored = path.resolve(folder, 'check-roadmap.mjs');
+  for (const f of walkFiles(folder)) if (path.resolve(f) !== vendored) scan(f);
   if (strategyPath && fs.existsSync(strategyPath)) scan(strategyPath);
   return spec.fmt(max + 1);
 }
