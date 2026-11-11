@@ -287,6 +287,21 @@ test('pending-decisions lista decisão do executor pendente com alcance', (t) =>
   assert.equal(cli(f.dir, 'brief').output.result.pendingDecisions[0].id, 'DEC-002');
 });
 
+test('pending-decisions: Entregável "-" conta como liberada quando algum entregável do painel está liberado (DEC-198)', (t) => {
+  const row = '| DEC-002 | 2026-01-03 | - | Use SQLite. Scope: contract. | - | - | - | executor | pending |';
+  const mutate = (extra) => ({
+    'decisions.md': (x) => x.replace('<!-- /roadmap:decisions -->', `${row}
+<!-- /roadmap:decisions -->`),
+    ...extra,
+  });
+  const a = makeFolder(t, { mutate: mutate() });
+  assert.equal(cli(a.dir, 'pending-decisions').output.result.decisions[0].released, false);
+  const b = makeFolder(t, {
+    mutate: mutate({ 'state.md': (x) => x.replace('| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `docs/spec-e1.md` abc1234def |') }),
+  });
+  assert.equal(cli(b.dir, 'pending-decisions').output.result.decisions[0].released, true);
+});
+
 test('verify-commit separa existência e integração', (t) => {
   const f = makeFolder(t, { git: true });
   const main = cli(f.dir, 'verify-commit', f.shas.main);
@@ -971,6 +986,80 @@ test('AC5: ratify e reject recusam inexistente, origem diferente e não pendente
   assert.deepEqual(snapshot(f.dir), before);
   assert.equal(cli(f.dir, 'ratify').exitCode, 2);
   assert.equal(cli(f.dir, 'reject', 'DEC-002').exitCode, 2);
+});
+
+const DEC3_ROW = '| DEC-003 | 2026-01-06 | E1 | Use JSON. Scope: local. | none stated | - | - | executor | pending |';
+const withDec23 = (extra = {}) => withDec2({
+  'decisions.md': (x) => x.replace('<!-- /roadmap:decisions -->', `${DEC2_ROW}
+${DEC3_ROW}
+<!-- /roadmap:decisions -->`),
+  ...extra,
+});
+
+test('DEC-200: ratify aceita vários DEC, grava uma só linha de log e lista os ids', (t) => {
+  const f = makeFolder(t, { mutate: withDec23() });
+  const log0 = f.read('log.md');
+  const r = cli(f.dir, 'ratify', 'DEC-002', 'DEC-003', '--date', '2026-01-07');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.result.ids, ['DEC-002', 'DEC-003']);
+  const rows = decLines(f.read('decisions.md')).map(cellsOf);
+  assert.equal(rows[1][8], 'in-force');
+  assert.equal(rows[2][8], 'in-force');
+  const ld = lineDiff(log0, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], /DEC-002 a DEC-003|DEC-002, DEC-003/);
+  assert.match(ld.added[0], /ratified by the owner/);
+  assert.ok(!f.read('state.md').includes('Ratify DEC-002'));
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('DEC-200: --what substitui o texto do log de ratify', (t) => {
+  const f = makeFolder(t, { mutate: withDec23() });
+  const log0 = f.read('log.md');
+  assert.equal(cli(f.dir, 'ratify', 'DEC-002', 'DEC-003', '--what', 'lote ratificado').exitCode, 0);
+  const ld = lineDiff(log0, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.ok(ld.added[0].includes('lote ratificado'));
+});
+
+test('DEC-200: ratify com um id já vigente recusa a lista inteira sem gravar nada', (t) => {
+  const f = makeFolder(t, { mutate: withDec23() });
+  assert.equal(cli(f.dir, 'ratify', 'DEC-003').exitCode, 0);
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'ratify', 'DEC-002', 'DEC-003'), 'not-pending');
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('DEC-200: ratify --amend acrescenta a decisão do dono e ratifica a original', (t) => {
+  const f = makeFolder(t, { mutate: withDec2() });
+  const r = cli(f.dir, 'ratify', 'DEC-002', '--amend', 'Use SQLite 3.45 or later', '--revisit', 'Volume grows', '--date', '2026-01-07');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.result.ids, ['DEC-002']);
+  assert.equal(r.output.result.amendment, 'DEC-003');
+  const rows = decLines(f.read('decisions.md')).map(cellsOf);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[1][8], 'in-force');
+  assert.deepEqual(rows[2], [
+    'DEC-003', '2026-01-07', 'E1', 'Owner amendment to DEC-002, on ratifying it: Use SQLite 3.45 or later',
+    'The original text of DEC-002.', '-', 'Volume grows', 'user', 'in-force',
+  ]);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('DEC-200: --amend em português e só com um DEC', (t) => {
+  const f = makeFolder(t, { mutate: withDec23() });
+  const cfgFile = path.join(f.dir, 'roadmap.config.json');
+  const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+  cfg.language = 'pt-BR';
+  fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
+  const before = snapshot(f.dir);
+  assert.equal(cli(f.dir, 'ratify', 'DEC-002', 'DEC-003', '--amend', 'x').exitCode, 2);
+  assert.deepEqual(snapshot(f.dir), before);
+  const r = cli(f.dir, 'ratify', 'DEC-002', '--amend', 'Usar SQLite 3.45');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const row = decLines(f.read('decisions.md')).map(cellsOf)[3];
+  assert.equal(row[3], 'Emenda do dono a DEC-002, ao ratificá-la: Usar SQLite 3.45');
+  assert.equal(row[4], 'O texto original de DEC-002.');
 });
 
 test('AC6: reject cria a linha do dono, substitui a antiga e tira o pendente', (t) => {
