@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Linha de base (E15): o executor prepara os comandos do lançador e o dono opera as execuções pagas. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
+1. Linha de base (E15): o plano executa em `feat/E15` (execução automática); depois o dono opera as execuções pagas. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
 2. Escrever o spec e o plano de E2 pelo release, em plan-only. Executa: executor. Aprova: dono. Depende de: DEC-058.
 3. Escrever o spec e o plano de E5 pelo release, em plan-only. Executa: executor. Aprova: dono. Depende de: DEC-037.
 <!-- /roadmap:now -->
@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
-| E15 | nao-iniciado | - | Preparar os comandos do lançador para o dono operar |
+| E15 | executando | `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `feat/E15` | Executar o plano na branch `feat/E15`; depois o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
 | E18 | nao-iniciado | - | Aguardar E3 |
@@ -57,7 +57,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:pending -->
 - (dono) Operar os pontos de medição E15, E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
-- (dono) Aprovar a tabela de metas derivadas depois da linha de base de E15 (DEC-034).
 - (dono) Os scripts em `docs/reports/2026-11-10-session-metrics/` foram limpos de dados pessoais e ficam como evidência; ainda têm os erros de preço e de agrupamento que E1 corrige.
 - (executor) Incerto, rever no spec de E25: nome, regra e concessão por `allowed-tools` só foram vistos com o plugin carregado do caminho local; nenhum plugin instalado registra workflow, então só o critério do dono em E25 confere. A pasta do cache não é legível para o caminho (SRC-15).
 - (executor) Incerto, rever no spec de E25: nenhuma sessão sem interface grava `skipWorkflowUsageWarning` nas configurações do usuário; resta a sessão interativa ao mostrar o diálogo, não testada. O marcador de sessão filha não influi na permissão (SRC-15).
@@ -67,8 +66,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
-- (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
 - (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl` (DP-4). Os critérios de E1 usaram executor simulado (DEC-011, DEC-043, DEC-082).
+- (dono) Execuções pagas da linha de base, operadas com `run-baseline.mjs` no ambiente do dono (plugin 1.6.0 instalado, regras de permissão da execução sem interface) (DEC-088).
+- (dono) Escolher a execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em `--from-run`, antes das tentativas de detecção; o dono aceitou a semeadura sintética em E1 (DEC-099, DEC-101).
+- (dono) Conferir as linhas da linha de base e de detecção de E15 (critérios 1 a 3).
+- (dono) Aprovar a revisão da estratégia com a tabela de metas, depois das execuções pagas de E15 (critério 4, DEC-034, DEC-098).
+- (dono) Ratificar as decisões de alcance contrato de E15 (DEC-089, DEC-090, DEC-091, DEC-092, DEC-095, DEC-099, DEC-100) antes de E17 começar (DEC-030).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -76,4 +79,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| `feat/E15` | viva | Execução automática |
 <!-- /roadmap:inflight -->

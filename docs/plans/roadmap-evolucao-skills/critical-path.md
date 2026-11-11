@@ -75,8 +75,8 @@ Publicações, na ordem: E17 (compatível), E11 (versão de quebra), E16 e E13 (
 
 Próximo portão por trilha (o estado atual está em `state.md`):
 
-- decisions: nenhuma decisão do executor pendente (DEC-085 a DEC-087 ratificadas); as sondas de E14 e os experimentos de DEC-052 estão concluídos.
-- measurement: E1 na branch de release; depois que entrar em `main`, a linha de base de E15.
+- decisions: DEC-088 a DEC-101 (E15) aguardam ratificação do dono, as de alcance contrato antes de E17 (DEC-030); DEC-085 a DEC-087 ratificadas; as sondas de E14 e os experimentos de DEC-052 estão concluídos.
+- measurement: E1 na branch de release; E15 em execução em `feat/E15`, depois as execuções pagas do dono (linha de base).
 - engineering: specs de E2 e E5 aprovados, depois de E14.
 - release: branch de release e tag da versão atual criadas (DEC-002, DEC-036); primeira publicação em E17.
 - external: nenhum.

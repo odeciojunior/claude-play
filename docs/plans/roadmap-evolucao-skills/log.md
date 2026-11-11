@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E15 | Execução do plano iniciada na branch `feat/E15`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md` |
+| 2026-11-11 | E15 | DEC-088 a DEC-101 registradas, de origem executor e pendentes de ratificação, vindas do spec de E15. | `decisions.md` |
+| 2026-11-11 | E15 | Plano escrito, na branch `feat/E15`. | `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md` |
+| 2026-11-11 | E15 | Spec escrito, na branch `feat/E15`. | `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md` |
 | 2026-11-11 | E1 | Correção após a integração: o cenário de medição chega ao sandbox em LF mesmo num checkout CRLF (um teste de `tools/` falhava em checkout novo, fora do G1 antigo). G1 passa a incluir `tools/**`, com 800 testes; G4 deixa de ser tratado como restrito. Estratégia v1.3. | `0e443ce` |
 | 2026-11-10 | E1 | E1 entrou em `release/roadmap-skills-v2` (merge da `feat/E1`); gates iguais à linha de base: G1 exit 0 com 720 testes, G2, G3 e G5 exit 0. Ainda não está em `main`. | `21d1979fb70266b94508ec2b8a64da29a1c2af0f` |
 | 2026-11-10 | E1 | Execução do plano iniciada na branch `feat/E1`, pelo release (execução automática). Spec e plano aprovados pelas revisões; DEC-085 a DEC-087 já ratificadas. | `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md` |
