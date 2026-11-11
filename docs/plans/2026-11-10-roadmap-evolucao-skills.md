@@ -951,7 +951,7 @@ Metas derivadas: a tabela entra por revisão da estratégia depois de E15 (crit�
 
 ## Decisões
 
-Ver `decisions.md`. Esta versão absorve DEC-001 a DEC-052. DEC-053 a DEC-056 são do executor, de alcance local, e aguardam ratificação no próximo ponto de medição.
+Ver `decisions.md`. Esta versão absorve DEC-001 a DEC-061; todas as decisões do executor estão ratificadas pelo dono.
 
 ## Pendências externas
 

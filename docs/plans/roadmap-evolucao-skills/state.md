@@ -54,7 +54,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Pendentes
 
 <!-- roadmap:pending -->
-- (dono) Ratificar DEC-053 a DEC-056, do executor, de alcance local, no próximo ponto de medição.
 - (dono) Operar os pontos de medição E15, E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (dono) Aprovar a tabela de metas derivadas depois da linha de base de E15 (DEC-034).
 - (dono) Os scripts em `docs/reports/2026-11-10-session-metrics/` foram limpos de dados pessoais e ficam como evidência; ainda têm os erros de preço e de agrupamento que E1 corrige.
