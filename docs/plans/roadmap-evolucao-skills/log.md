@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E2 | Execução do plano iniciada na branch `feat/E2`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md` |
+| 2026-11-11 | E2 | DEC-102 a DEC-116 registradas, de origem executor e pendentes de ratificação, vindas do spec de E2. | `decisions.md` |
+| 2026-11-11 | E2 | Plano escrito, na branch `feat/E2`. | `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md` |
+| 2026-11-11 | E2 | Spec escrito, na branch `feat/E2`. | `docs/superpowers/specs/2026-11-11-E2-formato-roadmap-verificado-design.md` |
 | 2026-11-11 | E15 | E15 entrou em `release/roadmap-skills-v2` (merge da `feat/E15`); gates iguais à linha de base: G1 exit 0 com 847 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. As execuções pagas e a conferência dos critérios 1 a 4 seguem com o dono. | `edeb2b9e7c10b5154f4a40c3c095377b11b08322` |
 | 2026-11-11 | E15 | Execução do plano iniciada na branch `feat/E15`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md` |
 | 2026-11-11 | E15 | DEC-088 a DEC-101 registradas, de origem executor e pendentes de ratificação, vindas do spec de E15. | `decisions.md` |
