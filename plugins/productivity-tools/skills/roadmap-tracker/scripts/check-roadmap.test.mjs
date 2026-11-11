@@ -1571,6 +1571,13 @@ test('executor-decision-pending', () => {
   })), 'executor-decision-pending', 'warning');
 });
 
+test('executor-decision-pending com Entregável "-" avisa quando algum entregável do painel está liberado (DEC-198)', () => {
+  const dash = (f) => rep(f, 'decisions.md', '<!-- /roadmap:decisions -->', T5_EXEC_ROW(' Alcance: contrato.').replace('| E1 |', '| - |') + '<!-- /roadmap:decisions -->');
+  const release = (f) => rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `docs/spec-e1.md` abc1234def |');
+  assert.ok(!t5HasCode(fixture((f) => dash(f)), 'executor-decision-pending'));
+  expectCode(run(fixture((f) => { dash(f); release(f); })), 'executor-decision-pending', 'warning');
+});
+
 test('executor-decision-pending reads English Scope: local as local', () => {
   assert.ok(!t5HasCode(fixture((f) => { t5AddExec(f, ' Scope: local.'); rep(f, 'state.md', '| E2 | not-started |', '| E2 | plan |'); }), 'executor-decision-pending'));
 });

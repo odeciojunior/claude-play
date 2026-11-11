@@ -3,6 +3,16 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E4 | E4 entrou em release/roadmap-skills-v2 (merge da feat/E4); G1 com 1236 testes, 0 falhas; G2 a G5 exit 0 (lint com 3 avisos novos). Revisão final opus/high aprovou com ressalvas. | `64e9c54` |
+| 2026-11-11 | E4 | BLQ-1 resolvido: A tarefa 9 rodou pela sessão principal (DEC-204); E4 mesclado em release/roadmap-skills-v2 | `64e9c54` |
+| 2026-11-11 | E15, E2, E3, E6 | Correções de código das ratificações entraram em `release/roadmap-skills-v2`: G1 com 1169 testes, 0 falhas; G2 a G5 exit 0; revisão final opus/high aprovada com ressalvas, achados corrigidos. | `8303bc9` |
+| 2026-11-11 | E6 | O dono ratificou DEC-210 (padrões de efeito externo do plan-tool). | `decisions.md` |
+| 2026-11-11 | E3, E6 | O dono decidiu Contradiz "-" na linha de emenda de ratify --amend (DEC-209); DEC-210 registrada, de origem executor e pendente, sobre os padrões de efeito externo do plan-tool. | `decisions.md` |
+| 2026-11-11 | - | BLQ-2 e BLQ-3 fechados pela ratificação; E18 e E22 voltam a `nao-iniciado`. BLQ-2 não listava DEC-137 a DEC-139, de que E18 também depende; ficaram cobertas pela mesma ratificação. | `decisions.md` |
+| 2026-11-11 | - | Desvio de DEC-030 registrado: E3 e E6 foram mesclados e E4 rodou 8 tarefas com decisões de contrato de E2 (e de E5 para E6) ainda pendentes; só E18 e E22 pararam. Sem retrabalho segundo a revisão; até E8 (DEC-031), o orquestrador confere `pending-decisions` antes de iniciar cada entregável. | `decisions.md` |
+| 2026-11-11 | E15, E2, E5, E3, E4, E6 | O dono ratificou DEC-088 a DEC-192 em bloco, por delegação ao revisor Fable após três revisões opus: 89 como estavam e 16 com emendas registradas como DEC-193 a DEC-208; gatilhos de revisão gravados nas decisões de contrato que estavam sem. | `decisions.md` |
+| 2026-11-11 | E22 | BLQ-3 aberto: a execução automática de E22 parou por entrada humana (ratificação pelo dono das decisões de contrato de E3, DEC-136 a DEC-153 em parte). E22 passa a bloqueado; `feat/E22` mantida. | `8f53396d9d5bb47731d7d4a1fa027d5197922a99` |
+| 2026-11-11 | E18 | BLQ-2 aberto: a execução automática de E18 parou por entrada humana (ratificação pelo dono das decisões de contrato de E3 ainda pendentes: DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153). E18 passa a bloqueado; `feat/E18` mantida em `D:/projects/claude-play-wt/E18`. | `c137ac190b801f255572648d40261f021139a437` |
 | 2026-11-11 | E6 | E6 entrou em `release/roadmap-skills-v2` (merge da `feat/E6`); gates iguais à linha de base: G1 exit 0 com 1138 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-176 a DEC-192 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `db19e0e37dcef2965d210f9c20732b6184b55239` |
 | 2026-11-11 | E6 | Execução do plano iniciada na branch `feat/E6`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md` |
 | 2026-11-11 | E6 | DEC-176 a DEC-192 registradas, de origem executor e pendentes de ratificação, vindas do spec de E6. | `decisions.md` |

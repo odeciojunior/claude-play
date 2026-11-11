@@ -1,6 +1,6 @@
 # Clarify: bounded question loop
 
-How `roadmap-planner` Step 2 finds what is ambiguous, decides what to ask, asks it, and records the answer. Adapted from spec-kit's `clarify` command (ambiguity scan, impact × uncertainty, at most 5 questions, one at a time, each with a recommendation) for roadmaps, which are broader than one feature.
+How `roadmap-planner` Step 2 finds what is ambiguous, decides what to ask, asks it, and records the answer. Adapted from spec-kit's `clarify` command for roadmaps; the question budget is Rule 6 of `SKILL.md`.
 
 ## Contents
 
@@ -81,7 +81,7 @@ This decides the walking skeleton's sign-in piece and its acceptance criteria.
   D. Your own answer
 ```
 
-Never bundle several questions into one, and never ask a question the sources already answer.
+Never bundle questions, and never ask what the sources already answer.
 
 ## 5. Recommended answers
 
@@ -89,17 +89,17 @@ The recommendation is advice; the user decides. Base it on:
 
 1. What the sources support, citing them.
 2. For a conflict, the default precedence: the user's explicit statement today, then a newer dated primary source, then an older one. Say which rule you applied.
-3. For an unsourced number, recommend: "record it as `ASSUMPTION`, add work to measure the baseline first, and set the target once the baseline exists". Never recommend inventing a baseline.
+3. For an unsourced number, recommend: "record it as `ASSUMPTION`, measure the baseline first, set the target once it exists".
 4. For a missing date or duration, recommend: "no date; order by dependencies".
 5. When nothing supports any option, say so and recommend deferring it as an open question.
 6. When a sourced estimate exists for the options, show the accumulated cost of the choices so far next to each option. Never estimate it yourself.
 
 ## 6. Rounds and the stop rule
 
-- A round has **at most 5 questions** (light mode: 3, one round, §9), asked one at a time; the next question waits for the previous answer, and an answer may change the scores of the remaining candidates.
+- A round holds the questions Rule 6 of `SKILL.md` allows; the next question waits for the previous answer, and an answer may change the scores of the remaining candidates.
 - Order: ask capacity and date constraints (category 8) before or together with the scope decisions, so scope choices are made knowing the limits.
-- After each round, report the categories as **Resolved** (answered now), **Deferred** (left as assumption or open question), **Clear** (needed no question) and **Outstanding** (still high priority).
-- Another round, one theme at a time (for example "integrations", then "non-functional"), only when the user consents. Never exceed the budget without asking.
+- After each round, report the categories as **Resolved**, **Deferred**, **Clear** or **Outstanding** (still high priority).
+- Another round, one theme at a time, only when the user consents.
 
 Stop when any of these holds:
 
@@ -107,7 +107,7 @@ Stop when any of these holds:
 2. The user says to stop.
 3. The user declines another round.
 
-Whatever remains is recorded as a deferred question (§7): an "Open questions" entry, a `pending` item with an owner and, when it blocks a deliverable, a `BLQ-n`; a requirement it leaves unresolved is `needs-clarification`.
+Whatever remains is recorded as a deferred question (§7); a requirement it leaves unresolved is `needs-clarification`.
 
 ## 7. Recording answers
 
@@ -119,9 +119,9 @@ Whatever remains is recorded as a deferred question (§7): an "Open questions" e
 | No answer, "later" or "defer" | **Not a `DEC`.** An "Open questions" entry in the strategy; a `pending` item in `state.md` with its owner (`(owner) <question>`); a `BLQ-n` row in `blockers` when it blocks a deliverable (Affects = that `E<n>`, Unblocks when = the question is answered); affected requirements `needs-clarification`. A related `conflicts` item stays and names the question (`SRC-01 vs SRC-03: … -> open question: <short title>`) |
 | A new source the user points to | A new `SRC` row, read like the others in Step 1 |
 
-When the user picks an option other than the recommended one, note the cost of that choice in the `DEC` row (from the sourced estimate; if none exists, say it was not estimated).
+When the user picks an option other than the recommended one, note its cost in the `DEC` row (sourced estimate, or "not estimated").
 
-**Autonomy policy.** Decide it during clarification and record it as a `DEC` (Origin `user`): the executor may take delivery decisions by the recommended option. Each such decision is a `DEC` row with Origin `executor` and Status = the `decisionPending` word until the owner ratifies it. A decision that diverges from an existing `DEC`, or that changes a gate, is never the executor's alone: it needs the owner. If the user says no, record a `DEC` (Origin `user`) saying the executor does not decide alone; every executor choice becomes a `pending` item waiting for the owner, with no `DEC` row of Origin `executor` (this includes the `{verify}` refinement of decompose.md §10). The `DEC` guides planning; the autonomy of `roadmap-release` is decided when it is invoked, not by this `DEC`. The autonomy question is a clarification question and counts toward the budget (light mode: one of the 3; full mode: one of the round's 5), unlike the mode question.
+**Autonomy policy.** Decide it during clarification and record it as a `DEC` (Origin `user`): the executor may take delivery decisions by the recommended option. Each such decision is a `DEC` row with Origin `executor` and Status = the `decisionPending` word until the owner ratifies it. A decision that diverges from an existing `DEC`, or that changes a gate, is never the executor's alone: it needs the owner. If the user says no, record a `DEC` (Origin `user`) saying the executor does not decide alone; every executor choice becomes a `pending` item waiting for the owner, with no `DEC` row of Origin `executor` (this includes the `{verify}` refinement of decompose.md §10). The `DEC` guides planning; the autonomy of `roadmap-release` is decided when it is invoked, not by this `DEC`. The autonomy question counts toward the Rule 6 budget, unlike the mode question.
 
 Record only what the user actually answered. When the user accepts a recommendation, the decision is still the user's (Origin `user`). Requirements derived from an answer cite its `DEC`.
 
@@ -131,4 +131,4 @@ Clarification stays at **roadmap level**: objectives, scope and non-goals, const
 
 ## 9. Light mode
 
-When Step 0 chose light mode: at most 3 clarification questions (the mode question itself does not count), one round, no further rounds. Pick the three highest-priority candidates from §3 (source conflicts and unsourced numbers first); everything else is recorded as an assumption or open question (§7). The stop rule of §6 still applies earlier.
+Budget per Rule 6 of `SKILL.md`. Pick the highest-priority candidates from §3 (source conflicts and unsourced numbers first); the rest is recorded as an assumption or open question (§7).
