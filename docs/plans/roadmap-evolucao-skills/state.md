@@ -38,7 +38,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
-| E22 | nao-iniciado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22` | Sincronizar a `feat/E22` com a release e retomar pelo release, depois de E18 |
+| E22 | executando | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` | Executar o plano na feat/E22 (D:/projects/claude-play-wt/E22) pelo release |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | nao-iniciado | - | Aguardar E18 |
@@ -82,6 +82,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Ratificação pelo dono das 20 decisões autônomas do spec de E18 (DEC-030). As de alcance contrato (1, 2, 5 e 7) seguram o início de E25 e E8; as locais esperam o ponto de medição.
 - (dono) Ratificação das decisões de contrato de E3 ainda pendentes (DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153): forma da CLI, comandos, saída --json e códigos de saída de que E18 depende (DEC-030, DEC-031); E18 e E22 esperam.
+- (dono) Aceite dos critérios 2 e 3 de E22 (verify: human): conferir o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, produzido pelo orquestrador da sessão principal (DEC-204).
+- (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
+- (dono) Ratificação pelo dono das decisões autônomas de E22 (DEC-030); as de alcance contrato (1, 2 e 3 do spec) seguram o início de E7 e E20, as locais em lote no ponto de medição.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -89,5 +92,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E22 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E22` mantido |
+| feat/E22 | viva | execução automática; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->
