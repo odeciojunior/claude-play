@@ -321,7 +321,7 @@ git commit -m "E1 T6: peças fixas do cenário e gerador de variantes sem semead
 
 **Files:**
 - Create: `tools/measure/defects/manifest.json`
-- Create: `tools/measure/defects/sentinels/P1.mjs` … `P8.mjs`, `PX1.mjs`, `PX2.mjs`, `PX3.mjs`
+- Create: `tools/measure/defects/sentinels/P1.mjs`, `tools/measure/defects/sentinels/P2.mjs`, `tools/measure/defects/sentinels/P3.mjs`, `tools/measure/defects/sentinels/P4.mjs`, `tools/measure/defects/sentinels/P5.mjs`, `tools/measure/defects/sentinels/P6.mjs`, `tools/measure/defects/sentinels/P7.mjs`, `tools/measure/defects/sentinels/P8.mjs`, `tools/measure/defects/sentinels/PX1.mjs`, `tools/measure/defects/sentinels/PX2.mjs`, `tools/measure/defects/sentinels/PX3.mjs`
 - Modify: `tools/measure/make-scenario.mjs`
 - Modify: `tools/measure/make-scenario.test.mjs`
 
@@ -375,7 +375,7 @@ git commit -m "E1 T7: manifesto e defeitos de plano com sentinela, inclusive os 
 
 **Files:**
 - Modify: `tools/measure/defects/manifest.json`
-- Create: `tools/measure/defects/sentinels/S1.mjs` … `S8.mjs`
+- Create: `tools/measure/defects/sentinels/S1.mjs`, `tools/measure/defects/sentinels/S2.mjs`, `tools/measure/defects/sentinels/S3.mjs`, `tools/measure/defects/sentinels/S4.mjs`, `tools/measure/defects/sentinels/S5.mjs`, `tools/measure/defects/sentinels/S6.mjs`, `tools/measure/defects/sentinels/S7.mjs`, `tools/measure/defects/sentinels/S8.mjs`
 - Modify: `tools/measure/make-scenario.mjs`
 - Modify: `tools/measure/make-scenario.test.mjs`
 
@@ -413,7 +413,7 @@ git commit -m "E1 T8: defeitos de spec com sentinela e variantes spec-semeado" -
 
 **Files:**
 - Modify: `tools/measure/defects/manifest.json`
-- Create: `tools/measure/defects/sentinels/C1.mjs` … `C8.mjs`
+- Create: `tools/measure/defects/sentinels/C1.mjs`, `tools/measure/defects/sentinels/C2.mjs`, `tools/measure/defects/sentinels/C3.mjs`, `tools/measure/defects/sentinels/C4.mjs`, `tools/measure/defects/sentinels/C5.mjs`, `tools/measure/defects/sentinels/C6.mjs`, `tools/measure/defects/sentinels/C7.mjs`, `tools/measure/defects/sentinels/C8.mjs`
 - Modify: `tools/measure/make-scenario.mjs`
 - Modify: `tools/measure/make-scenario.test.mjs`
 
