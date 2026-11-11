@@ -361,6 +361,8 @@ test('task fixers and final reviews carry the roles and rounds of the real label
     { label: 'E5:t3:spec-fix1' },
     { label: 'E5:t3:quality-fix2' },
     { label: 'E5:final-1-r1', model: 'claude-opus-4-5' },
+    { label: 'E5:gates-fix1', prompt: 'x'.repeat(3) },
+    { label: 'E5:final-fix1', prompt: 'x'.repeat(7) },
     { label: 'E5:final-2-r1', model: 'claude-opus-4-5' },
     { label: 'E5:final-1-r2', model: 'claude-opus-4-5' },
     { label: 'E5:final-2-r2', model: 'claude-opus-4-5' },
@@ -377,10 +379,11 @@ test('task fixers and final reviews carry the roles and rounds of the real label
     assert.equal(r.reviewRounds.extraAgents.calls.opus, 3);
     assert.equal(r.tasks.loop.calls.sonnet, 4);
     // structural: spec (sonnet) and the two round-1 final reviewers (opus); bytes: 10 + 5 + 5
+    // (final-fix1 and gates-fix1 are fix agents by label: out of structural and bytes, in fixCalls)
     const c = toAttemptCounters(r);
     assert.deepEqual(c.structural, { haiku: 0, sonnet: 1, opus: 2, fable: 0, other: 0, weighted: 20 + 80 });
     assert.equal(c.bytes, 20);
-    assert.deepEqual(c.conditional, { extraRounds: 2, fixCalls: 2 });
+    assert.deepEqual(c.conditional, { extraRounds: 2, fixCalls: 4 });
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

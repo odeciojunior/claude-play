@@ -55,7 +55,6 @@ export class UsageError extends Error {
 
 const sumCalls = (c) => FAMILIES.reduce((n, f) => n + (c[f] ?? 0), 0);
 const weighted = (c) => FAMILIES.reduce((n, f) => n + (c[f] ?? 0) * (WEIGHTS[f] ?? 0), 0);
-const isFixRole = (name) => /-fix$/.test(name);
 
 // Counters of one attempt from one extractor Run. Structural/bytes leave out the task loop, the fix
 // agents and the reviewers of rounds above 1 outside the task loop (conditional work; the extractor
@@ -68,13 +67,13 @@ export function toAttemptCounters(run) {
     for (const f of FAMILIES) structural[f] -= extra.calls[f];
     bytes -= extra.promptBytes;
   }
-  let fixCalls = 0;
-  for (const [name, role] of Object.entries(run.roles)) {
-    if (!isFixRole(name) || name === 'task-fix') continue; // task-fix agents are already in the task loop
-    for (const f of FAMILIES) structural[f] -= role.calls[f];
-    bytes -= role.promptBytes;
+  // Fix agents outside the task loop, decided by label in the extractor (run.fixAgents); task fixers are in the loop.
+  const fix = run.fixAgents;
+  if (fix) {
+    for (const f of FAMILIES) structural[f] -= fix.calls[f];
+    bytes -= fix.promptBytes;
   }
-  for (const [name, role] of Object.entries(run.roles)) if (isFixRole(name)) fixCalls += sumCalls(role.calls);
+  const fixCalls = (fix ? sumCalls(fix.calls) : 0) + (run.roles['task-fix'] ? sumCalls(run.roles['task-fix'].calls) : 0);
   structural.weighted = weighted(structural);
   return {
     structural,
@@ -560,6 +559,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
     let launchOpts = opts;
     if (h) {
+      gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
       const script = buildReviewOnlyScript({ stage: h.stage, ...harnessPrompts(h, scenario) });
       writeFileSync(join(scenario.dir, 'review-only.js'), script);
       excludeFromGit(scenario.dir, 'review-only.js');

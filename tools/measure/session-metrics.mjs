@@ -223,6 +223,9 @@ function reviewLoop(label) {
   return null;
 }
 
+// Fix agents are decided by label (not by role: final-fix, gates-fix and merge-fix classify as other roles).
+const isFixLabel = (label) => /-fix\d*(-|$)/.test(normalizeLabel(label));
+
 const taskOf = (label) => /^t(\d+):/.exec(normalizeLabel(label))?.[1] ?? null;
 
 const dirs = (p) => (existsSync(p) ? readdirSync(p).filter((n) => statSync(join(p, n)).isDirectory()) : []);
@@ -283,6 +286,7 @@ export function extract({ root, sessions, runs, prices }) {
       roles: {},
       total: newCounters(),
       reviewRounds: { loops: {}, extra: 0, extraAgents: newCounters() },
+      fixAgents: newCounters(), // fix agents outside the task loop (conditional work)
       tasks: { count: 0, loop: newCounters() },
       main: { turns: 0, agentCalls: {}, promptBytes: 0, tokens: emptyTokens(), cost: null },
     };
@@ -310,6 +314,7 @@ export function extract({ root, sessions, runs, prices }) {
         const task = taskOf(a.meta.description);
         // Reviewers of rounds above 1 outside the task loop (task agents are already in tasks.loop).
         if (rl && rl.round > 1 && task === null) addCounters(r.reviewRounds.extraAgents, c);
+        if (task === null && isFixLabel(a.meta.description)) addCounters(r.fixAgents, c);
         if (task !== null) {
           taskIds.add(task);
           addCounters(r.tasks.loop, c);

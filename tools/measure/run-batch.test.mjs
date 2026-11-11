@@ -218,6 +218,7 @@ test('toAttemptCounters separates structural, per-task and conditional work', ()
       implementer: { ...cnt(calls(0, 2, 0), 20, 1), agents: 2 },
     },
     total: cnt(calls(0, 4, 0), 35, 3),
+    fixAgents: cnt(calls(0, 1, 0), 5, 1),
     reviewRounds: { loops: {}, extra: 2 },
     tasks: { count: 2, loop: cnt(calls(0, 2, 0), 20, 1) },
     main: { turns: 7, agentCalls: { sonnet: 2, default: 1 }, promptBytes: 9, tokens: {}, cost: 1 },
@@ -547,6 +548,26 @@ test('review-only script is valid JavaScript and dispatches only reviewer and fi
   assert.ok(text.includes("'E5:plan-review1'"));
   assert.ok(text.includes("'E5:plan-review-fix1'"));
   assert.ok(text.includes("name: 'review-only'"));
+});
+
+test('harness launches with the sandbox root on feat/E5 and the seeded blob at HEAD', async () => {
+  const s = setup();
+  try {
+    const seen = [];
+    const afterRun = (cwd) => {
+      seen.push({
+        branch: gitq(cwd, 'rev-parse', '--abbrev-ref', 'HEAD'),
+        blob: gitIn(cwd, 'rev-parse', `HEAD:${E5_PATHS.plan}`).status,
+      });
+      fixP1(cwd);
+    };
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun });
+    await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
+    assert.ok(seen.length > 0);
+    for (const x of seen) assert.deepEqual(x, { branch: 'feat/E5', blob: 0 });
+  } finally {
+    s.done();
+  }
 });
 
 test('harness writes the script in the sandbox and launches it with Workflow allowed', async () => {
