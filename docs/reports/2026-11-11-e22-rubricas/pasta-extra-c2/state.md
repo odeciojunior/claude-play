@@ -33,6 +33,7 @@ Snapshot. Overwritten on every update; history goes to `log.md`.
 
 <!-- roadmap:pending -->
 - (owner) Confirm the storage choice.
+- (user) approve strategy v1.1 (absorbs DEC-199, DEC-200: REQ-003 mobile client enters E2; card reqs, pieces, Non-goals and REQ-003 coverage change in the revision; E1 definition of done changes)
 <!-- /roadmap:pending -->
 
 ## In flight

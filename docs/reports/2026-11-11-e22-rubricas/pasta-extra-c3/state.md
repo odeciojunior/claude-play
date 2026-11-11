@@ -33,6 +33,7 @@ Snapshot. Overwritten on every update; history goes to `log.md`.
 
 <!-- roadmap:pending -->
 - (owner) Confirm the storage choice.
+- (owner) card says 'submits one item', spec says 'one item of at most 100 characters': confirm (enfraquecido)
 <!-- /roadmap:pending -->
 
 ## In flight
