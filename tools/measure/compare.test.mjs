@@ -152,3 +152,19 @@ test('CLI exit codes', () => {
   assert.match(usage.stderr, /usage:/);
   assert.equal(cli(['--before', b, '--after', join(AGG, 'missing.json')]).status, 2);
 });
+
+test('seeded variant with every attempt invalid blocks instead of reporting nao-aplicavel', () => {
+  const invalid = (variant) => ({
+    variant,
+    attempts: Array.from({ length: 40 }, (_, i) => ({ n: i + 1, status: 'invalid', reason: 'formato-do-diario' })),
+  });
+  const r = compare(invalid('plano-semeado-A'), invalid('plano-semeado-A'));
+  assert.equal(r.detection.plan.verdict, 'inconclusivo');
+  assert.equal(r.detection.plan.missing, 40);
+  assert.equal(r.detection.code.verdict, 'nao-aplicavel');
+  assert.equal(r.detection.spec.verdict, 'nao-aplicavel');
+  assert.equal(r.bloqueia, true);
+  // an unseeded variant has no detection class to wait for
+  const plain = compare({ variant: 'completo', attempts: [] }, { variant: 'completo', attempts: [] });
+  assert.equal(plain.detection.plan.verdict, 'nao-aplicavel');
+});

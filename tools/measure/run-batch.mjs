@@ -57,12 +57,17 @@ const sumCalls = (c) => FAMILIES.reduce((n, f) => n + (c[f] ?? 0), 0);
 const weighted = (c) => FAMILIES.reduce((n, f) => n + (c[f] ?? 0) * (WEIGHTS[f] ?? 0), 0);
 const isFixRole = (name) => /-fix$/.test(name);
 
-// Counters of one attempt from one extractor Run. Structural/bytes leave out the task loop and the
-// fix agents (conditional work). Roles carry no round number, so agents of review rounds above 1 stay
-// in structural; their count is reported separately as conditional.extraRounds.
+// Counters of one attempt from one extractor Run. Structural/bytes leave out the task loop, the fix
+// agents and the reviewers of rounds above 1 outside the task loop (conditional work; the extractor
+// reports the latter in reviewRounds.extraAgents). Their round count is conditional.extraRounds.
 export function toAttemptCounters(run) {
   const structural = Object.fromEntries(FAMILIES.map((f) => [f, run.total.calls[f] - run.tasks.loop.calls[f]]));
   let bytes = run.total.promptBytes - run.tasks.loop.promptBytes;
+  const extra = run.reviewRounds.extraAgents;
+  if (extra) {
+    for (const f of FAMILIES) structural[f] -= extra.calls[f];
+    bytes -= extra.promptBytes;
+  }
   let fixCalls = 0;
   for (const [name, role] of Object.entries(run.roles)) {
     if (!isFixRole(name) || name === 'task-fix') continue; // task-fix agents are already in the task loop
@@ -244,15 +249,13 @@ export function checkValidity(variant, journal, scenario) {
 
 const BLOCKING = new Set(['critical', 'important']);
 
-export function stageResult(variant, entries, sandbox) {
+// Code stage: approved when feat/E5 was merged into release/sandbox. The release cleanup deletes the merged
+// branch (`branch -d`), so a missing branch counts as merged when the seeded commit is in release/sandbox.
+export function stageResult(variant, entries, sandbox, seededCommit) {
   const art = artifactOf(variant);
   if (art?.class === 'code') {
-    try {
-      execFileSync('git', ['merge-base', '--is-ancestor', 'feat/E5', 'release/sandbox'], { cwd: sandbox, stdio: 'ignore' });
-      return 'approved';
-    } catch {
-      return 'stopped';
-    }
+    const tip = gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/feat/E5') ? 'feat/E5' : seededCommit;
+    return tip && gitOk(sandbox, 'merge-base', '--is-ancestor', tip, 'release/sandbox') ? 'approved' : 'stopped';
   }
   const prefix = art?.class === 'spec' ? 'E5:spec-review' : 'E5:plan-review';
   const reviews = entries
@@ -275,13 +278,51 @@ export function outcomeFor(entry, { present, stage, entries }) {
   return stage === 'approved' ? 'perdido' : 'indeterminado';
 }
 
+const gitOut = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const gitOk = (cwd, ...args) => {
+  try {
+    gitOut(cwd, ...args);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Puts the sandbox root on feat/E5 so the sentinels can read it. A real release run leaves the sandbox
+// different from the seeded one: feat/E5 may still be checked out in a release worktree (a stopped
+// stage), or it may be gone (release cleanup runs `branch -d` after a merge). The sandbox is disposable
+// and the run is over, so a worktree holding the branch is removed and a deleted branch is recreated at
+// the merged target. Returns false when the tip cannot be reached (outcomes are then indeterminate).
+export function settleSandbox(sandbox, seededCommit) {
+  try {
+    for (const block of gitOut(sandbox, 'worktree', 'list', '--porcelain').split(/\r?\n\r?\n/)) {
+      const wt = /^worktree (.+)$/m.exec(block)?.[1];
+      if (wt && /^branch refs\/heads\/feat\/E5$/m.test(block) && resolve(wt) !== resolve(sandbox)) {
+        gitOut(sandbox, 'worktree', 'remove', '--force', wt);
+      }
+    }
+    if (!gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/feat/E5')) {
+      if (!seededCommit || !gitOk(sandbox, 'merge-base', '--is-ancestor', seededCommit, 'release/sandbox')) return false;
+      gitOut(sandbox, 'branch', 'feat/E5', 'release/sandbox');
+    }
+    gitOut(sandbox, 'checkout', '-q', 'feat/E5');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // stageOf(presents) lets the review-stage harness decide the stage from what the sentinels still see.
-async function attemptOutcomes(variant, scenario, journal, stageOf) {
+async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = true) {
   const art = artifactOf(variant);
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
   const entries = manifest.filter((m) => m.class === art.class && m.artifact === art.artifact);
   const presents = [];
   for (const e of entries) {
+    if (!reachable) {
+      presents.push(null);
+      continue;
+    }
     try {
       const mod = await import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
       presents.push(mod.present(scenario.dir, 'feat/E5'));
@@ -289,7 +330,7 @@ async function attemptOutcomes(variant, scenario, journal, stageOf) {
       presents.push(null);
     }
   }
-  const stage = stageOf ? stageOf(presents) : stageResult(variant, journal.entries, scenario.dir);
+  const stage = stageOf ? stageOf(presents) : stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit);
   return entries.map((e, i) => {
     const outcome = presents[i] === null ? 'indeterminado' : outcomeFor(e, { present: presents[i], stage, entries: journal.entries });
     return { id: e.id, class: e.class, detectedBy: e.detectedBy === 'code' ? 'codigo' : 'reviewer', outcome };
@@ -618,9 +659,10 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     validRuns.push(run);
     let outcomes = [];
     if (journal) {
-      // The sentinels read the tip of feat/E5 in the working tree.
-      await exec('git', ['checkout', '-q', 'feat/E5'], { cwd: scenario.dir });
-      outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : undefined);
+      // The sentinels read the tip of feat/E5 in the working tree. The stage is read first: settling may recreate the branch.
+      const stage = !h ? stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit) : null;
+      const reachable = settleSandbox(scenario.dir, scenario.seededCommit);
+      outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
     attempts.push({ n: k, status: 'valid', counters: toAttemptCounters(run), outcomes });
   }

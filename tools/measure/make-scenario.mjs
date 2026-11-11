@@ -133,6 +133,8 @@ async function seedVariant(dir, variant, fromRun) {
   const seededCommit = git(dir, 'rev-parse', 'HEAD');
   const seededBlobs = {};
   for (const f of files) seededBlobs[f] = git(dir, 'rev-parse', seededCommit + ':' + f);
+  // The release SETUP runs `git worktree add <wt> feat/E5`, which fails while the root has the branch checked out.
+  git(dir, 'checkout', '-q', 'main');
   return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs };
 }
 

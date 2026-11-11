@@ -131,6 +131,7 @@ async function checkSeeded(variant) {
     assert.ok(entries.length > 0, 'no manifest entries for ' + variant);
     assert.deepEqual(s.seeded, entries.map((e) => e.id));
     assert.ok(s.seededCommit);
+    git(t.dir, 'checkout', '-q', 'feat/E5'); // the code sentinels read the working tree at the branch tip
     const changed = git(t.dir, 'diff', '--name-only', s.seededCommit + '^', s.seededCommit).split('\n');
     for (const e of entries) {
       const mod = await sentinel(e);
@@ -139,8 +140,16 @@ async function checkSeeded(variant) {
       if (cls !== 'code') assert.equal(mod.present(t.dir, s.seededCommit + '^'), false, e.id + ': sentinel present in the clean artifact');
       assert.equal(s.seededBlobs[e.file], git(t.dir, 'rev-parse', s.seededCommit + ':' + e.file));
     }
+    git(t.dir, 'checkout', '-q', 'main');
     assert.equal(git(t.dir, 'status', '--porcelain'), '');
-    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feat/E5');
+    // The release SETUP does `git worktree add <wt> feat/E5`: the root must not hold the branch.
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    const wt = join(t.dir, '..', 'release-wt-' + variant);
+    try {
+      git(t.dir, 'worktree', 'add', wt, 'feat/E5');
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: t.dir });
+    }
     if (cls === 'code') {
       // The code of task 3 only exists from the seeded commit on, so the clean artifact is a fresh sandbox without seeding.
       const c = tmp('clean');

@@ -326,3 +326,62 @@ test('privacy scan catches a planted personal path and session id', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- Final fix: labels the workflow really emits ----
+import { mkdirSync } from 'node:fs';
+import { toAttemptCounters } from './run-batch.mjs';
+
+// Builds a transcript root with one session and one workflow agent per label ({ label, model, prompt }).
+function realLabelRoot(agents) {
+  const base = mkdtempSync(join(tmpdir(), 'sm-labels-'));
+  const sid = '00000000-0000-4000-8000-0000000000aa';
+  const proj = join(base, 'p');
+  const wf = join(proj, sid, 'subagents', 'workflows', 'wf_x');
+  mkdirSync(wf, { recursive: true });
+  writeFileSync(join(proj, `${sid}.jsonl`), JSON.stringify({ type: 'user', message: { role: 'user', content: 'go' } }) + '\n');
+  agents.forEach((a, i) => {
+    const id = `agent-a${i}`;
+    writeFileSync(join(wf, `${id}.meta.json`), JSON.stringify({ description: a.label }));
+    writeFileSync(
+      join(wf, `${id}.jsonl`),
+      [
+        { type: 'user', isSidechain: true, message: { role: 'user', content: a.prompt ?? 'x'.repeat(5) } },
+        { type: 'assistant', isSidechain: true, requestId: `r${i}`, message: { id: `m${i}`, role: 'assistant', model: a.model ?? 'claude-sonnet-4-5', content: [], usage: { input_tokens: 1, output_tokens: 1 } } },
+      ].map((o) => JSON.stringify(o)).join('\n') + '\n',
+    );
+  });
+  return { base, sid };
+}
+
+test('task fixers and final reviews carry the roles and rounds of the real labels', () => {
+  const { base, sid } = realLabelRoot([
+    { label: 'E5:spec', prompt: 'x'.repeat(10) },
+    { label: 'E5:t3:impl' },
+    { label: 'E5:t3:spec1' },
+    { label: 'E5:t3:spec-fix1' },
+    { label: 'E5:t3:quality-fix2' },
+    { label: 'E5:final-1-r1', model: 'claude-opus-4-5' },
+    { label: 'E5:final-2-r1', model: 'claude-opus-4-5' },
+    { label: 'E5:final-1-r2', model: 'claude-opus-4-5' },
+    { label: 'E5:final-2-r2', model: 'claude-opus-4-5' },
+    { label: 'E5:final-1-r3', model: 'claude-opus-4-5' },
+  ]);
+  try {
+    const { runs } = extract({ root: base, prices, sessions: [sid] });
+    const r = runs[0];
+    assert.equal(r.roles['task-fix'].agents, 2);
+    assert.ok(!Object.keys(r.roles).some((k) => k.startsWith('other:')), Object.keys(r.roles).join());
+    assert.equal(r.reviewRounds.loops.final, 3);
+    assert.equal(r.reviewRounds.extra, 2);
+    // final rounds 2 and 3 (3 reviewers on opus) are conditional work
+    assert.equal(r.reviewRounds.extraAgents.calls.opus, 3);
+    assert.equal(r.tasks.loop.calls.sonnet, 4);
+    // structural: spec (sonnet) and the two round-1 final reviewers (opus); bytes: 10 + 5 + 5
+    const c = toAttemptCounters(r);
+    assert.deepEqual(c.structural, { haiku: 0, sonnet: 1, opus: 2, fable: 0, other: 0, weighted: 20 + 80 });
+    assert.equal(c.bytes, 20);
+    assert.deepEqual(c.conditional, { extraRounds: 2, fixCalls: 2 });
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});

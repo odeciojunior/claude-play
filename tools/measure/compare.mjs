@@ -11,6 +11,12 @@ const EPS = 1e-9;
 const DETECTION_CLASSES = ['plan', 'code', 'spec'];
 const RECORDED_ONLY = new Set(['planner', 'tracker']);
 
+// Detection class a seeded variant measures; plano-semeado-codigo is detected by code, not by a reviewer.
+function seededClass(variant) {
+  const m = /^(plano|codigo|spec)-semeado-[AB]$/.exec(String(variant ?? ''));
+  return m ? { plano: 'plan', codigo: 'code', spec: 'spec' }[m[1]] : null;
+}
+
 export function median(xs) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -69,7 +75,9 @@ function detectionFor(cls, before, after, { margin, attempts }) {
   };
   const b = tally(before);
   const a = tally(after);
-  if (b.reviewer + a.reviewer === 0) return { verdict: 'nao-aplicavel' };
+  // Applicability comes from the variant, not from the outcomes: attempts that are all invalid leave no outcomes.
+  const seeded = seededClass(before.variant) === cls || seededClass(after.variant) === cls;
+  if (!seeded && b.reviewer + a.reviewer === 0) return { verdict: 'nao-aplicavel' };
   const missing = Math.max(0, attempts - b.valid, attempts - a.valid);
   const rate = (t) => (t.capturado + t.perdido ? t.capturado / (t.capturado + t.perdido) : null);
   const rateBefore = rate(b);

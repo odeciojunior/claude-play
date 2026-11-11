@@ -196,7 +196,7 @@ const ROLE_RULES = [
   [/^(t\d+:impl$|exec:)/, 'implementer'],
   [/^t\d+:spec\d+$/, 'task-spec-review'],
   [/^t\d+:quality\d+$/, 'task-quality-review'],
-  [/^t\d+:fix/, 'task-fix'],
+  [/^t\d+:(fix|(spec|quality)-fix)/, 'task-fix'],
   [/^(final|revisao-final|sync|test-integrity)/, 'final-review'],
   [/^(gates|evidence|suite)/, 'gates'],
   [/^(merge|pre-merge|cleanup)/, 'merge'],
@@ -216,6 +216,8 @@ function reviewLoop(label) {
   const l = normalizeLabel(label);
   let m = /^(spec-review|plan-review|final)(\d+)$/.exec(l);
   if (m) return { loop: m[1], round: Number(m[2]) };
+  m = /^final-\d+-r(\d+)$/.exec(l); // one reviewer per lens: final-<lens>-r<round>
+  if (m) return { loop: 'final', round: Number(m[1]) };
   m = /^t(\d+):(spec|quality)(\d+)$/.exec(l);
   if (m) return { loop: `t${m[1]}:${m[2]}`, round: Number(m[3]) };
   return null;
@@ -280,7 +282,7 @@ export function extract({ root, sessions, runs, prices }) {
       sessions: sids,
       roles: {},
       total: newCounters(),
-      reviewRounds: { loops: {}, extra: 0 },
+      reviewRounds: { loops: {}, extra: 0, extraAgents: newCounters() },
       tasks: { count: 0, loop: newCounters() },
       main: { turns: 0, agentCalls: {}, promptBytes: 0, tokens: emptyTokens(), cost: null },
     };
@@ -306,6 +308,8 @@ export function extract({ root, sessions, runs, prices }) {
         const rl = reviewLoop(a.meta.description);
         if (rl) r.reviewRounds.loops[rl.loop] = Math.max(r.reviewRounds.loops[rl.loop] ?? 0, rl.round);
         const task = taskOf(a.meta.description);
+        // Reviewers of rounds above 1 outside the task loop (task agents are already in tasks.loop).
+        if (rl && rl.round > 1 && task === null) addCounters(r.reviewRounds.extraAgents, c);
         if (task !== null) {
           taskIds.add(task);
           addCounters(r.tasks.loop, c);

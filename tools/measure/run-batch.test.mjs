@@ -56,7 +56,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn } =
     const name = typeof journal === 'function' ? journal(n) : journal;
     if (name) {
       let text = name.includes('\n') ? name : readFileSync(join(JOURNALS, name), 'utf8'); // a fixture name or inline journal text
-      if (text.includes('{{PLAN_BLOB}}')) text = text.split('{{PLAN_BLOB}}').join(gitIn(cwd, 'rev-parse', `HEAD:${E5_PATHS.plan}`).stdout.trim());
+      if (text.includes('{{PLAN_BLOB}}')) text = text.split('{{PLAN_BLOB}}').join(gitIn(cwd, "rev-parse", `feat/E5:${E5_PATHS.plan}`).stdout.trim());
       writeFileSync(join(wf, 'journal.jsonl'), text);
     }
   };
@@ -241,6 +241,7 @@ const taskSection = (text, k) => new RegExp(`^### Task ${k}: [\\s\\S]*?(?=^### T
 
 // Like the reviewed run: P2 (the phantom command) and P1 (the verification steps of task 2) are undone in one commit.
 function fixP1P2(cwd) {
+  gitIn(cwd, 'checkout', '-q', 'feat/E5'); // the run edits the branch; the seeded sandbox root sits on main
   const file = join(cwd, E5_PATHS.plan);
   let text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('npm run verify-slug').join('node --test tests/e5-slugify.test.mjs');
   const original = taskSection(ORIGINAL_PLAN, 2).split('\n');
@@ -524,6 +525,7 @@ const BLOCKER = { severity: 'critical', category: 'defeito', description: '[fab]
 
 // Like fixP1P2, but only the verification steps of task 2 (P1) are undone.
 function fixP1(cwd) {
+  gitIn(cwd, 'checkout', '-q', 'feat/E5');
   const file = join(cwd, E5_PATHS.plan);
   let text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const original = taskSection(ORIGINAL_PLAN, 2).split('\n');
@@ -648,6 +650,71 @@ test('harness refuses a current arm template without the source line', async () 
     const good = readArm(join(ARMS, 'plan-review-atual.md'), { requireSource: true });
     assert.match(good.source.commit, /^[0-9a-f]{40}$/);
     assert.ok(!good.text.includes('Copied from:'));
+  } finally {
+    s.done();
+  }
+});
+
+// ---- Final fix: review agents of rounds above 1 and the real release outcome on code variants ----
+
+test('toAttemptCounters keeps reviewers of rounds above 1 out of structural and bytes', () => {
+  const calls = (h, s, o) => ({ haiku: h, sonnet: s, opus: o, fable: 0, other: 0 });
+  const cnt = (c, b, cost) => ({ calls: c, promptBytes: b, tokens: {}, cost, unpriced: [] });
+  const run = {
+    roles: { spec: { ...cnt(calls(0, 1, 0), 10, 1), agents: 1 }, 'plan-review': { ...cnt(calls(0, 0, 2), 8, 1), agents: 2 } },
+    total: cnt(calls(0, 1, 2), 18, 2),
+    reviewRounds: { loops: { 'plan-review': 2 }, extra: 1, extraAgents: cnt(calls(0, 0, 1), 4, 1) },
+    tasks: { count: 0, loop: cnt(calls(0, 0, 0), 0, null) },
+    main: { turns: 1, agentCalls: {}, promptBytes: 0, tokens: {}, cost: 0 },
+  };
+  const c = toAttemptCounters(run);
+  assert.deepEqual(c.structural, { haiku: 0, sonnet: 1, opus: 1, fable: 0, other: 0, weighted: 20 + 40 });
+  assert.equal(c.bytes, 14);
+  assert.equal(c.conditional.extraRounds, 1);
+});
+
+const gitq = (cwd, ...a) => {
+  const r = gitIn(cwd, ...a);
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+};
+
+// Like the release for a merged deliverable: feat/E5 is merged into release/sandbox and the cleanup
+// deletes the branch (keepBranches false).
+const mergeAndDeleteBranch = (cwd) => {
+  gitq(cwd, 'checkout', '-q', '-B', 'release/sandbox', 'main');
+  gitq(cwd, 'merge', '-q', '--no-ff', '-m', 'merge feat/E5', 'feat/E5');
+  gitq(cwd, 'branch', '-d', 'feat/E5'); // from the release branch, like the cleanup in the integration worktree
+  gitq(cwd, 'checkout', '-q', 'main');
+};
+
+test('code outcomes are measured after the release cleanup deleted the merged branch', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: 'code-valid.jsonl', afterRun: mergeAndDeleteBranch });
+    const r = await runBatch(seededOpts(s, 'codigo-semeado-A'), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 1);
+    const outcomes = r.aggregate.attempts[0].outcomes;
+    assert.equal(outcomes.length, 4);
+    // merged with the seeded defects still in the code: approved stage, so they are lost, never unmeasured
+    for (const o of outcomes) assert.equal(o.outcome, 'perdido', o.id);
+  } finally {
+    s.done();
+  }
+});
+
+test('code outcomes are measured while feat/E5 is still held by a release worktree', async () => {
+  const s = setup();
+  try {
+    const heldByWorktree = (cwd) => {
+      gitq(cwd, 'checkout', '-q', '-B', 'release/sandbox', 'main');
+      gitq(cwd, 'merge', '-q', '--no-ff', '-m', 'merge feat/E5', 'feat/E5');
+      gitq(cwd, 'checkout', '-q', 'main');
+      gitq(cwd, 'worktree', 'add', join(cwd, '..', 'release-wt-held'), 'feat/E5');
+    };
+    const fake = makeFake(s.configDir, { journal: 'code-valid.jsonl', afterRun: heldByWorktree });
+    const r = await runBatch(seededOpts(s, 'codigo-semeado-A'), { exec: fake.exec, now: NOW });
+    for (const o of r.aggregate.attempts[0].outcomes) assert.equal(o.outcome, 'perdido', o.id);
   } finally {
     s.done();
   }
