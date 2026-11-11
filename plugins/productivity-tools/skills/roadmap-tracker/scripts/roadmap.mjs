@@ -416,6 +416,81 @@ function requireIntegrationRefs(ctx) {
   return refs;
 }
 
+// ---------- blockers, prune and checker refresh (E3 T5) ----------
+
+const normLines = (text) => norm(text).split('\n');
+
+// Edit that appends a table row to a state.md block (after the last data row, or after the separator).
+function appendRowEdit(ctx, name, text) {
+  const bl = blockLines(rawText(ctx, 'state'), name);
+  if (!bl || bl.header === null) throw usage(`state.md has no readable ${name} table`);
+  if (bl.rows.length > 0) return { op: 'insertAfter', line: bl.rows[bl.rows.length - 1], text };
+  return { op: 'insertAfter', line: bl.header + 1, text };
+}
+
+// The items of a state.md list block, with raw line range and text; null when the block is absent.
+function listItems(ctx, name) {
+  const bl = blockLines(rawText(ctx, 'state'), name);
+  if (!bl) return null;
+  const lines = normLines(rawText(ctx, 'state'));
+  return { bl, items: bl.items.map((it) => ({ ...it, text: lines.slice(it.start, it.end + 1).join('\n') })) };
+}
+
+function blockerRows(ctx) {
+  const bl = blockLines(rawText(ctx, 'state'), 'blockers');
+  const rows = ctx.parsed.blocks.state.blockers.rows;
+  if (!bl || bl.rows.length !== rows.length) throw usage('state.md blockers block is not readable');
+  return rows.map((cells, i) => ({ cells, line: bl.rows[i], id: cells[0] }));
+}
+
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const statusWordRe = (w) => new RegExp(`(?<![\\p{L}\\p{N}-])${escapeRegExp(w)}(?![\\p{L}\\p{N}-])`, 'u');
+
+function restorePhrase(ctx, id, label, word) {
+  const who = label ? `${id} (${label})` : id;
+  return ctx.lang === 'pt' ? `restaura ${who} para ${word}` : `restores ${who} to ${word}`;
+}
+
+// Status word the "Unblocks when" cell says a blocked segment returns to (the reading of blocker-no-restore).
+function readRestoreWord(ctx, unblocks, id, label) {
+  const ds = ctx.roadmap.config.vocab.deliverableStatuses;
+  const blocked = ds[8];
+  const re = new RegExp(`(?<![\\p{L}\\p{N}-])${id}(?![\\p{L}\\p{N}])`, 'gu');
+  const hits = [...unblocks.matchAll(re)];
+  for (let k = hits.length - 1; k >= 0; k--) {
+    let rest = unblocks.slice(hits[k].index + id.length);
+    const lab = /^\s*\(([^)]*)\)/.exec(rest);
+    if (label) {
+      if (!lab || lab[1].trim() !== label) continue;
+      rest = rest.slice(lab[0].length);
+    } else if (lab && !ds.some((w) => statusWordRe(w).test(lab[1]))) {
+      rest = rest.slice(lab[0].length);
+    }
+    const next = rest.search(/\bE\d+\b/);
+    if (next >= 0) rest = rest.slice(0, next);
+    let best = null;
+    for (const w of ds) {
+      if (w === blocked) continue;
+      const m = statusWordRe(w).exec(rest);
+      if (m && (best === null || m.index < best.index)) best = { index: m.index, word: w };
+    }
+    if (best) return best.word;
+  }
+  return null;
+}
+
+const CHECKER_PENDING_RE = /\bchecker\b.*\b(?:available|dispon[ií]vel)\b/i;
+
+function pluginChecker() {
+  const file = fileURLToPath(new URL('./check-roadmap.mjs', import.meta.url));
+  return { file, buf: fs.readFileSync(file) };
+}
+
+function headerVersion(buf) {
+  const m = /^﻿?\/\/ check-roadmap (\d+\.\d+\.\d+) format (\d+)/.exec(buf.toString('utf8').split(/\r?\n/, 1)[0]);
+  return m ? m[1] : null;
+}
+
 // ---------- commands ----------
 
 const COMMANDS = {
@@ -577,6 +652,198 @@ const COMMANDS = {
       : (ctx.lang === 'pt' ? `${list} integrada(s) em ${cfg.integrationBranch}${via}` : `${list} integrated into ${cfg.integrationBranch}${via}`);
     const logEdit = logRow(ctx, { deliverable: list, what, evidence: [sha], date: ctx.today });
     commitEdits(ctx, new Map([['state', edits], ['log', [logEdit]]]));
+  },
+
+  'block-open'(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length) throw usage('block-open takes options only');
+    for (const k of ['what', 'affects', 'unblocks']) if (opts[k] === undefined) throw usage(`block-open needs --${k}`);
+    const since = opts.since === undefined ? ctx.today : opts.since;
+    if (!validDate(since)) throw usage(`--since must be a valid YYYY-MM-DD date, got "${opts.since}"`);
+    const ids = [...new Set(opts.affects.split(',').map((s) => s.trim()).filter(Boolean))];
+    if (ids.length === 0 || ids.some((s) => !/^E\d+$/.test(s))) throw usage(`--affects must be E<n>[,E<n>], got "${opts.affects}"`);
+    const ds = ctx.roadmap.config.vocab.deliverableStatuses;
+    const [blocked, discarded] = [ds[8], ds[9]];
+    const blq = nextId(ctx.folder, ctx.roadmap.strategyPath, 'BLQ');
+    const panel = panelRows(ctx);
+    const stateEdits = [];
+    const phrases = [];
+    for (const id of ids) {
+      const row = panel.find((r) => r.id === id);
+      if (!row) throw new Refusal('not-found', `${id} is not in the panel`);
+      const segs = parseStatusSegments(row.cells[1]);
+      let target;
+      if (opts.piece === undefined) {
+        if (segs.length !== 1) throw new Refusal('segment-required', `${id} has ${segs.length} segments; name the one to block with --piece`);
+        target = 0;
+      } else {
+        target = segs.findIndex((s) => s.label === opts.piece);
+        if (target < 0) throw new Refusal('not-found', `${id} has no segment "${opts.piece}"`);
+      }
+      const seg = segs[target];
+      if (seg.word === blocked || seg.word === discarded) throw new Refusal('segment-locked', `segment "${seg.raw}" is ${seg.word}; block-open does not change it`);
+      const raws = segs.map((s) => s.raw);
+      raws[target] = segText(seg, blocked, blq);
+      const cells = [...row.cells];
+      cells[1] = raws.join('; ');
+      stateEdits.push({ op: 'replace', line: row.line, text: serializeRow(cells) });
+      phrases.push(restorePhrase(ctx, id, seg.label, seg.word));
+    }
+    const unblocks = `${opts.unblocks.replace(/[\s;.]+$/, '')}; ${phrases.join('; ')}`;
+    stateEdits.push(appendRowEdit(ctx, 'blockers', serializeRow([blq, opts.what, ids.join(', '), since, unblocks])));
+    const what = ctx.lang === 'pt' ? `${blq} aberto: ${opts.what}` : `${blq} opened: ${opts.what}`;
+    const evidence = opts.evidence && opts.evidence.length ? opts.evidence : ['state.md'];
+    const logEdit = logRow(ctx, { deliverable: ids.join(', '), what, evidence, date: ctx.today });
+    commitEdits(ctx, new Map([['state', stateEdits], ['log', [logEdit]]]));
+    ctx.result = { id: blq, affects: ids };
+  },
+
+  'block-close'(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length !== 1 || !/^BLQ-\d+$/.test(ctx.args[0])) throw usage('block-close needs exactly one BLQ-<n>');
+    if (opts.how === undefined) throw usage('block-close needs --how <text>');
+    const blq = ctx.args[0];
+    const blocker = blockerRows(ctx).find((r) => r.id === blq);
+    if (!blocker) throw new Refusal('not-found', `${blq} is not in the blockers block`);
+    const panel = panelRows(ctx);
+    const nexts = new Map();
+    for (const n of opts.next || []) {
+      const m = /^(E\d+)=([\s\S]+)$/.exec(n);
+      if (!m) throw usage(`--next must be E<n>=<text>, got "${n}"`);
+      if (!panel.some((r) => r.id === m[1])) throw new Refusal('not-found', `${m[1]} is not in the panel`);
+      nexts.set(m[1], m[2]);
+    }
+    const blockedWord = ctx.roadmap.config.vocab.deliverableStatuses[8];
+    const citeRe = new RegExp(`\\b${blq}\\b`);
+    const stateEdits = [];
+    const affected = [];
+    for (const row of panel) {
+      const segs = parseStatusSegments(row.cells[1]);
+      const hit = segs.filter((s) => s.word === blockedWord && citeRe.test(s.note));
+      if (hit.length === 0 && !nexts.has(row.id)) continue;
+      const raws = segs.map((s) => s.raw);
+      for (const seg of hit) {
+        const word = readRestoreWord(ctx, blocker.cells[4] || '', row.id, seg.label);
+        if (!word) throw new Refusal('restore-unreadable', `"Unblocks when" of ${blq} does not say which status ${row.id}${seg.label ? ` (${seg.label})` : ''} returns to`);
+        raws[segs.indexOf(seg)] = segText(seg, word, '');
+      }
+      const cells = [...row.cells];
+      cells[1] = raws.join('; ');
+      if (nexts.has(row.id)) cells[3] = nexts.get(row.id);
+      if (hit.length) affected.push(row.id);
+      if (cells.some((c, i) => c !== row.cells[i])) stateEdits.push({ op: 'replace', line: row.line, text: serializeRow(cells) });
+    }
+    stateEdits.push({ op: 'remove', line: blocker.line });
+    const donot = listItems(ctx, 'donot');
+    if (donot) {
+      for (const it of donot.items) {
+        const blqs = idsIn(it.text, /\bBLQ-\d+\b/g);
+        if (blqs.length === 1 && blqs[0] === blq && idsIn(it.text, /\bDEC-\d+\b/g).length === 0) stateEdits.push({ op: 'remove', line: it.start, end: it.end });
+      }
+    }
+    const cited = [];
+    normLines(applyEdits(rawText(ctx, 'state'), stateEdits)).forEach((l, i) => {
+      if (citeRe.test(l)) cited.push(`${ctx.roadmap.paths.state}:${i + 1}`);
+    });
+    const cp = ctx.roadmap.files.criticalPath;
+    if (typeof cp === 'string') {
+      normLines(cp).forEach((l, i) => {
+        if (citeRe.test(l)) cited.push(`${ctx.roadmap.paths.criticalPath}:${i + 1}`);
+      });
+    }
+    if (cited.length) throw new Refusal('blocker-cited', `${blq} is still cited in ${cited.join(', ')}; rewrite that text and run block-close again`);
+    const what = ctx.lang === 'pt' ? `${blq} resolvido: ${opts.how}` : `${blq} closed: ${opts.how}`;
+    const evidence = opts.evidence && opts.evidence.length ? opts.evidence : ['state.md'];
+    const logEdit = logRow(ctx, { deliverable: affected.length ? affected.join(', ') : '-', what, evidence, date: ctx.today });
+    commitEdits(ctx, new Map([['state', stateEdits], ['log', [logEdit]]]));
+    ctx.result = { id: blq, restored: affected };
+  },
+
+  prune(ctx) {
+    if (ctx.args.length) throw usage('prune takes options only');
+    const v = ctx.roadmap.config.vocab;
+    const edits = [];
+    const removed = { inflight: [], donot: [] };
+    const inflight = blockLines(rawText(ctx, 'state'), 'inflight');
+    const irows = ctx.parsed.blocks.state.inflight.rows;
+    if (!inflight || inflight.rows.length !== irows.length) throw usage('state.md inflight block is not readable');
+    irows.forEach((cells, i) => {
+      if (cells[1] === v.branchDeleted) {
+        edits.push({ op: 'remove', line: inflight.rows[i] });
+        removed.inflight.push(cells[0]);
+      }
+    });
+    const donot = listItems(ctx, 'donot');
+    if (donot) {
+      const open = new Set(ctx.parsed.blocks.state.blockers.rows.map((r) => r[0]));
+      const superseded = new Set(ctx.parsed.blocks.decisions.decisions.rows
+        .filter((r) => String(r[r.length - 1]).startsWith(v.decisionSupersededBy)).map((r) => r[0]));
+      for (const it of donot.items) {
+        const blqs = idsIn(it.text, /\bBLQ-\d+\b/g);
+        const decs = idsIn(it.text, /\bDEC-\d+\b/g);
+        if (blqs.length + decs.length === 0) continue;
+        if (blqs.some((b) => open.has(b)) || decs.some((d) => !superseded.has(d))) continue;
+        edits.push({ op: 'remove', line: it.start, end: it.end });
+        removed.donot.push([...blqs, ...decs].join(', '));
+      }
+    }
+    ctx.result = { removed };
+    commitEdits(ctx, new Map([['state', edits]]));
+  },
+
+  'refresh-checker'(ctx) {
+    if (ctx.args.length) throw usage('refresh-checker takes options only');
+    const plugin = pluginChecker();
+    const folderBuf = rawBuffer(ctx, 'checkerCopy');
+    const old = folderBuf.length ? headerVersion(folderBuf) : null;
+    if (old !== null && compareVersions(CHECKER_VERSION, old) <= 0) {
+      ctx.result = { refreshed: false, reason: 'up-to-date', folder: old, plugin: CHECKER_VERSION };
+      commitWrites(ctx, new Map());
+      return;
+    }
+    const pt = ctx.lang === 'pt';
+    let errorCount = 0;
+    let internal = false;
+    try {
+      errorCount = checkRoadmap(ctx.roadmap, ctx.git).filter((p) => p.severity === 'error').length;
+    } catch {
+      internal = true;
+    }
+    const state = rawText(ctx, 'state');
+    const lines = normLines(state);
+    const pend = listItems(ctx, 'pending');
+    const existing = pend ? pend.items.filter((it) => CHECKER_PENDING_RE.test(it.text)) : [];
+    const edits = [];
+    if (errorCount > 0 || internal) {
+      const tail = internal
+        ? (pt ? 'erro interno, ver saída' : 'internal error, see output')
+        : (pt ? `${errorCount} erros a corrigir` : `${errorCount} errors to fix`);
+      const body = pt ? `(mantenedor) checker ${CHECKER_VERSION} disponível: ${tail}` : `(maintainer) checker ${CHECKER_VERSION} available: ${tail}`;
+      if (!pend) throw usage('state.md has no readable pending block');
+      if (existing.length) {
+        const first = existing[0];
+        const marker = (/^\s*(?:\d+[.)]|[-*+])\s+/.exec(lines[first.start]) || ['- '])[0];
+        edits.push({ op: 'replace', line: first.start, text: `${marker}${body}` });
+        if (first.end > first.start) edits.push({ op: 'remove', line: first.start + 1, end: first.end });
+      } else if (pend.items.length) {
+        edits.push({ op: 'insertAfter', line: pend.items[pend.items.length - 1].end, text: `- ${body}` });
+      } else {
+        edits.push({ op: 'insertAfter', line: pend.bl.open, text: `- ${body}` });
+      }
+      ctx.result = { refreshed: false, reason: internal ? 'internal-error' : 'checker-errors', errors: errorCount, plugin: CHECKER_VERSION };
+      commitEdits(ctx, new Map([['state', edits]]));
+      return;
+    }
+    const text = plugin.buf.toString('utf8');
+    if (!Buffer.from(text, 'utf8').equals(plugin.buf)) throw new Refusal('write-failed', `${plugin.file} is not valid UTF-8; cannot copy it byte for byte`, 2);
+    const changes = new Map([['checkerCopy', text]]);
+    for (const it of existing) edits.push({ op: 'remove', line: it.start, end: it.end });
+    if (edits.length) changes.set('state', applyEdits(state, edits));
+    const what = pt ? `checker atualizado ${old || 'ausente'} -> ${CHECKER_VERSION}` : `checker updated ${old || 'none'} -> ${CHECKER_VERSION}`;
+    const logEdit = logRow(ctx, { deliverable: '-', what, evidence: ['check-roadmap.mjs'], date: ctx.today });
+    changes.set('log', applyEdits(rawText(ctx, 'log'), [logEdit]));
+    ctx.result = { refreshed: true, from: old, to: CHECKER_VERSION };
+    commitWrites(ctx, changes);
   },
 };
 

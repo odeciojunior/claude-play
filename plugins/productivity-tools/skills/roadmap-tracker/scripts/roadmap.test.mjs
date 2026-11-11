@@ -616,3 +616,201 @@ for (const [name, opts] of [['LF', {}], ['CRLF com BOM e NFD', { eol: '\r\n', bo
     }
   });
 }
+
+// ---------- CLI (Tarefa 5): bloqueios, prune e refresh-checker ----------
+
+const readChecker = () => fs.readFileSync(path.join(here, 'check-roadmap.mjs'));
+const pluginVersion = /^\/\/ check-roadmap (\d+\.\d+\.\d+)/.exec(readChecker().toString('utf8'))[1];
+const DONOT = (items) => (x) => x.replace('<!-- /roadmap:inflight -->\n', `<!-- /roadmap:inflight -->\n\n## Do not do now\n\n<!-- roadmap:donot -->\n${items.join('\n')}\n<!-- /roadmap:donot -->\n`);
+
+function allFilesText(dir) {
+  return Object.values(snapshot(dir)).map((b) => Buffer.from(b, 'base64').toString('utf8')).join('\n');
+}
+
+test('block-open grava bloqueio, status bloqueado, restauração e log', (t) => {
+  const f = makeFolder(t);
+  const st = f.read('state.md');
+  const lg = f.read('log.md');
+  const r = cli(f.dir, 'block-open', '--what', 'Vendor API down', '--affects', 'E1', '--unblocks', 'vendor answers', '--since', '2026-01-05', '--date', '2026-01-05');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.equal(r.output.result.id, 'BLQ-1');
+  assert.deepEqual(r.output.changed, ['state.md', 'log.md']);
+  const bl = lineSplit(st);
+  const al = lineSplit(f.read('state.md'));
+  const d = { removed: bl.filter((l) => !al.includes(l)), added: al.filter((l) => !bl.includes(l)) };
+  assert.deepEqual(d.removed, ['| E1 | spec | `docs/spec-e1.md` | Write the plan |']);
+  assert.equal(d.added.length, 2);
+  assert.ok(d.added.includes('| E1 | blocked (BLQ-1) | `docs/spec-e1.md` | Write the plan |'));
+  const row = d.added.find((l) => l.startsWith('| BLQ-1 |'));
+  assert.ok(row.endsWith('restores E1 to spec |'), row);
+  assert.ok(row.includes('| 2026-01-05 |'));
+  const ld = lineDiff(lg, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], /^\| 2026-01-05 \| E1 \| BLQ-1 opened: Vendor API down \| `state\.md` \|$/);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('block-open em linha segmentada exige --piece e bloqueia só o segmento', (t) => {
+  const f = withSegmentedE2(t);
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'block-open', '--what', 'X', '--affects', 'E2', '--unblocks', 'ok'), 'segment-required');
+  assert.deepEqual(snapshot(f.dir), before);
+  const r = cli(f.dir, 'block-open', '--what', 'X down', '--affects', 'E2', '--unblocks', 'ok', '--piece', 'piece 2');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const state = f.read('state.md');
+  assert.ok(state.includes(`piece 1: integrated (\`${f.shas.main}\`); piece 2: blocked (BLQ-1)`));
+  assert.ok(state.includes('restores E2 (piece 2) to spec |'));
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('AC2: block-open e block-close; next-id não reaproveita o BLQ fechado', (t) => {
+  const f = makeFolder(t);
+  const state0 = f.read('state.md');
+  assert.equal(cli(f.dir, 'block-open', '--what', 'Vendor API down', '--affects', 'E1', '--unblocks', 'vendor answers', '--date', '2026-01-05').exitCode, 0);
+  const r = cli(f.dir, 'block-close', 'BLQ-1', '--how', 'vendor answered', '--date', '2026-01-06');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['state.md', 'log.md']);
+  assert.equal(f.read('state.md'), state0);
+  const logLines = lineSplit(f.read('log.md'));
+  assert.ok(logLines.some((l) => l.includes('BLQ-1 opened')));
+  assert.ok(logLines.some((l) => l.includes('BLQ-1 closed: vendor answered')));
+  assert.equal(cli(f.dir, 'next-id', 'BLQ').output.result.id, 'BLQ-2');
+  assert.ok(!allFilesText(f.dir).includes('BLQ-2'));
+  assert.ok(!fs.readFileSync(path.join(f.dir, 'strategy.md'), 'utf8').includes('BLQ-2'));
+  // BLQ-7 só num arquivo avulso
+  const g = makeFolder(t);
+  fs.mkdirSync(path.join(g.dir, 'notes'));
+  fs.writeFileSync(path.join(g.dir, 'notes', 'extra.txt'), 'old BLQ-7\n');
+  assert.equal(cli(g.dir, 'next-id', 'BLQ').output.result.id, 'BLQ-8');
+  assert.ok(!allFilesText(g.dir).includes('BLQ-8'));
+});
+
+test('block-close aplica --next e remove item donot que cita só esse bloqueio', (t) => {
+  const f = makeFolder(t, { mutate: { 'state.md': DONOT(['- Do not start E2 before DEC-001 is read.']) } });
+  assert.equal(cli(f.dir, 'block-open', '--what', 'Vendor', '--affects', 'E1', '--unblocks', 'ok', '--date', '2026-01-05').exitCode, 0);
+  f.write('state.md', f.read('state.md').replace('<!-- /roadmap:donot -->', '- Do not ship E1 while BLQ-1 is open.\n<!-- /roadmap:donot -->'));
+  const r = cli(f.dir, 'block-close', 'BLQ-1', '--how', 'done', '--next', 'E1=Plan it now', '--date', '2026-01-06');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const state = f.read('state.md');
+  assert.ok(state.includes('| E1 | spec | `docs/spec-e1.md` | Plan it now |'));
+  assert.ok(state.includes('Do not start E2 before DEC-001'));
+  assert.ok(!state.includes('BLQ-1'));
+});
+
+test('block-close recusa BLQ ainda citado e frase de restauração ilegível, sem gravar', (t) => {
+  const f = makeFolder(t);
+  assert.equal(cli(f.dir, 'block-open', '--what', 'Vendor', '--affects', 'E1', '--unblocks', 'ok', '--date', '2026-01-05').exitCode, 0);
+  const cp = fs.readFileSync(path.join(f.dir, 'critical-path.md'), 'utf8');
+  f.write('critical-path.md', `${cp}\nBlocked by BLQ-1.\n`);
+  const before = snapshot(f.dir);
+  const r = cli(f.dir, 'block-close', 'BLQ-1', '--how', 'done');
+  refused(r, 'blocker-cited');
+  assert.match(r.output.errors[0].message, /critical-path\.md/);
+  assert.deepEqual(snapshot(f.dir), before);
+  // palavra de restauração ausente
+  f.write('critical-path.md', cp);
+  f.write('state.md', f.read('state.md').replace('restores E1 to spec', 'when ready'));
+  const before2 = snapshot(f.dir);
+  refused(cli(f.dir, 'block-close', 'BLQ-1', '--how', 'done'), 'restore-unreadable');
+  assert.deepEqual(snapshot(f.dir), before2);
+  refused(cli(f.dir, 'block-close', 'BLQ-9', '--how', 'done'), 'not-found');
+});
+
+test('block-open com vários afetados escreve uma frase por afetado e block-close lê cada uma', (t) => {
+  const f = makeFolder(t, { mutate: { 'state.md': (x) => x.replace('| E2 | not-started |', '| E2 | plan |') } });
+  const state0 = f.read('state.md');
+  assert.equal(cli(f.dir, 'block-open', '--what', 'Shared', '--affects', 'E1,E2', '--unblocks', 'E1 and E2 are free', '--date', '2026-01-05').exitCode, 0);
+  assert.ok(f.read('state.md').includes('restores E1 to spec; restores E2 to plan |'));
+  assert.equal(cli(f.dir, 'block-close', 'BLQ-1', '--how', 'free', '--date', '2026-01-06').exitCode, 0);
+  assert.equal(f.read('state.md'), state0);
+});
+
+test('block-open em pasta pt escreve a frase em português', (t) => {
+  const f = makeFolder(t);
+  const cfgFile = path.join(f.dir, 'roadmap.config.json');
+  const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+  cfg.language = 'pt-BR';
+  fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
+  const r = cli(f.dir, 'block-open', '--what', 'Fornecedor fora', '--affects', 'E1', '--unblocks', 'fornecedor responde', '--date', '2026-01-05');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.ok(f.read('state.md').includes('restaura E1 para spec |'));
+  assert.equal(cli(f.dir, 'block-close', 'BLQ-1', '--how', 'respondeu', '--date', '2026-01-06').exitCode, 0);
+});
+
+test('prune remove ramo removido e item donot de bloqueio inexistente, sem log; repetir é no-op', (t) => {
+  const f = makeFolder(t, {
+    mutate: {
+      'state.md': (x) => DONOT(['- Do not start E2 while BLQ-3 is open.', '- Do not touch main (DEC-001).'])(
+        x.replace('|---|---|---|\n<!-- /roadmap:inflight -->', '|---|---|---|\n| feat/x | deleted | - |\n| feat/y | live | - |\n<!-- /roadmap:inflight -->')),
+    },
+  });
+  const log = f.read('log.md');
+  const r = cli(f.dir, 'prune');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['state.md']);
+  const state = f.read('state.md');
+  assert.ok(!state.includes('feat/x') && !state.includes('BLQ-3'));
+  assert.ok(state.includes('feat/y') && state.includes('DEC-001).'));
+  assert.equal(f.read('log.md'), log);
+  const again = cli(f.dir, 'prune');
+  assert.equal(again.exitCode, 0);
+  assert.deepEqual(again.output.changed, []);
+});
+
+test('refresh-checker copia o checker do plugin byte a byte e registra o log', (t) => {
+  const f = makeFolder(t);
+  const copy = path.join(f.dir, 'check-roadmap.mjs');
+  const logBefore = f.read('log.md');
+  const r = cli(f.dir, 'refresh-checker', '--date', '2026-01-07');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['log.md', 'check-roadmap.mjs']);
+  assert.ok(fs.readFileSync(copy).equals(readChecker()));
+  const ld = lineDiff(logBefore, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], new RegExp(`^\\| 2026-01-07 \\| - \\| checker updated none -> ${pluginVersion.replace(/\./g, '\\.')} \\| \`check-roadmap\\.mjs\` \\|$`));
+  const again = cli(f.dir, 'refresh-checker');
+  assert.equal(again.exitCode, 0);
+  assert.deepEqual(again.output.changed, []);
+});
+
+test('refresh-checker: cópia de versão maior ou igual é no-op; cópia velha é trocada e tira o pendente', (t) => {
+  const f = makeFolder(t);
+  const copy = path.join(f.dir, 'check-roadmap.mjs');
+  fs.writeFileSync(copy, '// check-roadmap 9.9.9 format 1\n// newer\n');
+  const before = snapshot(f.dir);
+  const r = cli(f.dir, 'refresh-checker');
+  assert.equal(r.exitCode, 0);
+  assert.deepEqual(r.output.changed, []);
+  assert.deepEqual(snapshot(f.dir), before);
+  // cópia velha + pendente
+  fs.writeFileSync(copy, '// check-roadmap 0.1.0 format 1\n// old\n');
+  f.write('state.md', f.read('state.md').replace('<!-- /roadmap:pending -->', '- (maintainer) checker 1.0.0 available: 2 errors to fix\n<!-- /roadmap:pending -->'));
+  const r2 = cli(f.dir, 'refresh-checker', '--date', '2026-01-07');
+  assert.equal(r2.exitCode, 0, JSON.stringify(r2.output.errors));
+  assert.deepEqual(r2.output.changed, ['state.md', 'log.md', 'check-roadmap.mjs']);
+  assert.ok(fs.readFileSync(copy).equals(readChecker()));
+  assert.ok(!f.read('state.md').includes('checker 1.0.0'));
+  assert.ok(f.read('log.md').includes(`checker updated 0.1.0 -> ${pluginVersion}`));
+});
+
+test('refresh-checker: pasta com erro mantém a cópia e grava ou atualiza o pendente sem duplicar', (t) => {
+  const f = makeFolder(t, { mutate: { 'state.md': (x) => x.replace('Write the plan', 'x'.repeat(301)) } });
+  const copy = path.join(f.dir, 'check-roadmap.mjs');
+  const logBefore = f.read('log.md');
+  const r = cli(f.dir, 'refresh-checker');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['state.md']);
+  assert.ok(!fs.existsSync(copy));
+  assert.equal(f.read('log.md'), logBefore);
+  const re = new RegExp(`\\(maintainer\\) checker ${pluginVersion.replace(/\./g, '\\.')} available: (\\d+) errors to fix`, 'g');
+  const first = [...f.read('state.md').matchAll(re)];
+  assert.equal(first.length, 1);
+  assert.ok(Number(first[0][1]) >= 1);
+  f.write('state.md', f.read('state.md').replace('Wait for E1', 'y'.repeat(301)));
+  const r2 = cli(f.dir, 'refresh-checker');
+  assert.equal(r2.exitCode, 0, JSON.stringify(r2.output.errors));
+  const second = [...f.read('state.md').matchAll(re)];
+  assert.equal(second.length, 1);
+  assert.ok(Number(second[0][1]) > Number(first[0][1]));
+  assert.ok(!fs.existsSync(copy));
+});
