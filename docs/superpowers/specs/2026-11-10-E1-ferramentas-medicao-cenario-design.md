@@ -137,26 +137,28 @@ O texto do cenário é em inglês, a língua do sandbox (`language: "en"`).
 | `plano-semeado-A`, `plano-semeado-B` | branch `feat/E5` com spec e plano de E5 e um commit que planta 4 defeitos no plano | `plan-only E5` |
 | `codigo-semeado-A`, `codigo-semeado-B` | branch `feat/E5` com spec, plano, tarefas 1..3 commitadas com assunto `E5 T<k>: ...` e os 4 defeitos nos commits de T3 | `run E5` |
 | `spec-semeado-A`, `spec-semeado-B` | branch `feat/E5` com o spec de E5 e um commit que planta 4 defeitos nele | só pelo arnês (peça 6) |
+| `plano-semeado-codigo` | branch `feat/E5` com spec e plano de E5 e um commit que planta no plano os 3 defeitos `detectedBy: code` (artefato `C`) | `plan-only E5` |
 
 Os nomes das variantes são lidos pelo lançador e pelos cards de medição (E15, E17, E11, E16, E26, E27, E13).
 
 ## Peça 4: defeitos plantados com sentinela
 
-`defects/manifest.json`: uma entrada por defeito com `id`, `class` (`plan`, `code`, `spec`), `kind`, `artifact` (`A` ou `B`), `file`, `sentinel` (módulo em `defects/sentinels/`), `detectedBy` (`reviewer` ou `code`) e uma descrição curta.
+`defects/manifest.json`: uma entrada por defeito com `id`, `class` (`plan`, `code`, `spec`), `kind`, `artifact` (`A`, `B` ou, só para os defeitos de plano acusados por código, `C`), `file`, `sentinel` (módulo em `defects/sentinels/`), `detectedBy` (`reviewer` ou `code`) e uma descrição curta.
 
 Plano (8, todos `detectedBy: reviewer`, conforme DEC-051): P1 tarefa sem comando de verificação; P2 comando que não existe; P3 ordem de tarefas errada; P4 evidência que não prova o critério; P5 tarefa que toca algo fora da branch declarada `external: false`; P6 `needsLock` ausente numa tarefa que roda o teste da porta `sandbox-port`; P7 tarefa que edita a pasta do roadmap; P8 `reviewTier: opus` sem raio de impacto 2. A recebe P1 a P4 e B recebe P5 a P8.
 
-Os três defeitos de plano que o código do workflow acusa sozinho (critério sem linha de evidência, critério testável marcado como humano, comando `{verify}` trocado) ficam no manifesto com `detectedBy: code`, não são semeados por padrão e não entram na conta da classe.
+Os três defeitos de plano que o código do workflow acusa sozinho (critério sem linha de evidência, critério testável marcado como humano, comando `{verify}` trocado) ficam no manifesto como PX1 a PX3, com `detectedBy: code` e artefato `C`. Eles não entram em A nem em B: são semeados só pela variante `plano-semeado-codigo` e contados à parte, fora da taxa de captura da classe `plan` (ver desfechos abaixo, peça 5 e comparador).
 
 Código (8): C1 critério do card não implementado com o teste do card passando; C2 teste que não afirma nada; C3 erro de fronteira com teste passando; C4 arquivo fora da lista da tarefa; C5 erro engolido; C6 teste que grava arquivo fora da pasta temporária (na raiz do repositório); C7 teste existente enfraquecido; C8 valor fixo que satisfaz o teste. A recebe C1 a C4 e B recebe C5 a C8. Os testes do repositório e os comandos de evidência continuam passando no artefato semeado, senão os gates acusariam por código.
 
 Spec (8, da lista de bloqueios da revisão de spec do workflow): S1 critério do card ausente; S2 critério do card alterado; S3 REQ não atendido; S4 decisão autônoma que contraria uma decisão registrada do sandbox; S5 escopo fora do card; S6 dado humano inventado; S7 entrada humana marcada bloqueante sem necessidade; S8 efeito externo exigido deixado ao operador em vez de tarefa do plano. A recebe S1 a S4 e B recebe S5 a S8.
 
-Sentinelas: cada uma exporta `present(repoDir, ref?)` e devolve `true` quando o defeito está no artefato. As de plano e de spec leem o arquivo no ref; as de código rodam uma checagem oculta contra o código do sandbox (importando o módulo ou lendo arquivos), sem nada ser copiado para o sandbox. O teste do critério 4 confere, para cada defeito semeado do manifesto, que o arquivo do defeito mudou no commit semeado e que a sentinela acusa presença; e, no artefato limpo, que a mesma sentinela não acusa (evita sentinela que sempre diz sim). Nos artefatos de código, o teste confere também que `node --test` passa no sandbox semeado.
+Sentinelas: cada uma exporta `present(repoDir, ref?)` e devolve `true` quando o defeito está no artefato. As de plano e de spec leem o arquivo no ref; as de código rodam uma checagem oculta contra o código do sandbox (importando o módulo ou lendo arquivos), sem nada ser copiado para o sandbox. O teste do critério 4 gera todas as variantes semeadas (A, B e `C`) e confere, para cada entrada do manifesto, sem exceção (os 27 defeitos, PX1 a PX3 incluídos), que ela é semeada por exatamente uma variante, que o arquivo do defeito mudou no commit semeado e que a sentinela acusa presença; e, no artefato limpo, que a mesma sentinela não acusa (evita sentinela que sempre diz sim). Uma entrada do manifesto que nenhuma variante semeia faz o teste falhar. Nos artefatos de código, o teste confere também que `node --test` passa no sandbox semeado.
 
 Validade de uma tentativa (lida do diário completo do workflow, `subagents/workflows/wf_*/journal.jsonl`, porque o resumo do estágio vem truncado quando há achados, SRC-14):
 
 - Plano semeado: o resultado de `E5:plan` tem `reused: true` e o `measuredPlanBlob` de `E5:plan-review1` é igual ao blob semeado.
+- Plano semeado por código (`plano-semeado-codigo`): o resultado de `E5:plan` tem `reused: true` (a checagem do código roda sobre o plano reusado, que pode parar o estágio antes de `E5:plan-review1`).
 - Código semeado: nenhum `E5:t<k>:impl` para as tarefas já commitadas, e `E5:t3:spec1` rodou.
 - Spec semeado (arnês): o artefato medido pelo revisor é o blob semeado.
 
@@ -168,6 +170,8 @@ Desfecho por defeito, numa tentativa válida, pela sentinela no fim do estágio:
 - **perdido**: o estágio foi aprovado (plano aprovado ou merge feito) com a sentinela acusando;
 - **indeterminado**: o estágio parou com a sentinela acusando; fica fora do denominador.
 
+Para os defeitos `detectedBy: code` (PX1 a PX3), o desfecho vem do diário, não da sentinela, porque a checagem do código pode parar o estágio com o defeito ainda no plano: **acusado-pelo-codigo** quando o diário registra a recusa ou o achado da checagem do workflow para aquele defeito; **perdido** quando o plano foi aprovado com a sentinela acusando; **indeterminado** nos demais casos. Esses desfechos nunca entram na taxa de captura da classe `plan`.
+
 ## Peça 5: lançador em lote `run-batch.mjs`
 
 CLI: `node tools/measure/run-batch.mjs --variant <nome> --runs <n> --work <pasta fora do repositório> --out <pasta> --config-dir <pasta de configuração do Claude Code> --permission-mode <modo> [--allow <regra>]... [--add-dir <pasta>]... [--model <modelo>] [--max-budget-usd <valor>]`.
@@ -178,7 +182,7 @@ CLI: `node tools/measure/run-batch.mjs --variant <nome> --runs <n> --work <pasta
 - Parada e retomada: o lançador acompanha `git log feat/E5 --format=%s` no sandbox e, quando aparece o assunto do roteiro, encerra a árvore de processos da sessão; em seguida lança o segundo passo. As duas sessões formam uma tentativa.
 - Antes da primeira tentativa, o lançador registra a versão e o `gitCommitSha` de `productivity-tools@claude-play` lidos de `<config-dir>/plugins/installed_plugins.json` (`unknown`, com aviso, quando a entrada não existe), e a saída de `claude --version`.
 - Depois de cada tentativa, chama o extrator com `--root <config-dir>/projects`, `--sessions` e o manifesto de tentativas; nas variantes semeadas, roda a checagem de validade e as sentinelas e grava os desfechos.
-- Saída em `<out>/<variante>-<data e hora>/`: `aggregate.json` (variante, n pedido, tentativas válidas, inválidas e negadas, versão e commit do plugin, versão da CLI, modelos, data da tabela de preços, modo de permissão, contadores por tentativa numerados 1..n, por papel, mediana e faixa de custo, desfechos por defeito) sem nenhum id de sessão, caminho pessoal ou descrição de agente; e `private/` com o manifesto de tentativas e a saída bruta do extrator, que trazem ids.
+- Saída em `<out>/<variante>-<data e hora>/`: `aggregate.json` (variante, n pedido, tentativas válidas, inválidas e negadas, versão e commit do plugin, versão da CLI, modelos, data da tabela de preços, modo de permissão, contadores por tentativa numerados 1..n, por papel, mediana e faixa de custo, desfechos por defeito com o `detectedBy` de cada um, e um bloco `deteccaoPorCodigo` separado com a contagem de acusado-pelo-codigo, perdido e indeterminado por defeito PX, que não soma nos desfechos da classe `plan`) sem nenhum id de sessão, caminho pessoal ou descrição de agente; e `private/` com o manifesto de tentativas e a saída bruta do extrator, que trazem ids.
 - Executor injetável: `runBatch(opts, { exec, now })`, onde `exec(cmd, args, { cwd })` devolve `{ code, stdout }`. A CLI usa `spawn`; o teste do critério 7 usa um executor simulado que grava transcrições fabricadas numa pasta de configuração temporária e devolve o JSON de `claude -p`, e confere: n lançamentos, uma chamada ao extrator por tentativa e nenhum id de sessão no agregado (busca pelos ids fabricados e pelo padrão de UUID).
 
 ## Peça 6: comparador e arnês de estágio de revisão
@@ -201,9 +205,11 @@ Classes de contador (DEC-033, detalhadas em SRC-12):
 
 Contadores dinâmicos de planner e tracker (uma execução cada, DEC-016) saem como `registrado`, sem veredito.
 
-Detecção por classe (`plan`, `code`, `spec`): taxa de captura = capturados / (capturados + perdidos). Queda = (taxa antes − taxa depois) × `--attempts`. Com queda ≥ `--margin` (padrão 6 em 40, 15 pontos), a classe `caiu` e bloqueia; abaixo, `nao-caiu`. Com menos de `--attempts` tentativas válidas em algum lado, `inconclusivo`, sem bloqueio, e a saída diz quantas faltam.
+Detecção por classe (`plan`, `code`, `spec`): taxa de captura = capturados / (capturados + perdidos). Queda = (taxa antes − taxa depois) × `--attempts`. Com queda ≥ `--margin` (padrão 6 em 40, 15 pontos), a classe `caiu` e bloqueia; abaixo, `nao-caiu`. Com menos de `--attempts` tentativas válidas em algum lado, `inconclusivo`, sem bloqueio, e a saída diz quantas faltam. A taxa conta só defeitos `detectedBy: reviewer`.
 
-O teste do critério 6 usa agregados fabricados em `fixtures/` com um caso de cada veredito por classe e um caso de queda de detecção acima e abaixo da margem.
+Detecção por código: a saída traz um campo `deteccaoPorCodigo` à parte, com, para cada PX, a contagem antes e depois e `regrediu` quando algum PX acusado em todas as tentativas antes aparece como perdido depois. É informativo e não entra em `bloqueia`, porque essas checagens são determinísticas e já cobertas pelos testes do workflow em G1.
+
+O teste do critério 6 usa agregados fabricados em `fixtures/` com um caso de cada veredito por classe, um caso de queda de detecção acima e abaixo da margem, e um caso com desfechos de PX que confere que eles saem em `deteccaoPorCodigo` e não mudam a taxa da classe `plan`.
 
 ### Arnês de estágio de revisão
 
@@ -256,7 +262,7 @@ Origem executor, status pendente. Alcance na última frase.
 6. O sandbox ganha E5 (três peças puras, sem efeito externo) e `scenario/stop-resume.json`; E1 a E4 ficam idênticos. Base: comparabilidade com execuções passadas. Custo se errada: refazer o cenário antes de E15. Reversível antes de E15. Alcance: contrato.
 7. A parada do roteiro é a interrupção da sessão depois do primeiro commit `E5 T1:` e a retomada é um lançamento novo; descartada a parada por tarefa externa sem autorização, que faria a variante completa parar também. Base: o workflow não tem argumento de parada. Custo se errada: variância maior na retomada. Reversível. Alcance: contrato.
 8. Texto do cenário em inglês, a língua do sandbox. Custo se errada: tradução. Reversível. Alcance: local.
-9. Listas de defeitos como na peça 4: oito de plano só do revisor (DEC-051), os três acusados por código registrados com `detectedBy: code` e fora da conta, C6 trocado por "teste que grava fora da pasta temporária" porque E5 não tem efeito externo, e oito de spec da lista de bloqueios da revisão de spec. Base: SRC-12, SRC-13, DEC-051. Custo se errada: semear de novo antes de E15. Reversível antes de E15. Alcance: contrato.
+9. Listas de defeitos como na peça 4: oito de plano só do revisor (DEC-051), os três acusados por código registrados com `detectedBy: code`, semeados pela variante própria `plano-semeado-codigo` e contados à parte da taxa da classe, C6 trocado por "teste que grava fora da pasta temporária" porque E5 não tem efeito externo, e oito de spec da lista de bloqueios da revisão de spec. Base: SRC-12, SRC-13, DEC-051. Custo se errada: semear de novo antes de E15. Reversível antes de E15. Alcance: contrato.
 10. Dois artefatos por classe com quatro defeitos cada (A e B). Base: E15, peça 3. Custo se errada: reorganizar o manifesto. Reversível. Alcance: contrato.
 11. Sentinelas como módulos fora do sandbox, testadas também contra o artefato limpo. Base: critério 4. Custo se errada: baixo. Reversível. Alcance: local.
 12. Regras de validade por classe como na peça 4, lidas de `journal.jsonl`. Base: DEC-051, SRC-14. Custo se errada: tentativas mal classificadas em E15. Reversível. Alcance: contrato.
@@ -266,6 +272,7 @@ Origem executor, status pendente. Alcance na última frase.
 16. O gate canônico G1 do release e a tabela de gates da estratégia não mudam nesta branch; só o `CLAUDE.md` muda, e a tabela fica para a revisão no registro de E1 (estratégia, seção de gates). Base: DEC-032, regra de que a branch não edita a pasta do roadmap. Custo se errada: nenhum para o código. Reversível. Alcance: local.
 17. Os scripts de `docs/reports/2026-11-10-session-metrics/` não são alterados nem removidos. Custo se errada: baixo. Reversível. Alcance: local.
 18. Regras do teste de privacidade: faixa reservada de ids fabricados, padrões de diretório pessoal e marca `[fab]` nos textos das fixtures. Base: critério 5. Custo se errada: baixo. Reversível. Alcance: local.
+19. Os defeitos `detectedBy: code` (PX1 a PX3) são semeados por uma variante própria, `plano-semeado-codigo` (artefato `C`), em vez de uma flag de `make-scenario`; o teste do critério 4 cobre toda entrada do manifesto; o desfecho deles vem do diário (acusado-pelo-codigo, perdido, indeterminado), sai em `deteccaoPorCodigo` no agregado e no comparador, fora da taxa da classe `plan`, e não bloqueia. Base: card E1, critério 4 e peça 4 ("contados à parte"), DEC-051. Custo se errada: tornar a regressão de PX bloqueante no comparador. Reversível. Alcance: contrato.
 
 ## Depends on human input
 
