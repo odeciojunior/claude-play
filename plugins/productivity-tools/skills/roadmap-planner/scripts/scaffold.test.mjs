@@ -662,3 +662,35 @@ describe('cli', () => {
     assert.equal(typeof main, 'function');
   });
 });
+
+describe('review-planted fixture', () => {
+  const dir = path.join(here, 'fixtures', 'review-planted');
+  const repoRoot = path.resolve(here, '..', '..', '..', '..', '..');
+  const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n?/g, '\n');
+
+  it('passa no checker sem erros', () => {
+    const r = loadRoadmap(dir);
+    const errs = checkRoadmap(r, null).filter((x) => x.severity === 'error');
+    assert.deepEqual(errs, []);
+  });
+
+  it('expected-findings.json: três defeitos distintos, evidência literal no arquivo', () => {
+    const expected = JSON.parse(read(path.join(dir, 'expected-findings.json')));
+    assert.equal(expected.length, 3);
+    assert.deepEqual(
+      expected.map((e) => e.rule).sort(),
+      ['compound-requirement', 'unsourced-number', 'unverifiable-criterion'],
+    );
+    for (const e of expected) {
+      assert.equal(e.severity, 'error');
+      const abs = path.join(repoRoot, e.file);
+      assert.ok(fs.existsSync(abs), `${e.file} não existe`);
+      assert.ok(read(abs).includes(e.evidence), `evidência ausente em ${e.file}: ${e.evidence}`);
+    }
+  });
+
+  it('a pasta não traz checker nem modelo', () => {
+    assert.ok(!fs.existsSync(path.join(dir, 'check-roadmap.mjs')));
+    assert.ok(!fs.existsSync(path.join(dir, 'planning-model.json')));
+  });
+});
