@@ -1698,3 +1698,81 @@ test('AC2: a pre-1.7 folder and a folder with every new defect stay at exit 0 wi
     for (const p of run(dir)) if (NEW_CODES.includes(p.code)) assert.equal(p.severity, 'warning', p.code);
   }
 });
+
+// ---------- AC3: --json ----------
+
+function textPairs(stdout) {
+  return [...stdout.matchAll(/\[([a-z0-9-]+)\]$/gm)].map((m) => m[1]);
+}
+
+function textCounts(stdout) {
+  const m = stdout.match(/check-roadmap: (\d+) error\(s\), (\d+) warning\(s\)/);
+  return { errors: Number(m[1]), warnings: Number(m[2]) };
+}
+
+test('AC3: --json matches text mode counts and exit code', async (t) => {
+  await t.test('valid folder', () => {
+    const r = cli([VALID, '--json']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.checker, '1.5.0');
+    assert.equal(o.format, 1);
+    assert.deepEqual(o.summary, { errors: 0, warnings: 0, exitCode: 0 });
+  });
+
+  const cases = [
+    ['folder with an error', () => fixture((f) => rep(f, 'state.md', '| E3 | not-started |', '| E3 | bogus |'))],
+    ['folder with a warning', () => fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'))],
+  ];
+  for (const [name, make] of cases) {
+    await t.test(name, () => {
+      const dir = make();
+      const text = cli([dir]);
+      const json = cli([dir, '--json']);
+      const o = JSON.parse(json.stdout);
+      assert.equal(json.status, text.status);
+      const c = textCounts(text.stdout);
+      assert.equal(o.errors.length, c.errors);
+      assert.equal(o.warnings.length, c.warnings);
+      assert.deepEqual(o.summary, { ...c, exitCode: text.status });
+      const jsonCodes = [...o.errors, ...o.warnings].map((p) => p.code).sort();
+      assert.deepEqual(jsonCodes, textPairs(text.stdout).sort());
+      const order = textPairs(text.stdout);
+      assert.deepEqual(o.errors.map((p) => p.code), order.filter((code) => o.errors.some((e) => e.code === code)));
+      for (const p of [...o.errors, ...o.warnings]) assert.deepEqual(Object.keys(p), ['code', 'file', 'message']);
+    });
+  }
+
+  await t.test('invalid config', () => {
+    const dir = fixture((f) => rep(f, 'roadmap.config.json', '"tracks"', '"trackz"'));
+    const text = cli([dir]);
+    const json = cli([dir, '--json']);
+    assert.equal(text.status, 1);
+    assert.equal(json.status, 1);
+    const o = JSON.parse(json.stdout);
+    assert.equal(o.errors.length, 1);
+    assert.equal(o.errors[0].code, 'config');
+    assert.equal(o.errors[0].file, 'roadmap.config.json');
+    assert.ok(!o.errors[0].message.startsWith('config: '));
+    assert.equal(o.summary.exitCode, 1);
+  });
+
+  await t.test('forced internal failure', () => {
+    const env = { ROADMAP_CHECK_SELFTEST_THROW: '1' };
+    const text = cli([VALID], { env });
+    const json = cli([VALID, '--json'], { env });
+    assert.equal(text.status, 2);
+    assert.equal(json.status, 2);
+    const o = JSON.parse(json.stdout);
+    assert.equal(o.errors.length, 1);
+    assert.equal(o.errors[0].code, 'internal');
+    assert.ok(!o.errors[0].message.includes('\n    at '));
+    assert.equal(o.summary.exitCode, 2);
+  });
+
+  await t.test('--version --json stays text', () => {
+    const r = cli(['--version', '--json']);
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout.trim(), '1.5.0 format 1');
+  });
+});

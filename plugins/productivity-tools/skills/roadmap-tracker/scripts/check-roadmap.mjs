@@ -1148,12 +1148,31 @@ export function findNewerPluginCopy(selfPath, selfVersion, cacheRoot) {
 
 // ---------- CLI ----------
 
+function emitJson(self, problems, exitCode) {
+  const item = (p) => ({ code: p.code, file: p.file, message: p.message });
+  const errors = problems.filter((p) => p.severity === 'error').map(item);
+  const warnings = problems.filter((p) => p.severity !== 'error').map(item);
+  console.log(JSON.stringify({
+    checker: self ? self.version : null,
+    format: self ? self.format : null,
+    errors,
+    warnings,
+    summary: { errors: errors.length, warnings: warnings.length, exitCode },
+  }));
+  return exitCode;
+}
+
 function main(argv) {
   const args = argv.slice(2);
+  const json = args.includes('--json');
   const selfPath = fileURLToPath(import.meta.url);
   // Line 1 of this very file is the single source of the version at runtime.
   const self = readHeader(selfPath);
   if (!self) {
+    if (json) {
+      const message = 'line 1 must be "// check-roadmap <version> format <n>"';
+      return emitJson(null, [{ severity: 'error', code: 'bad-header', file: path.basename(selfPath), message }], 1);
+    }
     console.log(`ERROR ${path.basename(selfPath)}: line 1 must be "// check-roadmap <version> format <n>" [bad-header]`);
     return 1;
   }
@@ -1170,9 +1189,15 @@ function main(argv) {
   } catch (e) {
     const message = String((e && e.message) || e);
     if (message.startsWith('config:')) {
+      if (json) {
+        return emitJson(self, [{ severity: 'error', code: 'config', file: 'roadmap.config.json', message: message.replace(/^config:\s*/, '') }], 1);
+      }
       console.log(`ERROR ${message}`);
       console.log('check-roadmap: 1 error(s), 0 warning(s)');
       return 1;
+    }
+    if (json) {
+      return emitJson(self, [{ severity: 'error', code: 'internal', file: path.basename(selfPath), message: message.split('\n')[0] }], 2);
     }
     console.log(`ERROR internal: ${message.split('\n')[0]}`);
     return 2;
@@ -1189,6 +1214,7 @@ function main(argv) {
   } catch {
     // staleness is best-effort
   }
+  if (json) return emitJson(self, problems, problems.some((p) => p.severity === 'error') ? 1 : 0);
   for (const p of problems) console.log(`${p.severity === 'error' ? 'ERROR' : 'WARN'} ${p.file}: ${p.message} [${p.code}]`);
   const errors = problems.filter((p) => p.severity === 'error').length;
   const warnings = problems.length - errors;
@@ -1209,7 +1235,16 @@ if (isMain()) {
   try {
     process.exitCode = main(process.argv);
   } catch (e) {
-    console.log(`ERROR internal: ${String((e && e.message) || e).split('\n')[0]}`);
+    const message = String((e && e.message) || e).split('\n')[0];
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({
+        checker: null, format: null,
+        errors: [{ code: 'internal', file: path.basename(fileURLToPath(import.meta.url)), message }],
+        warnings: [], summary: { errors: 1, warnings: 0, exitCode: 2 },
+      }));
+    } else {
+      console.log(`ERROR internal: ${message}`);
+    }
     process.exitCode = 2;
   }
 }
