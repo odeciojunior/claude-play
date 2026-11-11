@@ -463,16 +463,105 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
 // Texto normalizado antes do resumo: BOM removido, fim de linha LF, NFC.
 const normalizeText = (t) => String(t).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').normalize('NFC');
 
+const routeOf = (data, t) => route(t, { hasDependents: data.tasks.some((o) => o.deps.includes(t.n)) });
+
+// Ondas: cada nivel topologico, em ordem de n, repartido em sub-ondas de ate maxWidth tarefas sem trava em comum.
+export function buildMap(plan, levels, { maxWidth = 4 } = {}) {
+  const byLevel = new Map();
+  for (const t of plan.tasks) {
+    const l = levels.get(t.n);
+    if (!byLevel.has(l)) byLevel.set(l, []);
+    byLevel.get(l).push(t);
+  }
+  const waves = [];
+  for (const l of [...byLevel.keys()].sort((a, b) => a - b)) {
+    const subs = [];
+    for (const t of byLevel.get(l).sort((a, b) => a.n - b.n)) {
+      let sub = subs.find((s) => s.length < maxWidth && !s.some((o) => o.locks.some((k) => t.locks.includes(k))));
+      if (!sub) {
+        sub = [];
+        subs.push(sub);
+      }
+      sub.push(t);
+    }
+    for (const sub of subs) {
+      waves.push({
+        n: waves.length + 1,
+        tasks: sub.map((t) => {
+          const r = routeOf(plan, t);
+          return { n: t.n, title: t.title, tier: r.tier, effort: r.effort, reviewTier: r.reviewTier, gate: r.gate, external: t.external, locks: t.locks };
+        }),
+      });
+    }
+  }
+  const all = waves.flatMap((w) => w.tasks).sort((a, b) => a.n - b.n);
+  return {
+    maxWidth,
+    waves,
+    external: all.filter((t) => t.external).map((t) => t.n),
+    gates: all.filter((t) => t.gate).map((t) => t.n),
+  };
+}
+
+const waveLine = (w) =>
+  `Onda ${w.n}: ` + w.tasks.map((t) => `T${t.n} (${t.tier}/${t.effort}, revisor ${t.reviewTier}${t.gate ? ', portão' : ''}${t.external ? ', externa' : ''})`).join(', ');
+
+// Seção "### Tarefa n:" da prosa, sem o título, até o próximo título de nível 1 a 3.
+function proseSection(prose, n) {
+  const lines = prose.replace(/\r\n?/g, '\n').split('\n');
+  const re = new RegExp('^### (?:Tarefa|Task) ' + n + ':');
+  const start = lines.findIndex((l) => re.test(l));
+  if (start === -1) return '';
+  let end = lines.findIndex((l, i) => i > start && /^#{1,3} /.test(l));
+  if (end === -1) end = lines.length;
+  return lines.slice(start + 1, end).join('\n').trim();
+}
+
+export function buildBriefs(plan, { spec = null, prose = '', waves = new Map() } = {}) {
+  const records = new Map();
+  if (spec) {
+    for (const a of spec.acceptance ?? []) records.set(a.id, parseVerifyTag(String(a.text)).text);
+    for (const c of spec.edgeCases ?? []) records.set(c.id, c.input + ' -> ' + c.expected);
+    for (const x of spec.externalEffects ?? []) records.set(x.id, x.what + ' (' + x.target + ')');
+  }
+  const list = (items) => (items.length ? items.join(', ') : 'nenhum');
+  return plan.tasks.map((t) => {
+    const r = t.route ?? routeOf(plan, t);
+    const out = [];
+    out.push('## Restrições', '');
+    out.push(...(plan.constraints.length ? plan.constraints.map((c) => '- ' + c) : ['nenhuma']));
+    out.push('', '## Tarefa', '');
+    out.push('- Número: T' + t.n, '- Título: ' + t.title);
+    out.push('- Onda: ' + (waves.get(t.n) ?? t.wave ?? '-'));
+    out.push('- Roteamento: tier ' + r.tier + ', effort ' + r.effort + ', reviewTier ' + r.reviewTier + ', gate ' + r.gate);
+    out.push('- Arquivos a criar: ' + list(t.files.create), '- Arquivos a modificar: ' + list(t.files.modify), '- Arquivos de teste: ' + list(t.files.test));
+    out.push('- Escritas implícitas (writes): ' + list(t.writes));
+    out.push('- Dependências: ' + list(t.deps.map((d) => 'T' + d)));
+    out.push('- Cobre:');
+    if (t.covers.length) for (const id of t.covers) out.push('  - ' + id + ': ' + (records.get(id) ?? '(texto do spec indisponível)'));
+    else out.push('  - nenhum');
+    out.push('- Verificações:');
+    if (t.checks.length) for (const c of t.checks) out.push('  - `' + c.cmd + '` -> ' + c.expect);
+    else out.push('  - nenhuma');
+    out.push('- Travas (locks): ' + list(t.locks));
+    out.push('- Externa: ' + t.external, '- externalDedupe: ' + (t.externalDedupe ?? 'nenhum'), '- noCommit: ' + t.noCommit);
+    out.push('- testFirst: ' + (t.testFirst === true ? 'true' : 'isento (' + t.testFirst.exempt + ')'));
+    out.push('', '## Interfaces consumidas', '');
+    out.push(...(t.consumes.length ? t.consumes.map((c) => '- T' + c.task + ': ' + c.sig) : ['nenhuma']));
+    out.push('', '## Passos', '', proseSection(prose, t.n), '');
+    return { n: t.n, name: 'T' + t.n + '.md', text: out.join('\n') };
+  });
+}
+
 export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null, specPath = null, maxWidth = 4 } = {}) {
-  void maxWidth; // usado pelo mapa (Task 6)
   const r = checkPlan(text, { planPath, specText, specPath });
   if (r.errors.length) return { errors: r.errors, warnings: r.warnings, out: null };
   const data = r.data;
-  const hasDependents = (n) => data.tasks.some((t) => t.deps.includes(n));
+  const waveOf = new Map(buildMap(data, r.levels, { maxWidth }).waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
   const tasks = data.tasks.map((t) => ({
     ...t,
-    route: route(t, { hasDependents: hasDependents(t.n) }),
-    wave: r.levels.get(t.n) + 1,
+    route: routeOf(data, t),
+    wave: waveOf.get(t.n),
     fileCount: new Set([...t.files.create, ...t.files.modify, ...t.files.test].map(normPath)).size,
   }));
   const plan = { ...data, tasks };
@@ -487,7 +576,7 @@ export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null,
   };
 }
 
-const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--json]';
+const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--out <pasta>] [--task <n>]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -497,16 +586,30 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (cmd !== 'check' && cmd !== 'emit') return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
+  if (!['check', 'emit', 'map', 'brief'].includes(cmd)) return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
   let file = null;
   let json = false;
   let specPath = null;
+  let maxWidth = 4;
+  let outDir = null;
+  let only = null;
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json') json = true;
     else if (a === '--spec') {
       if (i + 1 >= rest.length) return bad(`--spec exige um caminho\n${USAGE}`);
       specPath = rest[++i];
+    } else if (a === '--max-width' && cmd === 'map') {
+      const v = rest[++i];
+      if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1) return bad('--max-width exige um inteiro >= 1\n' + USAGE);
+      maxWidth = Number(v);
+    } else if (a === '--out' && cmd === 'brief') {
+      if (i + 1 >= rest.length) return bad('--out exige um caminho\n' + USAGE);
+      outDir = rest[++i];
+    } else if (a === '--task' && cmd === 'brief') {
+      const v = rest[++i];
+      if (v === undefined || !/^\d+$/.test(v)) return bad('--task exige um número de tarefa\n' + USAGE);
+      only = Number(v);
     } else if (a.startsWith('--')) return bad(`opção desconhecida: ${a}\n${USAGE}`);
     else if (file === null) file = a;
     else return bad(`argumento extra: ${a}\n${USAGE}`);
@@ -517,6 +620,30 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     text = fs.readFileSync(file, 'utf8');
   } catch (e) {
     return bad(`não foi possível ler ${file}: ${e.message}`);
+  }
+  if (cmd === 'map' || cmd === 'brief') {
+    const r = checkPlan(text, { planPath: file, specPath });
+    if (r.errors.length) {
+      for (const x of r.errors) io.stderr.write('ERROR ' + x.code + ' ' + x.ref + ': ' + x.message + '\n');
+      return 1;
+    }
+    const m = buildMap(r.data, r.levels, { maxWidth });
+    if (cmd === 'map') {
+      if (json) out(JSON.stringify({ tool: 'plan-tool', schema: SCHEMA, path: file, ...m }, null, 2));
+      else for (const w of m.waves) out(waveLine(w));
+      return 0;
+    }
+    if (only !== null && (only < 1 || only > r.data.tasks.length)) return bad('--task ' + only + ': o plano tem ' + r.data.tasks.length + ' tarefas');
+    const waves = new Map(m.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
+    const briefs = buildBriefs(r.data, { spec: r.spec, prose: readDataBlock(text).prose, waves }).filter((b) => only === null || b.n === only);
+    const dir = outDir ?? path.join(path.dirname(path.resolve(file)), 'briefs');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const b of briefs) {
+      const p = path.join(dir, b.name);
+      fs.writeFileSync(p, b.text.replace(/\r\n?/g, '\n'));
+      out(p);
+    }
+    return 0;
   }
   if (cmd === 'emit') {
     const e = emitPlan(text, { planPath: file, specPath });

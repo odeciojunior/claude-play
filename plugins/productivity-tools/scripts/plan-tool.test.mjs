@@ -533,7 +533,7 @@ test('emit adds route, wave and fileCount', () => {
   assert.equal(t5.route.reviewTier, 'opus');
   assert.equal(t5.route.gate, true);
   assert.equal(t1.fileCount, 2);
-  assert.deepEqual(out.plan.tasks.map((t) => t.wave), [1, 2, 2, 2, 2, 3]);
+  assert.deepEqual(out.plan.tasks.map((t) => t.wave), [1, 2, 2, 3, 2, 4]);
 });
 
 test('AC3: workflow copy routes every table row like the source', () => {
@@ -563,6 +563,148 @@ test('emit CLI on a plan with errors exits 1 with empty stdout', () => {
     assert.equal(r.status, 1);
     assert.equal(r.stdout, '');
     assert.match(r.stderr, /ERROR dep-unknown/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- Task 6: map e brief (criterio 4) ----
+const waveNums = (out) => out.waves.map((w) => w.tasks.map((t) => t.n));
+const mapJson = (...extra) => {
+  const r = runCli(['map', PLAN_PATH, '--json', ...extra]);
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+};
+
+test('AC4: map with default width', () => {
+  const out = mapJson();
+  assert.equal(out.tool, 'plan-tool');
+  assert.equal(out.maxWidth, 4);
+  assert.deepEqual(waveNums(out), [[1], [2, 3, 5], [4], [6]]);
+  assert.ok(out.waves.every((w) => w.tasks.length <= 4));
+  assert.ok(!out.waves.some((w) => w.tasks.some((t) => t.n === 3) && w.tasks.some((t) => t.n === 4)));
+  const waveOf = new Map(out.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
+  const { data } = check(PLAN_TEXT);
+  for (const t of data.tasks) for (const d of t.deps) assert.ok(waveOf.get(d) < waveOf.get(t.n), `T${t.n} after T${d}`);
+  assert.deepEqual(out.external, [5]);
+  assert.ok(out.gates.includes(5));
+  assert.deepEqual(Object.keys(out.waves[0].tasks[0]), ['n', 'title', 'tier', 'effort', 'reviewTier', 'gate', 'external', 'locks']);
+});
+
+test('AC4: map with --max-width 2', () => {
+  const out = mapJson('--max-width', '2');
+  assert.equal(out.maxWidth, 2);
+  assert.deepEqual(waveNums(out), [[1], [2, 3], [4, 5], [6]]);
+  assert.ok(out.waves.every((w) => w.tasks.length <= 2));
+});
+
+test('map text output has one line per wave', () => {
+  const r = runCli(['map', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  const lines = r.stdout.split('\n').filter(Boolean);
+  assert.equal(lines.length, 4);
+  assert.match(lines[0], /^Onda 1: T1 \(\w+\/\w+, revisor \w+/);
+  assert.match(lines[1], /T5 \(.*, portão, externa\)/);
+});
+
+test('emit wave matches the map', () => {
+  const { out } = emit(PLAN_TEXT);
+  const w = (n) => out.plan.tasks[n - 1].wave;
+  assert.equal(w(3), 2);
+  assert.equal(w(4), 3);
+  assert.equal(w(6), 4);
+});
+
+test('map: invalid --max-width exits 2, plan with errors exits 1', () => {
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', '0']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', 'abc']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', '1.5']).status, 2);
+  const dir = tmpDir();
+  try {
+    const bad = path.join(dir, 'plan.md');
+    fs.writeFileSync(bad, mutate((d) => (d.tasks[1].deps = [9])));
+    const r = runCli(['map', bad, '--spec', SPEC_PATH]);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /ERROR dep-unknown/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const sectionOf = (text, n) => {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const start = lines.findIndex((l) => l.startsWith(`### Tarefa ${n}:`));
+  let end = lines.findIndex((l, i) => i > start && /^#{1,3} /.test(l));
+  if (end === -1) end = lines.length;
+  return lines.slice(start + 1, end).join('\n').trim();
+};
+
+test('AC4: brief writes one file per task with the four sections', () => {
+  const dir = tmpDir();
+  try {
+    const r = runCli(['brief', PLAN_PATH, '--out', dir]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['T1.md', 'T2.md', 'T3.md', 'T4.md', 'T5.md', 'T6.md']);
+    assert.equal(r.stdout.split('\n').filter(Boolean).length, 6);
+    const { data } = check(PLAN_TEXT);
+    const briefs = [1, 2, 3, 4, 5, 6].map((n) => fs.readFileSync(path.join(dir, `T${n}.md`), 'utf8'));
+    briefs.forEach((b, i) => {
+      const pos = ['## Restrições', '## Tarefa', '## Interfaces consumidas', '## Passos'].map((h) => b.indexOf(`\n${h}\n`) === -1 ? b.indexOf(`${h}\n`) : b.indexOf(`\n${h}\n`));
+      assert.ok(pos.every((p) => p >= 0), `T${i + 1} sections`);
+      assert.deepEqual([...pos].sort((a, c) => a - c), pos, `T${i + 1} order`);
+      for (const c of data.constraints) assert.ok(b.includes(c), `T${i + 1} constraint`);
+      const t = data.tasks[i];
+      assert.ok(b.includes(t.title));
+      for (const f of [...t.files.create, ...t.files.modify, ...t.files.test]) assert.ok(b.includes(f), `T${i + 1} file ${f}`);
+      for (const k of ['tier', 'effort', 'reviewTier', 'gate']) assert.ok(b.includes(k), `T${i + 1} ${k}`);
+      assert.ok(b.includes(sectionOf(PLAN_TEXT, i + 1)), `T${i + 1} passos`);
+      const passos = b.slice(b.indexOf('## Passos\n') + '## Passos\n'.length).trim();
+      assert.equal(passos, sectionOf(PLAN_TEXT, i + 1));
+    });
+    assert.match(briefs[1], /Item vazio enviado pelo usuário/);
+    assert.match(briefs[4], /Gravar um item no backend de armazenamento real/);
+    assert.match(briefs[4], /consulta o id no backend antes de gravar/);
+    const interfaces = (b) => b.slice(b.indexOf('## Interfaces consumidas'), b.indexOf('## Passos'));
+    assert.ok(interfaces(briefs[2]).includes('T1: loadItem(id) -> item'));
+    assert.ok(interfaces(briefs[0]).includes('nenhuma'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief --task 3 writes only T3.md; --task 9 exits 2', () => {
+  const dir = tmpDir();
+  try {
+    const r = runCli(['brief', PLAN_PATH, '--out', dir, '--task', '3']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(fs.readdirSync(dir), ['T3.md']);
+    assert.equal(runCli(['brief', PLAN_PATH, '--out', dir, '--task', '9']).status, 2);
+    assert.equal(runCli(['brief', PLAN_PATH, '--out', dir, '--task', 'x']).status, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief leaves plan and spec untouched and writes LF', () => {
+  const dir = tmpDir();
+  try {
+    const plan = path.join(dir, 'plan.md');
+    const spec = path.join(dir, 'spec.md');
+    fs.writeFileSync(plan, PLAN_TEXT.replace(/\r?\n/g, '\r\n'));
+    fs.writeFileSync(spec, SPEC_TEXT.replace(/\r?\n/g, '\r\n'));
+    const before = [fs.readFileSync(plan), fs.readFileSync(spec)];
+    const out = path.join(dir, 'briefs');
+    const r = runCli(['brief', plan, '--spec', spec, '--out', out]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(before[0].equals(fs.readFileSync(plan)));
+    assert.ok(before[1].equals(fs.readFileSync(spec)));
+    for (const f of fs.readdirSync(out)) assert.equal(fs.readFileSync(path.join(out, f), 'utf8').includes('\r'), false, f);
+    // padrão: briefs/ ao lado do plano
+    const r2 = runCli(['brief', plan, '--spec', spec, '--task', '1']);
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.ok(fs.existsSync(path.join(dir, 'briefs', 'T1.md')));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
