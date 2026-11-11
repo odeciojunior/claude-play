@@ -13,7 +13,7 @@ const RECORDED_ONLY = new Set(['planner', 'tracker']);
 
 // Detection class a seeded variant measures; plano-semeado-codigo is detected by code, not by a reviewer.
 function seededClass(variant) {
-  const m = /^(plano|codigo|spec)-semeado-[AB]$/.exec(String(variant ?? ''));
+  const m = /^(plano|codigo|spec)-semeado(?:-[AB])?$/.exec(String(variant ?? ''));
   return m ? { plano: 'plan', codigo: 'code', spec: 'spec' }[m[1]] : null;
 }
 
@@ -71,7 +71,7 @@ function detectionFor(cls, before, after, { margin, attempts }) {
         else if (o.outcome === 'perdido') perdido += 1;
       }
     }
-    return { capturado, perdido, reviewer, valid: validAttempts(agg).length };
+    return { capturado, perdido, reviewer, valid: reviewer };
   };
   const b = tally(before);
   const a = tally(after);

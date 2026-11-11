@@ -168,3 +168,34 @@ test('seeded variant with every attempt invalid blocks instead of reporting nao-
   const plain = compare({ variant: 'completo', attempts: [] }, { variant: 'completo', attempts: [] });
   assert.equal(plain.detection.plan.verdict, 'nao-aplicavel');
 });
+
+test('class aggregate counts detection attempts, not runs', () => {
+  const r = run('detect-class-before', 'detect-class-after-ok');
+  assert.equal(r.detection.plan.verdict, 'nao-caiu');
+  assert.equal(r.detection.plan.drop, 3);
+  assert.equal('missing' in r.detection.plan, false);
+  assert.equal(r.bloqueia, false);
+});
+
+test('class aggregate drop above the margin blocks', () => {
+  const r = run('detect-class-before', 'detect-class-after-drop');
+  assert.equal(r.detection.plan.verdict, 'caiu');
+  assert.equal(r.detection.plan.drop, 8);
+  assert.equal(r.bloqueia, true);
+});
+
+test('class aggregate short of 40 detection attempts is inconclusive and blocks', () => {
+  const r = run('detect-class-before', 'detect-class-after-short');
+  assert.equal(r.detection.plan.verdict, 'inconclusivo');
+  assert.equal(r.detection.plan.missing, 4);
+  assert.equal(r.bloqueia, true);
+});
+
+test('indeterminate outcomes count as attempts but not in the rate', () => {
+  const before = load('detect-class-before');
+  let swap = 2;
+  for (const x of before.attempts) for (const o of x.outcomes ?? []) if (swap > 0 && o.outcome === 'perdido') { o.outcome = 'indeterminado'; swap -= 1; }
+  const r = compare(before, load('detect-class-after-ok'));
+  assert.ok(!r.detection.plan.missing);
+  assert.equal(r.detection.plan.rateBefore, 36 / 38);
+});
