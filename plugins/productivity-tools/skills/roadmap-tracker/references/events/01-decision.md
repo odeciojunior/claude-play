@@ -6,7 +6,7 @@
    - ID: `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" next-id "<folder>" DEC`. Date: decision day. Deliverable: `E<n>` or `-`.
    - Decision: what was chosen, one sentence. Discarded alternative: what was not chosen; if nobody stated one, `none stated`, never invented.
    - **Contradicts:** classify with `references/rubric-contradiction.md` and write the cell it gives: the strategy section, `-`, or the `DEC` ID. Unsure: its `incerto` rule.
-   - Revisit when: a condition ("the owner reprioritizes sharing"), not a date unless one was supplied.
+   - Revisit when: a condition ("the owner reprioritizes sharing"), not a date unless one was supplied; nobody supplied one: `-`, never invented.
    - Origin: `user`, `executor`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone. Cells: `formats.md § 6`; the CLI does not append rows of Origin `user`, so this is an edit.
    - A row may cite the `BLQ-n` it closes (retired ids are fine); apply § 5 "Closed" for the blocker.
 2. **Supersedes an earlier decision?** Only when the new decision replaces the old one's choice on the same question (the old Decision would now be answered differently). Touching the same deliverable or making the old choice moot is not enough. Unsure: ask, recommending "not superseded". When it does supersede, set the old row's Status to `<vocab.decisionSupersededBy> DEC-NNN` (an edit, `formats.md § 6`; no CLI command swaps it). Status and Revisit when are the only cells of an old row that may change.

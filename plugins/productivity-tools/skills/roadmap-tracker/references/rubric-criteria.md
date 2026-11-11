@@ -39,4 +39,4 @@ Not weakened (example): the spec adds "and the item shows its date" to the card'
 
 ## Output
 
-One `pending` item per criterion that is not `igual`, in the form `(owner) card says <A>, spec says <B>: confirm`, with its class at the end (for example `... : confirm (enfraquecido)`). For `ausente`, <B> is "nothing". Every criterion `igual`: no item; the closing log row says "criteria compared: none changed". Never edit the card.
+One `pending` item per criterion that is not `igual`, in the form `(owner) card says <A>, spec says <B>: confirm`, with its class at the end (for example `... : confirm (enfraquecido)`). For `ausente`, <B> is "nothing". Every criterion `igual`: no item; the closing log row says "criteria compared: none changed". Never edit the card. Keep the item within `limits.cellChars`: quote in <A> and <B> only the part that differs (the `verify` tag included when it differs). On `cell-too-long`, shorten and rerun `add-pending`; never drop the item.
