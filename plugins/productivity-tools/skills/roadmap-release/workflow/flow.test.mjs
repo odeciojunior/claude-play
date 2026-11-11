@@ -2872,3 +2872,21 @@ test('recordVerdict: status --json sem checker ao lado de um brief sem erro é a
   assert.ok(!('checker' in JSON.parse(v.read.status).result));
   assert.equal(PU.recordVerdict(v).ok, true);
 });
+
+test('recordVerdict: trackerCli com espaços no caminho não perde o verbo (BLQ e decisões)', () => {
+  const sp = (c) => c.replace(/^node "[^"]*"/, 'node "C:/Users/Nome Sobrenome/.claude/roadmap.mjs"');
+  const v = VX();
+  v.expected = v.expected.map(sp);
+  v.results.runs = v.results.runs.map((r) => ({ ...r, command: sp(r.command) }));
+  v.read.pendingDecisions = pendOut(['DEC-1']);
+  const r = PU.recordVerdict(v);
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.decisionIds, ['DEC-300']);
+  assert.match(r.failures.join('\n'), /DEC-300/);
+  const b = VX();
+  b.word = 'bloqueado';
+  b.expected = PU.recordCommands({ ...RC, word: 'bloqueado', logWhat: 'motivo' }).commands.map(sp);
+  b.results.runs = [{ command: b.expected[0], exit: 0, stdout: okOut('block-open', { id: 'BLQ-9', affects: ['E1'] }) }];
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-8' });
+  assert.equal(PU.recordVerdict(b).ok, false);
+});

@@ -897,6 +897,8 @@ function parseCli(s) {
     return o && typeof o === 'object' && o.tool === 'roadmap' ? o : null
   } catch { return null }
 }
+// CLI verb of a command `node "<cli>" <verb> ...`; the cli path may contain spaces.
+function cliVerb(c) { const m = /^node "[^"]*" (\S+)/.exec(String(c == null ? "" : c)); return m ? m[1] : "" }
 // Verdict of a record from the raw outputs only: never reads statusWritten, details or any sentence of the agent.
 function recordVerdict({ expected, results, read, E, word, piece, blockedStatus }) {
   const failures = []
@@ -910,15 +912,15 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   exp.forEach((c, i) => {
     const r = runs[i]
     if (r && r.command === c) return
-    if (runs.some(x => x && x.command === c)) failures.push(`command ${i + 1} (${c.split(' ')[2]}) ran out of order`)
-    else if (!r) failures.push(`command ${i + 1} (${c.split(' ')[2]}) is missing from the runs`)
+    if (runs.some(x => x && x.command === c)) failures.push(`command ${i + 1} (${cliVerb(c)}) ran out of order`)
+    else if (!r) failures.push(`command ${i + 1} (${cliVerb(c)}) is missing from the runs`)
     else failures.push(`command ${i + 1} ran with a different text than the one assembled`)
   })
   if (runs.length > exp.length) failures.push(`${runs.length - exp.length} command(s) ran beyond the assembled list`)
   let blq = ''
   runs.forEach((r, i) => {
     if (!r) return
-    const verb = String(r.command || '').split(' ')[2]
+    const verb = cliVerb(r.command)
     if (r.exit !== 0) failures.push(`command ${i + 1} (${verb}) exit ${r.exit}`)
     const o = parseCli(r.stdout)
     if (!o) { failures.push(`command ${i + 1} (${verb}) stdout is not JSON of the CLI (tool "roadmap")`); return }
