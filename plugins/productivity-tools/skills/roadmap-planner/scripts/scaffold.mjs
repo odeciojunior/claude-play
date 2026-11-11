@@ -1,7 +1,9 @@
 // scaffold: valida o modelo de planejamento (planning-model.json), aplica padrões
 // e (nas próximas tarefas) gera a pasta do roadmap. Sem dependências, só Node >= 18.
 import { VERIFY_KINDS } from '../../../lib/roadmap-format.mjs';
-import { FORMAT_VERSION } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { FORMAT_VERSION, checkRoadmap, validateConfig, createGitAdapter } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 
 // Bloco `vocab` de docs/plans/roadmap-evolucao-skills/roadmap.config.json, copiado
 // (nunca lido em tempo de execução).
@@ -650,4 +652,187 @@ export function renderFiles(model) {
   if (config.files.measurements) out[config.files.measurements] = renderMeasurements(model, t);
   out['roadmap.config.json'] = JSON.stringify(config, null, 2) + '\n';
   return out;
+}
+
+// ---------- estratégia v1.0 e checker em memória (Tarefa 4) ----------
+
+const STRATEGY_TEXT = {
+  en: {
+    strategy: 'Strategy', firstVersion: (mode) => `first version (${mode === 'light' ? 'light' : 'full'} mode)`, absorbs: 'absorbs',
+    acceptanceCriterion: 'Acceptance criterion', definitionOfDone: 'Definition of done', why: 'Why', pieces: 'Pieces (vertical slices, each shippable alone):',
+    none: 'None.', seeDecisions: (f) => `See ${f}.`, seeSources: (f) => `See ${f}.`, firstVersionRow: 'First version',
+    whereWeAre: (n, p, chain) => `${n} deliverables in ${p} phases. Critical path: ${chain}. Current state: see state.md.`,
+    coverage: (s) => `${s.covered} covered, ${s.outOfScope} out of scope, ${s.needsClarification} to clarify`,
+    assumption: ['Assumption', 'Owner', 'Re-validate when'], overview: ['ID', 'Title', 'Phase', 'Depends on'],
+    phases: ['Phase (outcome)', 'Entry criteria', 'Exit criteria', 'Deliverables'], gates: ['ID', 'Command', 'Environment', 'When', 'Baseline'],
+    history: ['Version', 'Date', 'Summary'],
+  },
+  pt: {
+    strategy: 'Estratégia', firstVersion: (mode) => `primeira versão (modo ${mode === 'light' ? 'leve' : 'completo'})`, absorbs: 'absorve',
+    acceptanceCriterion: 'Critério de aceite', definitionOfDone: 'Definição de pronto', why: 'Por quê', pieces: 'Peças (fatias verticais, cada uma entregável sozinha):',
+    none: 'Nenhuma.', seeDecisions: (f) => `Ver ${f}.`, seeSources: (f) => `Ver ${f}.`, firstVersionRow: 'Primeira versão',
+    whereWeAre: (n, p, chain) => `${n} entregáveis em ${p} fases. Caminho crítico: ${chain}. Estado atual: ver state.md.`,
+    coverage: (s) => `${s.covered} cobertos, ${s.outOfScope} fora de escopo, ${s.needsClarification} a esclarecer`,
+    assumption: ['Premissa', 'Dono', 'Revalidar quando'], overview: ['ID', 'Título', 'Fase', 'Depende de'],
+    phases: ['Fase (resultado)', 'Critérios de entrada', 'Critérios de saída', 'Entregáveis'], gates: ['ID', 'Comando', 'Ambiente', 'Quando', 'Linha de base'],
+    history: ['Versão', 'Data', 'Resumo'],
+  },
+};
+
+// Texto de lista/parágrafo da estratégia: quebra de linha é recusa (um item por linha).
+function checkStrategyLines(model) {
+  const problems = [];
+  const check = (value, p) => {
+    if (typeof value === 'string' && MULTILINE.test(value)) problems.push(multilineProblem(p));
+  };
+  const objective = model.objective;
+  if (isObj(objective)) for (const k of ['text', 'acceptance', 'done']) check(objective[k], `objective.${k}`);
+  else check(objective, 'objective');
+  check(model.thesis, 'thesis');
+  for (const key of ['nonGoals', 'crossRisks', 'externalPending', 'openQuestions']) arr(model[key]).forEach((x, i) => check(x, `${key}[${i}]`));
+  for (const key of ['metrics', 'flags']) {
+    if (Array.isArray(model[key])) model[key].forEach((x, i) => check(x, `${key}[${i}]`));
+    else check(model[key], key);
+  }
+  arr(model.assumptions).forEach((a, i) => { for (const k of ['text', 'owner', 'revalidate']) check(a?.[k], `assumptions[${i}].${k}`); });
+  arr(model.gates).forEach((g, i) => { for (const k of ['id', 'command', 'environment', 'when', 'baseline']) check(g?.[k], `gates[${i}].${k}`); });
+  model.deliverables.forEach((c, i) => {
+    check(c.why, `deliverables[${i}].why`);
+    check(c.dod, `deliverables[${i}].dod`);
+    arr(c.pieces).forEach((x, j) => check(x, `deliverables[${i}].pieces[${j}]`));
+    arr(c.risks).forEach((x, j) => check(x, `deliverables[${i}].risks[${j}]`));
+    arr(c.acceptance).forEach((a, j) => {
+      check(a?.text, `deliverables[${i}].acceptance[${j}].text`);
+      check(a?.verify?.evidence, `deliverables[${i}].acceptance[${j}].verify.evidence`);
+    });
+  });
+  if (problems.length) throw new ScaffoldError(problems);
+}
+
+const stripDot = (s) => String(s).trim().replace(/\.+$/, '');
+const attrValue = (v) => (/[\s"]/.test(v) ? `"${String(v).replace(/"/g, "'")}"` : v);
+const listOrNone = (items, none) => (arr(items).length ? arr(items).map((x) => `- ${x}`) : [`- ${none}`]);
+const textList = (v) => (Array.isArray(v) ? v : isText(v) ? [v] : []);
+
+// Estratégia v1.0 (formats.md §5), com os títulos de HEADINGS[idioma].
+export function renderStrategy(model) {
+  checkSingleLine(model);
+  checkStrategyLines(model);
+  const pt = isPt(model);
+  const h = HEADINGS[pt ? 'pt' : 'en'];
+  const t = STRATEGY_TEXT[pt ? 'pt' : 'en'];
+  const config = buildConfig(model);
+  const graph = deriveGraph(model.deliverables);
+  const cards = sortedCards(model);
+  const idx = (c) => model.deliverables.indexOf(c);
+  const none = t.none;
+  const L = [];
+  const section = (title, ...body) => { L.push('', `## ${title}`, ...body); };
+
+  L.push(`<!-- roadmap:version 1.0 ${model.date} -->`, `# ${model.title} -- ${t.strategy} v1.0`);
+
+  const decIds = arr(model.decisions).map((d) => d.id).filter(isText);
+  section(h.changelog, `- v1.0 (${model.date}): ${t.firstVersion(model.mode)}${decIds.length ? `; ${t.absorbs} ${decIds.join(', ')}` : ''}.`);
+
+  const o = model.objective;
+  let objective = none;
+  if (isObj(o)) {
+    const parts = [stripDot(o.text ?? '')];
+    if (isText(o.acceptance)) parts.push(`${t.acceptanceCriterion}: ${stripDot(o.acceptance)}`);
+    if (isText(o.done)) parts.push(`${t.definitionOfDone}: ${stripDot(o.done)}`);
+    objective = parts.filter((x) => x !== '').join('. ') + '.';
+  } else if (isText(o)) {
+    objective = o;
+  }
+  section(h.objective, objective);
+
+  section(h.nonGoals, ...listOrNone(model.nonGoals, none));
+
+  const assumptions = arr(model.assumptions);
+  if (assumptions.length) {
+    const rows = assumptions.map((a, i) => [cell(/^ASSUMPTION:/.test(a.text) ? a.text : `ASSUMPTION: ${a.text}`, `assumptions[${i}].text`),
+      cell(dash(a.owner), `assumptions[${i}].owner`), cell(dash(a.revalidate), `assumptions[${i}].revalidate`)]);
+    section(h.assumptions, ...table(t.assumption, rows));
+  } else {
+    section(h.assumptions, none);
+  }
+
+  section(h.whereWeAre, t.whereWeAre(model.deliverables.length, model.phases.length, graph.chain.length ? graph.chain.join(' -> ') : '-'));
+  section(h.thesis, isText(model.thesis) ? model.thesis : none);
+
+  const dependsOf = (c) => (arr(c.depends).length ? [...c.depends].sort(compareIds).join(', ') : '-');
+  section(h.overview, ...table(t.overview, cards.map((c) => [cell(c.id, `deliverables[${idx(c)}].id`), cell(c.title, `deliverables[${idx(c)}].title`),
+    cell(c.phase, `deliverables[${idx(c)}].phase`), dependsOf(c)])));
+
+  const phaseRows = model.phases.map((p, i) => [cell(p.name, `phases[${i}].name`), cell(dash(p.entry), `phases[${i}].entry`), cell(dash(p.exit), `phases[${i}].exit`),
+    cards.filter((c) => c.phase === p.name).map((c) => c.id).join(', ') || '-']);
+  section(h.phases, ...block('phases', table(t.phases, phaseRows)));
+
+  section(h.deliverables);
+  for (const c of cards) {
+    const attrs = [`id=${c.id}`, `phase=${attrValue(c.phase)}`, `track=${attrValue(c.track)}`, `priority=${attrValue(c.priority)}`, `size=${attrValue(c.size)}`,
+      `depends=${dependsOf(c).replace(/, /g, ',')}`, `reqs=${arr(c.reqs).length ? c.reqs.join(',') : '-'}`, `critical=${graph.critical.has(c.id)}`];
+    L.push('', `<!-- roadmap:card ${attrs.join(' ')} -->`, `### ${c.id} -- ${c.title}`, '');
+    L.push(`${t.why}: ${arr(c.reqs).join(', ')}.${isText(c.why) ? ` ${c.why}` : ''}`);
+    if (arr(c.pieces).length) L.push('', t.pieces, '', ...c.pieces.map((x) => `- ${x}`));
+    const acceptance = arr(c.acceptance).map((a, j) => {
+      const v = a.verify;
+      const kind = v.kind === 'blocked' ? `blocked ${v.blq}` : v.kind;
+      return `${j + 1}. ${a.text} {verify: ${kind}; evidence: ${v.evidence}}`;
+    });
+    L.push('', ...block('acceptance', acceptance));
+    if (isText(c.dod)) L.push('', `${t.definitionOfDone}: ${c.dod}`);
+    L.push('', ...block('risks', arr(c.risks).map((x) => `- ${x}`)), '<!-- /roadmap:card -->');
+  }
+
+  const gates = arr(model.gates);
+  if (gates.length) {
+    const rows = gates.map((g, i) => [cell(g.id, `gates[${i}].id`), `\`${cell(g.command, `gates[${i}].command`)}\``, cell(dash(g.environment), `gates[${i}].environment`),
+      cell(dash(g.when), `gates[${i}].when`), cell(dash(g.baseline), `gates[${i}].baseline`)]);
+    section(h.gates, ...block('gates', table(t.gates, rows)));
+  }
+  if (textList(model.metrics).length) section(h.metrics, ...textList(model.metrics).map((x) => `- ${x}`));
+  if (textList(model.flags).length) section(h.flags, ...textList(model.flags).map((x) => `- ${x}`));
+  section(h.crossRisks, ...listOrNone(model.crossRisks, none));
+  section(h.decisions, t.seeDecisions(config.files.decisions));
+  section(h.externalPending, ...listOrNone(model.externalPending, none));
+  section(h.openQuestions, ...listOrNone(model.openQuestions, none));
+  section(h.coverage, t.coverage(deriveCoverage(model.requirements, model.deliverables, model.vocab).summary));
+  section(h.history, ...table(t.history, [['1.0', model.date, t.firstVersionRow]]));
+  section(h.sources, t.seeSources(config.files.sources));
+  return L.join('\n') + '\n';
+}
+
+function firstExistingAncestor(folder) {
+  let dir = path.resolve(folder);
+  while (!fs.existsSync(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return dir;
+}
+
+// Gera a pasta em memória e a confere no checker. Não grava nada.
+export function generate(model, { folder }) {
+  const files = renderFiles(model);
+  const config = JSON.parse(files['roadmap.config.json']);
+  const strategy = renderStrategy(model);
+  const strategyRel = config.strategy;
+  const roles = {};
+  const paths = {};
+  for (const [role, name] of Object.entries(config.files)) {
+    paths[role] = name;
+    roles[role] = name === null ? null : files[name];
+  }
+  const r = { folder, config, strategyPath: path.resolve(folder, strategyRel), strategy, files: roles, paths, invalidUtf8: [] };
+  const problems = [];
+  try {
+    validateConfig(config, folder, null);
+    const git = createGitAdapter(firstExistingAncestor(folder));
+    problems.push(...checkRoadmap(r, git));
+  } catch (e) {
+    problems.push({ severity: 'error', code: 'config', file: 'roadmap.config.json', message: e.message });
+  }
+  return { files: { ...files, [strategyRel]: strategy }, config, strategyRel, problems };
 }

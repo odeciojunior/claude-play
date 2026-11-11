@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   validateModel, applyDefaults, VOCAB_PT, VOCAB_EN, DEFAULT_TRACKS, DEFAULT_LIMITS, HEADINGS,
   compareIds, deriveGraph, deriveCoverage,
-  cell, ScaffoldError, buildConfig, renderFiles,
+  cell, ScaffoldError, buildConfig, renderFiles, renderStrategy, generate,
 } from './scaffold.mjs';
 import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
 
@@ -403,5 +404,115 @@ describe('renderFiles', () => {
 
   it('é determinística', () => {
     assert.deepEqual(render(), render());
+  });
+});
+
+describe('generate', () => {
+  const defaulted = (m) => applyDefaults(m).model;
+  const gen = (m = full()) => generate(defaulted(m), { folder: path.join(os.tmpdir(), 'scaffold-gen-inexistente', 'roadmap') });
+  const errors = (res) => res.problems.filter((p) => p.severity === 'error');
+  const lf = (s) => s.replace(/\r\n?/g, '\n');
+  const strategyOf = (res) => lf(res.files[res.strategyRel]);
+  const parsedOf = (res) => parseRoadmapTexts({
+    strategy: strategyOf(res),
+    files: { state: res.files['state.md'], decisions: res.files['decisions.md'], log: res.files['log.md'], sources: res.files['sources.md'], requirements: res.files['requirements.md'], measurements: res.files['measurements.md'] },
+  });
+  const tieModel = () => {
+    const m = mid();
+    const mk = (id, depends, req) => ({
+      id, title: `Card ${id}`, phase: 'Base pronta', depends, reqs: [req], why: 'Porque sim.',
+      acceptance: [
+        { text: `${id} faz a primeira coisa.`, verify: { kind: 'test', evidence: 'node --test a.test.mjs' } },
+        { text: `${id} faz a segunda coisa.`, verify: { kind: 'test', evidence: 'node --test b.test.mjs' } },
+      ],
+    });
+    m.requirements = [{ id: 'REQ-001', text: 'Um requisito.', type: 'functional', sources: ['SRC-01'] }];
+    m.phases = [{ name: 'Base pronta', entry: 'Resumo aprovado', exit: 'Tudo integrado' }];
+    m.deliverables = [mk('E10', [], 'REQ-001'), mk('E11', ['E10'], 'REQ-001'), mk('E2', [], 'REQ-001'), mk('E3', ['E2'], 'REQ-001')];
+    return m;
+  };
+
+  it('critério 1: modelo completo gera 0 erros e a estratégia bate com o grafo derivado', () => {
+    const m = defaulted(full());
+    const res = generate(m, { folder: path.join(os.tmpdir(), 'scaffold-gen-inexistente', 'roadmap') });
+    assert.deepEqual(errors(res), []);
+    const graph = deriveGraph(m.deliverables);
+    const parsed = parsedOf(res);
+    const critical = parsed.cards.filter((c) => c.critical).map((c) => c.id).sort(compareIds);
+    assert.deepEqual(critical, [...graph.critical].sort(compareIds));
+    assert.ok(lf(res.files['critical-path.md']).includes(`: ${graph.chain.join(' -> ')}.`));
+    // overview e coluna Entregáveis dos requisitos batem com os cards
+    const strategy = strategyOf(res);
+    for (const c of m.deliverables) {
+      assert.ok(strategy.includes(`| ${c.id} | ${c.title} | ${c.phase} | ${c.depends.length ? c.depends.join(', ') : '-'} |`), c.id);
+    }
+    const cov = deriveCoverage(m.requirements, m.deliverables, m.vocab).rows;
+    for (const row of parsed.blocks.requirements.requirements.rows) {
+      assert.equal(row[4], cov.find((r) => r.id === row[0]).deliverables.join(', ') || '-');
+    }
+    assert.equal(parsed.blocks.strategy.phases.rows.length, m.phases.length);
+    assert.equal(parsed.cards.length, m.deliverables.length);
+  });
+
+  it('modelo de empate (E10/E11 vs E2/E3) gera 0 erros e a cadeia é E2 -> E3', () => {
+    const res = gen(tieModel());
+    assert.deepEqual(errors(res), []);
+    assert.ok(lf(res.files['critical-path.md']).includes('Caminho crítico: E2 -> E3.'));
+  });
+
+  it('critério 2: modelo médio (pt) preserva cada texto da pessoa', () => {
+    const m = mid();
+    m.decisions = [{ id: 'DEC-001', date: '2026-01-01', title: 'Duas fases', decision: 'Planejar duas fases | com barra.', why: 'Resumo.', status: 'in-force' }];
+    const res = gen(m);
+    assert.deepEqual(errors(res), []);
+    const strategy = strategyOf(res);
+    const requirements = lf(res.files['requirements.md']);
+    for (const r of m.requirements) assert.ok(requirements.includes(cell(r.text, 'x')), r.id);
+    for (const d of m.deliverables) {
+      assert.ok(strategy.includes(d.title), d.id);
+      for (const a of d.acceptance) assert.ok(strategy.includes(a.text), a.text);
+    }
+    const sources = lf(res.files['sources.md']);
+    for (const s of m.sources) assert.ok(sources.includes(s.source) && sources.includes(s.what), s.id);
+    const decisions = lf(res.files['decisions.md']);
+    assert.ok(decisions.includes(cell('Planejar duas fases | com barra.', 'x')));
+    assert.ok(decisions.includes('fases \\| com'));
+    assert.ok(strategy.includes('absorve DEC-001'));
+    assert.ok(strategy.includes(m.objective) && strategy.includes(m.thesis));
+  });
+
+  it('títulos de seção seguem HEADINGS do idioma', () => {
+    const en = strategyOf(gen(full()));
+    for (const key of ['changelog', 'objective', 'overview', 'phases', 'deliverables', 'gates', 'crossRisks', 'coverage', 'history', 'sources']) {
+      assert.ok(en.includes(`\n## ${HEADINGS.en[key]}\n`), `en ${key}`);
+    }
+    const pt = strategyOf(gen(mid()));
+    for (const key of ['changelog', 'objective', 'nonGoals', 'phases', 'deliverables', 'coverage']) {
+      assert.ok(pt.includes(`\n## ${HEADINGS.pt[key]}\n`), `pt ${key}`);
+    }
+    // sem gates, métricas e flags: seções omitidas
+    assert.ok(!pt.includes(`## ${HEADINGS.pt.gates}`) && !pt.includes(`## ${HEADINGS.pt.metrics}`) && !pt.includes(`## ${HEADINGS.pt.flags}`));
+    assert.ok(en.startsWith('<!-- roadmap:version 1.0 2026-01-01 -->\n'));
+  });
+
+  it('um único critério de aceite faz o checker em memória acusar card-acceptance', () => {
+    const m = full();
+    m.deliverables[0].acceptance = [m.deliverables[0].acceptance[0]];
+    const model = defaulted(m);
+    const res = generate(model, { folder: path.join(os.tmpdir(), 'scaffold-gen-inexistente', 'roadmap') });
+    assert.ok(res.problems.some((p) => p.severity === 'error' && p.code === 'card-acceptance'), JSON.stringify(res.problems));
+  });
+
+  it('quebra de linha em texto da estratégia é recusa multiline-cell com o caminho', () => {
+    const m = full();
+    m.deliverables[1].acceptance[0].text = 'linha um\nlinha dois';
+    assert.throws(() => renderStrategy(defaulted(m)), (e) => e instanceof ScaffoldError
+      && e.problems[0].code === 'multiline-cell' && e.problems[0].path === 'deliverables[1].acceptance[0].text');
+  });
+
+  it('é determinística e não grava nada', () => {
+    const folder = path.join(os.tmpdir(), 'scaffold-gen-inexistente', 'roadmap');
+    assert.deepEqual(gen(), gen());
+    assert.ok(!fs.existsSync(folder));
   });
 });
