@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E2 | E2 entrou em `release/roadmap-skills-v2` (merge da `feat/E2`); gates iguais à linha de base: G1 exit 0 com 894 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-102 a DEC-116 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `0202e00f1be5032c95d759a41883de84c57e54b3` |
 | 2026-11-11 | E2 | Execução do plano iniciada na branch `feat/E2`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md` |
 | 2026-11-11 | E2 | DEC-102 a DEC-116 registradas, de origem executor e pendentes de ratificação, vindas do spec de E2. | `decisions.md` |
 | 2026-11-11 | E2 | Plano escrito, na branch `feat/E2`. | `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md` |
