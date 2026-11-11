@@ -1,0 +1,35 @@
+{
+  "generated": true,
+  "projectContext": "Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).",
+  "install": "",
+  "locks": [],
+  "conflictRules": "",
+  "gates": [
+    {
+      "name": "G1",
+      "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\"",
+      "kind": "tests"
+    },
+    {
+      "name": "G2",
+      "cmd": "claude plugin validate .",
+      "kind": "exit"
+    },
+    {
+      "name": "G3",
+      "cmd": "claude plugin validate plugins/productivity-tools",
+      "kind": "exit"
+    },
+    {
+      "name": "G4",
+      "cmd": "node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid",
+      "kind": "exit",
+      "restricted": true
+    },
+    {
+      "name": "G5",
+      "cmd": "node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools",
+      "kind": "exit"
+    }
+  ]
+}
