@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E22 | DEC-234 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18 | DEC-217 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18 | DEC-212 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18, E22 | DEC-211, DEC-215, DEC-232, DEC-233, DEC-235 ratificadas pelo dono | `decisions.md` |
+| 2026-11-11 | E4 | Correção de E4 (W6, W1, cabeçalhos pt, lint 0 WARN, validação de itens) integrada na release | `5a8ab1e` |
+| 2026-11-11 | E22 | BLQ-4 aberto: a execução automática de E22 parou na tarefa 8 (despacha subagentes; é do orquestrador da sessão principal, DEC-204; o executor não tem a ferramenta, nada simulado). E22 passa a bloqueado; `feat/E22` mantida. | `8f53396d9d5bb47731d7d4a1fa027d5197922a99` |
 | 2026-11-11 | E22 | E22 passa a executando na feat/E22 (execução automática pelo release, depois de E18); feat/E22 sincronizada com a release e spec e plano aprovados pelas revisões. 17 decisões autônomas do spec gravadas como pendentes (DEC-232 a DEC-248). | `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` |
 | 2026-11-11 | E18 | E18 entrou em `release/roadmap-skills-v2` (merge da `feat/E18`); gates iguais à linha de base: G1 exit 0 com 1286 testes, 0 falhas, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-211 em diante seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `48f2c0b3c413774c4683d4720e912311a5826610` |
 | 2026-11-11 | E18 | E18 passa a executando na feat/E18 (execução automática pelo release); spec e plano aprovados pelas revisões. 21 decisões autônomas do spec gravadas como pendentes (DEC-211 em diante); as 11, 18 e 21 foram cortadas na célula, texto inteiro no spec. | `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md` |

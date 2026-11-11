@@ -84,7 +84,7 @@ Also settle now:
 - **Integration branch** (`integrationBranch`): in a git repo, the default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`, strip `origin/`); if that fails or several candidates exist, ask. Outside a git repo, ask (default `main`); the checker then warns `no-git`, expected and listed in the handoff.
 - **Release branch** (`releaseBranch`): ask whether deliverables merge into an intermediate release branch first. If yes, record its name; if no, omit the key.
 
-**Planning model.** `<roadmap-folder>/planning-model.json` (contract: `references/model.md`) keeps the work across a crash or `/clear`. Write the whole model, with `nextStep`, after Steps 1 to 5 and after each round of questions; create the folder if needed. Never put a secret in it: write "[omitted: secret]". If the model exists at Step 0, tell the user you are resuming, skip the mode question and any question it records as answered, and continue at `nextStep`. Step 7 deletes it once the checker and the reviewer pass.
+**Planning model.** `<roadmap-folder>/planning-model.json` (contract: `references/model.md`) keeps the work across a crash or `/clear`. Write the whole model, with `nextStep`, after Steps 1 to 5 and after each round of questions; create the folder if needed. Never put a secret in it: write "[omitted: secret]". If the model exists at Step 0, tell the user you are resuming, skip the mode question and any question it records as answered, and continue at `nextStep`. Step 7 deletes it.
 
 ### Step 1: Intake and sources
 
@@ -136,7 +136,7 @@ On exit 1, fix the model at each error's `path` (codes: `model.md` §11) and run
 ### Step 7: Verify
 
 1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"` until it reports **0 errors**; list the remaining warnings in the handoff. Fix the model, never the checker. If `node` is missing or older than 18, hand off saying "checker not run (Node ≥18 missing)".
-2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode, or no subagent tool: skip it, never self-review as if independent, and say in the handoff that no independent review ran (without a subagent tool, recommend the same brief in a fresh session before use).
+2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode, or no subagent tool: skip it, never self-review as if independent, and say in the handoff that no independent review ran (without a subagent tool, recommend the same brief in a fresh session before use; fixes go via `roadmap-tracker`).
 3. Loop, at most three review rounds in total: fix each `error` finding in the model, run the scaffold and the checker until 0 errors, and dispatch a fresh reviewer only if the previous round had an `error` finding. `warning` findings go to the handoff. An `error` left after the third round goes to the handoff as a pending item, without another round.
 4. Delete `<roadmap-folder>/planning-model.json`.
 

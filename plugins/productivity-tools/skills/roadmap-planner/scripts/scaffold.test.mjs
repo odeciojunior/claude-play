@@ -584,17 +584,78 @@ describe('cli', () => {
     const box = sandbox();
     put(box, full());
     const before = listing(box.root);
-    const env = { ...process.env, SCAFFOLD_SELFTEST_THROW: '1' };
-    const t = run([box.model], { env });
-    assert.equal(t.status, 2, t.stdout + t.stderr);
-    assert.match(t.stdout, /^ERROR internal: .*forced internal failure/m);
-    const j = run([box.model, '--json'], { env });
-    assert.equal(j.status, 2, j.stdout + j.stderr);
-    const out = JSON.parse(j.stdout);
-    assert.equal(out.errors[0].code, 'internal');
-    assert.equal(out.summary.exitCode, 2);
-    assert.equal(out.tool, 'scaffold');
+    const boom = () => { throw new Error('forced internal failure'); };
+    const r = runScaffold(box.model, { _generate: boom });
+    assert.equal(r.summary.exitCode, 2);
+    assert.equal(r.errors[0].code, 'internal');
+    assert.match(r.errors[0].message, /forced internal failure/);
+    assert.equal(r.tool, 'scaffold');
+    const logs = [];
+    const orig = console.log;
+    console.log = (...a) => logs.push(a.join(' '));
+    try {
+      assert.equal(main([box.model], { _generate: boom }), 2);
+      assert.equal(main([box.model, '--json'], { _generate: boom }), 2);
+    } finally { console.log = orig; }
+    assert.match(logs.join('\n'), /^ERROR internal: .*forced internal failure/m);
+    assert.equal(JSON.parse(logs[logs.length - 1]).errors[0].code, 'internal');
     assert.deepEqual(listing(box.root), before);
+  });
+
+  it('existing-roadmap: log com linha extra recusa com a saída na mensagem; DEC estranho não recusa', () => {
+    const box = sandbox();
+    put(box, full());
+    assert.equal(run([box.model]).status, 0);
+    const before = hashes(box.root);
+    const logFile = path.join(box.folder, 'log.md');
+    const decFile = path.join(box.folder, 'decisions.md');
+    const origLog = fs.readFileSync(logFile, 'utf8');
+    const origDec = fs.readFileSync(decFile, 'utf8');
+    fs.writeFileSync(logFile, origLog.trimEnd() + '\n| 2026-02-02 | - | evento novo | `x` |\n');
+    const afterLog = hashes(box.root);
+    const r = run([box.model, '--json']);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.equal(JSON.parse(r.stdout).errors[0].code, 'existing-roadmap');
+    assert.deepEqual(hashes(box.root), afterLog);
+    assert.match(JSON.parse(r.stdout).errors[0].message, /Stop: update it with roadmap-tracker and delete planning-model\.json/);
+    fs.writeFileSync(logFile, origLog);
+    // DEC fora do modelo não recusa mais (o tracker sempre acrescenta ao log também)
+    fs.writeFileSync(decFile, origDec.trimEnd() + '\n| DEC-099 | 2026-02-02 | - | Extra | - | - | - | - | in-force |\n');
+    assert.equal(run([box.model, '--json']).status, 0);
+    fs.writeFileSync(decFile, origDec);
+    assert.equal(run([box.model]).status, 0);
+  });
+
+  it('pt: cabeçalhos de state, sources, requirements e measurements saem em português e o checker aceita (0 erros)', () => {
+    const m = full(); m.language = 'pt-BR';
+    delete m.vocab;
+    m.releases = [{ package: 'pkg-1', deliverables: ['E1'], state: 'publicado', date: '2026-01-02', environment: 'local' }];
+    const files = renderFiles(applyDefaults(m).model);
+    assert.match(files['state.md'], /\| Entregável \| Status \| Evidência \| Próximo passo \|/);
+    assert.match(files['state.md'], /\| ID \| Bloqueio \| Afeta \| Desde \| Desbloqueia quando \|/);
+    assert.match(files['state.md'], /\| Branch \| Tipo \| Nota \|/);
+    assert.match(files['state.md'], /\| Pacote \| Entregáveis \|/);
+    assert.match(files['sources.md'], /\| ID \| Fonte \| O que é \| Lida em \| Confiabilidade \|/);
+    assert.match(files['requirements.md'], /\| ID \| Requisito \| Tipo \| Fontes \| Entregáveis \| Cobertura \|/);
+    assert.match(files['measurements.md'], /\| Data \| Entregável \| Tipo \| Detalhe \| Registrado \| Faturado \| Status \|/);
+    const box = sandbox();
+    put(box, m);
+    const r = run([box.model]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(errorsOf(box.folder), []);
+  });
+
+  it('existing-roadmap lê files do config existente, não do novo', () => {
+    const box = sandbox();
+    put(box, full());
+    assert.equal(run([box.model]).status, 0);
+    const logFile = path.join(box.folder, 'log.md');
+    fs.writeFileSync(logFile, fs.readFileSync(logFile, 'utf8').trimEnd() + '\n| 2026-02-02 | - | evento novo | `x` |\n');
+    const m = full(); m.files = { log: 'registro.md' };
+    put(box, m);
+    const r = run([box.model, '--json']);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.equal(JSON.parse(r.stdout).errors[0].code, 'existing-roadmap');
   });
 
   const refusals = {
@@ -723,5 +784,51 @@ describe('review-planted fixture', () => {
   it('a pasta não traz checker nem modelo', () => {
     assert.ok(!fs.existsSync(path.join(dir, 'check-roadmap.mjs')));
     assert.ok(!fs.existsSync(path.join(dir, 'planning-model.json')));
+  });
+});
+
+describe('M1/M2 robustez', () => {
+  it('pt: títulos e cabeçalhos de colunas de decisions.md e log.md saem em português', () => {
+    const m = full(); m.language = 'pt-BR';
+    delete m.vocab;
+    const { model } = applyDefaults(m);
+    const files = renderFiles(model);
+    assert.match(files['decisions.md'], /^# Decisões/m);
+    assert.match(files['decisions.md'], /\| ID \| Data \| Entregável \| Decisão \| Alternativa descartada \|/);
+    assert.match(files['log.md'], /^# Log/m);
+    assert.match(files['log.md'], /\| Data \| Entregável \| O que aconteceu \| Evidência \|/);
+    const en = renderFiles(applyDefaults(full()).model);
+    assert.match(en['decisions.md'], /^# Decisions/m);
+    assert.match(en['log.md'], /\| Date \| Deliverable \| What happened \| Evidence \|/);
+  });
+
+  it('item que não é objeto em requirements, decisions e gates: required com caminho', () => {
+    for (const key of ['requirements', 'decisions', 'gates', 'sources', 'blockers', 'measurements', 'releases']) {
+      const m = full();
+      m[key] = [...(m[key] || []), 'texto solto'];
+      const at = `${key}[${m[key].length - 1}]`;
+      assert.ok(codes(validateModel(m)).includes(`required@${at}`), key);
+    }
+  });
+
+  it('vocab parcial: required por chave ausente', () => {
+    const m = full(); m.vocab = { blockedStatus: 'x' };
+    const c = codes(validateModel(m));
+    assert.ok(c.includes('required@vocab.deliverableStatuses'), c.join());
+    const n = full(); n.vocab = 'nope';
+    assert.ok(codes(validateModel(n)).includes('required@vocab'));
+  });
+
+  it('runScaffold nunca estoura com requirements/decisions/gates malformados', () => {
+    const box = fs.mkdtempSync(path.join(os.tmpdir(), 'scaffold-m2-'));
+    try {
+      const m = full(); m.requirements = ['x']; m.decisions = [1]; m.gates = [null]; m.vocab = {};
+      const file = path.join(box, 'planning-model.json');
+      fs.writeFileSync(file, JSON.stringify(m));
+      const r = runScaffold(file);
+      assert.equal(r.summary.exitCode, 1);
+      assert.ok(r.errors.some((e) => e.code === 'required'));
+      assert.ok(r.errors.every((e) => e.code !== 'internal'));
+    } finally { fs.rmSync(box, { recursive: true, force: true }); }
   });
 });
