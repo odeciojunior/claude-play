@@ -17,7 +17,7 @@ Check the decision against each of these, only the ones it touches:
 |---|---|---|
 | `contradiz` | overrides one of those assertions | the section, e.g. `E2 (pieces)`, `E3 (depends)`, `Non-goals` |
 | `detalha` | fills in what the strategy leaves open | `-` |
-| `diverge de DEC` | goes against an in-force decision (a § 18 executor choice does this) | that ID, e.g. `DEC-001` |
+| `diverge de DEC` | an executor row (§ 18) that goes against an in-force decision; an owner decision that replaces one is § 1 step 2, not this class | that ID, e.g. `DEC-001` |
 | `incerto` | cannot tell after the tie-breakers | ask once, recommending the filled cell; under `no questions` write the closest strategy section and add a `pending` item `(user) confirm Contradicts of DEC-NNN` |
 
 A decision that is both names both, separated by a comma.

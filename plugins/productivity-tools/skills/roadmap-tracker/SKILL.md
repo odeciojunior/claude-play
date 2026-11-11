@@ -39,10 +39,10 @@ Never write a file from memory. If the contract cannot be read, stop and report 
 ## Workflow
 
 0. **Locate the folder** (the directory with `roadmap.config.json`): the path given; the `**Roadmap**:` field of the plan-coordinator progress file; `**Roadmap:**` in the plan header; else search `docs/plans/**/roadmap.config.json`. Several: ask which. None: stop, point to `roadmap-planner`, create nothing.
-1. **Cold start:** `roadmap.mjs brief "<folder>"`. The recipe says what else to read.
+1. **Cold start:** `roadmap.mjs brief "<folder>"`, then `roadmap.config.json` and the touched card; the recipe names the rest.
 2. **Layer 1, checker:** `roadmap.mjs refresh-checker "<folder>"`; detail in `events/10-checker-refresh.md`.
 3. **Layer 3, format:** compare the contract's formatVersion (its title), the config's `formatVersion` and the vendored checker's `format <n>`. Contract newer than the config: migrate first, with approval (`events/11-migration.md`). Config newer than the contract: stop, tell the user to update the plugin.
-4. **Classify the event, apply its recipe:** read `events.md` (Common) and the recipe file below; read a rubric only when the recipe says so. Chained events: table order.
+4. **Classify the event, apply its recipe:** read `events.md` (Common) and the recipe file below; read a rubric only when the recipe says so. Chained events: table order, § 19 before § 9.
 5. **Checker:** `node "<folder>/check-roadmap.mjs"` (plugin copy only if missing; no Node 18+: report "checker not run"). 0 errors before handing back: fix those this run introduced; for older ones, ask with a recommended fix or hand back `errors remain: <codes>` with one fix each. Warnings are listed, one line per code: `contradiction-unabsorbed` may wait for a revision; `checker-stale` means Step 2 failed or was skipped; `no-git` / `shallow-clone` mean git checks did not run; `integrated-pending` propose the batch turn (§ 16); `pending-limit` see Common; `blocker-overdue` propose escalating (§ 5); others report only (strategy fixes wait for a revision).
 6. **Revision** (end of piece or phase, or an unabsorbed contradiction): propose strategy vN+1 in the conversation, write it only after approval (rule 6); procedure in `events/09-revision.md`.
 7. **Hand back** with the report below.

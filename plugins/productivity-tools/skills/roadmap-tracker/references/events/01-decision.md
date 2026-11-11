@@ -5,7 +5,7 @@
 1. `decisions.md`: append one row per choice (two choices, two rows).
    - ID: `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" next-id "<folder>" DEC`. Date: decision day. Deliverable: `E<n>` or `-`.
    - Decision: what was chosen, one sentence. Discarded alternative: what was not chosen; if nobody stated one, `none stated`, never invented.
-   - **Contradicts:** classify with `references/rubric-contradiction.md` and write the cell it gives: the strategy section, `-`, or the `DEC` ID. Unsure: its `incerto` rule.
+   - **Contradicts:** classify with `references/rubric-contradiction.md` and write the cell it gives: the strategy section or `-` (replacing an in-force DEC is step 2, never this cell). Unsure: its `incerto` rule.
    - Revisit when: a condition ("the owner reprioritizes sharing"), not a date unless one was supplied; nobody supplied one: `-`, never invented.
    - Origin: `user`, `executor`, `SRC-NN` or `REQ-NNN`. Status: `vocab.decisionInForce`, or `vocab.decisionPending` while awaiting someone. Cells: `formats.md § 6`; the CLI does not append rows of Origin `user`, so this is an edit.
    - A row may cite the `BLQ-n` it closes (retired ids are fine); apply § 5 "Closed" for the blocker.

@@ -5,7 +5,7 @@
 Compare three numbers: the contract's `formatVersion` (title line), the config's `formatVersion` (`formats.md § 2`) and the vendored checker's `format <n>` (line 1, after § 10; `formats.md § 9`).
 
 - Contract newer than the config → run the migration below **before writing anything else**. It needs user approval and ends with the vendored checker at that format.
-- Never set the config's `formatVersion`, or write a file in a format, newer than the vendored checker reports. The migration vendors the new checker itself before it bumps the config, so a § 10 refresh that failed because the folder is still in the old format does not block it. Without approval, keep writing the config's format and leave the pending item (`add-pending --owner user --text "migrate to format <N>?"`).
+- Never set the config's `formatVersion`, or write a file in a format, newer than the vendored checker reports. The migration vendors the new checker itself before it bumps the config, so a § 10 refresh that failed because the folder is still in the old format does not block it. Without approval, keep writing the config's format and leave the pending item (`add-pending "<folder>" --owner user --text "migrate to format <N>?"`).
 - Config newer than the contract (the installed plugin is older than the folder) → stop; tell the user to update the plugin.
 
 `formatVersion 1` has no migration: it is the first format. Each future format adds one section below, `### Migration <N-1> → <N>`, written with that format change and applied in order (1 → 2, then 2 → 3). Template:
