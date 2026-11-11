@@ -1,0 +1,385 @@
+{
+  "note": "[fab] baseline fixture codigo-semeado-B",
+  "variant": "codigo-semeado-B",
+  "requested": 5,
+  "valid": 5,
+  "invalid": 0,
+  "denied": 0,
+  "invalidReasons": {},
+  "plugin": {
+    "version": "1.6.0",
+    "commit": "fab0000000000000000000000000000000000016"
+  },
+  "superpowers": {
+    "version": "7.0.0",
+    "commit": "fab0000000000000000000000000000000000007"
+  },
+  "seedSource": {
+    "kind": "execucao-aprovada",
+    "spec": "2026-01-01-E5-x-design.md",
+    "plan": "2026-01-01-E5-x.md",
+    "specSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "planSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "cli": "2.1.0 (Claude Code)",
+  "models": [
+    "sonnet",
+    "opus",
+    "haiku"
+  ],
+  "pricesDate": "2026-11-10",
+  "permissionMode": "acceptEdits",
+  "attempts": [
+    {
+      "n": 1,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 3,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 183
+        },
+        "bytes": 1010,
+        "perTask": 11,
+        "conditional": {
+          "extraRounds": 1,
+          "fixCalls": 1
+        },
+        "main": {
+          "agentCalls": 10,
+          "bytes": 501,
+          "turns": 21
+        },
+        "static": {
+          "bytes": 400
+        },
+        "cost": 1.5
+      },
+      "outcomes": [
+        {
+          "id": "C6",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C7",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C8",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C9",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 3,
+          "sonnet": 4,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 163
+        },
+        "bytes": 1020,
+        "perTask": 12,
+        "conditional": {
+          "extraRounds": 1,
+          "fixCalls": 0
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 502,
+          "turns": 22
+        },
+        "static": {
+          "bytes": 400
+        },
+        "cost": 2
+      },
+      "outcomes": [
+        {
+          "id": "C6",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C7",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C8",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C9",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 3,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 183
+        },
+        "bytes": 1030,
+        "perTask": 13,
+        "conditional": {
+          "extraRounds": 1,
+          "fixCalls": 1
+        },
+        "main": {
+          "agentCalls": 12,
+          "bytes": 503,
+          "turns": 23
+        },
+        "static": {
+          "bytes": 400
+        },
+        "cost": 2.5
+      },
+      "outcomes": [
+        {
+          "id": "C6",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C7",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C8",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C9",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 4,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 3,
+          "sonnet": 4,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 163
+        },
+        "bytes": 1040,
+        "perTask": 14,
+        "conditional": {
+          "extraRounds": 1,
+          "fixCalls": 0
+        },
+        "main": {
+          "agentCalls": 13,
+          "bytes": 504,
+          "turns": 24
+        },
+        "static": {
+          "bytes": 400
+        },
+        "cost": 3
+      },
+      "outcomes": [
+        {
+          "id": "C6",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C7",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C8",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "indeterminado"
+        },
+        {
+          "id": "C9",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 5,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 3,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 183
+        },
+        "bytes": 1050,
+        "perTask": 15,
+        "conditional": {
+          "extraRounds": 1,
+          "fixCalls": 1
+        },
+        "main": {
+          "agentCalls": 14,
+          "bytes": 505,
+          "turns": 25
+        },
+        "static": {
+          "bytes": 400
+        },
+        "cost": 3.5
+      },
+      "outcomes": [
+        {
+          "id": "C6",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C7",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C8",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "C9",
+          "class": "code",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "impl": {
+      "calls": {
+        "haiku": 0,
+        "sonnet": 20,
+        "opus": 0,
+        "fable": 0,
+        "other": 0
+      },
+      "promptBytes": 500,
+      "tokens": {
+        "input": 10,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0,
+        "cacheRead": 5,
+        "output": 3
+      },
+      "cost": 2.5,
+      "agents": 5
+    },
+    "review": {
+      "calls": {
+        "haiku": 0,
+        "sonnet": 0,
+        "opus": 10,
+        "fable": 0,
+        "other": 0
+      },
+      "promptBytes": 500,
+      "tokens": {
+        "input": 10,
+        "cacheWrite5m": 0,
+        "cacheWrite1h": 0,
+        "cacheRead": 5,
+        "output": 3
+      },
+      "cost": 2.5,
+      "agents": 5
+    }
+  },
+  "cost": {
+    "median": 2.5,
+    "min": 1.5,
+    "max": 3.5
+  },
+  "outcomes": {
+    "C6": {
+      "class": "code",
+      "detectedBy": "reviewer",
+      "capturado": 5,
+      "perdido": 0,
+      "indeterminado": 0
+    },
+    "C7": {
+      "class": "code",
+      "detectedBy": "reviewer",
+      "capturado": 5,
+      "perdido": 0,
+      "indeterminado": 0
+    },
+    "C8": {
+      "class": "code",
+      "detectedBy": "reviewer",
+      "capturado": 4,
+      "perdido": 0,
+      "indeterminado": 1
+    },
+    "C9": {
+      "class": "code",
+      "detectedBy": "reviewer",
+      "capturado": 4,
+      "perdido": 1,
+      "indeterminado": 0
+    }
+  },
+  "deteccaoPorCodigo": {}
+}
