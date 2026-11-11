@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E15, E2, E3, E6 | Correções de código das ratificações entraram em `release/roadmap-skills-v2`: G1 com 1169 testes, 0 falhas; G2 a G5 exit 0; revisão final opus/high aprovada com ressalvas, achados corrigidos. | `8303bc9` |
 | 2026-11-11 | E6 | O dono ratificou DEC-210 (padrões de efeito externo do plan-tool). | `decisions.md` |
 | 2026-11-11 | E3, E6 | O dono decidiu Contradiz "-" na linha de emenda de ratify --amend (DEC-209); DEC-210 registrada, de origem executor e pendente, sobre os padrões de efeito externo do plan-tool. | `decisions.md` |
 | 2026-11-11 | - | BLQ-2 e BLQ-3 fechados pela ratificação; E18 e E22 voltam a `nao-iniciado`. BLQ-2 não listava DEC-137 a DEC-139, de que E18 também depende; ficaram cobertas pela mesma ratificação. | `decisions.md` |

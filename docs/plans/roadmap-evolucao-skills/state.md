@@ -7,9 +7,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Branch de correção das ratificações (DEC-193 a DEC-208): as correções de `tools/measure/` entram antes de qualquer execução paga de E15. Executa: executor. Aprova: dono. Depende de: DEC-194, DEC-197.
-2. Linha de base (E15): depois da correção, o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-3. E4: sincronizar `feat/E4` com a release, corrigir `scaffold.mjs` e rodar a tarefa 9 pelo orquestrador da sessão (DEC-204); depois E18 e E22 pelo release. Executa: executor. Aprova: dono. Depende de: DEC-204.
+1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
+2. E4: sincronizar `feat/E4` com a release, corrigir `scaffold.mjs` e rodar a tarefa 9 pelo orquestrador da sessão (DEC-204); depois E18 e E22 pelo release. Executa: executor. Aprova: dono. Depende de: DEC-204.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -78,9 +77,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) criterion AC4 has no automatic evidence (human)
 - (dono) Aceite do critério 4 de E4 (o revisor devolve achado estruturado para cada defeito plantado): conferir o relatório comportamental em `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md`.
 - (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (executor) Correções em `tools/measure/` antes das execuções pagas de E15 (DEC-193 a DEC-197 e status de variante incompleta).
-- (executor) Correções no checker, na CLI e em `.claude/rules/roadmap-checker.md` (DEC-198 a DEC-200, comentário de `lib/roadmap-format.mjs` e regeneração do checker).
-- (executor) Correções em `plan-tool` (DEC-205, DEC-206, DEC-208) e, em `feat/E4`, saída `--json` e erro interno de `scaffold.mjs`.
+- (executor) Em `feat/E4`: saída `--json` em erro de uso e erro interno com código 2 em `scaffold.mjs` (DEC-159).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 <!-- /roadmap:pending -->
 
