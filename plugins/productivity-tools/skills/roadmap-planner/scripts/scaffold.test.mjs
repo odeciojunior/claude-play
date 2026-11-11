@@ -602,7 +602,7 @@ describe('cli', () => {
     assert.deepEqual(listing(box.root), before);
   });
 
-  it('existing-roadmap: log com linha extra ou DEC estranho recusa, exit 1, bytes iguais', () => {
+  it('existing-roadmap: log com linha extra recusa com a saída na mensagem; DEC estranho não recusa', () => {
     const box = sandbox();
     put(box, full());
     assert.equal(run([box.model]).status, 0);
@@ -617,16 +617,45 @@ describe('cli', () => {
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.equal(JSON.parse(r.stdout).errors[0].code, 'existing-roadmap');
     assert.deepEqual(hashes(box.root), afterLog);
+    assert.match(JSON.parse(r.stdout).errors[0].message, /Stop: update it with roadmap-tracker and delete planning-model\.json/);
     fs.writeFileSync(logFile, origLog);
+    // DEC fora do modelo não recusa mais (o tracker sempre acrescenta ao log também)
     fs.writeFileSync(decFile, origDec.trimEnd() + '\n| DEC-099 | 2026-02-02 | - | Extra | - | - | - | - | in-force |\n');
-    const afterDec = hashes(box.root);
-    const d = run([box.model, '--json']);
-    assert.equal(d.status, 1, d.stdout + d.stderr);
-    assert.equal(JSON.parse(d.stdout).errors[0].code, 'existing-roadmap');
-    assert.deepEqual(hashes(box.root), afterDec);
+    assert.equal(run([box.model, '--json']).status, 0);
     fs.writeFileSync(decFile, origDec);
-    assert.deepEqual(hashes(box.root), before);
     assert.equal(run([box.model]).status, 0);
+  });
+
+  it('pt: cabeçalhos de state, sources, requirements e measurements saem em português e o checker aceita (0 erros)', () => {
+    const m = full(); m.language = 'pt-BR';
+    delete m.vocab;
+    m.releases = [{ package: 'pkg-1', deliverables: ['E1'], state: 'publicado', date: '2026-01-02', environment: 'local' }];
+    const files = renderFiles(applyDefaults(m).model);
+    assert.match(files['state.md'], /\| Entregável \| Status \| Evidência \| Próximo passo \|/);
+    assert.match(files['state.md'], /\| ID \| Bloqueio \| Afeta \| Desde \| Desbloqueia quando \|/);
+    assert.match(files['state.md'], /\| Branch \| Tipo \| Nota \|/);
+    assert.match(files['state.md'], /\| Pacote \| Entregáveis \|/);
+    assert.match(files['sources.md'], /\| ID \| Fonte \| O que é \| Lida em \| Confiabilidade \|/);
+    assert.match(files['requirements.md'], /\| ID \| Requisito \| Tipo \| Fontes \| Entregáveis \| Cobertura \|/);
+    assert.match(files['measurements.md'], /\| Data \| Entregável \| Tipo \| Detalhe \| Registrado \| Faturado \| Status \|/);
+    const box = sandbox();
+    put(box, m);
+    const r = run([box.model]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(errorsOf(box.folder), []);
+  });
+
+  it('existing-roadmap lê files do config existente, não do novo', () => {
+    const box = sandbox();
+    put(box, full());
+    assert.equal(run([box.model]).status, 0);
+    const logFile = path.join(box.folder, 'log.md');
+    fs.writeFileSync(logFile, fs.readFileSync(logFile, 'utf8').trimEnd() + '\n| 2026-02-02 | - | evento novo | `x` |\n');
+    const m = full(); m.files = { log: 'registro.md' };
+    put(box, m);
+    const r = run([box.model, '--json']);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.equal(JSON.parse(r.stdout).errors[0].code, 'existing-roadmap');
   });
 
   const refusals = {
@@ -765,16 +794,16 @@ describe('M1/M2 robustez', () => {
     const { model } = applyDefaults(m);
     const files = renderFiles(model);
     assert.match(files['decisions.md'], /^# Decisões/m);
-    assert.match(files['decisions.md'], /\| ID \| Data \| Entrega \| Decisão \| Alternativa descartada \|/);
+    assert.match(files['decisions.md'], /\| ID \| Data \| Entregável \| Decisão \| Alternativa descartada \|/);
     assert.match(files['log.md'], /^# Log/m);
-    assert.match(files['log.md'], /\| Data \| Entrega \| O que aconteceu \| Evidência \|/);
+    assert.match(files['log.md'], /\| Data \| Entregável \| O que aconteceu \| Evidência \|/);
     const en = renderFiles(applyDefaults(full()).model);
     assert.match(en['decisions.md'], /^# Decisions/m);
     assert.match(en['log.md'], /\| Date \| Deliverable \| What happened \| Evidence \|/);
   });
 
   it('item que não é objeto em requirements, decisions e gates: required com caminho', () => {
-    for (const key of ['requirements', 'decisions', 'gates']) {
+    for (const key of ['requirements', 'decisions', 'gates', 'sources', 'blockers', 'measurements', 'releases']) {
       const m = full();
       m[key] = [...(m[key] || []), 'texto solto'];
       const at = `${key}[${m[key].length - 1}]`;

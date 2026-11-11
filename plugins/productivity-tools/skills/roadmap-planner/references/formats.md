@@ -25,7 +25,7 @@ Default root: `docs/plans/roadmap-<topic>/` (the user may override it).
 <root>/README.md
 <root>/state.md  decisions.md  log.md  critical-path.md  sources.md  requirements.md
 <root>/measurements.md     optional; config "measurements": null when absent
-<root>/planning-model.json  temporary, planner only: the planning model (model.md of roadmap-planner); deleted after Step 7 passes; the checker ignores it
+<root>/planning-model.json  temporary, planner only: the planning model (model.md of roadmap-planner); deleted at the end of Step 7; the checker ignores it
 ```
 
 File names may be localized; the config maps roles to names. One fact lives in one place: the strategy holds no state, `state.md` holds no history, `log.md` and `decisions.md` are append-only.

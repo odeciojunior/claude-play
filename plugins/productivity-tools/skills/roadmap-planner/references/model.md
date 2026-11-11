@@ -96,5 +96,5 @@ It never reads stdin, never asks, never commits and never deletes the model. It 
 | `acceptance-min` | a card has fewer than 2 criteria |
 | `verify-missing`, `verify-blocked-no-blq` | a criterion lacks `verify`, its `kind`, its `evidence`, or the BLQ of a `blocked` kind |
 | `multiline-cell` | a table-cell value has a line break (a `|` is escaped instead) |
-| `existing-roadmap` | the folder has `roadmap.config.json` and no model, or a log row or DEC the model lacks |
+| `existing-roadmap` | the folder has `roadmap.config.json` and no model, or an extra tracker log row |
 | checker codes | the generated folder has a checker error (same codes as `check-roadmap.mjs`) |
