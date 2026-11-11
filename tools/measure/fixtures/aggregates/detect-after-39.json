@@ -1,0 +1,1470 @@
+{
+  "note": "[fab] fabricated aggregate for the comparator tests",
+  "variant": "plano-semeado-A",
+  "requested": 39,
+  "valid": 39,
+  "invalid": 0,
+  "denied": 0,
+  "invalidReasons": {},
+  "plugin": {
+    "version": "0.0.0",
+    "commit": "unknown"
+  },
+  "cli": "2.1.0 (Claude Code)",
+  "models": [],
+  "pricesDate": "2026-11-10",
+  "permissionMode": "acceptEdits",
+  "attempts": [
+    {
+      "n": 1,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1001,
+        "perTask": 11,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 11
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1002,
+        "perTask": 12,
+        "conditional": {
+          "extraRounds": 12,
+          "fixCalls": 12
+        },
+        "main": {
+          "agentCalls": 12,
+          "bytes": 12,
+          "turns": 12
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 12
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1003,
+        "perTask": 13,
+        "conditional": {
+          "extraRounds": 13,
+          "fixCalls": 13
+        },
+        "main": {
+          "agentCalls": 13,
+          "bytes": 13,
+          "turns": 13
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 13
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 4,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1004,
+        "perTask": 14,
+        "conditional": {
+          "extraRounds": 14,
+          "fixCalls": 14
+        },
+        "main": {
+          "agentCalls": 14,
+          "bytes": 14,
+          "turns": 14
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 14
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 5,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1005,
+        "perTask": 15,
+        "conditional": {
+          "extraRounds": 15,
+          "fixCalls": 15
+        },
+        "main": {
+          "agentCalls": 15,
+          "bytes": 15,
+          "turns": 15
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 15
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 6,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1006,
+        "perTask": 16,
+        "conditional": {
+          "extraRounds": 16,
+          "fixCalls": 16
+        },
+        "main": {
+          "agentCalls": 16,
+          "bytes": 16,
+          "turns": 16
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 16
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 7,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1007,
+        "perTask": 17,
+        "conditional": {
+          "extraRounds": 17,
+          "fixCalls": 17
+        },
+        "main": {
+          "agentCalls": 17,
+          "bytes": 17,
+          "turns": 17
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 17
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1008,
+        "perTask": 18,
+        "conditional": {
+          "extraRounds": 18,
+          "fixCalls": 18
+        },
+        "main": {
+          "agentCalls": 18,
+          "bytes": 18,
+          "turns": 18
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 18
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 9,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1009,
+        "perTask": 19,
+        "conditional": {
+          "extraRounds": 19,
+          "fixCalls": 19
+        },
+        "main": {
+          "agentCalls": 19,
+          "bytes": 19,
+          "turns": 19
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 19
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 10,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1010,
+        "perTask": 20,
+        "conditional": {
+          "extraRounds": 20,
+          "fixCalls": 20
+        },
+        "main": {
+          "agentCalls": 20,
+          "bytes": 20,
+          "turns": 20
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 20
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 11,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1011,
+        "perTask": 21,
+        "conditional": {
+          "extraRounds": 21,
+          "fixCalls": 21
+        },
+        "main": {
+          "agentCalls": 21,
+          "bytes": 21,
+          "turns": 21
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 21
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 12,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1012,
+        "perTask": 22,
+        "conditional": {
+          "extraRounds": 22,
+          "fixCalls": 22
+        },
+        "main": {
+          "agentCalls": 22,
+          "bytes": 22,
+          "turns": 22
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 22
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 13,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1013,
+        "perTask": 23,
+        "conditional": {
+          "extraRounds": 23,
+          "fixCalls": 23
+        },
+        "main": {
+          "agentCalls": 23,
+          "bytes": 23,
+          "turns": 23
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 23
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 14,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1014,
+        "perTask": 24,
+        "conditional": {
+          "extraRounds": 24,
+          "fixCalls": 24
+        },
+        "main": {
+          "agentCalls": 24,
+          "bytes": 24,
+          "turns": 24
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 24
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 15,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1015,
+        "perTask": 25,
+        "conditional": {
+          "extraRounds": 25,
+          "fixCalls": 25
+        },
+        "main": {
+          "agentCalls": 25,
+          "bytes": 25,
+          "turns": 25
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 25
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 16,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1016,
+        "perTask": 26,
+        "conditional": {
+          "extraRounds": 26,
+          "fixCalls": 26
+        },
+        "main": {
+          "agentCalls": 26,
+          "bytes": 26,
+          "turns": 26
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 26
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 17,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1017,
+        "perTask": 27,
+        "conditional": {
+          "extraRounds": 27,
+          "fixCalls": 27
+        },
+        "main": {
+          "agentCalls": 27,
+          "bytes": 27,
+          "turns": 27
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 27
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 18,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1018,
+        "perTask": 28,
+        "conditional": {
+          "extraRounds": 28,
+          "fixCalls": 28
+        },
+        "main": {
+          "agentCalls": 28,
+          "bytes": 28,
+          "turns": 28
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 28
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 19,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1019,
+        "perTask": 29,
+        "conditional": {
+          "extraRounds": 29,
+          "fixCalls": 29
+        },
+        "main": {
+          "agentCalls": 29,
+          "bytes": 29,
+          "turns": 29
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 29
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 20,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1020,
+        "perTask": 30,
+        "conditional": {
+          "extraRounds": 30,
+          "fixCalls": 30
+        },
+        "main": {
+          "agentCalls": 30,
+          "bytes": 30,
+          "turns": 30
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 30
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 21,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1021,
+        "perTask": 31,
+        "conditional": {
+          "extraRounds": 31,
+          "fixCalls": 31
+        },
+        "main": {
+          "agentCalls": 31,
+          "bytes": 31,
+          "turns": 31
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 31
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 22,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1022,
+        "perTask": 32,
+        "conditional": {
+          "extraRounds": 32,
+          "fixCalls": 32
+        },
+        "main": {
+          "agentCalls": 32,
+          "bytes": 32,
+          "turns": 32
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 32
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 23,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1023,
+        "perTask": 33,
+        "conditional": {
+          "extraRounds": 33,
+          "fixCalls": 33
+        },
+        "main": {
+          "agentCalls": 33,
+          "bytes": 33,
+          "turns": 33
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 33
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 24,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1024,
+        "perTask": 34,
+        "conditional": {
+          "extraRounds": 34,
+          "fixCalls": 34
+        },
+        "main": {
+          "agentCalls": 34,
+          "bytes": 34,
+          "turns": 34
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 34
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 25,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1025,
+        "perTask": 35,
+        "conditional": {
+          "extraRounds": 35,
+          "fixCalls": 35
+        },
+        "main": {
+          "agentCalls": 35,
+          "bytes": 35,
+          "turns": 35
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 35
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 26,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1026,
+        "perTask": 36,
+        "conditional": {
+          "extraRounds": 36,
+          "fixCalls": 36
+        },
+        "main": {
+          "agentCalls": 36,
+          "bytes": 36,
+          "turns": 36
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 36
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 27,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1027,
+        "perTask": 37,
+        "conditional": {
+          "extraRounds": 37,
+          "fixCalls": 37
+        },
+        "main": {
+          "agentCalls": 37,
+          "bytes": 37,
+          "turns": 37
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 37
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 28,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1028,
+        "perTask": 38,
+        "conditional": {
+          "extraRounds": 38,
+          "fixCalls": 38
+        },
+        "main": {
+          "agentCalls": 38,
+          "bytes": 38,
+          "turns": 38
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 38
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 29,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1029,
+        "perTask": 39,
+        "conditional": {
+          "extraRounds": 39,
+          "fixCalls": 39
+        },
+        "main": {
+          "agentCalls": 39,
+          "bytes": 39,
+          "turns": 39
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 39
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 30,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1030,
+        "perTask": 40,
+        "conditional": {
+          "extraRounds": 40,
+          "fixCalls": 40
+        },
+        "main": {
+          "agentCalls": 40,
+          "bytes": 40,
+          "turns": 40
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 40
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 31,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1031,
+        "perTask": 41,
+        "conditional": {
+          "extraRounds": 41,
+          "fixCalls": 41
+        },
+        "main": {
+          "agentCalls": 41,
+          "bytes": 41,
+          "turns": 41
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 41
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 32,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1032,
+        "perTask": 42,
+        "conditional": {
+          "extraRounds": 42,
+          "fixCalls": 42
+        },
+        "main": {
+          "agentCalls": 42,
+          "bytes": 42,
+          "turns": 42
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 42
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 33,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1033,
+        "perTask": 43,
+        "conditional": {
+          "extraRounds": 43,
+          "fixCalls": 43
+        },
+        "main": {
+          "agentCalls": 43,
+          "bytes": 43,
+          "turns": 43
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 43
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 34,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1034,
+        "perTask": 44,
+        "conditional": {
+          "extraRounds": 44,
+          "fixCalls": 44
+        },
+        "main": {
+          "agentCalls": 44,
+          "bytes": 44,
+          "turns": 44
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 44
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 35,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1035,
+        "perTask": 45,
+        "conditional": {
+          "extraRounds": 45,
+          "fixCalls": 45
+        },
+        "main": {
+          "agentCalls": 45,
+          "bytes": 45,
+          "turns": 45
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 45
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 36,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1036,
+        "perTask": 46,
+        "conditional": {
+          "extraRounds": 46,
+          "fixCalls": 46
+        },
+        "main": {
+          "agentCalls": 46,
+          "bytes": 46,
+          "turns": 46
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 46
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 37,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1037,
+        "perTask": 47,
+        "conditional": {
+          "extraRounds": 47,
+          "fixCalls": 47
+        },
+        "main": {
+          "agentCalls": 47,
+          "bytes": 47,
+          "turns": 47
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 47
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 38,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1038,
+        "perTask": 48,
+        "conditional": {
+          "extraRounds": 48,
+          "fixCalls": 48
+        },
+        "main": {
+          "agentCalls": 48,
+          "bytes": 48,
+          "turns": 48
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 48
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 39,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1039,
+        "perTask": 49,
+        "conditional": {
+          "extraRounds": 49,
+          "fixCalls": 49
+        },
+        "main": {
+          "agentCalls": 49,
+          "bytes": 49,
+          "turns": 49
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 49
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    }
+  ],
+  "roles": {},
+  "cost": {
+    "median": 11,
+    "min": 11,
+    "max": 13
+  },
+  "outcomes": {},
+  "deteccaoPorCodigo": {}
+}
