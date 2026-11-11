@@ -1286,3 +1286,13 @@ test('ratify: item pendente escrito como intervalo DEC-a a DEC-b fica enquanto u
     assert.ok(r.output.warnings.some((w) => w.code === 'pending-multi-cite'));
   }
 });
+
+test('next-id ignora a cópia vendorizada do checker na raiz da pasta (emenda a DEC-145)', (t) => {
+  const f = makeFolder(t);
+  fs.writeFileSync(path.join(f.dir, 'check-roadmap.mjs'), '// cita DEC-198 e BLQ-40 num comentário\n');
+  assert.equal(nextId(f.dir, path.join(f.dir, 'strategy.md'), 'DEC'), 'DEC-002');
+  assert.equal(cli(f.dir, 'next-id', 'BLQ').output.result.id, 'BLQ-1');
+  fs.mkdirSync(path.join(f.dir, 'notes'));
+  fs.writeFileSync(path.join(f.dir, 'notes', 'check-roadmap.mjs'), '// DEC-50\n');
+  assert.equal(nextId(f.dir, path.join(f.dir, 'strategy.md'), 'DEC'), 'DEC-051');
+});

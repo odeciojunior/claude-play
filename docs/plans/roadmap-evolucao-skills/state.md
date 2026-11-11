@@ -8,7 +8,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. E22 parado na tarefa 8 (BLQ-4): as execuções comportamentais são do orquestrador da sessão principal, na `feat/E22`, antes do merge. Executa: orquestrador. Aprova: dono. Depende de: DEC-204.
+2. E22: ajustes recomendados pelo Fable (achados 2 e 3, execução extra do critério 2), revisão final T3 e merge na release. Executa: orquestrador. Aprova: dono. Depende de: DEC-204.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -37,7 +37,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
-| E22 | bloqueado (BLQ-4) | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` | Esperar o orquestrador rodar a tarefa 8 (BLQ-4); depois retomar na feat/E22 (D:/projects/claude-play-wt/E22) |
+| E22 | executando | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` | Ajustes do Fable, execução extra do critério 2, revisão final e merge |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | nao-iniciado | - | Aguardar E18 |
@@ -50,7 +50,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-4 | E22 parou na tarefa 8: despacha subagentes sonnet e opus e o orquestrador escreve o relatório (DEC-204); nunca é simulada e o executor não tem ferramenta de subagente. Nada alterado na `feat/E22` | E22 | 2026-11-11 | O orquestrador da sessão principal roda a tarefa 8 e grava o relatório; restaura E22 para `executando` |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -84,7 +83,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Aceite dos critérios 2 e 3 de E22 (verify: human): conferir o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, produzido pelo orquestrador da sessão principal (DEC-204).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (dono) Ratificação pelo dono das decisões autônomas de E22 (DEC-030); as de alcance contrato (1, 2 e 3 do spec) seguram o início de E7 e E20, as locais em lote no ponto de medição.
-- (executor) Alinhar o código à DEC-251: roadmap-release.js compara scope com 'contrato' e SKILL.md cita 'contrato', mas decisionScope devolve 'contract'; e o preflight deve avisar quando decisions.md falta na branch alvo (spec de E18). Antes de E25 e E8.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -92,5 +90,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E22 | viva | execução parada na tarefa 8 (BLQ-4); worktree `D:/projects/claude-play-wt/E22` mantido |
+| feat/E22 | viva | tarefa 8 feita (14fb3e8), ajustes e merge pendentes; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->
