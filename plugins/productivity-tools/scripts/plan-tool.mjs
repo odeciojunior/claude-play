@@ -25,12 +25,13 @@ export const EXTERNAL_PATTERNS = [
   '\\bgit\\s+push\\b',
   '\\b(npm|pnpm|yarn)\\s+publish\\b',
   '\\bdeploy\\b',
-  '\\bcurl\\b.*\\s-X\\s*(POST|PUT|PATCH|DELETE)\\b',
-  // curl que envia corpo ou formulário é escrita; GET de leitura não é efeito externo.
-  '\\bcurl\\b.*\\s(-d|--data(-[a-z]+)?|-F|--form(-string)?)(\\s|=|@|\\x27|")',
-  // PowerShell: só com método de escrita (sem -Method o padrão é GET).
-  '\\bInvoke-(RestMethod|WebRequest)\\b.*-Method\\s+(POST|PUT|PATCH|DELETE)\\b',
-  '\\bscp\\b',
+  '\\bcurl\\b.*\\s(-X\\s*|--request[\\s=]+)[\\x27"]?(POST|PUT|PATCH|DELETE)\\b',
+  // curl que envia corpo ou formulário é escrita (inclui flags combinadas como -sd); GET de leitura não é efeito externo.
+  // -F exige campo nome=valor, para não casar -f (fail) sob a compilação sem diferenciar caixa.
+  '\\bcurl\\b.*\\s(-[a-z]*d|--data(-[a-z]+)?|--json|--form(-string)?)(\\s|=|@|\\x27|")|\\bcurl\\b.*\\s-[a-z]*F\\s*[\\x27"]?[\\w-]+=',
+  // PowerShell (e aliases irm/iwr): só com método de escrita (sem -Method o padrão é GET).
+  '\\b(Invoke-(RestMethod|WebRequest)|irm|iwr)\\b.*-Method[\\s:=]+[\\x27"]?(POST|PUT|PATCH|DELETE)\\b',
+  '(^|[\\s;&|(])scp(\\s|$)',
   '\\bsqlcmd\\b',
   '\\bkubectl\\s+(apply|delete|create|patch|rollout)\\b',
   '\\bterraform\\s+(apply|destroy)\\b',
@@ -596,9 +597,18 @@ function gitRoot(dir) {
 }
 
 // DEC-205: source.path é relativo à raiz do repositório (fora de git, à pasta do plano), nunca ao cwd.
+// Junção, symlink, subst e nomes 8.3 mudariam o resumo: ambos os lados passam por realpath.
+function realOf(p) {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 function sourcePath(planPath, root) {
-  const abs = path.resolve(planPath);
-  const base = root ? path.resolve(root) : (gitRoot(path.dirname(abs)) ?? path.dirname(abs));
+  const abs = realOf(path.resolve(planPath));
+  const base = root ? realOf(path.resolve(root)) : (gitRoot(path.dirname(abs)) ?? path.dirname(abs));
   return normPath(path.relative(base, abs));
 }
 
@@ -625,7 +635,7 @@ export function emitPlan(text, { planPath, root = null, specText = null, specPat
   };
 }
 
-const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]';
+const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');

@@ -72,7 +72,7 @@ test('routing is pure', () => {
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
-import { checkPlan, SCHEMA } from './plan-tool.mjs';
+import { checkPlan, SCHEMA, main } from './plan-tool.mjs';
 import { checkSpec, checkRecords } from './spec-tool.mjs';
 
 const PLAN_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'plan.md');
@@ -840,4 +840,68 @@ test('external patterns: read-only GET requests are not external effects (decisi
     'node --test scripts/',
     'echo discard',
   ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('external patterns: PowerShell aliases, -Method variants, curl long and combined flags', () => {
+  for (const cmd of [
+    'irm https://x.test -Method Post -Body $b',
+    'iwr https://x.test -Method DELETE',
+    'Invoke-RestMethod https://x.test -Method:Post',
+    "Invoke-WebRequest https://x.test -Method 'POST'",
+    'Invoke-RestMethod https://x.test -Method "put"',
+    'curl --request POST https://x.test',
+    'curl --request=DELETE https://x.test',
+    'curl --request PATCH https://x.test',
+    'curl --request PUT https://x.test',
+    'curl --json \'{"a":1}\' https://x.test',
+    'curl -sd x https://x.test',
+    'curl -sSd @b.json https://x.test',
+    'curl -sF a=b https://x.test',
+    'cd out && scp a host:/b',
+    'scp a host:/b',
+  ]) assert.ok(hits(cmd), cmd);
+});
+
+test('external patterns: no false positives for GET aliases, curl -f and scp-like names', () => {
+  for (const cmd of [
+    'irm https://x.test/data',
+    'iwr https://x.test -Method:Get',
+    "Invoke-RestMethod https://x.test -Method 'get'",
+    'curl --request GET https://x.test',
+    'curl -sf https://x.test/health',
+    'curl -f https://x.test/?a=b',
+    'node scp-like-name.mjs',
+    'cat docs/scp-notes.md',
+  ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('DEC-205: source path is the same through a junction or symlink', (t) => {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-real-'));
+  const link = path.join(os.tmpdir(), `plan-link-${process.pid}-${Date.now()}`);
+  try {
+    try {
+      fs.symlinkSync(real, link, 'junction');
+    } catch (e) {
+      t.skip(`cannot create link: ${e.code}`);
+      return;
+    }
+    fs.writeFileSync(path.join(real, 'plan.md'), PLAN_TEXT);
+    const viaLink = emitPlan(PLAN_TEXT, { planPath: path.join(link, 'plan.md'), root: real, specText: SPEC_TEXT });
+    const direct = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: real, specText: SPEC_TEXT });
+    assert.equal(viaLink.out.source.path, 'plan.md');
+    assert.equal(viaLink.out.source.path, direct.out.source.path);
+    const viaRootLink = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: link, specText: SPEC_TEXT });
+    assert.equal(viaRootLink.out.source.path, 'plan.md');
+  } finally {
+    try { fs.rmSync(link, { recursive: true, force: true }); } catch {}
+    fs.rmSync(real, { recursive: true, force: true });
+  }
+});
+
+test('usage text does not announce --max-width for check', () => {
+  const err = [];
+  const code = main([], { stdout: { write() {} }, stderr: { write: (s) => err.push(s) } });
+  assert.equal(code, 2);
+  assert.doesNotMatch(err.join(''), /check\|emit[^\n]*--max-width/);
+  assert.match(err.join(''), /check [^\n]*\n/);
 });
