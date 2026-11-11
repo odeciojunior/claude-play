@@ -35,10 +35,12 @@ Build the thinnest end-to-end flow first, then widen it.
 
 ## Phases
 
+<!-- roadmap:phases -->
 | Phase (outcome) | Entry criteria | Exit criteria | Deliverables |
 |---|---|---|---|
 | A thin end-to-end path works | Roadmap approved | One item travels input to storage and back | E1 |
 | Users complete the main flow | The thin path is integrated | A user completes the main flow and sees reports | E2, E3 |
+<!-- /roadmap:phases -->
 
 ## Deliverables
 

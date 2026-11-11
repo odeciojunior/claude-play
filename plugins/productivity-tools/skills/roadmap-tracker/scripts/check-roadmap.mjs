@@ -636,7 +636,8 @@ export function checkRoadmap(r, git, opts = {}) {
     noteAnchors({ malformed: c.malformed.risks }, 'risks', strategyName);
   }
   if (cards.length === 0) add('error', 'missing-block', strategyName, 'no roadmap:card blocks found');
-  for (const row of tableRows('strategy', 'gates', strategyName, r.strategy, 5, false)) {
+  const gateRows = tableRows('strategy', 'gates', strategyName, r.strategy, 5, false);
+  for (const row of gateRows) {
     if (isEmptyCell(row[1])) add('warning', 'gate-no-command', strategyName, `gate ${row[0] || '?'} has no command`);
   }
 
@@ -975,6 +976,48 @@ export function checkRoadmap(r, git, opts = {}) {
         }
         const rel = es.find((e) => (statusOf.get(e) || []).some((w) => releasedWords.includes(w)));
         if (rel) add('warning', 'executor-decision-pending', fileName('decisions'), `${row[0]} (executor, pending) is unreviewed while ${rel} is already released`);
+      }
+    }
+
+    // card-phase-table and phase-order (only when the optional roadmap:phases block exists)
+    const phases = parsed.blocks.strategy.phases;
+    if (phases.present) {
+      const prows = phases.rows.filter((row) => row.length === 4);
+      const rowIds = prows.map((row) => idsIn(row[3], /\bE\d+\b/g));
+      const where = new Map();
+      rowIds.forEach((ids, i) => ids.forEach((e) => where.set(e, [...(where.get(e) || []), i])));
+      for (const c of cards) {
+        const at = where.get(c.id) || [];
+        if (at.length === 0) add('warning', 'card-phase-table', strategyName, `${c.id} is in no row of the roadmap:phases table`);
+        else if (new Set(at).size > 1) add('warning', 'card-phase-table', strategyName, `${c.id} is in more than one row of the roadmap:phases table`);
+      }
+      const phaseOf = new Map(cards.map((c) => [c.id, c.attrs.phase]));
+      const rowPhases = rowIds.map((ids) => new Set(ids.filter((e) => phaseOf.has(e)).map((e) => phaseOf.get(e))));
+      rowPhases.forEach((set, i) => {
+        if (set.size > 1) add('warning', 'card-phase-table', strategyName, `row ${i + 1} of the roadmap:phases table mixes cards of different phases (${[...set].join(', ')}): ${rowIds[i].join(', ')}`);
+      });
+      for (let i = 0; i < rowPhases.length; i++) {
+        for (let j = i + 1; j < rowPhases.length; j++) {
+          const shared = [...rowPhases[i]].filter((x) => rowPhases[j].has(x));
+          if (shared.length) add('warning', 'card-phase-table', strategyName, `rows ${i + 1} and ${j + 1} of the roadmap:phases table hold cards of the same phase "${shared[0]}"`);
+        }
+      }
+      for (const c of cards) {
+        const ci = (where.get(c.id) || [])[0];
+        if (ci === undefined) continue;
+        for (const d of c.depends) {
+          const di = (where.get(d) || [])[0];
+          if (di !== undefined && di > ci) add('warning', 'phase-order', strategyName, `${c.id} depends on ${d}, whose row comes later in the roadmap:phases table`);
+        }
+      }
+    }
+
+    // dod-no-gate
+    if (gateRows.length > 0) {
+      const gateIds = gateRows.map((row) => row[0]).filter(Boolean);
+      for (const c of cards) {
+        if (!c.acceptance.some((a) => a.tag && EXECUTABLE_KINDS.includes(a.tag.kind))) continue;
+        if (!gateIds.some((g) => word(g).test(c.body))) add('warning', 'dod-no-gate', strategyName, `${c.id} has executable criteria but its definition of done cites no gate (${gateIds.join(', ')})`);
       }
     }
   };

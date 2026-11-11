@@ -1370,7 +1370,7 @@ test('parseRoadmapTexts reads the valid fixture', () => {
   assert.ok(r.blocks.state.panel.present && r.blocks.state.panel.closed);
   assert.deepEqual(r.blocks.state.pending.items, ['(owner) Confirm the storage choice.']);
   assert.equal(r.blocks.strategy.gates.rows[0][0], 'G1');
-  assert.equal(r.blocks.strategy.phases.present, false);
+  assert.equal(r.blocks.strategy.phases.present, true);
   assert.deepEqual(r.blocks.measurements.measurements, { present: false, closed: false, malformed: 0, rows: [] });
 });
 
@@ -1580,4 +1580,121 @@ test('new checks run after git early returns', () => {
   const p = checkRoadmap(loadRoadmap(dir), null);
   assert.ok(codes(p).includes('no-git') && codes(p).includes('pending-no-owner'));
   assert.ok(codes(p).indexOf('no-git') < codes(p).indexOf('pending-no-owner'));
+});
+
+// ---------- E2 T6: phase and definition-of-done checks, AC1 and AC2 ----------
+
+const T6_PHASE_ROW2 = '| Users complete the main flow | The thin path is integrated | A user completes the main flow and sees reports | E2, E3 |';
+const T6_PHASE_ROW1 = '| A thin end-to-end path works | Roadmap approved | One item travels input to storage and back | E1 |';
+const t6DropE3 = (f) => rep(f, 'strategy.md', '| E2, E3 |', '| E2 |');
+const t6SwapPhases = (f) => rep(f, 'strategy.md', `${T6_PHASE_ROW1}\n${T6_PHASE_ROW2}`, `${T6_PHASE_ROW2}\n${T6_PHASE_ROW1}`);
+const t6NoPhasesBlock = (f) => {
+  rep(f, 'strategy.md', '<!-- roadmap:phases -->\n', '');
+  rep(f, 'strategy.md', '<!-- /roadmap:phases -->\n', '');
+};
+const t6DodE1 = (f) => rep(f, 'strategy.md', 'Definition of done: acceptance passes in the integration branch; G1 and G2 green.', 'Definition of done: acceptance passes in the integration branch; all checks green.');
+
+test('fixture has a roadmap:phases block', () => {
+  const files = readFolder(VALID);
+  assert.ok(files['strategy.md'].includes('<!-- roadmap:phases -->'));
+  assert.ok(files['strategy.md'].includes('<!-- /roadmap:phases -->'));
+});
+
+test('card-phase-table', () => {
+  assert.ok(!t5HasCode(fixture(), 'card-phase-table'));
+  const hit = run(fixture(t6DropE3)).find((p) => p.code === 'card-phase-table');
+  assert.ok(hit && hit.message.includes('E3'), 'warns about E3');
+  assert.equal(hit.severity, 'warning');
+  assert.equal(hit.file, 'strategy.md');
+});
+
+test('card-phase-table flags a card in two rows and mixed phases', () => {
+  const two = fixture((f) => rep(f, 'strategy.md', '| E1 |\n| Users', '| E1, E2 |\n| Users'));
+  assert.ok(run(two).some((p) => p.code === 'card-phase-table' && p.message.includes('E2')));
+  const mixed = fixture((f) => rep(f, 'strategy.md', '| E2, E3 |', '| E1, E2, E3 |'));
+  assert.ok(codes(run(mixed)).includes('card-phase-table'));
+});
+
+test('card-phase-table flags two rows with the same phase', () => {
+  const dir = fixture((f) => rep(f, 'strategy.md', '| E2, E3 |', '| E2 |\n| Another outcome | x | y | E3 |'));
+  assert.ok(codes(run(dir)).includes('card-phase-table'));
+});
+
+test('phase-order', () => {
+  assert.ok(!t5HasCode(fixture(), 'phase-order'));
+  const hit = run(fixture(t6SwapPhases)).find((p) => p.code === 'phase-order');
+  assert.ok(hit && hit.message.includes('E2') && hit.message.includes('E1'));
+  assert.equal(hit.severity, 'warning');
+});
+
+test('phase checks need the phases block', () => {
+  const dir = fixture((f) => { t6NoPhasesBlock(f); t6DropE3(f); });
+  const c = codes(run(dir));
+  assert.ok(!c.includes('card-phase-table') && !c.includes('phase-order'));
+  const swapped = fixture((f) => { t6NoPhasesBlock(f); t6SwapPhases(f); });
+  assert.ok(!codes(run(swapped)).includes('phase-order'));
+});
+
+test('dod-no-gate', () => {
+  assert.ok(!t5HasCode(fixture(), 'dod-no-gate'));
+  const hit = run(fixture(t6DodE1)).find((p) => p.code === 'dod-no-gate');
+  assert.ok(hit && hit.message.includes('E1'));
+  assert.equal(hit.severity, 'warning');
+  assert.equal(hit.file, 'strategy.md');
+});
+
+test('dod-no-gate ignores gate ids inside acceptance', () => {
+  const dir = fixture((f) => {
+    t6DodE1(f);
+    rep(f, 'strategy.md', 'node --test tests/e1.test.mjs}', 'node --test tests/e1.test.mjs; evidence: G1}');
+  });
+  assert.ok(run(dir).some((p) => p.code === 'dod-no-gate' && p.message.includes('E1')));
+});
+
+test('dod-no-gate skips human-only cards', () => {
+  const dir = fixture((f) => {
+    rep(f, 'strategy.md', '{verify: test; evidence: node --test tests/e2.test.mjs}', '{verify: human; evidence: owner edits an item}');
+    const start = f['strategy.md'].indexOf('id=E2');
+    const end = f['strategy.md'].indexOf('id=E3');
+    f['strategy.md'] = f['strategy.md'].slice(0, start) + f['strategy.md'].slice(start, end).replace('G1 and G2 green', 'all checks green') + f['strategy.md'].slice(end);
+  });
+  assert.ok(!run(dir).some((p) => p.code === 'dod-no-gate' && p.message.includes('E2')));
+});
+
+const NEW_CODES = ['status-order', 'pending-no-owner', 'state-header', 'blocked-no-blq', 'blocker-no-restore', 'source-uncited', 'strategy-plan-suffix', 'executor-decision-pending', 'card-phase-table', 'phase-order', 'dod-no-gate'];
+
+function allNewDefects(files) {
+  // t5 defects
+  rep(files, 'roadmap.config.json', '"blocked", "discarded"', '"discarded", "blocked"');
+  rep(files, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.');
+  rep(files, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy v0.9 -- 2026-01-01');
+  rep(files, 'state.md', '| E3 | not-started | - | Wait for E2 |', '| E3 | blocked | - | Wait for E2 |');
+  rep(files, 'state.md', '<!-- /roadmap:blockers -->', '| BLQ-1 | Storage vendor undecided | E3 | 2026-01-02 | the owner picks a vendor |\n<!-- /roadmap:blockers -->');
+  rep(files, 'sources.md', '<!-- /roadmap:sources -->', '| SRC-03 | `docs/extra.md` | Extra notes | 2026-01-01 | Informal |\n<!-- /roadmap:sources -->');
+  rep(files, 'decisions.md', '<!-- /roadmap:decisions -->', T5_EXEC_ROW(' Alcance: contrato.') + '<!-- /roadmap:decisions -->');
+  rep(files, 'state.md', '| E2 | not-started |', '| E2 | plan |');
+  // t6 defects
+  t6SwapPhases(files);
+  t6DropE3(files);
+  t6DodE1(files);
+  // strategy name last
+  files['roadmap-plan.md'] = files['strategy.md'];
+  delete files['strategy.md'];
+  rep(files, 'roadmap.config.json', '"strategy": "strategy.md"', '"strategy": "roadmap-plan.md"');
+}
+
+test('AC1: one defect of each new check emits its named code', () => {
+  const found = codes(run(fixture(allNewDefects)));
+  for (const code of NEW_CODES) assert.ok(found.includes(code), `missing ${code}; got [${found.join(', ')}]`);
+});
+
+test('AC2: a pre-1.7 folder and a folder with every new defect stay at exit 0 with warnings only', () => {
+  const pre = fixture((f) => {
+    t6NoPhasesBlock(f);
+    rep(f, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy');
+  });
+  for (const dir of [pre, fixture(allNewDefects)]) {
+    assert.equal(cli([dir]).status, 0, cli([dir]).stdout);
+    for (const p of run(dir)) if (NEW_CODES.includes(p.code)) assert.equal(p.severity, 'warning', p.code);
+  }
 });
