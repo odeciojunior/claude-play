@@ -1,6 +1,6 @@
 # E18 -- Registro do release pela CLI e permissões no preflight (design)
 
-Entregável E18 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQ: REQ-021, REQ-040, REQ-044. Depende de E3 (CLI do tracker `roadmap.mjs`, DEC-136 a DEC-157) e de E14 (regra de permissão pelo nome do script, DEC-060; código de workflow sem import, DEC-058). Card crítico, trilha de engenharia, fase roadmap-sem-llm. O lançamento pelo nome ficou em E25 (DEC-047).
+Entregável E18 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQ: REQ-021, REQ-040, REQ-044. Depende de E3 (CLI do tracker `roadmap.mjs`, DEC-136 a DEC-157, ratificadas pelo dono em 2026-11-11 com as emendas DEC-200 a DEC-202; BLQ-2 fechado) e de E14 (regra de permissão pelo nome do script, DEC-060; código de workflow sem import, DEC-058). Card crítico, trilha de engenharia, fase roadmap-sem-llm. O lançamento pelo nome ficou em E25 (DEC-047).
 
 ## Por quê
 
@@ -97,7 +97,7 @@ Segmento. Quando a célula de status de `E` (verbatim da descoberta) tem rótulo
 
 Retomada sem log repetido. O workflow guarda a última palavra gravada por entregável (começa com a do segmento lido na descoberta). Se a palavra pedida é a mesma, `set-status` e `log` saem da lista (`skipStatus`) e a releitura confere a palavra igual; decisões, pendentes e linha em andamento seguem, porque a CLI os trata como no-op quando já existem (DEC-150).
 
-Frases. O texto de `log --what`, `--next`, `--note` de em andamento, `block-open --what/--unblocks`, o dono dos pendentes e a mensagem de commit saem de uma tabela no código com duas línguas: `language` começando por `pt` usa português (dono `dono`), qualquer outra usa inglês (dono `owner`), a mesma regra da CLI (DEC-153). `log --what` fica abaixo de `limits.cellChars` do contrato (300) e sem frase de `bannedPhrases`; o motivo de um bloqueio é cortado para caber.
+Frases. O texto de `log --what`, `--next`, `--note` de em andamento, `block-open --what/--unblocks`, o dono dos pendentes e a mensagem de commit saem de uma tabela no código com duas línguas: `language` começando por `pt` usa português (dono `dono`), qualquer outra usa inglês (dono `owner`), a mesma regra da CLI (DEC-153). Pela emenda DEC-202, em `log` o `--what` é o próprio texto da linha, e em `block-open` é o texto do bloqueio, que a linha de log cita com o prefixo padrão da CLI; o release não passa `--what` a `integrate`, `ratify` nem `reject`. `log --what` fica abaixo de `limits.cellChars` do contrato (300) e sem frase de `bannedPhrases`; o motivo de um bloqueio é cortado para caber.
 
 `recordStatus(E, status, refs, extra)` passa a:
 
@@ -128,7 +128,9 @@ O relatório final e a medição passam a chamar o checker na forma `node "<chec
 
 ### Teste comportamental (definição de pronto, SRC-03)
 
-Um subagent segue o `SKILL.md` do release literalmente sobre a pasta real `docs/plans/roadmap-evolucao-skills/`, em `dry-run`, até o passo 2 e a montagem dos argumentos do passo 4 (sem chamar o Workflow): roda o preflight com `--ref release/roadmap-skills-v2`, compõe a parada com `missingRules` e `pendingDecisions`, e grava a saída e a lista de ambiguidades em `D:/projects/claude-play-wt/_tmp/E18/`. Em seguida, uma revisão adversarial só de leitura do resultado. O resumo entra no log de revisões do entregável; a pasta temporária é apagada no fim.
+Pela emenda DEC-204, a execução comportamental não roda dentro do workflow do release, cujo executor não tem ferramenta de subagent (BLQ-1): o plano a marca como tarefa do orquestrador da sessão principal, que despacha os subagents no tier do plano, repassa a saída literal e escreve o relatório. O executor do workflow não tenta despachar subagents para ela.
+
+Na tarefa do orquestrador, um subagent segue o `SKILL.md` do release literalmente sobre a pasta real `docs/plans/roadmap-evolucao-skills/`, em `dry-run`, até o passo 2 e a montagem dos argumentos do passo 4 (sem chamar o Workflow): roda o preflight com `--ref release/roadmap-skills-v2`, compõe a parada com `missingRules` e `pendingDecisions`, e grava a saída e a lista de ambiguidades em `D:/projects/claude-play-wt/_tmp/E18/`. Em seguida, uma revisão adversarial só de leitura do resultado. O resumo entra no log de revisões do entregável; a pasta temporária é apagada no fim.
 
 ### Verificação fora dos testes
 
@@ -140,6 +142,8 @@ Antes de cada commit: G1, G2, G3, G4 e G5. Um uso manual do preflight sobre a pa
 - Pasta sem `roadmap:gates` ou sem cards: nenhuma regra de card; o resto do preflight é o de hoje.
 - Segmento de `E` bloqueado por um bloqueio que afeta outros entregáveis: o registro não fecha o bloqueio; falha por código com a mensagem de que o bloqueio precisa ser fechado à mão.
 - `set-status` recusado por `status-backward` (pedido anterior ao status gravado): registro falho, sem tratamento especial.
+- Decisão do executor pendente com Entregável `-`: a regra de `pendingDecisions` já inclui a emenda DEC-198 (aviso quando qualquer entregável está liberado); o preflight a lista com `deliverable` `-`.
+- Registro de status até a posição 5 com SHA na evidência num ambiente sem git: a CLI aceita com o aviso `no-git` (emenda DEC-201); aviso não reprova o veredito, só erro.
 - Spec sem decisões e sem entradas humanas: o registro é só `set-status`, `log` e a linha em andamento.
 
 ## Deixado ao planejador
@@ -169,11 +173,11 @@ Antes de cada commit: G1, G2, G3, G4 e G5. Um uso manual do preflight sobre a pa
 17. Na segunda rodada da documentação, só os comandos sem veredito ok na primeira rodam de novo. Alcance: local.
 18. O checker é chamado como `node "<checker>" "<roadmapDir>" --json` no registro, na medição e no relatório, e o veredito lê o resumo JSON. Alcance: local.
 19. Nenhuma versão sobe nesta branch, e nenhum arquivo de teste novo é criado: os casos vão para os dois arquivos do card. Alcance: local.
-20. O teste comportamental vai até o passo 2 e a montagem dos argumentos do passo 4, em `dry-run`, sem chamar o Workflow, para não abrir uma execução paga aninhada. Alcance: local.
+20. O teste comportamental vai até o passo 2 e a montagem dos argumentos do passo 4, em `dry-run`, sem chamar o Workflow, para não abrir uma execução paga aninhada; é tarefa do orquestrador da sessão principal, conforme DEC-204. Alcance: local.
 
 ## Depende de entrada humana
 
-Os quatro critérios são `verify: test`, o teste comportamental é feito pelo executor com subagents, e o card não pede efeito externo (sem push, sem publicação, sem credencial). Há, porém, uma entrada humana bloqueante.
+Os quatro critérios são `verify: test`, o teste comportamental é tarefa do orquestrador da sessão principal com subagents (DEC-204), e o card não pede efeito externo (sem push, sem publicação, sem credencial). Nenhuma entrada humana é bloqueante.
 
-- **Bloqueante para a integração de E18 em `release/roadmap-skills-v2`:** ratificação pelo dono das decisões de contrato de E3 ainda pendentes (DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150 e DEC-153). E18 é construído sobre o que elas fixam: a forma da CLI, os nomes dos comandos, a saída `--json` e os códigos de saída. A regra de ratificação (DEC-030, em vigor como regra escrita até E8 por DEC-031) pede que a decisão de contrato seja ratificada antes de um dependente começar, e `state.md` registra que E18 e E22 esperam essa ratificação (item pendente do dono: "as de alcance contrato seguram o início de E18 e E22"). Este spec não tem registro de liberação do dono na parada do preflight. Por isso o spec e o plano podem ser escritos, mas E18 não é integrado na branch alvo enquanto essas decisões não forem ratificadas ou liberadas pelo dono; se o dono rejeitar alguma, o desenho é corrigido antes, segundo a decisão nova que a substitui.
+- Resolvida: a ratificação das decisões de contrato de E3 (DEC-136 a DEC-157), que segurava E18 (BLQ-2), foi feita pelo dono em 2026-11-11, com as emendas DEC-200 a DEC-202, já absorvidas neste desenho; BLQ-2 está fechado e a `feat/E18` foi sincronizada com a release.
 - Ratificação pelo dono das decisões autônomas acima (DEC-030). As de alcance contrato (1, 2, 5 e 7) fixam o que E25 e E8 leem e seguram o início deles; as de alcance local esperam o ponto de medição.
