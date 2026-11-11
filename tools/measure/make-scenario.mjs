@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // Builds a disposable sandbox for one measurement variant and prints it as JSON.
 // Usage: node tools/measure/make-scenario.mjs <dir> --variant <name> [--from-run <folder>]
-// <dir> must be outside this repository. Variants with planted artifacts arrive in later tasks.
+// <dir> must be outside this repository. Seeded variants arrive in stages (plan now, spec and code later).
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { makeSandbox, STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCEN = join(here, 'scenario');
+const DEFECTS = join(here, 'defects');
 
 export const VARIANTS = [
   'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
@@ -90,12 +91,50 @@ export function prepareE5Branch(dir, { withPlan, tasks, fromRun } = {}) {
   }
 }
 
+const SEEDED = {
+  'plano-semeado-A': { class: 'plan', artifact: 'A' },
+  'plano-semeado-B': { class: 'plan', artifact: 'B' },
+  'plano-semeado-codigo': { class: 'plan', artifact: 'C' },
+};
+
+export function artifactOf(variant) {
+  return SEEDED[variant] ?? null;
+}
+
+function loadManifest() {
+  return JSON.parse(readFileSync(join(DEFECTS, 'manifest.json'), 'utf8'));
+}
+
+// Applies every defect of the variant's artifact in one neutral commit on feat/E5.
+async function seedVariant(dir, variant, fromRun) {
+  const a = artifactOf(variant);
+  const entries = loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact);
+  prepareE5Branch(dir, { withPlan: true, tasks: 0, fromRun });
+  for (const e of entries) {
+    const mod = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
+    mod.seed(dir);
+  }
+  const files = [...new Set(entries.map((e) => e.file))];
+  git(dir, 'add', ...files);
+  git(dir, 'commit', '-q', '-m', 'docs(plan): E5 refine plan');
+  const seededCommit = git(dir, 'rev-parse', 'HEAD');
+  const seededBlobs = {};
+  for (const f of files) seededBlobs[f] = git(dir, 'rev-parse', seededCommit + ':' + f);
+  return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs };
+}
+
 export async function makeScenario(dir, variant, { fromRun } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
-  if (/semeado/.test(variant)) throw new Error(`variant not implemented yet: ${variant}`);
+  if (/semeado/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
   const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {} };
   switch (variant) {
+    case 'plano-semeado-A':
+    case 'plano-semeado-B':
+    case 'plano-semeado-codigo':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      scenario.prompts = [`${RELEASE} plan-only E5`];
+      break;
     case 'plan-only':
       scenario.prompts = [`${RELEASE} plan-only E1`];
       break;
@@ -119,7 +158,6 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
       scenario.prompts = ['/productivity-tools:roadmap-tracker ' + readFileSync(join(SCEN, 'tracker-event.md'), 'utf8')];
       break;
   }
-  void fromRun;
   return scenario;
 }
 

@@ -1,0 +1,115 @@
+[
+  {
+    "id": "P1",
+    "class": "plan",
+    "kind": "missing-verification",
+    "artifact": "A",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P1.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 2 has no verification command"
+  },
+  {
+    "id": "P2",
+    "class": "plan",
+    "kind": "phantom-command",
+    "artifact": "A",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P2.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 1 verifies with a command that does not exist (npm run verify-slug)"
+  },
+  {
+    "id": "P3",
+    "class": "plan",
+    "kind": "wrong-order",
+    "artifact": "A",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P3.mjs",
+    "detectedBy": "reviewer",
+    "description": "The index task comes before the slugify task it re-exports"
+  },
+  {
+    "id": "P4",
+    "class": "plan",
+    "kind": "weak-test",
+    "artifact": "A",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P4.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 2 test only asserts that truncate is a function"
+  },
+  {
+    "id": "P5",
+    "class": "plan",
+    "kind": "hidden-side-effect",
+    "artifact": "B",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P5.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 1 appends to ../outbox.log while declaring external: false"
+  },
+  {
+    "id": "P6",
+    "class": "plan",
+    "kind": "missing-lock",
+    "artifact": "B",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P6.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 3 runs the whole suite but no longer declares the sandbox-port lock"
+  },
+  {
+    "id": "P7",
+    "class": "plan",
+    "kind": "roadmap-edit",
+    "artifact": "B",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P7.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 2 lists a roadmap file among the files it touches"
+  },
+  {
+    "id": "P8",
+    "class": "plan",
+    "kind": "tier-mismatch",
+    "artifact": "B",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/P8.mjs",
+    "detectedBy": "reviewer",
+    "description": "Task 3 raises reviewTier to opus without reason"
+  },
+  {
+    "id": "PX1",
+    "class": "plan",
+    "kind": "missing-evidence",
+    "artifact": "C",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/PX1.mjs",
+    "detectedBy": "code",
+    "description": "Criterion AC3 has no evidence row",
+    "codeSignal": "criterion AC3 has no evidence row"
+  },
+  {
+    "id": "PX2",
+    "class": "plan",
+    "kind": "evidence-not-runnable",
+    "artifact": "C",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/PX2.mjs",
+    "detectedBy": "code",
+    "description": "Criterion AC1 evidence is human with no command",
+    "codeSignal": "criterion AC1: the plan (changed the command bound by the card tag|replaced)"
+  },
+  {
+    "id": "PX3",
+    "class": "plan",
+    "kind": "evidence-rebound",
+    "artifact": "C",
+    "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
+    "sentinel": "sentinels/PX3.mjs",
+    "detectedBy": "code",
+    "description": "Criterion AC2 evidence runs a different command than the card tag",
+    "codeSignal": "criterion AC2: the plan changed the command bound by the card tag"
+  }
+]

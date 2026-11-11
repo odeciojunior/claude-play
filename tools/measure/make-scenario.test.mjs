@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { makeScenario, prepareE5Branch, VARIANTS, E5_PATHS } from './make-scenario.mjs';
+import { makeScenario, prepareE5Branch, VARIANTS, E5_PATHS, artifactOf } from './make-scenario.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -115,5 +115,68 @@ test('refuses a target inside the repository', () => {
     assert.equal(existsSync(t.dir), false);
   } finally {
     t.done();
+  }
+});
+
+const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
+const sentinel = (entry) => import(pathToFileURL(join(here, 'defects', entry.sentinel)).href);
+
+// Shared by the seeded-variant tests: builds the variant and checks each seeded defect of its artifact.
+async function checkSeeded(variant) {
+  const t = tmp('sb');
+  try {
+    const s = await makeScenario(t.dir, variant);
+    const { class: cls, artifact } = artifactOf(variant);
+    const entries = manifest.filter((e) => e.class === cls && e.artifact === artifact);
+    assert.ok(entries.length > 0, 'no manifest entries for ' + variant);
+    assert.deepEqual(s.seeded, entries.map((e) => e.id));
+    assert.ok(s.seededCommit);
+    const changed = git(t.dir, 'diff', '--name-only', s.seededCommit + '^', s.seededCommit).split('\n');
+    for (const e of entries) {
+      const mod = await sentinel(e);
+      assert.ok(changed.includes(e.file), e.id + ': file not changed in the seeded commit');
+      assert.equal(mod.present(t.dir, s.seededCommit), true, e.id + ': sentinel absent after seeding');
+      assert.equal(mod.present(t.dir, s.seededCommit + '^'), false, e.id + ': sentinel present in the clean artifact');
+      assert.equal(s.seededBlobs[e.file], git(t.dir, 'rev-parse', s.seededCommit + ':' + e.file));
+    }
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    return { s, dir: t.dir };
+  } finally {
+    t.done();
+  }
+}
+
+test('every manifest entry is seeded by exactly one variant', () => {
+  for (const e of manifest.filter((x) => x.class === 'plan')) {
+    const n = VARIANTS.filter((v) => { const a = artifactOf(v); return a && a.class === e.class && a.artifact === e.artifact; }).length;
+    assert.equal(n, 1, e.id);
+  }
+});
+
+test('plan variants: each defect file changed in the seeded commit and its sentinel reports presence', async () => {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo']) await checkSeeded(v);
+});
+
+test('seeded history never names the seeding', async () => {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo']) {
+    const t = tmp('sb');
+    try {
+      await makeScenario(t.dir, v);
+      const log = git(t.dir, 'log', '-p', 'main..feat/E5');
+      assert.doesNotMatch(log, /defect|seed|sentinel|planted/i, v);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('code-detected defects stay out of artifacts A and B', () => {
+  for (const e of manifest) {
+    if (e.detectedBy === 'code') assert.ok(e.artifact === 'C', e.id);
+    if (e.artifact === 'A' || e.artifact === 'B') assert.notEqual(e.detectedBy, 'code', e.id);
+    if (e.artifact === 'C') {
+      assert.equal(e.detectedBy, 'code', e.id);
+      assert.doesNotThrow(() => new RegExp(e.codeSignal), e.id);
+    }
   }
 });
