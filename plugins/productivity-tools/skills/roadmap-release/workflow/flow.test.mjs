@@ -3084,3 +3084,20 @@ test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', a
   assert.doesNotMatch(p, / set-status /);
   assert.ok(r.results[0].error);
 });
+
+test('registro de bloqueio com texto cortado: a fonte é o log real e o texto completo vai ao log de revisões', async () => {
+  const tasks = [{ n: 1, title: 't', tier: 'sonnet', external: false }];
+  const long = `motivo ${'palavra '.repeat(80)}`.trim();
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: withPlan(tasks, (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: long } : undefined)) });
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.failKind, 'conteudo');
+  const blocked = calls.find((c) => c.label === 'E1:status-blocked');
+  assert.ok(blocked);
+  assert.doesNotMatch(blocked.prompt, /-\*-reviews\.md/);
+  assert.match(blocked.prompt, /docs\/superpowers\/reviews\/[^ ']*-E1-[^ *']*-reviews\.md/);
+  const logs = calls.filter((c) => /review-log-blocked-record$/.test(c.label));
+  assert.equal(logs.length, 1);
+  assert.match(logs[0].prompt, /Textos cortados no registro/);
+  assert.ok(logs[0].prompt.includes('palavra palavra palavra'));
+});

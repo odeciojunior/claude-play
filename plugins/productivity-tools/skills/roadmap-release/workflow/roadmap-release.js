@@ -1452,6 +1452,9 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
+  // Not enumerable: the blocked record, written after this function returns, uses them to land its cut texts in the review log.
+  Object.defineProperty(out, 'logPath', { value: () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md` })
+  Object.defineProperty(out, 'persistLog', { value: persistReviews })
   const fail = async (kind, msg) => {
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
     await persistReviews('failed')
@@ -2251,8 +2254,13 @@ order.forEach((id, idx) => {
           if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: A.notes && A.notes[id] && !NOTES_READ.includes(id) ? A.notes[id] : '<owner instruction>' } })
           if (r.failKind === 'decisao') op('decision', id, r.error, r.doNow || 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
           if (MODE !== 'plan-only') {
-            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: `docs/superpowers/reviews/${TODAY}-${id}-*-reviews.md` }))
-            if (rec && rec.cuts && rec.cuts.length) r.recordCuts = [...(r.recordCuts || []), ...rec.cuts]
+            // The full text of a cut goes to the review log of the branch (the file persistLog writes), so the source names that real file.
+            const canLog = typeof r.logPath === 'function' && typeof r.persistLog === 'function'
+            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: canLog ? r.logPath() : `docs/superpowers/reviews/${TODAY}-${id}-*-reviews.md` }))
+            if (rec && rec.cuts && rec.cuts.length) {
+              r.recordCuts = [...(r.recordCuts || []), ...rec.cuts]
+              if (canLog) await safe(() => r.persistLog('blocked-record'))
+            }
           }
         }
       }
