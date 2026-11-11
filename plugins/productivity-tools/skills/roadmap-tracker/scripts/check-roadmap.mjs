@@ -612,7 +612,7 @@ export function checkRoadmap(r, git, opts = {}) {
     const info = blockInfo(role, name, file, text, required);
     const rows = [];
     info.rows.forEach((row, i) => {
-      if (row.length !== cols) add('error', 'bad-row', file, `roadmap:${name} row ${i + 1} has ${row.length} columns, expected exactly ${cols} (escape a literal | as \|)`);
+      if (row.length !== cols) add('error', 'bad-row', file, `roadmap:${name} row ${i + 1} has ${row.length} columns, expected exactly ${cols} (escape a literal | as \\|)`);
       else rows.push(row);
     });
     return rows;
