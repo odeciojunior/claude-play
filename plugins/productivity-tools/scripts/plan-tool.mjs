@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { readDataBlock } from '../lib/data-block.mjs';
 import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
 import { checkSpec, checkRecords } from './spec-tool.mjs';
+import { route } from '../lib/routing.mjs';
+import { fnv1a, planDigest } from '../lib/plan-digest.mjs';
 
 export const SCHEMA = 'plan/1';
 const TOP = ['schema', 'id', 'title', 'spec', 'roadmap', 'constraints', 'externalPatterns', 'tasks', 'evidence', 'rulings', 'needsPerson'];
@@ -458,7 +460,34 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
   return { data, spec, errors, warnings, levels };
 }
 
-const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]';
+// Texto normalizado antes do resumo: BOM removido, fim de linha LF, NFC.
+const normalizeText = (t) => String(t).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').normalize('NFC');
+
+export function emitPlan(text, { planPath, cwd = process.cwd(), specText = null, specPath = null, maxWidth = 4 } = {}) {
+  void maxWidth; // usado pelo mapa (Task 6)
+  const r = checkPlan(text, { planPath, specText, specPath });
+  if (r.errors.length) return { errors: r.errors, warnings: r.warnings, out: null };
+  const data = r.data;
+  const hasDependents = (n) => data.tasks.some((t) => t.deps.includes(n));
+  const tasks = data.tasks.map((t) => ({
+    ...t,
+    route: route(t, { hasDependents: hasDependents(t.n) }),
+    wave: r.levels.get(t.n) + 1,
+    fileCount: new Set([...t.files.create, ...t.files.modify, ...t.files.test].map(normPath)).size,
+  }));
+  const plan = { ...data, tasks };
+  const source = {
+    path: normPath(path.relative(cwd, path.resolve(planPath))),
+    textDigest: fnv1a(normalizeText(text)),
+  };
+  return {
+    errors: r.errors,
+    warnings: r.warnings,
+    out: { tool: 'plan-tool', schema: SCHEMA, path: planPath, source, plan, digest: planDigest({ plan, source }) },
+  };
+}
+
+const USAGE = 'uso: node plan-tool.mjs check|emit <plan.md> [--spec <spec.md>] [--json]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -468,7 +497,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (cmd !== 'check') return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
+  if (cmd !== 'check' && cmd !== 'emit') return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
   let file = null;
   let json = false;
   let specPath = null;
@@ -488,6 +517,16 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     text = fs.readFileSync(file, 'utf8');
   } catch (e) {
     return bad(`não foi possível ler ${file}: ${e.message}`);
+  }
+  if (cmd === 'emit') {
+    const e = emitPlan(text, { planPath: file, specPath });
+    if (e.errors.length) {
+      for (const x of e.errors) io.stderr.write(`ERROR ${x.code} ${x.ref}: ${x.message}
+`);
+      return 1;
+    }
+    out(JSON.stringify(e.out, null, 2));
+    return 0;
   }
   const r = checkPlan(text, { planPath: file, specPath });
   const code = r.errors.length ? 1 : 0;

@@ -467,3 +467,103 @@ test('example plan stays at zero errors and warnings', () => {
   const r = check(PLAN_TEXT);
   assert.deepEqual([r.errors.length, r.warnings.length], [0, 0]);
 });
+
+// ---- Task 5: emit (resumo de integridade e cópia gerada para os workflows) ----
+import vm from 'node:vm';
+import { emitPlan } from './plan-tool.mjs';
+import { embedFile } from './embed.mjs';
+
+const COPY_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'workflow-copy.js');
+const loadCopy = () => vm.runInNewContext(fs.readFileSync(COPY_PATH, 'utf8'), Object.create(null));
+const emit = (text, opts = {}) => emitPlan(text, { planPath: PLAN_PATH, cwd: path.join(HERE, '..', '..', '..'), ...opts });
+
+test('AC2: digest changes when a block value changes', () => {
+  const a = emit(PLAN_TEXT);
+  assert.deepEqual(a.errors, []);
+  const b = emit(mutate((d) => (d.tasks[0].checks[0].expect = 'outra coisa')));
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.digest, b.out.digest);
+  const c = emit(mutate((d) => (d.title = (d.title ?? '') + ' x')));
+  assert.equal(a.out.digest === c.out.digest, false);
+});
+
+test('AC2: digest changes when only the prose changes', () => {
+  const a = emit(PLAN_TEXT);
+  const word = /Tarefa/;
+  assert.ok(word.test(PLAN_TEXT));
+  const b = emit(PLAN_TEXT.replace(/(\n[^`#\n][^\n]*?)(\w{4,})/, '$1trocada'));
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.digest, b.out.digest);
+  assert.deepEqual(a.out.plan, b.out.plan);
+});
+
+test('AC2: digest changes when the source path changes', () => {
+  const a = emit(PLAN_TEXT);
+  const b = emit(PLAN_TEXT, { cwd: HERE });
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.source.path, b.out.source.path);
+  assert.notEqual(a.out.digest, b.out.digest);
+  assert.ok(!a.out.source.path.includes(String.fromCharCode(92)));
+});
+
+test('AC2: CRLF copy gives the same digest', () => {
+  const lf = emit(PLAN_TEXT.replace(/\r\n/g, '\n'), { specText: SPEC_TEXT.replace(/\r\n/g, '\n') });
+  const crlf = emit(PLAN_TEXT.replace(/\r?\n/g, '\r\n'), { specText: SPEC_TEXT.replace(/\r?\n/g, '\r\n') });
+  const bom = emit('﻿' + PLAN_TEXT.replace(/\r?\n/g, '\r\n'));
+  assert.deepEqual(lf.errors, []);
+  assert.deepEqual(crlf.errors, []);
+  assert.deepEqual(bom.errors, []);
+  assert.equal(crlf.out.digest, lf.out.digest);
+  assert.equal(bom.out.digest, lf.out.digest);
+});
+
+test('AC2: workflow copy recomputes the same digest', () => {
+  const r = runCli(['emit', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.tool, 'plan-tool');
+  assert.equal(out.schema, 'plan/1');
+  assert.equal(loadCopy().planDigest({ plan: out.plan, source: out.source }), out.digest);
+});
+
+test('emit adds route, wave and fileCount', () => {
+  const { out } = emit(PLAN_TEXT);
+  const [t1, , , , t5] = out.plan.tasks;
+  assert.equal(t5.route.tier, 'sonnet');
+  assert.equal(t5.route.reviewTier, 'opus');
+  assert.equal(t5.route.gate, true);
+  assert.equal(t1.fileCount, 2);
+  assert.deepEqual(out.plan.tasks.map((t) => t.wave), [1, 2, 2, 2, 2, 3]);
+});
+
+test('AC3: workflow copy routes every table row like the source', () => {
+  const copy = loadCopy();
+  for (const row of ROUTING_TABLE.rows) {
+    const r = copy.route(rowTask(row.input), { hasDependents: row.input.hasDependents });
+    assert.deepEqual({ tier: r.tier, effort: r.effort, reviewTier: r.reviewTier, gate: r.gate }, row.expected, row.name);
+  }
+});
+
+test('AC3: workflow copy is not stale', () => {
+  assert.equal(embedFile(COPY_PATH, { check: true }).stale, false);
+});
+
+test('workflow copy runs without process, require or crypto', () => {
+  const ctx = vm.createContext(Object.create(null));
+  for (const name of ['process', 'require', 'crypto']) assert.equal(vm.runInContext(`typeof ${name}`, ctx), 'undefined');
+  assert.equal(typeof vm.runInContext(fs.readFileSync(COPY_PATH, 'utf8'), ctx).route, 'function');
+});
+
+test('emit CLI on a plan with errors exits 1 with empty stdout', () => {
+  const dir = tmpDir();
+  try {
+    const bad = path.join(dir, 'plan.md');
+    fs.writeFileSync(bad, mutate((d) => (d.tasks[1].deps = [9])));
+    const r = runCli(['emit', bad, '--spec', SPEC_PATH]);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /ERROR dep-unknown/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
