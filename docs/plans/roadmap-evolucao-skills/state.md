@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Linha de base (E15): o plano executa em `feat/E15` (execução automática); depois o dono opera as execuções pagas. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
+1. Linha de base (E15): o código entrou em `release/roadmap-skills-v2`; o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
 2. Escrever o spec e o plano de E2 pelo release, em plan-only. Executa: executor. Aprova: dono. Depende de: DEC-058.
 3. Escrever o spec e o plano de E5 pelo release, em plan-only. Executa: executor. Aprova: dono. Depende de: DEC-037.
 <!-- /roadmap:now -->
@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
-| E15 | executando | `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `feat/E15` | Executar o plano na branch `feat/E15`; depois o dono opera as execuções pagas com `run-baseline.mjs` |
+| E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
 | E18 | nao-iniciado | - | Aguardar E3 |
@@ -67,11 +67,15 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
 - (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl` (DP-4). Os critérios de E1 usaram executor simulado (DEC-011, DEC-043, DEC-082).
-- (dono) Execuções pagas da linha de base, operadas com `run-baseline.mjs` no ambiente do dono (plugin 1.6.0 instalado, regras de permissão da execução sem interface) (DEC-088).
-- (dono) Escolher a execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em `--from-run`, antes das tentativas de detecção; o dono aceitou a semeadura sintética em E1 (DEC-099, DEC-101).
-- (dono) Conferir as linhas da linha de base e de detecção de E15 (critérios 1 a 3).
-- (dono) Aprovar a revisão da estratégia com a tabela de metas, depois das execuções pagas de E15 (critério 4, DEC-034, DEC-098).
-- (dono) Ratificar as decisões de alcance contrato de E15 (DEC-089, DEC-090, DEC-091, DEC-092, DEC-095, DEC-099, DEC-100) antes de E17 começar (DEC-030).
+- (dono) Execuções pagas da linha de base, operadas pelo dono com run-baseline.mjs no ambiente dele (plugin 1.6.0 instalado, regras de permissão da execução sem interface).
+- (dono) Escolha, pelo dono, da execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em --from-run, antes das tentativas de detecção (pendente do dono em state.md).
+- (dono) Conferência do dono das linhas da linha de base e de detecção (critérios 1 a 3).
+- (dono) Aprovação do dono da revisão da estratégia com a tabela de metas (critério 4, DEC-034), depois das execuções pagas.
+- (dono) Ratificação das decisões de alcance contrato (2, 3, 4, 5, 8, 12, 13) antes de E17 começar (DEC-030).
+- (dono) criterion AC1 has no automatic evidence (human)
+- (dono) criterion AC2 has no automatic evidence (human)
+- (dono) criterion AC3 has no automatic evidence (human)
+- (dono) criterion AC4 has no automatic evidence (human)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -79,5 +83,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| `feat/E15` | viva | Execução automática |
 <!-- /roadmap:inflight -->
