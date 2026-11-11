@@ -1,6 +1,6 @@
 # E22 -- Tracker enxuto com rubricas (design)
 
-Entregável E22 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQs: REQ-017, REQ-018, REQ-029, REQ-037. Depende de E3 (CLI `plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs`, integrada na branch de release). Prioridade Should (DEC-022), trilha de engenharia, fase roadmap-sem-llm, não crítico. Terceira fatia do corte de DEC-013: E3 carregou a CLI, E18 faz o release chamá-la, E22 faz a skill do tracker chamá-la e carregar só o que o evento pede.
+Entregável E22 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQs: REQ-017, REQ-018, REQ-029, REQ-037. Depende de E3 (CLI `plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs`, integrada na branch de release) e da ratificação pelo dono das decisões de alcance contrato de E3 em que este desenho se apoia (DEC-030); sem ela, plano e execução de E22 não começam (ver "Pré-condição bloqueante"). Prioridade Should (DEC-022), trilha de engenharia, fase roadmap-sem-llm, não crítico. Terceira fatia do corte de DEC-013: E3 carregou a CLI, E18 faz o release chamá-la, E22 faz a skill do tracker chamá-la e carregar só o que o evento pede.
 
 ## Por quê
 
@@ -145,6 +145,26 @@ Feitas pelo executor no worktree do entregável, com subagents locais, sem efeit
 - Ordem e divisão das tarefas em até quatro arquivos cada. A separação de `events.md` em 20 arquivos pode ser feita por script determinístico, com conferência de que o texto de cada seção foi preservado antes das edições (T0), e as edições por grupos de até quatro receitas.
 - Os exemplos das rubricas e as entradas sintéticas das execuções comportamentais, desde que cubram os casos listados.
 
+## Pré-condição bloqueante: ratificação das decisões de contrato de E3
+
+DEC-030: uma decisão do executor de alcance contrato é ratificada antes de um dependente começar. `state.md` no alvo registra que as decisões de contrato de E3 "seguram o início de E18 e E22", e E18 parou por isso (BLQ-2, commit `99c323d`). E22 lê diretamente o que essas decisões fixam, todas hoje com status pendente em `decisions.md`. Este spec pode ser escrito e revisado; o plano e a execução de E22 só começam depois que o dono ratificar as decisões abaixo. Se o workflow chegar ao plano ou à execução com alguma delas pendente, E22 para e o bloqueio é registrado no estágio de registro, no alvo, no molde de BLQ-2 (esta branch não edita a pasta do roadmap).
+
+| DEC de E3 | O que fixa | Onde E22 se apoia | Se o dono rejeitar ou mudar |
+|-----------|-----------|-------------------|-----------------------------|
+| DEC-136 | caminho `scripts/roadmap.mjs` e forma `node roadmap.mjs <comando> <pasta> [opções] [--json]` | tabela de caminhos do SKILL.md; forma de comando em toda receita | caminho e forma das receitas e do SKILL.md seguem a decisão nova; o resto do desenho fica |
+| DEC-137 | lista de comandos, `reject` incluído | mapa receita -> comandos; passo de rejeição em § 1 (decisão 9) | cada comando cortado volta a ser edição pela receita, citando a seção `formats.md § N` que toca (risco (b)); sem `reject`, a rejeição de § 1 vira edição citando `formats.md § 6` e a decisão 9 é revista; a carga das receitas afetadas é recontada contra a meta |
+| DEC-138 | saída `--json` e códigos de saída 0/1/2 | regra única do código de saída no SKILL.md (decisão 10); anti-objetivo "ignorar o código de saída" | a regra do SKILL.md passa a citar os códigos ratificados; a política (recusa relatada, sem contorno à mão; erro de uso para) fica |
+| DEC-139 | códigos de recusa nomeados (`not-executor`, `not-pending`, `checker-errors` etc.) | recusa da rejeição em § 1; resultado esperado da execução comportamental 4 | o texto de § 1 e o esperado da execução 4 citam os códigos novos |
+| DEC-143 | escrita conferida pelo checker, erro novo recusa sem gravar | tratamento do código 1 como "nada mudou" | se a CLI puder gravar com erro, toda receita volta a rodar o checker depois de cada comando, e não só no passo final |
+| DEC-145 | `next-id` | § 1 e § 18 | alocação de ID volta à regra manual de `formats.md § N` citada na receita |
+| DEC-146 | `set-status` (posições, `--piece`, sem bloqueado/descartado) | § 2, § 15, § 17, § 20 | as receitas seguem a regra ratificada; o que a CLI deixar de cobrir vira edição citando a seção do contrato |
+| DEC-148 | frase de `block-open` e recusa de `block-close` | § 5 e execução comportamental 4 | § 5 segue a frase ratificada; se a recusa sumir, a receita volta a conferir à mão as citações do BLQ |
+| DEC-149 | quais comandos gravam a própria linha de log | onde as receitas chamam `log` (§ 1, § 2, § 4, § 15, § 17, § 18, § 20) | as receitas acrescentam ou tiram a chamada a `log` conforme a decisão nova |
+| DEC-150 | idempotência (repetição é no-op com saída 0) | reexecução de uma receita depois de recusa ou interrupção | as receitas passam a conferir antes de repetir um comando |
+| DEC-153 | idioma das frases escritas pela CLI e frase de alcance | exemplos das rubricas e linhas esperadas nas execuções comportamentais | exemplos e linhas esperadas seguem a regra nova |
+
+Em qualquer rejeição, este spec é revisado antes do plano; a meta derivada de prosa e o teste do critério 1 não dependem dessas decisões (contam a prosa, não os comandos), salvo a recontagem citada na linha de DEC-137. As decisões locais de E3 que E22 usa (DEC-151, DEC-152, DEC-155) não seguram o início (DEC-030: ratificação em lote no ponto de medição).
+
 ## Decisões autônomas (revisáveis pelo dono)
 
 1. `events.md` vira índice (tabela § -> arquivo) mais o Common, e as 20 receitas vão para `references/events/NN-<slug>.md` com a numeração atual; quem cita `events.md § N` (planner, regra do repositório) não muda. Alcance: contrato.
@@ -164,4 +184,5 @@ Feitas pelo executor no worktree do entregável, com subagents locais, sem efeit
 
 - Aceite dos critérios 2 e 3 (verify: human): o dono confere o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`. O executor entrega o relatório; não bloqueia o código.
 - Registro da meta derivada de prosa na estratégia (revisão proposta pelo tracker depois de E15, gravada só com aprovação do dono, DEC-034, DEC-098). Até lá, o teste usa a constante declarada aqui.
-- Ratificação pelo dono das decisões de alcance contrato de E3 (`state.md`: "seguram o início de E18 e E22") e das decisões acima (DEC-030); as de alcance contrato (1, 2 e 3) seguram o início de E7 e E20, que editam a skill do tracker depois, sem impedir a entrega de E22.
+- **Bloqueante para E22:** ratificação pelo dono das decisões de alcance contrato de E3 em que E22 se apoia (DEC-136, DEC-137, DEC-138, DEC-139, DEC-143, DEC-145, DEC-146, DEC-148, DEC-149, DEC-150, DEC-153; DEC-030; `state.md`: "seguram o início de E18 e E22"). Sem ela, plano e execução de E22 não começam; o efeito de cada rejeição está em "Pré-condição bloqueante". É o mesmo caso de BLQ-2 para E18.
+- Ratificação pelo dono das decisões autônomas acima (DEC-030): as de alcance contrato (1, 2 e 3) seguram o início de E7 e E20, que editam a skill do tracker depois, sem impedir a entrega de E22; as locais, em lote no ponto de medição.
