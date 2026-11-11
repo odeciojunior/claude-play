@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -198,4 +199,42 @@ test('indeterminate outcomes count as attempts but not in the rate', () => {
   const r = compare(before, load('detect-class-after-ok'));
   assert.ok(!r.detection.plan.missing);
   assert.equal(r.detection.plan.rateBefore, 36 / 38);
+});
+
+test('detection reports captured, lost and indeterminate per side (DEC-193)', () => {
+  const before = load('detect-class-before');
+  let swap = 2;
+  for (const x of before.attempts) for (const o of x.outcomes ?? []) if (swap > 0 && o.outcome === 'perdido') { o.outcome = 'indeterminado'; swap -= 1; }
+  const r = compare(before, load('detect-class-after-ok'));
+  const d = r.detection.plan;
+  assert.equal(d.before.indeterminado, 2);
+  assert.equal(d.before.capturado + d.before.perdido + d.before.indeterminado, 40);
+  assert.equal(d.rateBefore, d.before.capturado / (d.before.capturado + d.before.perdido));
+  assert.equal(typeof d.after.capturado, 'number');
+  assert.equal(typeof d.after.perdido, 'number');
+  assert.equal(typeof d.after.indeterminado, 'number');
+});
+
+test('CLI refuses an input without variant or attempts, and a pair of different variants (DEC-196)', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'compare-'));
+  try {
+    const base = join(AGG, 'base.json');
+    const noVariant = join(tmp, 'no-variant.json');
+    writeFileSync(noVariant, JSON.stringify({ attempts: [] }));
+    const noAttempts = join(tmp, 'no-attempts.json');
+    writeFileSync(noAttempts, JSON.stringify({ variant: 'completo', date: '2026-11-20', variants: {} }));
+    for (const bad of [noVariant, noAttempts]) {
+      for (const args of [['--before', bad, '--after', base], ['--before', base, '--after', bad]]) {
+        const r = cli(args);
+        assert.equal(r.status, 2, r.stderr);
+        assert.match(r.stderr, /variant|attempts/);
+        assert.equal(r.stdout, '');
+      }
+    }
+    const diff = cli(['--before', base, '--after', join(AGG, 'planner-after.json')]);
+    assert.equal(diff.status, 2);
+    assert.match(diff.stderr, /different variants/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

@@ -168,6 +168,7 @@ export async function runBaseline(opts, deps = {}) {
           ...opts,
           variant,
           runs: n,
+          stopOnDenial: true,
           work: join(resolve(opts.work), `${variant}-p${seq}`),
           fromRun: seeded ? opts.fromRun : undefined,
         });

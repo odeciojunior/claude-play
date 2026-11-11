@@ -1,0 +1,125 @@
+{
+  "modelVersion": 1,
+  "date": "2026-01-01",
+  "topic": "sample",
+  "title": "Sample Platform",
+  "language": "en",
+  "mode": "full",
+  "integrationBranch": "main",
+  "releaseBranch": "release/2026-01",
+  "nextStep": 6,
+  "questions": [
+    { "question": "What is the goal?", "answer": "Ship the sample platform in three phases." },
+    { "question": "Which credentials do we use?", "answer": "[omitted: secret]" }
+  ],
+  "sources": [
+    { "id": "SRC-01", "source": "docs/sample-brief.md", "what": "Synthetic project brief", "readOn": "2026-01-01", "reliability": "Synthetic fixture" },
+    { "id": "SRC-02", "source": "docs/sample-notes.md", "what": "Synthetic meeting notes", "readOn": "2026-01-01", "reliability": "Synthetic fixture" }
+  ],
+  "conflicts": [
+    "SRC-01 vs SRC-02: the brief says two phases, the notes say three"
+  ],
+  "decisions": [
+    { "id": "DEC-001", "date": "2026-01-01", "title": "Three phases", "decision": "Plan three phases.", "why": "The notes are newer than the brief.", "status": "in-force" }
+  ],
+  "assumptions": [
+    { "text": "The sample platform has one owner.", "owner": "owner", "revalidate": "when a second team joins" }
+  ],
+  "requirements": [
+    { "id": "REQ-001", "text": "The platform exposes a health endpoint.", "type": "functional", "sources": ["SRC-01"] },
+    { "id": "REQ-002", "text": "The platform stores records durably.", "type": "functional", "sources": ["SRC-01", "SRC-02"] },
+    { "id": "REQ-003", "text": "The platform publishes a status page.", "type": "functional", "sources": ["SRC-02"] },
+    { "id": "REQ-004", "text": "The platform integrates with an external billing account.", "type": "constraint", "sources": ["SRC-02"] },
+    { "id": "REQ-005", "text": "The platform ships a mobile client.", "type": "functional", "sources": ["SRC-01"], "coverage": { "kind": "out-of-scope", "reason": "Deferred to a later roadmap." } }
+  ],
+  "phases": [
+    { "name": "Foundation in place", "entry": "Brief approved", "exit": "E1 integrated" },
+    { "name": "Features usable", "entry": "Foundation in place", "exit": "E2, E3 and E4 integrated" },
+    { "name": "Billing connected", "entry": "Features usable", "exit": "E5 integrated" }
+  ],
+  "deliverables": [
+    {
+      "id": "E1", "title": "Core service", "phase": "Foundation in place", "track": "engineering", "priority": "Must", "size": "M",
+      "depends": [], "reqs": ["REQ-001"],
+      "why": "Everything else builds on the service.",
+      "pieces": ["Skeleton", "Health endpoint"],
+      "acceptance": [
+        { "text": "The health endpoint answers 200.", "verify": { "kind": "test", "evidence": "node --test core.test.mjs" } },
+        { "text": "The service starts from a clean checkout.", "verify": { "kind": "smoke", "evidence": "npm start, then GET /health" } }
+      ],
+      "dod": "Acceptance criteria pass and G1 is green.",
+      "risks": ["Scope creep -> keep the skeleton minimal"]
+    },
+    {
+      "id": "E2", "title": "Storage layer", "phase": "Features usable", "track": "engineering", "priority": "Must", "size": "L",
+      "depends": ["E1"], "reqs": ["REQ-002"],
+      "why": "Records must survive restarts.",
+      "pieces": ["Schema", "Repository"],
+      "acceptance": [
+        { "text": "A written record is read back after a restart.", "verify": { "kind": "integration", "evidence": "node --test storage.test.mjs" } },
+        { "text": "Invalid records are rejected.", "verify": { "kind": "test", "evidence": "node --test storage.test.mjs" } }
+      ],
+      "dod": "Acceptance criteria pass and G1 is green.",
+      "risks": ["Schema drift -> version the schema"]
+    },
+    {
+      "id": "E3", "title": "Status page", "phase": "Features usable", "track": "engineering", "priority": "Should", "size": "S",
+      "depends": ["E1"], "reqs": ["REQ-003"],
+      "why": "Operators need a public view of service health.",
+      "pieces": ["Page template"],
+      "acceptance": [
+        { "text": "The page renders the health state.", "verify": { "kind": "test", "evidence": "node --test status.test.mjs" } },
+        { "text": "The page is readable on a phone.", "verify": { "kind": "human", "evidence": "owner checks the page on a phone" } }
+      ],
+      "dod": "Acceptance criteria pass.",
+      "risks": []
+    },
+    {
+      "id": "E4", "title": "Release bundle", "phase": "Features usable", "track": "release", "priority": "Should", "size": "S",
+      "depends": ["E2", "E3"], "reqs": ["REQ-002", "REQ-003"],
+      "why": "The features ship together.",
+      "pieces": ["Bundle script"],
+      "acceptance": [
+        { "text": "The bundle contains the service and the page.", "verify": { "kind": "test", "evidence": "node --test bundle.test.mjs" } },
+        { "text": "The bundle installs on a clean machine.", "verify": { "kind": "smoke", "evidence": "install the bundle in a scratch directory" } }
+      ],
+      "dod": "Acceptance criteria pass and G1 and G2 are green.",
+      "risks": ["Missing file in the bundle -> list files in the test"]
+    },
+    {
+      "id": "E5", "title": "Billing hookup", "phase": "Billing connected", "track": "external", "priority": "Could", "size": "M",
+      "depends": [], "reqs": ["REQ-004"],
+      "why": "Billing needs an account that only the owner can open.",
+      "pieces": ["Account request"],
+      "status": "blocked", "blq": "BLQ-1",
+      "acceptance": [
+        { "text": "The billing account is connected to the platform.", "verify": { "kind": "blocked", "blq": "BLQ-1", "evidence": "owner opens the billing account" } },
+        { "text": "A test charge is recorded.", "verify": { "kind": "human", "evidence": "owner confirms the test charge" } }
+      ],
+      "dod": "Acceptance criteria pass.",
+      "risks": ["Account never opens -> keep the card Could"]
+    }
+  ],
+  "objective": {
+    "text": "Ship the sample platform with storage, a status page and billing.",
+    "acceptance": "All Must deliverables are integrated and G1 and G2 are green.",
+    "done": "The owner has used the platform end to end."
+  },
+  "nonGoals": ["A mobile client."],
+  "thesis": "Build the service first, then the features in parallel, then billing.",
+  "gates": [
+    { "id": "G1", "command": "node --test \"**/*.test.mjs\"", "environment": "local", "when": "every task, before merge", "baseline": "exit 0" },
+    { "id": "G2", "command": "node check.mjs .", "environment": "local", "when": "before merge", "baseline": "exit 0" }
+  ],
+  "crossRisks": ["The owner is the only reviewer -> keep tasks small"],
+  "externalPending": ["(owner) Open the billing account"],
+  "openQuestions": ["E5: which billing provider?"],
+  "now": ["Start E1. Runs: -. Approves: -. Depends on: -."],
+  "pending": [{ "owner": "owner", "text": "Open the billing account" }],
+  "blockers": [
+    { "id": "BLQ-1", "text": "Billing account not opened", "owner": "owner", "blocks": ["E5"] }
+  ],
+  "measurements": [
+    { "date": "2026-01-01", "deliverable": "E1", "kind": "run", "detail": "Baseline run", "recorded": "0", "billed": "0", "status": "planned" }
+  ]
+}

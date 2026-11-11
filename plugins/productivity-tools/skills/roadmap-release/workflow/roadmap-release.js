@@ -604,7 +604,7 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
 // Resume args as shown to the report agent: the config is long and already known to the caller.
 function withoutConfig(resumeWith) {
   if (!resumeWith) return resumeWith
-  const { config, notes, ...rest } = resumeWith
+  const { config, notes, trackerCli, ...rest } = resumeWith
   return rest
 }
 // Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
@@ -774,6 +774,207 @@ function dropConsumedNotes(args, consumed) {
   const { notes, ...rest } = args
   return Object.keys(kept).length ? { ...rest, notes: kept } : rest
 }
+// ---- Roadmap record through the tracker CLI (E18): pure assembly of the exact commands and verdict over the CLI JSON.
+// POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
+function shq(s) {
+  return "'" + String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/'/g, "'\\''") + "'"
+}
+const isPt = lang => /^pt/i.test(String(lang || ''))
+const collapseWs = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
+// Collapses spaces (like the CLI) and returns the whole text when it fits in `room`; else cuts at the last word that fits and
+// appends the suffix naming the committed file with the full text. `cut` is the original text when something was cut.
+function fitCell(text, room, source, lang) {
+  const t = collapseWs(text)
+  if (t.length <= room) return { text: t, cut: '' }
+  const suffix = ` [...] ${isPt(lang) ? 'texto completo em' : 'full text in'} ${source}`
+  const keep = room - suffix.length
+  if (keep <= 0) return { text: suffix.trim().slice(0, Math.max(room, 0)), cut: t }
+  let body = t.slice(0, keep)
+  if (t[keep] !== ' ') {
+    const at = body.lastIndexOf(' ')
+    if (at > 0) body = body.slice(0, at)
+  }
+  return { text: body.trimEnd() + suffix, cut: t }
+}
+const tickRef = r => (r.includes('`') ? r : '`' + r + '`')
+// References kept in the order given while the CLI join (backticks and ", ") fits in `max`.
+function fitEvidence(refs, max) {
+  const kept = []
+  let len = 0
+  for (const r of (refs || []).map(x => String(x).trim()).filter(Boolean)) {
+    const add = tickRef(r).length + (kept.length ? 2 : 0)
+    if (len + add > max) break
+    kept.push(r)
+    len += add
+  }
+  return kept
+}
+// `folder` goes through shq; `args` are already shell-quoted.
+function cliCmd(cli, command, folder, args) {
+  return ['node "' + cli + '"', command, shq(folder), ...(args || []), '--json'].join(' ')
+}
+// Short texts of the record, two languages (same rule as the CLI: language starting with "pt" is Portuguese).
+function phrases(lang) {
+  if (isPt(lang)) {
+    return {
+      owner: 'dono',
+      log: (E, word) => `${E} passou para ${word}`,
+      next: (E, word) => `${E}: seguir o fluxo do release após ${word}`,
+      inflightNote: E => `${E} em execução pelo release`,
+      blockWhat: (E, reason) => `${E} bloqueado: ${reason}`,
+      blockUnblocks: E => `quando o bloqueio de ${E} for resolvido`,
+      blockHow: E => `desbloqueio de ${E} pelo release`,
+      commit: (E, word) => `docs(roadmap): ${E} em ${word}`,
+    }
+  }
+  return {
+    owner: 'owner',
+    log: (E, word) => `${E} moved to ${word}`,
+    next: (E, word) => `${E}: continue the release flow after ${word}`,
+    inflightNote: E => `${E} running in the release`,
+    blockWhat: (E, reason) => `${E} blocked: ${reason}`,
+    blockUnblocks: E => `when the block on ${E} is resolved`,
+    blockHow: E => `unblock of ${E} by the release`,
+    commit: (E, word) => `docs(roadmap): ${E} at ${word}`,
+  }
+}
+// statusEvidence (optional) replaces the evidence of set-status only: the CLI appends it to the panel Evidence cell, which already holds
+// the spec and plan references and refuses a cell over the limit, so a long list belongs to the log row, not to the panel.
+// Ordered command list of one record: block-close, set-status + log (or block-open), add-decision, add-pending, inflight-*.
+// Every variable text goes through fitCell with the room the CLI leaves in the cell; `cuts` lists the texts that were cut.
+function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, statusEvidence, next, logWhat, decisions, pending, inflight, skipStatus, lang, cellChars, source, blockedStatus }) {
+  const P = phrases(lang)
+  const max = cellChars || 300
+  const cuts = []
+  const cmds = []
+  const fit = (where, text, room) => {
+    const f = fitCell(text, room, source, lang)
+    if (f.cut) cuts.push({ where, source, full: f.cut })
+    return f.text
+  }
+  const ev = (refs, room) => fitEvidence(refs, room).map(r => '--evidence ' + shq(r))
+  const pieceArg = piece ? ['--piece ' + shq(piece)] : []
+  if (blockedBy) {
+    const others = (blockedBy.affects || []).filter(x => x !== E)
+    if (others.length) return { commands: [], cuts: [], error: `${blockedBy.id} also blocks ${others.join(', ')}; close it by hand (manual close with block-close) once every deliverable it affects can go on` }
+    const evs = fitEvidence(evidence, max)
+    cmds.push(cliCmd(cli, 'block-close', folder, [shq(blockedBy.id), '--how ' + shq(fit('block-close --how', P.blockHow(E), max)), ...evs.map(r => '--evidence ' + shq(r))]))
+  }
+  if (!skipStatus) {
+    if (word === blockedStatus) {
+      // The CLI log line is "<BLQ-n> opened: <what>" and "Unblocks when" gets "; restores <E> to <word>" appended.
+      const what = fit('block-open --what', P.blockWhat(E, collapseWs(logWhat) || P.log(E, word)), max - 24)
+      const unblocks = fit('block-open --unblocks', P.blockUnblocks(E), max - 64)
+      const evs = fitEvidence(evidence, max)
+      cmds.push(cliCmd(cli, 'block-open', folder, ['--what ' + shq(what), '--affects ' + shq(E), '--unblocks ' + shq(unblocks), ...pieceArg, ...evs.map(r => '--evidence ' + shq(r))]))
+    } else {
+      const nextText = fit('set-status --next', collapseWs(next) || P.next(E, word), max)
+      cmds.push(cliCmd(cli, 'set-status', folder, [shq(E), shq(word), ...pieceArg, ...(statusEvidence !== undefined ? fitEvidence(statusEvidence, max) : (evidence || []).filter(Boolean)).map(r => '--evidence ' + shq(r)), '--next ' + shq(nextText)]))
+      const logEv = fitEvidence(evidence, max)
+      cmds.push(cliCmd(cli, 'log', folder, ['--deliverable ' + shq(E), '--what ' + shq(fit('log --what', collapseWs(logWhat) || P.log(E, word), max)), ...(logEv.length ? logEv : ['state.md']).map(r => '--evidence ' + shq(r))]))
+    }
+  }
+  for (const d of decisions || []) {
+    const local = d.scope === 'local'
+    const phrase = `${isPt(lang) ? 'Alcance' : 'Scope'}: ${local ? 'local' : isPt(lang) ? 'contrato' : 'contract'}.`
+    // One more character: the CLI adds a final period when the text has none.
+    const text = fit('add-decision --decision', d.text, max - phrase.length - 2)
+    cmds.push(cliCmd(cli, 'add-decision', folder, ['--deliverable ' + shq(E), '--decision ' + shq(text), '--scope ' + shq(local ? 'local' : 'contrato')]))
+  }
+  for (const p of pending || []) {
+    const text = fit('add-pending --text', p, max - `(${P.owner}) `.length)
+    cmds.push(cliCmd(cli, 'add-pending', folder, ['--owner ' + shq(P.owner), '--text ' + shq(text)]))
+  }
+  if (inflight && inflight.add) {
+    const note = fit('inflight-add --note', collapseWs(inflight.note) || P.inflightNote(E), max)
+    cmds.push(cliCmd(cli, 'inflight-add', folder, [shq(inflight.add), '--note ' + shq(note)]))
+  }
+  if (inflight && inflight.remove) cmds.push(cliCmd(cli, 'inflight-remove', folder, [shq(inflight.remove)]))
+  return { commands: cmds, cuts }
+}
+// JSON of the CLI (tool "roadmap") or null.
+function parseCli(s) {
+  try {
+    const o = JSON.parse(String(s == null ? '' : s))
+    return o && typeof o === 'object' && o.tool === 'roadmap' ? o : null
+  } catch { return null }
+}
+// CLI verb of a command `node "<cli>" <verb> ...`; the cli path may contain spaces.
+function cliVerb(c) { const m = /^node "[^"]*" (\S+)/.exec(String(c == null ? "" : c)); return m ? m[1] : "" }
+// Verdict of a record from the raw outputs only: never reads statusWritten, details or any sentence of the agent.
+function recordVerdict({ expected, results, read, E, word, piece, blockedStatus }) {
+  const failures = []
+  const decisionIds = []
+  const res = results || {}
+  const runs = Array.isArray(res.runs) ? res.runs : []
+  const rd = read || {}
+  if (res.error) failures.push(`record agent returned error "${res.error}"`)
+  if (!runs.length) failures.push('the record agent ran no command')
+  const exp = expected || []
+  exp.forEach((c, i) => {
+    const r = runs[i]
+    if (r && r.command === c) return
+    if (runs.some(x => x && x.command === c)) failures.push(`command ${i + 1} (${cliVerb(c)}) ran out of order`)
+    else if (!r) failures.push(`command ${i + 1} (${cliVerb(c)}) is missing from the runs`)
+    else failures.push(`command ${i + 1} ran with a different text than the one assembled`)
+  })
+  if (runs.length > exp.length) failures.push(`${runs.length - exp.length} command(s) ran beyond the assembled list`)
+  let blq = ''
+  runs.forEach((r, i) => {
+    if (!r) return
+    const verb = cliVerb(r.command)
+    if (r.exit !== 0) failures.push(`command ${i + 1} (${verb}) exit ${r.exit}`)
+    const o = parseCli(r.stdout)
+    if (!o) { failures.push(`command ${i + 1} (${verb}) stdout is not JSON of the CLI (tool "roadmap")`); return }
+    if (!o.summary || o.summary.exitCode !== 0) failures.push(`command ${i + 1} (${verb}) JSON summary.exitCode ${o.summary && o.summary.exitCode}`)
+    if (Array.isArray(o.errors) && o.errors.length) failures.push(`command ${i + 1} (${verb}) JSON has ${o.errors.length} error(s)`)
+    if (verb === 'block-open' && o.result && typeof o.result.id === 'string') blq = o.result.id
+    if (verb === 'add-decision' && o.result && typeof o.result.id === 'string') decisionIds.push({ id: o.result.id, changed: Array.isArray(o.changed) && o.changed.length > 0 })
+  })
+  if (String(rd.porcelain == null ? '' : rd.porcelain).trim()) failures.push('the integration worktree is not clean after the record (git status --porcelain is not empty): the record agent did not commit')
+  const status = parseCli(rd.status)
+  const panel = status && status.result && Array.isArray(status.result.panel) ? status.result.panel : null
+  if (!panel) failures.push('reread status --json is missing or has no panel')
+  else {
+    const row = panel.find(p => p && p.id === E)
+    const segs = row && Array.isArray(row.segments) ? row.segments : []
+    const seg = piece ? segs.find(s => s.label === piece) : segs[0]
+    if (!seg) failures.push(`reread panel has no ${piece ? `segment "${piece}" of ` : 'segment of '}${E}`)
+    else if (seg.word !== word) failures.push(`reread panel shows "${seg.word}" for ${E}, expected "${word}"`)
+    else if (word === blockedStatus && !(blq ? new RegExp('\\b' + blq + '\\b').test(String(seg.note || '')) : /\bBLQ-\d+\b/.test(String(seg.note || '')))) failures.push(`reread blocked segment of ${E} does not cite ${blq || 'a BLQ'} in its note`)
+  }
+  const brief = parseCli(rd.brief)
+  const checker = brief && brief.result && brief.result.checker
+  if (!brief) failures.push('reread brief --json is missing or is not JSON of the CLI')
+  else if (!checker || typeof checker.errors !== 'number') failures.push('reread brief --json has no numeric result.checker.errors')
+  else if (checker.errors > 0) failures.push(`checker reports ${checker.errors} error(s)`)
+  const changedIds = decisionIds.filter(d => d.changed).map(d => d.id)
+  if (changedIds.length) {
+    const pend = parseCli(rd.pendingDecisions)
+    const list = pend && pend.result && Array.isArray(pend.result.decisions) ? pend.result.decisions.map(d => d.id) : null
+    if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
+    else for (const id of changedIds) if (!list.includes(id)) failures.push(`${id} written by add-decision is not in pending-decisions`)
+  }
+  return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id) }
+}
+// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence becomes scope local (and leaves the text); anything else is contrato.
+function parseDecision(text) {
+  const t = collapseWs(text)
+  const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t)
+  if (!m) return { text: t, scope: 'contrato' }
+  return { text: t.slice(0, m.index).trim(), scope: m[1].toLowerCase() === 'local' ? 'local' : 'contrato' }
+}
+// A run of the record agent that counts as done: exit 0 and the JSON of the CLI without errors.
+function runDone(r) {
+  if (!r || r.exit !== 0) return false
+  const o = parseCli(r.stdout)
+  return !!o && !!o.summary && o.summary.exitCode === 0 && !(Array.isArray(o.errors) && o.errors.length)
+}
+// Commands of `all` (in order) that have no done run in `runs`: the only ones a second docs round repeats.
+function commandsLeft(all, runs) {
+  const rs = Array.isArray(runs) ? runs : []
+  return (all || []).filter(c => !runDone(rs.find(r => r && r.command === c)))
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -799,6 +1000,7 @@ const mkResult = (status, extra) => ({
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
 }
+if (typeof A.trackerCli !== 'string' || !A.trackerCli.trim()) return { status: 'error', error: 'args.trackerCli is missing: run scripts/preflight.mjs and pass its trackerCli' }
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
 if (unfilledNotes.length) return { status: 'error', error: `notes still hold the template text, without the owner's answer: ${unfilledNotes.join(', ')}` }
@@ -893,7 +1095,7 @@ const STRS = { type: 'array', items: STR }
 const S_DISC = { type: 'object', properties: {
   error: STR, repo: STR, today: STR, wtRoot: STR, roadmapDir: STR, roadmapSlug: STR, strategy: STR, checker: STR,
   integrationBranch: STR, releaseBranch: STR, target: STR, integratedStatuses: STRS, discardedStatus: STR, blockedStatus: STR, deliverableStatuses: STRS,
-  targetExists: BOOL, readFrom: STR, trackerAvailable: BOOL, checkerExists: BOOL,
+  targetExists: BOOL, readFrom: STR, language: STR, cellChars: INT, checkerExists: BOOL,
   cards: { type: 'array', items: { type: 'object', properties: {
     id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
     status: { ...STR, description: 'the Status cell of the panel row, verbatim, with every segment and note' }, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget', 'mergeFound', 'acceptance'] } },
@@ -929,12 +1131,13 @@ const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done:
 const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
-const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
+const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
+const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
-const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
-const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR, panelStatus: STR }, required: ['checkerErrors', 'clean', 'panelStatus'] }
+const S_DOCS = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
+const S_DOCMEAS = { type: 'object', properties: { status: STR, brief: STR, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['status', 'brief', 'clean'] }
 const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
 const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, secondParent: STR, branchTip: STR }, required: ['mergeSha', 'rangeOk', 'secondParent', 'branchTip'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
@@ -957,7 +1160,7 @@ const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token:
 6. Status: the <!-- roadmap:panel --> block of the state.md read. status = the deliverable's Status cell verbatim, with every segment and note (for example "code: on-branch; acceptance: blocked (BLQ-2)"), never reduced to one word; empty when the card has no row. mergeCommit = first hash in backticks in the Evidence column, if any.
 7. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The ancestor rules (mergeCommit or integrationBranch an ancestor of the target) count ONLY when the code segment is finished. A card with several pieces (labels other than "code", like "piece 1: integrated; piece 2: spec") or whose Status is not an integrated or on-branch word is NOT onTarget by those rules, whatever commit its Evidence cites. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 8. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
-9. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
+9. language = the "language" field of roadmap.config.json (empty when absent); cellChars = limits.cellChars of the same file (omit when absent).
 `,
   { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet', effort: 'medium' })
 if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
@@ -988,10 +1191,9 @@ const STATUSES = {
   discarded: disc.discardedStatus || 'discarded',
   blocked: disc.blockedStatus || 'blocked',
 }
-disc.cards.forEach(c => { c.status = cardStatus(c.status, STATUSES); c.onTarget = onTargetEffective(c, STATUSES) })
+disc.cards.forEach(c => { c.cell = c.status; c.status = cardStatus(c.status, STATUSES); c.onTarget = onTargetEffective(c, STATUSES) })
 const STATUS_AFTER_MERGE = TARGET === INTEG ? STATUSES.integrated[0] : STATUSES.onBranch
 if (TARGET === INTEG && !A.allowIntegrationBranch) return { status: 'error', error: `targetBranch (${TARGET}) is the integrationBranch; pass allowIntegrationBranch: true to merge into it.` }
-if (disc.trackerAvailable === false) return { status: 'error', error: 'the skill productivity-tools:roadmap-tracker is not available to the subagents' }
 if (disc.checkerExists === false) return { status: 'error', error: `checker ${disc.checker} does not exist` }
 
 // ---------------------------------------------------------------- selection
@@ -1168,17 +1370,60 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
-const NO_REVISION = `Do NOT propose, write or approve a strategy revision (roadmap-tracker Step 6, events § 9) or a format migration (§ 11), whatever the event triggers: the owner's pre-approval never covers them. If the recipe asks for one, add only the pending item "(user) approve strategy v<N+1> (absorbs DEC-…)" and leave the strategy untouched. Leave any item you cannot settle in \`pending\`.`
-const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
+const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a format migration, whatever the event triggers: the owner's pre-approval never covers them. Do not edit any file of ${RM} by hand: the commands above are the whole roadmap job.`
+// Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
+const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
+const LANG = disc.language || ''
+const CELL_CHARS = Number.isInteger(disc.cellChars) && disc.cellChars > 0 ? disc.cellChars : 300
+const absFolder = INTWT.replace(/\/+$/, '') + '/' + RM.replace(/\/+$/, '')
+// Last status word written per deliverable (segment "code" when the cell has labels), starting from the discovery.
+const pieceOf = c => (statusSegments(c.cell).some(sg => sg.label) ? 'code' : '')
+const lastWord = new Map(disc.cards.map(c => {
+  const segs = statusSegments(c.cell)
+  const sg = pieceOf(c) ? segs.find(x => /^(code|c[oó]digo)$/.test(x.label)) : segs[0]
+  return [c.id, sg ? sg.status : '']
+}))
+const CHECKERS = {}  // E -> result.checker of the last brief --json read by the docs stage
+const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
+// Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
+// extra = { decisions?: string[], pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
+const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   if (integBroken) return null
-  const r = await agent(`${COMMON()}
+  const x = extra || {}
+  const c = byId[E]
+  const piece = pieceOf(c)
+  const cur = lastWord.get(E)
+  let blockedBy = null
+  if (cur === STATUSES.blocked && status !== STATUSES.blocked) {
+    const id = (/\bBLQ-\d+\b/.exec(c.cell || '') || [])[0]
+    if (id) blockedBy = { id, affects: ((disc.blockers || []).find(bl => bl.id === id) || {}).affects || [E] }
+  }
+  const rc = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: status, piece, blockedBy, evidence: refs, logWhat: x.reason, decisions: (x.decisions || []).map(parseDecision), pending: x.pending,
+    inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
+  if (rc.error) return { ok: false, failures: [rc.error], head: null, cuts: [] }
+  const msg = phrases(LANG).commit(E, status)
+  const results = rc.commands.length ? await agent(`${COMMON_SLIM()}
 
-RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Use the skill productivity-tools:roadmap-tracker to record deliverable ${E} with status "${status}" (vocabulary: ${(disc.deliverableStatuses || []).join(', ')}), evidence: ${evidence}.${extraTxt ? '\n' + extraTxt : ''}
-${NO_REVISION}
-Run node ${disc.checker} and leave it with 0 errors. Commit only files of ${RM}. Return checkerErrors, statusWritten, commit, head (git rev-parse HEAD after the commit), details.`,
-    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_STATUS, model: 'sonnet', effort: 'medium' })
-  if (r && r.head) lastGood = r.head  // a record-only commit does not invalidate what was already validated
-  return r
+RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
+${numbered(rc.commands)}
+${BASH_ONLY}
+Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then, in the same worktree: git -C "${INTWT}" add -- "${RM}"; only if git -C "${INTWT}" diff --cached --quiet exits 1, commit with: git -C "${INTWT}" commit -m ${shq(msg)} -m ${shq(TRAILER)} and return the commit hash in commit. The commands are the whole job: do not edit any file by hand. Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.`,
+    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_RECORD, model: 'haiku', effort: 'low' }) : { runs: [] }
+  const read = await agent(`${COMMON_SLIM()}
+
+READ-ONLY re-read in the integration worktree ${INTWT} after the record of ${E}. Run these commands exactly, one per call, change nothing, and return the raw stdout of each (not summarized, not reformatted): status = 1, brief = 2, pendingDecisions = 3, head = 4, porcelain = 5 (empty string when the output is empty).
+${numbered([cliCmd(A.trackerCli, 'status', absFolder), cliCmd(A.trackerCli, 'brief', absFolder), cliCmd(A.trackerCli, 'pending-decisions', absFolder), `git -C "${INTWT}" rev-parse HEAD`, `git -C "${INTWT}" status --porcelain`])}
+${BASH_ONLY}`,
+    { label: `${E}:status-${status}-read`, phase: 'Plan', schema: S_RECORD_READ, model: 'haiku', effort: 'low' })
+  if (!results || !read) return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts }
+  const v = recordVerdict({ expected: rc.commands, results, read, E, word: status, piece, blockedStatus: STATUSES.blocked })
+  const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
+  const ok = failures.length === 0
+  if (ok) {
+    lastWord.set(E, status)
+    if (read.head) lastGood = read.head  // a record-only commit does not invalidate what was already validated
+  }
+  return { ok, failures, head: ok ? read.head : null, cuts: rc.cuts }
 })
 
 // ============================================================================ one deliverable
@@ -1188,7 +1433,7 @@ async function runDeliverable(E, idx) {
   const br = `${PREFIX}${E}`
   const port = 5200 + idx * 10
   const human = []
-  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [] }
+  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [], recordCuts: [] }
   const annotateHuman = () => { const kept = annotateAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
@@ -1212,15 +1457,19 @@ Never write or quote a credential, token or key from the owner instruction in an
   const fmtRisk = x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
-    if (!setupOk || (!out.reviews.length && !out.externalRun.length)) return
+    if (!setupOk || (!out.reviews.length && !out.externalRun.length && !out.recordCuts.length)) return
+    const cutsTxt = out.recordCuts.length ? ', plus a section "Textos cortados no registro" with one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the entries an earlier run wrote there' : ''
     const ranTxt = out.externalRun.length ? ', plus a section "External effects run" with one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the lines an earlier run wrote there' : ''
     const w = await agent(`${Cs()}
 
-Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}) })}
+Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
+  // Not enumerable: the blocked record, written after this function returns, uses them to land its cut texts in the review log.
+  Object.defineProperty(out, 'logPath', { value: () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md` })
+  Object.defineProperty(out, 'persistLog', { value: persistReviews })
   const fail = async (kind, msg) => {
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
     await persistReviews('failed')
@@ -1337,25 +1586,57 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     Object.assign(BASE, refreshBaseline(BASE, GATES, g.m, g.m.changedFiles))
     lastGood = g.m.headSha
 
-    let docs = null, meas = null
-    const measureOk = x => !!x && x.checkerErrors === 0 && x.clean !== false && (!DOCS.measure || x.measureOk === true) && cardStatus(x.panelStatus, STATUSES) === STATUS_AFTER_MERGE
+    // Roadmap part of the docs stage: the exact CLI commands, assembled here; the verdict is computed over raw outputs.
+    const docPiece = pieceOf(byId[E])
+    const ranHuman = h => String(h.what || '').includes('[' + RAN_MARK + ':')
+    const pendRoom = CELL_CHARS - `(${phrases(LANG).owner}) `.length
+    const critPending = (out.acOpen || []).map(x => fitCell(`criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`, pendRoom, planTxt(), LANG).text)
+    const docsRc = skipStatus => recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null,
+      evidence: [mergeCommit, `gates ${GATES.map(d => d.name).join(', ')}`, specTxt(), planTxt(), reviewsTxt()], statusEvidence: [mergeCommit], decisions: [], skipStatus,
+      pending: [...out.acceptedRisks.map(fmtRisk), ...human.filter(h => !ranHuman(h)).map(h => h.what), ...critPending], inflight: { remove: br },
+      lang: LANG, cellChars: CELL_CHARS, source: reviewsTxt(), blockedStatus: STATUSES.blocked })
+    const docsAll = docsRc(false).commands
+    const docsFirst = docsRc(lastWord.get(E) === STATUS_AFTER_MERGE).commands
+    // Human items marked as already run stay with the agent's judgment: it runs the assembled add-pending only for the ones that keep an open need.
+    const docsMaybe = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null, evidence: [], decisions: [], skipStatus: true,
+      pending: human.filter(ranHuman).map(h => h.what), lang: LANG, cellChars: CELL_CHARS, source: reviewsTxt(), blockedStatus: STATUSES.blocked }).commands
+    let docs = null, meas = null, verdict = null, docsMeasure = null
+    let cmds = docsFirst
     for (let k = 0; k < 2; k++) {
       docs = await agent(`${Cn()}
 
 DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}); merge ${mergeCommit}. Only this stage edits the project docs and ${RM}.
 1. Project docs: ${DOCS.instructions || '(no project docs instructions configured: skip this item)'}
-2. Roadmap: use the skill productivity-tools:roadmap-tracker: ${E} with status "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}; evidence: merge ${mergeCommit}, gates ${g.summary}, spec ${specTxt()}, plan ${planTxt()}, reviews ${reviewsTxt()}; remove ${br} from the inflight block; accepted risks and pending human inputs go to pending, all of them, none omitted except as the next sentence says: ${JSON.stringify([...out.acceptedRisks.map(fmtRisk), ...human.map(h => h.what), ...(out.acOpen || []).map(x => `criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`)])}. A human item marked "[${RAN_MARK}: ...]" names an external effect this run was authorized for and already ran: when the item asks only for that authorization it is fulfilled, so leave it out of pending; any other need the item states stays open in pending. Never record a human act (acceptance, go/no-go, credentials) as done.
+2. Roadmap: ${E} goes to "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}, ${br} leaves the inflight block, and the accepted risks, pending human inputs and criteria without automatic evidence go to pending. Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
+${cmds.length ? numbered(cmds) : '(none: everything of this item is already recorded)'}
+${BASH_ONLY}
+${docsMaybe.length ? `A human item marked "[${RAN_MARK}: ...]" names an external effect this run was authorized for and already ran: when the item asks only for that authorization it is fulfilled, so leave it out of pending; any other need the item states stays open in pending. For each such item that keeps an open need, run its assembled command below after the list above, without changing its text:
+${docsMaybe.map(c => '- ' + c).join('\n')}
+` : ''}Never record a human act (acceptance, go/no-go, credentials) as done.
 3. ${NO_REVISION}
-4. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''} and the panel row of ${E} shows "${STATUS_AFTER_MERGE}".` : ''}
-Return statusWritten, commit, details.`,
+4. Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then commit the files of item 1 and of ${RM}, adding only them (never git add -A), with "docs: ${E} on ${TARGET}" and the trailer "${TRAILER}", and return the commit hash in commit.${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(docsMeasure)}. Fix what it lists${DOCS.measure ? ' (measureOk must be true)' : ''}; the commands above are only those that still lack a good result.` : ''}`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet', effort: 'medium' })
-      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly: cd "${INTWT}" && node "${disc.checker}" and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD; panelStatus = the Status cell of the row ${E} in the panel of ${RM}state.md, verbatim.`,
+      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly, one per call, and return the raw stdout of each (not summarized, not reformatted): status = ${cliCmd(A.trackerCli, 'status', absFolder)}; brief = ${cliCmd(A.trackerCli, 'brief', absFolder)}. clean = git status --porcelain empty; head = git rev-parse HEAD.
+${BASH_ONLY}`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku', effort: 'low' })
-      if (docs && measureOk(meas)) break
+      if (docs && meas) {
+        const maybeSet = new Set(docsMaybe)
+        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
+        if (!cmds.length) verdict.failures = verdict.failures.filter(f => f !== 'the record agent ran no command')
+        verdict.ok = verdict.failures.length === 0
+        const bc = parseCli(meas.brief)
+        if (bc && bc.result && bc.result.checker) CHECKERS[E] = bc.result.checker
+        docsMeasure = { failures: verdict.failures, clean: meas.clean, head: meas.head, ...(DOCS.measure ? { measureOk: meas.measureOk, measureDetails: meas.measureDetails } : {}) }
+        if (verdict.ok && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)) break
+        // Second round: only the commands without a good result, plus set-status when the panel does not show the word.
+        const panelFailed = verdict.failures.some(f => /^reread (panel|status)/.test(f))
+        const left = new Set(commandsLeft(docsFirst, docs.runs))
+        cmds = docsAll.filter(c => left.has(c) || (panelFailed && cliVerb(c) === 'set-status'))
+      } else { docsMeasure = { failures: [!docs ? 'null docs agent' : 'null measurement agent'] }; cmds = docsFirst }
     }
-    const docsOk = !!docs && measureOk(meas)
+    const docsOk = !!verdict && verdict.ok && !!meas && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)
     if (docsOk && meas.head) lastGood = meas.head
-    return { ok: true, mergeCommit, conflicts, gates: g.summary, docsOk, docsMeasure: meas }
+    return { ok: true, mergeCommit, conflicts, gates: g.summary, docsOk, docsMeasure }
   }
 
   // Closes the deliverable from the result of the merge block.
@@ -1575,18 +1856,22 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
   }
 
-  const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` The owner answered for ${E} in the run notes on ${TODAY} (the text is deliberately not copied here).` : ''}`
+  const logSource = () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md`
+  const recordExtra = () => ({ decisions: out.decisions || [], pending: human.filter(h => h.blocking !== true).map(h => h.what), source: logSource() })
+  const failedRecord = rec => `${rec ? rec.failures.join('; ') : 'null agent or integration worktree broken'}`
   if (MODE === 'plan-only') {
-    const rec = await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
-    if (!rec || rec.checkerErrors > 0) return fail('infra', `plan-only: the roadmap record failed (${rec ? 'checkerErrors=' + rec.checkerErrors : 'null agent or integration worktree broken'})`)
+    const rec = await recordStatus(E, STATUSES.plan, [spec.specPath, plan.planPath], recordExtra())
+    if (rec) out.recordCuts.push(...rec.cuts)
+    if (!rec || !rec.ok) return fail('infra', `plan-only: the roadmap record failed (${failedRecord(rec)})`)
+    if (out.recordCuts.length) await persistReviews('record')
     out.planOnly = true
     out.ok = true
     return out
   }
-  const recRun = await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
-    `${decisionsTxt}\nAdd ${br} to the inflight block (Branch: ${br}; Kind: the branchLive word of the roadmap vocab; Note: automatic execution).`)
+  const recRun = await recordStatus(E, STATUSES.executing, [spec.specPath, plan.planPath], { ...recordExtra(), inflight: { add: br, note: '' } })
+  if (recRun) out.recordCuts.push(...recRun.cuts)
 
-  if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
+  if (!recRun || !recRun.ok) out.concerns.push(`the "executing" roadmap record failed (${failedRecord(recRun)}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
   // Only this subject ends the wait: a re-run that commits and then fails is still waiting for the person.
@@ -2015,7 +2300,15 @@ order.forEach((id, idx) => {
         else {
           if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: A.notes && A.notes[id] && !NOTES_READ.includes(id) ? A.notes[id] : '<owner instruction>' } })
           if (r.failKind === 'decisao') op('decision', id, r.error, r.doNow || 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
-          if (MODE !== 'plan-only') await safe(() => recordStatus(id, STATUSES.blocked, `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`))
+          if (MODE !== 'plan-only') {
+            // The full text of a cut goes to the review log of the branch (the file persistLog writes), so the source names that real file.
+            const canLog = typeof r.logPath === 'function' && typeof r.persistLog === 'function'
+            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: canLog ? r.logPath() : `docs/superpowers/reviews/${TODAY}-${id}-*-reviews.md` }))
+            if (rec && rec.cuts && rec.cuts.length) {
+              r.recordCuts = [...(r.recordCuts || []), ...rec.cuts]
+              if (canLog) await safe(() => r.persistLog('blocked-record'))
+            }
+          }
         }
       }
       return r
@@ -2083,7 +2376,7 @@ Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Authorizations given for this run: ${JSON.stringify(AUTH.items)}
 External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}${RESULTS.some(r => (r.externalRun || []).some(e => e.reviewed === false)) ? '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' : ''}
-Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
+Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured by the docs stage from brief --json (result.checker: errors, warnings, folder, stale): ${JSON.stringify(CHECKERS)}; do not run the checker file yourself; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
 Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[${RAN_MARK}: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet', effort: 'medium' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)

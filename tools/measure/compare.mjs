@@ -71,7 +71,7 @@ function detectionFor(cls, before, after, { margin, attempts }) {
         else if (o.outcome === 'perdido') perdido += 1;
       }
     }
-    return { capturado, perdido, reviewer, valid: reviewer };
+    return { capturado, perdido, indeterminado: reviewer - capturado - perdido, reviewer, valid: reviewer };
   };
   const b = tally(before);
   const a = tally(after);
@@ -80,12 +80,13 @@ function detectionFor(cls, before, after, { margin, attempts }) {
   if (!seeded && b.reviewer + a.reviewer === 0) return { verdict: 'nao-aplicavel' };
   const missing = Math.max(0, attempts - b.valid, attempts - a.valid);
   const rate = (t) => (t.capturado + t.perdido ? t.capturado / (t.capturado + t.perdido) : null);
+  const sides = { before: { capturado: b.capturado, perdido: b.perdido, indeterminado: b.indeterminado }, after: { capturado: a.capturado, perdido: a.perdido, indeterminado: a.indeterminado } };
   const rateBefore = rate(b);
   const rateAfter = rate(a);
-  if (missing > 0) return { rateBefore, rateAfter, drop: null, verdict: 'inconclusivo', missing };
-  if (rateBefore == null || rateAfter == null) return { rateBefore, rateAfter, drop: null, verdict: 'inconclusivo', missing: 0 };
+  if (missing > 0) return { ...sides, rateBefore, rateAfter, drop: null, verdict: 'inconclusivo', missing };
+  if (rateBefore == null || rateAfter == null) return { ...sides, rateBefore, rateAfter, drop: null, verdict: 'inconclusivo', missing: 0 };
   const drop = Math.round((rateBefore - rateAfter) * attempts * 1e6) / 1e6;
-  return { rateBefore, rateAfter, drop, verdict: drop >= margin ? 'caiu' : 'nao-caiu' };
+  return { ...sides, rateBefore, rateAfter, drop, verdict: drop >= margin ? 'caiu' : 'nao-caiu' };
 }
 
 function codeDetection(before, after) {
@@ -99,6 +100,16 @@ function codeDetection(before, after) {
     out[id] = { before: b, after: a, regrediu: always && (a.perdido ?? 0) > 0 };
   }
   return out;
+}
+
+// DEC-196: an aggregate needs variant and attempts, and both sides must measure the same variant.
+export function inputRefusal(before, after) {
+  for (const [side, agg] of [['--before', before], ['--after', after]]) {
+    if (typeof agg?.variant !== 'string' || !agg.variant) return `${side}: input has no variant (not a variant aggregate)`;
+    if (!Array.isArray(agg.attempts)) return `${side}: input has no attempts (not a variant aggregate)`;
+  }
+  if (before.variant !== after.variant) return `different variants: ${before.variant} vs ${after.variant}`;
+  return null;
 }
 
 export function compare(before, after, { margin = 6, attempts = 40, bytesTolerance = 0.03 } = {}) {
@@ -182,6 +193,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     after = JSON.parse(readFileSync(opt('--after'), 'utf8'));
   } catch (e) {
     console.error(`cannot read aggregate: ${e.message}`);
+    process.exit(2);
+  }
+  const refusal = inputRefusal(before, after);
+  if (refusal) {
+    console.error(refusal);
     process.exit(2);
   }
   const result = compare(before, after, options);

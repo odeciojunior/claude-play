@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,10 +46,51 @@ function makeJournal() {
   };
 }
 
+// Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
+const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], warnings: [], changed: [], result: {}, ...over });
+const promptCommands = (prompt) => [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]);
+function makeRecordMock(cardsOf) {
+  const st = {};
+  let decN = 900;
+  const init = (E) => {
+    if (st[E]) return st[E];
+    const cell = (cardsOf().find((c) => c.id === E) || {}).status || '';
+    const labelled = /:/.test(cell);
+    const m = /code:\s*([^;(]*)/.exec(cell);
+    return (st[E] = { label: labelled ? 'code' : '', word: labelled ? (m ? m[1].trim() : '') : cell.replace(/\s*\(.*$/, ''), note: '', decisionIds: [] });
+  };
+  return {
+    state: st,
+    run(prompt, E) {
+      const x = init(E);
+      const runs = promptCommands(prompt).map((command) => {
+        const verb = /^node "[^"]*" (\S+)/.exec(command)[1];
+        let over = {};
+        if (verb === 'set-status') x.word = /set-status '[^']*' '[^']*' '([^']*)'/.exec(command)[1];
+        if (verb === 'block-open') { x.word = 'blocked'; x.note = 'BLQ-9'; over = { result: { id: 'BLQ-9' }, changed: ['state.md'] }; }
+        if (verb === 'add-decision') { const id = 'DEC-' + decN++; x.decisionIds.push(id); over = { result: { id }, changed: ['decisions.md'] }; }
+        return { command, exit: 0, stdout: cliJson(over) };
+      });
+      return { runs };
+    },
+    read(E) {
+      const x = init(E);
+      return {
+        status: cliJson({ result: { panel: [{ id: E, segments: [{ label: x.label, word: x.word, note: x.note }] }] } }),
+        brief: cliJson({ result: { checker: { errors: 0, warnings: 0, stale: false } } }),
+        pendingDecisions: cliJson({ result: { decisions: x.decisionIds.map((id) => ({ id })) } }),
+        head: 'abc1234',
+        porcelain: '',
+      };
+    },
+  };
+}
+
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
   const lastAc = {};
+  const recMock = makeRecordMock(() => (typeof cards === 'function' ? cards() : cards));
   const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
   // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
   const liveAgent = async (prompt, o) => {
@@ -61,7 +104,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
@@ -71,7 +114,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
-    if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
+    if (/:status-.*-read$/.test(l)) return recMock.read(E);
+    if (/:status-/.test(l)) return recMock.run(prompt, E);
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
     if (/:resync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
@@ -82,8 +126,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:pre-merge$/.test(l)) return { head: 'abc1234', clean: true, branchHasTarget: false, branchMerged: false };
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
-    if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
-    if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'e' };
+    if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
+    if (/:docs-measure/.test(l)) return { status: recMock.read(E).status, brief: recMock.read(E).brief, clean: true, head: 'm2' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -101,7 +145,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', ...args },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', trackerCli: '/t/roadmap.mjs', ...args },
     agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -578,9 +622,9 @@ test('I5: another red gate keeps the offer', async () => {
 test('m2: the docs are not ok when the panel does not show the status after the merge', async () => {
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
-  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /state\.md/);
-  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('panelStatus'));
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'c' } : undefined) });
+  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --json/);
+  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('status'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { status: readWith('c').status, brief: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
   assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
 });
@@ -619,11 +663,10 @@ test('m7: reportPath is null when no report file was written', async () => {
   assert.equal(broken.r.reportPath, null);
 });
 
-test('m8: the inflight row uses the columns of the roadmap format', async () => {
+test('m8: the inflight row is added by the CLI inflight-add command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const p = calls.find((c) => c.label === 'E1:status-d').prompt;
-  assert.match(p, /Kind/);
-  assert.match(p, /branchLive/);
+  assert.match(p, /inflight-add '[^']*' 'feat\/E1' --note '/);
   assert.doesNotMatch(p, /type: deliverable/);
 });
 
@@ -978,7 +1021,6 @@ test('item 7: the owner notes never reach the record or the docs prompts', async
   assert.ok(spec.includes('sk-live-123'));
   assert.match(spec, /Never write or quote a credential/);
   assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /Never write or quote a credential/);
-  assert.match(calls.find((c) => /^E1:status-/.test(c.label)).prompt, /answered for E1 in the run notes/);
 });
 
 test('item 7: the merge-fix prompts carry no owner notes', async () => {
@@ -1801,7 +1843,7 @@ test('real run: programs that need a directory are run with cd, since a Bash cal
   assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('cd "/wt/E1" && node "/wt/_tmp/E1-integrity.cjs" "integracao/x"'));
   const m = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
   assert.ok(m.includes('cd "/wt/_integracao" && node "/wt/_tmp/E1-docs-measure.cjs"'));
-  assert.ok(m.includes('cd "/wt/_integracao" && node "docs/plans/roadmap-x/check.mjs"'));
+  assert.ok(!m.includes('check.mjs'));
   const res = await exec({ cards: [unfinished()], deliverables: ['E1'] });
   assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "m0^1"'));
 });
@@ -2633,4 +2675,562 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.ok(!calls.some((c) => /No task of the plan runs there/.test(c.prompt)), 'not in the common briefing (M6)');
   assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /in the deliverable worktree \(no task of the plan runs in the integration worktree\)/);
+});
+
+// ---------------------------------------------------------------- E18 T3: registro pela CLI (funções puras)
+
+const gitBashPath = () => {
+  try {
+    const ep = execFileSync('git', ['--exec-path']).toString().trim();
+    for (const up of [['..', '..', '..'], ['..', '..']]) {
+      const p = join(ep, ...up, 'bin', 'bash.exe');
+      if (existsSync(p)) return p;
+    }
+  } catch { /* sem git */ }
+  return null;
+};
+
+test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
+  assert.equal(PU.shq("a'b"), "'a'\\''b'");
+  assert.equal(PU.shq('a$b`c"d'), "'a$b`c\"d'");
+  assert.equal(PU.shq('a\nb'), "'a b'");
+  assert.equal(PU.shq('a\r\nb'), "'a b'");
+});
+
+test('shq: o Git Bash entrega o texto literal', (t) => {
+  const bash = gitBashPath();
+  const ok = bash && !/system32|windowsapps/i.test(bash) && spawnSync(bash, ['-c', 'true']).status === 0;
+  if (!ok) { t.skip('Git Bash não resolvido por git --exec-path'); return; }
+  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'l1\nl2']) {
+    const r = spawnSync(bash, ['-c', 'printf %s ' + PU.shq(x)]);
+    assert.equal(r.stdout.toString(), x.replace(/\r?\n/g, ' '), JSON.stringify(x));
+  }
+});
+
+test('fitCell: cabe -> igual com espaços juntados; longo -> corta em palavra com o sufixo da origem', () => {
+  assert.deepEqual(PU.fitCell('a   b\n c', 300, 'docs/s.md', 'pt'), { text: 'a b c', cut: '' });
+  const long = Array.from({ length: 120 }, (_, i) => 'palavra' + i).join(' ');
+  assert.ok(long.length > 600);
+  const r = PU.fitCell(long, 300, 'docs/s.md', 'pt-BR');
+  assert.ok(r.text.length <= 300);
+  assert.match(r.text, /\[\.\.\.\] texto completo em docs\/s\.md$/);
+  assert.equal(r.cut, long);
+  const body = r.text.replace(/ \[\.\.\.\] texto completo em docs\/s\.md$/, '');
+  assert.ok(long.startsWith(body) && /^palavra\d+$/.test(body.split(' ').pop()), 'fronteira de palavra');
+  const en = PU.fitCell(long, 300, 'docs/s.md', 'en');
+  assert.match(en.text, /\[\.\.\.\] full text in docs\/s\.md$/);
+  const room = 300 - 'Alcance: contrato.'.length - 1;
+  const d = PU.fitCell(long, room, 'docs/s.md', 'pt');
+  assert.ok(d.text.length <= room);
+});
+
+test('fitEvidence: mantém o prefixo cuja junção com crases cabe', () => {
+  const refs = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40), 'd'.repeat(40), 'e'.repeat(40)];
+  const out = PU.fitEvidence(refs, 120);
+  assert.deepEqual(out, refs.slice(0, 2));
+  assert.ok(out.map((r) => '`' + r + '`').join(', ').length <= 120);
+  assert.deepEqual(PU.fitEvidence(refs, 10000), refs);
+  assert.deepEqual(PU.fitEvidence(refs, 5), []);
+});
+
+test('cliCmd: caminho entre aspas duplas, pasta por shq, --json no fim', () => {
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status 'docs/plans/r/' --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status 'docs/plans/r/' 'E1' 'plano' --json`);
+});
+
+test('phrases: pt e en, curtas e citam entregável e status', () => {
+  for (const lang of ['pt-BR', 'en']) {
+    const P = PU.phrases(lang);
+    assert.equal(P.owner, lang === 'en' ? 'owner' : 'dono');
+    for (const s of [P.log('E1', 'plano'), P.next('E1', 'plano'), P.inflightNote('E1'), P.blockWhat('E1', 'motivo'), P.blockUnblocks('E1'), P.blockHow('E1'), P.commit('E1', 'plano')]) {
+      assert.ok(typeof s === 'string' && s.length > 0 && s.length < 300);
+      assert.doesNotMatch(s, /this commit|este commit/i);
+    }
+    assert.match(P.log('E1', 'plano'), /E1/);
+    assert.match(P.log('E1', 'plano'), /plano/);
+    assert.match(P.commit('E1', 'plano'), /E1/);
+  }
+});
+
+const RC = { cli: 'D:/x/roadmap.mjs', folder: 'docs/plans/r/', E: 'E1', word: 'plano', evidence: ['docs/s.md', 'docs/p.md'], lang: 'pt-BR', cellChars: 300, source: 'docs/s.md', blockedStatus: 'bloqueado' };
+const verbs = (cmds) => cmds.map((c) => c.split(' ')[2]);
+
+test('recordCommands: sem rótulo não há --piece; com piece, set-status e block-open o levam', () => {
+  const a = PU.recordCommands(RC);
+  assert.ok(!a.error);
+  assert.deepEqual(verbs(a.commands), ['set-status', 'log']);
+  assert.ok(a.commands.every((c) => !/--piece/.test(c)));
+  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status 'docs\/plans\/r\/' 'E1' 'plano' .*--json$/);
+  assert.match(a.commands[0], /--evidence 'docs\/s\.md' --evidence 'docs\/p\.md'/);
+  const b = PU.recordCommands({ ...RC, piece: 'code' });
+  assert.match(b.commands[0], /--piece 'code'/);
+  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log 'docs\/plans\/r\/' --deliverable 'E1' --what '/);
+  const c = PU.recordCommands({ ...RC, piece: 'code', word: 'bloqueado', logWhat: 'falta credencial' });
+  assert.deepEqual(verbs(c.commands), ['block-open']);
+  assert.match(c.commands[0], /--piece 'code'/);
+  assert.match(c.commands[0], /--affects 'E1'/);
+  assert.match(c.commands[0], /--what '[^']*falta credencial/);
+  assert.match(c.commands[0], /--unblocks '/);
+  assert.match(c.commands[0], /--evidence 'docs\/s\.md'/);
+  assert.ok(!c.commands.some((x) => / set-status /.test(x)));
+});
+
+test('recordCommands: skipStatus omite set-status e log; a ordem é a do registro', () => {
+  const x = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: 'Usar X.', scope: 'local' }], pending: ['p1'], inflight: { add: 'feat/E1' } });
+  assert.deepEqual(verbs(x.commands), ['add-decision', 'add-pending', 'inflight-add']);
+  const y = PU.recordCommands({
+    ...RC, blockedBy: { id: 'BLQ-3', affects: ['E1'] }, word: 'executando',
+    decisions: [{ text: 'Usar X.', scope: 'local' }, { text: 'Usar Y.', scope: 'contrato' }], pending: ['p1', 'p2'], inflight: { remove: 'feat/E1' },
+  });
+  assert.deepEqual(verbs(y.commands), ['block-close', 'set-status', 'log', 'add-decision', 'add-decision', 'add-pending', 'add-pending', 'inflight-remove']);
+  assert.match(y.commands[0], /block-close 'docs\/plans\/r\/' 'BLQ-3' --how '/);
+  assert.match(y.commands[3], /--deliverable 'E1' --decision 'Usar X\.' --scope 'local'/);
+  assert.match(y.commands[4], /--scope 'contrato'/);
+  assert.match(y.commands[5], /--owner 'dono' --text 'p1'/);
+  assert.match(y.commands[7], /inflight-remove 'docs\/plans\/r\/' 'feat\/E1' --json$/);
+  const z = PU.recordCommands({ ...RC, lang: 'en', skipStatus: true, inflight: { add: 'feat/E1', note: 'running' }, pending: ['p'] });
+  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner 'owner'/);
+  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add 'docs\/plans\/r\/' 'feat\/E1' --note 'running' --json$/);
+});
+
+test('recordCommands: decisão de 600 caracteres cabe com a frase de alcance e o texto inteiro vai em cuts', () => {
+  const long = Array.from({ length: 100 }, (_, i) => 'termo' + i).join(' ');
+  assert.ok(long.length > 600);
+  const r = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: long, scope: 'contrato' }] });
+  const m = /--decision '([^']*)'/.exec(r.commands[0]);
+  assert.ok(m);
+  assert.ok(m[1].length + 1 + 'Alcance: contrato.'.length <= 300);
+  assert.equal(r.cuts.length, 1);
+  assert.equal(r.cuts[0].full, long);
+  assert.equal(r.cuts[0].source, 'docs/s.md');
+  assert.ok(r.cuts[0].where);
+  const p = PU.recordCommands({ ...RC, skipStatus: true, pending: [long] });
+  const t = /--text '([^']*)'/.exec(p.commands[0])[1];
+  assert.ok(('(dono) ' + t).length <= 300);
+  assert.equal(p.cuts[0].full, long);
+});
+
+test('recordCommands: bloqueio que afeta outros entregáveis é erro de fechamento manual', () => {
+  const r = PU.recordCommands({ ...RC, word: 'executando', blockedBy: { id: 'BLQ-3', affects: ['E1', 'E2'] } });
+  assert.match(r.error, /manual/i);
+  assert.match(r.error, /BLQ-3/);
+  assert.deepEqual(r.commands, []);
+});
+
+// ---- recordVerdict
+const okOut = (command, result = {}, changed = ['state.md']) => JSON.stringify({ tool: 'roadmap', command, folder: 'f', changed, result, errors: [], warnings: [], summary: { errors: 0, warnings: 0, exitCode: 0 } });
+const panelOut = (word, { label = '', note = '' } = {}) => okOut('status', { panel: [{ id: 'E1', segments: [{ label, word, position: 3, note }], evidence: '', next: '' }] }, []);
+const briefOut = (errors = 0) => okOut('brief', { checker: { errors, warnings: 0, stale: false } }, []);
+const pendOut = (ids) => okOut('pending-decisions', { decisions: ids.map((id) => ({ id })) }, []);
+const VX = () => {
+  const expected = PU.recordCommands({ ...RC, decisions: [{ text: 'Usar X.', scope: 'local' }] }).commands;
+  const runs = [
+    { command: expected[0], exit: 0, stdout: okOut('set-status') },
+    { command: expected[1], exit: 0, stdout: okOut('log') },
+    { command: expected[2], exit: 0, stdout: okOut('add-decision', { id: 'DEC-300', existing: false }) },
+  ];
+  const read = { status: panelOut('plano'), brief: briefOut(0), pendingDecisions: pendOut(['DEC-300']), head: 'abc', porcelain: '' };
+  return { expected, results: { runs }, read, E: 'E1', word: 'plano', piece: undefined, blockedStatus: 'bloqueado' };
+};
+const bad = (mut, re) => {
+  const v = VX();
+  mut(v);
+  const r = PU.recordVerdict(v);
+  assert.equal(r.ok, false);
+  assert.ok(r.failures.length > 0);
+  if (re) assert.match(r.failures.join('\n'), re);
+};
+const failJson = (exitCode, errors) => JSON.stringify({ tool: 'roadmap', summary: { exitCode }, errors, changed: [], result: {} });
+
+test('recordVerdict: aprovado, com o id da decisão', () => {
+  const r = PU.recordVerdict(VX());
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'] });
+});
+
+test('recordVerdict: reprova comando faltando, fora de ordem e com texto diferente', () => {
+  bad((v) => { v.results.runs.pop(); }, /missing/i);
+  bad((v) => { v.results.runs.reverse(); }, /order/i);
+  bad((v) => { v.results.runs[1].command = v.results.runs[1].command.replace('--what', '--what x'); }, /differ|text/i);
+});
+
+test('recordVerdict: reprova exit, stdout fora do contrato da CLI e erros no JSON', () => {
+  bad((v) => { v.results.runs[0].exit = 1; }, /exit/);
+  bad((v) => { v.results.runs[0].stdout = 'roadmap set-status: changed 1 file'; }, /JSON/);
+  bad((v) => { v.results.runs[0].stdout = JSON.stringify({ tool: 'outra', summary: { exitCode: 0 }, errors: [] }); }, /tool/);
+  bad((v) => { v.results.runs[0].stdout = failJson(1, []); }, /exitCode/);
+  bad((v) => { v.results.runs[2].stdout = failJson(0, [{ code: 'x' }]); }, /error/i);
+  bad((v) => { v.results.runs[2].exit = 1; v.results.runs[2].stdout = failJson(1, [{ code: 'x' }]); });
+});
+
+test('recordVerdict: reprova releitura com outra palavra e brief ausente, sem checker ou com erros', () => {
+  bad((v) => { v.read.status = panelOut('spec'); }, /plano/);
+  bad((v) => { v.read.status = ''; }, /status/i);
+  bad((v) => { v.read.brief = ''; }, /brief/);
+  bad((v) => { v.read.brief = 'not json'; }, /brief/);
+  bad((v) => { v.read.brief = okOut('brief', { strategy: {} }, []); }, /checker/);
+  bad((v) => { v.read.brief = okOut('brief', { checker: { errors: '0' } }, []); }, /checker/);
+  bad((v) => { v.read.brief = briefOut(2); }, /checker/);
+  bad((v) => { delete v.read.brief; }, /brief/);
+});
+
+test('recordVerdict: segmento rotulado, bloqueado com a nota BLQ e id de decisão ausente', () => {
+  const v = VX();
+  v.piece = 'code';
+  v.read.status = panelOut('plano', { label: 'code' });
+  assert.equal(PU.recordVerdict(v).ok, true);
+  v.read.status = panelOut('plano', { label: 'acceptance' });
+  assert.equal(PU.recordVerdict(v).ok, false);
+  const b = VX();
+  b.word = 'bloqueado';
+  b.expected = PU.recordCommands({ ...RC, word: 'bloqueado', logWhat: 'motivo' }).commands;
+  b.results.runs = [{ command: b.expected[0], exit: 0, stdout: okOut('block-open', { id: 'BLQ-9', affects: ['E1'] }) }];
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-9' });
+  assert.equal(PU.recordVerdict(b).ok, true);
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-8' });
+  assert.equal(PU.recordVerdict(b).ok, false);
+  b.read.status = panelOut('bloqueado');
+  assert.equal(PU.recordVerdict(b).ok, false);
+  bad((x) => { x.read.pendingDecisions = pendOut(['DEC-1']); }, /DEC-300/);
+  bad((x) => { x.read.pendingDecisions = ''; }, /pending/i);
+});
+
+test('recordVerdict: no-bash e lista vazia reprovam; frases do agente não decidem', () => {
+  bad((v) => { v.results = { error: 'no-bash', runs: [] }; }, /no-bash/);
+  bad((v) => { v.results = { runs: [] }; });
+  bad((v) => {
+    v.results.statusWritten = 'ok';
+    v.results.details = 'tudo certo';
+    v.read.status = panelOut('spec');
+  });
+  const ok = VX();
+  ok.results.statusWritten = 'failed';
+  ok.results.details = 'deu errado';
+  assert.equal(PU.recordVerdict(ok).ok, true);
+});
+
+test('recordVerdict: status --json sem checker ao lado de um brief sem erro é aprovado', () => {
+  const v = VX();
+  assert.ok(!('checker' in JSON.parse(v.read.status).result));
+  assert.equal(PU.recordVerdict(v).ok, true);
+});
+
+test('recordVerdict: trackerCli com espaços no caminho não perde o verbo (BLQ e decisões)', () => {
+  const sp = (c) => c.replace(/^node "[^"]*"/, 'node "C:/Users/Nome Sobrenome/.claude/roadmap.mjs"');
+  const v = VX();
+  v.expected = v.expected.map(sp);
+  v.results.runs = v.results.runs.map((r) => ({ ...r, command: sp(r.command) }));
+  v.read.pendingDecisions = pendOut(['DEC-1']);
+  const r = PU.recordVerdict(v);
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.decisionIds, ['DEC-300']);
+  assert.match(r.failures.join('\n'), /DEC-300/);
+  const b = VX();
+  b.word = 'bloqueado';
+  b.expected = PU.recordCommands({ ...RC, word: 'bloqueado', logWhat: 'motivo' }).commands.map(sp);
+  b.results.runs = [{ command: b.expected[0], exit: 0, stdout: okOut('block-open', { id: 'BLQ-9', affects: ['E1'] }) }];
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-8' });
+  assert.equal(PU.recordVerdict(b).ok, false);
+});
+
+// ---- E18 T4: registro do status pela CLI do tracker, com veredito por código
+const statusPrompts = (calls) => calls.filter((c) => /:status-/.test(c.label));
+const readWith = (word, over = {}) => ({
+  status: cliJson({ result: { panel: [{ id: 'E1', segments: [{ label: '', word, note: '' }] }] } }),
+  brief: cliJson({ result: { checker: { errors: 0 } } }),
+  pendingDecisions: cliJson({ result: { decisions: [] } }),
+  head: 'abc1234',
+  porcelain: '',
+  ...over,
+});
+const badPlan = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+
+test('AC2 registro de plano e executando pela CLI', async () => {
+  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: ['escolha A. Scope: local.', 'escolha B'], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const full = await exec({ cards: [card('E1')], deliverables: ['E1'], over: humanSpec });
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: humanSpec });
+  const plan = po.calls.find((c) => c.label === 'E1:status-c').prompt;
+  const exe = full.calls.find((c) => c.label === 'E1:status-d').prompt;
+  for (const p of [plan, exe]) {
+    assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' /);
+    assert.match(p, /node "\/t\/roadmap\.mjs" log /);
+    assert.match(p, /--deliverable 'E1'/);
+    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha A\.' --scope 'local'/);
+    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha B' --scope 'contrato'/);
+    assert.match(p, /add-pending '[^']*' --owner 'owner' --text 'precisa de credencial'/);
+  }
+  assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
+  assert.doesNotMatch(plan, /inflight-add/);
+  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(c.prompt, /roadmap-tracker/, c.label);
+  assert.equal(full.r.results[0].merged, true);
+  assert.deepEqual(full.r.results[0].concerns, []);
+});
+
+test('AC3 releitura com outra palavra reprova por código', async () => {
+  const wrong = (l) => (/:status-.*-read$/.test(l) ? readWith('zzz') : undefined);
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: wrong });
+  assert.ok(po.r.results[0].error);
+  assert.equal(po.r.results[0].failKind, 'infra');
+  assert.match(po.r.results[0].error, /zzz/);
+  const run = await exec({ cards: [card('E1')], deliverables: ['E1'], over: wrong });
+  assert.ok(run.r.results[0].concerns.some((x) => /"executing" roadmap record failed/.test(x)));
+});
+
+test('AC3 add-decision com erro da CLI reprova', async () => {
+  const bad = (l, prompt) => {
+    if (!/:status-[a-z]+$/.test(l)) return undefined;
+    const runs = promptCommands(prompt).map((command) => (/add-decision/.test(command)
+      ? { command, exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) }
+      : { command, exit: 0, stdout: cliJson() }));
+    return { runs };
+  };
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: bad });
+  assert.equal(r.results[0].failKind, 'infra');
+  assert.match(r.results[0].error, /add-decision/);
+});
+
+test('AC3 stdout que não é JSON da CLI, ou comando omitido, reprova', async () => {
+  const mk = (alter) => (l, prompt) => (/:status-[a-z]+$/.test(l) ? { runs: alter(promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() }))) } : undefined);
+  const notJson = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: mk((runs) => runs.map((x, i) => (i === 0 ? { ...x, stdout: 'OK done' } : x))) });
+  assert.equal(notJson.r.results[0].failKind, 'infra');
+  assert.match(notJson.r.results[0].error, /not JSON/);
+  const omitted = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: mk((runs) => runs.slice(1)) });
+  assert.equal(omitted.r.results[0].failKind, 'infra');
+  assert.match(omitted.r.results[0].error, /missing|different text/);
+});
+
+test('AC3 no-bash reprova', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+$/.test(l) ? { error: 'no-bash', runs: [] } : undefined) });
+  assert.ok(r.results[0].error);
+  assert.match(r.results[0].error, /no-bash/);
+});
+
+test('o veredito ignora statusWritten e details do agente', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' },
+    over: (l, prompt) => {
+      if (/:status-[a-z]+$/.test(l)) return { runs: promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() })), statusWritten: 'ok', details: 'tudo certo' };
+      if (/:status-.*-read$/.test(l)) return readWith('zzz');
+      return undefined;
+    } });
+  assert.ok(r.results[0].error);
+});
+
+test('textos longos não viram concern', async () => {
+  const long = (w) => `${w} ${'palavra '.repeat(60)}`.trim();
+  const over = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [long('decisao')], humanInputs: [{ what: long('humano'), blocking: false }] } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  let seen = 0;
+  for (const cmd of promptCommands(p)) {
+    for (const m of cmd.matchAll(/--(?:decision|text|what|note|next) '((?:[^']|'\\'')*)'/g)) { seen++; assert.ok(m[1].length <= 300, `${cmd.slice(0, 60)} (${m[1].length})`); }
+  }
+  assert.ok(seen >= 4);
+  assert.ok(!r.results[0].concerns.some((x) => /record/.test(x)));
+  const rl = calls.filter((c) => /review-log/.test(c.label)).map((c) => c.prompt).join('\n');
+  assert.match(rl, /Textos cortados no registro/);
+  assert.ok(rl.includes(long('decisao').replace(/\s+/g, ' ')));
+  assert.ok(rl.includes(long('humano').replace(/\s+/g, ' ')));
+  assert.ok(rl.includes('"recordCuts"'));
+});
+
+test('retomada não repete log: a palavra já gravada tira set-status e log, e o veredito confere a palavra', async () => {
+  const { r, calls } = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  assert.doesNotMatch(p, / set-status /);
+  assert.doesNotMatch(p, /roadmap\.mjs" log /);
+  assert.match(p, /add-decision/);
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.results[0].concerns, []);
+  const wrong = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'], over: (l) => (/:status-.*-read$/.test(l) ? readWith('c') : undefined) });
+  assert.ok(wrong.r.results[0].concerns.some((x) => /"executing" roadmap record failed/.test(x)));
+});
+
+test('célula com rótulos usa --piece code', async () => {
+  const { calls } = await exec({ cards: [card('E1', { status: 'code: c; acceptance: blocked (BLQ-2)' })], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:status-d').prompt, /set-status '[^']*' 'E1' 'd' --piece 'code'/);
+});
+
+test('falta de trackerCli: erro antes de qualquer agente', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { trackerCli: undefined } });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /trackerCli/);
+  assert.equal(calls.length, 0);
+});
+
+test('BASH_ONLY literal em todo prompt de registro e de releitura; a descoberta não exige o tracker', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const ps = statusPrompts(calls);
+  assert.ok(ps.length >= 2);
+  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
+  for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+  const disc = calls.find((c) => c.label === 'discovery');
+  assert.doesNotMatch(disc.prompt, /trackerAvailable/);
+  assert.match(disc.prompt, /language/);
+  assert.ok(!('trackerAvailable' in disc.opts.schema.properties));
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { trackerAvailable: false } });
+  assert.equal(d.r.results[0].merged, true);
+});
+
+test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
+  assert.ok(r.operatorActions.length > 0);
+  const rep = calls.find((c) => c.label === 'report').prompt;
+  assert.doesNotMatch(rep, /\/t\/roadmap\.mjs/);
+});
+
+test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
+  const p = calls.find((c) => c.label === 'E1:status-blocked').prompt;
+  assert.match(p, /block-open '[^']*' --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
+  assert.match(p, /--affects 'E1'/);
+  assert.doesNotMatch(p, / set-status /);
+  assert.ok(r.results[0].error);
+});
+
+test('registro de bloqueio com texto cortado: a fonte é o log real e o texto completo vai ao log de revisões', async () => {
+  const tasks = [{ n: 1, title: 't', tier: 'sonnet', external: false }];
+  const long = `motivo ${'palavra '.repeat(80)}`.trim();
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: withPlan(tasks, (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: long } : undefined)) });
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.failKind, 'conteudo');
+  const blocked = calls.find((c) => c.label === 'E1:status-blocked');
+  assert.ok(blocked);
+  assert.doesNotMatch(blocked.prompt, /-\*-reviews\.md/);
+  assert.match(blocked.prompt, /docs\/superpowers\/reviews\/[^ ']*-E1-[^ *']*-reviews\.md/);
+  const logs = calls.filter((c) => /review-log-blocked-record$/.test(c.label));
+  assert.equal(logs.length, 1);
+  assert.match(logs[0].prompt, /Textos cortados no registro/);
+  assert.ok(logs[0].prompt.includes('palavra palavra palavra'));
+});
+
+// ---- E18 T5: etapa de documentação pela CLI
+const docsPrompts = (calls) => calls.filter((c) => /:docs(-measure)?\d$/.test(c.label));
+
+test('AC2 documentação pela CLI', async () => {
+  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(humanSpec, planRows([{ ac: 'AC1', kind: 'human' }])) });
+  const p = calls.find((c) => c.label === 'E1:docs1').prompt;
+  assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
+  assert.match(p, /node "\/t\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
+  assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
+  const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
+  assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
+  assert.ok(pend.some((c) => /criterion AC1 has no automatic evidence/.test(c)), 'critério sem evidência automática');
+  assert.doesNotMatch(p, /roadmap-tracker/);
+  assert.match(p, /Do NOT propose, write or approve a strategy revision/);
+  const order = promptCommands(p).map((c) => /^node "[^"]*" (\S+)/.exec(c)[1]);
+  assert.deepEqual(order.slice(0, 2), ['set-status', 'log']);
+  assert.equal(order[order.length - 1], 'inflight-remove');
+  const risk = await resumedRun(loggedRun);
+  assert.ok(promptCommands(risk.calls.find((c) => c.label === 'E1:docs1').prompt).some((c) => /add-pending/.test(c) && c.includes('RISK-X')), 'risco aceito');
+});
+
+test('AC3 documentação: releitura falha leva à 2ª rodada só com o que faltou', async () => {
+  const mk = (rounds) => (l) => {
+    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { status: readWith('zzz').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    return undefined;
+  };
+  const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(1) });
+  const p1 = one.calls.find((c) => c.label === 'E1:docs1').prompt;
+  const p2 = one.calls.find((c) => c.label === 'E1:docs2').prompt;
+  assert.match(p1, /roadmap\.mjs" log /);
+  assert.doesNotMatch(p2, /roadmap\.mjs" log /);
+  assert.match(p2, /roadmap\.mjs" set-status /);
+  assert.doesNotMatch(p2, /inflight-remove/);
+  assert.match(p2, /FIX ROUND/);
+  assert.equal(one.r.results[0].merge.docsOk, true);
+  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(2) });
+  assert.equal(two.r.results[0].merge.docsOk, false);
+  assert.ok(two.r.operatorActions.some((o) => o.kind === 'docs'));
+});
+
+test('AC3 documentação: comando com erro da CLI repete só ele e o veredito não confia no agente', async () => {
+  let n = 0;
+  const bad = (l, prompt) => {
+    if (/^E1:docs-measure/.test(l)) return { status: readWith('e').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (!/:docs\d$/.test(l)) return undefined;
+    n++;
+    return { runs: promptCommands(prompt).map((command) => (n === 1 && / log /.test(command)
+      ? { command, exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) } : { command, exit: 0, stdout: cliJson() })), statusWritten: 'ok' };
+  };
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: bad });
+  const p2 = calls.find((c) => c.label === 'E1:docs2').prompt;
+  assert.equal(promptCommands(p2).length, 1);
+  assert.match(p2, /roadmap\.mjs" log /);
+  assert.equal(r.results[0].merge.docsOk, true);
+});
+
+test('checker só de brief: nenhum prompt cita o arquivo do checker; docs-measure e releitura pedem status e brief', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  // The discovery keeps returning checker and checkerExists (spec), so only it names the file.
+  for (const c of calls.filter((x) => x.label !== 'discovery')) {
+    assert.ok(!c.prompt.includes('check-roadmap.mjs'), c.label);
+    assert.ok(!c.prompt.includes('docs/plans/roadmap-x/check.mjs'), c.label);
+  }
+  for (const l of ['E1:docs-measure1', 'E1:status-d-read']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.match(p, /roadmap\.mjs" status '[^']*' --json/, l);
+    assert.match(p, /roadmap\.mjs" brief '[^']*' --json/, l);
+  }
+  const rep = calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /brief --json/);
+  assert.match(rep, /"errors":0/);
+});
+
+test('forma das chamadas de script: todo roadmap.mjs vem entre aspas, com argumento depois, e consta em WORKFLOW_SCRIPTS', async () => {
+  const { WORKFLOW_SCRIPTS } = await import('../scripts/preflight.mjs');
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  let seen = 0;
+  for (const c of calls.filter((x) => x.label !== 'discovery')) {
+    for (const m of c.prompt.matchAll(/roadmap\.mjs/g)) {
+      seen++;
+      const around = c.prompt.slice(Math.max(0, m.index - 40), m.index + 40);
+      assert.match(around, /node "[^"]*roadmap\.mjs" \S/, c.label + ': ' + around);
+      assert.ok(WORKFLOW_SCRIPTS.includes('roadmap.mjs'));
+    }
+  }
+  assert.ok(seen > 5);
+});
+
+test('BASH_ONLY literal em docs e docs-measure', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const ps = docsPrompts(calls);
+  assert.ok(ps.length >= 2);
+  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
+  for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+});
+
+test('recordVerdict: reprova worktree sujo na releitura (o agente não comitou)', () => {
+  bad((v) => { v.read.porcelain = ' M docs/plans/r/state.md\n'; }, /not clean/);
+  const v = VX();
+  v.read.porcelain = '\n';
+  assert.equal(PU.recordVerdict(v).ok, true);
+});
+
+test('recordCommands: statusEvidence limita só o set-status; o log segue com a lista inteira', () => {
+  const ev = ['a'.repeat(40), 'gates G1, G2', 'docs/s.md', 'docs/p.md', 'docs/r.md'];
+  const r = PU.recordCommands({ ...RC, evidence: ev, statusEvidence: [ev[0]] });
+  const st = r.commands.find((c) => c.includes(' set-status '));
+  const lg = r.commands.find((c) => c.includes(' log '));
+  assert.equal((st.match(/--evidence/g) || []).length, 1);
+  assert.equal((lg.match(/--evidence/g) || []).length, 5);
+});
+
+test('set-status do registro de documentação passa pela CLI real com a célula Evidência já cheia', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const cli = join(here, '..', '..', 'roadmap-tracker', 'scripts', 'roadmap.mjs');
+  const fx = join(here, '..', '..', 'roadmap-tracker', 'scripts', 'fixtures', 'valid');
+  const dir = mkdtempSync(join(tmpdir(), 'e18ff-'));
+  try {
+    cpSync(fx, dir, { recursive: true });
+    const st = join(dir, 'state.md');
+    const old = '`docs/superpowers/specs/2026-11-11-E1-uma-especificacao-bem-longa-design.md`, `docs/superpowers/plans/2026-11-11-E1-um-plano-bem-longo-para-o-teste.md`, `docs/plans/roadmap-x/outro-arquivo.md`';
+    writeFileSync(st, readFileSync(st, 'utf8').replace('| E1 | spec | `docs/spec-e1.md` |', `| E1 | spec | ${old} |`));
+    const ev = ['a'.repeat(40), 'gates G1, G2, G3, G4, G5', 'docs/superpowers/specs/2026-11-11-E1-uma-especificacao-bem-longa-design.md', 'docs/superpowers/plans/2026-11-11-E1-um-plano-bem-longo-para-o-teste.md', 'docs/superpowers/reviews/2026-11-11-E1-slug-reviews.md'];
+    const cmd = PU.recordCommands({ ...RC, cli, folder: dir, word: 'on-branch', evidence: ev, statusEvidence: [ev[0]] }).commands.find((c) => c.includes(' set-status '));
+    // Same argv the shell would build: single-quoted words, with a quote written as '\''.
+    const argv = [...cmd.slice(cmd.indexOf('" ') + 2).matchAll(/'((?:[^']|'\\'')*)'|(\S+)/g)].map((m) => (m[1] !== undefined ? m[1] : m[2]));
+    const r = spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

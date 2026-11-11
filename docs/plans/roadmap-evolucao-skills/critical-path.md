@@ -67,8 +67,6 @@ graph LR
   E25 --> E13
   E26 --> E13
   E27 --> E13
-  BLQ1["BLQ-1: tarefa 9 de E4 sem subagente"] --> E4
-  BLQ2["BLQ-2: ratificação das decisões de contrato de E3"] --> E18
 ```
 
 A cadeia mais longa até o fechamento tem 12 entregáveis. Entregáveis em alguma cadeia desse comprimento que termina em E13: E14, E2, E3, E18, E17, E19, E20, E8, E9, E21, E23, E16, E27, E12, E13. Só ordem; não há datas (DEC-003).
@@ -79,6 +77,6 @@ Próximo portão por trilha (o estado atual está em `state.md`):
 
 - decisions: DEC-088 a DEC-101 (E15), DEC-102 a DEC-116 (E2) e DEC-117 a DEC-135 (E5) e DEC-136 a DEC-157 (E3), DEC-158 a DEC-175 (E4) e DEC-176 a DEC-192 (E6) aguardam ratificação do dono, as de alcance contrato antes de E17 (DEC-030); DEC-085 a DEC-087 ratificadas; as sondas de E14 e os experimentos de DEC-052 estão concluídos.
 - measurement: E1 na branch de release; E15 na branch de release, depois as execuções pagas do dono (linha de base).
-- engineering: E2, E3, E5 e E6 na branch de release, que entra em `main` depois do portão do release; E4 bloqueado na `feat/E4` (BLQ-1: tarefa 9 espera o orquestrador despachar o revisor); E18 bloqueado na `feat/E18` (BLQ-2: espera a ratificação das decisões de contrato de E3 pelo dono).
+- engineering: E2, E3, E4, E5 e E6 na branch de release, que entra em `main` depois do portão do release; E18 na branch de release; E22 retoma pelo release.
 - release: branch de release e tag da versão atual criadas (DEC-002, DEC-036); primeira publicação em E17.
 - external: nenhum.

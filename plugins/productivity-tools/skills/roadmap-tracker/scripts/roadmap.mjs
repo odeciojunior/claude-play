@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  parseRoadmapTexts, parseStatusSegments, decisionScope, norm, idsIn, shasIn, blockLines, splitRow, stripNote,
+  parseRoadmapTexts, parseStatusSegments, decisionScope, releasedDeliverable, norm, idsIn, shasIn, blockLines, splitRow, stripNote,
 } from '../../../lib/roadmap-format.mjs';
 import { applyEdits, serializeRow } from '../../../lib/roadmap-edit.mjs';
 import {
@@ -31,7 +31,7 @@ export const COMMAND_NAMES = [
 const VALUE_OPTIONS = {
   date: false, what: false, evidence: true, next: true, deliverable: false, sha: false, only: false,
   affects: false, unblocks: false, piece: false, since: false, how: false, note: false, owner: false,
-  text: false, decision: false, scope: false, discarded: false, revisit: false, contradicts: false,
+  text: false, decision: false, scope: false, discarded: false, revisit: false, contradicts: false, amend: false,
 };
 const FLAGS = ['json', 'help'];
 
@@ -58,7 +58,7 @@ Write commands:
   add-pending --owner <owner> --text <text>
   inflight-add <branch> [--note <text>]
   inflight-remove <branch>
-  ratify <DEC-NNN> [--date] [--what]
+  ratify <DEC-NNN>... [--amend <text> [--revisit <t>]] [--date] [--what]   one log row per call; --amend only with one DEC
   reject <DEC-NNN> --decision <text> [--discarded <t>] [--revisit <t>] [--date] [--what]
 
 Flags: --json (machine output, same exit code), --help.
@@ -189,7 +189,7 @@ function nextIds(ctx) {
   return out;
 }
 
-function pendingDecisions(ctx) {
+export function pendingDecisions(ctx) {
   const { roadmap, parsed } = ctx;
   const v = roadmap.config.vocab;
   const releasedWords = v.releasedStatuses || ['released', 'measured'];
@@ -204,7 +204,7 @@ function pendingDecisions(ctx) {
       .filter((c) => c.depends.some((d) => es.includes(d)))
       .filter((c) => (statusOf.get(c.id) || []).some((w) => pos(w) >= 2 && pos(w) <= 8))
       .map((c) => c.id);
-    const released = es.some((e) => (statusOf.get(e) || []).some((w) => releasedWords.includes(w)));
+    const released = releasedDeliverable(es, statusOf, releasedWords) !== undefined;
     out.push({
       id: row[0], deliverable: row[2], scope, startedDependents: scope === 'local' ? [] : dependents, released,
     });
@@ -531,16 +531,28 @@ function appendDecisionEdit(bl, text) {
   return { op: 'insertAfter', line: bl.rows.length ? bl.rows[bl.rows.length - 1] : bl.header + 1, text };
 }
 
-// Pending items that cite only `dec` go away; items citing it among others stay and are reported.
-function dropPendingFor(ctx, dec) {
+// DEC ids cited in a text, with "DEC-a a DEC-b" / "DEC-a to DEC-b" ranges expanded to every id in between.
+function decIdsIn(text) {
+  const ids = new Set(idsIn(text, /\bDEC-\d+\b/g));
+  for (const m of (text || '').matchAll(/\bDEC-(\d+)\s+(?:a|to)\s+DEC-(\d+)\b/gi)) {
+    const [lo, hi] = [Number(m[1]), Number(m[2])];
+    const width = Math.max(m[1].length, m[2].length);
+    if (hi >= lo && hi - lo <= 1000) for (let n = lo; n <= hi; n++) ids.add(`DEC-${String(n).padStart(width, '0')}`);
+  }
+  return [...ids];
+}
+
+// Pending items that cite only decisions in `decs` go away; items citing others too stay and are reported.
+function dropPendingFor(ctx, decs) {
+  const set = new Set([].concat(decs));
   const pend = listItems(ctx, 'pending');
   const edits = [];
   if (!pend) return edits;
   for (const it of pend.items) {
-    const decs = idsIn(it.text, /\bDEC-\d+\b/g);
-    if (!decs.includes(dec)) continue;
-    if (decs.length === 1) edits.push({ op: 'remove', line: it.start, end: it.end });
-    else ctx.warnings.push({ code: 'pending-multi-cite', message: `pending item cites ${decs.join(', ')}; left in place: ${collapse(it.text).slice(0, 80)}` });
+    const cited = decIdsIn(it.text);
+    if (!cited.some((d) => set.has(d))) continue;
+    if (cited.every((d) => set.has(d))) edits.push({ op: 'remove', line: it.start, end: it.end });
+    else ctx.warnings.push({ code: 'pending-multi-cite', message: `pending item cites ${cited.join(', ')}; left in place: ${collapse(it.text).slice(0, 80)}` });
   }
   return edits;
 }
@@ -1015,18 +1027,51 @@ const COMMANDS = {
 
   ratify(ctx) {
     const { opts } = ctx;
-    if (ctx.args.length !== 1) throw usage('ratify needs exactly one DEC-<NNN>');
-    const dec = ctx.args[0];
-    const { row } = executorPending(ctx, dec);
-    const cells = [...row.cells];
-    cells[8] = ctx.roadmap.config.vocab.decisionInForce;
-    const what = opts.what !== undefined ? opts.what : (ctx.lang === 'pt' ? `${dec} ratificada pelo dono` : `${dec} ratified by the owner`);
-    const stateEdits = dropPendingFor(ctx, dec);
-    const logEdit = logRow(ctx, { deliverable: logDeliverable(row.cells[2]), what, evidence: [ctx.roadmap.paths.decisions], date: ctx.today });
-    const edits = new Map([['decisions', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]], ['log', [logEdit]]]);
+    const decs = ctx.args;
+    if (decs.length < 1) throw usage('ratify needs at least one DEC-<NNN>');
+    if (new Set(decs).size !== decs.length) throw usage('ratify got a repeated DEC-<NNN>');
+    if (opts.amend !== undefined && decs.length !== 1) throw usage('--amend works with exactly one DEC-<NNN>');
+    if (opts.revisit !== undefined && opts.amend === undefined) throw usage('--revisit needs --amend');
+    const v = ctx.roadmap.config.vocab;
+    const pt = ctx.lang === 'pt';
+    const found = decs.map((dec) => ({ dec, ...executorPending(ctx, dec) })); // any refusal here writes nothing
+    const { bl } = found[0];
+    const edits = new Map();
+    const decisionEdits = found.map(({ row }) => {
+      const cells = [...row.cells];
+      cells[8] = v.decisionInForce;
+      return { op: 'replace', line: row.line, text: serializeRow(cells) };
+    });
+    let amendment = null;
+    if (opts.amend !== undefined) {
+      const { dec, row } = found[0];
+      const text = collapse(opts.amend);
+      if (text === '') throw usage('--amend is empty');
+      amendment = nextId(ctx.folder, ctx.roadmap.strategyPath, 'DEC');
+      const fresh = [
+        amendment, ctx.today, row.cells[2],
+        pt ? `Emenda do dono a ${dec}, ao ratificá-la: ${text}` : `Owner amendment to ${dec}, on ratifying it: ${text}`,
+        pt ? `O texto original de ${dec}.` : `The original text of ${dec}.`,
+        '-',
+        opts.revisit !== undefined ? collapse(opts.revisit) : '-',
+        'user', v.decisionInForce,
+      ];
+      fresh.forEach((c, i) => checkCell(ctx, `decision cell ${i + 1}`, c));
+      decisionEdits.push(appendDecisionEdit(bl, serializeRow(fresh)));
+    }
+    edits.set('decisions', decisionEdits);
+    const nums = decs.map((d) => +d.slice(4));
+    const consecutive = decs.length > 2 && nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+    const cite = decs.length === 1 ? decs[0] : consecutive ? `${decs[0]} ${pt ? 'a' : 'to'} ${decs[decs.length - 1]}` : decs.join(', ');
+    const what = opts.what !== undefined ? opts.what
+      : (pt ? `${cite} ${decs.length === 1 ? 'ratificada' : 'ratificadas'} pelo dono` : `${cite} ratified by the owner`);
+    const ds = [...new Set(found.flatMap(({ row }) => idsIn(row.cells[2], /\bE\d+\b/g)))];
+    const deliverable = ds.length ? ds.join(', ') : '-';
+    edits.set('log', [logRow(ctx, { deliverable: logDeliverable(deliverable), what, evidence: [ctx.roadmap.paths.decisions], date: ctx.today })]);
+    const stateEdits = dropPendingFor(ctx, decs);
     if (stateEdits.length) edits.set('state', stateEdits);
     commitEdits(ctx, edits);
-    ctx.result = { id: dec };
+    ctx.result = { ids: decs, ...(decs.length === 1 ? { id: decs[0] } : {}), ...(amendment ? { amendment } : {}) };
   },
 
   reject(ctx) {
@@ -1051,7 +1096,7 @@ const COMMANDS = {
     const old = [...row.cells];
     old[8] = `${v.decisionSupersededBy} ${id}`;
     const what = opts.what !== undefined ? opts.what : (pt ? `${dec} rejeitada pelo dono; ${id} a substitui` : `${dec} rejected by the owner; ${id} supersedes it`);
-    const stateEdits = dropPendingFor(ctx, dec);
+    const stateEdits = dropPendingFor(ctx, [dec]);
     const logEdit = logRow(ctx, { deliverable: logDeliverable(row.cells[2]), what, evidence: [ctx.roadmap.paths.decisions], date: ctx.today });
     const edits = new Map([
       ['decisions', [{ op: 'replace', line: row.line, text: serializeRow(old) }, appendDecisionEdit(bl, serializeRow(fresh))]],

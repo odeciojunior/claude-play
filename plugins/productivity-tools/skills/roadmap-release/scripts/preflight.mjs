@@ -2,12 +2,13 @@
 // Preflight for the roadmap-release skill: validates (or derives) release.config.json
 // and checks permission rules. Read-only: it never writes any file or setting.
 import { readFileSync, existsSync } from 'node:fs';
-import { join, resolve, isAbsolute, relative, sep } from 'node:path';
+import { join, resolve, isAbsolute, relative, sep, dirname, posix } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
+import { pendingDecisions } from '../../roadmap-tracker/scripts/roadmap.mjs';
+import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS } from '../../../lib/roadmap-format.mjs';
 
 const KINDS = ['exit', 'tests'];
 
@@ -184,10 +185,40 @@ export function subcommands(cmd) {
 }
 const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 
-export function requiredCommands(cfg) {
+// Scripts of the plugin that the workflow runs through Bash with an exact path (DEC-060): the rule is narrower than Bash(node:*).
+export const WORKFLOW_SCRIPTS = ['roadmap.mjs'];
+
+export function scriptRule(name) {
+  return `Bash(node *${name}" *)`;
+}
+
+const idOf = (cell) => (String(cell || '').match(/\bE\d+\b/) || [String(cell || '').trim()])[0];
+
+// {verify} commands (executable kinds only) of the cards that are not on the branch yet: the workflow runs them as evidence.
+// Open card: some status segment before deliverableStatuses[4], or blocked, or the card has no panel row.
+export function openCardCommands(parsed, vocab) {
+  const ds = vocab?.deliverableStatuses || [];
+  if (ds.length < 5) return [];
+  const blocked = new Set(['blocked', ds[8], vocab.blockedStatus].filter(Boolean));
+  const rows = parsed?.blocks?.state?.panel?.rows || [];
+  const statusOf = new Map(rows.map((r) => [idOf(r[0]), parseStatusSegments(r[1]).map((s) => s.word)]));
+  const out = [];
+  for (const card of parsed?.cards || []) {
+    const words = statusOf.get(card.id);
+    const open = !words || words.length === 0 || words.some((w) => blocked.has(w) || ds.indexOf(w) < 4);
+    if (!open) continue;
+    for (const item of card.acceptance || []) {
+      const t = item.tag;
+      if (t && EXECUTABLE_KINDS.includes(t.kind) && t.evidence && !out.includes(t.evidence)) out.push(t.evidence);
+    }
+  }
+  return out;
+}
+
+export function requiredCommands(cfg, extras = {}) {
   const cmds = [];
   for (const g of cfg?.gates || []) if (g.restricted !== true) cmds.push(g.cmd);
-  cmds.push(cfg?.install, ...asList(cfg?.setup), ...asList(cfg?.beforeEvidence));
+  cmds.push(cfg?.install, ...asList(cfg?.setup), ...asList(cfg?.beforeEvidence), ...asList(extras?.cards));
   const out = {};
   const add = (rule, sub) => {
     out[rule] ||= [];
@@ -201,7 +232,8 @@ export function requiredCommands(cfg) {
       if (w) add(`Bash(${w}:*)`, sub);
     }
   }
-  // The workflow itself runs git and node (checker, docs measure, test integrity): a narrower rule is not enough.
+  for (const { name, path } of extras?.scripts || []) add(scriptRule(name), `node "${path}" status`);
+  // The workflow itself runs git and node (temporary Node programs, docs measure, test integrity): a narrower rule is not enough.
   out['Bash(git:*)'] = [];
   out['Bash(node:*)'] = [];
   return out;
@@ -248,13 +280,56 @@ function repoRoot(from) {
   } catch { return from; }
 }
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Absolute path (with /) of the tracker CLI shipped next to this skill; an error when it is missing or has a double quote
+// (the workflow wraps the path in double quotes).
+export function trackerCliPath(from = HERE) {
+  const path = resolve(from, '../../roadmap-tracker/scripts/roadmap.mjs').split(sep).join('/');
+  if (path.includes('"') || String(from).includes('"')) return { path, error: `tracker CLI path contains a double quote: ${path}` };
+  if (!existsSync(path)) return { path, error: `tracker CLI not found: ${path}` };
+  return { path, error: '' };
+}
+
+// Config, strategy and state/decisions texts of the roadmap folder: from `ref` when it has the folder, else from the working tree.
+// Throws when the config or the strategy is not readable.
+function readRoadmapTexts(root, dir, ref, warnings) {
+  const norm = (t) => t.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const rel = relative(root, dir).split(sep).join('/');
+  // normalize: the strategy path is relative to the folder and may climb out of it (../strategy.md); git show wants a clean path.
+  const at = (name) => posix.normalize(rel ? `${rel}/${name}` : name);
+  let text = (name) => { try { return norm(readFileSync(join(dir, name), 'utf8')); } catch { return null; } };
+  const onRef = ref ? readRef(root, ref, at('roadmap.config.json')) : null;
+  if (onRef !== null) text = (name) => { const t = readRef(root, ref, at(name)); return t === null ? null : norm(t); };
+  else warnings.push(ref ? `roadmap cards read from the working tree (${ref} has no ${rel || '.'})` : 'roadmap cards read from the working tree (no --ref given)');
+  const config = JSON.parse(text('roadmap.config.json'));
+  const strategy = text(config.strategy);
+  if (strategy === null) throw new Error(`strategy not readable: ${config.strategy}`);
+  const files = {};
+  for (const role of ['state', 'decisions']) if (typeof config.files?.[role] === 'string') files[role] = text(config.files[role]);
+  return { config, strategy, files, from: onRef !== null ? ref : 'working tree' };
+}
+
+// Executor decisions still pending, as the tracker CLI lists them (pending-decisions); a failure is a warning.
+function readPendingDecisions(texts, warnings) {
+  // A config without a vocab (a stub) has no decisions vocabulary to read: nothing to list, not a failure.
+  if (!texts || !texts.config?.vocab || typeof texts.files.decisions !== 'string') return [];
+  try {
+    const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
+    return pendingDecisions({ roadmap: { config: texts.config }, parsed });
+  } catch (e) {
+    warnings.push(`pending executor decisions not read: ${e.message}`);
+    return [];
+  }
+}
+
 function readRef(root, ref, relFile) {
   try {
     return execFileSync('git', ['show', `${ref}:${relFile}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch { return null; }
 }
 
-export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null } = {}) {
+export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -288,11 +363,29 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     }
   }
   if (config) errors.push(...validateReleaseConfig(config));
+  const tracker = trackerCliPath(trackerFrom);
+  if (tracker.error) errors.push(tracker.error);
   let missing = [];
+  let pending = [];
   if (config && errors.length === 0) {
     const settings = ['settings.json'].map((f) => join(configDir || join(home, '.claude'), f))
       .concat([join(root, '.claude', 'settings.json'), join(root, '.claude', 'settings.local.json')]).map(readJson);
-    const cmds = requiredCommands(config);
+    let texts = null;
+    try { texts = readRoadmapTexts(root, dir, ref, warnings); } catch (e) {
+      warnings.push(`roadmap cards not read, so the {verify} commands of open cards are not in the permission list: ${e.message}`);
+    }
+    let cards = [];
+    if (texts) {
+      try { cards = openCardCommands(parseRoadmapTexts({ strategy: texts.strategy, files: texts.files }), texts.config.vocab || {}); } catch (e) {
+        warnings.push(`roadmap cards not read, so the {verify} commands of open cards are not in the permission list: ${e.message}`);
+      }
+    }
+    pending = readPendingDecisions(texts, warnings);
+    const extras = {
+      cards,
+      scripts: WORKFLOW_SCRIPTS.map((name) => ({ name, path: tracker.path })),
+    };
+    const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
     for (const g of config.gates.filter((x) => x.restricted === true)) {
       const extra = Object.keys(requiredCommands({ gates: [{ ...g, restricted: false }] })).filter((r) => !(r in cmds));
@@ -305,7 +398,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
   }
   // New on every call, never inside config: the workflow puts it in its discovery read (the first agent call) so a resume reads git again instead of a cached answer.
   const runToken = `${new Date().toISOString()}-${randomBytes(6).toString('hex')}`;
-  return { configPath, generated, errors, missingRules: missing, warnings, config, runToken };
+  return { configPath, generated, errors, missingRules: missing, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
