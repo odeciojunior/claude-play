@@ -4,6 +4,7 @@
 // <dir> must be outside this repository. Seeded variants arrive in stages (plan, spec and code).
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { makeSandbox, STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
@@ -54,23 +55,48 @@ export function copyTree(src, dst) {
   }
 }
 
-function pickFromRun(fromRun, sub, re, what) {
+function pickFileName(fromRun, sub, re, what) {
   const d = join(resolve(fromRun), sub);
   const hit = existsSync(d) ? readdirSync(d).filter((n) => re.test(n)).sort()[0] : undefined;
   if (!hit) throw new Error(`--from-run: ${what} not found in ${d}`);
-  return readText(join(d, hit));
+  return { dir: d, name: hit };
 }
+
+function pickFromRun(fromRun, sub, re, what) {
+  const { dir, name } = pickFileName(fromRun, sub, re, what);
+  return readText(join(dir, name));
+}
+
+const E5_SPEC_RE = /-E5-.*-design\.md$/;
+const E5_PLAN_RE = /-E5-.*\.md$/;
 
 function e5Texts(fromRun) {
   if (fromRun) {
     return {
-      spec: pickFromRun(fromRun, 'docs/superpowers/specs', /-E5-.*-design\.md$/, 'E5 spec'),
-      plan: pickFromRun(fromRun, 'docs/superpowers/plans', /-E5-.*\.md$/, 'E5 plan'),
+      spec: pickFromRun(fromRun, 'docs/superpowers/specs', E5_SPEC_RE, 'E5 spec'),
+      plan: pickFromRun(fromRun, 'docs/superpowers/plans', E5_PLAN_RE, 'E5 plan'),
     };
   }
   return {
     spec: readText(join(SCEN, 'e5', 'spec.md')),
     plan: readText(join(SCEN, 'e5', 'plan.md')),
+  };
+}
+
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+// Describes where the seeded spec and plan came from: file names and hashes only, never the folder path.
+export function seedSourceOf(fromRun) {
+  const { spec, plan } = e5Texts(fromRun);
+  const base = { specSha256: sha256(spec), planSha256: sha256(plan) };
+  if (!fromRun) {
+    return { kind: 'sintetico', spec: 'scenario/e5/spec.md', plan: 'scenario/e5/plan.md', ...base };
+  }
+  return {
+    kind: 'execucao-aprovada',
+    spec: pickFileName(fromRun, 'docs/superpowers/specs', E5_SPEC_RE, 'E5 spec').name,
+    plan: pickFileName(fromRun, 'docs/superpowers/plans', E5_PLAN_RE, 'E5 plan').name,
+    ...base,
   };
 }
 

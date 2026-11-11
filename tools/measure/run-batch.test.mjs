@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { runBatch, toAttemptCounters, readJournal, checkValidity } from './run-batch.mjs';
-import { E5_PATHS } from './make-scenario.mjs';
+import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'run-batch.mjs');
@@ -736,6 +736,112 @@ test('code outcomes are measured while feat/E5 is still held by a release worktr
     const fake = makeFake(s.configDir, { journal: 'code-valid.jsonl', afterRun: heldByWorktree });
     const r = await runBatch(seededOpts(s, 'codigo-semeado-A'), { exec: fake.exec, now: NOW });
     for (const o of r.aggregate.attempts[0].outcomes) assert.equal(o.outcome, 'perdido', o.id);
+  } finally {
+    s.done();
+  }
+});
+
+// ---- superpowers, --from-run and the seed source (E15 T2) ----
+
+const SP_SHA = 'fab0000000000000000000000000000000000007';
+
+function writeSuperpowers(configDir) {
+  const file = join(configDir, 'plugins', 'installed_plugins.json');
+  const j = JSON.parse(readFileSync(file, 'utf8'));
+  j.plugins['superpowers@claude-plugins-official'] = [{ version: '7.0.0', gitCommitSha: SP_SHA }];
+  writeFileSync(file, JSON.stringify(j));
+}
+
+function approvedRun(base) {
+  const specDir = join(base, 'docs', 'superpowers', 'specs');
+  const planDir = join(base, 'docs', 'superpowers', 'plans');
+  mkdirSync(specDir, { recursive: true });
+  mkdirSync(planDir, { recursive: true });
+  const rd = (f) => readFileSync(join(here, 'scenario', 'e5', f), 'utf8').replace(/\r\n/g, '\n');
+  writeFileSync(join(specDir, '2026-01-01-E5-x-design.md'), rd('spec.md') + '[fab] extra line\n');
+  writeFileSync(join(planDir, '2026-01-01-E5-x.md'), rd('plan.md') + '[fab] extra line\n');
+}
+
+test('aggregate records the superpowers version', async () => {
+  const s = setup();
+  try {
+    writeSuperpowers(s.configDir);
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.superpowers, { version: '7.0.0', commit: SP_SHA });
+  } finally {
+    s.done();
+  }
+});
+
+test('missing superpowers is recorded as ausente', async () => {
+  const s = setup();
+  const err = captureStderr();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.superpowers, { version: 'ausente', commit: 'ausente' });
+    assert.match(err.text(), /superpowers/);
+  } finally {
+    err.restore();
+    s.done();
+  }
+});
+
+test('seeded variant with --from-run seeds from the given folder and records its source', async () => {
+  const s = setup();
+  const folder = join(s.base, 'approved');
+  try {
+    approvedRun(folder);
+    const fake = makeFake(s.configDir, { journal: 'plan-valid.jsonl' });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { fromRun: folder }), { exec: fake.exec, now: NOW });
+    const sandbox = join(s.work, 'plano-semeado-A-1');
+    assert.match(readFileSync(join(sandbox, E5_PATHS.plan), 'utf8'), /\[fab\] extra line/);
+    assert.equal(r.aggregate.seedSource.kind, 'execucao-aprovada');
+    assert.equal(r.aggregate.seedSource.planSha256, seedSourceOf(folder).planSha256);
+    const text = readFileSync(join(r.dir, 'aggregate.json'), 'utf8');
+    assert.ok(!text.includes(folder));
+    assert.ok(!text.includes(folder.replaceAll(String.fromCharCode(92), '/')));
+    assert.ok(!text.includes(JSON.stringify(folder).slice(1, -1)));
+  } finally {
+    s.done();
+  }
+});
+
+test('seeded variant without --from-run records a synthetic source', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: 'plan-valid.jsonl' });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.seedSource.kind, 'sintetico');
+  } finally {
+    s.done();
+  }
+});
+
+test('unseeded variant has no seedSource', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec: fake.exec, now: NOW });
+    assert.equal('seedSource' in r.aggregate, false);
+  } finally {
+    s.done();
+  }
+});
+
+test('--from-run on an unseeded variant is a usage error', async () => {
+  const s = setup();
+  const folder = join(s.base, 'approved');
+  try {
+    approvedRun(folder);
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch({ ...baseOpts(s), variant: 'completo', fromRun: folder }, { exec: fake.exec, now: NOW }), (e) => e.name === 'UsageError');
+    assert.equal(existsSync(s.work), false);
+    assert.equal(existsSync(s.out), false);
+    const r = spawnSync(process.execPath, [script, '--variant', 'completo', '--runs', '1', '--work', s.work, '--out', s.out,
+      '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--from-run', folder], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
   } finally {
     s.done();
   }

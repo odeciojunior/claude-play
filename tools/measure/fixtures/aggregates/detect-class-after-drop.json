@@ -1,0 +1,577 @@
+{
+  "note": "[fab] class aggregate: 28 captured, 12 lost (drop 8)",
+  "variant": "plano-semeado",
+  "requested": 10,
+  "valid": 10,
+  "invalid": 0,
+  "denied": 0,
+  "invalidReasons": {},
+  "plugin": {
+    "version": "0.0.0",
+    "commit": "unknown"
+  },
+  "cli": "2.1.0 (Claude Code)",
+  "models": [],
+  "pricesDate": "2026-11-10",
+  "permissionMode": "acceptEdits",
+  "roles": {},
+  "cost": {
+    "median": 15,
+    "min": 11,
+    "max": 20
+  },
+  "outcomes": {},
+  "deteccaoPorCodigo": {},
+  "attempts": [
+    {
+      "n": 1,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1001,
+        "perTask": 11,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 11
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P2",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P3",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P4",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1002,
+        "perTask": 12,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 12
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P2",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P3",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P4",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1003,
+        "perTask": 13,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 13
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P2",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P3",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P4",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 4,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1004,
+        "perTask": 14,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 14
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P2",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P3",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P4",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 5,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1005,
+        "perTask": 15,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 15
+      },
+      "outcomes": [
+        {
+          "id": "P1",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P2",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P3",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P4",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 6,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1006,
+        "perTask": 16,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 16
+      },
+      "outcomes": [
+        {
+          "id": "P5",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P6",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P7",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P8",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 7,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1007,
+        "perTask": 17,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 17
+      },
+      "outcomes": [
+        {
+          "id": "P5",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P6",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P7",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        },
+        {
+          "id": "P8",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "capturado"
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1008,
+        "perTask": 18,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 18
+      },
+      "outcomes": [
+        {
+          "id": "P5",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P6",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P7",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P8",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        }
+      ]
+    },
+    {
+      "n": 9,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1009,
+        "perTask": 19,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 19
+      },
+      "outcomes": [
+        {
+          "id": "P5",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P6",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P7",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P8",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        }
+      ]
+    },
+    {
+      "n": 10,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 4,
+          "sonnet": 5,
+          "opus": 2,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1010,
+        "perTask": 20,
+        "conditional": {
+          "extraRounds": 11,
+          "fixCalls": 11
+        },
+        "main": {
+          "agentCalls": 11,
+          "bytes": 11,
+          "turns": 11
+        },
+        "static": {
+          "bytes": 500
+        },
+        "cost": 20
+      },
+      "outcomes": [
+        {
+          "id": "P5",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P6",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P7",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        },
+        {
+          "id": "P8",
+          "class": "plan",
+          "detectedBy": "reviewer",
+          "outcome": "perdido"
+        }
+      ]
+    }
+  ]
+}
