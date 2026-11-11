@@ -28,7 +28,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
-| E14 | integrado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
+| E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | nao-iniciado | - | Aguardar E1 |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
