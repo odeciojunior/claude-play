@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E3 | E3 entrou em `release/roadmap-skills-v2` (merge da `feat/E3`); gates iguais à linha de base: G1 exit 0 com 1051 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-136 a DEC-157 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `ee7a3d70995f903f260b897327361b2573d5c624` |
 | 2026-11-11 | E3 | Execução do plano iniciada na branch `feat/E3`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md` |
 | 2026-11-11 | E3 | DEC-136 a DEC-157 registradas, de origem executor e pendentes de ratificação, vindas do spec de E3. | `decisions.md` |
 | 2026-11-11 | E3 | Plano escrito, na branch `feat/E3`. | `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md` |
