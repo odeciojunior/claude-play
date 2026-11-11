@@ -36,11 +36,20 @@ function writeIn(dir, rel, content) {
   writeFileSync(p, content);
 }
 
-function copyTree(src, dst) {
+// Scenario text must reach the sandbox with LF whatever the checkout did (core.autocrlf
+// hands CRLF on Windows): seeded blobs, prompt bytes and line-based checks depend on it.
+const TEXT_FILE = /\.(mjs|js|json|md|txt)$/i;
+
+export function readText(file) {
+  return readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+}
+
+export function copyTree(src, dst) {
   mkdirSync(dst, { recursive: true });
   for (const n of readdirSync(src)) {
     const s = join(src, n);
     if (statSync(s).isDirectory()) copyTree(s, join(dst, n));
+    else if (TEXT_FILE.test(n)) writeFileSync(join(dst, n), readText(s));
     else copyFileSync(s, join(dst, n));
   }
 }
@@ -49,7 +58,7 @@ function pickFromRun(fromRun, sub, re, what) {
   const d = join(resolve(fromRun), sub);
   const hit = existsSync(d) ? readdirSync(d).filter((n) => re.test(n)).sort()[0] : undefined;
   if (!hit) throw new Error(`--from-run: ${what} not found in ${d}`);
-  return readFileSync(join(d, hit), 'utf8');
+  return readText(join(d, hit));
 }
 
 function e5Texts(fromRun) {
@@ -60,8 +69,8 @@ function e5Texts(fromRun) {
     };
   }
   return {
-    spec: readFileSync(join(SCEN, 'e5', 'spec.md'), 'utf8'),
-    plan: readFileSync(join(SCEN, 'e5', 'plan.md'), 'utf8'),
+    spec: readText(join(SCEN, 'e5', 'spec.md')),
+    plan: readText(join(SCEN, 'e5', 'plan.md')),
   };
 }
 
@@ -183,16 +192,16 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
       scenario.stopResume = STOP_RESUME;
       break;
     case 'coordinator':
-      writeIn(sandbox, FIXED_PLAN, readFileSync(join(SCEN, 'coordinator-plan.md'), 'utf8'));
+      writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan.md')));
       git(sandbox, 'add', FIXED_PLAN);
       git(sandbox, 'commit', '-q', '-m', 'docs(plan): fixed plan');
       scenario.prompts = [`/productivity-tools:plan-coordinator ${FIXED_PLAN}`];
       break;
     case 'planner':
-      scenario.prompts = ['/productivity-tools:roadmap-planner ' + readFileSync(join(SCEN, 'planner-theme.md'), 'utf8')];
+      scenario.prompts = ['/productivity-tools:roadmap-planner ' + readText(join(SCEN, 'planner-theme.md'))];
       break;
     case 'tracker':
-      scenario.prompts = ['/productivity-tools:roadmap-tracker ' + readFileSync(join(SCEN, 'tracker-event.md'), 'utf8')];
+      scenario.prompts = ['/productivity-tools:roadmap-tracker ' + readText(join(SCEN, 'tracker-event.md'))];
       break;
   }
   return scenario;

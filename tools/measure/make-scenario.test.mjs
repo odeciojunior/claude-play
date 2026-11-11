@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { makeScenario, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf } from './make-scenario.mjs';
+import { makeScenario, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,8 +27,8 @@ test('lists every variant of the spec table', () => {
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
-  const theme = readFileSync(join(here, 'scenario', 'planner-theme.md'), 'utf8');
-  const event = readFileSync(join(here, 'scenario', 'tracker-event.md'), 'utf8');
+  const theme = readText(join(here, 'scenario', 'planner-theme.md'));
+  const event = readText(join(here, 'scenario', 'tracker-event.md'));
   const expected = {
     'plan-only': ['/productivity-tools:roadmap-release plan-only E1'],
     completo: ['/productivity-tools:roadmap-release run E5'],
@@ -78,11 +78,30 @@ test('E5 code of the scenario passes the card tests in the sandbox', async () =>
   }
 });
 
+test('scenario text reaches the sandbox with LF even from a CRLF checkout', () => {
+  const t = tmp('eol');
+  try {
+    const src = join(t.dir, 'src');
+    mkdirSync(join(src, 'sub'), { recursive: true });
+    writeFileSync(join(src, 'plan.md'), '| AC1 | test |\r\n| AC2 | test |\r\n');
+    writeFileSync(join(src, 'sub', 'a.mjs'), 'export const a = 1;\r\n');
+    writeFileSync(join(src, 'sub', 'blob.bin'), Buffer.from([13, 10, 0, 13, 10]));
+    assert.equal(readText(join(src, 'plan.md')), '| AC1 | test |\n| AC2 | test |\n');
+    const dst = join(t.dir, 'dst');
+    copyTree(src, dst);
+    assert.equal(readFileSync(join(dst, 'plan.md'), 'utf8'), '| AC1 | test |\n| AC2 | test |\n');
+    assert.equal(readFileSync(join(dst, 'sub', 'a.mjs'), 'utf8'), 'export const a = 1;\n');
+    assert.deepEqual([...readFileSync(join(dst, 'sub', 'blob.bin'))], [13, 10, 0, 13, 10]);
+  } finally {
+    t.done();
+  }
+});
+
 test('E5 plan follows the release recipe', async () => {
   const t = tmp('sb');
   try {
     await makeScenario(t.dir, 'completo');
-    const plan = readFileSync(join(here, 'scenario', 'e5', 'plan.md'), 'utf8');
+    const plan = readText(join(here, 'scenario', 'e5', 'plan.md'));
     const strategy = readFileSync(join(t.dir, 'docs/plans/roadmap-sandbox/strategy.md'), 'utf8');
     assert.ok(plan.includes('**Roadmap:** docs/plans/roadmap-sandbox/'));
     for (const k of [1, 2, 3]) assert.match(plan, new RegExp(`### Task ${k}: `));

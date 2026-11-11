@@ -1,2 +1,6 @@
 # Shell scripts must keep LF line endings on every platform (CRLF breaks bash)
 *.sh text eol=lf
+
+# Measurement scenario text and reviewer prompt copies are seeded into sandboxes and counted in bytes: keep LF
+tools/measure/scenario/** text eol=lf
+tools/measure/arms/** text eol=lf
