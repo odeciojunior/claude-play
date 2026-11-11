@@ -43,4 +43,34 @@ Sequência § 20 (spec escrito), § 5 (bloqueio aberto e fechado), § 18 (duas d
 3. Baixa: `events/19-criteria-check.md` e `rubric-criteria.md` não preveem o limite de 300 caracteres do pendente.
 4. Baixa: a repetição de B usou `nextIds` do `brief` em vez de `next-id`.
 
-Nenhum esperado falhou por defeito de rubrica, então nenhuma rubrica foi corrigida nem execução repetida por esse motivo. Os achados 2 a 4 ficam como melhorias opcionais.
+Nenhum esperado falhou por defeito de rubrica, então nenhuma rubrica foi corrigida nem execução repetida por esse motivo.
+
+A saída de `run-fluxo.md` diz que o `next-id` final devolveu DEC-201; o valor real era DEC-203 (o salto do achado 1).
+
+## Decisões do dono sobre este relatório (2026-11-11)
+
+O dono aprovou as recomendações de uma análise Fable deste relatório:
+
+- Achado 1: corrigido na CLI, em `fix/next-id-checker`, integrado na release (DEC-253, emenda do dono a DEC-145) e sincronizado na `feat/E22` (`d07b036`). Na `pasta/` com o checker vendorizado, `next-id` agora devolve DEC-002.
+- Achados 2 e 3: textos corrigidos antes do merge (`e7211af`): `01-decision.md` grava `-` em "Revisit when" quando ninguém deu condição; `rubric-criteria.md` manda manter o pendente no limite da célula e citar só a parte que difere.
+- Achado 4: sem mudança de texto.
+- Desvio de uma pasta por execução: aceito.
+- Critério 2: aceite condicionado a uma execução extra com casos fora dos exemplos da rubrica e esperados fixados antes.
+
+## Execução extra
+
+Esperados fixados no README da pasta no commit `6b4e190`, antes das execuções; saídas em `eb86ddc`. Subagents novos, sonnet, effort medium.
+
+| Caso | Esperado | Obtido |
+|---|---|---|
+| C1: cliente mobile (REQ-003, fora do escopo) entra em E2 | Contradicts cita `Non-goals` | `E2 (pieces, reqs), Non-goals` |
+| C2: E1 pronto na branch de feature, sem integração | cita E1 e a definição de pronto | `E1 (definition of done)` |
+| D1: identificador UUID v4 | `-` | `-` |
+| D2: compartilhamento de E2 por e-mail | `-` | `-` |
+| Critério 3: E1 com a condição de entrada estreitada (sinal 1) | um pendente `enfraquecido` para o critério 1, dentro do limite; nenhum para o 2 | um pendente de 110 caracteres, `enfraquecido`; critério 2 `igual` |
+
+Regra de passagem (2 de 2 contradições, no máximo 1 falso positivo): 2 de 2 e 0 falsos positivos. Revisão adversarial (`run-extra-revisao.md`, opus, effort medium): a condição do dono está cumprida. Ressalvas: n=1 por caso; o acerto de C1 dependeu de o agente ler `requirements.md` (a seção Non-goals da fixture só aponta para os itens fora do escopo); o pendente de aprovação da revisão foi gravado com `sed` em vez de `add-pending`; a pasta-extra-c2 ainda mostra o salto para DEC-199, porque rodou antes da sincronização com a correção.
+
+## Gates
+
+Na `feat/E22` sincronizada com a release (`d07b036`): G1 1311 testes, 0 falhas; G2 e G3 exit 0; G4 0 erros; G5 44 OK, 0 WARN; embed check exit 0.
