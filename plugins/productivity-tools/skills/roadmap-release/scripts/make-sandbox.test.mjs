@@ -119,7 +119,7 @@ test('sandbox: the stop and resume script names a deliverable of the panel', () 
   assert.ok(existsSync(file));
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), STOP_RESUME);
   const folder = join(dir, 'docs', 'plans', 'roadmap-sandbox');
-  assert.match(readFileSync(join(folder, 'state.md'), 'utf8'), new RegExp('\| ' + STOP_RESUME.deliverable + ' \|'));
+  assert.match(readFileSync(join(folder, 'state.md'), 'utf8'), new RegExp('\\| ' + STOP_RESUME.deliverable + ' \\|'));
   assert.equal(file.includes(join('docs', 'plans', 'roadmap-sandbox')), false);
   assert.equal(git(dir, 'status', '--porcelain'), '');
   assert.equal(git(dir, 'rev-list', '--count', 'HEAD'), '1');
