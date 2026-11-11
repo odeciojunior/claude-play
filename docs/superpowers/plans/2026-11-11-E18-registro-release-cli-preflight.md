@@ -34,7 +34,7 @@
 
 ## Foco de revisão
 
-1. Texto com `'`, `$`, crase, `"` ou quebra de linha (decisão do spec, nota de risco) chegando a `recordCommands`: o comando montado, rodado em Git Bash, entrega à CLI o texto literal (quebra de linha vira espaço); o teste de `shq` roda a string montada com `bash -c 'printf %s ...'` quando `bash` existe no PATH (Git Bash no ambiente medido) e compara.
+1. Texto com `'`, `$`, crase, `"` ou quebra de linha (decisão do spec, nota de risco) chegando a `recordCommands`: o comando montado, rodado em Git Bash, entrega à CLI o texto literal (quebra de linha vira espaço); o teste de `shq` roda a string montada com `bash -c 'printf %s ...'` do Git Bash resolvido por `git --exec-path` (nunca o `bash` do PATH, que pode ser o WSL), quando ele existe e compara.
 2. `trackerCli` resolvido em Windows (`D:\...`): sai com `/`, absoluto, existente; com `"` no caminho vira erro (Tarefa 1).
 3. Retomada com o mesmo status já gravado: `set-status` e `log` somem da lista (`skipStatus`), a releitura confere a palavra e não há linha de log repetida (Tarefa 4).
 4. Saída de `brief --json` ausente, não JSON, ou sem `result.checker.errors` numérico: veredito reprovado, nunca aprovado em silêncio; `status --json` sem `checker` ao lado de um `brief` sem erro: aprovado (Tarefa 3).
@@ -104,7 +104,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhum
 - `recordVerdict({ expected, results, read, E, word, piece, blockedStatus }) -> { ok, failures: string[], decisionIds: string[] }`, com `results` = `{ error?, runs: [{ command, exit, stdout }] }` e `read` = `{ status, brief, pendingDecisions, head, porcelain }` (saídas cruas, strings).
 
 - [ ] **Passo 1: testes que falham** (via `loadPure()`):
-  - `shq`: `shq("a'b")` = `'a'\''b'`; `$`, crase e `"` ficam literais; `"a\nb"` -> `'a b'`. Quando `bash` existe (`spawnSync('bash',['-c','true']).status === 0`), `bash -c "printf %s " + shq(x)` imprime `x` com a quebra trocada por espaço; senão o caso é `skip` com motivo.
+  - `shq`: `shq("a'b")` = `'a'\''b'`; `$`, crase e `"` ficam literais; `"a\nb"` -> `'a b'`. O bash é resolvido explicitamente como Git Bash: `join(execFileSync('git',['--exec-path']).toString().trim(),'..','..','..','bin','bash.exe')` (testar também `..','..','bin`, o que existir), nunca o `bash` do PATH (no PowerShell ele é o launcher do WSL em `System32` ou `WindowsApps`). Quando esse arquivo existe e `spawnSync(gitBash,['-c','true']).status === 0`, `gitBash -c "printf %s " + shq(x)` imprime `x` com a quebra trocada por espaço; senão (inclusive quando o bash resolvido for o launcher de `System32` ou `WindowsApps`) o caso é `skip` com motivo.
   - `fitCell`: texto que cabe -> igual (espaços juntados) e `cut: ''`; 600 caracteres com `room` 300 -> `text.length <= 300`, termina em `texto completo em docs/s.md`, o trecho antes do sufixo termina em fronteira de palavra, `cut` = original; `room` reduzido pela frase `Alcance: contrato.` mais 1.
   - `fitEvidence`: cinco refs longas com `max` 120 -> prefixo das refs cuja junção `` `a`, `b` `` cabe em 120.
   - `recordCommands`: sem rótulo nenhum `--piece`; com `piece: 'code'`, `--piece code` em `set-status`; `skipStatus` omite `set-status` e `log`; ordem `block-close`, `set-status`, `log`, `add-decision`..., `add-pending`..., `inflight-*`; decisão de 600 caracteres -> o valor de `--decision` mais a frase de alcance cabe em 300 e `cuts[0].full` é o texto inteiro; `blockedBy` com `affects: ['E1','E2']` para `E1` -> `error` citando fechamento manual; `word` bloqueado -> `block-open` e nenhum `set-status`.
@@ -193,7 +193,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhum
 - [ ] **Passo 3:** o orquestrador repassa a saída literal e o resumo para o log de revisões do entregável; apaga `D:/projects/claude-play-wt/_tmp/E18/`. Verificação: `git status --porcelain` vazio no worktree E18.
 - Evidência aceitável se o passo não puder rodar neste ambiente: a saída do preflight do Passo 1 e o registro do motivo no log de revisões; nunca um aceite fictício.
 
-## Evidência dos critérios de aceite
+## Acceptance criteria evidence
 
 | ac | kind | command | testRef | blq | external | externalDedupe |
 |---|---|---|---|---|---|---|
