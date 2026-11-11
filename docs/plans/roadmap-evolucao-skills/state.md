@@ -8,7 +8,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o código entrou em `release/roadmap-skills-v2`; o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. Executar o plano de E5 em `feat/E5` (execução automática). Executa: executor. Aprova: dono. Depende de: DEC-037.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -20,7 +19,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E2 | na-branch | `0202e00f1be5032c95d759a41883de84c57e54b3`; `docs/superpowers/specs/2026-11-11-E2-formato-roadmap-verificado-design.md`; `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md`; `docs/superpowers/reviews/2026-11-11-E2-formato-roadmap-verificado-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
-| E5 | executando | `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `feat/E5` | Executar o plano na branch `feat/E5` |
+| E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | nao-iniciado | - | Aguardar E2 e E5 |
 | E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
 | E8 | nao-iniciado | - | Aguardar E17, E18, E19, E20 e E25 |
@@ -82,5 +81,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| `feat/E5` | viva | Execução automática |
 <!-- /roadmap:inflight -->
