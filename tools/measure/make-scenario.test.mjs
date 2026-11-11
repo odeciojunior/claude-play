@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { makeScenario, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
+import { createHash } from 'node:crypto';
+import { makeScenario, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -268,5 +269,62 @@ test('code-detected defects stay out of artifacts A and B', () => {
       assert.equal(e.detectedBy, 'code', e.id);
       assert.doesNotThrow(() => new RegExp(e.codeSignal), e.id);
     }
+  }
+});
+
+const sha = (t) => createHash('sha256').update(t).digest('hex');
+
+test('seedSourceOf without a folder describes the synthetic texts', () => {
+  const r = seedSourceOf();
+  assert.equal(r.kind, 'sintetico');
+  assert.equal(r.spec, 'scenario/e5/spec.md');
+  assert.equal(r.plan, 'scenario/e5/plan.md');
+  assert.equal(r.specSha256, sha(readText(join(here, 'scenario', 'e5', 'spec.md'))));
+  assert.equal(r.planSha256, sha(readText(join(here, 'scenario', 'e5', 'plan.md'))));
+});
+
+function approvedFolder(base) {
+  const specDir = join(base, 'docs', 'superpowers', 'specs');
+  const planDir = join(base, 'docs', 'superpowers', 'plans');
+  mkdirSync(specDir, { recursive: true });
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(specDir, '2026-01-01-E5-x-design.md'), readText(join(here, 'scenario', 'e5', 'spec.md')) + '[fab] extra line\n');
+  writeFileSync(join(planDir, '2026-01-01-E5-x.md'), readText(join(here, 'scenario', 'e5', 'plan.md')) + '[fab] extra line\n');
+}
+
+test('seedSourceOf with a folder describes the approved run by file name and hash', () => {
+  const t = tmp('x');
+  try {
+    approvedFolder(t.base);
+    const r = seedSourceOf(t.base);
+    const syn = seedSourceOf();
+    assert.equal(r.kind, 'execucao-aprovada');
+    assert.equal(r.spec, '2026-01-01-E5-x-design.md');
+    assert.equal(r.plan, '2026-01-01-E5-x.md');
+    assert.notEqual(r.specSha256, syn.specSha256);
+    assert.notEqual(r.planSha256, syn.planSha256);
+    const json = JSON.stringify(r);
+    assert.ok(!json.includes(t.base));
+    assert.ok(!json.includes(t.base.replaceAll('\\', '/')));
+    assert.ok(!json.includes(JSON.stringify(t.base).slice(1, -1)));
+  } finally {
+    t.done();
+  }
+});
+
+test('seedSourceOf fails like the scenario when the plan is missing', async () => {
+  const t = tmp('x');
+  try {
+    const specDir = join(t.base, 'docs', 'superpowers', 'specs');
+    mkdirSync(specDir, { recursive: true });
+    writeFileSync(join(specDir, '2026-01-01-E5-x-design.md'), 'spec\n');
+    let direct;
+    assert.throws(() => seedSourceOf(t.base), (e) => ((direct = e.message), true));
+    await assert.rejects(makeScenario(t.dir, 'plano-semeado-A', { fromRun: t.base }), (e) => {
+      assert.equal(e.message, direct);
+      return true;
+    });
+  } finally {
+    t.done();
   }
 });
