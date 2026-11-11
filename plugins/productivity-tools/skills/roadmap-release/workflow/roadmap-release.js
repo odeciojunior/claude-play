@@ -774,6 +774,184 @@ function dropConsumedNotes(args, consumed) {
   const { notes, ...rest } = args
   return Object.keys(kept).length ? { ...rest, notes: kept } : rest
 }
+// ---- Roadmap record through the tracker CLI (E18): pure assembly of the exact commands and verdict over the CLI JSON.
+// POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
+function shq(s) {
+  return "'" + String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/'/g, "'\\''") + "'"
+}
+const isPt = lang => /^pt/i.test(String(lang || ''))
+const collapseWs = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
+// Collapses spaces (like the CLI) and returns the whole text when it fits in `room`; else cuts at the last word that fits and
+// appends the suffix naming the committed file with the full text. `cut` is the original text when something was cut.
+function fitCell(text, room, source, lang) {
+  const t = collapseWs(text)
+  if (t.length <= room) return { text: t, cut: '' }
+  const suffix = ` [...] ${isPt(lang) ? 'texto completo em' : 'full text in'} ${source}`
+  const keep = room - suffix.length
+  if (keep <= 0) return { text: suffix.trim().slice(0, Math.max(room, 0)), cut: t }
+  let body = t.slice(0, keep)
+  if (t[keep] !== ' ') {
+    const at = body.lastIndexOf(' ')
+    if (at > 0) body = body.slice(0, at)
+  }
+  return { text: body.trimEnd() + suffix, cut: t }
+}
+const tickRef = r => (r.includes('`') ? r : '`' + r + '`')
+// References kept in the order given while the CLI join (backticks and ", ") fits in `max`.
+function fitEvidence(refs, max) {
+  const kept = []
+  let len = 0
+  for (const r of (refs || []).map(x => String(x).trim()).filter(Boolean)) {
+    const add = tickRef(r).length + (kept.length ? 2 : 0)
+    if (len + add > max) break
+    kept.push(r)
+    len += add
+  }
+  return kept
+}
+// `folder` goes through shq; `args` are already shell-quoted.
+function cliCmd(cli, command, folder, args) {
+  return ['node "' + cli + '"', command, shq(folder), ...(args || []), '--json'].join(' ')
+}
+// Short texts of the record, two languages (same rule as the CLI: language starting with "pt" is Portuguese).
+function phrases(lang) {
+  if (isPt(lang)) {
+    return {
+      owner: 'dono',
+      log: (E, word) => `${E} passou para ${word}`,
+      next: (E, word) => `${E}: seguir o fluxo do release após ${word}`,
+      inflightNote: E => `${E} em execução pelo release`,
+      blockWhat: (E, reason) => `${E} bloqueado: ${reason}`,
+      blockUnblocks: E => `quando o bloqueio de ${E} for resolvido`,
+      blockHow: E => `desbloqueio de ${E} pelo release`,
+      commit: (E, word) => `docs(roadmap): ${E} em ${word}`,
+    }
+  }
+  return {
+    owner: 'owner',
+    log: (E, word) => `${E} moved to ${word}`,
+    next: (E, word) => `${E}: continue the release flow after ${word}`,
+    inflightNote: E => `${E} running in the release`,
+    blockWhat: (E, reason) => `${E} blocked: ${reason}`,
+    blockUnblocks: E => `when the block on ${E} is resolved`,
+    blockHow: E => `unblock of ${E} by the release`,
+    commit: (E, word) => `docs(roadmap): ${E} at ${word}`,
+  }
+}
+// Ordered command list of one record: block-close, set-status + log (or block-open), add-decision, add-pending, inflight-*.
+// Every variable text goes through fitCell with the room the CLI leaves in the cell; `cuts` lists the texts that were cut.
+function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, next, logWhat, decisions, pending, inflight, skipStatus, lang, cellChars, source, blockedStatus }) {
+  const P = phrases(lang)
+  const max = cellChars || 300
+  const cuts = []
+  const cmds = []
+  const fit = (where, text, room) => {
+    const f = fitCell(text, room, source, lang)
+    if (f.cut) cuts.push({ where, source, full: f.cut })
+    return f.text
+  }
+  const ev = (refs, room) => fitEvidence(refs, room).map(r => '--evidence ' + shq(r))
+  const pieceArg = piece ? ['--piece ' + shq(piece)] : []
+  if (blockedBy) {
+    const others = (blockedBy.affects || []).filter(x => x !== E)
+    if (others.length) return { commands: [], cuts: [], error: `${blockedBy.id} also blocks ${others.join(', ')}; close it by hand (manual close with block-close) once every deliverable it affects can go on` }
+    const evs = fitEvidence(evidence, max)
+    cmds.push(cliCmd(cli, 'block-close', folder, [shq(blockedBy.id), '--how ' + shq(fit('block-close --how', P.blockHow(E), max)), ...evs.map(r => '--evidence ' + shq(r))]))
+  }
+  if (!skipStatus) {
+    if (word === blockedStatus) {
+      // The CLI log line is "<BLQ-n> opened: <what>" and "Unblocks when" gets "; restores <E> to <word>" appended.
+      const what = fit('block-open --what', P.blockWhat(E, collapseWs(logWhat) || P.log(E, word)), max - 24)
+      const unblocks = fit('block-open --unblocks', P.blockUnblocks(E), max - 64)
+      const evs = fitEvidence(evidence, max)
+      cmds.push(cliCmd(cli, 'block-open', folder, ['--what ' + shq(what), '--affects ' + shq(E), '--unblocks ' + shq(unblocks), ...pieceArg, ...evs.map(r => '--evidence ' + shq(r))]))
+    } else {
+      const nextText = fit('set-status --next', collapseWs(next) || P.next(E, word), max)
+      cmds.push(cliCmd(cli, 'set-status', folder, [shq(E), shq(word), ...pieceArg, ...(evidence || []).filter(Boolean).map(r => '--evidence ' + shq(r)), '--next ' + shq(nextText)]))
+      const logEv = fitEvidence(evidence, max)
+      cmds.push(cliCmd(cli, 'log', folder, ['--deliverable ' + shq(E), '--what ' + shq(fit('log --what', collapseWs(logWhat) || P.log(E, word), max)), ...(logEv.length ? logEv : ['state.md']).map(r => '--evidence ' + shq(r))]))
+    }
+  }
+  for (const d of decisions || []) {
+    const local = d.scope === 'local'
+    const phrase = `${isPt(lang) ? 'Alcance' : 'Scope'}: ${local ? 'local' : isPt(lang) ? 'contrato' : 'contract'}.`
+    // One more character: the CLI adds a final period when the text has none.
+    const text = fit('add-decision --decision', d.text, max - phrase.length - 2)
+    cmds.push(cliCmd(cli, 'add-decision', folder, ['--deliverable ' + shq(E), '--decision ' + shq(text), '--scope ' + shq(local ? 'local' : 'contrato')]))
+  }
+  for (const p of pending || []) {
+    const text = fit('add-pending --text', p, max - `(${P.owner}) `.length)
+    cmds.push(cliCmd(cli, 'add-pending', folder, ['--owner ' + shq(P.owner), '--text ' + shq(text)]))
+  }
+  if (inflight && inflight.add) {
+    const note = fit('inflight-add --note', collapseWs(inflight.note) || P.inflightNote(E), max)
+    cmds.push(cliCmd(cli, 'inflight-add', folder, [shq(inflight.add), '--note ' + shq(note)]))
+  }
+  if (inflight && inflight.remove) cmds.push(cliCmd(cli, 'inflight-remove', folder, [shq(inflight.remove)]))
+  return { commands: cmds, cuts }
+}
+// JSON of the CLI (tool "roadmap") or null.
+function parseCli(s) {
+  try {
+    const o = JSON.parse(String(s == null ? '' : s))
+    return o && typeof o === 'object' && o.tool === 'roadmap' ? o : null
+  } catch { return null }
+}
+// Verdict of a record from the raw outputs only: never reads statusWritten, details or any sentence of the agent.
+function recordVerdict({ expected, results, read, E, word, piece, blockedStatus }) {
+  const failures = []
+  const decisionIds = []
+  const res = results || {}
+  const runs = Array.isArray(res.runs) ? res.runs : []
+  const rd = read || {}
+  if (res.error) failures.push(`record agent returned error "${res.error}"`)
+  if (!runs.length) failures.push('the record agent ran no command')
+  const exp = expected || []
+  exp.forEach((c, i) => {
+    const r = runs[i]
+    if (r && r.command === c) return
+    if (runs.some(x => x && x.command === c)) failures.push(`command ${i + 1} (${c.split(' ')[2]}) ran out of order`)
+    else if (!r) failures.push(`command ${i + 1} (${c.split(' ')[2]}) is missing from the runs`)
+    else failures.push(`command ${i + 1} ran with a different text than the one assembled`)
+  })
+  if (runs.length > exp.length) failures.push(`${runs.length - exp.length} command(s) ran beyond the assembled list`)
+  let blq = ''
+  runs.forEach((r, i) => {
+    if (!r) return
+    const verb = String(r.command || '').split(' ')[2]
+    if (r.exit !== 0) failures.push(`command ${i + 1} (${verb}) exit ${r.exit}`)
+    const o = parseCli(r.stdout)
+    if (!o) { failures.push(`command ${i + 1} (${verb}) stdout is not JSON of the CLI (tool "roadmap")`); return }
+    if (!o.summary || o.summary.exitCode !== 0) failures.push(`command ${i + 1} (${verb}) JSON summary.exitCode ${o.summary && o.summary.exitCode}`)
+    if (Array.isArray(o.errors) && o.errors.length) failures.push(`command ${i + 1} (${verb}) JSON has ${o.errors.length} error(s)`)
+    if (verb === 'block-open' && o.result && typeof o.result.id === 'string') blq = o.result.id
+    if (verb === 'add-decision' && o.result && typeof o.result.id === 'string') decisionIds.push({ id: o.result.id, changed: Array.isArray(o.changed) && o.changed.length > 0 })
+  })
+  const status = parseCli(rd.status)
+  const panel = status && status.result && Array.isArray(status.result.panel) ? status.result.panel : null
+  if (!panel) failures.push('reread status --json is missing or has no panel')
+  else {
+    const row = panel.find(p => p && p.id === E)
+    const segs = row && Array.isArray(row.segments) ? row.segments : []
+    const seg = piece ? segs.find(s => s.label === piece) : segs[0]
+    if (!seg) failures.push(`reread panel has no ${piece ? `segment "${piece}" of ` : 'segment of '}${E}`)
+    else if (seg.word !== word) failures.push(`reread panel shows "${seg.word}" for ${E}, expected "${word}"`)
+    else if (word === blockedStatus && !(blq ? new RegExp('\\b' + blq + '\\b').test(String(seg.note || '')) : /\bBLQ-\d+\b/.test(String(seg.note || '')))) failures.push(`reread blocked segment of ${E} does not cite ${blq || 'a BLQ'} in its note`)
+  }
+  const brief = parseCli(rd.brief)
+  const checker = brief && brief.result && brief.result.checker
+  if (!brief) failures.push('reread brief --json is missing or is not JSON of the CLI')
+  else if (!checker || typeof checker.errors !== 'number') failures.push('reread brief --json has no numeric result.checker.errors')
+  else if (checker.errors > 0) failures.push(`checker reports ${checker.errors} error(s)`)
+  const changedIds = decisionIds.filter(d => d.changed).map(d => d.id)
+  if (changedIds.length) {
+    const pend = parseCli(rd.pendingDecisions)
+    const list = pend && pend.result && Array.isArray(pend.result.decisions) ? pend.result.decisions.map(d => d.id) : null
+    if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
+    else for (const id of changedIds) if (!list.includes(id)) failures.push(`${id} written by add-decision is not in pending-decisions`)
+  }
+  return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id) }
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -2633,4 +2634,241 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.ok(!calls.some((c) => /No task of the plan runs there/.test(c.prompt)), 'not in the common briefing (M6)');
   assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /in the deliverable worktree \(no task of the plan runs in the integration worktree\)/);
+});
+
+// ---------------------------------------------------------------- E18 T3: registro pela CLI (funções puras)
+
+const gitBashPath = () => {
+  try {
+    const ep = execFileSync('git', ['--exec-path']).toString().trim();
+    for (const up of [['..', '..', '..'], ['..', '..']]) {
+      const p = join(ep, ...up, 'bin', 'bash.exe');
+      if (existsSync(p)) return p;
+    }
+  } catch { /* sem git */ }
+  return null;
+};
+
+test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
+  assert.equal(PU.shq("a'b"), "'a'\\''b'");
+  assert.equal(PU.shq('a$b`c"d'), "'a$b`c\"d'");
+  assert.equal(PU.shq('a\nb'), "'a b'");
+  assert.equal(PU.shq('a\r\nb'), "'a b'");
+});
+
+test('shq: o Git Bash entrega o texto literal', (t) => {
+  const bash = gitBashPath();
+  const ok = bash && !/system32|windowsapps/i.test(bash) && spawnSync(bash, ['-c', 'true']).status === 0;
+  if (!ok) { t.skip('Git Bash não resolvido por git --exec-path'); return; }
+  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'l1\nl2']) {
+    const r = spawnSync(bash, ['-c', 'printf %s ' + PU.shq(x)]);
+    assert.equal(r.stdout.toString(), x.replace(/\r?\n/g, ' '), JSON.stringify(x));
+  }
+});
+
+test('fitCell: cabe -> igual com espaços juntados; longo -> corta em palavra com o sufixo da origem', () => {
+  assert.deepEqual(PU.fitCell('a   b\n c', 300, 'docs/s.md', 'pt'), { text: 'a b c', cut: '' });
+  const long = Array.from({ length: 120 }, (_, i) => 'palavra' + i).join(' ');
+  assert.ok(long.length > 600);
+  const r = PU.fitCell(long, 300, 'docs/s.md', 'pt-BR');
+  assert.ok(r.text.length <= 300);
+  assert.match(r.text, /\[\.\.\.\] texto completo em docs\/s\.md$/);
+  assert.equal(r.cut, long);
+  const body = r.text.replace(/ \[\.\.\.\] texto completo em docs\/s\.md$/, '');
+  assert.ok(long.startsWith(body) && /^palavra\d+$/.test(body.split(' ').pop()), 'fronteira de palavra');
+  const en = PU.fitCell(long, 300, 'docs/s.md', 'en');
+  assert.match(en.text, /\[\.\.\.\] full text in docs\/s\.md$/);
+  const room = 300 - 'Alcance: contrato.'.length - 1;
+  const d = PU.fitCell(long, room, 'docs/s.md', 'pt');
+  assert.ok(d.text.length <= room);
+});
+
+test('fitEvidence: mantém o prefixo cuja junção com crases cabe', () => {
+  const refs = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40), 'd'.repeat(40), 'e'.repeat(40)];
+  const out = PU.fitEvidence(refs, 120);
+  assert.deepEqual(out, refs.slice(0, 2));
+  assert.ok(out.map((r) => '`' + r + '`').join(', ').length <= 120);
+  assert.deepEqual(PU.fitEvidence(refs, 10000), refs);
+  assert.deepEqual(PU.fitEvidence(refs, 5), []);
+});
+
+test('cliCmd: caminho entre aspas duplas, pasta por shq, --json no fim', () => {
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status 'docs/plans/r/' --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status 'docs/plans/r/' 'E1' 'plano' --json`);
+});
+
+test('phrases: pt e en, curtas e citam entregável e status', () => {
+  for (const lang of ['pt-BR', 'en']) {
+    const P = PU.phrases(lang);
+    assert.equal(P.owner, lang === 'en' ? 'owner' : 'dono');
+    for (const s of [P.log('E1', 'plano'), P.next('E1', 'plano'), P.inflightNote('E1'), P.blockWhat('E1', 'motivo'), P.blockUnblocks('E1'), P.blockHow('E1'), P.commit('E1', 'plano')]) {
+      assert.ok(typeof s === 'string' && s.length > 0 && s.length < 300);
+      assert.doesNotMatch(s, /this commit|este commit/i);
+    }
+    assert.match(P.log('E1', 'plano'), /E1/);
+    assert.match(P.log('E1', 'plano'), /plano/);
+    assert.match(P.commit('E1', 'plano'), /E1/);
+  }
+});
+
+const RC = { cli: 'D:/x/roadmap.mjs', folder: 'docs/plans/r/', E: 'E1', word: 'plano', evidence: ['docs/s.md', 'docs/p.md'], lang: 'pt-BR', cellChars: 300, source: 'docs/s.md', blockedStatus: 'bloqueado' };
+const verbs = (cmds) => cmds.map((c) => c.split(' ')[2]);
+
+test('recordCommands: sem rótulo não há --piece; com piece, set-status e block-open o levam', () => {
+  const a = PU.recordCommands(RC);
+  assert.ok(!a.error);
+  assert.deepEqual(verbs(a.commands), ['set-status', 'log']);
+  assert.ok(a.commands.every((c) => !/--piece/.test(c)));
+  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status 'docs\/plans\/r\/' 'E1' 'plano' .*--json$/);
+  assert.match(a.commands[0], /--evidence 'docs\/s\.md' --evidence 'docs\/p\.md'/);
+  const b = PU.recordCommands({ ...RC, piece: 'code' });
+  assert.match(b.commands[0], /--piece 'code'/);
+  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log 'docs\/plans\/r\/' --deliverable 'E1' --what '/);
+  const c = PU.recordCommands({ ...RC, piece: 'code', word: 'bloqueado', logWhat: 'falta credencial' });
+  assert.deepEqual(verbs(c.commands), ['block-open']);
+  assert.match(c.commands[0], /--piece 'code'/);
+  assert.match(c.commands[0], /--affects 'E1'/);
+  assert.match(c.commands[0], /--what '[^']*falta credencial/);
+  assert.match(c.commands[0], /--unblocks '/);
+  assert.match(c.commands[0], /--evidence 'docs\/s\.md'/);
+  assert.ok(!c.commands.some((x) => / set-status /.test(x)));
+});
+
+test('recordCommands: skipStatus omite set-status e log; a ordem é a do registro', () => {
+  const x = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: 'Usar X.', scope: 'local' }], pending: ['p1'], inflight: { add: 'feat/E1' } });
+  assert.deepEqual(verbs(x.commands), ['add-decision', 'add-pending', 'inflight-add']);
+  const y = PU.recordCommands({
+    ...RC, blockedBy: { id: 'BLQ-3', affects: ['E1'] }, word: 'executando',
+    decisions: [{ text: 'Usar X.', scope: 'local' }, { text: 'Usar Y.', scope: 'contrato' }], pending: ['p1', 'p2'], inflight: { remove: 'feat/E1' },
+  });
+  assert.deepEqual(verbs(y.commands), ['block-close', 'set-status', 'log', 'add-decision', 'add-decision', 'add-pending', 'add-pending', 'inflight-remove']);
+  assert.match(y.commands[0], /block-close 'docs\/plans\/r\/' 'BLQ-3' --how '/);
+  assert.match(y.commands[3], /--deliverable 'E1' --decision 'Usar X\.' --scope 'local'/);
+  assert.match(y.commands[4], /--scope 'contrato'/);
+  assert.match(y.commands[5], /--owner 'dono' --text 'p1'/);
+  assert.match(y.commands[7], /inflight-remove 'docs\/plans\/r\/' 'feat\/E1' --json$/);
+  const z = PU.recordCommands({ ...RC, lang: 'en', skipStatus: true, inflight: { add: 'feat/E1', note: 'running' }, pending: ['p'] });
+  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner 'owner'/);
+  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add 'docs\/plans\/r\/' 'feat\/E1' --note 'running' --json$/);
+});
+
+test('recordCommands: decisão de 600 caracteres cabe com a frase de alcance e o texto inteiro vai em cuts', () => {
+  const long = Array.from({ length: 100 }, (_, i) => 'termo' + i).join(' ');
+  assert.ok(long.length > 600);
+  const r = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: long, scope: 'contrato' }] });
+  const m = /--decision '([^']*)'/.exec(r.commands[0]);
+  assert.ok(m);
+  assert.ok(m[1].length + 1 + 'Alcance: contrato.'.length <= 300);
+  assert.equal(r.cuts.length, 1);
+  assert.equal(r.cuts[0].full, long);
+  assert.equal(r.cuts[0].source, 'docs/s.md');
+  assert.ok(r.cuts[0].where);
+  const p = PU.recordCommands({ ...RC, skipStatus: true, pending: [long] });
+  const t = /--text '([^']*)'/.exec(p.commands[0])[1];
+  assert.ok(('(dono) ' + t).length <= 300);
+  assert.equal(p.cuts[0].full, long);
+});
+
+test('recordCommands: bloqueio que afeta outros entregáveis é erro de fechamento manual', () => {
+  const r = PU.recordCommands({ ...RC, word: 'executando', blockedBy: { id: 'BLQ-3', affects: ['E1', 'E2'] } });
+  assert.match(r.error, /manual/i);
+  assert.match(r.error, /BLQ-3/);
+  assert.deepEqual(r.commands, []);
+});
+
+// ---- recordVerdict
+const okOut = (command, result = {}, changed = ['state.md']) => JSON.stringify({ tool: 'roadmap', command, folder: 'f', changed, result, errors: [], warnings: [], summary: { errors: 0, warnings: 0, exitCode: 0 } });
+const panelOut = (word, { label = '', note = '' } = {}) => okOut('status', { panel: [{ id: 'E1', segments: [{ label, word, position: 3, note }], evidence: '', next: '' }] }, []);
+const briefOut = (errors = 0) => okOut('brief', { checker: { errors, warnings: 0, stale: false } }, []);
+const pendOut = (ids) => okOut('pending-decisions', { decisions: ids.map((id) => ({ id })) }, []);
+const VX = () => {
+  const expected = PU.recordCommands({ ...RC, decisions: [{ text: 'Usar X.', scope: 'local' }] }).commands;
+  const runs = [
+    { command: expected[0], exit: 0, stdout: okOut('set-status') },
+    { command: expected[1], exit: 0, stdout: okOut('log') },
+    { command: expected[2], exit: 0, stdout: okOut('add-decision', { id: 'DEC-300', existing: false }) },
+  ];
+  const read = { status: panelOut('plano'), brief: briefOut(0), pendingDecisions: pendOut(['DEC-300']), head: 'abc', porcelain: '' };
+  return { expected, results: { runs }, read, E: 'E1', word: 'plano', piece: undefined, blockedStatus: 'bloqueado' };
+};
+const bad = (mut, re) => {
+  const v = VX();
+  mut(v);
+  const r = PU.recordVerdict(v);
+  assert.equal(r.ok, false);
+  assert.ok(r.failures.length > 0);
+  if (re) assert.match(r.failures.join('\n'), re);
+};
+const failJson = (exitCode, errors) => JSON.stringify({ tool: 'roadmap', summary: { exitCode }, errors, changed: [], result: {} });
+
+test('recordVerdict: aprovado, com o id da decisão', () => {
+  const r = PU.recordVerdict(VX());
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'] });
+});
+
+test('recordVerdict: reprova comando faltando, fora de ordem e com texto diferente', () => {
+  bad((v) => { v.results.runs.pop(); }, /missing/i);
+  bad((v) => { v.results.runs.reverse(); }, /order/i);
+  bad((v) => { v.results.runs[1].command = v.results.runs[1].command.replace('--what', '--what x'); }, /differ|text/i);
+});
+
+test('recordVerdict: reprova exit, stdout fora do contrato da CLI e erros no JSON', () => {
+  bad((v) => { v.results.runs[0].exit = 1; }, /exit/);
+  bad((v) => { v.results.runs[0].stdout = 'roadmap set-status: changed 1 file'; }, /JSON/);
+  bad((v) => { v.results.runs[0].stdout = JSON.stringify({ tool: 'outra', summary: { exitCode: 0 }, errors: [] }); }, /tool/);
+  bad((v) => { v.results.runs[0].stdout = failJson(1, []); }, /exitCode/);
+  bad((v) => { v.results.runs[2].stdout = failJson(0, [{ code: 'x' }]); }, /error/i);
+  bad((v) => { v.results.runs[2].exit = 1; v.results.runs[2].stdout = failJson(1, [{ code: 'x' }]); });
+});
+
+test('recordVerdict: reprova releitura com outra palavra e brief ausente, sem checker ou com erros', () => {
+  bad((v) => { v.read.status = panelOut('spec'); }, /plano/);
+  bad((v) => { v.read.status = ''; }, /status/i);
+  bad((v) => { v.read.brief = ''; }, /brief/);
+  bad((v) => { v.read.brief = 'not json'; }, /brief/);
+  bad((v) => { v.read.brief = okOut('brief', { strategy: {} }, []); }, /checker/);
+  bad((v) => { v.read.brief = okOut('brief', { checker: { errors: '0' } }, []); }, /checker/);
+  bad((v) => { v.read.brief = briefOut(2); }, /checker/);
+  bad((v) => { delete v.read.brief; }, /brief/);
+});
+
+test('recordVerdict: segmento rotulado, bloqueado com a nota BLQ e id de decisão ausente', () => {
+  const v = VX();
+  v.piece = 'code';
+  v.read.status = panelOut('plano', { label: 'code' });
+  assert.equal(PU.recordVerdict(v).ok, true);
+  v.read.status = panelOut('plano', { label: 'acceptance' });
+  assert.equal(PU.recordVerdict(v).ok, false);
+  const b = VX();
+  b.word = 'bloqueado';
+  b.expected = PU.recordCommands({ ...RC, word: 'bloqueado', logWhat: 'motivo' }).commands;
+  b.results.runs = [{ command: b.expected[0], exit: 0, stdout: okOut('block-open', { id: 'BLQ-9', affects: ['E1'] }) }];
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-9' });
+  assert.equal(PU.recordVerdict(b).ok, true);
+  b.read.status = panelOut('bloqueado', { note: 'BLQ-8' });
+  assert.equal(PU.recordVerdict(b).ok, false);
+  b.read.status = panelOut('bloqueado');
+  assert.equal(PU.recordVerdict(b).ok, false);
+  bad((x) => { x.read.pendingDecisions = pendOut(['DEC-1']); }, /DEC-300/);
+  bad((x) => { x.read.pendingDecisions = ''; }, /pending/i);
+});
+
+test('recordVerdict: no-bash e lista vazia reprovam; frases do agente não decidem', () => {
+  bad((v) => { v.results = { error: 'no-bash', runs: [] }; }, /no-bash/);
+  bad((v) => { v.results = { runs: [] }; });
+  bad((v) => {
+    v.results.statusWritten = 'ok';
+    v.results.details = 'tudo certo';
+    v.read.status = panelOut('spec');
+  });
+  const ok = VX();
+  ok.results.statusWritten = 'failed';
+  ok.results.details = 'deu errado';
+  assert.equal(PU.recordVerdict(ok).ok, true);
+});
+
+test('recordVerdict: status --json sem checker ao lado de um brief sem erro é aprovado', () => {
+  const v = VX();
+  assert.ok(!('checker' in JSON.parse(v.read.status).result));
+  assert.equal(PU.recordVerdict(v).ok, true);
 });
