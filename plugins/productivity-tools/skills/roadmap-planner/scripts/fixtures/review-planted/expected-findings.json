@@ -1,0 +1,20 @@
+[
+  {
+    "file": "plugins/productivity-tools/skills/roadmap-planner/scripts/fixtures/review-planted/strategy.md",
+    "rule": "unsourced-number",
+    "severity": "error",
+    "evidence": "which cuts onboarding time by 40%"
+  },
+  {
+    "file": "plugins/productivity-tools/skills/roadmap-planner/scripts/fixtures/review-planted/requirements.md",
+    "rule": "compound-requirement",
+    "severity": "error",
+    "evidence": "The portal lets a user sign up and also exports the user list as CSV."
+  },
+  {
+    "file": "plugins/productivity-tools/skills/roadmap-planner/scripts/fixtures/review-planted/strategy.md",
+    "rule": "unverifiable-criterion",
+    "severity": "error",
+    "evidence": "{verify: test; evidence: node --version}"
+  }
+]

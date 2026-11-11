@@ -1,6 +1,6 @@
 # Decompose: requirements to deliverables
 
-How `roadmap-planner` Steps 3 to 6 (the Step 6 file table is §13) turn sources and answers into requirements, deliverables, phases, tracks and an order. File formats (card attributes, table columns) are in `formats.md`; this file covers the judgment.
+How `roadmap-planner` Steps 3 to 6 turn sources and answers into requirements, deliverables, phases, tracks and an order. File formats are in `formats.md §5`-§8; this file covers the judgment.
 
 ## Contents
 
@@ -17,6 +17,7 @@ How `roadmap-planner` Steps 3 to 6 (the Step 6 file table is §13) turn sources 
 11. Coverage pass
 12. Light mode
 13. Files to write (roadmap-planner Step 6)
+14. Worked examples
 
 ## 1. Requirement extraction
 
@@ -36,11 +37,10 @@ Rules:
 - **One testable statement per `REQ`.** Split compound statements ("borrow and renew") into separate rows.
 - **Every source item is consumed.** Each claim in a source summary becomes a `REQ`, merges into an existing one (add the `SRC` to Sources), or becomes a `REQ` with coverage `out-of-scope: <reason>`. Nothing is dropped silently.
 - **Trace.** Sources cites `SRC` and/or `DEC` IDs.
-- **No sources.** When the user gives only an objective, register the objective (and any brief or conversation the user supplied) as `SRC-01` with What it is "user brief", so requirements cite it. Never create a `DEC` just to carry a source; a `DEC` records a choice.
-- **No speculation.** No "might need" requirements nobody stated.
-- **Duplicates** merge into one row listing every source.
+- **No sources.** An objective alone is registered as `SRC-01` "user brief" so requirements cite it; never create a `DEC` just to carry a source.
+- **No speculation, no duplicates.** No "might need" requirements; duplicates merge into one row listing every source.
 - **Conflicts.** A requirement both sides of an unsettled conflict touch stays `needs-clarification` until a `DEC` settles it; then it cites that `DEC`.
-- **Numbers.** A requirement keeps only numbers the user or a source supplied; an unsourced one is tagged `ASSUMPTION` and gets a `measurement` requirement for its baseline.
+- **Numbers.** Only numbers the user or a source supplied; an unsourced one is `ASSUMPTION` plus a `measurement` requirement for its baseline.
 - IDs `REQ-001`, `REQ-002`, … in extraction order, never reused.
 
 ## 2. From requirements to deliverables
@@ -96,23 +96,23 @@ Every card has one `track` from the config's `tracks` list. Defaults:
 | `release` | Publishing, rollout, announcement |
 | `measurement` | Baselines, measurement runs, evaluations |
 
-Non-engineering gates are real deliverables on their tracks when they need their own work and acceptance; otherwise they are dependencies or blockers. Add or rename tracks in the config when the project needs it.
+Non-engineering gates are deliverables on their tracks when they need their own work and acceptance; otherwise dependencies or blockers.
 
 ## 7. Dependencies, DAG and critical path
 
 - `depends` lists the deliverables that must be done first; the graph must be acyclic (the checker reports `dependency-cycle`).
-- A dependency exists when a deliverable needs another's output, decision or approval; not merely because both touch the same area.
+- A dependency exists when a deliverable needs another's output, decision or approval, not merely because both touch the same area.
 - The **critical path** is the longest chain of dependencies to the objective, counted in deliverables, not time. Mark its cards `critical=true`; each needs at least one risk with a mitigation.
 - `critical-path.md` draws the DAG (Mermaid) with gates from other tracks and names the next gate per track.
-- Order only. No dates unless the user supplied them; a supplied date is cited with its `DEC` or `SRC`.
+- Order only; a supplied date is cited with its `DEC` or `SRC`.
 
 ## 8. Prioritization
 
 - **MoSCoW** on every card: `Must`, `Should`, `Could`, `Won't` (for this version). `Won't` items stay visible as cards or as out-of-scope requirements, so the decision is recorded.
-- **Challenge** the user when more than half of the deliverables are `Must`: ask which ones the objective can be met without. Record the answer as a `DEC`.
+- **Challenge** the user when more than half of the deliverables are `Must` (full mode): ask which ones the objective can be met without; record the answer as a `DEC`.
 - **DAG first**: priority never breaks a dependency; a `Must` that depends on a `Should` makes that `Should` a `Must` or the dependency wrong.
 - **WSJF** only to order deliverables the DAG leaves unconstrained, and only with value, time criticality, risk reduction and size that the user supplies. Never fill WSJF inputs yourself.
-- **No RICE**: it needs reach and impact data a new roadmap rarely has.
+- **No RICE.**
 
 ## 9. Size
 
@@ -127,8 +127,8 @@ Never a point estimate, never a duration, never a number without a basis.
 
 - At least two criteria per card, Given-When-Then, in plain language a stakeholder can check without reading code: "Given <context>, when <action>, then <observable result>".
 - Criteria describe behaviour, not implementation. No unsourced numbers in them (Rule 2 of `SKILL.md`).
-- Every criterion carries the verification tag defined in `formats.md` (kind and evidence). A criterion that can be tested by a command is `test`, `smoke` or `integration`, never `human` or `blocked`; `human` is for judgment only a person can give, `blocked` cites its `BLQ-n`.
-- Verify command for code that does not exist yet: derive it from the gates table. Take the gate command that exercises the area (for example G2 `npm test`) and add the filter or file the card itself names (`npm test -- tests/e1.test.mjs`). Write it as `{verify: test; evidence: <gate command> -- <file the card names>}`. If no gate covers the area, say so in an `E<n>:` open question instead of inventing a command. The executor may refine the file or filter (never the gate command) and records the refinement as a `DEC` with Origin `executor` and Status = the `decisionPending` word, unless the autonomy answer was no (clarify.md §7): then it is a `pending` item `(owner) ratify: <refinement>` and no `DEC` row. Under `roadmap-release` this refinement path does not exist: the workflow rejects any plan that changes a card's `{verify}` command, so a wrong command in the card must be corrected in the strategy (by the person or roadmap-tracker) before the run, and an executor that needs a different command stops the deliverable instead of editing it.
+- Every criterion carries the verification tag of `formats.md §5` (kind and evidence). A criterion that can be tested by a command is `test`, `smoke` or `integration`, never `human` or `blocked`; `human` is for judgment only a person can give, `blocked` cites its `BLQ-n`.
+- Verify command for code that does not exist yet: take the gate command that exercises the area (for example G2 `npm test`) and add the filter or file the card names: `{verify: test; evidence: <gate command> -- <file the card names>}`. If no gate covers the area, say so in an `E<n>:` open question instead of inventing a command. The executor may refine the file or filter (never the gate command) and records it as a `DEC` with Origin `executor` and Status = the `decisionPending` word, unless the autonomy answer was no (`clarify.md` §7): then it is a `pending` item `(owner) ratify: <refinement>`. Under `roadmap-release` this path does not exist: the workflow rejects a plan that changes a card's `{verify}` command, so a wrong command is corrected in the strategy before the run.
 - Split a deliverable that mixes automatic work with human acceptance or an external environment, so each piece closes on its own kind of evidence.
 - The definition of done is one verifiable condition beyond acceptance (for example "acceptance passes on the integration branch"), citing the gate IDs from the "Gates and verification" section. It separates "within the deliverable" from "depends on an owner or date".
 - Each risk is "risk -> mitigation"; the mitigation is an action, not a hope.
@@ -147,20 +147,28 @@ The checker verifies 1 to 3 mechanically; 4, 5 and the quality of each criterion
 
 ## 12. Light mode
 
-Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required. Defaults for the rest: `priority=Must`, `size="not estimated"`, `track` defaults to the first track (`engineering`), but use `measurement`, `external` or `decisions` when the card is clearly that kind (tracks may be renamed), `critical` computed from the DAG; critical cards still get ≥1 risk line (else the checker warns `critical-no-risk`). Skip the "more than half Must" challenge of §8 (every card is `Must` by default); the handoff says the priorities were not challenged. Phases may be a single phase. Requirement extraction (§1) and the coverage pass (§11) are unchanged: REQ/SRC traceability and the checker stay. A deliverable that waits on an open blocker is created with status `blocked` (config `vocab.blockedStatus`) citing its `BLQ-n`; one dropped by a decision is `discarded` (config `vocab.discardedStatus`) with priority `Won't`.
+Cards are minimal: acceptance criteria (≥2), `depends` and `reqs` are required. Defaults: `priority=Must`, `size="not estimated"`, `track` the first track (`engineering`) unless the card is clearly `measurement`, `external` or `decisions`; critical cards still get ≥1 risk (else the checker warns `critical-no-risk`). Skip the "more than half Must" challenge of §8; the handoff says the priorities were not challenged. Phases may be a single phase. Extraction (§1) and the coverage pass (§11) are unchanged. A deliverable that waits on an open blocker is created with status `blocked` (config `vocab.blockedStatus`) citing its `BLQ-n`; one dropped by a decision is `discarded` (config `vocab.discardedStatus`) with priority `Won't`.
 
 ## 13. Files to write (roadmap-planner Step 6)
 
-Each file is written from its template in `formats.md`, in the project's language:
+The model carries the content and `scripts/scaffold.mjs` writes every file of the folder and the strategy from it, in the project's language (`references/model.md` §9 lists what it derives; templates are `formats.md §5`-§8, read only when a field asks). Do not write these files by hand.
 
-| File | Content at creation | formats.md |
-|------|---------------------|------------|
-| Strategy (config `strategy`, default `../<date>-roadmap-<topic>.md`, never `*-plan.md`: if `<topic>` ends in `-plan`, drop that suffix) | v1.0, every section of the template (including Phases and "Gates and verification"; Metrics and Flags may be omitted when empty), one card per deliverable | §5 |
-| `roadmap.config.json` | `formatVersion` 1, language, strategy path, `integrationBranch` from Step 0, `releaseBranch` when Step 0 found one, file names, vocab (set `vocab.blockedStatus` and `vocab.discardedStatus` to the localized words, which must also be in `deliverableStatuses`), tracks, limits (with `pendingItems: 20`) | §2 |
-| `README.md` | files, check command `node <roadmap-folder>/check-roadmap.mjs`, "when to update" table | §8 |
-| `state.md` | initial `now` (≤ `limits.nowItems`, each item "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>."), one panel row per card (the first `deliverableStatuses` word; the configured `vocab.blockedStatus` word citing its `BLQ-n` when it waits on a blocker from Step 2, and that BLQ row's "Unblocks when" records "restores E<n> to <the first `deliverableStatuses` word>", which `events.md` § 5 reads on closing), empty inflight, pending with owners; blocks `donot` ("Do not do now", each item citing a `BLQ-n` or `DEC-NNN`) and `releases` only when the sources or answers call for them | §6 |
-| `decisions.md` | the `DEC` rows from Step 2 (Contradicts `-`: v1.0 is built from them) | §6 |
-| `log.md` | one row: today, `-`, roadmap created, evidence = the strategy path | §6 |
-| `sources.md`, `requirements.md` | from Steps 1 and 3 | §7 |
-| `critical-path.md` | Mermaid DAG of the cards and gates, next gate per track | §7 |
-| `measurements.md` | only when the roadmap has paid runs or measurement milestones; otherwise `files.measurements: null` | §7 |
+## 14. Worked examples
+
+**Full card** (the card of `model.md` §5, not repeated here): E2 "Storage layer" shows a card with ≥2 Given-When-Then criteria, each with a `verify` command, a `dod` citing a gate, and a risk written as "risk -> mitigation".
+
+**Compound requirement split.** "A librarian can borrow and renew a loan" has two verifiable behaviours, so it becomes two rows:
+
+```
+REQ-004 | functional | A librarian can borrow a book for a reader   | SRC-01
+REQ-005 | functional | A librarian can renew a loan for a reader     | SRC-01
+```
+
+**Criteria, bad and good.**
+
+```
+Bad:  The renewal works well.
+Good: Given a loan due tomorrow, when the librarian renews it, then the due date moves
+      by the loan period and the reader sees the new date.
+      {verify: integration; evidence: npm test -- tests/renew.test.mjs}
+```

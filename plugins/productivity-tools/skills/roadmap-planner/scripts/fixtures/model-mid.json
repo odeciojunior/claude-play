@@ -1,0 +1,47 @@
+{
+  "modelVersion": 1,
+  "date": "2026-01-01",
+  "topic": "exemplo",
+  "title": "Plataforma de Exemplo",
+  "language": "pt-BR",
+  "mode": "full",
+  "integrationBranch": "main",
+  "nextStep": 6,
+  "questions": [
+    { "question": "Qual é o objetivo?", "answer": "Entregar a plataforma de exemplo em duas fases." },
+    { "question": "Há prazo?", "answer": "Não há prazo fixo." }
+  ],
+  "sources": [
+    { "id": "SRC-01", "source": "docs/resumo-exemplo.md", "what": "Resumo sintético do projeto", "readOn": "2026-01-01", "reliability": "Fixture sintética" }
+  ],
+  "requirements": [
+    { "id": "REQ-001", "text": "A plataforma expõe um endpoint de saúde.", "type": "functional", "sources": ["SRC-01"] },
+    { "id": "REQ-002", "text": "A plataforma grava registros de forma durável.", "type": "functional", "sources": ["SRC-01"] }
+  ],
+  "phases": [
+    { "name": "Base pronta", "entry": "Resumo aprovado", "exit": "E1 integrado" },
+    { "name": "Recursos usáveis", "entry": "Base pronta", "exit": "E2 integrado" }
+  ],
+  "deliverables": [
+    {
+      "id": "E1", "title": "Serviço central", "phase": "Base pronta",
+      "depends": [], "reqs": ["REQ-001"],
+      "why": "Todo o resto depende do serviço.",
+      "acceptance": [
+        { "text": "O endpoint de saúde responde 200.", "verify": { "kind": "test", "evidence": "node --test central.test.mjs" } },
+        { "text": "O serviço sobe a partir de um checkout limpo.", "verify": { "kind": "smoke", "evidence": "npm start e depois GET /health" } }
+      ]
+    },
+    {
+      "id": "E2", "title": "Camada de armazenamento", "phase": "Recursos usáveis",
+      "depends": ["E1"], "reqs": ["REQ-002"],
+      "why": "Os registros precisam sobreviver a reinícios.",
+      "acceptance": [
+        { "text": "Um registro gravado é lido após reiniciar.", "verify": { "kind": "integration", "evidence": "node --test armazenamento.test.mjs" } },
+        { "text": "Registros inválidos são recusados.", "verify": { "kind": "test", "evidence": "node --test armazenamento.test.mjs" } }
+      ]
+    }
+  ],
+  "objective": "Entregar a plataforma de exemplo com armazenamento durável.",
+  "thesis": "Primeiro o serviço, depois o armazenamento."
+}
