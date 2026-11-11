@@ -14,4 +14,5 @@
 | 2026-11-10 | E14 | O dono ratificou DEC-057 a DEC-061 e aprovou a revisão da estratégia para a v1.1, que absorve as decisões das sondas em E2, E8, E18, E19, E21, E23 e E25, sem mudar entregável, dependência ou critério. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
 | 2026-11-10 | E14 | Fechado: as cinco sondas têm resultado registrado como decisão ratificada, e a estratégia v1.1 absorve o que contrariava os cards. Nenhum arquivo do plugin foi alterado. | `baa77bf` |
 | 2026-11-10 | - | O dono ratificou DEC-053 a DEC-056, de alcance local: teste próprio de E4, nota de atualização em `docs/releases/`, artefatos de E1 a E8 na pasta do superpowers e a receita de fixar a loja numa tag. Nenhuma decisão do executor fica pendente. | `decisions.md` |
+| 2026-11-10 | E1 | O dono ratificou DEC-062 a DEC-080, as decisões do spec de E1, com quatro emendas registradas como DEC-081 a DEC-084: detecção inconclusiva bloqueia, diário sem os campos invalida a tentativa, o arnês registra que o prompt é cópia, e a variante de defeitos por código fica fora do pago em E15. | `decisions.md` |
 <!-- /roadmap:log -->

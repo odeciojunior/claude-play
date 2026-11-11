@@ -1,13 +1,13 @@
 # Estado
 
-Estratégia v1.1 -- 2026-11-10
+Estratégia v1.2 -- 2026-11-10
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 ## Agora
 
 <!-- roadmap:now -->
-1. Executar o plano de E1 na branch `feat/E1`. Executa: executor. Aprova: dono. Depende de: DEC-062 a DEC-080 (decisões de contrato antes de E15, DEC-030).
+1. Rodar de novo o plan-only de E1 com as emendas do dono como nota (DEC-081 a DEC-083), para o spec e o plano as absorverem; depois executar o plano na branch `feat/E1`. Executa: executor. Aprova: dono. Depende de: DEC-081.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -65,8 +65,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
-- (dono) Ratificar DEC-062 a DEC-080, decisões do executor no spec de E1; as de contrato (DEC-062, 064, 065, 067, 068, 070, 071, 073 a 076 e 080) antes de E15, as locais em lote no ponto de medição (DEC-030).
-- (dono) Spec e plano de E5 tirados de uma execução aprovada (recomendação de SRC-13) para a semeadura de plano de E1.
+- (executor) Depois que E1 integrar, acrescentar `tools/**/*.test.mjs` ao gate G1 em `release.config.json` e na tabela de gates da estratégia, antes de E2 rodar (DEC-032, DEC-077).
+- (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
 - (dono) Primeira execução real do lançador de E1 contra `claude -p`, paga.
 <!-- /roadmap:pending -->
 
