@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -3197,4 +3198,39 @@ test('BASH_ONLY literal em docs e docs-measure', async () => {
   assert.ok(ps.length >= 2);
   const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
   for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+});
+
+test('recordVerdict: reprova worktree sujo na releitura (o agente não comitou)', () => {
+  bad((v) => { v.read.porcelain = ' M docs/plans/r/state.md\n'; }, /not clean/);
+  const v = VX();
+  v.read.porcelain = '\n';
+  assert.equal(PU.recordVerdict(v).ok, true);
+});
+
+test('recordCommands: statusEvidence limita só o set-status; o log segue com a lista inteira', () => {
+  const ev = ['a'.repeat(40), 'gates G1, G2', 'docs/s.md', 'docs/p.md', 'docs/r.md'];
+  const r = PU.recordCommands({ ...RC, evidence: ev, statusEvidence: [ev[0]] });
+  const st = r.commands.find((c) => c.includes(' set-status '));
+  const lg = r.commands.find((c) => c.includes(' log '));
+  assert.equal((st.match(/--evidence/g) || []).length, 1);
+  assert.equal((lg.match(/--evidence/g) || []).length, 5);
+});
+
+test('set-status do registro de documentação passa pela CLI real com a célula Evidência já cheia', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const cli = join(here, '..', '..', 'roadmap-tracker', 'scripts', 'roadmap.mjs');
+  const fx = join(here, '..', '..', 'roadmap-tracker', 'scripts', 'fixtures', 'valid');
+  const dir = mkdtempSync(join(tmpdir(), 'e18ff-'));
+  try {
+    cpSync(fx, dir, { recursive: true });
+    const st = join(dir, 'state.md');
+    const old = '`docs/superpowers/specs/2026-11-11-E1-uma-especificacao-bem-longa-design.md`, `docs/superpowers/plans/2026-11-11-E1-um-plano-bem-longo-para-o-teste.md`, `docs/plans/roadmap-x/outro-arquivo.md`';
+    writeFileSync(st, readFileSync(st, 'utf8').replace('| E1 | spec | `docs/spec-e1.md` |', `| E1 | spec | ${old} |`));
+    const ev = ['a'.repeat(40), 'gates G1, G2, G3, G4, G5', 'docs/superpowers/specs/2026-11-11-E1-uma-especificacao-bem-longa-design.md', 'docs/superpowers/plans/2026-11-11-E1-um-plano-bem-longo-para-o-teste.md', 'docs/superpowers/reviews/2026-11-11-E1-slug-reviews.md'];
+    const cmd = PU.recordCommands({ ...RC, cli, folder: dir, word: 'on-branch', evidence: ev, statusEvidence: [ev[0]] }).commands.find((c) => c.includes(' set-status '));
+    // Same argv the shell would build: single-quoted words, with a quote written as '\''.
+    const argv = [...cmd.slice(cmd.indexOf('" ') + 2).matchAll(/'((?:[^']|'\\'')*)'|(\S+)/g)].map((m) => (m[1] !== undefined ? m[1] : m[2]));
+    const r = spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

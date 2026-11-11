@@ -838,9 +838,11 @@ function phrases(lang) {
     commit: (E, word) => `docs(roadmap): ${E} at ${word}`,
   }
 }
+// statusEvidence (optional) replaces the evidence of set-status only: the CLI appends it to the panel Evidence cell, which already holds
+// the spec and plan references and refuses a cell over the limit, so a long list belongs to the log row, not to the panel.
 // Ordered command list of one record: block-close, set-status + log (or block-open), add-decision, add-pending, inflight-*.
 // Every variable text goes through fitCell with the room the CLI leaves in the cell; `cuts` lists the texts that were cut.
-function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, next, logWhat, decisions, pending, inflight, skipStatus, lang, cellChars, source, blockedStatus }) {
+function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, statusEvidence, next, logWhat, decisions, pending, inflight, skipStatus, lang, cellChars, source, blockedStatus }) {
   const P = phrases(lang)
   const max = cellChars || 300
   const cuts = []
@@ -867,7 +869,7 @@ function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, next
       cmds.push(cliCmd(cli, 'block-open', folder, ['--what ' + shq(what), '--affects ' + shq(E), '--unblocks ' + shq(unblocks), ...pieceArg, ...evs.map(r => '--evidence ' + shq(r))]))
     } else {
       const nextText = fit('set-status --next', collapseWs(next) || P.next(E, word), max)
-      cmds.push(cliCmd(cli, 'set-status', folder, [shq(E), shq(word), ...pieceArg, ...(evidence || []).filter(Boolean).map(r => '--evidence ' + shq(r)), '--next ' + shq(nextText)]))
+      cmds.push(cliCmd(cli, 'set-status', folder, [shq(E), shq(word), ...pieceArg, ...(statusEvidence !== undefined ? fitEvidence(statusEvidence, max) : (evidence || []).filter(Boolean)).map(r => '--evidence ' + shq(r)), '--next ' + shq(nextText)]))
       const logEv = fitEvidence(evidence, max)
       cmds.push(cliCmd(cli, 'log', folder, ['--deliverable ' + shq(E), '--what ' + shq(fit('log --what', collapseWs(logWhat) || P.log(E, word), max)), ...(logEv.length ? logEv : ['state.md']).map(r => '--evidence ' + shq(r))]))
     }
@@ -929,6 +931,7 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
     if (verb === 'block-open' && o.result && typeof o.result.id === 'string') blq = o.result.id
     if (verb === 'add-decision' && o.result && typeof o.result.id === 'string') decisionIds.push({ id: o.result.id, changed: Array.isArray(o.changed) && o.changed.length > 0 })
   })
+  if (String(rd.porcelain == null ? '' : rd.porcelain).trim()) failures.push('the integration worktree is not clean after the record (git status --porcelain is not empty): the record agent did not commit')
   const status = parseCli(rd.status)
   const panel = status && status.result && Array.isArray(status.result.panel) ? status.result.panel : null
   if (!panel) failures.push('reread status --json is missing or has no panel')
@@ -1589,7 +1592,7 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     const pendRoom = CELL_CHARS - `(${phrases(LANG).owner}) `.length
     const critPending = (out.acOpen || []).map(x => fitCell(`criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`, pendRoom, planTxt(), LANG).text)
     const docsRc = skipStatus => recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null,
-      evidence: [mergeCommit, `gates ${GATES.map(d => d.name).join(', ')}`, specTxt(), planTxt(), reviewsTxt()], decisions: [], skipStatus,
+      evidence: [mergeCommit, `gates ${GATES.map(d => d.name).join(', ')}`, specTxt(), planTxt(), reviewsTxt()], statusEvidence: [mergeCommit], decisions: [], skipStatus,
       pending: [...out.acceptedRisks.map(fmtRisk), ...human.filter(h => !ranHuman(h)).map(h => h.what), ...critPending], inflight: { remove: br },
       lang: LANG, cellChars: CELL_CHARS, source: reviewsTxt(), blockedStatus: STATUSES.blocked })
     const docsAll = docsRc(false).commands
