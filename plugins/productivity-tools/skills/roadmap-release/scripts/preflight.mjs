@@ -313,7 +313,11 @@ function readRoadmapTexts(root, dir, ref, warnings) {
 // Executor decisions still pending, as the tracker CLI lists them (pending-decisions); a failure is a warning.
 function readPendingDecisions(texts, warnings) {
   // A config without a vocab (a stub) has no decisions vocabulary to read: nothing to list, not a failure.
-  if (!texts || !texts.config?.vocab || typeof texts.files.decisions !== 'string') return [];
+  if (!texts || !texts.config?.vocab) return [];
+  if (typeof texts.files.decisions !== 'string') {
+    warnings.push(`pending executor decisions not read: ${texts.config.files?.decisions || 'decisions file'} missing (${texts.from})`);
+    return [];
+  }
   try {
     const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
     return pendingDecisions({ roadmap: { config: texts.config }, parsed });

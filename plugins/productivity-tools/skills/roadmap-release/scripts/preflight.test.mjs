@@ -607,3 +607,21 @@ test('falha de leitura é aviso, não erro', () => {
   assert.ok(r.warnings.length > 0);
   assert.deepEqual(r.errors, before);
 });
+
+test('decisions.md ausente na branch alvo vira aviso, com lista vazia (DEC-217)', () => {
+  const { root, dir } = pendingRepo();
+  git(root, 'checkout', '-q', 'alvo');
+  git(root, 'rm', '-q', join(dir, 'decisions.md'));
+  git(root, 'commit', '-q', '-m', 'sem decisions');
+  git(root, 'checkout', '-q', 'main');
+  const r = runPreflight(dir, pfOpts({ ref: 'alvo' }));
+  assert.deepEqual(r.pendingDecisions, []);
+  assert.ok(r.warnings.some((w) => /decisions/.test(w) && /not read/.test(w)), r.warnings.join());
+});
+
+test('todo scope de pendingDecisions é o literal contract ou local (DEC-251)', () => {
+  const { dir } = pendingRepo();
+  const r = runPreflight(dir, pfOpts({ ref: 'alvo' }));
+  assert.ok(r.pendingDecisions.length > 0);
+  for (const d of r.pendingDecisions) assert.ok(d.scope === 'contract' || d.scope === 'local', d.scope);
+});
