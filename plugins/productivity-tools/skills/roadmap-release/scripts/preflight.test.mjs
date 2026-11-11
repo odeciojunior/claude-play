@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -606,4 +606,45 @@ test('falha de leitura é aviso, não erro', () => {
   assert.deepEqual(r.pendingDecisions, []);
   assert.ok(r.warnings.length > 0);
   assert.deepEqual(r.errors, before);
+});
+
+test('decisions.md ausente na branch alvo vira aviso, com lista vazia (DEC-217)', () => {
+  const { root, dir } = pendingRepo();
+  git(root, 'checkout', '-q', 'alvo');
+  git(root, 'rm', '-q', join(dir, 'decisions.md'));
+  git(root, 'commit', '-q', '-m', 'sem decisions');
+  git(root, 'checkout', '-q', 'main');
+  const r = runPreflight(dir, pfOpts({ ref: 'alvo' }));
+  assert.deepEqual(r.pendingDecisions, []);
+  assert.ok(r.warnings.some((w) => /decisions/.test(w) && /not read/.test(w)), r.warnings.join());
+});
+
+test('scope de pendingDecisions é o literal contract ou local, também em config pt (DEC-251)', () => {
+  const { dir } = pendingRepo();
+  const cfgPath = join(dir, 'roadmap.config.json');
+  const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+  cfg.language = 'pt';
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  const dec = join(dir, 'decisions.md');
+  const local = '| DEC-003 | 2026-01-04 | E3 | Outra decisão do executor. Alcance: local. | Nenhuma | - | Nunca | executor | pending |';
+  writeFileSync(dec, readFileSync(dec, 'utf8').replace('<!-- /roadmap:decisions -->', `${NEW_DEC}\n${local}\n<!-- /roadmap:decisions -->`));
+  const r = runPreflight(dir, pfOpts());
+  const byId = Object.fromEntries(r.pendingDecisions.map((d) => [d.id, d.scope]));
+  assert.deepEqual(byId, { 'DEC-002': 'contract', 'DEC-003': 'local' });
+});
+
+test('decisions.md ausente na árvore de trabalho também vira aviso', () => {
+  const { dir } = pendingRepo();
+  rmSync(join(dir, 'decisions.md'));
+  const r = runPreflight(dir, pfOpts());
+  assert.deepEqual(r.pendingDecisions, []);
+  assert.ok(r.warnings.some((w) => /pending executor decisions not read/.test(w) && /working tree/.test(w)), r.warnings.join());
+});
+
+test('config ilegível: o aviso diz que as decisões pendentes ficaram de fora', () => {
+  const { dir } = pendingRepo();
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify(good()));
+  writeFileSync(join(dir, 'roadmap.config.json'), '{ not json');
+  const r = runPreflight(dir, pfOpts());
+  assert.ok(r.warnings.some((w) => /pending executor decisions not read/.test(w)), r.warnings.join());
 });

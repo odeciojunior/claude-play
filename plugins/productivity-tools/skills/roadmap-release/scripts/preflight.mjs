@@ -313,7 +313,11 @@ function readRoadmapTexts(root, dir, ref, warnings) {
 // Executor decisions still pending, as the tracker CLI lists them (pending-decisions); a failure is a warning.
 function readPendingDecisions(texts, warnings) {
   // A config without a vocab (a stub) has no decisions vocabulary to read: nothing to list, not a failure.
-  if (!texts || !texts.config?.vocab || typeof texts.files.decisions !== 'string') return [];
+  if (!texts || !texts.config?.vocab) return [];
+  if (typeof texts.files.decisions !== 'string') {
+    warnings.push(`pending executor decisions not read: ${texts.config.files?.decisions || 'decisions file'} missing (${texts.from})`);
+    return [];
+  }
   try {
     const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
     return pendingDecisions({ roadmap: { config: texts.config }, parsed });
@@ -373,6 +377,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     let texts = null;
     try { texts = readRoadmapTexts(root, dir, ref, warnings); } catch (e) {
       warnings.push(`roadmap cards not read, so the {verify} commands of open cards are not in the permission list: ${e.message}`);
+      warnings.push(`pending executor decisions not read: ${e.message}`);
     }
     let cards = [];
     if (texts) {
