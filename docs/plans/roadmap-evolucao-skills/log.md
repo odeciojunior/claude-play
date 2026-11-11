@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E4 | BLQ-1 aberto: a execução automática parou na tarefa 9 (exige despachar subagentes; sem ferramenta de subagente no executor, o revisor não foi simulado). E4 passa a bloqueado; `feat/E4` mantida. | `1362158c1ec3a43f8b19f32cb5695dcd11224004` |
 | 2026-11-11 | E4 | Execução do plano iniciada na branch `feat/E4`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md` |
 | 2026-11-11 | E4 | DEC-158 a DEC-175 registradas, de origem executor e pendentes de ratificação, vindas do spec de E4. | `decisions.md` |
 | 2026-11-11 | E4 | Plano escrito, na branch `feat/E4`. | `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md` |
