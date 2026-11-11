@@ -311,10 +311,10 @@ test('AC1: one criterion fewer -> acceptance-count', () => {
 });
 
 test('AC1: whitespace, line-ending and NFD-only differences pass', () => {
-  const nfd = STRATEGY_TEXT.replace('shown back', 'shown baçk');
-  const rm = loadRoadmap(roadmapFrom(nfd));
+  const nfc = STRATEGY_TEXT.replace('shown back', 'shown baçk'); // precomposed (NFC) on the spec side
+  const rm = loadRoadmap(roadmapFrom(nfc));
   const r = checkSpec(mutate((d) => {
-    d.acceptance[0].text = d.acceptance[0].text.replace('when a user', 'when  a\nuser').replace('shown back', 'shown baçk');
+    d.acceptance[0].text = d.acceptance[0].text.replace('when a user', 'when  a\nuser').replace('shown back', 'shown baçk'); // decomposed (NFD) on the card side
   }), { roadmap: rm });
   assert.deepEqual(r.errors, []);
   const changed = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace('shown back', 'shown away'); }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
