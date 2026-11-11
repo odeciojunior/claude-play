@@ -1,6 +1,6 @@
 # E22 -- Tracker enxuto com rubricas (design)
 
-Entregável E22 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQs: REQ-017, REQ-018, REQ-029, REQ-037. Depende de E3 (CLI `plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs`, integrada na branch de release) e da ratificação pelo dono das decisões de alcance contrato de E3 em que este desenho se apoia (DEC-030); sem ela, plano e execução de E22 não começam (ver "Pré-condição bloqueante"). Prioridade Should (DEC-022), trilha de engenharia, fase roadmap-sem-llm, não crítico. Terceira fatia do corte de DEC-013: E3 carregou a CLI, E18 faz o release chamá-la, E22 faz a skill do tracker chamá-la e carregar só o que o evento pede.
+Entregável E22 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, v1.3). REQs: REQ-017, REQ-018, REQ-029, REQ-037. Depende de E3 (CLI `plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs`, integrada na branch de release) e das decisões de alcance contrato de E3 em que este desenho se apoia, ratificadas pelo dono em 2026-11-11 com as emendas DEC-200 a DEC-202 (e DEC-209); BLQ-3 fechado, `feat/E22` sincronizada com a release depois da ratificação (ver "Decisões de contrato de E3, ratificadas"). Prioridade Should (DEC-022), trilha de engenharia, fase roadmap-sem-llm, não crítico. Terceira fatia do corte de DEC-013: E3 carregou a CLI, E18 faz o release chamá-la, E22 faz a skill do tracker chamá-la e carregar só o que o evento pede.
 
 ## Por quê
 
@@ -38,7 +38,7 @@ Anti-objetivos (falham mesmo se o teste passar):
 - Cumprir o orçamento escondendo prosa obrigatória num arquivo fora da contagem, ou cortando uma regra de que o tracker precisa (nunca commitar, nunca inventar número, estratégia só por revisão aprovada, `no questions`, palavras de status posicionais, IDs nunca reusados, 0 erros no checker).
 - Uma receita que manda editar à mão o que a CLI já faz, ou que chama a CLI e ignora o código de saída.
 - Rubrica sem exemplos, ou exemplos tirados de fora do formato do roadmap (devem ser linhas de `decisions.md` e critérios no formato do card).
-- Registrar como aceito um critério humano (2 ou 3): o executor produz o relatório; o aceite é do dono.
+- Registrar como aceito um critério humano (2 ou 3): o orquestrador da sessão principal produz o relatório (DEC-204); o aceite é do dono.
 
 ## Desenho
 
@@ -68,17 +68,18 @@ Todos sob `plugins/productivity-tools/` salvo indicação.
 |---------|----------|
 | § 1 Decision | `next-id DEC`; `reject` (rejeição, novo); `log`. A CLI não acrescenta linha de Origin `user` nem troca o Status de uma decisão antiga por `substituída por`: esses dois passos continuam edição pela receita, que cita `formats.md § 6` |
 | § 2 Piece or step closed | `set-status --piece`, `log` |
-| § 3 Integration, § 16 Release branch integrated | `verify-commit`, `integrate`, `inflight-remove` |
+| § 3 Integration, § 16 Release branch integrated | `verify-commit`, `integrate`, `inflight-remove`; sem git, o status integrado ou posterior é recusado e a SHA nova nas posições 1 a 5 entra com o aviso `no-git` (DEC-201), que a receita relata |
 | § 4 Branch deleted | `inflight-remove`, `log` |
 | § 5 Blocker opened or closed | `block-open`, `block-close` |
 | § 10 Checker refresh | `refresh-checker` |
 | § 15 Merge into the release branch, § 17 Acceptance pending, § 20 Started | `set-status`, `inflight-add`, `log` |
-| § 18 Executor decision | `add-decision --scope` (aloca o `DEC-NNN`, Origin `executor`, status pendente, sem duplicar), `add-pending`, `ratify`, `reject`, `log` |
+| § 18 Executor decision | `add-decision --scope` (aloca o `DEC-NNN`, Origin `executor`, status pendente, sem duplicar), `add-pending`, `ratify` (um ou mais `DEC-NNN` numa chamada, uma linha de log; DEC-200), `ratify <DEC-NNN> --amend <texto>` (emenda do dono ao ratificar: linha nova de Origin `user`, vigente, Contradicts `-` por DEC-209, sem substituir a ratificada), `reject`, `log` |
 | Pruning (Common) | `prune` |
 | Leitura de status, partida a frio, decisões pendentes | `status`, `brief`, `pending-decisions` |
 
 - Receitas sem comando na CLI (§ 6 Measurement, § 7 New source, § 8 New requirement, § 9 Revision, § 11 Migration, § 12 Package published, § 13 Do not do now, § 14 plan-coordinator, § 19 criteria check) citam a seção do contrato que tocam, no formato literal `formats.md § N` (risco (b) do card).
 - Código de saída da CLI em toda receita: 0 feito ou no-op; 1 recusado por regra, nada mudou -> relatar a recusa no relatório de entrega (e, sob `no questions`, como item pendente) sem editar à mão para contornar; 2 -> parar e relatar. A regra fica uma vez no SKILL.md, não em cada receita.
+- `--what` (DEC-202): em `integrate`, `ratify` e `reject` substitui o texto padrão da linha de log; em `log` é o próprio texto; em `block-open` é o texto do bloqueio, que o log cita com o prefixo padrão. As receitas não chamam `log` depois de um comando que grava a própria linha (DEC-149).
 
 ### SKILL.md enxuto
 
@@ -98,7 +99,7 @@ Todos sob `plugins/productivity-tools/` salvo indicação.
 
 - Pergunta única: "a decisão faz a estratégia passar a dizer algo diferente do que diz?" Lista do que a estratégia afirma (peças, aceite, definição de pronto, `priority`, `phase`, `track`, `depends`, `reqs` do card; objetivo, não objetivos, tese, ordem das fases, visão geral dos entregáveis).
 - Classes: `contradiz` (sobrescreve uma afirmação: célula Contradicts preenchida com a seção, por exemplo `E2 (pieces)`), `detalha` (preenche o que a estratégia deixa aberto: `-`), `diverge de DEC` (contraria uma decisão vigente: o ID na célula, § 18 passo 2), e `incerto` (pergunta uma vez recomendando a célula preenchida; sob `no questions`, escreve a seção mais próxima e um item pendente para confirmar, como hoje).
-- Testes de desempate: tocar o mesmo entregável não basta; acrescentar um detalhe de implementação não citado no card é `detalha`; mudar um critério, um `depends` ou o que uma peça entrega é `contradiz`; adiar ou cortar um não objetivo também.
+- Testes de desempate: tocar o mesmo entregável não basta; acrescentar um detalhe de implementação não citado no card é `detalha`; mudar um critério, um `depends` ou o que uma peça entrega é `contradiz`; adiar ou cortar um não objetivo também; a emenda do dono gravada ao ratificar uma decisão (`ratify --amend`) refina a decisão e leva `-` (DEC-209), salvo se mudar o que a estratégia diz.
 - Exemplos trabalhados: ao menos três `contradiz` e três `detalha`, cada um como linha de `decisions.md` no formato da pasta, com a célula Contradicts esperada e uma frase de motivo. Os exemplos são inventados sobre a pasta de exemplo `skills/roadmap-tracker/scripts/fixtures/valid` (marcados como exemplos), não sobre este roadmap.
 
 `references/rubric-criteria.md`, lida pela receita § 19:
@@ -113,7 +114,7 @@ Receita de decisão (§ 1) ganha o passo "Rejeição de uma decisão do executor
 ### Meta derivada de prosa (critério 1; DEC-034)
 
 - Contador: bytes, com finais de linha normalizados para LF, da prosa que o tracker carrega para um evento. Carga de um evento = `SKILL.md` + `references/events.md` (índice e Common) + o arquivo da receita + toda outra referência de `references/` que a receita cite (as rubricas) + cada seção `formats.md § N` citada em qualquer um desses arquivos (a seção é o trecho do cabeçalho `## N.` até o próximo `## M.`). Variante: o evento de maior carga (máximo sobre as 20 receitas).
-- Linha de base (SRC-02 §1, tokens 4.815 + 10.215 + 7.930): os três arquivos lidos por evento hoje, no commit `bf9d948`, em LF: `SKILL.md` 19.078 + `events.md` 40.529 + `formats.md` 31.267 = **90.874 bytes LF** (no checkout CRLF, 19.258 e 40.861 para os dois primeiros, conferidos com SRC-02 x4). Os dois arquivos do tracker estão idênticos em HEAD.
+- Linha de base (SRC-02 §1, tokens 4.815 + 10.215 + 7.930): os três arquivos lidos por evento hoje, no commit `bf9d948`, em LF: `SKILL.md` 19.078 + `events.md` 40.529 + `formats.md` 31.267 = **90.874 bytes LF** (no checkout CRLF, 19.258 e 40.861 para os dois primeiros, conferidos com SRC-02 x4). Os dois arquivos do tracker estão idênticos em HEAD; `formats.md` cresceu depois (34.550 bytes LF na release sincronizada, com E4), o que só aumenta o que sai da carga: a meta continua derivada da linha de base.
 - O que a mudança remove por construção: `formats.md` inteiro (31.267) e as 19 receitas que não são do evento. Em `events.md`, o cabeçalho, o sumário e o Common somam 5.862 bytes e as 20 receitas 34.667; a maior é § 1 Decision, com 4.156. Removido: 31.267 + (34.667 − 4.156) = 61.778. **Meta derivada: 90.874 − 61.778 = 29.096 bytes LF** (−68%), igual à carga de hoje sem o contrato e sem as receitas alheias. O que entra de novo (índice, rubricas, seções citadas de `formats.md`) é pago pelos cortes no SKILL.md (passos 2, 3 e 5 viram comando ou apontam para a receita, repetições cortadas).
 - O teste `scripts/prose-budget.test.mjs` confere, lendo os arquivos do disco (nada de manifesto copiado à mão):
   (a) a tabela de `events.md` lista exatamente os arquivos de `references/events/`, cada um uma vez, e todos existem;
@@ -122,22 +123,22 @@ Receita de decisão (§ 1) ganha o passo "Rejeição de uma decisão do executor
   (d) todo arquivo de `references/` (recursivo) está em alguma carga, para que um arquivo novo não escape da contagem;
   (e) SKILL.md não manda ler `events.md` ou `formats.md` inteiros (sem a frase "Read `formats.md` before").
   A linha de base e a meta ficam como constantes no teste com a citação desta seção.
-- A estratégia ainda não tem a tabela de metas derivadas (entra por revisão depois de E15, DEC-098); o valor declarado aqui é o que o tracker propõe registrar. Se a revisão registrar outro valor, a constante do teste muda para ele.
+- A estratégia ainda não tem a tabela de metas derivadas (entra por revisão depois de E15, DEC-098); o valor declarado aqui é o que o tracker propõe registrar. Se a revisão registrar outro valor, a constante do teste muda para ele. No molde de DEC-203 (a emenda do dono para E4), 29.096 é previsão provisória usada como constante do teste; o critério 1, que fala da meta "registrada na estratégia", só conta como atendido por inteiro depois desse registro; até lá o teste exige, além da constante, que o contrato de formato inteiro saia da carga (risco do card).
 
 ### Execuções comportamentais (critérios 2 e 3; REQ-037; regra de SRC-03)
 
-Feitas pelo executor no worktree do entregável, com subagents locais, sem efeito externo. Entradas e saídas em `docs/reports/2026-11-11-e22-rubricas/`; o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` é escrito pelo orquestrador (subagents não gravam arquivos com nome de relatório).
+Por DEC-204, o plano marca as execuções comportamentais como tarefa do orquestrador da sessão principal, não do executor do workflow do release (que não tem ferramenta de subagent): o orquestrador despacha os subagents no tier do plano, repassa a saída literal e escreve o relatório. A tarefa roda no worktree do entregável `D:/projects/claude-play-wt/E22`, na `feat/E22`, antes do merge, sem efeito externo. Entradas e saídas em `docs/reports/2026-11-11-e22-rubricas/`; o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` é escrito pelo orquestrador (subagents não gravam arquivos com nome de relatório).
 
 1. Pasta de teste: cópia de `skills/roadmap-tracker/scripts/fixtures/valid` em `docs/reports/2026-11-11-e22-rubricas/pasta/` (marcada como fixture sintética no README do diretório).
 2. Critério 2: um subagent segue o SKILL.md enxuto literalmente com o evento "decisão" duas vezes, sob `no questions`: decisão A que contraria a estratégia da pasta (muda o `depends` ou uma peça de um card) e decisão B que só a detalha (escolha de nome ou biblioteca que o card deixa aberta). Esperado: A com Contradicts preenchida citando a seção, B com `-`. A saída (linhas gravadas em `decisions.md`, carga lida, ambiguidades encontradas) vai para o diretório.
 3. Critério 3: um card da pasta e um spec sintético em `docs/reports/2026-11-11-e22-rubricas/spec-enfraquecido.md` com um critério enfraquecido (por exemplo `verify: test` trocado por `human`, ou o caso negativo removido) e os demais iguais. O subagent roda o evento "último pedaço fechado" (§ 19). Esperado: um item pendente que aponta o critério enfraquecido e nenhum para os iguais.
-4. Teste do fluxo enxuto (REQ-037): o mesmo subagent, ou outro, roda em sequência na pasta de teste os eventos § 20 (spec escrito), § 5 (abrir e fechar bloqueio), § 18 (decisão do executor) e a rejeição nova de § 1, listando cada arquivo que leu, cada comando da CLI e cada ambiguidade; depois o checker vendorizado tem de dar 0 erros.
+4. Teste do fluxo enxuto (REQ-037): o mesmo subagent, ou outro, roda em sequência na pasta de teste os eventos § 20 (spec escrito), § 5 (abrir e fechar bloqueio), § 18 (decisão do executor, ratificada com emenda por `ratify --amend`) e a rejeição nova de § 1 sobre outra decisão do executor, listando cada arquivo que leu, cada comando da CLI e cada ambiguidade; depois o checker vendorizado tem de dar 0 erros.
 5. Revisão adversarial só de leitura dos resultados por outro subagent; os achados entram no relatório.
-6. O relatório traz, por critério: entrada, saída literal, resultado esperado, resultado obtido, e a linha "aceite: aguardando o dono" (verify: human). Nenhum aceite é registrado pelo executor.
+6. O relatório traz, por critério: entrada, saída literal, resultado esperado, resultado obtido, e a linha "aceite: aguardando o dono" (verify: human). Nenhum aceite é registrado pelo orquestrador nem pelo executor.
 
 ### Testes (só no arquivo do card)
 
-`scripts/prose-budget.test.mjs`: as conferências (a) a (e) da seção anterior. A suíte G1 já pega o arquivo pelo glob `plugins/**/*.test.mjs`. G5 (`lint-plugin.mjs`) cobre frontmatter e caminhos das referências novas; toda referência com mais de 100 linhas tem sumário (`.claude/rules/skills.md`).
+`scripts/prose-budget.test.mjs`: as conferências (a) a (e) da seção anterior. A suíte G1 já pega o arquivo pelo glob `plugins/**/*.test.mjs`. O teste de E4 (`skills/roadmap-planner/scripts/prose-budget.test.mjs`, outro caminho e outra carga) não muda. G5 (`lint-plugin.mjs`) cobre frontmatter e caminhos das referências novas; toda referência com mais de 100 linhas tem sumário (`.claude/rules/skills.md`).
 
 ## Fica com o construtor
 
@@ -145,25 +146,25 @@ Feitas pelo executor no worktree do entregável, com subagents locais, sem efeit
 - Ordem e divisão das tarefas em até quatro arquivos cada. A separação de `events.md` em 20 arquivos pode ser feita por script determinístico, com conferência de que o texto de cada seção foi preservado antes das edições (T0), e as edições por grupos de até quatro receitas.
 - Os exemplos das rubricas e as entradas sintéticas das execuções comportamentais, desde que cubram os casos listados.
 
-## Pré-condição bloqueante: ratificação das decisões de contrato de E3
+## Decisões de contrato de E3, ratificadas
 
-DEC-030: uma decisão do executor de alcance contrato é ratificada antes de um dependente começar. `state.md` no alvo registra que as decisões de contrato de E3 "seguram o início de E18 e E22", e E18 parou por isso (BLQ-2, commit `99c323d`). E22 lê diretamente o que essas decisões fixam, todas hoje com status pendente em `decisions.md`. Este spec pode ser escrito e revisado; o plano e a execução de E22 só começam depois que o dono ratificar as decisões abaixo. Se o workflow chegar ao plano ou à execução com alguma delas pendente, E22 para e o bloqueio é registrado no estágio de registro, no alvo, no molde de BLQ-2 (esta branch não edita a pasta do roadmap).
+DEC-030 exige a ratificação das decisões de alcance contrato de E3 antes de E22 começar. O dono as ratificou em 2026-11-11 (todas vigentes em `decisions.md`), com as emendas DEC-200 (`ratify` com vários DEC e `--amend`), DEC-201 (sem git) e DEC-202 (`--what`), e DEC-209 (a linha de emenda leva Contradicts `-`); BLQ-3 foi fechado e a `feat/E22` foi sincronizada com a release antes de seguir. Nada aqui reabre essas decisões; o desenho as segue:
 
-| DEC de E3 | O que fixa | Onde E22 se apoia | Se o dono rejeitar ou mudar |
-|-----------|-----------|-------------------|-----------------------------|
-| DEC-136 | caminho `scripts/roadmap.mjs` e forma `node roadmap.mjs <comando> <pasta> [opções] [--json]` | tabela de caminhos do SKILL.md; forma de comando em toda receita | caminho e forma das receitas e do SKILL.md seguem a decisão nova; o resto do desenho fica |
-| DEC-137 | lista de comandos, `reject` incluído | mapa receita -> comandos; passo de rejeição em § 1 (decisão 9) | cada comando cortado volta a ser edição pela receita, citando a seção `formats.md § N` que toca (risco (b)); sem `reject`, a rejeição de § 1 vira edição citando `formats.md § 6` e a decisão 9 é revista; a carga das receitas afetadas é recontada contra a meta |
-| DEC-138 | saída `--json` e códigos de saída 0/1/2 | regra única do código de saída no SKILL.md (decisão 10); anti-objetivo "ignorar o código de saída" | a regra do SKILL.md passa a citar os códigos ratificados; a política (recusa relatada, sem contorno à mão; erro de uso para) fica |
-| DEC-139 | códigos de recusa nomeados (`not-executor`, `not-pending`, `checker-errors` etc.) | recusa da rejeição em § 1; resultado esperado da execução comportamental 4 | o texto de § 1 e o esperado da execução 4 citam os códigos novos |
-| DEC-143 | escrita conferida pelo checker, erro novo recusa sem gravar | tratamento do código 1 como "nada mudou" | se a CLI puder gravar com erro, toda receita volta a rodar o checker depois de cada comando, e não só no passo final |
-| DEC-145 | `next-id` | § 1 e § 18 | alocação de ID volta à regra manual de `formats.md § N` citada na receita |
-| DEC-146 | `set-status` (posições, `--piece`, sem bloqueado/descartado) | § 2, § 15, § 17, § 20 | as receitas seguem a regra ratificada; o que a CLI deixar de cobrir vira edição citando a seção do contrato |
-| DEC-148 | frase de `block-open` e recusa de `block-close` | § 5 e execução comportamental 4 | § 5 segue a frase ratificada; se a recusa sumir, a receita volta a conferir à mão as citações do BLQ |
-| DEC-149 | quais comandos gravam a própria linha de log | onde as receitas chamam `log` (§ 1, § 2, § 4, § 15, § 17, § 18, § 20) | as receitas acrescentam ou tiram a chamada a `log` conforme a decisão nova |
-| DEC-150 | idempotência (repetição é no-op com saída 0) | reexecução de uma receita depois de recusa ou interrupção | as receitas passam a conferir antes de repetir um comando |
-| DEC-153 | idioma das frases escritas pela CLI e frase de alcance | exemplos das rubricas e linhas esperadas nas execuções comportamentais | exemplos e linhas esperadas seguem a regra nova |
+| DEC de E3 | Onde E22 se apoia |
+|-----------|-------------------|
+| DEC-136 | tabela de caminhos do SKILL.md; forma `node roadmap.mjs <comando> <pasta> [opções] [--json]` em toda receita |
+| DEC-137 e DEC-200 | mapa receita -> comandos; `reject` em § 1; `ratify` com vários DEC e `ratify --amend` em § 18 |
+| DEC-138, DEC-143 | regra única do código de saída no SKILL.md (1 = nada mudou, relatar; 2 = parar); checker rodado no passo final da receita, não depois de cada comando |
+| DEC-139 | recusas citadas nas receitas e nos esperados da execução 4 (`not-executor`, `not-pending`, `checker-errors`, `blocker-cited` etc.) |
+| DEC-145 | alocação de ID por `next-id` em § 1 e § 18 |
+| DEC-146 | `set-status` em § 2, § 15, § 17 e § 20; bloqueado só por `block-open`, descartado continua edição da receita citando `formats.md § 6` |
+| DEC-147 e DEC-201 | `integrate` em § 3 e § 16, com o aviso `no-git` relatado |
+| DEC-148 | frase de `block-open` e recusa de `block-close` em § 5 e na execução 4 |
+| DEC-149 | receitas chamam `log` só depois de comandos que não gravam a própria linha |
+| DEC-150 | reexecução de receita depois de recusa ou interrupção sem conferência prévia (repetição é no-op) |
+| DEC-153 e DEC-202 | frases da CLI no idioma do config; uso de `--what` nas receitas; linhas esperadas nas rubricas e execuções |
 
-Em qualquer rejeição, este spec é revisado antes do plano; a meta derivada de prosa e o teste do critério 1 não dependem dessas decisões (contam a prosa, não os comandos), salvo a recontagem citada na linha de DEC-137. As decisões locais de E3 que E22 usa (DEC-151, DEC-152, DEC-155) não seguram o início (DEC-030: ratificação em lote no ponto de medição).
+As decisões locais de E3 que E22 usa (DEC-151, DEC-152, DEC-155) seguem como estão; DEC-155 ("skill do tracker, events.md e formats.md não mudam em E3") é a fronteira que E22 agora atravessa, só no que é da skill do tracker.
 
 ## Decisões autônomas (revisáveis pelo dono)
 
@@ -179,10 +180,13 @@ Em qualquer rejeição, este spec é revisado antes do plano; a meta derivada de
 10. Código de saída da CLI tratado uma vez no SKILL.md: 1 recusa relatada sem edição manual de contorno, 2 para. Alcance: local.
 11. Nenhum arquivo do planner, da CLI, do checker ou do release muda; nenhuma versão sobe na branch (DEC-042). Alcance: local.
 12. As execuções comportamentais usam uma cópia de `fixtures/valid` e entradas sintéticas marcadas em `docs/reports/2026-11-11-e22-rubricas/`; relatório escrito pelo orquestrador. Alcance: local.
+13. Emenda do dono ao ratificar entra pela receita § 18 com `ratify <DEC-NNN> --amend <texto>` (DEC-200), e a rubrica de contradição classifica essa linha como `detalha` (`-`, DEC-209) salvo se ela mudar o que a estratégia diz; a execução 4 exercita o caminho. Alcance: local.
+14. No molde de DEC-203, 29.096 bytes LF é previsão provisória usada como constante do teste, e o critério 1 só conta como atendido por inteiro depois que a tabela de metas for registrada na estratégia (após E15); até lá o teste exige ao menos que o contrato inteiro saia da carga. Alcance: local.
+15. As execuções comportamentais são tarefa do orquestrador da sessão principal (DEC-204), rodada no worktree de E22 antes do merge; o executor do workflow não as roda. Alcance: local.
 
 ## Depende de entrada humana
 
-- Aceite dos critérios 2 e 3 (verify: human): o dono confere o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`. O executor entrega o relatório; não bloqueia o código.
-- Registro da meta derivada de prosa na estratégia (revisão proposta pelo tracker depois de E15, gravada só com aprovação do dono, DEC-034, DEC-098). Até lá, o teste usa a constante declarada aqui.
-- **Bloqueante para E22:** ratificação pelo dono das decisões de alcance contrato de E3 em que E22 se apoia (DEC-136, DEC-137, DEC-138, DEC-139, DEC-143, DEC-145, DEC-146, DEC-148, DEC-149, DEC-150, DEC-153; DEC-030; `state.md`: "seguram o início de E18 e E22"). Sem ela, plano e execução de E22 não começam; o efeito de cada rejeição está em "Pré-condição bloqueante". É o mesmo caso de BLQ-2 para E18.
+- Ratificação das decisões de contrato de E3 (DEC-136 a DEC-153 em parte; DEC-030): **respondida** pelo dono em 2026-11-11 (emendas DEC-200 a DEC-202, DEC-209; BLQ-3 fechado). Deixa de bloquear; plano e execução podem começar.
+- Aceite dos critérios 2 e 3 (verify: human): o dono confere o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`. O orquestrador da sessão principal entrega o relatório (DEC-204) com "aceite: aguardando o dono"; não bloqueia o código.
+- Registro da meta derivada de prosa na estratégia (revisão proposta pelo tracker depois de E15, gravada só com aprovação do dono, DEC-034, DEC-098). Até lá, o teste usa a constante declarada aqui e o critério 1 fica parcialmente atendido (decisão 14). Não bloqueia.
 - Ratificação pelo dono das decisões autônomas acima (DEC-030): as de alcance contrato (1, 2 e 3) seguram o início de E7 e E20, que editam a skill do tracker depois, sem impedir a entrega de E22; as locais, em lote no ponto de medição.
