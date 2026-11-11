@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E3 | Execução do plano iniciada na branch `feat/E3`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md` |
+| 2026-11-11 | E3 | DEC-136 a DEC-157 registradas, de origem executor e pendentes de ratificação, vindas do spec de E3. | `decisions.md` |
+| 2026-11-11 | E3 | Plano escrito, na branch `feat/E3`. | `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md` |
+| 2026-11-11 | E3 | Spec escrito, na branch `feat/E3`. | `docs/superpowers/specs/2026-11-11-E3-cli-eventos-tracker-design.md` |
 | 2026-11-11 | E5 | E5 entrou em `release/roadmap-skills-v2` (merge da `feat/E5`); gates iguais à linha de base: G1 exit 0 com 959 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-117 a DEC-135 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `8685133067f25af8ed6a53cfa720af0aaeb59445` |
 | 2026-11-11 | E5 | Execução do plano iniciada na branch `feat/E5`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md` |
 | 2026-11-11 | E5 | DEC-117 a DEC-135 registradas, de origem executor e pendentes de ratificação, vindas do spec de E5. | `decisions.md` |
