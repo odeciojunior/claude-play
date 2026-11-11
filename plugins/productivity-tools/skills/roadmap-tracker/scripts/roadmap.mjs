@@ -189,7 +189,7 @@ function nextIds(ctx) {
   return out;
 }
 
-function pendingDecisions(ctx) {
+export function pendingDecisions(ctx) {
   const { roadmap, parsed } = ctx;
   const v = roadmap.config.vocab;
   const releasedWords = v.releasedStatuses || ['released', 'measured'];

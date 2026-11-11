@@ -2,16 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
+  WORKFLOW_SCRIPTS, scriptRule, openCardCommands, trackerCliPath,
 } from './preflight.mjs';
 import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
 
 const good = () => ({
   projectContext: 'ctx',
@@ -257,7 +259,7 @@ test('I5: a derived config detects the lockfile for install, or warns about the 
   writeFileSync(join(locked.root, 'package-lock.json'), '{}');
   const npm = runPreflight(locked.dir, { home });
   assert.equal(npm.config.install, 'npm ci');
-  assert.deepEqual(npm.warnings, []);
+  assert.deepEqual(npm.warnings, ['roadmap cards read from the working tree (no --ref given)']);
   const reviewed = repoWithRoadmap(true);
   assert.deepEqual(runPreflight(reviewed.dir, { home, ref: 'rel' }).warnings, []);
 });
@@ -471,4 +473,137 @@ test('preflight carries no copy of the parser', () => {
   const src = readFileSync(join(HERE, 'preflight.mjs'), 'utf8');
   for (const fn of ['blankFences', 'splitRow', 'scanComments', 'firstBlockBody']) assert.ok(!src.includes('function ' + fn), fn);
   assert.ok(src.includes('lib/roadmap-format.mjs'));
+});
+
+// ---- E18 T1: script rules, {verify} commands of open cards, trackerCli ----
+const VOCAB = { deliverableStatuses: ['not-started', 'spec', 'plan', 'executing', 'on-branch', 'integrated', 'released', 'measured', 'blocked', 'discarded'], blockedStatus: 'blocked' };
+const cardMd = (id, verify) => [`<!-- roadmap:card id=${id} phase=p track=engineering priority=Must size="not estimated" depends=- reqs=REQ-001 critical=true -->`,
+  `### ${id} -- Card`, '', '<!-- roadmap:acceptance -->', `1. Given x, when y, then z. {verify: ${verify}}`, '<!-- /roadmap:acceptance -->', '<!-- /roadmap:card -->', ''].join('\n');
+const panelMd = (rows) => ['<!-- roadmap:panel -->', '| Deliverable | Status | Evidence | Next step |', '|---|---|---|---|', ...rows, '<!-- /roadmap:panel -->'].join('\n');
+const parsedFor = (cards, rows) => parseRoadmapTexts({ strategy: cards.join('\n'), files: { state: panelMd(rows) } });
+
+test('requiredCommands sem extras devolve o mesmo de hoje', () => {
+  const expected = { 'Bash(npm:*)': ['npm run lint', 'npm test', 'npm ci'], 'Bash(git:*)': [], 'Bash(node:*)': [] };
+  assert.deepEqual(requiredCommands(good()), expected);
+  assert.deepEqual(requiredCommands(good(), {}), requiredCommands(good()));
+});
+
+test('AC1: card aberto com verify e script do plugin sem regra aparecem em missingRules', () => {
+  const cmds = requiredCommands({ gates: [], install: '' }, { cards: ['npx vitest run'], scripts: [{ name: 'roadmap.mjs', path: '/p/roadmap.mjs' }] });
+  const req = Object.keys(cmds);
+  const none = missingRules(req, [{}], cmds);
+  assert.ok(none.includes('Bash(npx:*)'));
+  assert.ok(none.includes('Bash(node *roadmap.mjs" *)'));
+  assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(node:*)', 'Bash(npx:*)', 'Bash(git:*)'] } }], cmds), []);
+  assert.deepEqual(cmds['Bash(node *roadmap.mjs" *)'], ['node "/p/roadmap.mjs" status']);
+  assert.equal(scriptRule('roadmap.mjs'), 'Bash(node *roadmap.mjs" *)');
+  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs']);
+});
+
+function rmRepo(statusCell) {
+  const root = mkdtempSync(join(tmpdir(), 'pfc-'));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
+  const dir = join(root, 'docs', 'plans', 'roadmap-x');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'roadmap.config.json'), JSON.stringify({ strategy: 's.md', files: { state: 'state.md' }, vocab: VOCAB }));
+  const gates = '<!-- roadmap:gates -->\n| ID | Command | Environment | When | Baseline |\n|---|---|---|---|---|\n| g1 | npm run lint | - | always | green |\n<!-- /roadmap:gates -->\n';
+  writeFileSync(join(dir, 's.md'), gates + cardMd('E1', 'test; evidence: npx vitest run'));
+  writeFileSync(join(dir, 'state.md'), panelMd([`| E1 | ${statusCell} | - | - |`]).replace(/\n/g, '\r\n'));
+  return { root, dir };
+}
+
+test('AC1 ponta a ponta: regras do verify e do script do plugin em missingRules', () => {
+  const { dir } = rmRepo('spec');
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const cfgDir = mkdtempSync(join(tmpdir(), 'cfg-'));
+  const r = runPreflight(dir, { home, configDir: cfgDir });
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.missingRules.includes('Bash(npx:*)'), r.missingRules.join());
+  assert.ok(r.missingRules.includes('Bash(node *roadmap.mjs" *)'), r.missingRules.join());
+});
+
+test('card na branch não pede regra; sem linha ou bloqueado conta como aberto', () => {
+  const cards = [cardMd('E1', 'test; evidence: npx vitest run')];
+  const open = (row) => openCardCommands(parsedFor(cards, row), VOCAB);
+  assert.deepEqual(open(['| E1 | on-branch | - | - |']), []);
+  assert.deepEqual(open(['| E1 | integrated | - | - |']), []);
+  assert.deepEqual(open(['| E1 | executing | - | - |']), ['npx vitest run']);
+  assert.deepEqual(open([]), ['npx vitest run']);
+  assert.deepEqual(open(['| E1 | blocked (BLQ-1) | - | - |']), ['npx vitest run']);
+  assert.deepEqual(open(['| E1 | code: on-branch; piece 2: plan | - | - |']), ['npx vitest run']);
+  const human = [cardMd('E1', 'human; evidence: ask the owner')];
+  assert.deepEqual(openCardCommands(parsedFor(human, []), VOCAB), []);
+});
+
+test('trackerCli aponta para arquivo existente com /', () => {
+  const { dir } = rmRepo('spec');
+  const r = runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), configDir: mkdtempSync(join(tmpdir(), 'cfg-')) });
+  assert.ok(existsSync(r.trackerCli));
+  assert.ok(!r.trackerCli.includes('\\'));
+  assert.ok(r.trackerCli.endsWith('roadmap-tracker/scripts/roadmap.mjs'));
+  assert.ok(isAbsolute(r.trackerCli));
+});
+
+test('trackerCli com aspas duplas vira erro', () => {
+  assert.ok(trackerCliPath('/a"b/c').error);
+  const { dir } = rmRepo('spec');
+  const r = runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), configDir: mkdtempSync(join(tmpdir(), 'cfg-')), trackerFrom: '/a"b/c' });
+  assert.ok(r.errors.some((e) => /double quote/.test(e)));
+});
+
+const FIXTURE_VALID = join(dirname(fileURLToPath(import.meta.url)), '../../roadmap-tracker/scripts/fixtures/valid');
+const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.autocrlf=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const NEW_DEC = '| DEC-002 | 2026-01-03 | E2 | Uma decisão do executor. Alcance: contrato. | Nenhuma | - | Nunca | executor | pending |';
+
+// Repo with the valid fixture as a roadmap folder; branch `alvo` has an extra pending executor decision, the working tree is back on main without it.
+function pendingRepo() {
+  const root = mkdtempSync(join(tmpdir(), 'pfd-'));
+  git(root, 'init', '-q', '-b', 'main');
+  const dir = join(root, 'docs', 'plans', 'roadmap-x');
+  mkdirSync(dir, { recursive: true });
+  for (const f of ['roadmap.config.json', 'strategy.md', 'state.md', 'decisions.md', 'README.md', 'log.md', 'critical-path.md', 'sources.md', 'requirements.md']) {
+    writeFileSync(join(dir, f), readFileSync(join(FIXTURE_VALID, f), 'utf8').replace(/\r\n/g, '\n'));
+  }
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'base');
+  git(root, 'checkout', '-q', '-b', 'alvo');
+  const dec = join(dir, 'decisions.md');
+  const text = readFileSync(dec, 'utf8').replace('<!-- /roadmap:decisions -->', `${NEW_DEC}\n<!-- /roadmap:decisions -->`);
+  writeFileSync(dec, text);
+  git(root, 'commit', '-q', '-am', 'dec');
+  git(root, 'checkout', '-q', 'main');
+  return { root, dir };
+}
+const pfOpts = (extra = {}) => ({ home: mkdtempSync(join(tmpdir(), 'home-')), configDir: mkdtempSync(join(tmpdir(), 'cfg-')), ...extra });
+
+test('AC4: decisão do executor pendente da branch alvo aparece com o entregável', () => {
+  const { dir } = pendingRepo();
+  const r = runPreflight(dir, pfOpts({ ref: 'alvo' }));
+  const hit = r.pendingDecisions.find((d) => d.id === 'DEC-002');
+  assert.ok(hit, JSON.stringify(r.pendingDecisions));
+  assert.equal(hit.deliverable, 'E2');
+  assert.equal(hit.scope, 'contract'); // the CLI scope word: Alcance: contrato. is the contract scope
+  assert.ok(Array.isArray(hit.startedDependents));
+  assert.equal(typeof hit.released, 'boolean');
+});
+
+test('sem ref a lista vem da árvore de trabalho e há aviso de origem', () => {
+  const { dir } = pendingRepo();
+  const r = runPreflight(dir, pfOpts());
+  assert.ok(!r.pendingDecisions.some((d) => d.id === 'DEC-002'));
+  assert.ok(r.warnings.some((w) => /working tree/.test(w)), r.warnings.join());
+  const r2 = runPreflight(dir, pfOpts({ ref: 'inexistente' }));
+  assert.ok(r2.warnings.some((w) => /working tree/.test(w)), r2.warnings.join());
+  assert.ok(!r2.pendingDecisions.some((d) => d.id === 'DEC-002'));
+});
+
+test('falha de leitura é aviso, não erro', () => {
+  const { dir } = pendingRepo();
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify(good()));
+  const before = runPreflight(dir, pfOpts()).errors;
+  writeFileSync(join(dir, 'roadmap.config.json'), '{ not json');
+  const r = runPreflight(dir, pfOpts());
+  assert.deepEqual(r.pendingDecisions, []);
+  assert.ok(r.warnings.length > 0);
+  assert.deepEqual(r.errors, before);
 });
