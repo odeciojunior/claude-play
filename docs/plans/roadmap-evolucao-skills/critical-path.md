@@ -77,6 +77,6 @@ Próximo portão por trilha (o estado atual está em `state.md`):
 
 - decisions: DEC-088 a DEC-101 (E15), DEC-102 a DEC-116 (E2) e DEC-117 a DEC-135 (E5) e DEC-136 a DEC-157 (E3), DEC-158 a DEC-175 (E4) e DEC-176 a DEC-192 (E6) aguardam ratificação do dono, as de alcance contrato antes de E17 (DEC-030); DEC-085 a DEC-087 ratificadas; as sondas de E14 e os experimentos de DEC-052 estão concluídos.
 - measurement: E1 na branch de release; E15 na branch de release, depois as execuções pagas do dono (linha de base).
-- engineering: E2, E3, E4, E5 e E6 na branch de release, que entra em `main` depois do portão do release; E18 na branch de release; E22 retoma pelo release.
+- engineering: E2, E3, E4, E5 e E6 na branch de release, que entra em `main` depois do portão do release; E18 na branch de release; E22 executando na feat/E22 pelo release.
 - release: branch de release e tag da versão atual criadas (DEC-002, DEC-036); primeira publicação em E17.
 - external: nenhum.
