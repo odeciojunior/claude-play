@@ -550,3 +550,59 @@ test('trackerCli com aspas duplas vira erro', () => {
   const r = runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), configDir: mkdtempSync(join(tmpdir(), 'cfg-')), trackerFrom: '/a"b/c' });
   assert.ok(r.errors.some((e) => /double quote/.test(e)));
 });
+
+const FIXTURE_VALID = join(dirname(fileURLToPath(import.meta.url)), '../../roadmap-tracker/scripts/fixtures/valid');
+const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.autocrlf=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const NEW_DEC = '| DEC-002 | 2026-01-03 | E2 | Uma decisão do executor. Alcance: contrato. | Nenhuma | - | Nunca | executor | pending |';
+
+// Repo with the valid fixture as a roadmap folder; branch `alvo` has an extra pending executor decision, the working tree is back on main without it.
+function pendingRepo() {
+  const root = mkdtempSync(join(tmpdir(), 'pfd-'));
+  git(root, 'init', '-q', '-b', 'main');
+  const dir = join(root, 'docs', 'plans', 'roadmap-x');
+  mkdirSync(dir, { recursive: true });
+  for (const f of ['roadmap.config.json', 'strategy.md', 'state.md', 'decisions.md', 'README.md', 'log.md', 'critical-path.md', 'sources.md', 'requirements.md']) {
+    writeFileSync(join(dir, f), readFileSync(join(FIXTURE_VALID, f), 'utf8').replace(/\r\n/g, '\n'));
+  }
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'base');
+  git(root, 'checkout', '-q', '-b', 'alvo');
+  const dec = join(dir, 'decisions.md');
+  const text = readFileSync(dec, 'utf8').replace('<!-- /roadmap:decisions -->', `${NEW_DEC}\n<!-- /roadmap:decisions -->`);
+  writeFileSync(dec, text);
+  git(root, 'commit', '-q', '-am', 'dec');
+  git(root, 'checkout', '-q', 'main');
+  return { root, dir };
+}
+const pfOpts = (extra = {}) => ({ home: mkdtempSync(join(tmpdir(), 'home-')), configDir: mkdtempSync(join(tmpdir(), 'cfg-')), ...extra });
+
+test('AC4: decisão do executor pendente da branch alvo aparece com o entregável', () => {
+  const { dir } = pendingRepo();
+  const r = runPreflight(dir, pfOpts({ ref: 'alvo' }));
+  const hit = r.pendingDecisions.find((d) => d.id === 'DEC-002');
+  assert.ok(hit, JSON.stringify(r.pendingDecisions));
+  assert.equal(hit.deliverable, 'E2');
+  assert.equal(hit.scope, 'contract'); // the CLI scope word: Alcance: contrato. is the contract scope
+  assert.ok(Array.isArray(hit.startedDependents));
+  assert.equal(typeof hit.released, 'boolean');
+});
+
+test('sem ref a lista vem da árvore de trabalho e há aviso de origem', () => {
+  const { dir } = pendingRepo();
+  const r = runPreflight(dir, pfOpts());
+  assert.ok(!r.pendingDecisions.some((d) => d.id === 'DEC-002'));
+  const r2 = runPreflight(dir, pfOpts({ ref: 'inexistente' }));
+  assert.ok(r2.warnings.some((w) => /working tree/.test(w)), r2.warnings.join());
+  assert.ok(!r2.pendingDecisions.some((d) => d.id === 'DEC-002'));
+});
+
+test('falha de leitura é aviso, não erro', () => {
+  const { dir } = pendingRepo();
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify(good()));
+  const before = runPreflight(dir, pfOpts()).errors;
+  writeFileSync(join(dir, 'roadmap.config.json'), '{ not json');
+  const r = runPreflight(dir, pfOpts());
+  assert.deepEqual(r.pendingDecisions, []);
+  assert.ok(r.warnings.length > 0);
+  assert.deepEqual(r.errors, before);
+});
