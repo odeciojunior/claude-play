@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E3 | Correção do next-id integrada: ignora o checker vendorizado na raiz da pasta (DEC-253) | `d90420c` |
 | 2026-11-11 | E22 | BLQ-4 resolvido: tarefa 8 de E22 feita pelo orquestrador na feat/E22; relatório com os critérios 2 e 3 aguardando o dono | `14fb3e8` |
 | 2026-11-11 | E3 | DEC-253: emenda do dono a DEC-145 (next-id ignora o checker vendorizado), recomendada pelo Fable | `decisions.md` |
 | 2026-11-11 | E18 | Correção pós-ratificação: preflight avisa quando decisions.md falta ou a pasta não é lida; skill cita só o scope contract (DEC-251) | `52a512d` |

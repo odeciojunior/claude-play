@@ -83,7 +83,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Aceite dos critérios 2 e 3 de E22 (verify: human): conferir o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, produzido pelo orquestrador da sessão principal (DEC-204).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (dono) Ratificação pelo dono das decisões autônomas de E22 (DEC-030); as de alcance contrato (1, 2 e 3 do spec) seguram o início de E7 e E20, as locais em lote no ponto de medição.
-- (executor) Bug da CLI de E3: next-id e add-decision varrem também o check-roadmap.mjs vendorizado, e um ID citado num comentário (DEC-198) faz o próximo pular para DEC-199; visto nas execuções de E22 T8. Corrigir em roadmap.mjs com teste.
 <!-- /roadmap:pending -->
 
 ## Em andamento
