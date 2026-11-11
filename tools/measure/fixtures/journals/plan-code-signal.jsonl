@@ -1,0 +1,2 @@
+{"label":"E5:plan","result":{"reused":true,"summary":"[fab] plan step"},"note":"[fab] fabricated journal entry"}
+{"label":"E5:plan-review1","result":{"measuredPlanBlob":"{{PLAN_BLOB}}","text":"[fab] criterion AC3 has no evidence row in the plan","issues":[{"severity":"critical","text":"[fab] blocked"}]},"note":"[fab] fabricated journal entry"}

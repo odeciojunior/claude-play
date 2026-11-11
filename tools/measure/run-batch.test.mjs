@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters } from './run-batch.mjs';
+import { runBatch, toAttemptCounters, readJournal, checkValidity } from './run-batch.mjs';
+import { E5_PATHS } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'run-batch.mjs');
@@ -28,28 +29,57 @@ function setup({ withPlugins = true } = {}) {
 
 const sid = (k) => `00000000-0000-4000-8000-0000000001${String(k).padStart(2, '0')}`;
 
-// Fake executor: claude -p copies fabricated transcripts, the extractor runs for real.
-function makeFake(configDir, { denyOn } = {}) {
+const JOURNALS = join(here, 'fixtures', 'journals');
+const gitIn = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=fab', '-c', 'user.email=fab@example.invalid', ...a], { cwd, encoding: 'utf8' });
+
+// Fake executor: claude -p copies fabricated transcripts (and optionally a journal fixture), the extractor
+// and git run for real. Options: journal (fixture name, or a function of the call number), afterRun(cwd, n)
+// (changes the sandbox like the run would), stopResume (the first claude -p waits for the abort and the
+// simulated git log answers with the stop commit on its second query), failOn (call number that fails).
+function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn } = {}) {
   const calls = [];
   const issued = [];
   let n = 0;
+  let logQueries = 0;
+  const writeSession = (id, cwd) => {
+    issued.push(id);
+    const proj = join(configDir, 'projects', 'fab-sandbox');
+    mkdirSync(proj, { recursive: true });
+    writeFileSync(join(proj, `${id}.jsonl`), readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id));
+    const wf = join(proj, id, 'subagents', 'workflows', 'wf_fab');
+    mkdirSync(wf, { recursive: true });
+    for (const a of ['afab101', 'afab102']) {
+      for (const ext of ['jsonl', 'meta.json']) {
+        copyFileSync(join(FIX, SRC_SID, 'subagents', 'workflows', 'wf_fab01', `agent-${a}.${ext}`), join(wf, `agent-${a}.${ext}`));
+      }
+    }
+    const name = typeof journal === 'function' ? journal(n) : journal;
+    if (name) {
+      let text = readFileSync(join(JOURNALS, name), 'utf8');
+      if (text.includes('{{PLAN_BLOB}}')) text = text.split('{{PLAN_BLOB}}').join(gitIn(cwd, 'rev-parse', `HEAD:${E5_PATHS.plan}`).stdout.trim());
+      writeFileSync(join(wf, 'journal.jsonl'), text);
+    }
+  };
   const exec = async (cmd, args, opts = {}) => {
     calls.push({ cmd, args, cwd: opts.cwd });
     if (cmd === 'claude' && args[0] === '--version') return { code: 0, stdout: '2.1.0 (Claude Code)\n' };
+    if (cmd === 'git' && args[0] === 'log' && stopResume) {
+      logQueries += 1;
+      return { code: 0, stdout: logQueries >= 2 ? 'E5 T1: slugify\nE5 spec\n' : 'docs(spec): E5\n' };
+    }
     if (cmd === 'claude') {
       n += 1;
       const id = sid(n);
-      issued.push(id);
-      const proj = join(configDir, 'projects', 'fab-sandbox');
-      mkdirSync(proj, { recursive: true });
-      writeFileSync(join(proj, `${id}.jsonl`), readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id));
-      const wf = join(proj, id, 'subagents', 'workflows', 'wf_fab');
-      mkdirSync(wf, { recursive: true });
-      for (const a of ['afab101', 'afab102']) {
-        for (const ext of ['jsonl', 'meta.json']) {
-          copyFileSync(join(FIX, SRC_SID, 'subagents', 'workflows', 'wf_fab01', `agent-${a}.${ext}`), join(wf, `agent-${a}.${ext}`));
-        }
+      writeSession(id, opts.cwd);
+      if (stopResume && n === 1) {
+        await new Promise((resolveWait) => {
+          if (opts.signal.aborted) resolveWait();
+          else opts.signal.addEventListener('abort', resolveWait, { once: true });
+        });
+        return { code: 1, stdout: '' };
       }
+      if (afterRun) afterRun(opts.cwd, n);
+      if (failOn === n) return { code: 1, stdout: '' };
       const denials = denyOn === n ? [{ tool_name: 'Workflow' }] : [];
       return { code: 0, stdout: JSON.stringify({ session_id: id, is_error: false, total_cost_usd: 0.01, permission_denials: denials }) };
     }
@@ -201,4 +231,232 @@ test('toAttemptCounters separates structural, per-task and conditional work', ()
   assert.equal(c.static, null);
   assert.equal(c.cost, 3);
   assert.equal(toAttemptCounters({ ...run, tasks: { count: 0, loop: cnt(calls(0, 0, 0), 0, null) } }).perTask, null);
+});
+
+// ---- Task 12: stop and resume, validity and outcomes of the seeded variants ----
+
+const NOW = () => new Date('2026-11-10T12:00:00Z');
+const ORIGINAL_PLAN = readFileSync(join(here, 'scenario', 'e5', 'plan.md'), 'utf8').replace(/\r\n/g, '\n');
+const taskSection = (text, k) => new RegExp(`^### Task ${k}: [\\s\\S]*?(?=^### Task |^## Acceptance criteria evidence)`, 'm').exec(text)[0];
+
+// Like the reviewed run: P2 (the phantom command) and P1 (the verification steps of task 2) are undone in one commit.
+function fixP1P2(cwd) {
+  const file = join(cwd, E5_PATHS.plan);
+  let text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('npm run verify-slug').join('node --test tests/e5-slugify.test.mjs');
+  const original = taskSection(ORIGINAL_PLAN, 2).split('\n');
+  const step = (n) => original.find((l) => l.startsWith(`- [ ] **Step ${n}:**`));
+  text = text.replace(taskSection(text, 2), (sec) =>
+    sec.split('\n').flatMap((l) => (l.startsWith('- [ ] **Step 1:**') ? [l, step(2)] : l.startsWith('- [ ] **Step 3:**') ? [l, step(4)] : [l])).join('\n'),
+  );
+  writeFileSync(file, text);
+  gitIn(cwd, 'add', E5_PATHS.plan);
+  gitIn(cwd, 'commit', '-q', '-m', 'docs(plan): E5 review fixes');
+}
+
+const mergeE5 = (cwd) => {
+  gitIn(cwd, 'checkout', '-q', '-B', 'release/sandbox', 'main');
+  gitIn(cwd, 'merge', '-q', '--no-ff', '-m', 'merge feat/E5', 'feat/E5');
+  gitIn(cwd, 'checkout', '-q', 'feat/E5');
+};
+
+const seededOpts = (s, variant, extra = {}) => baseOpts(s, { variant, runs: 1, ...extra });
+const outcomeMap = (attempt) => Object.fromEntries(attempt.outcomes.map((o) => [o.id, o.outcome]));
+
+function captureStderr() {
+  const orig = process.stderr.write;
+  let text = '';
+  process.stderr.write = (chunk, ...rest) => {
+    text += String(chunk);
+    const cb = rest.find((x) => typeof x === 'function');
+    if (cb) cb();
+    return true;
+  };
+  return { text: () => text, restore: () => (process.stderr.write = orig) };
+}
+
+test('stop and resume launches two sessions in one attempt', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW });
+    const claudeP = fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.equal(claudeP.length, 2);
+    assert.match(claudeP[0].args[1], /run E5$/);
+    assert.match(claudeP[1].args[1], /resume E5$/);
+    const priv = JSON.parse(readFileSync(join(r.dir, 'private', 'attempts.json'), 'utf8'));
+    assert.equal(priv.attempts.length, 1);
+    assert.deepEqual(priv.attempts[0].sessions, [sid(1), sid(2)]);
+    assert.equal(fake.calls.filter((c) => c.args[0]?.endsWith('session-metrics.mjs')).length, 1);
+    assert.equal(r.aggregate.valid, 1);
+    assert.equal(r.exitCode, 0);
+    // a resumed session that does not finish makes the attempt invalid
+    const s2 = setup();
+    try {
+      const failing = makeFake(s2.configDir, { stopResume: true, failOn: 2 });
+      const r2 = await runBatch(baseOpts(s2, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: failing.exec, now: NOW });
+      assert.equal(r2.aggregate.attempts[0].status, 'invalid');
+      assert.equal(r2.aggregate.attempts[0].reason, 'retomada-incompleta');
+      assert.deepEqual(r2.aggregate.invalidReasons, { 'retomada-incompleta': 1 });
+    } finally {
+      s2.done();
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('plan seeded attempt is invalid when the plan was rewritten', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: 'plan-rewritten.jsonl' });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.invalid, 1);
+    assert.equal(r.aggregate.valid, 0);
+    assert.equal(r.aggregate.attempts[0].reason, 'plano-reescrito');
+    assert.equal(r.aggregate.attempts[0].outcomes, undefined);
+    assert.deepEqual(r.aggregate.invalidReasons, { 'plano-reescrito': 1 });
+    assert.deepEqual(r.aggregate.outcomes, {});
+    assert.equal(r.exitCode, 1);
+  } finally {
+    s.done();
+  }
+});
+
+// Journal fixture with the blob placeholder filled in, written to a temp file.
+function journalFixture(base, name, blob) {
+  const file = join(base, name);
+  writeFileSync(file, readFileSync(join(JOURNALS, name), 'utf8').split('{{PLAN_BLOB}}').join(blob));
+  return file;
+}
+
+test('journal without the expected fields makes the attempt invalid with formato-do-diario', async () => {
+  const s = setup();
+  try {
+    const blob = 'a'.repeat(40);
+    const scenario = { seededBlobs: { [E5_PATHS.plan]: blob } };
+    const check = (variant, name) => checkValidity(variant, readJournal(journalFixture(s.base, name, blob)), scenario);
+    // control: the complete journal is valid
+    assert.deepEqual(check('plano-semeado-A', 'plan-valid.jsonl'), { valid: true, reason: 'ok' });
+    for (const name of ['bad-no-reused.jsonl', 'bad-no-blob.jsonl', 'bad-no-review1.jsonl', 'bad-no-label.jsonl']) {
+      assert.deepEqual(check('plano-semeado-A', name), { valid: false, reason: 'formato-do-diario' }, name);
+    }
+    assert.deepEqual(check('codigo-semeado-A', 'code-no-spec1.jsonl'), { valid: false, reason: 'formato-do-diario' });
+    // a line that is not JSON cannot live in fixtures/ (the privacy scan parses every fixture line), so it is built here
+    const lines = readFileSync(journalFixture(s.base, 'plan-valid.jsonl', blob), 'utf8').split(/\r?\n/);
+    writeFileSync(join(s.base, 'bad-not-json.jsonl'), [lines[0], '[fab] this line is not json', ...lines.slice(1)].join('\n'));
+    assert.equal(readJournal(join(s.base, 'bad-not-json.jsonl')).formatError, 'line 2 is not JSON');
+    assert.deepEqual(checkValidity('plano-semeado-A', readJournal(join(s.base, 'bad-not-json.jsonl')), scenario), { valid: false, reason: 'formato-do-diario' });
+    assert.equal(readJournal(journalFixture(s.base, 'bad-no-label.jsonl', blob)).formatError, 'line 2 has no label');
+    // CRLF, description and resultJson are accepted
+    // (built here: a fixture holding a bare `description` would fail the fabricated-text scan)
+    const crlfFile = join(s.base, 'crlf.jsonl');
+    writeFileSync(
+      crlfFile,
+      [
+        JSON.stringify({ description: 'E5:plan', resultJson: JSON.stringify({ reused: true }) }),
+        JSON.stringify({ description: 'E5:plan-review1', resultJson: JSON.stringify({ measuredPlanBlob: blob }) }),
+      ].join('\r\n') + '\r\n',
+    );
+    const crlf = readJournal(crlfFile);
+    assert.equal(crlf.formatError, null);
+    assert.deepEqual(crlf.entries.map((e) => e.label), ['E5:plan', 'E5:plan-review1']);
+    assert.equal(crlf.entries[0].result.reused, true);
+
+    const fake = makeFake(s.configDir, { journal: 'bad-no-blob.jsonl' });
+    const err = captureStderr();
+    let r;
+    try {
+      r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    } finally {
+      err.restore();
+    }
+    assert.equal(r.aggregate.invalid, 1);
+    assert.equal(r.aggregate.invalidReasons['formato-do-diario'], 1);
+    assert.equal(r.aggregate.attempts[0].outcomes, undefined);
+    assert.match(err.text(), /journal format: 1 attempt\(s\) invalid/);
+  } finally {
+    s.done();
+  }
+});
+
+test('missing journal makes the attempt invalid with formato-do-diario', async () => {
+  const s = setup();
+  try {
+    assert.deepEqual(readJournal(join(s.base, 'nope.jsonl')), { entries: [], formatError: 'journal missing' });
+    const fake = makeFake(s.configDir);
+    const err = captureStderr();
+    let r;
+    try {
+      r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    } finally {
+      err.restore();
+    }
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'formato-do-diario');
+  } finally {
+    s.done();
+  }
+});
+
+test('plan seeded outcomes come from the sentinels', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: 'plan-valid.jsonl', afterRun: fixP1P2 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 1);
+    assert.deepEqual(outcomeMap(r.aggregate.attempts[0]), { P1: 'capturado', P2: 'capturado', P3: 'perdido', P4: 'perdido' });
+    assert.deepEqual(r.aggregate.outcomes.P1, { class: 'plan', detectedBy: 'reviewer', capturado: 1, perdido: 0, indeterminado: 0 });
+    assert.equal(r.aggregate.outcomes.P3.perdido, 1);
+    assert.deepEqual(r.aggregate.deteccaoPorCodigo, {});
+  } finally {
+    s.done();
+  }
+});
+
+test('stopped stage leaves defects indeterminate', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: 'plan-blocked.jsonl', afterRun: fixP1P2 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A'), { exec: fake.exec, now: NOW });
+    assert.deepEqual(outcomeMap(r.aggregate.attempts[0]), { P1: 'capturado', P2: 'capturado', P3: 'indeterminado', P4: 'indeterminado' });
+  } finally {
+    s.done();
+  }
+});
+
+test('code-detected defects go to deteccaoPorCodigo only', async () => {
+  const s = setup();
+  try {
+    const withSignal = makeFake(s.configDir, { journal: 'plan-code-signal.jsonl' });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-codigo'), { exec: withSignal.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 1);
+    assert.deepEqual(outcomeMap(r.aggregate.attempts[0]), { PX1: 'acusado-pelo-codigo', PX2: 'indeterminado', PX3: 'indeterminado' });
+    assert.deepEqual(r.aggregate.deteccaoPorCodigo.PX1, { 'acusado-pelo-codigo': 1, perdido: 0, indeterminado: 0 });
+    assert.deepEqual(r.aggregate.deteccaoPorCodigo.PX2, { 'acusado-pelo-codigo': 0, perdido: 0, indeterminado: 1 });
+    assert.ok(!Object.keys(r.aggregate.outcomes).some((id) => id.startsWith('PX')));
+  } finally {
+    s.done();
+  }
+});
+
+test('code seeded validity requires resumed tasks and the task 3 review', async () => {
+  const s = setup();
+  try {
+    const redone = makeFake(s.configDir, { journal: 'code-redone.jsonl', afterRun: mergeE5 });
+    const r1 = await runBatch(seededOpts(s, 'codigo-semeado-A', { work: join(s.base, 'work1') }), { exec: redone.exec, now: NOW });
+    assert.equal(r1.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r1.aggregate.attempts[0].reason, 'tarefa-refeita');
+    assert.deepEqual(r1.aggregate.invalidReasons, { 'tarefa-refeita': 1 });
+    const ok = makeFake(s.configDir, { journal: 'code-valid.jsonl', afterRun: mergeE5 });
+    const r2 = await runBatch(seededOpts(s, 'codigo-semeado-A', { work: join(s.base, 'work2') }), { exec: ok.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.equal(r2.aggregate.valid, 1);
+    assert.deepEqual(Object.keys(outcomeMap(r2.aggregate.attempts[0])), ['C1', 'C2', 'C3', 'C4']);
+    for (const o of r2.aggregate.attempts[0].outcomes) assert.ok(['capturado', 'perdido'].includes(o.outcome), `${o.id}: ${o.outcome}`);
+    // not merged: the run stopped, so present defects are indeterminate
+    const notMerged = makeFake(s.configDir, { journal: 'code-valid.jsonl' });
+    const r3 = await runBatch(seededOpts(s, 'codigo-semeado-A', { work: join(s.base, 'work3') }), { exec: notMerged.exec, now: () => new Date('2026-11-10T12:00:10Z') });
+    for (const o of r3.aggregate.attempts[0].outcomes) assert.ok(['capturado', 'indeterminado'].includes(o.outcome), `${o.id}: ${o.outcome}`);
+  } finally {
+    s.done();
+  }
 });

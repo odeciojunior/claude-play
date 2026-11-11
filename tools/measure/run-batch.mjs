@@ -4,11 +4,12 @@
 //          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
-import { makeScenario } from './make-scenario.mjs';
+import { makeScenario, artifactOf, E5_PATHS } from './make-scenario.mjs';
+import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXTRACTOR = join(here, 'session-metrics.mjs');
@@ -141,6 +142,175 @@ function promptArgs(prompt, o) {
   ];
 }
 
+// ---- Journal, validity and outcomes of the seeded variants (DEC-082, DP-4, DP-7) ----
+
+const parseObject = (text) => {
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+};
+
+// Strict reader: a missing file, a line that is not JSON or an entry without a label is a format error.
+export function readJournal(file) {
+  if (!existsSync(file)) return { entries: [], formatError: 'journal missing' };
+  const entries = [];
+  const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i].replace(/\r$/, '');
+    if (text.trim() === '') continue;
+    const obj = parseObject(text);
+    if (!obj) return { entries, formatError: `line ${i + 1} is not JSON` };
+    const label = typeof obj.label === 'string' && obj.label ? obj.label : typeof obj.description === 'string' && obj.description ? obj.description : null;
+    if (label === null) return { entries, formatError: `line ${i + 1} has no label` };
+    let result = null;
+    if (obj.result && typeof obj.result === 'object' && !Array.isArray(obj.result)) result = obj.result;
+    else if (typeof obj.resultJson === 'string') result = parseObject(obj.resultJson);
+    else if (typeof obj.result === 'string') result = parseObject(obj.result);
+    entries.push({ label, result, text });
+  }
+  return { entries, formatError: null };
+}
+
+// Journals of every session of one attempt, merged. No journal at all is a format error.
+function readSessionJournals(configDir, sessions) {
+  const files = [];
+  const root = join(configDir, 'projects');
+  const dirs = (d) => (existsSync(d) ? readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : []);
+  for (const slug of dirs(root)) {
+    for (const sid of sessions) {
+      const wfRoot = join(root, slug, sid, 'subagents', 'workflows');
+      for (const wf of dirs(wfRoot)) if (wf.startsWith('wf_')) files.push(join(wfRoot, wf, 'journal.jsonl'));
+    }
+  }
+  if (files.length === 0) return { entries: [], formatError: 'journal missing' };
+  const merged = { entries: [], formatError: null };
+  for (const file of files.sort()) {
+    const j = readJournal(file);
+    merged.entries.push(...j.entries);
+    merged.formatError ??= j.formatError;
+  }
+  return merged;
+}
+
+const INVALID_FORMAT = { valid: false, reason: 'formato-do-diario' };
+const find = (entries, label) => entries.find((e) => e.label === label);
+
+// Missing fields never count as a satisfied condition: they are a format error.
+export function checkValidity(variant, journal, scenario) {
+  if (journal.formatError) return INVALID_FORMAT;
+  const { entries } = journal;
+  const art = artifactOf(variant);
+  if (!art) return { valid: true, reason: 'ok' };
+  if (art.class === 'plan') {
+    const plan = find(entries, 'E5:plan');
+    if (typeof plan?.result?.reused !== 'boolean') return INVALID_FORMAT;
+    let blob;
+    if (art.artifact !== 'C') {
+      const review = find(entries, 'E5:plan-review1');
+      if (typeof review?.result?.measuredPlanBlob !== 'string') return INVALID_FORMAT;
+      blob = review.result.measuredPlanBlob;
+    }
+    if (plan.result.reused === false) return { valid: false, reason: 'plano-reescrito' };
+    if (blob !== undefined && blob !== scenario.seededBlobs?.[E5_PATHS.plan]) return { valid: false, reason: 'blob-diferente' };
+    return { valid: true, reason: 'ok' };
+  }
+  if (art.class === 'spec') {
+    const review = find(entries, 'E5:spec-review1');
+    if (typeof review?.result?.measuredSpecBlob !== 'string') return INVALID_FORMAT;
+    if (review.result.measuredSpecBlob !== scenario.seededBlobs?.[E5_PATHS.spec]) return { valid: false, reason: 'blob-diferente' };
+    return { valid: true, reason: 'ok' };
+  }
+  // code: the run resumes at task 3, so its review must exist and tasks 1 to 3 must not be redone
+  if (!find(entries, 'E5:t3:spec1')) return INVALID_FORMAT;
+  const redone = entries.some((e) => {
+    const m = /^E5:t(\d+):impl/.exec(e.label);
+    return m && Number(m[1]) <= 3;
+  });
+  return redone ? { valid: false, reason: 'tarefa-refeita' } : { valid: true, reason: 'ok' };
+}
+
+const BLOCKING = new Set(['critical', 'important']);
+
+export function stageResult(variant, entries, sandbox) {
+  const art = artifactOf(variant);
+  if (art?.class === 'code') {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', 'feat/E5', 'release/sandbox'], { cwd: sandbox, stdio: 'ignore' });
+      return 'approved';
+    } catch {
+      return 'stopped';
+    }
+  }
+  const prefix = art?.class === 'spec' ? 'E5:spec-review' : 'E5:plan-review';
+  const reviews = entries
+    .map((e) => ({ k: Number(e.label.startsWith(prefix) ? e.label.slice(prefix.length) : NaN), e }))
+    .filter((x) => Number.isInteger(x.k))
+    .sort((a, b) => a.k - b.k);
+  if (reviews.length === 0) return 'stopped';
+  const issues = reviews[reviews.length - 1].e.result?.issues;
+  const blocked = Array.isArray(issues) && issues.some((i) => BLOCKING.has(i?.severity));
+  return blocked ? 'stopped' : 'approved';
+}
+
+export function outcomeFor(entry, { present, stage, entries }) {
+  if (entry.detectedBy === 'code') {
+    const re = new RegExp(entry.codeSignal);
+    if (entries.some((e) => re.test(e.text))) return 'acusado-pelo-codigo';
+    return present && stage === 'approved' ? 'perdido' : 'indeterminado';
+  }
+  if (!present) return 'capturado';
+  return stage === 'approved' ? 'perdido' : 'indeterminado';
+}
+
+async function attemptOutcomes(variant, scenario, journal) {
+  const art = artifactOf(variant);
+  const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
+  const stage = stageResult(variant, journal.entries, scenario.dir);
+  const out = [];
+  for (const e of manifest.filter((m) => m.class === art.class && m.artifact === art.artifact)) {
+    let outcome;
+    try {
+      const mod = await import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
+      outcome = outcomeFor(e, { present: mod.present(scenario.dir, 'feat/E5'), stage, entries: journal.entries });
+    } catch {
+      outcome = 'indeterminado';
+    }
+    out.push({ id: e.id, class: e.class, detectedBy: e.detectedBy === 'code' ? 'codigo' : 'reviewer', outcome });
+  }
+  return out;
+}
+
+function totalOutcomes(attempts) {
+  const outcomes = {};
+  const byCode = {};
+  for (const a of attempts) {
+    if (a.status !== 'valid') continue;
+    for (const o of a.outcomes ?? []) {
+      if (o.detectedBy === 'reviewer') {
+        outcomes[o.id] ??= { class: o.class, detectedBy: 'reviewer', capturado: 0, perdido: 0, indeterminado: 0 };
+        outcomes[o.id][o.outcome] += 1;
+      } else {
+        byCode[o.id] ??= { 'acusado-pelo-codigo': 0, perdido: 0, indeterminado: 0 };
+        byCode[o.id][o.outcome] += 1;
+      }
+    }
+  }
+  return { outcomes, deteccaoPorCodigo: byCode };
+}
+
+function sessionIds(configDir) {
+  const root = join(configDir, 'projects');
+  if (!existsSync(root)) return new Set();
+  const ids = new Set();
+  for (const slug of readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+    for (const n of readdirSync(join(root, slug.name))) if (n.endsWith('.jsonl')) ids.add(n.slice(0, -6));
+  }
+  return ids;
+}
+
 function parseClaudeJson(stdout) {
   try {
     const j = JSON.parse(stdout);
@@ -166,16 +336,57 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const sessions = [];
     let denied = false;
     let failed = false;
-    for (const prompt of scenario.prompts) {
-      const r = await exec('claude', promptArgs(prompt, opts), { cwd: scenario.dir });
+    let failReason = 'execucao-falhou';
+    const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
+    for (let i = 0; i < scenario.prompts.length; i++) {
+      const args = promptArgs(scenario.prompts[i], opts);
+      const watch = stop !== null && i === 0;
+      let r;
+      let aborted = false;
+      const known = watch ? sessionIds(opts.configDir) : null;
+      if (watch) {
+        const ac = new AbortController();
+        let polling = false;
+        const timer = setInterval(async () => {
+          if (polling || ac.signal.aborted) return;
+          polling = true;
+          try {
+            const g = await exec('git', ['log', stop.stopWhen.branch, '--format=%s'], { cwd: scenario.dir });
+            if (g.code === 0 && g.stdout.split(/\r?\n/).some((l) => l.startsWith(stop.stopWhen.subjectPrefix))) {
+              aborted = true;
+              ac.abort();
+            }
+          } catch {
+            /* branch not there yet */
+          } finally {
+            polling = false;
+          }
+        }, opts.pollMs ?? 5000);
+        try {
+          r = await exec('claude', args, { cwd: scenario.dir, signal: ac.signal });
+        } finally {
+          clearInterval(timer);
+        }
+      } else {
+        r = await exec('claude', args, { cwd: scenario.dir });
+      }
       const j = parseClaudeJson(r.stdout);
       if (j?.session_id) sessions.push(j.session_id);
+      else if (aborted) for (const id of sessionIds(opts.configDir)) if (!known.has(id) && !sessions.includes(id)) sessions.push(id);
       if (j && Array.isArray(j.permission_denials) && j.permission_denials.length > 0) {
         denied = true;
         break;
       }
-      if (r.code !== 0 || !j || j.is_error) {
+      if (aborted) {
+        if (sessions.length === 0) {
+          failed = true;
+          break;
+        }
+        continue;
+      }
+      if (r.code !== 0 || !j || !j.session_id || j.is_error) {
         failed = true;
+        if (stop !== null && i > 0) failReason = 'retomada-incompleta';
         break;
       }
     }
@@ -184,13 +395,26 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       continue;
     }
     if (failed || sessions.length === 0) {
-      attempts.push({ n: k, status: 'invalid', reason: 'execucao-falhou' });
+      attempts.push({ n: k, status: 'invalid', reason: failReason });
       privateAttempts.push({ n: k, sessions });
       writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
       continue;
     }
     privateAttempts.push({ n: k, sessions });
     writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
+    let journal = null;
+    if (scenario.seeded?.length > 0) {
+      journal = readSessionJournals(opts.configDir, sessions);
+      const v = checkValidity(variant, journal, scenario);
+      if (!v.valid) {
+        attempts.push({ n: k, status: 'invalid', reason: v.reason });
+        if (v.reason === 'formato-do-diario') {
+          const n = attempts.filter((a) => a.reason === 'formato-do-diario').length;
+          console.error(`journal format: ${n} attempt(s) invalid`);
+        }
+        continue;
+      }
+    }
     const runsFile = join(priv, `attempts-${k}.json`);
     writeFileSync(runsFile, JSON.stringify({ attempts: [{ n: k, sessions }] }, null, 2) + '\n');
     const metricsDir = join(priv, 'metrics', String(k));
@@ -205,7 +429,13 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const run = JSON.parse(readFileSync(join(metricsDir, 'metrics.json'), 'utf8')).runs[0];
     validRuns.push(run);
-    attempts.push({ n: k, status: 'valid', counters: toAttemptCounters(run), outcomes: [] });
+    let outcomes = [];
+    if (journal) {
+      // The sentinels read the tip of feat/E5 in the working tree.
+      await exec('git', ['checkout', '-q', 'feat/E5'], { cwd: scenario.dir });
+      outcomes = await attemptOutcomes(variant, scenario, journal);
+    }
+    attempts.push({ n: k, status: 'valid', counters: toAttemptCounters(run), outcomes });
   }
 
   const status = (s) => attempts.filter((a) => a.status === s).length;
@@ -228,8 +458,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     attempts,
     roles: sumRoles(validRuns),
     cost: costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null },
-    outcomes: {},
-    deteccaoPorCodigo: {},
+    ...totalOutcomes(attempts),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
   return { dir, aggregate, exitCode: status('denied') + status('invalid') > 0 ? 1 : 0 };

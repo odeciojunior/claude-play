@@ -1,0 +1,3 @@
+{"label":"E5:plan","result":{"reused":true,"summary":"[fab] plan step"},"note":"[fab] fabricated journal entry"}
+{"label":"E5:plan-review1","result":{"measuredPlanBlob":"0000000000000000000000000000000000000000"},"note":"[fab] fabricated journal entry"}
+{"label":"E5:plan-review2","result":{"issues":[{"severity":"minor","text":"[fab] nit"}]},"note":"[fab] fabricated journal entry"}
