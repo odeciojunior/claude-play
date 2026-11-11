@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E6 | E6 entrou em `release/roadmap-skills-v2` (merge da `feat/E6`); gates iguais à linha de base: G1 exit 0 com 1138 testes, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-176 a DEC-192 seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `db19e0e37dcef2965d210f9c20732b6184b55239` |
 | 2026-11-11 | E6 | Execução do plano iniciada na branch `feat/E6`, pelo release (execução automática). Spec e plano aprovados pelas revisões. | `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md` |
 | 2026-11-11 | E6 | DEC-176 a DEC-192 registradas, de origem executor e pendentes de ratificação, vindas do spec de E6. | `decisions.md` |
 | 2026-11-11 | E4 | BLQ-1 aberto: a execução automática parou na tarefa 9 (exige despachar subagentes; sem ferramenta de subagente no executor, o revisor não foi simulado). E4 passa a bloqueado; `feat/E4` mantida. | `1362158c1ec3a43f8b19f32cb5695dcd11224004` |
