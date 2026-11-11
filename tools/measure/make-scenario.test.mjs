@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { makeScenario, prepareE5Branch, VARIANTS, E5_PATHS, artifactOf } from './make-scenario.mjs';
+import { makeScenario, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf } from './make-scenario.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -136,18 +136,36 @@ async function checkSeeded(variant) {
       const mod = await sentinel(e);
       assert.ok(changed.includes(e.file), e.id + ': file not changed in the seeded commit');
       assert.equal(mod.present(t.dir, s.seededCommit), true, e.id + ': sentinel absent after seeding');
-      assert.equal(mod.present(t.dir, s.seededCommit + '^'), false, e.id + ': sentinel present in the clean artifact');
+      if (cls !== 'code') assert.equal(mod.present(t.dir, s.seededCommit + '^'), false, e.id + ': sentinel present in the clean artifact');
       assert.equal(s.seededBlobs[e.file], git(t.dir, 'rev-parse', s.seededCommit + ':' + e.file));
     }
     assert.equal(git(t.dir, 'status', '--porcelain'), '');
-    return { s, dir: t.dir };
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feat/E5');
+    if (cls === 'code') {
+      // The code of task 3 only exists from the seeded commit on, so the clean artifact is a fresh sandbox without seeding.
+      const c = tmp('clean');
+      try {
+        await makeScenario(c.dir, 'completo');
+        prepareE5Branch(c.dir, { withPlan: true, tasks: 3 });
+        for (const e of entries) assert.equal((await sentinel(e)).present(c.dir), false, e.id + ': sentinel present in the clean code');
+      } finally {
+        c.done();
+      }
+    }
+    return { s: { ...s, seededSubject: git(t.dir, 'log', '-1', '--format=%s', s.seededCommit) }, dir: t.dir };
   } finally {
     t.done();
   }
 }
 
 test('every manifest entry is seeded by exactly one variant', () => {
-  for (const e of manifest.filter((x) => x.class !== 'code')) {
+  assert.equal(manifest.length, 27);
+  for (const cls of ['plan', 'spec', 'code']) {
+    const own = manifest.filter((x) => x.class === cls);
+    assert.equal(own.filter((x) => x.detectedBy === 'reviewer').length, 8, cls);
+  }
+  assert.equal(manifest.filter((x) => x.detectedBy === 'code').length, 3);
+  for (const e of manifest) {
     const n = VARIANTS.filter((v) => { const a = artifactOf(v); return a && a.class === e.class && a.artifact === e.artifact; }).length;
     assert.equal(n, 1, e.id);
   }
@@ -164,8 +182,45 @@ test('spec variants: each defect file changed in the seeded commit and its senti
   }
 });
 
+test('code variants: each defect file changed in the seeded commit and its sentinel reports presence', async () => {
+  for (const v of ['codigo-semeado-A', 'codigo-semeado-B']) {
+    const { s } = await checkSeeded(v);
+    assert.deepEqual(s.prompts, ['/productivity-tools:roadmap-release run E5']);
+    assert.match(s.seededSubject, /^E5 T3: /);
+  }
+});
+
+test('code variants keep the sandbox suite green', async () => {
+  for (const v of ['codigo-semeado-A', 'codigo-semeado-B']) {
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, v);
+      const r = runSandboxSuite(s.dir);
+      assert.equal(r.ok, true, v + ': ' + r.output);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('retries the sandbox suite on EADDRINUSE', () => {
+  const answers = [{ status: 1, stdout: 'EADDRINUSE' }, { status: 1, stdout: 'EADDRINUSE' }, { status: 0, stdout: '' }];
+  let calls = 0;
+  const ok = runSandboxSuite('x', { spawn: () => answers[calls++] });
+  assert.equal(ok.ok, true);
+  assert.equal(calls, 3);
+  calls = 0;
+  const bad = runSandboxSuite('x', { spawn: () => { calls++; return { status: 1, stdout: 'EADDRINUSE' }; } });
+  assert.equal(bad.ok, false);
+  assert.equal(calls, 3);
+  calls = 0;
+  const other = runSandboxSuite('x', { spawn: () => { calls++; return { status: 1, stdout: 'not ok' }; } });
+  assert.equal(other.ok, false);
+  assert.equal(calls, 1);
+});
+
 test('seeded history never names the seeding', async () => {
-  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo', 'spec-semeado-A', 'spec-semeado-B']) {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo', 'spec-semeado-A', 'spec-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B']) {
     const t = tmp('sb');
     try {
       await makeScenario(t.dir, v);

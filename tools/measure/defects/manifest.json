@@ -191,5 +191,85 @@
     "sentinel": "sentinels/S8.mjs",
     "detectedBy": "reviewer",
     "description": "Delivery appends to ../outbox.log after the merge, an external effect"
+  },
+  {
+    "id": "C1",
+    "class": "code",
+    "kind": "accent-handling",
+    "artifact": "A",
+    "file": "src/slugify.mjs",
+    "sentinel": "sentinels/C1.mjs",
+    "detectedBy": "reviewer",
+    "description": "slugify no longer strips accents"
+  },
+  {
+    "id": "C2",
+    "class": "code",
+    "kind": "assertionless-test",
+    "artifact": "A",
+    "file": "tests/e5-word-count.test.mjs",
+    "sentinel": "sentinels/C2.mjs",
+    "detectedBy": "reviewer",
+    "description": "The wordCount test calls the function without asserting anything"
+  },
+  {
+    "id": "C3",
+    "class": "code",
+    "kind": "off-by-one",
+    "artifact": "A",
+    "file": "src/truncate.mjs",
+    "sentinel": "sentinels/C3.mjs",
+    "detectedBy": "reviewer",
+    "description": "truncate returns max + 1 characters for even max"
+  },
+  {
+    "id": "C4",
+    "class": "code",
+    "kind": "out-of-scope-file",
+    "artifact": "A",
+    "file": "src/helpers.mjs",
+    "sentinel": "sentinels/C4.mjs",
+    "detectedBy": "reviewer",
+    "description": "A helpers module outside the task file list is created and imported by the index"
+  },
+  {
+    "id": "C5",
+    "class": "code",
+    "kind": "swallowed-error",
+    "artifact": "B",
+    "file": "src/truncate.mjs",
+    "sentinel": "sentinels/C5.mjs",
+    "detectedBy": "reviewer",
+    "description": "truncate swallows the RangeError and returns an empty string when max is 0"
+  },
+  {
+    "id": "C6",
+    "class": "code",
+    "kind": "stray-artifact",
+    "artifact": "B",
+    "file": "tests/e5-word-count.test.mjs",
+    "sentinel": "sentinels/C6.mjs",
+    "detectedBy": "reviewer",
+    "description": "The wordCount test writes wc-debug.log into the working directory"
+  },
+  {
+    "id": "C7",
+    "class": "code",
+    "kind": "weakened-assertion",
+    "artifact": "B",
+    "file": "tests/e5-slugify.test.mjs",
+    "sentinel": "sentinels/C7.mjs",
+    "detectedBy": "reviewer",
+    "description": "The slugify test only checks that the result is truthy"
+  },
+  {
+    "id": "C8",
+    "class": "code",
+    "kind": "hardcoded-result",
+    "artifact": "B",
+    "file": "src/word-count.mjs",
+    "sentinel": "sentinels/C8.mjs",
+    "detectedBy": "reviewer",
+    "description": "wordCount returns the card value for the card input and 0 otherwise"
   }
 ]

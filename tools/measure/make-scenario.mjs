@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Builds a disposable sandbox for one measurement variant and prints it as JSON.
 // Usage: node tools/measure/make-scenario.mjs <dir> --variant <name> [--from-run <folder>]
-// <dir> must be outside this repository. Seeded variants arrive in stages (plan and spec now, code later).
+// <dir> must be outside this repository. Seeded variants arrive in stages (plan, spec and code).
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { makeSandbox, STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -95,6 +95,8 @@ const SEEDED = {
   'plano-semeado-A': { class: 'plan', artifact: 'A' },
   'plano-semeado-B': { class: 'plan', artifact: 'B' },
   'plano-semeado-codigo': { class: 'plan', artifact: 'C' },
+  'codigo-semeado-A': { class: 'code', artifact: 'A' },
+  'codigo-semeado-B': { class: 'code', artifact: 'B' },
   'spec-semeado-A': { class: 'spec', artifact: 'A' },
   'spec-semeado-B': { class: 'spec', artifact: 'B' },
 };
@@ -111,18 +113,40 @@ function loadManifest() {
 async function seedVariant(dir, variant, fromRun) {
   const a = artifactOf(variant);
   const entries = loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact);
-  prepareE5Branch(dir, { withPlan: a.class === 'plan', tasks: 0, fromRun });
+  const isCode = a.class === 'code';
+  prepareE5Branch(dir, { withPlan: a.class !== 'spec', tasks: isCode ? 2 : 0, fromRun });
+  // Code: task 3 is committed with its own files and the defects applied, in a single commit.
+  if (isCode) copyTree(join(SCEN, 'e5', 'code', 't3'), dir);
   for (const e of entries) {
     const mod = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
     mod.seed(dir);
   }
   const files = [...new Set(entries.map((e) => e.file))];
-  git(dir, 'add', ...files);
-  git(dir, 'commit', '-q', '-m', a.class === 'spec' ? 'docs(spec): E5 clarify design' : 'docs(plan): E5 refine plan');
+  if (isCode) {
+    git(dir, 'add', '-A');
+    const { plan } = e5Texts(fromRun);
+    git(dir, 'commit', '-q', '-m', `E5 T3: ${taskTitles(plan)[3] ?? 'task 3'}`);
+  } else {
+    git(dir, 'add', ...files);
+    git(dir, 'commit', '-q', '-m', a.class === 'spec' ? 'docs(spec): E5 clarify design' : 'docs(plan): E5 refine plan');
+  }
   const seededCommit = git(dir, 'rev-parse', 'HEAD');
   const seededBlobs = {};
   for (const f of files) seededBlobs[f] = git(dir, 'rev-parse', seededCommit + ':' + f);
   return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs };
+}
+
+// Runs the whole sandbox suite (it binds a shared local port); retries up to 3 times while the output says EADDRINUSE.
+export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  let r;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    r = spawn(process.execPath, ['--test'], { cwd: dir, env, encoding: 'utf8' });
+    const output = String(r.stdout ?? '') + String(r.stderr ?? '');
+    if (r.status === 0) return { ok: true, status: 0, attempts: attempt, output };
+    if (!output.includes('EADDRINUSE') || attempt === 3) return { ok: false, status: r.status, attempts: attempt, output };
+  }
 }
 
 export async function makeScenario(dir, variant, { fromRun } = {}) {
@@ -140,6 +164,11 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'spec-semeado-A':
     case 'spec-semeado-B':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      break;
+    case 'codigo-semeado-A':
+    case 'codigo-semeado-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      scenario.prompts = [`${RELEASE} run E5`];
       break;
     case 'plan-only':
       scenario.prompts = [`${RELEASE} plan-only E1`];
