@@ -370,3 +370,249 @@ test('processo: --help lista os 18 comandos', () => {
   assert.equal(names.length, 18);
   for (const n of names) assert.ok(r.stdout.includes(n), n);
 });
+
+// ---------- CLI (Tarefa 4): transação de escrita, log, set-status, integrate ----------
+
+const lineSplit = (s) => s.split(/\r\n|\r|\n/);
+
+// Linhas de `after` menos as de `before`: devem ser exatamente as linhas inseridas/trocadas.
+function lineDiff(before, after) {
+  const b = lineSplit(before);
+  const a = lineSplit(after);
+  let i = 0;
+  while (i < b.length && i < a.length && b[i] === a[i]) i++;
+  let j = 0;
+  while (j < b.length - i && j < a.length - i && b[b.length - 1 - j] === a[a.length - 1 - j]) j++;
+  return { removed: b.slice(i, b.length - j), added: a.slice(i, a.length - j) };
+}
+
+const refused = (r, code, exit = 1) => {
+  assert.equal(r.exitCode, exit, JSON.stringify(r.output.errors));
+  assert.equal(r.output.errors[0].code, code);
+  assert.deepEqual(r.output.changed, []);
+  assert.equal(r.output.summary.exitCode, exit);
+};
+
+test('log insere a linha no lugar da data, com crase na evidência', (t) => {
+  const f = makeFolder(t);
+  const before = f.read('log.md');
+  const r = cli(f.dir, 'log', '--deliverable', 'E1', '--what', 'Spec written', '--evidence', 'docs/spec-e1.md', '--date', '2026-01-03');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['log.md']);
+  const d = lineDiff(before, f.read('log.md'));
+  assert.deepEqual(d.removed, []);
+  assert.deepEqual(d.added, ['| 2026-01-03 | E1 | Spec written | `docs/spec-e1.md` |']);
+  const lines = lineSplit(f.read('log.md'));
+  assert.equal(lines.indexOf(d.added[0]), lines.findIndex((l) => l.startsWith('| 2026-01-02')) - 1);
+  // data mais antiga: entra antes da linha de 2026-01-01
+  const r2 = cli(f.dir, 'log', '--deliverable', '-', '--what', 'Earlier note', '--evidence', '`strategy.md`', '--date', '2026-01-01');
+  assert.equal(r2.exitCode, 0, JSON.stringify(r2.output.errors));
+  const l2 = lineSplit(f.read('log.md'));
+  const iNew = l2.findIndex((l) => l.includes('Earlier note'));
+  const iOld = l2.findIndex((l) => l.includes('Roadmap created'));
+  assert.equal(iNew, iOld - 1);
+  assert.ok(l2[iNew].includes('`strategy.md`') && !l2[iNew].includes('``'));
+});
+
+test('log recusa frase banida, célula longa e evidência vazia sem gravar', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'log', '--deliverable', 'E1', '--evidence', 'x.md', '--what', 'see this commit'), 'banned-phrase');
+  refused(cli(f.dir, 'log', '--deliverable', 'E1', '--evidence', 'x.md', '--what', 'a'.repeat(301)), 'cell-too-long');
+  refused(cli(f.dir, 'log', '--deliverable', 'E1', '--what', 'ok', '--evidence', ''), 'evidence-missing');
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('log com tabela vazia insere depois do separador', (t) => {
+  const f = makeFolder(t, {
+    mutate: { 'log.md': (x) => x.replace(/^\| 2026.*\n/gm, '') },
+  });
+  const r = cli(f.dir, 'log', '--deliverable', 'E1', '--what', 'First', '--evidence', 'a.md', '--date', '2026-02-01');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const l = lineSplit(f.read('log.md'));
+  assert.equal(l[l.findIndex((x) => x.startsWith('|---')) + 1], '| 2026-02-01 | E1 | First | `a.md` |');
+});
+
+// A SHA só existe depois do git init: grava a linha E2 por cima da pasta já commitada.
+function withSegmentedE2(t, opts = {}) {
+  const f = makeFolder(t, { git: true, ...opts });
+  const sha = f.shas.main;
+  const eol = opts.eol || '\n';
+  const text = f.read('state.md').replace(/\r\n/g, '\n').replace(
+    '| E2 | not-started | - | Wait for E1 |',
+    `| E2 | piece 1: integrated (\`${sha}\`); piece 2: spec | \`${sha}\` | Plan piece 2 |`,
+  );
+  f.write('state.md', (opts.bom ? '﻿' : '') + text.replace(/^﻿/, '').replace(/\n/g, eol));
+  return f;
+}
+
+test('AC3: status anterior e linha segmentada sem --piece são recusados sem alterar bytes', (t) => {
+  const f = withSegmentedE2(t);
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'set-status', 'E2', 'spec', '--piece', 'piece 1'), 'status-backward');
+  assert.deepEqual(snapshot(f.dir), before);
+  refused(cli(f.dir, 'set-status', 'E2', 'plan'), 'segment-required');
+  assert.deepEqual(snapshot(f.dir), before);
+  assert.equal(spawnCli('set-status', f.dir, 'E2', 'spec', '--piece', 'piece 1', '--json').status, 1);
+  assert.equal(spawnCli('set-status', f.dir, 'E2', 'spec', '--piece', 'piece 1').status, 1);
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('set-status troca só o segmento pedido e junta a evidência; repetir é no-op', (t) => {
+  const f = withSegmentedE2(t);
+  const before = f.read('state.md');
+  const r = cli(f.dir, 'set-status', 'E2', 'plan', '--piece', 'piece 2', '--evidence', 'docs/plan.md');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['state.md']);
+  const d = lineDiff(before, f.read('state.md'));
+  assert.equal(d.removed.length, 1);
+  assert.equal(d.added.length, 1);
+  assert.equal(d.added[0], `| E2 | piece 1: integrated (\`${f.shas.main}\`); piece 2: plan | \`${f.shas.main}\`, \`docs/plan.md\` | Plan piece 2 |`);
+  const after = f.read('state.md');
+  const again = cli(f.dir, 'set-status', 'E2', 'plan', '--piece', 'piece 2', '--evidence', 'docs/plan.md');
+  assert.equal(again.exitCode, 0);
+  assert.deepEqual(again.output.changed, []);
+  assert.equal(f.read('state.md'), after);
+  // rótulo novo acrescenta segmento; --next troca o próximo passo
+  const r3 = cli(f.dir, 'set-status', 'E2', 'spec', '--piece', 'piece 3', '--next', 'Draft piece 3');
+  assert.equal(r3.exitCode, 0, JSON.stringify(r3.output.errors));
+  assert.match(f.read('state.md'), /piece 2: plan; piece 3: spec \| `[0-9a-f]+`, `docs\/plan.md` \| Draft piece 3 \|/);
+});
+
+test('set-status para integrado confere a SHA na ancestralidade', (t) => {
+  const f = makeFolder(t, { git: true });
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'set-status', 'E1', 'integrated', '--evidence', f.shas.side), 'sha-not-integrated');
+  refused(cli(f.dir, 'set-status', 'E1', 'integrated', '--evidence', '1234567'), 'sha-missing');
+  refused(cli(f.dir, 'set-status', 'E1', 'blocked'), 'status-not-allowed');
+  refused(cli(f.dir, 'set-status', 'E1', 'nonsense'), 'status-not-allowed');
+  refused(cli(f.dir, 'set-status', 'E9', 'plan'), 'not-found');
+  assert.deepEqual(snapshot(f.dir), before);
+  const ok = cli(f.dir, 'set-status', 'E1', 'integrated', '--evidence', f.shas.main);
+  assert.equal(ok.exitCode, 0, JSON.stringify(ok.output.errors));
+  assert.match(f.read('state.md'), new RegExp(`\\| E1 \\| integrated \\| \`docs/spec-e1.md\`, \`${f.shas.main}\` \\|`));
+});
+
+test('set-status para integrado sem git recusa e não grava (Foco 4)', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  const r = cli(f.dir, 'set-status', 'E1', 'integrated', '--evidence', 'abcdef1');
+  assert.equal(r.exitCode, 1);
+  assert.ok(['git-unavailable', 'sha-not-integrated'].includes(r.output.errors[0].code));
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('set-status mantém nota aninhada com barra escapada byte a byte (Foco 1)', (t) => {
+  const f = makeFolder(t, {
+    mutate: { 'state.md': (x) => x.replace('| E1 | spec |', '| E1 | spec (draft (v2) \\| wip) |') },
+  });
+  const before = f.read('state.md');
+  const r = cli(f.dir, 'set-status', 'E1', 'plan');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const d = lineDiff(before, f.read('state.md'));
+  assert.deepEqual(d.added, ['| E1 | plan (draft (v2) \\| wip) | `docs/spec-e1.md` | Write the plan |']);
+});
+
+test('set-status não mexe em segmento bloqueado', (t) => {
+  const f = makeFolder(t, {
+    mutate: { 'state.md': (x) => x.replace('| E3 | not-started |', '| E3 | blocked (BLQ-1) |') },
+  });
+  refused(cli(f.dir, 'set-status', 'E3', 'spec'), 'segment-locked');
+});
+
+test('integrate vira só as linhas na-branch cuja SHA já entrou, e registra um log', (t) => {
+  const f = makeFolder(t, { git: true });
+  const st = f.read('state.md')
+    .replace('| E1 | spec | `docs/spec-e1.md` |', `| E1 | on-branch | \`${f.shas.main}\` |`)
+    .replace('| E3 | not-started | - |', `| E3 | on-branch | \`${f.shas.side}\` |`);
+  f.write('state.md', st);
+  const logBefore = f.read('log.md');
+  const r = cli(f.dir, 'integrate', '--sha', f.shas.main, '--date', '2026-01-04');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['state.md', 'log.md']);
+  assert.deepEqual(r.output.result.integrated, ['E1']);
+  const d = lineDiff(st, f.read('state.md'));
+  assert.deepEqual(d.added, [`| E1 | integrated | \`${f.shas.main}\` | Write the plan |`]);
+  const ld = lineDiff(logBefore, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], /^\| 2026-01-04 \| E1 \| E1 integrated into main via release\/sample \|/);
+  const stAfter = f.read('state.md');
+  const logAfter = f.read('log.md');
+  const again = cli(f.dir, 'integrate', '--sha', f.shas.main, '--date', '2026-01-04');
+  assert.equal(again.exitCode, 0);
+  assert.deepEqual(again.output.changed, []);
+  assert.equal(f.read('state.md'), stAfter);
+  assert.equal(f.read('log.md'), logAfter);
+  refused(cli(f.dir, 'integrate', '--sha', f.shas.side), 'sha-not-integrated');
+});
+
+test('integrate --only filtra e sem git recusa', (t) => {
+  const f = makeFolder(t, { git: true });
+  f.write('state.md', f.read('state.md')
+    .replace('| E1 | spec | `docs/spec-e1.md` |', `| E1 | on-branch | \`${f.shas.main}\` |`)
+    .replace('| E2 | not-started | - |', `| E2 | on-branch | \`${f.shas.main}\` |`));
+  const r = cli(f.dir, 'integrate', '--sha', f.shas.main, '--only', 'E2');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.result.integrated, ['E2']);
+  const g = makeFolder(t);
+  refused(cli(g.dir, 'integrate', '--sha', 'abcdef1'), 'git-unavailable');
+});
+
+test('garantia: erro de checker novo recusa e nada é gravado', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  const r = cli(f.dir, 'set-status', 'E1', 'plan', '--next', 'x'.repeat(301));
+  refused(r, 'checker-errors');
+  assert.match(r.output.errors[0].message, /cell-limit/);
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('garantia: arquivo alterado entre leitura e gravação dá concurrent-change', (t) => {
+  const f = makeFolder(t);
+  const hook = (file) => fs.appendFileSync(file, 'x');
+  const before = f.read('state.md');
+  const r = run(['set-status', f.dir, 'E1', 'plan', '--json'], { hooks: { beforeWrite: hook } });
+  refused(r, 'concurrent-change');
+  assert.equal(f.read('state.md'), `${before}x`);
+  assert.deepEqual(fs.readdirSync(f.dir).filter((n) => n.includes('.tmp-')), []);
+});
+
+test('garantia: format-newer em comando de escrita sai 1 sem gravar', (t) => {
+  const f = makeFolder(t);
+  const cfgFile = path.join(f.dir, 'roadmap.config.json');
+  const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+  cfg.formatVersion = 99;
+  fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
+  const before = snapshot(f.dir);
+  refused(cli(f.dir, 'set-status', 'E1', 'plan'), 'format-newer');
+  refused(cli(f.dir, 'log', '--deliverable', 'E1', '--what', 'x', '--evidence', 'y'), 'format-newer');
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+for (const [name, opts] of [['LF', {}], ['CRLF com BOM e NFD', { eol: '\r\n', bom: true, nfdLine: true }]]) {
+  test(`bytes fora das linhas tocadas ficam iguais (${name})`, (t) => {
+    const f = withSegmentedE2(t, opts);
+    const raw = Object.fromEntries(['state.md', 'log.md', 'decisions.md'].map((n) => [n, fs.readFileSync(path.join(f.dir, n))]));
+    const cmds = [
+      ['log', '--deliverable', 'E1', '--what', 'Note', '--evidence', 'a.md', '--date', '2026-01-05'],
+      ['set-status', 'E2', 'plan', '--piece', 'piece 2', '--evidence', 'docs/plan.md'],
+    ];
+    for (const c of cmds) {
+      const r = cli(f.dir, ...c);
+      assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+    }
+    assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+    const state = fs.readFileSync(path.join(f.dir, 'state.md'));
+    const log = fs.readFileSync(path.join(f.dir, 'log.md'));
+    const eol = opts.eol || '\n';
+    const keep = (buf, drop) => buf.toString('utf8').split(eol).filter((l) => !drop(l)).join(eol);
+    assert.equal(keep(state, (l) => l.startsWith('| E2 |')), keep(raw['state.md'], (l) => l.startsWith('| E2 |')));
+    assert.equal(keep(log, (l) => l.includes('| Note |')), raw['log.md'].toString('utf8'));
+    assert.equal(Buffer.compare(fs.readFileSync(path.join(f.dir, 'decisions.md')), raw['decisions.md']), 0);
+    if (opts.bom) assert.equal(state.subarray(0, 3).toString('hex'), 'efbbbf');
+    if (opts.eol) {
+      assert.equal(state.toString('utf8').replace(/\r\n/g, '').includes('\n'), false);
+      assert.equal(log.toString('utf8').replace(/\r\n/g, '').includes('\n'), false);
+    }
+  });
+}

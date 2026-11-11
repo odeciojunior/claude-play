@@ -3,7 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseRoadmapTexts, parseStatusSegments, decisionScope, norm, idsIn } from '../../../lib/roadmap-format.mjs';
+import {
+  parseRoadmapTexts, parseStatusSegments, decisionScope, norm, idsIn, shasIn, blockLines, splitRow, stripNote,
+} from '../../../lib/roadmap-format.mjs';
+import { applyEdits, serializeRow } from '../../../lib/roadmap-edit.mjs';
 import {
   loadRoadmap, createGitAdapter, checkRoadmap, compareVersions, FORMAT_VERSION, CHECKER_VERSION,
 } from './check-roadmap.mjs';
@@ -209,6 +212,210 @@ function pendingDecisions(ctx) {
   return out;
 }
 
+// ---------- write transaction ----------
+
+const WRITE_ORDER = ['decisions', 'state', 'log', 'checkerCopy'];
+
+function roleFile(ctx, role) {
+  if (role === 'checkerCopy') return { name: 'check-roadmap.mjs', file: path.join(ctx.folder, 'check-roadmap.mjs') };
+  const name = ctx.roadmap.paths[role];
+  if (typeof name !== 'string') throw usage(`this roadmap has no ${role} file`);
+  return { name, file: path.resolve(ctx.folder, name) };
+}
+
+// Raw bytes of a roadmap file, read once per command; the transaction compares against them before writing.
+function rawBuffer(ctx, role) {
+  if (!ctx.raws.has(role)) {
+    const { file } = roleFile(ctx, role);
+    let buf;
+    try {
+      buf = fs.readFileSync(file);
+    } catch (e) {
+      if (role === 'checkerCopy' && e.code === 'ENOENT') buf = Buffer.alloc(0);
+      else throw new Refusal('usage', `cannot read ${file}: ${e.code || e.message}`, 2);
+    }
+    ctx.raws.set(role, buf);
+  }
+  return ctx.raws.get(role);
+}
+
+const rawText = (ctx, role) => rawBuffer(ctx, role).toString('utf8');
+
+const problemKey = (p) => `${p.code}\u0000${p.file}\u0000${p.message}`;
+const problemText = (p) => `${p.code} (${p.file}): ${p.message}`;
+
+// changes: Map<role | 'checkerCopy', new raw text>. Applies the five guarantees of the spec, in order.
+function commitWrites(ctx, changes) {
+  const { roadmap, git } = ctx;
+  if (roadmap.config.formatVersion > FORMAT_VERSION) {
+    throw new Refusal('format-newer', `formatVersion ${roadmap.config.formatVersion} is newer than this CLI understands (${FORMAT_VERSION})`, 1);
+  }
+  const roles = [...WRITE_ORDER.filter((r) => changes.has(r)), ...[...changes.keys()].filter((r) => !WRITE_ORDER.includes(r))];
+  const pending = [];
+  for (const role of roles) {
+    const next = changes.get(role);
+    if (next === rawText(ctx, role)) continue; // no-op: not written, not listed
+    pending.push({ role, next, ...roleFile(ctx, role) });
+  }
+  if (pending.length === 0) {
+    ctx.changed = [];
+    return;
+  }
+  // (b) the checker, before and after, in memory
+  const files = { ...roadmap.files };
+  for (const p of pending) if (p.role !== 'checkerCopy') files[p.role] = norm(p.next);
+  const opts = { today: ctx.today };
+  const before = new Set(checkRoadmap(roadmap, git, opts).map(problemKey));
+  const fresh = checkRoadmap({ ...roadmap, files }, git, opts).filter((p) => !before.has(problemKey(p)));
+  const freshErrors = fresh.filter((p) => p.severity === 'error');
+  for (const p of fresh) if (p.severity !== 'error') ctx.warnings.push({ code: 'checker-warning', message: problemText(p) });
+  if (freshErrors.length > 0) throw new Refusal('checker-errors', freshErrors.map(problemText).join('; '), 1);
+  // (c) re-read and compare byte by byte
+  for (const p of pending) {
+    if (ctx.hooks.beforeWrite) ctx.hooks.beforeWrite(p.file);
+    let now;
+    try {
+      now = fs.readFileSync(p.file);
+    } catch (e) {
+      if (e.code === 'ENOENT' && p.role === 'checkerCopy') now = Buffer.alloc(0);
+      else throw new Refusal('concurrent-change', `${p.name} could not be re-read before writing: ${e.code || e.message}`, 1);
+    }
+    if (!now.equals(rawBuffer(ctx, p.role))) throw new Refusal('concurrent-change', `${p.name} changed while the command ran; nothing was written`, 1);
+  }
+  // (d) temporary file in the same folder, then rename, in the fixed order
+  const written = [];
+  for (const p of pending) {
+    const tmp = `${p.file}.tmp-${process.pid}`;
+    try {
+      fs.writeFileSync(tmp, p.next);
+      fs.renameSync(tmp, p.file);
+      written.push(p.name);
+    } catch (e) {
+      try {
+        fs.rmSync(tmp, { force: true });
+      } catch { /* best effort */ }
+      ctx.changed = written;
+      throw new Refusal('write-failed', `could not write ${p.name} (${e.code || e.message}); already written: ${written.join(', ') || 'none'}`, 2);
+    }
+  }
+  ctx.changed = written;
+}
+
+// Applies per-role edit lists to the raw files and commits them in one transaction.
+function commitEdits(ctx, editsByRole) {
+  const changes = new Map();
+  for (const [role, edits] of editsByRole) changes.set(role, applyEdits(rawText(ctx, role), edits));
+  commitWrites(ctx, changes);
+}
+
+const wrapTick = (v) => (v.includes('`') ? v : `\`${v}\``);
+
+function logRow(ctx, { deliverable, what, evidence, date }) {
+  const cfg = ctx.roadmap.config;
+  if (!/^(?:E\d+(?:,\s*E\d+)*|-)$/.test(deliverable)) throw usage(`--deliverable must be E<n> or "-", got "${deliverable}"`);
+  if (what.length > cfg.limits.cellChars) throw new Refusal('cell-too-long', `--what has ${what.length} characters, limit ${cfg.limits.cellChars}`);
+  const lower = what.toLowerCase();
+  for (const phrase of cfg.vocab.bannedPhrases || []) {
+    if (lower.includes(phrase.toLowerCase())) throw new Refusal('banned-phrase', `--what contains the banned phrase "${phrase}"`);
+  }
+  const ev = (evidence || []).map((e) => e.trim()).filter(Boolean).map(wrapTick).join(', ');
+  if (!ev) throw new Refusal('evidence-missing', 'a log row needs evidence (--evidence <ref>)');
+  if (ev.length > cfg.limits.cellChars) throw new Refusal('cell-too-long', `evidence has ${ev.length} characters, limit ${cfg.limits.cellChars}`);
+  const text = serializeRow([date, deliverable, what, ev]);
+  const logText = rawText(ctx, 'log');
+  const bl = blockLines(logText, 'log');
+  if (!bl || bl.header === null) throw usage('log.md has no readable log table');
+  const lines = logText.split(/\r\n|\r|\n/);
+  const dateOf = (i) => ((splitRow(norm(lines[i]))[0] || '').match(/\d{4}-\d{2}-\d{2}/) || [])[0];
+  const before = bl.rows.find((i) => (dateOf(i) || '') <= date && dateOf(i));
+  if (before !== undefined) return { op: 'insertBefore', line: before, text };
+  if (bl.rows.length > 0) return { op: 'insertAfter', line: bl.rows[bl.rows.length - 1], text };
+  const isSep = (l) => {
+    const r = splitRow(norm(l));
+    return r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
+  };
+  let sep = bl.header;
+  for (let i = bl.header + 1; i < bl.close; i++) if (isSep(lines[i])) { sep = i; break; }
+  return { op: 'insertAfter', line: sep, text };
+}
+
+// Panel rows with the raw line index of each (state.md), aligned with the parsed rows.
+function panelRows(ctx) {
+  const bl = blockLines(rawText(ctx, 'state'), 'panel');
+  const rows = ctx.parsed.blocks.state.panel.rows;
+  if (!bl || bl.rows.length !== rows.length) throw usage('state.md panel block is not readable');
+  return rows.map((cells, i) => ({ cells, line: bl.rows[i], id: idOf(cells[0] || '') }));
+}
+
+function segText(seg, word, note) {
+  const noNote = stripNote(seg.raw);
+  const tail = note !== undefined ? (note === '' ? '' : ` (${note})`) : seg.raw.slice(noNote.length);
+  return `${seg.label ? `${seg.label}: ` : ''}${word}${tail}`;
+}
+
+function mergeEvidence(existing, list) {
+  const wrapped = list.map((e) => e.trim()).filter(Boolean).map(wrapTick);
+  const e = (existing || '').trim();
+  const base = e === '' || e === '-' ? [] : [e];
+  for (const w of wrapped) if (!base.join(', ').includes(w)) base.push(w);
+  return base.length ? base.join(', ') : (existing || '-');
+}
+
+// New cells of a panel row after moving one segment to `word` (positions 1 to 8 of the vocabulary).
+function setSegment(ctx, rowCells, { piece, word, evidence, next, note }) {
+  const ds = ctx.roadmap.config.vocab.deliverableStatuses;
+  const pos = ds.indexOf(word) + 1;
+  if (pos < 1 || pos > 8) {
+    throw new Refusal('status-not-allowed', `"${word}" is not a status set-status may write (positions 1 to 8: ${ds.slice(0, 8).join(', ')})`);
+  }
+  const segs = parseStatusSegments(rowCells[1]);
+  const blocked = ds[8];
+  const discarded = ds[9];
+  let target = -1;
+  if (piece === undefined) {
+    if (segs.length > 1) throw new Refusal('segment-required', 'the row has several segments; name the one to change with --piece');
+    target = segs.length === 1 ? 0 : -1;
+  } else {
+    target = segs.findIndex((s) => s.label === piece);
+    if (target < 0 && segs.length === 1 && segs[0].label === '') {
+      throw new Refusal('segment-required', `the row has a single unlabeled segment; --piece "${piece}" would not match it (omit --piece)`);
+    }
+  }
+  let statusText;
+  if (target >= 0) {
+    const seg = segs[target];
+    if (seg.word === blocked || seg.word === discarded) throw new Refusal('segment-locked', `segment "${seg.raw}" is ${seg.word}; set-status does not change it`);
+    const cur = ds.indexOf(seg.word) + 1;
+    if (pos < cur) throw new Refusal('status-backward', `"${word}" (position ${pos}) is earlier than the current "${seg.word}" (position ${cur})`);
+    const changed = pos > cur || note !== undefined;
+    const raws = segs.map((s) => s.raw);
+    if (changed) raws[target] = segText(seg, word, note);
+    statusText = raws.join('; ');
+  } else {
+    const fresh = `${piece !== undefined ? `${piece}: ` : ''}${word}${note ? ` (${note})` : ''}`;
+    statusText = [...segs.map((s) => s.raw), fresh].join('; ');
+  }
+  const cells = [...rowCells];
+  cells[1] = statusText;
+  if (evidence && evidence.length) cells[2] = mergeEvidence(rowCells[2], evidence);
+  if (next !== undefined) cells[3] = next;
+  return cells;
+}
+
+const gitUsable = (git) => Boolean(git) && !git.unavailable;
+
+function requireIntegrationRefs(ctx) {
+  const { git } = ctx;
+  if (!gitUsable(git)) {
+    throw new Refusal('git-unavailable', git ? `git is unavailable (${git.reason})` : 'folder is not inside a git repository, so no commit can be shown on the integration branch');
+  }
+  const refs = integrationRefs(git, ctx.roadmap.config);
+  if (refs.length === 0) {
+    throw new Refusal('git-unavailable', `neither ${ctx.roadmap.config.integrationBranch} nor origin/${ctx.roadmap.config.integrationBranch} exists`);
+  }
+  return refs;
+}
+
 // ---------- commands ----------
 
 const COMMANDS = {
@@ -287,6 +494,90 @@ const COMMANDS = {
     const refs = integrationRefs(git, ctx.roadmap.config);
     ctx.result = { exists, integrated: exists && refs.some((ref) => git.isAncestor(sha, ref)), refs };
   },
+
+  log(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length) throw usage('log takes options only');
+    if (opts.deliverable === undefined) throw usage('log needs --deliverable <E<n>|->');
+    if (opts.what === undefined) throw usage('log needs --what <text>');
+    const edit = logRow(ctx, { deliverable: opts.deliverable, what: opts.what, evidence: opts.evidence, date: ctx.today });
+    commitEdits(ctx, new Map([['log', [edit]]]));
+    ctx.result = { date: ctx.today };
+  },
+
+  'set-status'(ctx) {
+    const { opts, git } = ctx;
+    if (ctx.args.length !== 2) throw usage('set-status needs <E<n>> <word>');
+    const [id, word] = ctx.args;
+    const row = panelRows(ctx).find((r) => r.id === id);
+    if (!row) throw new Refusal('not-found', `${id} is not in the panel`);
+    const cells = setSegment(ctx, row.cells, {
+      piece: opts.piece, word, evidence: opts.evidence, next: opts.next, note: opts.note,
+    });
+    const ds = ctx.roadmap.config.vocab.deliverableStatuses;
+    const pos = ds.indexOf(word) + 1;
+    const oldShas = shasIn(row.cells[2]);
+    const newShas = shasIn(cells[2]).filter((s) => !oldShas.includes(s));
+    if (newShas.length && gitUsable(git)) {
+      for (const s of newShas) if (!git.commitExists(s)) throw new Refusal('sha-missing', `commit ${s} does not exist in this repository`);
+    }
+    const statusChanged = cells[1] !== row.cells[1];
+    if (pos >= 6 && statusChanged) {
+      const refs = requireIntegrationRefs(ctx);
+      const existing = shasIn(cells[2]).filter((s) => git.commitExists(s));
+      if (!existing.some((s) => refs.some((ref) => git.isAncestor(s, ref)))) {
+        throw new Refusal('sha-not-integrated', `no commit in Evidence (${existing.join(', ') || 'none'}) is an ancestor of ${refs.join(' or ')}; cite the SHA that entered it with --evidence`);
+      }
+    }
+    ctx.result = { id, cells };
+    if (cells.every((c, i) => c === row.cells[i])) {
+      commitWrites(ctx, new Map());
+      return;
+    }
+    commitEdits(ctx, new Map([['state', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]]]));
+  },
+
+  integrate(ctx) {
+    const { opts, git } = ctx;
+    if (ctx.args.length) throw usage('integrate takes options only');
+    if (opts.sha === undefined) throw usage('integrate needs --sha <sha>');
+    const sha = opts.sha;
+    if (!/^[0-9a-fA-F]{7,40}$/.test(sha)) throw usage(`"${sha}" is not a commit sha`);
+    const refs = requireIntegrationRefs(ctx);
+    if (!git.commitExists(sha)) throw new Refusal('sha-missing', `commit ${sha} does not exist in this repository`);
+    if (!refs.some((ref) => git.isAncestor(sha, ref))) throw new Refusal('sha-not-integrated', `${sha} is not an ancestor of ${refs.join(' or ')}`);
+    const cfg = ctx.roadmap.config;
+    const ds = cfg.vocab.deliverableStatuses;
+    const onBranch = ds[4];
+    const integrated = ds[5];
+    const only = opts.only === undefined ? null : opts.only.split(',').map((s) => s.trim()).filter(Boolean);
+    const edits = [];
+    const ids = [];
+    for (const row of panelRows(ctx)) {
+      if (only && !only.includes(row.id)) continue;
+      const segs = parseStatusSegments(row.cells[1]);
+      if (segs.length === 0 || !segs.every((s) => s.word === onBranch)) continue;
+      const existing = shasIn(row.cells[2]).filter((s) => git.commitExists(s));
+      if (existing.length === 0 || !existing.every((s) => refs.some((ref) => git.isAncestor(s, ref)))) continue;
+      const cells = [...row.cells];
+      cells[1] = segs.map((s) => segText(s, integrated)).join('; ');
+      cells[2] = mergeEvidence(row.cells[2], [sha]);
+      edits.push({ op: 'replace', line: row.line, text: serializeRow(cells) });
+      ids.push(row.id);
+    }
+    ctx.result = { integrated: ids, sha };
+    if (ids.length === 0) {
+      commitWrites(ctx, new Map());
+      return;
+    }
+    const via = cfg.releaseBranch ? ` via ${cfg.releaseBranch}` : '';
+    const list = ids.join(', ');
+    const what = opts.what !== undefined
+      ? opts.what
+      : (ctx.lang === 'pt' ? `${list} integrada(s) em ${cfg.integrationBranch}${via}` : `${list} integrated into ${cfg.integrationBranch}${via}`);
+    const logEdit = logRow(ctx, { deliverable: list, what, evidence: [sha], date: ctx.today });
+    commitEdits(ctx, new Map([['state', edits], ['log', [logEdit]]]));
+  },
 };
 
 export { COMMANDS };
@@ -316,6 +607,7 @@ export function run(argv, io = {}) {
   const cwd = io.cwd || process.cwd();
   let command = '';
   let folderArg = '';
+  let ctx = null;
   const output = emptyOutput('', '');
   try {
     const { positional, opts, flags } = parseArgs(argv);
@@ -355,8 +647,8 @@ export function run(argv, io = {}) {
     else if (git.unavailable) warnings.push({ code: 'no-git', message: `git is unavailable (${git.reason}); commit checks are skipped` });
     const parsed = parseRoadmapTexts({ strategy: roadmap.strategy, files: roadmap.files });
     const lang = String(roadmap.config.language || '').toLowerCase().startsWith('pt') ? 'pt' : 'en';
-    const ctx = {
-      folder, args, opts, roadmap, parsed, git, lang, today: date, result: {}, warnings, hooks: io.hooks || {},
+    ctx = {
+      folder, args, opts, roadmap, parsed, git, lang, today: date, result: {}, warnings, hooks: io.hooks || {}, raws: new Map(), changed: [],
     };
     COMMANDS[command](ctx);
     output.result = ctx.result;
@@ -364,6 +656,10 @@ export function run(argv, io = {}) {
     output.warnings = ctx.warnings;
     return finish(output, 0);
   } catch (e) {
+    if (ctx) {
+      output.changed = ctx.changed || [];
+      output.warnings = ctx.warnings;
+    }
     if (e instanceof Refusal) {
       output.errors.push({ code: e.code, message: e.message });
       return finish(output, e.exitCode);
