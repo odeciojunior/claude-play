@@ -814,3 +814,203 @@ test('refresh-checker: pasta com erro mantém a cópia e grava ou atualiza o pen
   assert.ok(Number(second[0][1]) > Number(first[0][1]));
   assert.ok(!fs.existsSync(copy));
 });
+
+// ---------- CLI (Tarefa 6): acréscimo, ratificação e rejeição ----------
+
+const DEC2_ROW = '| DEC-002 | 2026-01-06 | E1 | Use SQLite. Scope: local. | none stated | - | - | executor | pending |';
+const withDec2 = (extra = {}) => ({
+  'decisions.md': (x) => x.replace('<!-- /roadmap:decisions -->', `${DEC2_ROW}\n<!-- /roadmap:decisions -->`),
+  'state.md': (x) => x.replace('<!-- /roadmap:pending -->', '- (owner) Ratify DEC-002\n<!-- /roadmap:pending -->'),
+  ...extra,
+});
+const decLines = (text) => lineSplit(text).filter((l) => l.startsWith('| DEC-'));
+const cellsOf = (line) => splitRow(line);
+
+test('AC4: add-decision grava a linha do executor e repetir é no-op com o mesmo id', (t) => {
+  const f = makeFolder(t);
+  const r = cli(f.dir, 'add-decision', '--deliverable', 'E1', '--decision', 'Use SQLite', '--scope', 'local', '--date', '2026-01-06');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.equal(r.output.result.id, 'DEC-002');
+  assert.deepEqual(r.output.changed, ['decisions.md']);
+  const row = cellsOf(decLines(f.read('decisions.md'))[1]);
+  assert.equal(row.length, 9);
+  assert.equal(row[2], 'E1');
+  assert.ok(row[3].endsWith('Scope: local.'), row[3]);
+  assert.equal(row[4], 'none stated');
+  assert.equal(row[7], 'executor');
+  assert.equal(row[8], 'pending');
+  const bytes = snapshot(f.dir);
+  const again = cli(f.dir, 'add-decision', '--deliverable', 'E1', '--decision', 'Use  SQLite', '--scope', 'local');
+  assert.equal(again.exitCode, 0, JSON.stringify(again.output.errors));
+  assert.deepEqual(again.output.changed, []);
+  assert.equal(again.output.result.id, 'DEC-002');
+  assert.equal(f.read('decisions.md').split('DEC-002').length - 1, 1);
+  assert.deepEqual(snapshot(f.dir), bytes);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('add-decision: --discarded, --contradicts, --revisit, scope contrato e recusas de uso', (t) => {
+  const f = makeFolder(t);
+  const r = cli(f.dir, 'add-decision', '--deliverable', '-', '--decision', 'Pick X.', '--scope', 'contrato',
+    '--discarded', 'Y', '--contradicts', 'E2', '--revisit', 'later');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  const row = cellsOf(decLines(f.read('decisions.md'))[1]);
+  assert.deepEqual([row[2], row[3], row[4], row[5], row[6]], ['-', 'Pick X. Scope: contract.', 'Y', 'E2', 'later']);
+  assert.equal(cli(f.dir, 'add-decision', '--deliverable', 'E1', '--decision', 'Z', '--scope', 'wide').exitCode, 2);
+  assert.equal(cli(f.dir, 'add-decision', '--deliverable', 'X1', '--decision', 'Z', '--scope', 'local').exitCode, 2);
+  assert.equal(cli(f.dir, 'add-decision', '--deliverable', 'E1', '--scope', 'local').exitCode, 2);
+  refused(cli(f.dir, 'add-decision', '--deliverable', 'E1', '--decision', 'x'.repeat(301), '--scope', 'local'), 'cell-too-long');
+});
+
+test('AC4: add-pending e inflight-add são idempotentes; inflight-remove tira a linha; nenhum grava log', (t) => {
+  const f = makeFolder(t, { mutate: { 'decisions.md': withDec2()['decisions.md'] } });
+  const log = f.read('log.md');
+  const p = cli(f.dir, 'add-pending', '--owner', 'owner', '--text', 'Ratify DEC-002');
+  assert.equal(p.exitCode, 0, JSON.stringify(p.output.errors));
+  assert.deepEqual(p.output.changed, ['state.md']);
+  const lines = lineSplit(f.read('state.md'));
+  const at = lines.indexOf('- (owner) Ratify DEC-002');
+  assert.ok(at > 0);
+  assert.equal(lines[at - 1], '- (owner) Confirm the storage choice.');
+  assert.equal(lines[at + 1], '<!-- /roadmap:pending -->');
+  const p2 = cli(f.dir, 'add-pending', '--owner', 'owner', '--text', 'Ratify  DEC-002');
+  assert.equal(p2.exitCode, 0);
+  assert.deepEqual(p2.output.changed, []);
+  refused(cli(f.dir, 'add-pending', '--owner', '', '--text', 'x'), 'owner-missing');
+  const a = cli(f.dir, 'inflight-add', 'feat/e1', '--note', 'E1 work');
+  assert.equal(a.exitCode, 0, JSON.stringify(a.output.errors));
+  assert.ok(f.read('state.md').includes('| feat/e1 | live | E1 work |'));
+  assert.deepEqual(cli(f.dir, 'inflight-add', 'feat/e1', '--note', 'E1 work').output.changed, []);
+  assert.equal(f.read('state.md').split('feat/e1').length - 1, 1);
+  const rm = cli(f.dir, 'inflight-remove', 'feat/e1');
+  assert.equal(rm.exitCode, 0);
+  assert.ok(!f.read('state.md').includes('feat/e1'));
+  assert.deepEqual(cli(f.dir, 'inflight-remove', 'feat/e1').output.changed, []);
+  assert.equal(f.read('log.md'), log);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('inflight-add: linha deleted volta a live', (t) => {
+  const f = makeFolder(t, {
+    mutate: { 'state.md': (x) => x.replace('|---|---|---|\n<!-- /roadmap:inflight -->', '|---|---|---|\n| feat/e1 | deleted | old |\n<!-- /roadmap:inflight -->') },
+  });
+  const r = cli(f.dir, 'inflight-add', 'feat/e1');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.ok(f.read('state.md').includes('| feat/e1 | live | old |'));
+});
+
+test('AC5: ratify muda só a célula Status, tira o pendente e grava uma linha de log', (t) => {
+  const f = makeFolder(t, { mutate: withDec2() });
+  const dec0 = f.read('decisions.md');
+  const log0 = f.read('log.md');
+  const r = cli(f.dir, 'ratify', 'DEC-002', '--date', '2026-01-07');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.deepEqual(r.output.changed, ['decisions.md', 'state.md', 'log.md']);
+  const before = cellsOf(DEC2_ROW);
+  const after = cellsOf(decLines(f.read('decisions.md'))[1]);
+  after.forEach((c, i) => { if (i !== 8) assert.equal(c, before[i]); });
+  assert.equal(after[8], 'in-force');
+  assert.equal(decLines(f.read('decisions.md')).length, decLines(dec0).length);
+  assert.ok(!f.read('state.md').includes('Ratify DEC-002'));
+  const ld = lineDiff(log0, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], /^\| 2026-01-07 \| E1 \| DEC-002 ratified by the owner \| `decisions\.md` \|$/);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('ratify: item pendente que cita outras decisões fica e gera aviso', (t) => {
+  const f = makeFolder(t, {
+    mutate: withDec2({
+      'state.md': (x) => x.replace('<!-- /roadmap:pending -->', '- (owner) Ratify DEC-002\n- (owner) Review DEC-002 and DEC-001\n<!-- /roadmap:pending -->'),
+    }),
+  });
+  const r = cli(f.dir, 'ratify', 'DEC-002');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.ok(f.read('state.md').includes('- (owner) Review DEC-002 and DEC-001'));
+  assert.ok(!f.read('state.md').includes('- (owner) Ratify DEC-002'));
+  assert.ok(r.output.warnings.some((w) => w.code === 'pending-multi-cite'));
+});
+
+test('AC5: ratify e reject recusam inexistente, origem diferente e não pendente, sem tocar bytes', (t) => {
+  const f = makeFolder(t, { mutate: withDec2() });
+  assert.equal(cli(f.dir, 'ratify', 'DEC-002').exitCode, 0);
+  const before = snapshot(f.dir);
+  for (const cmd of ['ratify', 'reject']) {
+    const extra = cmd === 'reject' ? ['--decision', 'Use Postgres'] : [];
+    refused(cli(f.dir, cmd, 'DEC-001', ...extra), 'not-executor');
+    refused(cli(f.dir, cmd, 'DEC-002', ...extra), 'not-pending');
+    refused(cli(f.dir, cmd, 'DEC-099', ...extra), 'not-found');
+  }
+  assert.deepEqual(snapshot(f.dir), before);
+  assert.equal(cli(f.dir, 'ratify').exitCode, 2);
+  assert.equal(cli(f.dir, 'reject', 'DEC-002').exitCode, 2);
+});
+
+test('AC6: reject cria a linha do dono, substitui a antiga e tira o pendente', (t) => {
+  const f = makeFolder(t, { mutate: withDec2() });
+  const dec0 = decLines(f.read('decisions.md'));
+  const log0 = f.read('log.md');
+  const r = cli(f.dir, 'reject', 'DEC-002', '--decision', 'Use Postgres', '--date', '2026-01-08');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.equal(r.output.result.id, 'DEC-003');
+  const rows = decLines(f.read('decisions.md'));
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0], dec0[0]);
+  const fresh = cellsOf(rows[2]);
+  assert.deepEqual([fresh[0], fresh[2], fresh[3], fresh[5], fresh[7], fresh[8]], ['DEC-003', 'E1', 'Use Postgres', '-', 'user', 'in-force']);
+  assert.equal(fresh[4], "the executor's choice in DEC-002");
+  const before = cellsOf(DEC2_ROW);
+  const old = cellsOf(rows[1]);
+  old.forEach((c, i) => { if (i !== 8) assert.equal(c, before[i]); });
+  assert.equal(old[8], 'superseded by DEC-003');
+  assert.ok(!f.read('state.md').includes('Ratify DEC-002'));
+  const ld = lineDiff(log0, f.read('log.md'));
+  assert.equal(ld.added.length, 1);
+  assert.match(ld.added[0], /DEC-002 rejected by the owner; DEC-003 supersedes it/);
+  assert.equal(cli(f.dir, 'brief').output.result.checker.errors, 0);
+});
+
+test('pasta pt: add-decision escreve Alcance e ratify/reject escrevem em português', (t) => {
+  const setPt = (f) => {
+    const cfgFile = path.join(f.dir, 'roadmap.config.json');
+    const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    cfg.language = 'pt-BR';
+    fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
+  };
+  const f = makeFolder(t);
+  setPt(f);
+  assert.equal(cli(f.dir, 'add-decision', '--deliverable', 'E1', '--decision', 'Usar SQLite', '--scope', 'contrato').exitCode, 0);
+  assert.ok(f.read('decisions.md').includes('Usar SQLite. Alcance: contrato. |'));
+  const g = makeFolder(t, { mutate: withDec2() });
+  setPt(g);
+  assert.equal(cli(g.dir, 'ratify', 'DEC-002').exitCode, 0);
+  assert.ok(g.read('log.md').includes('DEC-002 ratificada pelo dono'));
+  const h = makeFolder(t, { mutate: withDec2() });
+  setPt(h);
+  const r = cli(h.dir, 'reject', 'DEC-002', '--decision', 'Usar Postgres');
+  assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+  assert.ok(h.read('log.md').includes('DEC-002 rejeitada pelo dono; DEC-003 a substitui'));
+  assert.ok(h.read('decisions.md').includes('a escolha do executor em DEC-002'));
+});
+
+for (const [name, opts] of [['LF', {}], ['CRLF com BOM e NFD', { eol: '\r\n', bom: true, nfdLine: true }]]) {
+  test(`T6: bytes fora das linhas tocadas ficam iguais em ratify e reject (${name})`, (t) => {
+    for (const cmd of [['ratify', 'DEC-002'], ['reject', 'DEC-002', '--decision', 'Use Postgres']]) {
+      const f = makeFolder(t, { ...opts, mutate: withDec2() });
+      const raw = Object.fromEntries(['state.md', 'log.md', 'decisions.md'].map((n) => [n, fs.readFileSync(path.join(f.dir, n))]));
+      const r = cli(f.dir, ...cmd);
+      assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+      const eol = opts.eol || '\n';
+      const now = (n) => fs.readFileSync(path.join(f.dir, n));
+      const keep = (buf, drop) => buf.toString('utf8').split(eol).filter((l) => !drop(l)).join(eol);
+      const dropDec = (l) => l.startsWith('| DEC-002 |') || l.startsWith('| DEC-003 |');
+      assert.equal(keep(now('decisions.md'), dropDec), keep(raw['decisions.md'], dropDec));
+      const dropPend = (l) => l.includes('Ratify DEC-002');
+      assert.equal(keep(now('state.md'), dropPend), keep(raw['state.md'], dropPend));
+      const dropLog = (l) => l.includes('DEC-002');
+      assert.equal(keep(now('log.md'), dropLog), keep(raw['log.md'], dropLog));
+      if (opts.bom) assert.equal(now('state.md').subarray(0, 3).toString('hex'), 'efbbbf');
+      if (opts.eol) for (const n of ['state.md', 'log.md', 'decisions.md']) assert.equal(now(n).toString('utf8').replace(/\r\n/g, '').includes('\n'), false);
+    }
+  });
+}

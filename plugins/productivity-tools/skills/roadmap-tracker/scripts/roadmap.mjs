@@ -491,6 +491,76 @@ function headerVersion(buf) {
   return m ? m[1] : null;
 }
 
+// ---------- decisions, pending and in-flight (E3 T6) ----------
+
+const collapse = (s) => norm(String(s)).replace(/\s+/g, ' ').trim();
+const SCOPE_TAIL_RE = /\s*(?:Alcance|Scope):\s*(?:local|contrato|contract)\.?\s*$/i;
+const stripScope = (s) => collapse(s).replace(SCOPE_TAIL_RE, '');
+const withPeriod = (s) => (/[.!?]$/.test(s) ? s : `${s}.`);
+
+function checkCell(ctx, label, text) {
+  const max = ctx.roadmap.config.limits.cellChars;
+  if (text.length > max) throw new Refusal('cell-too-long', `${label} has ${text.length} characters, limit ${max}`);
+}
+
+function scopePhrase(ctx, scope) {
+  const s = String(scope).trim().toLowerCase();
+  if (s !== 'local' && s !== 'contrato' && s !== 'contract') throw usage(`--scope must be local or contrato (contract), got "${scope}"`);
+  const word = s === 'local' ? 'local' : (ctx.lang === 'pt' ? 'contrato' : 'contract');
+  return `${ctx.lang === 'pt' ? 'Alcance' : 'Scope'}: ${word}.`;
+}
+
+function deliverableArg(value) {
+  if (!/^(?:E\d+|-)$/.test(value)) throw usage(`--deliverable must be E<n> or "-", got "${value}"`);
+  return value;
+}
+
+// Decision rows with the raw line index of each (decisions.md), aligned with the parsed rows.
+function decisionRows(ctx) {
+  const bl = blockLines(rawText(ctx, 'decisions'), 'decisions');
+  const rows = ctx.parsed.blocks.decisions.decisions.rows;
+  if (!bl || bl.header === null || bl.rows.length !== rows.length) throw usage('decisions.md decisions block is not readable');
+  return { bl, rows: rows.map((cells, i) => ({ cells, line: bl.rows[i] })) };
+}
+
+function appendDecisionEdit(bl, text) {
+  return { op: 'insertAfter', line: bl.rows.length ? bl.rows[bl.rows.length - 1] : bl.header + 1, text };
+}
+
+// Pending items that cite only `dec` go away; items citing it among others stay and are reported.
+function dropPendingFor(ctx, dec) {
+  const pend = listItems(ctx, 'pending');
+  const edits = [];
+  if (!pend) return edits;
+  for (const it of pend.items) {
+    const decs = idsIn(it.text, /\bDEC-\d+\b/g);
+    if (!decs.includes(dec)) continue;
+    if (decs.length === 1) edits.push({ op: 'remove', line: it.start, end: it.end });
+    else ctx.warnings.push({ code: 'pending-multi-cite', message: `pending item cites ${decs.join(', ')}; left in place: ${collapse(it.text).slice(0, 80)}` });
+  }
+  return edits;
+}
+
+function executorPending(ctx, dec) {
+  if (!/^DEC-\d+$/.test(dec || '')) throw usage('expected exactly one DEC-<NNN>');
+  const v = ctx.roadmap.config.vocab;
+  const { bl, rows } = decisionRows(ctx);
+  const row = rows.find((r) => r.cells[0] === dec);
+  if (!row) throw new Refusal('not-found', `${dec} is not in the decisions block`);
+  if (row.cells[7] !== 'executor') throw new Refusal('not-executor', `${dec} has origin "${row.cells[7]}"; only executor decisions are ratified or rejected here`);
+  if (row.cells[8] !== v.decisionPending) throw new Refusal('not-pending', `${dec} has status "${row.cells[8]}", expected "${v.decisionPending}"`);
+  return { bl, row };
+}
+
+const logDeliverable = (cell) => (/^(?:E\d+(?:,\s*E\d+)*|-)$/.test(cell) ? cell : '-');
+
+function inflightRows(ctx) {
+  const bl = blockLines(rawText(ctx, 'state'), 'inflight');
+  const rows = ctx.parsed.blocks.state.inflight.rows;
+  if (!bl || bl.header === null || bl.rows.length !== rows.length) throw usage('state.md inflight block is not readable');
+  return { bl, rows: rows.map((cells, i) => ({ cells, line: bl.rows[i], branch: cells[0].replace(/`/g, '').trim() })) };
+}
+
 // ---------- commands ----------
 
 const COMMANDS = {
@@ -844,6 +914,146 @@ const COMMANDS = {
     changes.set('log', applyEdits(rawText(ctx, 'log'), [logEdit]));
     ctx.result = { refreshed: true, from: old, to: CHECKER_VERSION };
     commitWrites(ctx, changes);
+  },
+
+  'add-decision'(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length) throw usage('add-decision takes options only');
+    for (const k of ['deliverable', 'decision', 'scope']) if (opts[k] === undefined) throw usage(`add-decision needs --${k}`);
+    const deliverable = deliverableArg(opts.deliverable);
+    const base = withPeriod(stripScope(opts.decision));
+    if (base === '.') throw usage('--decision is empty');
+    const phrase = scopePhrase(ctx, opts.scope);
+    const { bl, rows } = decisionRows(ctx);
+    const dup = rows.find((r) => r.cells[7] === 'executor' && r.cells[2] === deliverable && withPeriod(stripScope(r.cells[3])) === base);
+    if (dup) {
+      ctx.result = { id: dup.cells[0], existing: true };
+      commitWrites(ctx, new Map());
+      return;
+    }
+    const v = ctx.roadmap.config.vocab;
+    const id = nextId(ctx.folder, ctx.roadmap.strategyPath, 'DEC');
+    const cells = [
+      id, ctx.today, deliverable, `${base} ${phrase}`,
+      opts.discarded !== undefined ? collapse(opts.discarded) : 'none stated',
+      opts.contradicts !== undefined ? collapse(opts.contradicts) : '-',
+      opts.revisit !== undefined ? collapse(opts.revisit) : '-',
+      'executor', v.decisionPending,
+    ];
+    cells.forEach((c, i) => checkCell(ctx, `decision cell ${i + 1}`, c));
+    commitEdits(ctx, new Map([['decisions', [appendDecisionEdit(bl, serializeRow(cells))]]]));
+    ctx.result = { id, existing: false };
+  },
+
+  'add-pending'(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length) throw usage('add-pending takes options only');
+    if (opts.owner === undefined) throw usage('add-pending needs --owner <owner>');
+    if (opts.text === undefined) throw usage('add-pending needs --text <text>');
+    const owner = collapse(opts.owner);
+    if (owner === '') throw new Refusal('owner-missing', 'a pending item needs an owner (--owner <owner>)');
+    const text = collapse(opts.text);
+    if (text === '') throw usage('--text is empty');
+    const item = `(${owner}) ${text}`;
+    checkCell(ctx, 'pending item', item);
+    const pend = listItems(ctx, 'pending');
+    if (!pend) throw usage('state.md has no readable pending block');
+    const marker = /^\s*(?:\d+[.)]|[-*+])\s+/;
+    ctx.result = { item };
+    if (pend.items.some((it) => collapse(it.text.replace(marker, '')) === item)) {
+      commitWrites(ctx, new Map());
+      return;
+    }
+    const edit = pend.items.length
+      ? { op: 'insertAfter', line: pend.items[pend.items.length - 1].end, text: `- ${item}` }
+      : { op: 'insertAfter', line: pend.bl.open, text: `- ${item}` };
+    commitEdits(ctx, new Map([['state', [edit]]]));
+  },
+
+  'inflight-add'(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length !== 1) throw usage('inflight-add needs exactly one <branch>');
+    const branch = ctx.args[0];
+    const v = ctx.roadmap.config.vocab;
+    const { bl, rows } = inflightRows(ctx);
+    const row = rows.find((r) => r.branch === branch);
+    ctx.result = { branch };
+    if (row) {
+      if (row.cells[1] === v.branchLive) {
+        commitWrites(ctx, new Map());
+        return;
+      }
+      const cells = [...row.cells];
+      cells[1] = v.branchLive;
+      if (opts.note !== undefined) cells[2] = collapse(opts.note);
+      commitEdits(ctx, new Map([['state', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]]]));
+      return;
+    }
+    const cells = [branch, v.branchLive, opts.note !== undefined ? collapse(opts.note) : '-'];
+    cells.forEach((c) => checkCell(ctx, 'in-flight cell', c));
+    const line = bl.rows.length ? bl.rows[bl.rows.length - 1] : bl.header + 1;
+    commitEdits(ctx, new Map([['state', [{ op: 'insertAfter', line, text: serializeRow(cells) }]]]));
+  },
+
+  'inflight-remove'(ctx) {
+    if (ctx.args.length !== 1) throw usage('inflight-remove needs exactly one <branch>');
+    const branch = ctx.args[0];
+    const row = inflightRows(ctx).rows.find((r) => r.branch === branch);
+    ctx.result = { branch };
+    if (!row) {
+      commitWrites(ctx, new Map());
+      return;
+    }
+    commitEdits(ctx, new Map([['state', [{ op: 'remove', line: row.line }]]]));
+  },
+
+  ratify(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length !== 1) throw usage('ratify needs exactly one DEC-<NNN>');
+    const dec = ctx.args[0];
+    const { row } = executorPending(ctx, dec);
+    const cells = [...row.cells];
+    cells[8] = ctx.roadmap.config.vocab.decisionInForce;
+    const what = opts.what !== undefined ? opts.what : (ctx.lang === 'pt' ? `${dec} ratificada pelo dono` : `${dec} ratified by the owner`);
+    const stateEdits = dropPendingFor(ctx, dec);
+    const logEdit = logRow(ctx, { deliverable: logDeliverable(row.cells[2]), what, evidence: [ctx.roadmap.paths.decisions], date: ctx.today });
+    const edits = new Map([['decisions', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]], ['log', [logEdit]]]);
+    if (stateEdits.length) edits.set('state', stateEdits);
+    commitEdits(ctx, edits);
+    ctx.result = { id: dec };
+  },
+
+  reject(ctx) {
+    const { opts } = ctx;
+    if (ctx.args.length !== 1) throw usage('reject needs exactly one DEC-<NNN>');
+    if (opts.decision === undefined) throw usage('reject needs --decision <text>');
+    const dec = ctx.args[0];
+    const { bl, row } = executorPending(ctx, dec);
+    const text = collapse(opts.decision);
+    if (text === '') throw usage('--decision is empty');
+    const v = ctx.roadmap.config.vocab;
+    const pt = ctx.lang === 'pt';
+    const id = nextId(ctx.folder, ctx.roadmap.strategyPath, 'DEC');
+    const fresh = [
+      id, ctx.today, row.cells[2], text,
+      opts.discarded !== undefined ? collapse(opts.discarded) : (pt ? `a escolha do executor em ${dec}` : `the executor's choice in ${dec}`),
+      '-',
+      opts.revisit !== undefined ? collapse(opts.revisit) : '-',
+      'user', v.decisionInForce,
+    ];
+    fresh.forEach((c, i) => checkCell(ctx, `decision cell ${i + 1}`, c));
+    const old = [...row.cells];
+    old[8] = `${v.decisionSupersededBy} ${id}`;
+    const what = opts.what !== undefined ? opts.what : (pt ? `${dec} rejeitada pelo dono; ${id} a substitui` : `${dec} rejected by the owner; ${id} supersedes it`);
+    const stateEdits = dropPendingFor(ctx, dec);
+    const logEdit = logRow(ctx, { deliverable: logDeliverable(row.cells[2]), what, evidence: [ctx.roadmap.paths.decisions], date: ctx.today });
+    const edits = new Map([
+      ['decisions', [{ op: 'replace', line: row.line, text: serializeRow(old) }, appendDecisionEdit(bl, serializeRow(fresh))]],
+      ['log', [logEdit]],
+    ]);
+    if (stateEdits.length) edits.set('state', stateEdits);
+    commitEdits(ctx, edits);
+    ctx.result = { id, supersedes: dec };
   },
 };
 
