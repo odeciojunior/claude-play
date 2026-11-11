@@ -34,7 +34,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
-| E18 | nao-iniciado | `c137ac190b801f255572648d40261f021139a437`; `feat/E18` | Sincronizar a `feat/E18` com a release e retomar pelo release |
+| E18 | executando | `c137ac190b801f255572648d40261f021139a437`; `feat/E18`, `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`, `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md` | Executar o plano na feat/E18 (D:/projects/claude-play-wt/E18) pelo release; depois E22 |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
@@ -61,7 +61,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E25: nome, regra e concessão por `allowed-tools` só foram vistos com o plugin carregado do caminho local; nenhum plugin instalado registra workflow, então só o critério do dono em E25 confere. A pasta do cache não é legível para o caminho (SRC-15).
 - (executor) Incerto, rever no spec de E25: nenhuma sessão sem interface grava `skipWorkflowUsageWarning` nas configurações do usuário; resta a sessão interativa ao mostrar o diálogo, não testada. O marcador de sessão filha não influi na permissão (SRC-15).
 - (executor) Incerto, medir em E15: a fidelidade do plano com schema teve uma fixture por tamanho e dez tentativas por célula; sonnet com plano de 30 tarefas não rodou (DEC-059).
-- (executor) Incerto, rever no spec de E18: que a barra invertida seguida de asterisco seja lida como escape é inferência; conferir na documentação de regras de permissão antes de fixar o texto da regra (DEC-060).
 - (executor) Incerto, rever no spec de E1: a causa de a revisão do plano semeado acusar árvore suja logo após um commit limpo, que impede atribuir o conserto só ao revisor (SRC-14).
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
@@ -81,6 +80,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Correção de E4 numa branch sobre a release, antes da peça 2 de E17: W6 (cortar a condição em SKILL.md:87 e guarda existing-roadmap no scaffold), títulos e cabeçalhos traduzidos em scaffold.mjs (M1), W1 em formats.md, os 3 avisos do lint e M2 a M4.
 - (dono) Decidir, depois da meta de prosa registrada (DEC-203), se W2 e W4 de E4 (objective em texto e cards de modo completo sem dod e risks) entram com prosa contada, cortando outro trecho (DEC-167).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
+- (dono) Ratificação pelo dono das decisões autônomas do spec de E18 (DEC-030); as de alcance contrato (1, 2, 5 e 7 do spec) seguram o início de E25 e E8, as de alcance local esperam o ponto de medição.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -88,6 +88,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E18 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E18` mantido |
+| feat/E18 | viva | execução automática; worktree `D:/projects/claude-play-wt/E18` mantido |
 | feat/E22 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->
