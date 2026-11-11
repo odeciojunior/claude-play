@@ -1,6 +1,6 @@
 // Parser do formato de roadmap (formats.md): fonte única, pura e sem dependências.
 // Sem imports nem acesso a ambiente: o texto entra, a estrutura sai.
-// Copiado para o checker e o preflight por plugins/productivity-tools/scripts/embed.mjs.
+// Copiado para o checker por plugins/productivity-tools/scripts/embed.mjs; o preflight o importa (DEC-102).
 
 export function norm(text) {
   return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').normalize('NFC');
@@ -371,4 +371,12 @@ export function parseRoadmapTexts({ strategy, files }) {
     });
   }
   return { version, cards, blocks };
+}
+
+// Primeiro entregável já publicado que torna uma decisão do executor pendente tardia (DEC-111, DEC-198):
+// os da decisão (`ids`) ou, com Entregável '-' (ids vazio), qualquer um do painel.
+// `statusOf`: Map id -> palavras de status; `releasedWords`: releasedStatuses do vocabulário.
+export function releasedDeliverable(ids, statusOf, releasedWords) {
+  const pool = ids.length ? ids : [...statusOf.keys()];
+  return pool.find((e) => (statusOf.get(e) || []).some((w) => releasedWords.includes(w)));
 }
