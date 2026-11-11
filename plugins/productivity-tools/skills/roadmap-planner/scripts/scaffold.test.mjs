@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import {
   validateModel, applyDefaults, VOCAB_PT, VOCAB_EN, DEFAULT_TRACKS, DEFAULT_LIMITS, HEADINGS,
   compareIds, deriveGraph, deriveCoverage,
+  cell, ScaffoldError, buildConfig, renderFiles,
 } from './scaffold.mjs';
+import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const load = (name) => JSON.parse(fs.readFileSync(path.join(here, 'fixtures', name), 'utf8').replace(/^﻿/, ''));
@@ -262,5 +264,144 @@ describe('deriveCoverage', () => {
     const cov = deriveCoverage([{ id: 'REQ-001', coverage: { kind: 'needs-clarification' } }], [], v);
     assert.equal(cov.rows[0].coverage, v.coverageNeedsClarification);
     assert.equal(cov.summary.needsClarification, 1);
+  });
+});
+
+describe('renderFiles', () => {
+  const defaulted = (m) => applyDefaults(m).model;
+  const render = (m = full()) => renderFiles(defaulted(m));
+  const parsed = (files) => parseRoadmapTexts({
+    strategy: '',
+    files: { state: files['state.md'], decisions: files['decisions.md'], log: files['log.md'], sources: files['sources.md'], requirements: files['requirements.md'], measurements: files['measurements.md'] },
+  });
+
+  it('cell escapa | e recusa quebra de linha', () => {
+    assert.equal(cell('a|b', 'x'), 'a\\|b');
+    for (const bad of ['a\nb', 'a\rb']) {
+      assert.throws(() => cell(bad, 'x.y'), (e) => e instanceof ScaffoldError && e.problems[0].code === 'multiline-cell' && e.problems[0].path === 'x.y');
+    }
+  });
+
+  it('buildConfig segue formats.md §2', () => {
+    const cfg = buildConfig(defaulted(full()));
+    assert.equal(cfg.formatVersion, 1);
+    assert.equal(cfg.strategy, '../2026-01-01-roadmap-sample.md');
+    assert.equal(cfg.releaseBranch, 'release/2026-01');
+    assert.equal(cfg.files.measurements, 'measurements.md');
+    const c2 = buildConfig(defaulted(mid()));
+    assert.equal(c2.files.measurements, null);
+    assert.ok(!('releaseBranch' in c2));
+    assert.equal(c2.vocab.blockedStatus, 'bloqueado');
+  });
+
+  it('chaves são os arquivos do config mais roadmap.config.json; LF e \\n final', () => {
+    const files = render();
+    assert.deepEqual(Object.keys(files).sort(), ['README.md', 'critical-path.md', 'decisions.md', 'log.md', 'measurements.md', 'requirements.md', 'roadmap.config.json', 'sources.md', 'state.md']);
+    assert.ok(!('measurements.md' in render(mid())));
+    for (const [name, text] of Object.entries(files)) {
+      assert.ok(!text.includes('\r'), `${name} tem \\r`);
+      assert.ok(text.endsWith('\n'), `${name} sem \\n final`);
+    }
+    assert.equal(JSON.parse(files['roadmap.config.json']).files.measurements, 'measurements.md');
+  });
+
+  it('arestas do Mermaid = edges; nó de bloqueio ligado ao card bloqueado', () => {
+    const m = defaulted(full());
+    const text = renderFiles(m)['critical-path.md'];
+    const edges = [...text.matchAll(/^\s*(E\d+)\s*-->\s*(E\d+)/gm)].map((x) => `${x[1]}>${x[2]}`).sort();
+    const expected = deriveGraph(m.deliverables).edges.map(([a, b]) => `${a}>${b}`).sort();
+    assert.deepEqual(edges, expected);
+    assert.match(text, /BLQ1\["BLQ-1: Billing account not opened"\]/);
+    assert.match(text, /BLQ1\s*-->\s*E5/);
+    for (const d of m.deliverables) assert.match(text, new RegExp(`^\\s*${d.id}\\s*$`, 'm'));
+    const g = deriveGraph(m.deliverables);
+    assert.ok(text.includes(`Critical path: ${g.chain.join(' -> ')}.`));
+    assert.match(text, /state\.md/);
+  });
+
+  it('requirements.md: Entregáveis e Cobertura vêm de deriveCoverage', () => {
+    const m = defaulted(full());
+    const rows = parsed(renderFiles(m)).blocks.requirements.requirements.rows;
+    const cov = deriveCoverage(m.requirements, m.deliverables, m.vocab).rows;
+    assert.equal(rows.length, cov.length);
+    cov.forEach((c, i) => {
+      assert.equal(rows[i][0], c.id);
+      assert.equal(rows[i][4], c.deliverables.length ? c.deliverables.join(', ') : '-');
+      assert.equal(rows[i][5], c.coverage);
+    });
+  });
+
+  it('state.md: uma linha por card, bloqueado cita BLQ-1 e a linha do bloqueio restaura', () => {
+    const m = defaulted(full());
+    const state = parsed(renderFiles(m)).blocks.state;
+    const panel = state.panel.rows;
+    assert.equal(panel.length, m.deliverables.length);
+    const e5 = panel.find((r) => r[0] === 'E5').join(' ');
+    assert.ok(e5.includes('blocked'));
+    assert.ok(e5.includes('BLQ-1'));
+    assert.equal(panel.find((r) => r[0] === 'E1')[1], 'not-started');
+    const blockers = state.blockers.rows;
+    assert.equal(blockers.length, 1);
+    assert.match(blockers[0][4], /restores E5 to not-started/);
+    assert.equal(blockers[0][2], 'E5');
+    assert.equal(state.pending.items[0], '(owner) Open the billing account');
+    assert.equal(state.inflight.rows.length, 0);
+    assert.ok(!state.donot.present && !state.releases.present);
+  });
+
+  it('pt: restaura E<n> para <primeiro status>; donot e releases só quando presentes', () => {
+    const m = full(); m.language = 'pt-BR';
+    m.donot = ['Não fazer E5 até BLQ-1 liberar.'];
+    m.releases = [{ package: 'pkg-1', deliverables: ['E1'], state: 'publicado', sha: 'abcdef1', date: '2026-01-02', environment: 'local' }];
+    const files = render(m);
+    const state = parsed(files).blocks.state;
+    assert.match(state.blockers.rows[0][4], /restaura E5 para nao-iniciado/);
+    assert.deepEqual(state.donot.items, ['Não fazer E5 até BLQ-1 liberar.']);
+    assert.equal(state.releases.rows.length, 1);
+    assert.match(files['state.md'], /^Estratégia v1\.0 -- 2026-01-01/);
+    assert.match(files['critical-path.md'], /Caminho crítico:/);
+    assert.match(files['README.md'], /donot/);
+  });
+
+  it('log.md tem uma linha com a data do modelo e a estratégia como evidência', () => {
+    const rows = parsed(render()).blocks.log.log.rows;
+    assert.equal(rows.length, 1);
+    assert.deepEqual([rows[0][0], rows[0][1]], ['2026-01-01', '-']);
+    assert.equal(rows[0][3], '`../2026-01-01-roadmap-sample.md`');
+  });
+
+  it('sources, decisions, measurements e README chegam inteiros', () => {
+    const files = render();
+    const b = parsed(files).blocks;
+    assert.equal(b.sources.sources.rows.length, 2);
+    assert.equal(b.sources.conflicts.items.length, 1);
+    assert.equal(b.decisions.decisions.rows[0][0], 'DEC-001');
+    assert.equal(b.decisions.decisions.rows[0][8], 'in-force');
+    assert.equal(b.measurements.measurements.rows.length, 1);
+    assert.match(files['README.md'], /node <roadmap-folder>\/check-roadmap\.mjs/);
+    assert.match(files['README.md'], /paid run or measurement/);
+    assert.doesNotMatch(render(mid())['README.md'], /paid run or measurement|medição/);
+  });
+
+  it('| no texto sai escapado e é relido igual; ordem numérica E2 < E10', () => {
+    const m = full();
+    m.requirements[0].text = 'Health | status endpoint.';
+    m.deliverables.push({ ...structuredClone(m.deliverables[0]), id: 'E10', title: 'Late', depends: [], reqs: [] });
+    const files = render(m);
+    assert.match(files['requirements.md'], /Health \\\| status endpoint\./);
+    assert.equal(parsed(files).blocks.requirements.requirements.rows[0][1], 'Health | status endpoint.');
+    assert.deepEqual(parsed(files).blocks.state.panel.rows.map((r) => r[0]), ['E1', 'E2', 'E3', 'E4', 'E5', 'E10']);
+  });
+
+  it('quebra de linha em célula recusa com o caminho JSON', () => {
+    const m = full(); m.deliverables[2].title = 'Status\npage';
+    m.requirements[1].text = 'a\rb';
+    assert.throws(() => renderFiles(defaulted(m)), (e) => e instanceof ScaffoldError
+      && e.problems.some((p) => p.code === 'multiline-cell' && p.path === 'deliverables[2].title')
+      && e.problems.some((p) => p.code === 'multiline-cell' && p.path === 'requirements[1].text'));
+  });
+
+  it('é determinística', () => {
+    assert.deepEqual(render(), render());
   });
 });

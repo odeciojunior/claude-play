@@ -1,6 +1,7 @@
 // scaffold: valida o modelo de planejamento (planning-model.json), aplica padrões
 // e (nas próximas tarefas) gera a pasta do roadmap. Sem dependências, só Node >= 18.
 import { VERIFY_KINDS } from '../../../lib/roadmap-format.mjs';
+import { FORMAT_VERSION } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 
 // Bloco `vocab` de docs/plans/roadmap-evolucao-skills/roadmap.config.json, copiado
 // (nunca lido em tempo de execução).
@@ -349,4 +350,304 @@ export function deriveCoverage(requirements, deliverables, vocab) {
   }
   rows.sort((a, b) => compareIds(a.id, b.id));
   return { rows, summary };
+}
+
+// ---------- renderização dos arquivos da pasta (Tarefa 3) ----------
+
+export class ScaffoldError extends Error {
+  constructor(problems) {
+    super(problems.map((p) => `${p.path}: ${p.message}`).join('; '));
+    this.name = 'ScaffoldError';
+    this.problems = problems;
+    this.path = problems[0]?.path;
+    this.code = problems[0]?.code;
+  }
+}
+
+const MULTILINE = /[\r\n]/;
+const multilineProblem = (path) => err(path, 'multiline-cell', `${path} must be a single line (no line break)`);
+
+// Valor de célula de tabela: `|` vira `\|`; quebra de linha é recusa.
+export function cell(text, path) {
+  const s = String(text ?? '');
+  if (MULTILINE.test(s)) throw new ScaffoldError([multilineProblem(path)]);
+  return s.replace(/\|/g, '\\|');
+}
+
+const TEXT = {
+  en: {
+    strategy: 'Strategy', created: 'Roadmap created', criticalPath: 'Critical path', nextGate: 'Next gate per track',
+    seeState: 'see `state.md`', restores: (id, status) => `restores ${id} to ${status}`,
+    readmeTitle: (t) => `${t} roadmap -- tracking folder`,
+    readmeIntro: (s) => `Living tracking for the roadmap. Strategy: \`${s}\`.`,
+    files: 'Files', file: 'File', nature: 'Nature', check: 'Check', whenToUpdate: 'When to update', event: 'Event', update: 'Update',
+    folder: '<roadmap-folder>',
+    checkText: (f) => `Run \`node ${f}/check-roadmap.mjs\` (Node 18 or newer). Exit 1 on errors; warnings pass; exit 2 is an unexpected failure (\`ERROR internal\`). In CI add \`--require-git\` so that skipped git checks fail instead of passing silently.`,
+    nature_: {
+      state: 'Overwritten snapshot: Now, panel, blockers, pending, in flight', decisions: 'Append-only decisions', log: 'Append-only events, newest first',
+      criticalPath: 'Dependency graph and next gates', sources: 'Source inventory and conflicts', requirements: 'Requirements and their coverage',
+      measurements: 'Runs, costs and measurement milestones', config: 'Paths, vocabulary, limits',
+    },
+    headers: { decisions: 'Decisions', log: 'Log', sources: 'Sources', requirements: 'Requirements', conflicts: 'Conflicts', criticalPath: 'Critical path', measurements: 'Measurements' },
+    rows: {
+      decision: ['A decision is made', '`decisions.md` first, then whatever uses it'],
+      step: ['A piece or step closes', '`log.md` and the panel in `state.md`'],
+      branch: ['A branch is integrated or deleted', '"in flight" in `state.md` and `log.md`'],
+      measure: ['A paid run or measurement', '`measurements.md` and `log.md`'],
+      blocker: ['A blocker opens or closes', '`state.md` and `critical-path.md`'],
+      release: ['A package is published', 'the `releases` block in `state.md` (only if the folder has one), and `log.md`'],
+      donot: ['The "do not do now" list changes', 'the `donot` block in `state.md` (only if the folder has one)'],
+      revision: ['A piece or phase ends', 'propose a strategy revision'],
+    },
+  },
+  pt: {
+    strategy: 'Estratégia', created: 'Roadmap criado', criticalPath: 'Caminho crítico', nextGate: 'Próximo gate por trilha',
+    seeState: 'ver `state.md`', restores: (id, status) => `restaura ${id} para ${status}`,
+    readmeTitle: (t) => `Roadmap ${t} -- pasta de acompanhamento`,
+    readmeIntro: (s) => `Acompanhamento vivo do roadmap. Estratégia: \`${s}\`.`,
+    files: 'Arquivos', file: 'Arquivo', nature: 'Natureza', check: 'Verificação', whenToUpdate: 'Quando atualizar', event: 'Evento', update: 'Atualizar',
+    folder: '<pasta-do-roadmap>',
+    checkText: (f) => `Rode \`node ${f}/check-roadmap.mjs\` (Node 18 ou mais novo). Sai com 1 em erros; avisos passam; saída 2 é falha inesperada (\`ERROR internal\`). Em CI use \`--require-git\` para que as conferências de git puladas falhem em vez de passar em silêncio.`,
+    nature_: {
+      state: 'Retrato sobrescrito: Agora, painel, bloqueios, pendências, em andamento', decisions: 'Decisões, só acrescenta', log: 'Eventos, só acrescenta, mais novo primeiro',
+      criticalPath: 'Grafo de dependências e próximos gates', sources: 'Inventário de fontes e conflitos', requirements: 'Requisitos e sua cobertura',
+      measurements: 'Execuções, custos e marcos de medição', config: 'Caminhos, vocabulário, limites',
+    },
+    headers: { decisions: 'Decisões', log: 'Log', sources: 'Fontes', requirements: 'Requisitos', conflicts: 'Conflitos', criticalPath: 'Caminho crítico', measurements: 'Medições' },
+    rows: {
+      decision: ['Uma decisão é tomada', '`decisions.md` primeiro, depois o que a usa'],
+      step: ['Uma peça ou passo fecha', '`log.md` e o painel em `state.md`'],
+      branch: ['Uma branch é integrada ou removida', '"em andamento" em `state.md` e `log.md`'],
+      measure: ['Uma execução paga ou medição', '`measurements.md` e `log.md`'],
+      blocker: ['Um bloqueio abre ou fecha', '`state.md` e `critical-path.md`'],
+      release: ['Um pacote é publicado', 'o bloco `releases` em `state.md` (só se a pasta tiver um) e `log.md`'],
+      donot: ['A lista "não fazer agora" muda', 'o bloco `donot` em `state.md` (só se a pasta tiver um)'],
+      revision: ['Uma peça ou fase termina', 'propor uma revisão da estratégia'],
+    },
+  },
+};
+
+const textFor = (model) => (isPt(model) ? TEXT.pt : TEXT.en);
+const arr = (v) => (Array.isArray(v) ? v : []);
+const dash = (v) => (isText(v) ? v : '-');
+const blockedWords = (model) => ['blocked', model.vocab.blockedStatus];
+const discardedWords = (model) => ['discarded', model.vocab.discardedStatus];
+
+// Recusa quebra de linha em todo texto que vira célula de tabela ou item de lista,
+// reunindo todos os problemas (caminho JSON de cada campo) numa só exceção.
+function checkSingleLine(model) {
+  const problems = [];
+  const check = (value, path) => {
+    if (typeof value === 'string' && MULTILINE.test(value)) problems.push(multilineProblem(path));
+  };
+  const fields = (key, names) => arr(model[key]).forEach((item, i) => {
+    if (!isObj(item)) return;
+    for (const n of names) check(item[n], `${key}[${i}].${n}`);
+  });
+  check(model.title, 'title');
+  fields('sources', ['id', 'source', 'what', 'readOn', 'reliability']);
+  arr(model.conflicts).forEach((c, i) => check(c, `conflicts[${i}]`));
+  fields('decisions', ['id', 'date', 'title', 'decision', 'deliverable', 'discarded', 'contradicts', 'revisit', 'origin', 'status']);
+  fields('requirements', ['id', 'text', 'type']);
+  fields('phases', ['name', 'entry', 'exit']);
+  fields('deliverables', ['id', 'title', 'phase']);
+  fields('blockers', ['id', 'text', 'owner', 'since', 'unblocksWhen']);
+  fields('measurements', ['date', 'deliverable', 'kind', 'detail', 'recorded', 'billed', 'status']);
+  fields('releases', ['package', 'state', 'sha', 'date', 'environment']);
+  arr(model.now).forEach((c, i) => check(c, `now[${i}]`));
+  arr(model.donot).forEach((c, i) => check(c, `donot[${i}]`));
+  arr(model.pending).forEach((p, i) => check(isObj(p) ? p.text : p, `pending[${i}]${isObj(p) ? '.text' : ''}`));
+  if (problems.length) throw new ScaffoldError(problems);
+}
+
+// O `roadmap.config.json` de formats.md §2.
+export function buildConfig(model) {
+  const hasMeasurements = arr(model.measurements).length > 0;
+  const files = { ...model.files };
+  files.measurements = hasMeasurements ? (files.measurements ?? DEFAULT_FILES.measurements) : null;
+  const config = {
+    formatVersion: FORMAT_VERSION,
+    language: model.language,
+    strategy: model.strategyPath,
+    integrationBranch: model.integrationBranch,
+  };
+  if (isText(model.releaseBranch)) config.releaseBranch = model.releaseBranch;
+  config.files = files;
+  config.vocab = structuredClone(model.vocab);
+  config.tracks = structuredClone(model.tracks);
+  config.limits = structuredClone(model.limits);
+  return config;
+}
+
+const table = (header, rows) => [
+  `| ${header.join(' | ')} |`,
+  `|${header.map(() => '---').join('|')}|`,
+  ...rows.map((r) => `| ${r.join(' | ')} |`),
+];
+const block = (name, lines) => [`<!-- roadmap:${name} -->`, ...lines, `<!-- /roadmap:${name} -->`];
+const sortedCards = (model) => [...model.deliverables].sort((a, b) => compareIds(a.id, b.id));
+
+// BLQ que bloqueia cada card: o `blq` do card e os `blocks` de cada blocker.
+function blockersOf(model) {
+  const map = new Map();
+  const add = (card, blq) => {
+    if (!map.has(card)) map.set(card, []);
+    if (!map.get(card).includes(blq)) map.get(card).push(blq);
+  };
+  for (const c of model.deliverables) if (isText(c.blq)) add(c.id, c.blq);
+  for (const b of arr(model.blockers)) for (const card of arr(b.blocks)) add(card, b.id);
+  return map;
+}
+
+function renderState(model, t) {
+  const v = model.vocab;
+  const first = v.deliverableStatuses[0];
+  const blockedBy = blockersOf(model);
+  const panel = sortedCards(model).map((c) => {
+    const i = model.deliverables.indexOf(c);
+    const blq = blockedBy.get(c.id)?.[0];
+    let status = first;
+    if (blockedWords(model).includes(c.status)) status = blq ? `${v.blockedStatus} (${blq})` : v.blockedStatus;
+    else if (discardedWords(model).includes(c.status)) status = v.discardedStatus;
+    return [cell(c.id, `deliverables[${i}].id`), cell(status, `deliverables[${i}].status`), '-', blq && status.startsWith(v.blockedStatus) ? blq : '-'];
+  });
+  const blockers = arr(model.blockers).map((b, i) => {
+    const affected = arr(b.blocks);
+    const restores = affected.map((id) => t.restores(id, first)).join('; ');
+    const unblocks = isText(b.unblocksWhen) ? `${b.unblocksWhen}; ${restores}` : restores;
+    return [cell(b.id, `blockers[${i}].id`), cell(b.text, `blockers[${i}].text`), cell(affected.join(', '), `blockers[${i}].blocks`),
+      cell(b.since ?? model.date, `blockers[${i}].since`), cell(unblocks, `blockers[${i}].unblocksWhen`)];
+  });
+  const lines = [`${t.strategy} v1.0 -- ${model.date}`, ''];
+  lines.push(...block('now', arr(model.now).map((x, i) => `${i + 1}. ${x}`)));
+  lines.push(...block('panel', table(['Deliverable', 'Status', 'Evidence', 'Next step'], panel)));
+  lines.push(...block('blockers', table(['ID', 'Blocker', 'Affects', 'Since', 'Unblocks when'], blockers)));
+  lines.push(...block('pending', arr(model.pending).map((p) => (isObj(p) ? `- (${p.owner}) ${p.text}` : `- ${p}`))));
+  lines.push(...block('inflight', table(['Branch', 'Kind', 'Note'], [])));
+  if (arr(model.donot).length) lines.push(...block('donot', model.donot.map((x) => `- ${x}`)));
+  if (arr(model.releases).length) {
+    const rows = model.releases.map((r, i) => {
+      const at = `releases[${i}]`;
+      const deliverables = Array.isArray(r.deliverables) ? r.deliverables.join(' ') : r.deliverables;
+      return [cell(r.package, `${at}.package`), cell(deliverables, `${at}.deliverables`), cell(r.state, `${at}.state`),
+        isText(r.sha) ? `\`${cell(r.sha, `${at}.sha`)}\`` : '-', cell(r.date, `${at}.date`), cell(dash(r.environment), `${at}.environment`)];
+    });
+    lines.push(...block('releases', table(['Package', 'Deliverables', 'State', 'Stamped SHA', 'Date', 'Environment'], rows)));
+  }
+  return lines.join('\n') + '\n';
+}
+
+function renderDecisions(model) {
+  const v = model.vocab;
+  const statusWord = (s) => ({ 'in-force': v.decisionInForce, pending: v.decisionPending }[s] ?? s);
+  const rows = arr(model.decisions).map((d, i) => {
+    const at = `decisions[${i}]`;
+    const decision = isText(d.title) ? `${d.title}: ${d.decision}` : d.decision;
+    return [cell(d.id, `${at}.id`), cell(d.date, `${at}.date`), cell(dash(d.deliverable), `${at}.deliverable`), cell(decision, `${at}.decision`),
+      cell(dash(d.discarded), `${at}.discarded`), cell(dash(d.contradicts), `${at}.contradicts`), cell(dash(d.revisit), `${at}.revisit`),
+      cell(dash(d.origin), `${at}.origin`), cell(statusWord(d.status), `${at}.status`)];
+  });
+  const lines = ['# Decisions', '', ...block('decisions', table(['ID', 'Date', 'Deliverable', 'Decision', 'Discarded alternative', 'Contradicts', 'Revisit when', 'Origin', 'Status'], rows))];
+  return lines.join('\n') + '\n';
+}
+
+function renderLog(model, t) {
+  const rows = [[cell(model.date, 'date'), '-', t.created, `\`${cell(model.strategyPath, 'strategyPath')}\``]];
+  return ['# Log', '', ...block('log', table(['Date', 'Deliverable', 'What happened', 'Evidence'], rows))].join('\n') + '\n';
+}
+
+function renderSources(model, t) {
+  const rows = arr(model.sources).map((s, i) => {
+    const at = `sources[${i}]`;
+    return [cell(s.id, `${at}.id`), `\`${cell(s.source, `${at}.source`)}\``, cell(s.what, `${at}.what`), cell(s.readOn, `${at}.readOn`), cell(s.reliability, `${at}.reliability`)];
+  });
+  const lines = [`# ${t.headers.sources}`, '', ...block('sources', table(['ID', 'Source', 'What it is', 'Read on', 'Reliability'], rows)),
+    '', `## ${t.headers.conflicts}`, '', ...block('conflicts', arr(model.conflicts).map((c) => `- ${c}`))];
+  return lines.join('\n') + '\n';
+}
+
+function renderRequirements(model, t) {
+  const byId = new Map(model.requirements.map((r, i) => [r.id, [r, i]]));
+  const rows = deriveCoverage(model.requirements, model.deliverables, model.vocab).rows.map((c) => {
+    const [r, i] = byId.get(c.id);
+    const at = `requirements[${i}]`;
+    return [cell(r.id, `${at}.id`), cell(r.text, `${at}.text`), cell(dash(r.type), `${at}.type`), cell(arr(r.sources).join(', ') || '-', `${at}.sources`),
+      c.deliverables.length ? c.deliverables.join(', ') : '-', cell(c.coverage, `${at}.coverage`)];
+  });
+  return [`# ${t.headers.requirements}`, '', ...block('requirements', table(['ID', 'Requirement', 'Type', 'Sources', 'Deliverables', 'Coverage'], rows))].join('\n') + '\n';
+}
+
+function renderCriticalPath(model, t) {
+  const graph = deriveGraph(model.deliverables);
+  const blockedBy = blockersOf(model);
+  const mermaid = ['graph LR'];
+  for (const c of sortedCards(model)) mermaid.push(`  ${c.id}`);
+  for (const [a, b] of graph.edges) mermaid.push(`  ${a} --> ${b}`);
+  const texts = new Map((model.blockers || []).map((b) => [b.id, b.text]));
+  const blqs = [...new Set([...blockedBy.values()].flat())].sort(compareIds);
+  for (const blq of blqs) {
+    const label = String(texts.get(blq) ?? '').replace(/"/g, "'");
+    mermaid.push(`  ${blq.replace(/-/g, '')}["${label ? `${blq}: ${label}` : blq}"]`);
+  }
+  for (const blq of blqs) {
+    for (const card of sortedCards(model)) {
+      if (blockedBy.get(card.id)?.includes(blq)) mermaid.push(`  ${blq.replace(/-/g, '')} --> ${card.id}`);
+    }
+  }
+  const chain = graph.chain.length ? graph.chain.join(' -> ') : '-';
+  return [`# ${t.headers.criticalPath}`, '', '```mermaid', ...mermaid, '```', '',
+    `${t.criticalPath}: ${chain}. ${t.nextGate}: ${t.seeState}.`].join('\n') + '\n';
+}
+
+function renderMeasurements(model, t) {
+  const rows = arr(model.measurements).map((m, i) => {
+    const at = `measurements[${i}]`;
+    return ['date', 'deliverable', 'kind', 'detail', 'recorded', 'billed', 'status'].map((k) => cell(dash(m[k]), `${at}.${k}`));
+  });
+  return [`# ${t.headers.measurements}`, '', ...block('measurements', table(['Date', 'Deliverable', 'Kind', 'Detail', 'Recorded', 'Billed', 'Status'], rows))].join('\n') + '\n';
+}
+
+function renderReadme(model, t, config) {
+  const list = [['state.md', 'state'], ['decisions.md', 'decisions'], ['log.md', 'log'], ['critical-path.md', 'criticalPath'],
+    ['sources.md', 'sources'], ['requirements.md', 'requirements'], ['measurements.md', 'measurements']];
+  const roleOf = { state: 'state', decisions: 'decisions', log: 'log', criticalPath: 'criticalPath', sources: 'sources', requirements: 'requirements', measurements: 'measurements' };
+  const fileRows = [];
+  for (const [, role] of list) {
+    const name = config.files[roleOf[role]];
+    if (name) fileRows.push([`\`${name}\``, t.nature_[role]]);
+  }
+  fileRows.push(['`roadmap.config.json`', t.nature_.config]);
+  const hasDonot = arr(model.donot).length > 0;
+  const hasReleases = arr(model.releases).length > 0;
+  const r = t.rows;
+  const events = [r.decision, r.step, r.branch];
+  if (config.files.measurements) events.push(r.measure);
+  events.push(r.blocker);
+  if (hasReleases) events.push(r.release);
+  if (hasDonot) events.push(r.donot);
+  events.push(r.revision);
+  const lines = [`# ${t.readmeTitle(model.title)}`, '', t.readmeIntro(model.strategyPath), '',
+    `## ${t.files}`, ...table([t.file, t.nature], fileRows), '',
+    `## ${t.check}`, t.checkText(t.folder), '',
+    `## ${t.whenToUpdate}`, ...table([t.event, t.update], events)];
+  return lines.join('\n') + '\n';
+}
+
+// Renderiza todos os arquivos da pasta: nome -> texto (LF, terminado em \n).
+// Espera o modelo já com padrões aplicados (applyDefaults).
+export function renderFiles(model) {
+  checkSingleLine(model);
+  const t = textFor(model);
+  const config = buildConfig(model);
+  const out = {};
+  out[config.files.readme] = renderReadme(model, t, config);
+  out[config.files.state] = renderState(model, t);
+  out[config.files.decisions] = renderDecisions(model);
+  out[config.files.log] = renderLog(model, t);
+  out[config.files.criticalPath] = renderCriticalPath(model, t);
+  out[config.files.sources] = renderSources(model, t);
+  out[config.files.requirements] = renderRequirements(model, t);
+  if (config.files.measurements) out[config.files.measurements] = renderMeasurements(model, t);
+  out['roadmap.config.json'] = JSON.stringify(config, null, 2) + '\n';
+  return out;
 }
