@@ -119,4 +119,23 @@
 | DEC-114 | 2026-11-11 | E2 | checkRoadmap lê blocos pela composição parseRoadmapTexts, a mesma do preflight, mantendo códigos e mensagens atuais. Alcance: local. | none stated | - | - | executor | pendente |
 | DEC-115 | 2026-11-11 | E2 | Preflight exporta readRoadmapStructure(folder) sem mudar a saída da CLI. Alcance: contrato. | none stated | - | - | executor | pendente |
 | DEC-116 | 2026-11-11 | E2 | .claude/rules/roadmap-checker.md e o Layout do CLAUDE.md ganham uma linha cada sobre o módulo-fonte e o gerador. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-117 | 2026-11-11 | E5 | Leitor do bloco de dados em plugins/productivity-tools/lib/data-block.mjs, fonte pura sem imports (DEC-058), reusado por E6. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-118 | 2026-11-11 | E5 | Bloco de dados = único bloco cercado de nível superior com informação `json data`; zero ou mais de um é erro. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-119 | 2026-11-11 | E5 | Esquema spec/1 com acceptance, rulings (basis, costIfWrong low\|medium\|high, reversible, scope local\|contract, contradicts), needsPerson (kind, blocking, workaround, blq), externalEffects, edgeCases. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-120 | 2026-11-11 | E5 | Critérios de aceite vivem só no bloco de dados; a prosa do spec é livre e não é conferida. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-121 | 2026-11-11 | E5 | Comparação com o card literal após norm e colapso de espaço; marca {verify} comparada por kind, blq e evidence. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-122 | 2026-11-11 | E5 | Card lido por --roadmap <pasta> via parseRoadmapTexts (E2), escolhido pelo id do spec; bloqueios abertos lidos de state.md. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-123 | 2026-11-11 | E5 | Lógica do spec no script spec-tool.mjs (importa lib/); só o leitor é puro; E8 consome a saída de emit. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-124 | 2026-11-11 | E5 | Códigos de erro e aviso nomeados conforme a seção de decisões do spec (acceptance-text, acceptance-tag-missing, ruling-incomplete, needs-person-blocking etc.). Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-125 | 2026-11-11 | E5 | --json do check no molde do checker (DEC-112); emit devolve {tool, schema, path, data} com verify e textWithoutTag por critério. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-126 | 2026-11-11 | E5 | Spec emitido sem resumo de integridade; o resumo é contrato do plano em E6. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-127 | 2026-11-11 | E5 | summary marca `para` em decisões altas e irreversíveis, que contradizem, e itens bloqueantes, só informativo; a parada é de E8. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-128 | 2026-11-11 | E5 | Fora da checagem: seções de prosa, TBD/TODO e limite de palavras (o card não pede). Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-129 | 2026-11-11 | E5 | Spec de exemplo e roadmap mínimo em plugins/productivity-tools/scripts/fixtures/spec-tool/, o mesmo que o teste de E6 usará. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-130 | 2026-11-11 | E5 | Testes do leitor em spec-tool.test.mjs, sem arquivo de teste novo além dos do card. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-131 | 2026-11-11 | E5 | Política de chaves de agente = campos documentados que agentes de plugin respeitam; chave fora dela é FAIL no lint. Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-132 | 2026-11-11 | E5 | Lint percorre agents/ recursivamente e lib/ na checagem de escrita na raiz do plugin. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-133 | 2026-11-11 | E5 | Nome de script repetido no plugin é WARN 'Script names are unique' (regra de permissão por nome, DEC-060). Alcance: contrato. | none stated | - | - | executor | pendente |
+| DEC-134 | 2026-11-11 | E5 | Nenhuma versão sobe na branch; a publicação que levar E5 sobe productivity-tools e marketplace-tools. Alcance: local. | none stated | - | - | executor | pendente |
+| DEC-135 | 2026-11-11 | E5 | CLAUDE.md (política de chaves de agente, Layout) e validate-plugin/SKILL.md (lista do que o script cobre) ganham linhas; README de marketplace-tools não muda. Alcance: local. | none stated | - | - | executor | pendente |
 <!-- /roadmap:decisions -->
