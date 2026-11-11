@@ -3,6 +3,7 @@
 import { VERIFY_KINDS } from '../../../lib/roadmap-format.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { FORMAT_VERSION, checkRoadmap, validateConfig, createGitAdapter } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 
 // Bloco `vocab` de docs/plans/roadmap-evolucao-skills/roadmap.config.json, copiado
@@ -836,3 +837,134 @@ export function generate(model, { folder }) {
   }
   return { files: { ...files, [strategyRel]: strategy }, config, strategyRel, problems };
 }
+
+// ---------- CLI e gravação (Tarefa 5) ----------
+
+export const MODEL_FILE = 'planning-model.json';
+const CHECKER_SOURCE = fileURLToPath(new URL('../../roadmap-tracker/scripts/check-roadmap.mjs', import.meta.url));
+const USAGE = 'usage: node scaffold.mjs <planning-model.json> [--dry-run] [--json]';
+
+function report(modelPath, folder, extra) {
+  const errors = extra.errors || [];
+  const warnings = extra.warnings || [];
+  const exitCode = extra.exitCode ?? (errors.length ? 1 : 0);
+  return {
+    tool: 'scaffold',
+    model: modelPath,
+    folder,
+    written: extra.written || [],
+    defaulted: extra.defaulted || [],
+    errors,
+    warnings,
+    summary: { errors: errors.length, warnings: warnings.length, exitCode },
+  };
+}
+
+const toErr = (e) => ({ path: e.path, code: e.code, message: e.message });
+
+// Lê o modelo (sem BOM), valida, gera em memória, confere no checker e só então grava.
+export function runScaffold(modelPath, { dryRun = false } = {}) {
+  const modelAbs = path.resolve(modelPath);
+  const folder = path.dirname(modelAbs);
+  const refuse = (errors, extra = {}) => report(modelAbs, folder, { ...extra, errors, exitCode: 1 });
+  const fail = (code, message, extra = {}) => report(modelAbs, folder, { ...extra, errors: [{ path: '', code, message }], exitCode: 2 });
+
+  if (!fs.existsSync(modelAbs)) {
+    if (fs.existsSync(path.join(folder, 'roadmap.config.json'))) {
+      return refuse([{ path: '', code: 'existing-roadmap', message: `${folder} already holds a roadmap (roadmap.config.json) and no ${path.basename(modelAbs)}; refusing to generate over it` }]);
+    }
+    return fail('model-unreadable', `cannot read ${modelAbs}`);
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(modelAbs, 'utf8');
+  } catch (e) {
+    return fail('model-unreadable', `cannot read ${modelAbs}: ${e.message}`);
+  }
+  let input;
+  try {
+    input = JSON.parse(raw.replace(/^\uFEFF/, ''));
+  } catch (e) {
+    return refuse([{ path: '', code: 'model-json', message: `invalid JSON: ${e.message}` }]);
+  }
+
+  const invalid = validateModel(input);
+  if (invalid.length) return refuse(invalid.map(toErr));
+
+  const { model, defaulted } = applyDefaults(input);
+  let gen;
+  try {
+    gen = generate(model, { folder });
+  } catch (e) {
+    if (e instanceof ScaffoldError) return refuse(e.problems.map(toErr), { defaulted });
+    throw e;
+  }
+  const warnings = gen.problems.filter((p) => p.severity !== 'error');
+  const errors = gen.problems.filter((p) => p.severity === 'error');
+  if (errors.length) return refuse(errors, { defaulted, warnings });
+
+  let checker;
+  try {
+    checker = fs.readFileSync(CHECKER_SOURCE);
+  } catch (e) {
+    return fail('checker-unreadable', `cannot read the checker: ${e.message}`, { defaulted, warnings });
+  }
+  const header = /^\/\/ check-roadmap \S+ format (\d+)/.exec(checker.toString('utf8').split('\n', 1)[0]);
+  if (!header || Number(header[1]) !== gen.config.formatVersion) {
+    return fail('checker-format', `checker format ${header ? header[1] : '?'} differs from formatVersion ${gen.config.formatVersion}`, { defaulted, warnings });
+  }
+
+  const outputs = { ...gen.files, 'check-roadmap.mjs': checker };
+  const written = Object.keys(outputs)
+    .map((rel) => ({ rel, abs: path.resolve(folder, rel) }));
+  const relNames = written.map((w) => path.relative(folder, w.abs).split(path.sep).join('/')).sort();
+  if (dryRun) return report(modelAbs, folder, { defaulted, warnings, exitCode: 0 });
+
+  try {
+    for (const w of written) {
+      fs.mkdirSync(path.dirname(w.abs), { recursive: true });
+      const data = outputs[w.rel];
+      fs.writeFileSync(w.abs, typeof data === 'string' ? data.replace(/\r\n?/g, '\n') : data);
+    }
+  } catch (e) {
+    return fail('write-failed', `write failed: ${e.message}`, { defaulted, warnings });
+  }
+  return report(modelAbs, folder, { written: relNames, defaulted, warnings, exitCode: 0 });
+}
+
+export function main(argv) {
+  const args = argv.filter((a) => a !== '--dry-run' && a !== '--json');
+  const unknown = args.filter((a) => a.startsWith('-'));
+  const json = argv.includes('--json');
+  if (unknown.length || args.length !== 1) {
+    const message = unknown.length ? `unknown option ${unknown[0]}` : 'exactly one model path is required';
+    if (json) {
+      console.log(JSON.stringify({ tool: 'scaffold', errors: [{ path: '', code: 'usage', message }], usage: USAGE, summary: { errors: 1, warnings: 0, exitCode: 2 } }, null, 2));
+    } else {
+      console.error(`${message}\n${USAGE}`);
+    }
+    return 2;
+  }
+  const out = runScaffold(args[0], { dryRun: argv.includes('--dry-run') });
+  if (json) {
+    console.log(JSON.stringify(out, null, 2));
+  } else {
+    for (const f of out.written) console.log(`wrote ${f}`);
+    for (const d of out.defaulted) console.log(`defaulted ${d.path}`);
+    for (const e of out.errors) console.log(`ERROR ${e.code}${e.path ? ` @${e.path}` : e.file ? ` @${e.file}` : ''}: ${e.message}`);
+    for (const w of out.warnings) console.log(`WARN ${w.code}: ${w.message}`);
+  }
+  return out.summary.exitCode;
+}
+
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync.native(process.argv[1]) === fs.realpathSync.native(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) process.exitCode = main(process.argv.slice(2));

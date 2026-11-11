@@ -4,12 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import {
   validateModel, applyDefaults, VOCAB_PT, VOCAB_EN, DEFAULT_TRACKS, DEFAULT_LIMITS, HEADINGS,
   compareIds, deriveGraph, deriveCoverage,
-  cell, ScaffoldError, buildConfig, renderFiles, renderStrategy, generate,
+  cell, ScaffoldError, buildConfig, renderFiles, renderStrategy, generate, runScaffold, main,
 } from './scaffold.mjs';
 import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
+import { loadRoadmap, checkRoadmap, createGitAdapter } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const load = (name) => JSON.parse(fs.readFileSync(path.join(here, 'fixtures', name), 'utf8').replace(/^﻿/, ''));
@@ -514,5 +517,148 @@ describe('generate', () => {
     const folder = path.join(os.tmpdir(), 'scaffold-gen-inexistente', 'roadmap');
     assert.deepEqual(gen(), gen());
     assert.ok(!fs.existsSync(folder));
+  });
+});
+
+describe('cli', () => {
+  const script = path.join(here, 'scaffold.mjs');
+  const checkerSrc = path.join(here, '..', '..', 'roadmap-tracker', 'scripts', 'check-roadmap.mjs');
+  const roots = [];
+  const sandbox = (name = 'roadmap-x') => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scaffold-cli-'));
+    roots.push(root);
+    spawnSync('git', ['init', '-q', '-b', 'main', root]);
+    const folder = path.join(root, name);
+    fs.mkdirSync(folder);
+    return { root, folder, model: path.join(folder, 'planning-model.json') };
+  };
+  const put = (box, model, bytes) => fs.writeFileSync(box.model, bytes ?? JSON.stringify(model, null, 2));
+  const run = (args, opts = {}) => spawnSync(process.execPath, [script, ...args], { input: '', timeout: 30000, encoding: 'utf8', ...opts });
+  const listing = (dir) => fs.readdirSync(dir, { recursive: true }).map((f) => String(f).split(path.sep).join('/')).filter((f) => !f.startsWith('.git/') && f !== '.git').sort();
+  const hashes = (root) => Object.fromEntries(listing(root).filter((f) => fs.statSync(path.join(root, f)).isFile())
+    .map((f) => [f, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
+  const errorsOf = (folder) => checkRoadmap(loadRoadmap(folder), createGitAdapter(folder)).filter((p) => p.severity === 'error');
+
+  process.on('exit', () => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
+
+  it('model-full: gera a pasta completa e o checker dá 0 erros', () => {
+    const box = sandbox();
+    put(box, full());
+    const r = run([box.model]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const cfg = JSON.parse(fs.readFileSync(path.join(box.folder, 'roadmap.config.json'), 'utf8'));
+    for (const name of Object.values(cfg.files)) if (name) assert.ok(fs.existsSync(path.join(box.folder, name)), name);
+    assert.ok(fs.existsSync(path.join(box.folder, cfg.strategy)));
+    assert.ok(fs.readFileSync(path.join(box.folder, 'check-roadmap.mjs')).equals(fs.readFileSync(checkerSrc)));
+    assert.ok(fs.existsSync(box.model));
+    assert.deepEqual(errorsOf(box.folder), []);
+  });
+
+  it('critério 2: model-mid com stdin fechado gera tudo, sem perguntar', () => {
+    const box = sandbox();
+    put(box, mid());
+    const r = run([box.model, '--json']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    const m = mid();
+    assert.ok(out.defaulted.length > 0);
+    for (const d of out.defaulted) assert.ok(!hasPath(m, d.path), `${d.path} já está no modelo`);
+    assert.deepEqual(errorsOf(box.folder), []);
+  });
+
+  const refusals = {
+    'ciclo': (m) => { m.deliverables[0].depends = [m.deliverables[1].id]; m.deliverables[1].depends = [m.deliverables[0].id]; },
+    'dependência inexistente': (m) => { m.deliverables[0].depends = ['E99']; },
+    'critério sem verify': (m) => { delete m.deliverables[0].acceptance[0].verify; },
+  };
+  for (const [name, mutate] of Object.entries(refusals)) {
+    it(`recusa (${name}): exit 1 e nada gravado`, () => {
+      const box = sandbox();
+      const m = full();
+      mutate(m);
+      put(box, m);
+      const before = listing(box.root);
+      const r = run([box.model]);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.deepEqual(listing(box.root), before);
+    });
+  }
+
+  it('recusa pasta com roadmap.config.json e sem modelo: existing-roadmap', () => {
+    const box = sandbox();
+    fs.writeFileSync(path.join(box.folder, 'roadmap.config.json'), '{}');
+    const before = listing(box.root);
+    const r = run([box.model, '--json']);
+    assert.equal(r.status, 1);
+    assert.ok(JSON.parse(r.stdout).errors.some((e) => e.code === 'existing-roadmap'));
+    assert.deepEqual(listing(box.root), before);
+  });
+
+  it('--dry-run não grava; --json traz as chaves e o exitCode do processo', () => {
+    const box = sandbox();
+    put(box, full());
+    const before = listing(box.root);
+    const r = run([box.model, '--dry-run', '--json']);
+    assert.equal(r.status, 0);
+    assert.deepEqual(listing(box.root), before);
+    const out = JSON.parse(r.stdout);
+    for (const k of ['tool', 'model', 'folder', 'written', 'defaulted', 'errors', 'warnings', 'summary']) assert.ok(k in out, k);
+    assert.equal(out.summary.exitCode, r.status);
+    const bad = sandbox();
+    const m = full();
+    m.deliverables[0].depends = ['E99'];
+    put(bad, m);
+    const r2 = run([bad.model, '--json']);
+    assert.equal(r2.status, 1);
+    assert.equal(JSON.parse(r2.stdout).summary.exitCode, 1);
+  });
+
+  it('uso: sem argumento ou opção desconhecida dá exit 2', () => {
+    assert.equal(run([]).status, 2);
+    assert.equal(run(['--nope']).status, 2);
+    const box = sandbox();
+    put(box, full());
+    assert.equal(run([box.model, '--nope']).status, 2);
+  });
+
+  it('determinismo: segunda rodada mantém os bytes, aceita config+modelo e preserva extras', () => {
+    const box = sandbox();
+    put(box, full());
+    assert.equal(run([box.model]).status, 0);
+    const first = hashes(box.root);
+    fs.writeFileSync(path.join(box.folder, 'extra.txt'), 'meu');
+    assert.equal(run([box.model]).status, 0);
+    const second = hashes(box.root);
+    assert.ok(second['roadmap-x/extra.txt']);
+    delete second['roadmap-x/extra.txt'];
+    assert.deepEqual(second, first);
+    for (const f of Object.keys(first)) {
+      if (f.endsWith('check-roadmap.mjs') || f.endsWith('planning-model.json')) continue;
+      assert.ok(!fs.readFileSync(path.join(box.root, f), 'utf8').includes('\r'), `${f} tem CR`);
+    }
+  });
+
+  it('foco 1: modelo com BOM e CRLF gera os mesmos bytes', () => {
+    const a = sandbox();
+    put(a, full());
+    const b = sandbox();
+    put(b, null, Buffer.from('﻿' + JSON.stringify(full(), null, 2).replace(/\n/g, '\r\n'), 'utf8'));
+    assert.equal(run([a.model]).status, 0);
+    assert.equal(run([b.model]).status, 0);
+    const skip = (h) => Object.entries(h).filter(([k]) => !k.endsWith('planning-model.json')).map(([k, v]) => [k.replace(/^[^/]+\//, ''), v]);
+    assert.deepEqual(skip(hashes(a.root)), skip(hashes(b.root)));
+  });
+
+  it('foco 4: pasta com espaço, cwd diferente, caminho relativo', () => {
+    const box = sandbox('road map x');
+    put(box, full());
+    const r = run([path.relative(os.tmpdir(), box.model)], { cwd: os.tmpdir() });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(fs.existsSync(path.join(box.folder, 'roadmap.config.json')));
+  });
+
+  it('runScaffold e main são funções exportadas', () => {
+    assert.equal(typeof runScaffold, 'function');
+    assert.equal(typeof main, 'function');
   });
 });
