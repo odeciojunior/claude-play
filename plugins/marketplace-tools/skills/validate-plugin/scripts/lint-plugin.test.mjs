@@ -486,3 +486,70 @@ test('CLI runs when invoked through a symlink/junction', (t) => {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^Result: /m);
 });
+
+// ---------- E5: agents, script names, lib (AC3) ----------
+
+for (const key of ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt']) {
+  test(`AC3: ignored key ${key} in a nested agent -> FAIL naming the file`, () => {
+    const dir = fresh();
+    write(dir, 'agents/review/demo.md', `---\nname: demo\ndescription: x\n${key}: foo\n---\nbody\n`);
+    const r = lint(dir);
+    assert.ok(has(r, 'FAIL', 'agents/review/demo.md'));
+    assert.ok(has(r, 'FAIL', 'is ignored for plugin agents'));
+  });
+}
+
+test('AC3: out-of-policy key -> FAIL naming the file', () => {
+  const dir = fresh();
+  write(dir, 'agents/demo.md', '---\nname: demo\ndescription: x\nmodle: sonnet\n---\nbody\n');
+  const r = lint(dir);
+  assert.ok(has(r, 'FAIL', 'agents/demo.md'));
+  assert.ok(has(r, 'FAIL', 'outside the allowed agent frontmatter keys'));
+});
+
+test('agent with every allowed key -> OK', () => {
+  const dir = fresh();
+  const keys = ['tools', 'disallowedTools', 'model', 'effort', 'maxTurns', 'skills', 'memory', 'background', 'isolation', 'omitClaudeMd', 'color', 'autoCompactWindow'];
+  const fm = ['name: demo', 'description: x', ...keys.map((k) => `${k}: v`), 'experimental:', '  sub: 1'].join('\n');
+  write(dir, 'agents/demo.md', `---\n${fm}\n---\nbody\n`);
+  const r = lint(dir);
+  assert.equal(r.filter((x) => x.level === 'FAIL').length, 0);
+  assert.ok(has(r, 'OK', 'agents/demo.md frontmatter'));
+});
+
+test('duplicate script names -> WARN with both paths', () => {
+  const dir = fresh();
+  write(dir, 'skills/a/scripts/run.mjs', 'export {};\n');
+  write(dir, 'skills/b/scripts/run.mjs', 'export {};\n');
+  const r = lint(dir);
+  assert.ok(has(r, 'WARN', 'Script names are unique'));
+  assert.ok(has(r, 'WARN', 'skills/a/scripts/run.mjs'));
+  assert.ok(has(r, 'WARN', 'skills/b/scripts/run.mjs'));
+});
+
+test('same name under fixtures or as .test.mjs is not a duplicate', () => {
+  const dir = fresh();
+  write(dir, 'skills/a/scripts/run.mjs', 'export {};\n');
+  write(dir, 'skills/b/scripts/fixtures/run.mjs', 'export {};\n');
+  write(dir, 'skills/a/scripts/x.test.mjs', 'export {};\n');
+  write(dir, 'skills/b/scripts/x.test.mjs', 'export {};\n');
+  const r = lint(dir);
+  assert.ok(!has(r, 'WARN', 'Script names are unique'));
+  assert.ok(has(r, 'OK', 'Script names are unique'));
+});
+
+test('writing into CLAUDE_PLUGIN_ROOT from lib -> WARN', () => {
+  const dir = fresh();
+  write(dir, 'lib/x.mjs', 'mkdir -p "${CLAUDE_PLUGIN_ROOT}/x"\n');
+  assert.ok(has(lint(dir), 'WARN', 'lib/x.mjs'));
+});
+
+test('real plugins have no FAIL', () => {
+  const root = path.resolve(here, '../../../../..');
+  const mp = path.join(root, '.claude-plugin', 'marketplace.json');
+  for (const p of ['sql-server-tools', 'productivity-tools']) {
+    const r = lintPlugin(path.join(root, 'plugins', p), { marketplace: mp }).results;
+    assert.deepEqual(r.filter((x) => x.level === 'FAIL'), [], p);
+    assert.ok(has(r, 'OK', 'Script names are unique'), p);
+  }
+});
