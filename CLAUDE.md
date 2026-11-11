@@ -28,7 +28,8 @@ plugins/<name>/
   .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); repo-required: name, description, version, author, license, keywords (the spec requires only name)
   skills/<skill>/SKILL.md           # + references/*.md loaded on demand
   agents/<agent>.md                 # Shipped subagents (today only sql-server-tools); plugin agents ignore hooks, mcpServers, permissionMode, initialPrompt
-  scripts/                          # Setup/utility scripts
+  lib/                              # Pure source modules embedded into scripts by scripts/embed.mjs (today productivity-tools/lib/roadmap-format.mjs)
+  scripts/                          # Setup/utility scripts; embed.mjs generates the embedded copies
 plugins/_template/                  # Starter template (protected)
 .claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"
 .claude/hooks/*.mjs                 # Wired in .claude/settings.json

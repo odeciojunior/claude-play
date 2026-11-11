@@ -1776,3 +1776,24 @@ test('AC3: --json matches text mode counts and exit code', async (t) => {
     assert.equal(r.stdout.trim(), '1.5.0 format 1');
   });
 });
+
+test('AC5: every code the checker emits is documented in formats.md section 9', () => {
+  const source = fs.readFileSync(SCRIPT, 'utf8');
+  const found = new Set(['config', 'bad-header', 'internal']);
+  for (const re of [/add\([^,()]+,\s*'([a-z0-9-]+)'/g, /code: '([a-z0-9-]+)'/g]) {
+    for (const m of source.matchAll(re)) found.add(m[1]);
+  }
+  const formats = fs.readFileSync(path.join(here, '..', '..', 'roadmap-planner', 'references', 'formats.md'), 'utf8').replace(/\r\n/g, '\n');
+  const start = formats.indexOf('## 9.');
+  assert.ok(start >= 0, 'formats.md has no section 9');
+  const section = formats.slice(start);
+  const missing = [...found].filter((code) => !section.includes('`' + code + '`'));
+  assert.deepEqual(missing, []);
+  assert.ok(section.includes('--json'), 'section 9 does not mention --json');
+  assert.ok(section.includes('since 1.7.0'), 'section 9 does not mention since 1.7.0');
+});
+
+test('AC5: valid fixture is clean', () => {
+  assert.deepEqual(run(fixture()), []);
+  assert.ok(cli([VALID]).stdout.includes('0 error(s), 0 warning(s)'));
+});
