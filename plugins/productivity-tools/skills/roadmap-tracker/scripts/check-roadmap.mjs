@@ -24,15 +24,21 @@ const ID_RE = /\b(?:DEC-\d+|REQ-\d+|SRC-\d+|BLQ-\d+|E\d+)\b/g;
 
 // ---------- parsing ----------
 
-function norm(text) {
+// <embed src="../../../lib/roadmap-format.mjs" exports="keep">
+// Gerado de ../../../lib/roadmap-format.mjs por plugins/productivity-tools/scripts/embed.mjs; não editar aqui.
+// Parser do formato de roadmap (formats.md): fonte única, pura e sem dependências.
+// Sem imports nem acesso a ambiente: o texto entra, a estrutura sai.
+// Copiado para o checker e o preflight por plugins/productivity-tools/scripts/embed.mjs.
+
+export function norm(text) {
   return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').normalize('NFC');
 }
 
-function escapeRe(s) {
+export function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function parseAttrs(s) {
+export function parseAttrs(s) {
   // Linear tokenizer: key=value, key="quoted value", and positional tokens (_0, _1, ...).
   const attrs = {};
   const str = s || '';
@@ -95,7 +101,7 @@ export function scanFences(text, keepMermaid) {
 }
 
 // One linear pass over the comments of a text; a comment whose `-->` comes after the next `<!--` is malformed.
-function scanComments(text) {
+export function scanComments(text) {
   const out = [];
   let closeAt = -2;
   let openAt = -2;
@@ -116,16 +122,16 @@ function scanComments(text) {
   return out;
 }
 
-const WS_RE = /\s/;
+export const WS_RE = /\s/;
 
 // Position right after leading whitespace of the comment inner text.
-function skipWs(text, from, end) {
+export function skipWs(text, from, end) {
   let k = from;
   while (k < end && WS_RE.test(text[k])) k++;
   return k;
 }
 
-export function readBlocks(text, name) {
+function scanBlocks(text, name) {
   text = norm(text);
   const scan = scanFences(text, false).text;
   const comments = scanComments(scan);
@@ -142,7 +148,7 @@ export function readBlocks(text, name) {
       const block = { attrs: {}, body: '' };
       Object.defineProperty(block, 'closed', { value: false, enumerable: false });
       Object.defineProperty(block, 'malformed', { value: true, enumerable: false });
-      out.push(block);
+      out.push({ block, start: c.start, end: c.after });
       continue;
     }
     let closer = null;
@@ -161,12 +167,16 @@ export function readBlocks(text, name) {
     const block = { attrs: parseAttrs(scan.slice(after, c.end)), body: closer ? text.slice(c.after, closer.start) : '' };
     Object.defineProperty(block, 'closed', { value: Boolean(closer), enumerable: false });
     Object.defineProperty(block, 'malformed', { value: false, enumerable: false });
-    out.push(block);
+    out.push({ block, start: c.start, end: closer ? closer.after : c.after });
   }
   return out;
 }
 
-function splitRow(line) {
+export function readBlocks(text, name) {
+  return scanBlocks(text, name).map((s) => s.block);
+}
+
+export function splitRow(line) {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
   if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
@@ -183,7 +193,7 @@ export function parseTable(body) {
   return rows.slice(1).filter((r) => !isSep(r));
 }
 
-function parseList(body) {
+export function parseList(body) {
   const items = [];
   for (const line of norm(body).split('\n')) {
     if (!line.trim() || line.trim().startsWith('<!--') || line.trim().startsWith('|')) continue;
@@ -194,7 +204,7 @@ function parseList(body) {
   return items;
 }
 
-function stripNote(seg) {
+export function stripNote(seg) {
   const s = seg.trimEnd();
   if (!s.endsWith(')')) return s;
   let depth = 0;
@@ -208,7 +218,7 @@ function stripNote(seg) {
   return s;
 }
 
-function parseStatus(cell) {
+export function parseStatus(cell) {
   return cell
     .split(';')
     .map((s) => s.trim())
@@ -220,15 +230,9 @@ function parseStatus(cell) {
     });
 }
 
-const isEmptyCell = (c) => c === undefined || c.trim() === '' || c.trim() === '-' || c.trim() === '—';
-const localIsoDate = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-};
-const idsIn =(s, re) => [...new Set((s || '').match(re) || [])];
+export const idsIn = (s, re) => [...new Set((s || '').match(re) || [])];
 
-function shasIn(cell) {
+export function shasIn(cell) {
   const out = [];
   for (const m of (cell || '').matchAll(/`([0-9a-f]{7,40})`/g)) {
     out.push(m[1]);
@@ -237,8 +241,8 @@ function shasIn(cell) {
 }
 
 // Acceptance verification tag, at the end of an item: ` {verify: <kind>[ BLQ-n]; evidence: <command or artifact>}`.
-const VERIFY_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
-const EXECUTABLE_KINDS = ['test', 'smoke', 'integration'];
+export const VERIFY_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
+export const EXECUTABLE_KINDS = ['test', 'smoke', 'integration'];
 
 export function parseVerifyTag(item) {
   const at = item.indexOf('{verify:');
@@ -256,6 +260,109 @@ export function parseVerifyTag(item) {
   if (EXECUTABLE_KINDS.includes(kind) && !evidence) return { text, tag, problem: `kind "${kind}" needs a command or artifact as evidence` };
   return { text, tag, problem: null };
 }
+const cols = (n) => n;
+const T = (role, name, c) => ({ role, name, kind: 'table', cols: c });
+const L = (role, name) => ({ role, name, kind: 'list' });
+
+// Blocos do formato (formats.md, secao 3). 'phases' e opcional.
+export const ROADMAP_BLOCKS = [
+  T('strategy', 'gates', cols(5)),
+  T('strategy', 'phases', cols(4)),
+  L('state', 'now'),
+  T('state', 'panel', cols(4)),
+  T('state', 'blockers', cols(5)),
+  L('state', 'pending'),
+  T('state', 'inflight', cols(3)),
+  L('state', 'donot'),
+  T('state', 'releases', cols(6)),
+  T('decisions', 'decisions', cols(9)),
+  T('log', 'log', cols(4)),
+  T('sources', 'sources', cols(5)),
+  L('sources', 'conflicts'),
+  T('requirements', 'requirements', cols(6)),
+  T('measurements', 'measurements', cols(7)),
+];
+
+const FILE_ROLES = ['state', 'decisions', 'log', 'sources', 'requirements', 'measurements'];
+
+function readOne(text, name, kind) {
+  const empty = kind === 'table' ? { present: false, closed: false, malformed: 0, rows: [] } : { present: false, closed: false, malformed: 0, items: [] };
+  if (text === null || text === undefined) return empty;
+  const all = readBlocks(text, name);
+  const good = all.filter((x) => !x.malformed);
+  const out = { present: good.length > 0, closed: good.length > 0 && good[0].closed, malformed: all.length - good.length };
+  if (kind === 'table') out.rows = good.length ? parseTable(good[0].body) : [];
+  else out.items = good.length ? parseList(good[0].body) : [];
+  return out;
+}
+
+function cutBlocks(body, names) {
+  const text = norm(body);
+  const spans = [];
+  for (const n of names) for (const s of scanBlocks(text, n)) if (!s.block.malformed) spans.push([s.start, s.end]);
+  spans.sort((a, b) => a[0] - b[0]);
+  let out = '';
+  let at = 0;
+  for (const [s, e] of spans) {
+    if (s < at) continue;
+    out += text.slice(at, s);
+    at = e;
+  }
+  return out + text.slice(at);
+}
+
+const splitIds = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
+
+export function parseRoadmapTexts({ strategy, files }) {
+  const f = files || {};
+  const blocks = {};
+  for (const role of ['strategy', ...FILE_ROLES]) blocks[role] = {};
+  for (const d of ROADMAP_BLOCKS) {
+    const text = d.role === 'strategy' ? strategy : f[d.role];
+    blocks[d.role][d.name] = readOne(text, d.name, d.kind);
+  }
+
+  const versions = readBlocks(strategy || '', 'version');
+  const goodVersions = versions.filter((x) => !x.malformed);
+  const version = goodVersions.length ? goodVersions[0].attrs : null;
+  blocks.strategy.version = { present: goodVersions.length > 0, malformed: versions.length - goodVersions.length };
+
+  const cardBlocks = readBlocks(strategy || '', 'card');
+  blocks.strategy.card = { malformed: cardBlocks.filter((x) => x.malformed).length };
+
+  const cards = [];
+  for (const b of cardBlocks) {
+    if (b.malformed) continue;
+    const acc = readBlocks(b.body, 'acceptance');
+    const risks = readBlocks(b.body, 'risks');
+    const accGood = acc.filter((x) => !x.malformed)[0];
+    const riskGood = risks.filter((x) => !x.malformed)[0];
+    cards.push({
+      id: b.attrs.id || '',
+      attrs: b.attrs,
+      closed: b.closed,
+      depends: splitIds(b.attrs.depends),
+      reqs: splitIds(b.attrs.reqs),
+      critical: String(b.attrs.critical).toLowerCase() === 'true',
+      acceptance: (accGood ? parseList(accGood.body) : []).map(parseVerifyTag),
+      risks: riskGood ? parseList(riskGood.body) : [],
+      body: cutBlocks(b.body, ['acceptance', 'risks']),
+      malformed: {
+        acceptance: acc.filter((x) => x.malformed).length,
+        risks: risks.filter((x) => x.malformed).length,
+      },
+    });
+  }
+  return { version, cards, blocks };
+}
+// </embed>
+
+const isEmptyCell = (c) => c === undefined || c.trim() === '' || c.trim() === '-' || c.trim() === '—';
+const localIsoDate = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 // Command text (gates Command column, verify evidence) is shell, not a citation: blank it before the ID scan.
 function blankCommandText(text, isStrategy) {
@@ -464,6 +571,10 @@ export function createGitAdapter(folder) {
 
 // ---------- checks ----------
 
+export function parseRoadmap(roadmap) {
+  return parseRoadmapTexts({ strategy: roadmap.strategy, files: roadmap.files });
+}
+
 export function checkRoadmap(r, git, opts = {}) {
   const problems = [];
   const add = (severity, code, file, message) => problems.push({ severity, code, file, message });
@@ -481,83 +592,69 @@ export function checkRoadmap(r, git, opts = {}) {
   const fileName = (role) => r.paths[role] || role;
 
   // ---- block access with structural diagnostics ----
-  // Well-formed blocks of a name; every opener missing its `-->` is reported as malformed-anchor.
-  function blocksOf(text, name, file) {
-    const all = readBlocks(text, name);
-    for (const b of all) {
-      if (b.malformed) add('error', 'malformed-anchor', file, `opener of block roadmap:${name} has no closing --> before the next comment`);
-    }
-    return all.filter((b) => !b.malformed);
+  const parsed = parseRoadmap(r);
+  const noteAnchors = (info, name, file) => {
+    for (let i = 0; i < info.malformed; i++) add('error', 'malformed-anchor', file, `opener of block roadmap:${name} has no closing --> before the next comment`);
+  };
+
+  // Block of a role/name: malformed openers first, then missing-block (when required) and unclosed-block.
+  function blockInfo(role, name, file, text, required = true) {
+    const info = parsed.blocks[role][name];
+    if (text === null || text === undefined) return info;
+    noteAnchors(info, name, file);
+    if (!info.present) {
+      if (required && info.malformed === 0) add('error', 'missing-block', file, `missing block roadmap:${name}`);
+    } else if (!info.closed) add('error', 'unclosed-block', file, `block roadmap:${name} has no closing comment`);
+    return info;
   }
 
-  function firstBlock(text, name, file, required = true) {
-    if (text === null || text === undefined) return null;
-    const blocks = blocksOf(text, name, file);
-    if (blocks.length === 0) {
-      if (required && !readBlocks(text, name).some((b) => b.malformed)) add('error', 'missing-block', file, `missing block roadmap:${name}`);
-      return null;
-    }
-    if (!blocks[0].closed) add('error', 'unclosed-block', file, `block roadmap:${name} has no closing comment`);
-    return blocks[0];
-  }
-
-  function tableRows(text, name, file, cols, required = true) {
-    const b = firstBlock(text, name, file, required);
-    if (!b) return [];
+  function tableRows(role, name, file, text, cols, required = true) {
+    const info = blockInfo(role, name, file, text, required);
     const rows = [];
-    parseTable(b.body).forEach((row, i) => {
-      if (row.length !== cols) add('error', 'bad-row', file, `roadmap:${name} row ${i + 1} has ${row.length} columns, expected exactly ${cols} (escape a literal | as \\|)`);
+    info.rows.forEach((row, i) => {
+      if (row.length !== cols) add('error', 'bad-row', file, `roadmap:${name} row ${i + 1} has ${row.length} columns, expected exactly ${cols} (escape a literal | as \|)`);
       else rows.push(row);
     });
     return rows;
   }
 
-  function listItems(text, name, file, required = true) {
-    const b = firstBlock(text, name, file, required);
-    return b ? parseList(b.body) : [];
+  function listItems(role, name, file, text, required = true) {
+    return blockInfo(role, name, file, text, required).items;
   }
 
   // ---- strategy: version and cards ----
-  if (blocksOf(r.strategy, 'version', strategyName).length === 0 && !readBlocks(r.strategy, 'version').some((b) => b.malformed)) {
+  noteAnchors(parsed.blocks.strategy.version, 'version', strategyName);
+  if (!parsed.blocks.strategy.version.present && parsed.blocks.strategy.version.malformed === 0) {
     add('error', 'missing-block', strategyName, 'missing roadmap:version anchor');
   }
 
-  const cards = [];
-  for (const b of blocksOf(r.strategy, 'card', strategyName)) {
-    if (!b.closed) add('error', 'unclosed-block', strategyName, `card ${b.attrs.id || '?'} has no closing comment`);
-    const list = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
-    const acc = blocksOf(b.body, 'acceptance', strategyName)[0];
-    const risks = blocksOf(b.body, 'risks', strategyName)[0];
-    cards.push({
-      id: b.attrs.id || '',
-      attrs: b.attrs,
-      depends: list(b.attrs.depends),
-      reqs: list(b.attrs.reqs),
-      critical: String(b.attrs.critical).toLowerCase() === 'true',
-      acceptance: (acc ? parseList(acc.body) : []).map(parseVerifyTag),
-      risks: risks ? parseList(risks.body) : [],
-    });
+  noteAnchors(parsed.blocks.strategy.card, 'card', strategyName);
+  const cards = parsed.cards;
+  for (const c of cards) {
+    if (!c.closed) add('error', 'unclosed-block', strategyName, `card ${c.id || '?'} has no closing comment`);
+    noteAnchors({ malformed: c.malformed.acceptance }, 'acceptance', strategyName);
+    noteAnchors({ malformed: c.malformed.risks }, 'risks', strategyName);
   }
   if (cards.length === 0) add('error', 'missing-block', strategyName, 'no roadmap:card blocks found');
-  for (const row of tableRows(r.strategy, 'gates', strategyName, 5, false)) {
+  for (const row of tableRows('strategy', 'gates', strategyName, r.strategy, 5, false)) {
     if (isEmptyCell(row[1])) add('warning', 'gate-no-command', strategyName, `gate ${row[0] || '?'} has no command`);
   }
 
   // ---- tables ----
-  const panel = tableRows(r.files.state, 'panel', fileName('state'), 4);
-  const blockers = tableRows(r.files.state, 'blockers', fileName('state'), 5);
-  const inflight = tableRows(r.files.state, 'inflight', fileName('state'), 3);
-  const donotItems = listItems(r.files.state, 'donot', fileName('state'), false);
-  const releaseBlock = r.files.state ? readBlocks(r.files.state, 'releases').some((b) => !b.malformed) : false;
-  const releases = tableRows(r.files.state, 'releases', fileName('state'), 6, false);
-  const nowItems = listItems(r.files.state, 'now', fileName('state'));
-  const pendingItems = listItems(r.files.state, 'pending', fileName('state'));
-  const decisions = tableRows(r.files.decisions, 'decisions', fileName('decisions'), 9);
-  const logRows = tableRows(r.files.log, 'log', fileName('log'), 4);
-  const sources = tableRows(r.files.sources, 'sources', fileName('sources'), 5);
-  const conflicts = listItems(r.files.sources, 'conflicts', fileName('sources'));
-  const reqs = tableRows(r.files.requirements, 'requirements', fileName('requirements'), 6);
-  const measurements = r.files.measurements === null ? [] : tableRows(r.files.measurements, 'measurements', fileName('measurements'), 7);
+  const panel = tableRows('state', 'panel', fileName('state'), r.files.state, 4);
+  const blockers = tableRows('state', 'blockers', fileName('state'), r.files.state, 5);
+  const inflight = tableRows('state', 'inflight', fileName('state'), r.files.state, 3);
+  const donotItems = listItems('state', 'donot', fileName('state'), r.files.state, false);
+  const releaseBlock = r.files.state ? parsed.blocks.state.releases.present : false;
+  const releases = tableRows('state', 'releases', fileName('state'), r.files.state, 6, false);
+  const nowItems = listItems('state', 'now', fileName('state'), r.files.state);
+  const pendingItems = listItems('state', 'pending', fileName('state'), r.files.state);
+  const decisions = tableRows('decisions', 'decisions', fileName('decisions'), r.files.decisions, 9);
+  const logRows = tableRows('log', 'log', fileName('log'), r.files.log, 4);
+  const sources = tableRows('sources', 'sources', fileName('sources'), r.files.sources, 5);
+  const conflicts = listItems('sources', 'conflicts', fileName('sources'), r.files.sources);
+  const reqs = tableRows('requirements', 'requirements', fileName('requirements'), r.files.requirements, 6);
+  const measurements = r.files.measurements === null ? [] : tableRows('measurements', 'measurements', fileName('measurements'), r.files.measurements, 7);
 
   // ---- ids: duplicates and unknown ----
   const defs = {

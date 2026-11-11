@@ -14,6 +14,7 @@ import {
   validateConfig,
   scanFences,
   checkRoadmap,
+  parseRoadmap,
   createGitAdapter,
   compareVersions,
   findNewerPluginCopy,
@@ -1466,4 +1467,20 @@ test('embed --check exits 1 when stale and 0 when current', () => {
   assert.equal(r.status, 0);
   r = spawnSync(process.execPath, [EMBED], { encoding: 'utf8' });
   assert.equal(r.status, 2);
+});
+
+test('AC5: embedded parser copy is current', () => {
+  const text = fs.readFileSync(SCRIPT, 'utf8').replace(/\r\n/g, '\n');
+  const next = embedText(text, (src) => fs.readFileSync(path.resolve(here, src), 'utf8'));
+  assert.equal(next, text);
+  assert.ok(text.includes('// <embed src="../../../lib/roadmap-format.mjs" exports="keep">'));
+});
+
+test('parseRoadmap equals parseRoadmapTexts on the valid fixture', () => {
+  const files = readFolder(VALID);
+  const config = JSON.parse(files['roadmap.config.json']);
+  const texts = {};
+  for (const [role, name] of Object.entries(config.files)) texts[role] = name === null ? null : files[name];
+  const expected = fmt.parseRoadmapTexts({ strategy: files[config.strategy], files: texts });
+  assert.deepEqual(parseRoadmap(loadRoadmap(VALID)), expected);
 });
