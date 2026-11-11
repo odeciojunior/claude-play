@@ -240,3 +240,43 @@ test('measurement row of an incomplete variant is not "concluído"', () => {
   assert.ok(row.endsWith('| - | em andamento |'), row);
   assert.ok(rows.filter((x) => x.endsWith('| concluído |')).length === rows.length - 1);
 });
+
+test('detection class row is "concluído" only at the target with a real seed', () => {
+  const r = build('completa');
+  const b = structuredClone(r.baseline);
+  const name = Object.keys(b.classes)[0];
+  const cls = Object.values(b.classes[name].outcomes)[0].class;
+  const first = Object.values(b.classes[name].outcomes).find((o) => o.class === cls);
+  first.capturado += 40;
+  b.incomplete = (b.incomplete ?? []).filter((x) => !x.startsWith(name));
+  b.classes[name].seedSource = { kind: 'aprovada' };
+  const line = (x) => measurementRows(x, { date: DATE }).find((y) => y.includes(`detecção ${name}:`));
+  assert.ok(line(b).endsWith('| - | concluído |'), line(b));
+  b.incomplete.push(`${name} (semeadura sintética)`);
+  assert.ok(line(b).endsWith('| - | em andamento |'));
+});
+
+test('measurement row compares valid with the plan runs, not the summed requested', () => {
+  const r = build('completa');
+  const v = structuredClone(r.baseline);
+  const runs = BASELINE_PLAN.find((p) => p.variant === 'coordinator').runs;
+  v.variants.coordinator.requested = runs + 2;
+  v.variants.coordinator.valid = runs;
+  const row = measurementRows(v, { date: DATE }).find((x) => x.includes('coordinator:'));
+  assert.ok(row.endsWith('| - | concluído |'), row);
+  assert.ok(row.includes(`${runs}/${runs} `), row);
+  v.variants.coordinator.valid = runs - 1;
+  const row2 = measurementRows(v, { date: DATE }).find((x) => x.includes('coordinator:'));
+  assert.ok(row2.endsWith('| - | em andamento |'), row2);
+  assert.ok(row2.includes(`${runs - 1}/${runs} `), row2);
+});
+
+test('detection class rows are "em andamento" below the attempt target', () => {
+  const r = build('completa');
+  const b = structuredClone(r.baseline);
+  const name = Object.keys(b.classes)[0];
+  const o = Object.values(b.classes[name].outcomes).find((x) => x.capturado > 0);
+  o.capturado -= 1;
+  const row = measurementRows(b, { date: DATE }).find((x) => x.includes(`detecção ${name}:`));
+  assert.ok(row.endsWith('| - | em andamento |'), row);
+});
