@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extract, readJsonl, loadPrices, family, classifyRole } from './session-metrics.mjs';
 
@@ -161,4 +161,168 @@ test('counts tasks and the task loop', () => {
   // Seven t* agents; t2:fix1 runs on opus, the other six on sonnet.
   assert.equal(r.tasks.loop.calls.sonnet, 6);
   assert.equal(r.tasks.loop.calls.opus, 1);
+});
+
+// ---- Task 4: CLI, CSV, attempts, real prices, privacy ----
+import { spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { main } from './session-metrics.mjs';
+
+const script = join(here, 'session-metrics.mjs');
+const repoRoot = resolve(here, '..', '..');
+const fixturePrices = join(here, 'fixtures', 'prices.json');
+const HEADER =
+  'run,role,agents,calls_haiku,calls_sonnet,calls_opus,calls_fable,calls_other,promptBytes,input,cacheWrite5m,cacheWrite1h,cacheRead,output,cost';
+
+const parseCsv = (text) =>
+  text
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.split(','));
+
+test('writes metrics.json and one csv row per run and role', async () => {
+  const out = mkdtempSync(join(tmpdir(), 'sm-out-'));
+  try {
+    const code = await main(['--root', root, '--out', out, '--prices', fixturePrices]);
+    assert.equal(code, 0);
+    const json = JSON.parse(readFileSync(join(out, 'metrics.json'), 'utf8'));
+    assert.equal(json.runs.length, 2);
+    const csv = readFileSync(join(out, 'metrics.csv'), 'utf8');
+    assert.equal(csv.split(/\r?\n/)[0], HEADER);
+    const rows = parseCsv(csv).slice(1);
+    const roles2 = rows.filter((r) => r[0] === SID2).map((r) => r[1]);
+    for (const role of ['status-record', 'progress', 'review-log', 'report', 'main', 'total']) {
+      assert.equal(roles2.filter((x) => x === role).length, 1, role);
+    }
+    assert.ok(rows.every((r) => r.length === 15));
+    // cost is empty when null (the worker role of session 1 has an unpriced family).
+    const worker = rows.find((r) => r[0] === SID1 && r[1] === 'agent:worker');
+    assert.equal(worker[14], '');
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('groups sessions of one attempt with --runs', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sm-out-'));
+  try {
+    const manifest = join(dir, 'attempts.json');
+    writeFileSync(manifest, JSON.stringify({ attempts: [{ n: 1, sessions: [SID1, SID2] }] }));
+    const outDir = join(dir, 'res');
+    const code = await main(['--root', root, '--out', outDir, '--runs', manifest, '--prices', fixturePrices]);
+    assert.equal(code, 0);
+    const json = JSON.parse(readFileSync(join(outDir, 'metrics.json'), 'utf8'));
+    assert.equal(json.runs.length, 1);
+    assert.equal(json.runs[0].run, 'attempt-1');
+    const a = extract({ root, prices, sessions: [SID1] }).runs[0];
+    const b = extract({ root, prices, sessions: [SID2] }).runs[0];
+    assert.ok(b.total.tokens.output > 0 && a.total.tokens.output > 0);
+    assert.equal(json.runs[0].total.tokens.output, a.total.tokens.output + b.total.tokens.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('requires --root and --out', () => {
+  const r = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /usage:/);
+});
+
+test('refuses --out inside the repository outside tools/measure/out', () => {
+  const run = (out) =>
+    spawnSync(process.execPath, [script, '--root', root, '--out', out, '--prices', fixturePrices], { encoding: 'utf8' });
+  assert.equal(run(join(repoRoot, 'tools', 'measure')).status, 2);
+  assert.equal(run(join(repoRoot, 'tools', 'measure', 'out', '..', 'x')).status, 2);
+  if (process.platform === 'win32') assert.equal(run(join(repoRoot, 'TOOLS', 'Measure')).status, 2);
+  const ok = join(repoRoot, 'tools', 'measure', 'out', `t-${randomBytes(4).toString('hex')}`);
+  try {
+    assert.equal(run(ok).status, 0);
+  } finally {
+    rmSync(ok, { recursive: true, force: true });
+  }
+});
+
+test('real price table is dated and sourced', () => {
+  const p = JSON.parse(readFileSync(join(here, 'prices.json'), 'utf8'));
+  assert.match(p.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(typeof p.source === 'string' && p.source.length > 0);
+  assert.equal(p.cacheWrite5m, 1.25);
+  assert.equal(p.cacheWrite1h, 2);
+});
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const AGENT = /agent-a[0-9a-f]+/g;
+const PATHS = [
+  [/[A-Za-z]:[\\/]+Users[\\/]+(?!<|\$)[^\\/\s"'`]+/i, 'windows-path'],
+  [/\/(Users|home)\/(?!<|\$)[^\/\s"'`]+/, 'posix-path'],
+  [/\b[A-Za-z]--Users-[^\s"'`]+/, 'project-dir-name'],
+];
+const TEXT_KEYS = new Set(['text', 'description', 'prompt']);
+
+function walk(dir, skipOut, acc = []) {
+  for (const n of readdirSync(dir)) {
+    const p = join(dir, n);
+    if (statSync(p).isDirectory()) {
+      if (skipOut && n === 'out') continue;
+      walk(p, skipOut, acc);
+    } else acc.push(p);
+  }
+  return acc;
+}
+
+function checkFab(node, file, found, inToolResult = false) {
+  if (Array.isArray(node)) return node.forEach((x) => checkFab(x, file, found, inToolResult));
+  if (!node || typeof node !== 'object') return;
+  const tr = inToolResult || node.type === 'tool_result';
+  for (const [k, v] of Object.entries(node)) {
+    if (typeof v === 'string' && (TEXT_KEYS.has(k) || k === 'content') && !v.startsWith('[fab]')) {
+      found.push({ file, kind: 'unfabricated-text', match: v.slice(0, 40) });
+    }
+    checkFab(v, file, found, tr);
+  }
+}
+
+function scanPrivacy(dir) {
+  const found = [];
+  for (const file of walk(dir, true)) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.match(UUID) ?? []) {
+      if (!m.startsWith('00000000-0000-4000-8000-')) found.push({ file, kind: 'uuid', match: m });
+    }
+    for (const m of text.match(AGENT) ?? []) {
+      if (!m.startsWith('agent-afab')) found.push({ file, kind: 'agent-id', match: m });
+    }
+    for (const [re, kind] of PATHS) {
+      const m = re.exec(text);
+      if (m) found.push({ file, kind, match: m[0] });
+    }
+    // Fabricated-text rule for fixtures. Agent label files (*.meta.json) hold role labels, not text.
+    if (/[\\/]fixtures[\\/]/.test(file) && /\.jsonl?$/.test(file) && !/\.meta\.json$/.test(file)) {
+      const docs = file.endsWith('.jsonl')
+        ? text.split(/\r?\n/).filter((l) => l.trim()).map((l) => JSON.parse(l))
+        : [JSON.parse(text)];
+      for (const d of docs) checkFab(d, file, found);
+    }
+  }
+  return found;
+}
+
+test('tools/measure holds no session id, personal path or unfabricated text', () => {
+  assert.deepEqual(scanPrivacy(here), []);
+});
+
+test('privacy scan catches a planted personal path and session id', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sm-priv-'));
+  try {
+    const planted = ['C:', 'Users', 'someone', 'x'].join('\\');
+    const id = ['11111111', '2222', '4333', '8444', '555555555555'].join('-');
+    writeFileSync(join(dir, 'a.txt'), `${planted}\n${id}\n`);
+    const found = scanPrivacy(dir);
+    assert.equal(found.length, 2);
+    assert.deepEqual(found.map((f) => f.kind).sort(), ['uuid', 'windows-path']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

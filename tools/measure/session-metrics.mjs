@@ -1,7 +1,8 @@
 // Session metrics extractor: reads Claude Code transcripts and returns counters per run and role.
 // Repo-only tool (not shipped). No dependencies.
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const FAMILIES = ['haiku', 'sonnet', 'opus', 'fable', 'other'];
@@ -318,7 +319,105 @@ export function extract({ root, sessions, runs, prices }) {
   return { runs: result, unpriced: [...unpricedAll] };
 }
 
+const CSV_HEADER = [
+  'run', 'role', 'agents', 'calls_haiku', 'calls_sonnet', 'calls_opus', 'calls_fable', 'calls_other',
+  'promptBytes', 'input', 'cacheWrite5m', 'cacheWrite1h', 'cacheRead', 'output', 'cost',
+];
+
+const csvField = (v) => {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+// One row per run and role, plus `main` and `total` per run; cost is empty when null.
+export function toCsv(result) {
+  const lines = [CSV_HEADER.join(',')];
+  const add = (run, role, agents, calls, promptBytes, t, cost) =>
+    lines.push(
+      [
+        run, role, agents,
+        ...FAMILIES.map((f) => calls?.[f] ?? ''),
+        promptBytes, t.input, t.cacheWrite5m, t.cacheWrite1h, t.cacheRead, t.output, cost,
+      ]
+        .map(csvField)
+        .join(','),
+    );
+  for (const r of result.runs) {
+    let agents = 0;
+    for (const [role, c] of Object.entries(r.roles)) {
+      agents += c.agents;
+      add(r.run, role, c.agents, c.calls, c.promptBytes, c.tokens, c.cost);
+    }
+    add(r.run, 'main', '', null, r.main.promptBytes, r.main.tokens, r.main.cost);
+    add(r.run, 'total', agents, r.total.calls, r.total.promptBytes, r.total.tokens, r.total.cost);
+  }
+  return lines.join('\n') + '\n';
+}
+
+const USAGE =
+  'usage: node tools/measure/session-metrics.mjs --root <dir> --out <dir> [--sessions id,id] [--runs <attempts.json>] [--prices <prices.json>]';
+
+function parseArgs(argv) {
+  const opts = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    const k = argv[i];
+    if (!['--root', '--out', '--sessions', '--runs', '--prices'].includes(k) || argv[i + 1] === undefined) return null;
+    opts[k.slice(2)] = argv[i + 1];
+  }
+  return opts;
+}
+
+// Repository root from the script location; null outside a git checkout.
+function repoRootOf() {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dirname(fileURLToPath(import.meta.url)),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+const fold = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+const isInside = (base, target) => {
+  const rel = relative(fold(resolve(base)), fold(resolve(target)));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+
+// --out inside the repository is accepted only under tools/measure/out/.
+function outAllowed(out) {
+  const repo = repoRootOf();
+  if (!repo || !isInside(repo, out)) return true;
+  return isInside(join(repo, 'tools', 'measure', 'out'), out);
+}
+
+export async function main(argv) {
+  const opts = parseArgs(argv);
+  if (!opts || !opts.root || !opts.out) {
+    console.error(USAGE);
+    return 2;
+  }
+  if (!outAllowed(opts.out)) {
+    console.error('session-metrics: --out inside the repository must be under tools/measure/out/');
+    return 2;
+  }
+  const pricesFile = opts.prices ?? join(dirname(fileURLToPath(import.meta.url)), 'prices.json');
+  const prices = loadPrices(pricesFile);
+  let runs;
+  if (opts.runs) {
+    const manifest = JSON.parse(readFileSync(opts.runs, 'utf8'));
+    runs = manifest.attempts.map((a) => ({ run: `attempt-${a.n}`, sessions: a.sessions }));
+  }
+  const sessions = opts.sessions ? opts.sessions.split(',').filter(Boolean) : undefined;
+  const result = extract({ root: opts.root, sessions, runs, prices });
+  mkdirSync(opts.out, { recursive: true });
+  writeFileSync(join(opts.out, 'metrics.json'), JSON.stringify(result, null, 2) + '\n');
+  writeFileSync(join(opts.out, 'metrics.csv'), toCsv(result));
+  return 0;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.error('session-metrics: the CLI arrives in Task 4');
-  process.exit(2);
+  process.exitCode = await main(process.argv.slice(2));
 }
