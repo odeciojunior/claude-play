@@ -5,37 +5,76 @@ description: "Requires an existing roadmap folder (roadmap.config.json). Use whe
 
 # Roadmap Tracker
 
-Keep a living roadmap true. A roadmap built by `roadmap-planner` is a versioned strategy plus a tracking folder (`state`, `decisions`, `log`, `critical-path`, `sources`, `requirements`, optional `measurements`) and a vendored checker. On each event this skill updates exactly the files that event touches, keeps the vendored checker current, runs it, and at the end of a piece or phase proposes the next strategy version.
+Keep a living roadmap true. A roadmap built by `roadmap-planner` is a versioned strategy plus a tracking folder (`state`, `decisions`, `log`, `critical-path`, `sources`, `requirements`, optional `measurements`) and a vendored checker. Each event updates exactly the files it touches and runs the checker; the end of a piece or phase proposes the next strategy version.
 
-**Core principle:** files over memory. Every run starts from the files, never from what the conversation remembers, and leaves the folder passing its own checker.
+**Core principle:** files over memory. Every run starts from the files and leaves the folder passing its own checker.
 
 ## Paths
 
-`${CLAUDE_SKILL_DIR}` is this skill's directory (Claude Code substitutes it in this file):
+`${CLAUDE_SKILL_DIR}` is this skill's directory.
 
 | What | Path |
 |------|------|
-| Format contract (the only source of file templates, anchors, column orders, ID and cell rules) | `${CLAUDE_SKILL_DIR}/../roadmap-planner/references/formats.md` |
+| CLI (`roadmap.mjs <command> "<folder>" [options] [--json]`) | `${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs` |
 | Plugin's checker (newest copy) | `${CLAUDE_SKILL_DIR}/scripts/check-roadmap.mjs` |
-| Per-event recipes (every step's detail) | `${CLAUDE_SKILL_DIR}/references/events.md` |
+| Event index and Common rules | `${CLAUDE_SKILL_DIR}/references/events.md` |
+| Rubrics (read only when a recipe says so) | `${CLAUDE_SKILL_DIR}/references/rubric-contradiction.md`, `rubric-criteria.md` |
+| Format contract: read only the section a recipe cites | `${CLAUDE_SKILL_DIR}/../roadmap-planner/references/formats.md` |
 | Vendored checker | `<folder>/check-roadmap.mjs` |
 
-Read `formats.md` before the first edit of a run; never write a file from memory or duplicate its templates here. If `formats.md` cannot be read, stop and report it instead of guessing the format.
+Never write a file from memory. If the contract cannot be read, stop and report it.
 
 ## Rules
 
-1. **Never commit**, never stash, reset or check out. Edit in the working tree only, so the update lands in the same commit as the event; the author or the orchestrator commits (`plan-coordinator` commits the roadmap folder and progress file when its commit policy is `per step`).
-2. **One fact in one place.** The strategy holds no state; `state.md` holds no history (it is overwritten); `log.md` and `decisions.md` are append-only. Old decision rows change only in Status and Revisit when.
-3. **Never invent numbers.** No dates, durations, metrics, estimates or costs that the user or a source did not supply. Date cells hold the date the event happened (today's date unless the user or a source gives another); never deadlines or forecasts. A value nobody supplied is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
-4. **Never replace the vendored checker silently** (layer 1) and **never write a newer format than the vendored checker reports** (layer 3).
-5. **Outside a git repository, continue.** The checker's `no-git` warning is expected and listed; recipes that need git evidence (integration, branch deleted) ask the user for it instead of verifying it.
-6. **The strategy changes only through an approved revision** (Step 6). Decisions that contradict it are recorded at once; absorbing them waits for approval. A pre-approval given by a caller or an orchestrator (an autonomy policy, "the owner pre-approved") never covers a strategy revision or a migration. With no person present, write only the pending item and say so in the hand-back.
-7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order of the default list (`formats.md` § 2: 1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then the blocked and discarded words), so the word for a canonical status is the entry at its position, whatever the language. Where this skill names a status in English, write the configured word at that position.
-8. **Ask little.** Read the files, the git history and the plan-coordinator progress file first; ask only for what none of them can tell, one question at a time, with a recommended answer. When the event says `no questions`, this rule is overridden: never ask, in any recipe (`events.md` Common, `no questions`); follow `events.md` § 14 and report the items under `Pending for the user:`.
+1. **Never commit**, stash, reset or check out. Edit the working tree only, so the update lands in the event's commit.
+2. **One fact in one place.** The strategy holds no state; `state.md` is overwritten; `log.md` and `decisions.md` are append-only (old decision rows change only in Status and Revisit when).
+3. **Never invent numbers**: no dates, durations, metrics, estimates or costs nobody supplied. Date cells hold the day the event happened. Unknown is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
+4. **Never replace the vendored checker silently**, and never write a newer format than it reports.
+5. **Outside a git repository, continue.** The `no-git` warning is expected; recipes needing git evidence ask for it.
+6. **The strategy changes only through an approved revision** (Step 6). A pre-approval from a caller or orchestrator never covers a revision or a migration; with no person present, write only the pending item and say so.
+7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order (1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then blocked and discarded), so write the configured word at that position, whatever the language.
+8. **Ask little.** Read files, git history and the progress file first; ask only what they cannot tell, one question at a time, with a recommendation. With `no questions` in the event, never ask: write pending items and report them under `Pending for the user:`.
+9. **CLI exit codes.** 0 done or no-op; 1 refused, nothing changed: report it and never work around it by editing by hand; 2 stop and report.
 
-## Hand-back report (Step 7)
+## Workflow
 
-End every run with this reply, short:
+0. **Locate the folder** (the directory with `roadmap.config.json`): the path given; the `**Roadmap**:` field of the plan-coordinator progress file; `**Roadmap:**` in the plan header; else search `docs/plans/**/roadmap.config.json`. Several: ask which. None: stop, point to `roadmap-planner`, create nothing.
+1. **Cold start:** `roadmap.mjs brief "<folder>"`, then `roadmap.config.json` and the touched card; the recipe names the rest.
+2. **Layer 1, checker:** `roadmap.mjs refresh-checker "<folder>"`; detail in `events/10-checker-refresh.md`.
+3. **Layer 3, format:** compare the contract's formatVersion (its title), the config's `formatVersion` and the vendored checker's `format <n>`. Contract newer than the config: migrate first, with approval (`events/11-migration.md`). Config newer than the contract: stop, tell the user to update the plugin.
+4. **Classify the event, apply its recipe:** read `events.md` (Common) and the recipe file below; read a rubric only when the recipe says so. Chained events: table order, § 19 before § 9.
+5. **Checker:** `node "<folder>/check-roadmap.mjs"` (plugin copy only if missing; no Node 18+: report "checker not run"). 0 errors before handing back: fix those this run introduced; for older ones, ask with a recommended fix or hand back `errors remain: <codes>` with one fix each. Warnings are listed, one line per code: `contradiction-unabsorbed` may wait for a revision; `checker-stale` means Step 2 failed or was skipped; `no-git` / `shallow-clone` mean git checks did not run; `integrated-pending` propose the batch turn (§ 16); `pending-limit` see Common; `blocker-overdue` propose escalating (§ 5); others report only (strategy fixes wait for a revision).
+6. **Revision** (end of piece or phase, or an unabsorbed contradiction): propose strategy vN+1 in the conversation, write it only after approval (rule 6); procedure in `events/09-revision.md`.
+7. **Hand back** with the report below.
+
+Read-only query ("roadmap status"): `roadmap.mjs status "<folder>"` plus the checker; write nothing; report a stale checker or format mismatch as a warning only.
+
+## Events
+
+| Event | Recipe |
+|-------|--------|
+| Decision made, or rejected | `events/01-decision.md` |
+| Piece or step closed | `events/02-piece-closed.md` |
+| Branch integrated | `events/03-integration.md` |
+| Branch deleted or started | `events/04-branch-deleted.md` |
+| Blocker opened or closed | `events/05-blocker.md` |
+| Paid run or measurement | `events/06-measurement.md` |
+| New source | `events/07-new-source.md` |
+| New requirement mid-flight | `events/08-new-requirement.md` |
+| Piece or phase ends (revision) | `events/09-revision.md` |
+| Newer plugin checker | `events/10-checker-refresh.md` |
+| Contract formatVersion above the config | `events/11-migration.md` |
+| Package published | `events/12-package-published.md` |
+| An action is forbidden or allowed again | `events/13-do-not-do-now.md` |
+| plan-coordinator "wave N closed" / "plan completed" | `events/14-plan-coordinator.md` |
+| Deliverable merged into the release branch | `events/15-merge-release.md` |
+| Release branch integrated, or `integrated-pending` | `events/16-release-integrated.md` |
+| Code ready, acceptance pending | `events/17-acceptance-pending.md` |
+| Executor choice nobody settled | `events/18-executor-decision.md` |
+| Last piece of a deliverable closes | `events/19-criteria-check.md` |
+| Spec, plan or execution starts | `events/20-spec-plan-started.md` |
+
+## Hand-back report
 
 ```
 Roadmap: <folder> | strategy v<version> | format <n>
@@ -49,132 +88,11 @@ Questions: <anything only the user can answer, or none>
 Pending for the user: <(user) items written under no-questions, or none>
 ```
 
-## Workflow
-
-| Step | What | Detail |
-|------|------|--------|
-| 0 | Locate the roadmap folder | below |
-| 1 | Cold start | below |
-| 2 | Layer 1: refresh the vendored checker | below + `events.md` § Checker refresh |
-| 3 | Layer 3: format version | below + `events.md` § Migration |
-| 4 | Classify the event, apply its recipe | table below + `events.md` |
-| 5 | Run the vendored checker: 0 errors | below |
-| 6 | Revision (end of piece or phase, or an unabsorbed contradiction) | stub below + `events.md` § End of piece or phase |
-| 7 | Hand back | report format above |
-
-### Step 0: Locate the roadmap folder
-
-The folder is the directory holding `roadmap.config.json`. Take it, in this order, from: the path the user or the caller gave; the `**Roadmap**:` field of the plan-coordinator progress file that invoked this skill; `**Roadmap:**` in the plan header; a search for `docs/plans/**/roadmap.config.json`. Several candidates → ask which one.
-
-**No `roadmap.config.json` found → stop.** Say that no roadmap folder exists and point to `roadmap-planner` to create one. Do not create tracking files.
-
-### Step 1: Cold start
-
-Read, before anything else:
-
-1. `roadmap.config.json`: file names, strategy path, `integrationBranch`, `releaseBranch` (optional), `vocab` (exact, case-sensitive words), `tracks`, `limits`, `formatVersion`.
-2. `state.md`: the header line (strategy version + date), `now`, `panel`, `blockers`, `pending`, `inflight`, and the optional `donot` and `releases` blocks when present.
-3. The 10 newest rows of the `log` block (the top 10 rows: the log is newest first).
-4. The `decisions` rows whose Status is `vocab.decisionPending`, plus any in-force row whose Contradicts cell is filled.
-5. The strategy's `version` anchor and the cards (`card` blocks) of the deliverables this event touches.
-
-Then apply layers 1 and 3 (Steps 2 and 3) before writing anything. If the checker run in Step 2 or at cold start shows `integrated-pending` (rows still on-branch whose SHAs already reached the integration branch), propose the batch turn to the integrated word (`events.md` § 16) instead of leaving the panel stale.
-
-### Step 2: Layer 1 -- refresh the vendored checker
-
-Compare the plugin's checker with the vendored copy. The version of each is the one in its line-1 header `// check-roadmap <version> format <n>` (the same header formats.md § 1 defines and the checker's own `checker-stale` warning reads); `node <file> --version` reads that same line and prints `<version> format <n>`, so it is a convenient way to read it. Compare versions numerically (`1.10.0` > `1.9.0`).
-
-| Situation | Action |
-|-----------|--------|
-| Vendored version equal to or newer than the plugin's | Nothing to do |
-| Plugin's is newer | Run it on the folder: `node "${CLAUDE_SKILL_DIR}/scripts/check-roadmap.mjs" "<folder>"` |
-| ... and it exits 0 | Copy it over `<folder>/check-roadmap.mjs` (byte copy), add a `log` row "checker refreshed <old> → <new>" with evidence `` `check-roadmap.mjs` ``, and drop any earlier "checker ... available" pending item. If the event adds log rows too, all carry the same date and the event's rows go above the refresh row (the refresh came first) |
-| ... and it exits 2 (`ERROR internal`, a crash) | Treat it as a failed refresh like exit 1: keep the old copy and add or update the pending item "(maintainer) checker <new> available: internal error, see output" |
-| ... and it exits 1 | Keep the old copy. Add to the `pending` block "(maintainer) checker <new> available: N errors to fix" (N = the error count of its summary line); if such an item exists, update it instead of adding a second one |
-| Vendored copy missing | Nothing to keep: copy the plugin's checker in, add a `log` row "checker added <new>", and fix its errors in Step 5 |
-| Vendored line 1 has no version header (hand-edited copy) | Do not replace it; add a pending item "(maintainer) vendored checker has no version header; review it, then replace with <new>" |
-
-If the vendored checker warns `checker-stale` but this skill's own copy is not newer than the vendored one, the warning comes from another cached plugin version (orphaned or downgraded): this skill's copy is the reference, there is nothing to refresh; mention it once in the report.
-
-Never replace silently, never delete the old copy on failure, and do not fix the new checker's errors as part of the refresh unless the user asks. Steps and commands: `events.md` § Checker refresh.
-
-### Step 3: Layer 3 -- format version
-
-Three numbers: `formats.md` formatVersion (its title, `# Roadmap format contract (formatVersion N)`), the config's `formatVersion`, and the vendored checker's `format <n>` (line 1, after Step 2).
-
-- `formats.md` newer than the config → run the migration in `events.md` § Migration **before writing anything else**. It needs user approval, and it ends with the vendored checker at that format.
-- Never set the config's `formatVersion`, or write a file in a format, newer than the vendored checker reports. The migration vendors the new checker itself before it bumps the config, so a Step 2 refresh that failed because the folder is still in the old format does not block it. Without approval, keep writing the config's format and leave the pending item.
-- Config newer than `formats.md` (the installed plugin is older than the folder) → stop; tell the user to update the plugin.
-
-### Step 4: Classify the event and apply its recipe
-
-| Event | Files, in this order | Recipe (`events.md`) |
-|-------|----------------------|----------------------|
-| A decision is made | `decisions.md` first (Contradicts filled per the contradiction rule), then whatever uses it (`state.md`, `requirements.md`, `critical-path.md`), then `log.md` | § Decision |
-| A spec, a plan or execution starts for a deliverable | `state.md` panel (+ "in flight" when executing), `log.md` | § 20 |
-| The user only asks for the roadmap status | nothing is written | Read-only queries (below) |
-| A piece or plan step closes | `state.md` panel (and `now`), `log.md` | § Piece or step closed |
-| A branch is integrated | `state.md` panel + "in flight", `log.md` | § Integration |
-| A deliverable merges into `releaseBranch` | `state.md` panel (on-branch word, merge SHA, branch in Next step), `log.md` | § Merge into the release branch |
-| The release branch is integrated (or `integrated-pending`) | `state.md` panel (batch to the integrated word) + "in flight", `log.md` | § Release branch integrated |
-| Code ready, acceptance pending | `state.md` panel (`code: ...; acceptance: blocked (BLQ-n)`) + blockers, `log.md` | § Acceptance pending |
-| An executor made a choice nobody settled | `decisions.md` (Origin `executor`, pending) only when the autonomy answer allows it; under "no" only a `state.md` pending item `(owner) ratify: <choice>`; `log.md` | § Executor decision |
-| The last piece of a deliverable closes | card vs spec criteria; `state.md` pending, `log.md` | § Deliverable closed: criteria check |
-| A branch is deleted (or started) | `state.md` "in flight", `log.md` | § Branch deleted |
-| A blocker opens or closes | `state.md` blockers (+ panel, `now`), `critical-path.md`, `log.md` | § Blocker opened or closed |
-| A paid run or a measurement | `measurements.md` (only when `files.measurements` is set), `log.md` | § Measurement |
-| A new source | `sources.md` (+ `conflicts`), `log.md`; then new requirements | § New source |
-| A new requirement mid-flight | `requirements.md` (+ its `DEC`/`SRC`), `log.md`; propose a revision | § New requirement mid-flight |
-| A piece or phase ends | propose a strategy revision (Step 6) | § End of piece or phase |
-| A package is published | `state.md` `releases` row + panel, `log.md` | § Package published |
-| A decision or blocker forbids an action (or stops forbidding it) | `state.md` `donot` | § Do not do now |
-| A newer plugin checker | vendored checker, `log.md` or `pending` | § Checker refresh |
-| `formats.md` formatVersion > config | every file the migration names, config, `log.md` | § Migration |
-
-One event may chain several recipes (a piece that ends a phase also triggers the revision; a decision that clears a blocker also closes it). Apply them in the order of this table. IDs are never reused: the next ID is the highest ever used plus one (search every file, the log included, since closed `BLQ-n` disappear from `state.md`).
-
-**Closing duties of every event** (detail in `events.md` § Common to every recipe; do them after the recipe, before Step 5):
-
-- **Critical path.** A recipe that changes a deliverable's status, a blocker or a decision ends by refreshing `critical-path.md`'s next milestone per track. When the next gate is unknown, write `unknown - ask at next event` (stated once here; do not invent a gate).
-- **Header line.** Update the `state.md` header line (strategy version + date) on every event and every revision.
-- **Pruning.** Drop `now` items that are done or stale (log the done ones); drop `inflight` rows of kind deleted once the deletion is logged and a later event runs; drop `donot` items whose `BLQ`/`DEC` is resolved.
-- **Evidence.** An event with no SHA or path (a blocker closed by a phone call) cites the file that now holds the change (`decisions.md`, `state.md`), never an empty cell and never "this commit".
-- **Wording.** A spec that was written has *reached spec*; it is not "closed".
-
-**Contradiction rule.** A decision contradicts the roadmap when it overrides something the strategy states: a card's pieces, acceptance, definition of done, priority, phase, track, `depends` or `reqs`; an objective, non-goal, thesis or ordering. Whoever records the decision fills its Contradicts cell with the section or deliverable it overrides (for example `E2 (pieces)` or `Non-goals`); `-` when it fits. A filled, in-force decision stays *unabsorbed* (checker warning `contradiction-unabsorbed`) until an approved revision cites its ID in the strategy text. If unsure whether it contradicts, ask once, recommending the filled cell.
-
-### Step 4a: Events from plan-coordinator
-
-`plan-coordinator` invokes this skill with "wave N closed (steps …)" after each wave gate and "plan completed" at the end, when its progress file header reads `**Roadmap**: <folder>`. Read the progress file (never edit it), find the deliverable, decide which pieces closed, record per § Piece or step closed, and hand back to plan-coordinator with the Step 7 report. Never infer the integrated word without a SHA that is on the integration branch. Full procedure: `events.md` § Events from plan-coordinator.
-
-### Read-only queries
-
-When the user only asks for status ("roadmap status"): read `state.md` and `critical-path.md`, run the checker, report the panel, the blockers and the next gates. Write nothing: no file, no log row. Skip the writes of Steps 2 and 3 (no checker copy, no log row, no migration); report a stale checker or a format mismatch as a warning only.
-
-### Step 5: Run the vendored checker
-
-`node "<folder>/check-roadmap.mjs"` (no argument: it checks its own folder). Use the plugin's copy only when the vendored one is missing. If `node` is missing or older than 18, do not claim the folder verified: stop and hand back "checker not run (Node ≥18 missing)" in the Checker line of the report.
-
-- **0 errors before handing back.** Fix every error this run introduced. Errors that were there before this run and need a user decision (for example a sixth `now` item: which one goes?) → ask, with a recommended fix. If no user answer is available (a caller like plan-coordinator, or the user defers), hand back `errors remain: <codes>` with one recommended fix per error (for example "now-limit: drop item 6, the least urgent") and do not claim 0 errors. Never hide an error.
-- **Warnings are allowed** and are listed in the report, one line each. `contradiction-unabsorbed` may stay while a revision awaits approval; `checker-stale` means Step 2 was skipped or failed; `no-git` / `shallow-clone` mean the git checks did not run. What to do with the newer warnings:
-  - `integrated-pending`: propose the batch turn to the integrated word (`events.md` § 16).
-  - `pending-limit`: group `pending` by origin and retire items that already have an owner elsewhere (`events.md` Common, lean panel).
-  - `blocker-overdue`: propose escalating to the blocker's owner (`events.md` § 5); do not close it.
-  - `decisions-cell-long`: informational (`decisions.md` is append-only); keep new rows short, do not rewrite old ones.
-  - `ac-verify-missing` / `ac-verify-invalid`: acceptance `{verify: ...}` tags in the strategy; report them and, on the next approved revision, add or fix the tags (`blocked` needs a `BLQ-n`, executable kinds need a command). Never edit the strategy outside a revision.
-  - `gate-no-command`: the strategy's gates table has a row with no command; report it and add it to the next revision.
-
-### Step 6: Revision
-
-Triggers: a piece or phase ends; the checker warns `contradiction-unabsorbed`; a new requirement needs a card; the user asks. Propose strategy vN+1 in the conversation without writing it, ask for approval, and write the strategy only after the user approves (rule 6). A caller's or orchestrator's pre-approval never covers a revision: with no person present, write only the pending item and say so in the hand-back. Procedure, proposal format and checklist: `events.md` § End of piece or phase.
-
 ## Red flags
 
 | Thought | Reality |
 |---------|---------|
-| "I remember the state from earlier" | Re-read the files; another session may have changed them |
-| "The decision is obvious, I'll edit the card too" | The strategy changes only through an approved revision |
-| "The new checker fails, but it's better, copy it anyway" | Keep the old copy and add the pending item |
-| "I'll estimate the remaining effort for the panel" | No numbers nobody supplied |
-| "The log row can say 'this commit'" | Banned phrase; cite a SHA or a path |
-| "I'll commit so the update isn't lost" | Never commit; the author or orchestrator does |
+| "The decision is obvious, I'll edit the card too" | Only an approved revision changes the strategy |
+| "The new checker fails, copy it anyway" | Keep the old copy, add the pending item |
+| "I'll estimate the remaining effort" | No numbers nobody supplied |
+| "I'll commit so the update isn't lost" | Never commit |

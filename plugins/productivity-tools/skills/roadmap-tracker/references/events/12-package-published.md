@@ -1,0 +1,9 @@
+# § 12. Package published
+
+**When:** a release package is built and published (installed, shipped or handed to a client). Optional block: if `state.md` has no `releases` block, add it (block and columns: `formats.md § 6`) and say so in the report.
+
+1. Get the stamped SHA (the commit the package was built from), the date and the environment (the user or the release log tells; never guess). Verify the SHA: `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" verify-commit "<folder>" <sha> --json` → `exists` true (`integrated` may be false: the package need not be on the integration branch).
+2. `state.md` `releases` (no command writes it; edit the block): when this creates the block for the first time, first backfill one row per deliverable already in a released status (ask for or cite the evidence: package, SHA, date, environment; `-` in fields not known), or the checker fails `released-no-package`. Also add the "package is published" row to the README table (`formats.md § 8`). Then add a row `Package · Deliverables · State · Stamped SHA · Date · Environment`. The deliverables listed are the ones the package carries.
+3. Panel, per carried deliverable (or piece): `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" set-status "<folder>" E<n> <word> --evidence <sha> --next "<next action>"`, with the `vocab.releasedStatuses` word (default `released`; `measured` only after a measurement, § 6); a segmented row needs `--piece <label>`. A refusal is exit 1: report it, never edit the panel by hand around it. The checker's `released-no-package` error fires when a released deliverable appears in no `releases` row.
+4. `now`, `critical-path.md` next milestone per track, header line (Common).
+5. `set-status` writes no log row: `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" log "<folder>" --deliverable E<n> --what "package <name> published to <environment>" --evidence <stamped SHA or release log path>` (several deliverables → one row listing them, Common).
