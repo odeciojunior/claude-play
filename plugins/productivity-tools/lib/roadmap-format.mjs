@@ -283,7 +283,7 @@ function cutBlocks(body, names) {
   return out + text.slice(at);
 }
 
-const splitIds = (s) => (s || '').split(/[,s]+/).filter((x) => x && x !== '-' && x !== '—');
+const splitIds = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
 
 export function parseRoadmapTexts({ strategy, files }) {
   const f = files || {};

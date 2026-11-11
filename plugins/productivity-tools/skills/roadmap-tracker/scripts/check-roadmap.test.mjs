@@ -1380,3 +1380,11 @@ test('parseRoadmapTexts counts malformed openers and keeps raw rows', () => {
   assert.equal(r.blocks.state.pending.present, false);
   assert.deepEqual(r.blocks.state.panel.rows, [['1', '2', '3']]);
 });
+
+test('parseRoadmapTexts splits multi-id depends and reqs on commas and whitespace', () => {
+  const t = readValidTexts();
+  t.strategy = '<!-- roadmap:card id="E9" depends="E1 E2,E3,  Es4" reqs="REQ-1 REQ-2,\tREQ-3" -->\ncorpo\n<!-- /roadmap:card -->\n';
+  const c = fmt.parseRoadmapTexts(t).cards[0];
+  assert.deepEqual(c.depends, ['E1', 'E2', 'E3', 'Es4']);
+  assert.deepEqual(c.reqs, ['REQ-1', 'REQ-2', 'REQ-3']);
+});
