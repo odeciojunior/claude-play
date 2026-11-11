@@ -95,6 +95,15 @@ export function validateModel(model) {
     if (!Array.isArray(model[key]) || model[key].length === 0) errors.push(err(key, 'required', `${key} needs at least one entry`));
   }
 
+  for (const key of ['requirements', 'decisions', 'gates']) {
+    if (!Array.isArray(model[key])) continue;
+    model[key].forEach((item, i) => { if (!isObj(item)) errors.push(err(`${key}[${i}]`, 'required', `${key}[${i}] must be an object`)); });
+  }
+  if (model.vocab !== undefined) {
+    if (!isObj(model.vocab)) errors.push(err('vocab', 'required', 'vocab must be an object'));
+    else for (const key of Object.keys(VOCAB_EN)) if (model.vocab[key] === undefined) errors.push(err(`vocab.${key}`, 'required', `vocab.${key} is required when vocab is given`));
+  }
+
   const list = (key) => (Array.isArray(model[key]) ? model[key] : []);
   const requirements = list('requirements');
   const phases = list('phases');
@@ -392,6 +401,7 @@ const TEXT = {
       measurements: 'Runs, costs and measurement milestones', config: 'Paths, vocabulary, limits',
     },
     headers: { decisions: 'Decisions', log: 'Log', sources: 'Sources', requirements: 'Requirements', conflicts: 'Conflicts', criticalPath: 'Critical path', measurements: 'Measurements' },
+    cols: { decisions: ['ID', 'Date', 'Deliverable', 'Decision', 'Discarded alternative', 'Contradicts', 'Revisit when', 'Origin', 'Status'], log: ['Date', 'Deliverable', 'What happened', 'Evidence'] },
     rows: {
       decision: ['A decision is made', '`decisions.md` first, then whatever uses it'],
       step: ['A piece or step closes', '`log.md` and the panel in `state.md`'],
@@ -417,6 +427,7 @@ const TEXT = {
       measurements: 'Execuções, custos e marcos de medição', config: 'Caminhos, vocabulário, limites',
     },
     headers: { decisions: 'Decisões', log: 'Log', sources: 'Fontes', requirements: 'Requisitos', conflicts: 'Conflitos', criticalPath: 'Caminho crítico', measurements: 'Medições' },
+    cols: { decisions: ['ID', 'Data', 'Entrega', 'Decisão', 'Alternativa descartada', 'Contradiz', 'Rever quando', 'Origem', 'Status'], log: ['Data', 'Entrega', 'O que aconteceu', 'Evidência'] },
     rows: {
       decision: ['Uma decisão é tomada', '`decisions.md` primeiro, depois o que a usa'],
       step: ['Uma peça ou passo fecha', '`log.md` e o painel em `state.md`'],
@@ -540,7 +551,7 @@ function renderState(model, t) {
   return lines.join('\n') + '\n';
 }
 
-function renderDecisions(model) {
+function renderDecisions(model, t) {
   const v = model.vocab;
   const statusWord = (s) => ({ 'in-force': v.decisionInForce, pending: v.decisionPending }[s] ?? s);
   const rows = arr(model.decisions).map((d, i) => {
@@ -550,13 +561,13 @@ function renderDecisions(model) {
       cell(dash(d.discarded), `${at}.discarded`), cell(dash(d.contradicts), `${at}.contradicts`), cell(dash(d.revisit), `${at}.revisit`),
       cell(dash(d.origin), `${at}.origin`), cell(statusWord(d.status), `${at}.status`)];
   });
-  const lines = ['# Decisions', '', ...block('decisions', table(['ID', 'Date', 'Deliverable', 'Decision', 'Discarded alternative', 'Contradicts', 'Revisit when', 'Origin', 'Status'], rows))];
+  const lines = [`# ${t.headers.decisions}`, '', ...block('decisions', table(t.cols.decisions, rows))];
   return lines.join('\n') + '\n';
 }
 
 function renderLog(model, t) {
   const rows = [[cell(model.date, 'date'), '-', t.created, `\`${cell(model.strategyPath, 'strategyPath')}\``]];
-  return ['# Log', '', ...block('log', table(['Date', 'Deliverable', 'What happened', 'Evidence'], rows))].join('\n') + '\n';
+  return [`# ${t.headers.log}`, '', ...block('log', table(t.cols.log, rows))].join('\n') + '\n';
 }
 
 function renderSources(model, t) {
@@ -645,7 +656,7 @@ export function renderFiles(model) {
   const out = {};
   out[config.files.readme] = renderReadme(model, t, config);
   out[config.files.state] = renderState(model, t);
-  out[config.files.decisions] = renderDecisions(model);
+  out[config.files.decisions] = renderDecisions(model, t);
   out[config.files.log] = renderLog(model, t);
   out[config.files.criticalPath] = renderCriticalPath(model, t);
   out[config.files.sources] = renderSources(model, t);
@@ -862,8 +873,25 @@ function report(modelPath, folder, extra) {
 
 const toErr = (e) => ({ path: e.path, code: e.code, message: e.message });
 
+// Entradas que a regravação apagaria: mais linhas de log do que o scaffold grava (uma)
+// ou DEC em decisions.md ausente do modelo. Devolve a descrição ou null.
+function existingEntries(folder, gen, model) {
+  if (!fs.existsSync(path.join(folder, 'roadmap.config.json'))) return null;
+  const read = (role) => {
+    const name = gen.config.files[role];
+    try { return name ? fs.readFileSync(path.join(folder, name), 'utf8') : ''; } catch { return ''; }
+  };
+  const rows = read('log').split(/\r?\n/).filter((l) => /^\|/.test(l) && !/^\|[\s:|-]*$/.test(l)).length - 1;
+  const known = new Set(arr(model.decisions).map((d) => d.id));
+  const extra = [...read('decisions').matchAll(/^\|\s*(DEC-\d+)\s*\|/gm)].map((m) => m[1]).filter((id) => !known.has(id));
+  const why = [];
+  if (rows > 1) why.push(`${gen.config.files.log} has ${rows} entries (the scaffold writes 1)`);
+  if (extra.length) why.push(`${gen.config.files.decisions} has ${extra.join(', ')} not in the model`);
+  return why.length ? why.join('; ') : null;
+}
+
 // Lê o modelo (sem BOM), valida, gera em memória, confere no checker e só então grava.
-export function runScaffold(modelPath, { dryRun = false } = {}) {
+export function runScaffold(modelPath, { dryRun = false, _generate = generate } = {}) {
   const modelAbs = path.resolve(modelPath);
   const folder = path.dirname(modelAbs);
   const refuse = (errors, extra = {}) => report(modelAbs, folder, { ...extra, errors, exitCode: 1 });
@@ -895,8 +923,7 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
   const { model, defaulted } = applyDefaults(input);
   let gen;
   try {
-    if (process.env.SCAFFOLD_SELFTEST_THROW) throw new Error('self-test: forced internal failure');
-    gen = generate(model, { folder });
+    gen = _generate(model, { folder });
   } catch (e) {
     if (e instanceof ScaffoldError) return refuse(e.problems.map(toErr), { defaulted });
     return fail('internal', String(e && e.message ? e.message : e).split('\n')[0], { defaulted });
@@ -916,6 +943,9 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
     return fail('checker-format', `checker format ${header ? header[1] : '?'} differs from formatVersion ${gen.config.formatVersion}`, { defaulted, warnings });
   }
 
+  const clash = existingEntries(folder, gen, model);
+  if (clash) return refuse([{ path: '', code: 'existing-roadmap', message: `${folder} already holds a roadmap with entries the model lacks (${clash}); refusing to overwrite it` }], { defaulted, warnings });
+
   const outputs = { ...gen.files, 'check-roadmap.mjs': checker };
   const written = Object.keys(outputs)
     .map((rel) => ({ rel, abs: path.resolve(folder, rel) }));
@@ -934,7 +964,7 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
   return report(modelAbs, folder, { written: relNames, defaulted, warnings, exitCode: 0 });
 }
 
-export function main(argv) {
+export function main(argv, opts = {}) {
   const args = argv.filter((a) => a !== '--dry-run' && a !== '--json');
   const unknown = args.filter((a) => a.startsWith('-'));
   const json = argv.includes('--json');
@@ -947,7 +977,7 @@ export function main(argv) {
     }
     return 2;
   }
-  const out = runScaffold(args[0], { dryRun: argv.includes('--dry-run') });
+  const out = runScaffold(args[0], { ...opts, dryRun: argv.includes('--dry-run') });
   if (json) {
     console.log(JSON.stringify(out, null, 2));
   } else {
