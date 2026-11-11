@@ -147,7 +147,7 @@ async function checkSeeded(variant) {
 }
 
 test('every manifest entry is seeded by exactly one variant', () => {
-  for (const e of manifest.filter((x) => x.class === 'plan')) {
+  for (const e of manifest.filter((x) => x.class !== 'code')) {
     const n = VARIANTS.filter((v) => { const a = artifactOf(v); return a && a.class === e.class && a.artifact === e.artifact; }).length;
     assert.equal(n, 1, e.id);
   }
@@ -157,8 +157,15 @@ test('plan variants: each defect file changed in the seeded commit and its senti
   for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo']) await checkSeeded(v);
 });
 
+test('spec variants: each defect file changed in the seeded commit and its sentinel reports presence', async () => {
+  for (const v of ['spec-semeado-A', 'spec-semeado-B']) {
+    const { s } = await checkSeeded(v);
+    assert.deepEqual(s.prompts, []);
+  }
+});
+
 test('seeded history never names the seeding', async () => {
-  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo']) {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo', 'spec-semeado-A', 'spec-semeado-B']) {
     const t = tmp('sb');
     try {
       await makeScenario(t.dir, v);

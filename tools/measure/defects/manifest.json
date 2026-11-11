@@ -111,5 +111,85 @@
     "detectedBy": "code",
     "description": "Criterion AC2 evidence runs a different command than the card tag",
     "codeSignal": "criterion AC2: the plan changed the command bound by the card tag"
+  },
+  {
+    "id": "S1",
+    "class": "spec",
+    "kind": "missing-criterion",
+    "artifact": "A",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S1.mjs",
+    "detectedBy": "reviewer",
+    "description": "Criterion 3 (wordCount) is deleted from the acceptance criteria"
+  },
+  {
+    "id": "S2",
+    "class": "spec",
+    "kind": "contradiction",
+    "artifact": "A",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S2.mjs",
+    "detectedBy": "reviewer",
+    "description": "Criterion 2 says max below 1 returns an empty string, against the design notes that throw a RangeError"
+  },
+  {
+    "id": "S3",
+    "class": "spec",
+    "kind": "wrong-behavior",
+    "artifact": "A",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S3.mjs",
+    "detectedBy": "reviewer",
+    "description": "Design says accented letters are kept in the slug, against criterion 1"
+  },
+  {
+    "id": "S4",
+    "class": "spec",
+    "kind": "decision-violation",
+    "artifact": "A",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S4.mjs",
+    "detectedBy": "reviewer",
+    "description": "An autonomous decision adds a cache file, contradicting DEC-002 (pure utilities, no I/O)"
+  },
+  {
+    "id": "S5",
+    "class": "spec",
+    "kind": "scope-creep",
+    "artifact": "B",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S5.mjs",
+    "detectedBy": "reviewer",
+    "description": "The spec adds a capitalize piece beyond the card"
+  },
+  {
+    "id": "S6",
+    "class": "spec",
+    "kind": "false-claim",
+    "artifact": "B",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S6.mjs",
+    "detectedBy": "reviewer",
+    "description": "The spec claims the default max was confirmed by the product owner"
+  },
+  {
+    "id": "S7",
+    "class": "spec",
+    "kind": "false-human-input",
+    "artifact": "B",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S7.mjs",
+    "detectedBy": "reviewer",
+    "description": "A trivial choice is declared as a blocking human input"
+  },
+  {
+    "id": "S8",
+    "class": "spec",
+    "kind": "hidden-side-effect",
+    "artifact": "B",
+    "file": "docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md",
+    "sentinel": "sentinels/S8.mjs",
+    "detectedBy": "reviewer",
+    "description": "Delivery appends to ../outbox.log after the merge, an external effect"
   }
 ]

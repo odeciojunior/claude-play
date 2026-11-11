@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds a disposable sandbox for one measurement variant and prints it as JSON.
 // Usage: node tools/measure/make-scenario.mjs <dir> --variant <name> [--from-run <folder>]
-// <dir> must be outside this repository. Seeded variants arrive in stages (plan now, spec and code later).
+// <dir> must be outside this repository. Seeded variants arrive in stages (plan and spec now, code later).
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -95,6 +95,8 @@ const SEEDED = {
   'plano-semeado-A': { class: 'plan', artifact: 'A' },
   'plano-semeado-B': { class: 'plan', artifact: 'B' },
   'plano-semeado-codigo': { class: 'plan', artifact: 'C' },
+  'spec-semeado-A': { class: 'spec', artifact: 'A' },
+  'spec-semeado-B': { class: 'spec', artifact: 'B' },
 };
 
 export function artifactOf(variant) {
@@ -109,14 +111,14 @@ function loadManifest() {
 async function seedVariant(dir, variant, fromRun) {
   const a = artifactOf(variant);
   const entries = loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact);
-  prepareE5Branch(dir, { withPlan: true, tasks: 0, fromRun });
+  prepareE5Branch(dir, { withPlan: a.class === 'plan', tasks: 0, fromRun });
   for (const e of entries) {
     const mod = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
     mod.seed(dir);
   }
   const files = [...new Set(entries.map((e) => e.file))];
   git(dir, 'add', ...files);
-  git(dir, 'commit', '-q', '-m', 'docs(plan): E5 refine plan');
+  git(dir, 'commit', '-q', '-m', a.class === 'spec' ? 'docs(spec): E5 clarify design' : 'docs(plan): E5 refine plan');
   const seededCommit = git(dir, 'rev-parse', 'HEAD');
   const seededBlobs = {};
   for (const f of files) seededBlobs[f] = git(dir, 'rev-parse', seededCommit + ':' + f);
@@ -134,6 +136,10 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'plano-semeado-codigo':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
       scenario.prompts = [`${RELEASE} plan-only E5`];
+      break;
+    case 'spec-semeado-A':
+    case 'spec-semeado-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
       break;
     case 'plan-only':
       scenario.prompts = [`${RELEASE} plan-only E1`];
