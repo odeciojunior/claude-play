@@ -20,7 +20,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E3 | na-branch | `ee7a3d70995f903f260b897327361b2573d5c624`; `docs/superpowers/specs/2026-11-11-E3-cli-eventos-tracker-design.md`; `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md`; `docs/superpowers/reviews/2026-11-11-E3-cli-eventos-tracker-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; E18 e E22 esperam a ratificação das decisões de contrato (DEC-030) |
 | E4 | bloqueado (BLQ-1) | `1362158c1ec3a43f8b19f32cb5695dcd11224004`; `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4` | Retomar a tarefa 9 na `feat/E4` com revisor despachado pelo orquestrador (BLQ-1); depois o merge em `release/roadmap-skills-v2` |
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E6 | nao-iniciado | - | Aguardar E2 e E5 |
+| E6 | executando | `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `feat/E6` | Execução automática do plano na `feat/E6` (`D:/projects/claude-play-wt/E6`); depois o merge em `release/roadmap-skills-v2` |
 | E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
 | E8 | nao-iniciado | - | Aguardar E17, E18, E19, E20 e E25 |
 | E9 | nao-iniciado | - | Aguardar E8 |
@@ -80,6 +80,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Aceite do critério 4 de E4 (o revisor devolve achado estruturado para cada defeito plantado): conferir o relatório comportamental em `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md`.
 - (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (dono) Ratificação das decisões autônomas de E4 (DEC-158 a DEC-175); as de alcance contrato (DEC-158, DEC-159, DEC-160, DEC-162, DEC-167, DEC-169) seguram o início de E20.
+- (dono) Ratificação das decisões autônomas de E6 (DEC-176 a DEC-192); as de alcance contrato (DEC-176, DEC-177, DEC-178, DEC-179, DEC-180, DEC-181, DEC-182, DEC-183, DEC-184, DEC-185, DEC-187, DEC-188, DEC-191) seguram o início de E7 e E20 (DEC-030).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -88,4 +89,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | Branch | Tipo | Nota |
 |---|---|---|
 | feat/E4 | viva | execução parada na tarefa 9 (BLQ-1); worktree `D:/projects/claude-play-wt/E4` mantido |
+| feat/E6 | viva | execução automática |
 <!-- /roadmap:inflight -->
