@@ -354,3 +354,66 @@ test('--roadmap on missing folder -> exit 2', () => {
   assert.equal(runCli(['check', FIXTURE_SPEC, '--roadmap', path.join(os.tmpdir(), 'nao-existe-roadmap')]).status, 2);
   assert.equal(runCli(['check', FIXTURE_SPEC, '--roadmap']).status, 2);
 });
+
+// ---- Task 5: emit e summary ----
+
+test('emit: fixture prints data with parsed verify', () => {
+  const r = runCli(['emit', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]);
+  assert.equal(r.status, 0, r.stderr);
+  const j = JSON.parse(r.stdout);
+  assert.equal(j.tool, 'spec-tool');
+  assert.equal(j.schema, 'spec/1');
+  assert.equal(j.path, FIXTURE_SPEC);
+  const ac = j.data.acceptance;
+  assert.deepEqual(ac[0].verify, { kind: 'test', blq: null, evidence: 'node --test tests/e1.test.mjs' });
+  assert.equal(ac[1].verify.blq, 'BLQ-1');
+  assert.equal(ac[2].verify, null);
+  for (const a of ac) assert.ok(!a.textWithoutTag.includes('{verify:'), a.textWithoutTag);
+  assert.ok(ac[0].textWithoutTag.startsWith('Given an empty system'));
+});
+
+test('emit: spec with an error exits 1 and prints nothing on stdout', () => {
+  const r = runCli(['emit', '$SPEC'], mutate((d) => { delete d.mode; }));
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /^ERROR field-missing mode/m);
+});
+
+test('summary: marks para on blocking item and high irreversible ruling', () => {
+  const r = runCli(['summary', FIXTURE_SPEC]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\| ID \| Decisão \| Custo se errada \| Reversível \| Alcance \| Contradiz \| Para \|/);
+  assert.match(r.stdout, /\| ID \| Tipo \| O quê \| Bloqueia \| Contorno \| BLQ \| Para \|/);
+  assert.match(r.stdout, /\| ID \| O quê \| Alvo \|/);
+  const line = (id) => r.stdout.split('\n').find((l) => l.startsWith(`| ${id} |`));
+  assert.match(line('H1'), /\| para \|$/);
+  assert.match(line('R2'), /\| para \|$/);
+  assert.doesNotMatch(line('H2'), /\| para \|$/);
+  assert.doesNotMatch(line('R1'), /\| para \|$/);
+  const j = JSON.parse(runCli(['summary', FIXTURE_SPEC, '--json']).stdout);
+  assert.deepEqual(j.stops, ['R2', 'H1']);
+  assert.equal(j.externalEffects.length, 1);
+});
+
+test('summary: contradicts marks stop and pipes are escaped', () => {
+  const r = runCli(['summary', '$SPEC', '--json'], mutate((d) => { d.rulings[0].contradicts = 'DEC-001'; }));
+  assert.deepEqual(JSON.parse(r.stdout).stops, ['R1', 'R2', 'H1']);
+  const t = runCli(['summary', '$SPEC'], mutate((d) => { d.externalEffects[0].what = 'a|b'; }));
+  assert.match(t.stdout, /a\\|b/);
+});
+
+test('summary: no data block -> exit 1 with data-block-missing', () => {
+  const r = runCli(['summary', '$SPEC'], '# sem bloco\n');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /data-block-missing/);
+});
+
+test('emit/summary: invalid usage -> exit 2', () => {
+  for (const c of ['emit', 'summary']) {
+    assert.equal(runCli([c]).status, 2);
+    assert.equal(runCli([c, FIXTURE_SPEC, '--bogus']).status, 2);
+    assert.equal(runCli([c, path.join(os.tmpdir(), 'nao-existe-spec.md')]).status, 2);
+  }
+  assert.equal(runCli(['emit', FIXTURE_SPEC, '--roadmap']).status, 2);
+  assert.equal(runCli(['summary', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]).status, 2);
+});

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // spec-tool: valida um spec com bloco de dados `json data` no esquema spec/1.
-// Uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]
+// Uso: node spec-tool.mjs check|emit|summary <spec.md> (ver USAGE)
 // Saida: 0 sem erro, 1 com erro, 2 uso invalido ou arquivo ilegivel.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -208,7 +208,66 @@ export function checkSpec(text, { roadmap = null } = {}) {
   return { data, errors, warnings };
 }
 
-const USAGE = 'uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]';
+export function emitSpec(text, { roadmap = null } = {}) {
+  const { data, errors, warnings } = checkSpec(text, { roadmap });
+  if (errors.length || !isObj(data)) return { errors, warnings, data };
+  const out = JSON.parse(JSON.stringify(data));
+  out.acceptance = out.acceptance.map((item) => {
+    const p = parseVerifyTag(item.text);
+    const verify = p.tag ? { kind: p.tag.kind, blq: p.tag.blq || null, evidence: p.tag.evidence } : null;
+    return { ...item, verify, textWithoutTag: p.text };
+  });
+  return { errors, warnings, data: out };
+}
+
+export function summarize(text) {
+  const read = readDataBlock(text);
+  if (read.error) return { error: read.error, rulings: [], needsPerson: [], externalEffects: [], stops: [] };
+  const d = isObj(read.data) ? read.data : {};
+  const arr = (k) => (Array.isArray(d[k]) ? d[k].filter(isObj) : []);
+  const rulings = arr('rulings');
+  const needsPerson = arr('needsPerson');
+  const externalEffects = arr('externalEffects');
+  const filled = (v) => v !== null && v !== undefined && v !== '';
+  const stops = [
+    ...rulings.filter((r) => (r.costIfWrong === 'high' && r.reversible === false) || filled(r.contradicts)).map((r) => r.id),
+    ...needsPerson.filter((h) => h.blocking === true).map((h) => h.id),
+  ];
+  return { error: null, rulings, needsPerson, externalEffects, stops };
+}
+
+const cell = (v) => (v === null || v === undefined ? '' : String(v)).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+
+export function formatSummary(s) {
+  const stop = (id) => (s.stops.includes(id) ? 'para' : '');
+  const table = (head, rows) => [
+    `| ${head.join(' | ')} |`,
+    `|${head.map(() => '---').join('|')}|`,
+    ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`),
+  ].join('\n');
+  return [
+    '## Decisões',
+    '',
+    table(['ID', 'Decisão', 'Custo se errada', 'Reversível', 'Alcance', 'Contradiz', 'Para'],
+      s.rulings.map((r) => [r.id, r.decision, r.costIfWrong, r.reversible, r.scope, r.contradicts, stop(r.id)])),
+    '',
+    '## Pessoas',
+    '',
+    table(['ID', 'Tipo', 'O quê', 'Bloqueia', 'Contorno', 'BLQ', 'Para'],
+      s.needsPerson.map((h) => [h.id, h.kind, h.what, h.blocking, h.workaround, h.blq, stop(h.id)])),
+    '',
+    '## Efeitos externos',
+    '',
+    table(['ID', 'O quê', 'Alvo'], s.externalEffects.map((x) => [x.id, x.what, x.target])),
+    '',
+  ].join('\n');
+}
+
+const USAGE = [
+  'uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]',
+  '     node spec-tool.mjs emit <spec.md> [--roadmap <pasta>]',
+  '     node spec-tool.mjs summary <spec.md> [--json]',
+].join('\n');
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -218,14 +277,16 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (cmd !== 'check') return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
+  if (!['check', 'emit', 'summary'].includes(cmd)) return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
+  const takesRoadmap = cmd !== 'summary';
+  const takesJson = cmd !== 'emit';
   let file = null;
   let json = false;
   let roadmapDir = null;
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (a === '--json') json = true;
-    else if (a === '--roadmap') {
+    if (a === '--json' && takesJson) json = true;
+    else if (a === '--roadmap' && takesRoadmap) {
       if (i + 1 >= rest.length) return bad(`--roadmap exige uma pasta\n${USAGE}`);
       roadmapDir = rest[++i];
     }
@@ -240,6 +301,16 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   } catch (e) {
     return bad(`não foi possível ler ${file}: ${e.message}`);
   }
+  if (cmd === 'summary') {
+    const s = summarize(text);
+    if (s.error) {
+      io.stderr.write(`ERROR ${s.error.code} -: ${s.error.message}\n`);
+      return 1;
+    }
+    if (json) out(JSON.stringify({ rulings: s.rulings, needsPerson: s.needsPerson, externalEffects: s.externalEffects, stops: s.stops }, null, 2));
+    else out(formatSummary(s));
+    return 0;
+  }
   let roadmap = null;
   if (roadmapDir !== null) {
     try {
@@ -247,6 +318,16 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     } catch (e) {
       return bad(e.message);
     }
+  }
+  if (cmd === 'emit') {
+    const r = emitSpec(text, { roadmap });
+    if (r.errors.length) {
+      for (const e of r.errors) io.stderr.write(`ERROR ${e.code} ${e.ref}: ${e.message}\n`);
+      io.stderr.write(`Result: ${r.errors.length} errors, ${r.warnings.length} warnings\n`);
+      return 1;
+    }
+    out(JSON.stringify({ tool: 'spec-tool', schema: SCHEMA, path: file, data: r.data }, null, 2));
+    return 0;
   }
   const r = checkSpec(text, { roadmap });
   const code = r.errors.length ? 1 : 0;
