@@ -330,7 +330,9 @@ export function buildBaseline({ outDir, tagCommit, date }) {
     const b = variants[`${name}-B`];
     if (!a || !b) continue;
     classes[name] = classAggregate(name, a, b);
-    if (!classes[name].seedSource || classes[name].seedSource.kind === 'sintetico') {
+    // Each side must carry its own seed source: one side cannot borrow the other's.
+    const unseeded = (x) => !x.seedSource || x.seedSource.kind === 'sintetico';
+    if (unseeded(a) || unseeded(b)) {
       flagged.add(name);
       incomplete.push(`${name} (semeadura sintética)`);
     }

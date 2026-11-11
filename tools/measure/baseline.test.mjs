@@ -96,6 +96,21 @@ test('synthetic seeding marks the class incomplete', () => {
   assert.equal(r.exitCode, 1);
 });
 
+test('a seeded variant without seedSource marks the class incomplete even if the other side has it', () => {
+  withTmp((dir) => {
+    cpSync(fx('completa'), dir, { recursive: true });
+    const file = join(dir, 'plano-semeado-A-8', 'aggregate.json');
+    const agg = JSON.parse(readFileSync(file, 'utf8'));
+    assert.ok(agg.seedSource);
+    delete agg.seedSource;
+    writeFileSync(file, JSON.stringify(agg));
+    const r = buildBaseline({ outDir: dir, tagCommit: TAG_COMMIT, date: DATE });
+    assert.ok(r.incomplete.includes('plano-semeado (semeadura sintética)'));
+    assert.ok(r.markdown.includes('incompleta (semeadura sintética)'));
+    assert.equal(r.exitCode, 1);
+  });
+});
+
 test('planner and tracker carry the cost note', () => {
   const r = build('completa');
   assert.ok(r.markdown.includes('custo não é comparado nesta skill (DEC-016)'));
