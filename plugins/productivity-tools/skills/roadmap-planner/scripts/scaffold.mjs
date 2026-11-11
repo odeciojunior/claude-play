@@ -95,6 +95,15 @@ export function validateModel(model) {
     if (!Array.isArray(model[key]) || model[key].length === 0) errors.push(err(key, 'required', `${key} needs at least one entry`));
   }
 
+  for (const key of ['requirements', 'decisions', 'gates', 'sources', 'blockers', 'measurements', 'releases']) {
+    if (!Array.isArray(model[key])) continue;
+    model[key].forEach((item, i) => { if (!isObj(item)) errors.push(err(`${key}[${i}]`, 'required', `${key}[${i}] must be an object`)); });
+  }
+  if (model.vocab !== undefined) {
+    if (!isObj(model.vocab)) errors.push(err('vocab', 'required', 'vocab must be an object'));
+    else for (const key of Object.keys(VOCAB_EN)) if (model.vocab[key] === undefined) errors.push(err(`vocab.${key}`, 'required', `vocab.${key} is required when vocab is given`));
+  }
+
   const list = (key) => (Array.isArray(model[key]) ? model[key] : []);
   const requirements = list('requirements');
   const phases = list('phases');
@@ -392,6 +401,10 @@ const TEXT = {
       measurements: 'Runs, costs and measurement milestones', config: 'Paths, vocabulary, limits',
     },
     headers: { decisions: 'Decisions', log: 'Log', sources: 'Sources', requirements: 'Requirements', conflicts: 'Conflicts', criticalPath: 'Critical path', measurements: 'Measurements' },
+    cols: { decisions: ['ID', 'Date', 'Deliverable', 'Decision', 'Discarded alternative', 'Contradicts', 'Revisit when', 'Origin', 'Status'], log: ['Date', 'Deliverable', 'What happened', 'Evidence'],
+      panel: ['Deliverable', 'Status', 'Evidence', 'Next step'], blockers: ['ID', 'Blocker', 'Affects', 'Since', 'Unblocks when'], inflight: ['Branch', 'Kind', 'Note'],
+      releases: ['Package', 'Deliverables', 'State', 'Stamped SHA', 'Date', 'Environment'], sources: ['ID', 'Source', 'What it is', 'Read on', 'Reliability'],
+      requirements: ['ID', 'Requirement', 'Type', 'Sources', 'Deliverables', 'Coverage'], measurements: ['Date', 'Deliverable', 'Kind', 'Detail', 'Recorded', 'Billed', 'Status'] },
     rows: {
       decision: ['A decision is made', '`decisions.md` first, then whatever uses it'],
       step: ['A piece or step closes', '`log.md` and the panel in `state.md`'],
@@ -417,6 +430,10 @@ const TEXT = {
       measurements: 'Execuções, custos e marcos de medição', config: 'Caminhos, vocabulário, limites',
     },
     headers: { decisions: 'Decisões', log: 'Log', sources: 'Fontes', requirements: 'Requisitos', conflicts: 'Conflitos', criticalPath: 'Caminho crítico', measurements: 'Medições' },
+    cols: { decisions: ['ID', 'Data', 'Entregável', 'Decisão', 'Alternativa descartada', 'Contradiz', 'Revisitar quando', 'Origem', 'Status'], log: ['Data', 'Entregável', 'O que aconteceu', 'Evidência'],
+      panel: ['Entregável', 'Status', 'Evidência', 'Próximo passo'], blockers: ['ID', 'Bloqueio', 'Afeta', 'Desde', 'Desbloqueia quando'], inflight: ['Branch', 'Tipo', 'Nota'],
+      releases: ['Pacote', 'Entregáveis', 'Estado', 'SHA carimbado', 'Data', 'Ambiente'], sources: ['ID', 'Fonte', 'O que é', 'Lida em', 'Confiabilidade'],
+      requirements: ['ID', 'Requisito', 'Tipo', 'Fontes', 'Entregáveis', 'Cobertura'], measurements: ['Data', 'Entregável', 'Tipo', 'Detalhe', 'Registrado', 'Faturado', 'Status'] },
     rows: {
       decision: ['Uma decisão é tomada', '`decisions.md` primeiro, depois o que a usa'],
       step: ['Uma peça ou passo fecha', '`log.md` e o painel em `state.md`'],
@@ -523,10 +540,10 @@ function renderState(model, t) {
   });
   const lines = [`${t.strategy} v1.0 -- ${model.date}`, ''];
   lines.push(...block('now', arr(model.now).map((x, i) => `${i + 1}. ${x}`)));
-  lines.push(...block('panel', table(['Deliverable', 'Status', 'Evidence', 'Next step'], panel)));
-  lines.push(...block('blockers', table(['ID', 'Blocker', 'Affects', 'Since', 'Unblocks when'], blockers)));
+  lines.push(...block('panel', table(t.cols.panel, panel)));
+  lines.push(...block('blockers', table(t.cols.blockers, blockers)));
   lines.push(...block('pending', arr(model.pending).map((p) => (isObj(p) ? `- (${p.owner}) ${p.text}` : `- ${p}`))));
-  lines.push(...block('inflight', table(['Branch', 'Kind', 'Note'], [])));
+  lines.push(...block('inflight', table(t.cols.inflight, [])));
   if (arr(model.donot).length) lines.push(...block('donot', model.donot.map((x) => `- ${x}`)));
   if (arr(model.releases).length) {
     const rows = model.releases.map((r, i) => {
@@ -535,12 +552,12 @@ function renderState(model, t) {
       return [cell(r.package, `${at}.package`), cell(deliverables, `${at}.deliverables`), cell(r.state, `${at}.state`),
         isText(r.sha) ? `\`${cell(r.sha, `${at}.sha`)}\`` : '-', cell(r.date, `${at}.date`), cell(dash(r.environment), `${at}.environment`)];
     });
-    lines.push(...block('releases', table(['Package', 'Deliverables', 'State', 'Stamped SHA', 'Date', 'Environment'], rows)));
+    lines.push(...block('releases', table(t.cols.releases, rows)));
   }
   return lines.join('\n') + '\n';
 }
 
-function renderDecisions(model) {
+function renderDecisions(model, t) {
   const v = model.vocab;
   const statusWord = (s) => ({ 'in-force': v.decisionInForce, pending: v.decisionPending }[s] ?? s);
   const rows = arr(model.decisions).map((d, i) => {
@@ -550,13 +567,13 @@ function renderDecisions(model) {
       cell(dash(d.discarded), `${at}.discarded`), cell(dash(d.contradicts), `${at}.contradicts`), cell(dash(d.revisit), `${at}.revisit`),
       cell(dash(d.origin), `${at}.origin`), cell(statusWord(d.status), `${at}.status`)];
   });
-  const lines = ['# Decisions', '', ...block('decisions', table(['ID', 'Date', 'Deliverable', 'Decision', 'Discarded alternative', 'Contradicts', 'Revisit when', 'Origin', 'Status'], rows))];
+  const lines = [`# ${t.headers.decisions}`, '', ...block('decisions', table(t.cols.decisions, rows))];
   return lines.join('\n') + '\n';
 }
 
 function renderLog(model, t) {
   const rows = [[cell(model.date, 'date'), '-', t.created, `\`${cell(model.strategyPath, 'strategyPath')}\``]];
-  return ['# Log', '', ...block('log', table(['Date', 'Deliverable', 'What happened', 'Evidence'], rows))].join('\n') + '\n';
+  return [`# ${t.headers.log}`, '', ...block('log', table(t.cols.log, rows))].join('\n') + '\n';
 }
 
 function renderSources(model, t) {
@@ -564,7 +581,7 @@ function renderSources(model, t) {
     const at = `sources[${i}]`;
     return [cell(s.id, `${at}.id`), `\`${cell(s.source, `${at}.source`)}\``, cell(s.what, `${at}.what`), cell(s.readOn, `${at}.readOn`), cell(s.reliability, `${at}.reliability`)];
   });
-  const lines = [`# ${t.headers.sources}`, '', ...block('sources', table(['ID', 'Source', 'What it is', 'Read on', 'Reliability'], rows)),
+  const lines = [`# ${t.headers.sources}`, '', ...block('sources', table(t.cols.sources, rows)),
     '', `## ${t.headers.conflicts}`, '', ...block('conflicts', arr(model.conflicts).map((c) => `- ${c}`))];
   return lines.join('\n') + '\n';
 }
@@ -577,7 +594,7 @@ function renderRequirements(model, t) {
     return [cell(r.id, `${at}.id`), cell(r.text, `${at}.text`), cell(dash(r.type), `${at}.type`), cell(arr(r.sources).join(', ') || '-', `${at}.sources`),
       c.deliverables.length ? c.deliverables.join(', ') : '-', cell(c.coverage, `${at}.coverage`)];
   });
-  return [`# ${t.headers.requirements}`, '', ...block('requirements', table(['ID', 'Requirement', 'Type', 'Sources', 'Deliverables', 'Coverage'], rows))].join('\n') + '\n';
+  return [`# ${t.headers.requirements}`, '', ...block('requirements', table(t.cols.requirements, rows))].join('\n') + '\n';
 }
 
 function renderCriticalPath(model, t) {
@@ -607,7 +624,7 @@ function renderMeasurements(model, t) {
     const at = `measurements[${i}]`;
     return ['date', 'deliverable', 'kind', 'detail', 'recorded', 'billed', 'status'].map((k) => cell(dash(m[k]), `${at}.${k}`));
   });
-  return [`# ${t.headers.measurements}`, '', ...block('measurements', table(['Date', 'Deliverable', 'Kind', 'Detail', 'Recorded', 'Billed', 'Status'], rows))].join('\n') + '\n';
+  return [`# ${t.headers.measurements}`, '', ...block('measurements', table(t.cols.measurements, rows))].join('\n') + '\n';
 }
 
 function renderReadme(model, t, config) {
@@ -645,7 +662,7 @@ export function renderFiles(model) {
   const out = {};
   out[config.files.readme] = renderReadme(model, t, config);
   out[config.files.state] = renderState(model, t);
-  out[config.files.decisions] = renderDecisions(model);
+  out[config.files.decisions] = renderDecisions(model, t);
   out[config.files.log] = renderLog(model, t);
   out[config.files.criticalPath] = renderCriticalPath(model, t);
   out[config.files.sources] = renderSources(model, t);
@@ -862,8 +879,20 @@ function report(modelPath, folder, extra) {
 
 const toErr = (e) => ({ path: e.path, code: e.code, message: e.message });
 
+// Linhas de log que a regravação apagaria: mais do que o scaffold grava (uma). Lê os nomes de
+// arquivo do config já existente na pasta (o do modelo novo só se aquele for ilegível).
+function existingEntries(folder, gen) {
+  if (!fs.existsSync(path.join(folder, 'roadmap.config.json'))) return null;
+  let files = gen.config.files;
+  try { const f = JSON.parse(fs.readFileSync(path.join(folder, 'roadmap.config.json'), 'utf8').replace(/^\uFEFF/, '')).files; if (isObj(f)) files = f; } catch { /* usa o novo */ }
+  let text = '';
+  try { text = files.log ? fs.readFileSync(path.join(folder, files.log), 'utf8') : ''; } catch { /* sem log */ }
+  const rows = text.split(/\r?\n/).filter((l) => /^\|/.test(l) && !/^\|[\s:|-]*$/.test(l)).length - 1;
+  return rows > 1 ? `${files.log} has ${rows} entries (the scaffold writes 1)` : null;
+}
+
 // Lê o modelo (sem BOM), valida, gera em memória, confere no checker e só então grava.
-export function runScaffold(modelPath, { dryRun = false } = {}) {
+export function runScaffold(modelPath, { dryRun = false, _generate = generate } = {}) {
   const modelAbs = path.resolve(modelPath);
   const folder = path.dirname(modelAbs);
   const refuse = (errors, extra = {}) => report(modelAbs, folder, { ...extra, errors, exitCode: 1 });
@@ -895,8 +924,7 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
   const { model, defaulted } = applyDefaults(input);
   let gen;
   try {
-    if (process.env.SCAFFOLD_SELFTEST_THROW) throw new Error('self-test: forced internal failure');
-    gen = generate(model, { folder });
+    gen = _generate(model, { folder });
   } catch (e) {
     if (e instanceof ScaffoldError) return refuse(e.problems.map(toErr), { defaulted });
     return fail('internal', String(e && e.message ? e.message : e).split('\n')[0], { defaulted });
@@ -916,6 +944,9 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
     return fail('checker-format', `checker format ${header ? header[1] : '?'} differs from formatVersion ${gen.config.formatVersion}`, { defaulted, warnings });
   }
 
+  const clash = existingEntries(folder, gen);
+  if (clash) return refuse([{ path: '', code: 'existing-roadmap', message: `${folder} already has tracker edits (${clash}); refusing to overwrite it. Stop: update it with roadmap-tracker and delete planning-model.json` }], { defaulted, warnings });
+
   const outputs = { ...gen.files, 'check-roadmap.mjs': checker };
   const written = Object.keys(outputs)
     .map((rel) => ({ rel, abs: path.resolve(folder, rel) }));
@@ -934,7 +965,7 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
   return report(modelAbs, folder, { written: relNames, defaulted, warnings, exitCode: 0 });
 }
 
-export function main(argv) {
+export function main(argv, opts = {}) {
   const args = argv.filter((a) => a !== '--dry-run' && a !== '--json');
   const unknown = args.filter((a) => a.startsWith('-'));
   const json = argv.includes('--json');
@@ -947,7 +978,7 @@ export function main(argv) {
     }
     return 2;
   }
-  const out = runScaffold(args[0], { dryRun: argv.includes('--dry-run') });
+  const out = runScaffold(args[0], { ...opts, dryRun: argv.includes('--dry-run') });
   if (json) {
     console.log(JSON.stringify(out, null, 2));
   } else {
