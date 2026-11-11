@@ -604,7 +604,7 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
 // Resume args as shown to the report agent: the config is long and already known to the caller.
 function withoutConfig(resumeWith) {
   if (!resumeWith) return resumeWith
-  const { config, notes, ...rest } = resumeWith
+  const { config, notes, trackerCli, ...rest } = resumeWith
   return rest
 }
 // Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
@@ -954,6 +954,13 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   }
   return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id) }
 }
+// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence becomes scope local (and leaves the text); anything else is contrato.
+function parseDecision(text) {
+  const t = collapseWs(text)
+  const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t)
+  if (!m) return { text: t, scope: 'contrato' }
+  return { text: t.slice(0, m.index).trim(), scope: m[1].toLowerCase() === 'local' ? 'local' : 'contrato' }
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -979,6 +986,7 @@ const mkResult = (status, extra) => ({
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
 }
+if (typeof A.trackerCli !== 'string' || !A.trackerCli.trim()) return { status: 'error', error: 'args.trackerCli is missing: run scripts/preflight.mjs and pass its trackerCli' }
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
 if (unfilledNotes.length) return { status: 'error', error: `notes still hold the template text, without the owner's answer: ${unfilledNotes.join(', ')}` }
@@ -1073,7 +1081,7 @@ const STRS = { type: 'array', items: STR }
 const S_DISC = { type: 'object', properties: {
   error: STR, repo: STR, today: STR, wtRoot: STR, roadmapDir: STR, roadmapSlug: STR, strategy: STR, checker: STR,
   integrationBranch: STR, releaseBranch: STR, target: STR, integratedStatuses: STRS, discardedStatus: STR, blockedStatus: STR, deliverableStatuses: STRS,
-  targetExists: BOOL, readFrom: STR, trackerAvailable: BOOL, checkerExists: BOOL,
+  targetExists: BOOL, readFrom: STR, language: STR, cellChars: INT, checkerExists: BOOL,
   cards: { type: 'array', items: { type: 'object', properties: {
     id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
     status: { ...STR, description: 'the Status cell of the panel row, verbatim, with every segment and note' }, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget', 'mergeFound', 'acceptance'] } },
@@ -1109,7 +1117,8 @@ const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done:
 const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
-const S_STATUS = { type: 'object', properties: { checkerErrors: INT, statusWritten: STR, commit: STR, head: STR, details: STR }, required: ['checkerErrors', 'statusWritten'] }
+const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
+const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
@@ -1137,7 +1146,7 @@ const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token:
 6. Status: the <!-- roadmap:panel --> block of the state.md read. status = the deliverable's Status cell verbatim, with every segment and note (for example "code: on-branch; acceptance: blocked (BLQ-2)"), never reduced to one word; empty when the card has no row. mergeCommit = first hash in backticks in the Evidence column, if any.
 7. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The ancestor rules (mergeCommit or integrationBranch an ancestor of the target) count ONLY when the code segment is finished. A card with several pieces (labels other than "code", like "piece 1: integrated; piece 2: spec") or whose Status is not an integrated or on-branch word is NOT onTarget by those rules, whatever commit its Evidence cites. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 8. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
-9. trackerAvailable: the skill productivity-tools:roadmap-tracker appears in your skill list.
+9. language = the "language" field of roadmap.config.json (empty when absent); cellChars = limits.cellChars of the same file (omit when absent).
 `,
   { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet', effort: 'medium' })
 if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
@@ -1168,10 +1177,9 @@ const STATUSES = {
   discarded: disc.discardedStatus || 'discarded',
   blocked: disc.blockedStatus || 'blocked',
 }
-disc.cards.forEach(c => { c.status = cardStatus(c.status, STATUSES); c.onTarget = onTargetEffective(c, STATUSES) })
+disc.cards.forEach(c => { c.cell = c.status; c.status = cardStatus(c.status, STATUSES); c.onTarget = onTargetEffective(c, STATUSES) })
 const STATUS_AFTER_MERGE = TARGET === INTEG ? STATUSES.integrated[0] : STATUSES.onBranch
 if (TARGET === INTEG && !A.allowIntegrationBranch) return { status: 'error', error: `targetBranch (${TARGET}) is the integrationBranch; pass allowIntegrationBranch: true to merge into it.` }
-if (disc.trackerAvailable === false) return { status: 'error', error: 'the skill productivity-tools:roadmap-tracker is not available to the subagents' }
 if (disc.checkerExists === false) return { status: 'error', error: `checker ${disc.checker} does not exist` }
 
 // ---------------------------------------------------------------- selection
@@ -1349,16 +1357,58 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
 const NO_REVISION = `Do NOT propose, write or approve a strategy revision (roadmap-tracker Step 6, events § 9) or a format migration (§ 11), whatever the event triggers: the owner's pre-approval never covers them. If the recipe asks for one, add only the pending item "(user) approve strategy v<N+1> (absorbs DEC-…)" and leave the strategy untouched. Leave any item you cannot settle in \`pending\`.`
-const recordStatus = (E, status, evidence, extraTxt) => mergeLock(async () => {
+// Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
+const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
+const LANG = disc.language || ''
+const CELL_CHARS = Number.isInteger(disc.cellChars) && disc.cellChars > 0 ? disc.cellChars : 300
+const absFolder = INTWT.replace(/\/+$/, '') + '/' + RM.replace(/\/+$/, '')
+// Last status word written per deliverable (segment "code" when the cell has labels), starting from the discovery.
+const pieceOf = c => (statusSegments(c.cell).some(sg => sg.label) ? 'code' : '')
+const lastWord = new Map(disc.cards.map(c => {
+  const segs = statusSegments(c.cell)
+  const sg = pieceOf(c) ? segs.find(x => /^(code|c[oó]digo)$/.test(x.label)) : segs[0]
+  return [c.id, sg ? sg.status : '']
+}))
+const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
+// Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
+// extra = { decisions?: string[], pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
+const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   if (integBroken) return null
-  const r = await agent(`${COMMON()}
+  const x = extra || {}
+  const c = byId[E]
+  const piece = pieceOf(c)
+  const cur = lastWord.get(E)
+  let blockedBy = null
+  if (cur === STATUSES.blocked && status !== STATUSES.blocked) {
+    const id = (/\bBLQ-\d+\b/.exec(c.cell || '') || [])[0]
+    if (id) blockedBy = { id, affects: ((disc.blockers || []).find(bl => bl.id === id) || {}).affects || [E] }
+  }
+  const rc = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: status, piece, blockedBy, evidence: refs, logWhat: x.reason, decisions: (x.decisions || []).map(parseDecision), pending: x.pending,
+    inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
+  if (rc.error) return { ok: false, failures: [rc.error], head: null, cuts: [] }
+  const msg = phrases(LANG).commit(E, status)
+  const results = rc.commands.length ? await agent(`${COMMON_SLIM()}
 
-RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Use the skill productivity-tools:roadmap-tracker to record deliverable ${E} with status "${status}" (vocabulary: ${(disc.deliverableStatuses || []).join(', ')}), evidence: ${evidence}.${extraTxt ? '\n' + extraTxt : ''}
-${NO_REVISION}
-Run node ${disc.checker} and leave it with 0 errors. Commit only files of ${RM}. Return checkerErrors, statusWritten, commit, head (git rev-parse HEAD after the commit), details.`,
-    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_STATUS, model: 'sonnet', effort: 'medium' })
-  if (r && r.head) lastGood = r.head  // a record-only commit does not invalidate what was already validated
-  return r
+RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
+${numbered(rc.commands)}
+${BASH_ONLY}
+Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then, in the same worktree: git -C "${INTWT}" add -- "${RM}"; only if git -C "${INTWT}" diff --cached --quiet exits 1, commit with: git -C "${INTWT}" commit -m ${shq(msg)} -m ${shq(TRAILER)} and return the commit hash in commit. The commands are the whole job: do not edit any file by hand. Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.`,
+    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_RECORD, model: 'haiku', effort: 'low' }) : { runs: [] }
+  const read = await agent(`${COMMON_SLIM()}
+
+READ-ONLY re-read in the integration worktree ${INTWT} after the record of ${E}. Run these commands exactly, one per call, change nothing, and return the raw stdout of each (not summarized, not reformatted): status = 1, brief = 2, pendingDecisions = 3, head = 4, porcelain = 5 (empty string when the output is empty).
+${numbered([cliCmd(A.trackerCli, 'status', absFolder), cliCmd(A.trackerCli, 'brief', absFolder), cliCmd(A.trackerCli, 'pending-decisions', absFolder), `git -C "${INTWT}" rev-parse HEAD`, `git -C "${INTWT}" status --porcelain`])}
+${BASH_ONLY}`,
+    { label: `${E}:status-${status}-read`, phase: 'Plan', schema: S_RECORD_READ, model: 'haiku', effort: 'low' })
+  if (!results || !read) return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts }
+  const v = recordVerdict({ expected: rc.commands, results, read, E, word: status, piece, blockedStatus: STATUSES.blocked })
+  const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
+  const ok = failures.length === 0
+  if (ok) {
+    lastWord.set(E, status)
+    if (read.head) lastGood = read.head  // a record-only commit does not invalidate what was already validated
+  }
+  return { ok, failures, head: ok ? read.head : null, cuts: rc.cuts }
 })
 
 // ============================================================================ one deliverable
@@ -1368,7 +1418,7 @@ async function runDeliverable(E, idx) {
   const br = `${PREFIX}${E}`
   const port = 5200 + idx * 10
   const human = []
-  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [] }
+  const out = { id: E, merged: false, ok: false, human, concerns: [], acceptedRisks: [], reviews: [], externalRun: [], recordCuts: [] }
   const annotateHuman = () => { const kept = annotateAuthorizedHuman(human, out.externalRun); human.length = 0; human.push(...kept) }
   const baseOf = (withNotes = true) => `${COMMON_BASE}
 DELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.${(withNotes && A.notes && A.notes[E]) ? `\nOWNER INSTRUCTION OR ANSWER FOR ${E}: ${A.notes[E]}
@@ -1392,11 +1442,12 @@ Never write or quote a credential, token or key from the owner instruction in an
   const fmtRisk = x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
-    if (!setupOk || (!out.reviews.length && !out.externalRun.length)) return
+    if (!setupOk || (!out.reviews.length && !out.externalRun.length && !out.recordCuts.length)) return
+    const cutsTxt = out.recordCuts.length ? ', plus a section "Textos cortados no registro" with one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the entries an earlier run wrote there' : ''
     const ranTxt = out.externalRun.length ? ', plus a section "External effects run" with one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the lines an earlier run wrote there' : ''
     const w = await agent(`${Cs()}
 
-Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}) })}
+Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
@@ -1755,18 +1806,22 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
       { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
   }
 
-  const decisionsTxt = `Record in ${RM}decisions.md the autonomous decisions of the spec ${spec.specPath} (branch ${br}) with Origin "executor" and status "pending" (use the roadmap's own word for pending; the owner reviews them), unless already there: ${JSON.stringify(out.decisions || [])}. Non-blocking human inputs go to the pending block: ${JSON.stringify(human.map(h => h.what))}.${noteE ? ` The owner answered for ${E} in the run notes on ${TODAY} (the text is deliberately not copied here).` : ''}`
+  const logSource = () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md`
+  const recordExtra = () => ({ decisions: out.decisions || [], pending: human.filter(h => h.blocking !== true).map(h => h.what), source: logSource() })
+  const failedRecord = rec => `${rec ? rec.failures.join('; ') : 'null agent or integration worktree broken'}`
   if (MODE === 'plan-only') {
-    const rec = await recordStatus(E, STATUSES.plan, `spec ${spec.specPath} and plan ${plan.planPath} on branch ${br} (worktree ${wt})`, decisionsTxt)
-    if (!rec || rec.checkerErrors > 0) return fail('infra', `plan-only: the roadmap record failed (${rec ? 'checkerErrors=' + rec.checkerErrors : 'null agent or integration worktree broken'})`)
+    const rec = await recordStatus(E, STATUSES.plan, [spec.specPath, plan.planPath], recordExtra())
+    if (rec) out.recordCuts.push(...rec.cuts)
+    if (!rec || !rec.ok) return fail('infra', `plan-only: the roadmap record failed (${failedRecord(rec)})`)
+    if (out.recordCuts.length) await persistReviews('record')
     out.planOnly = true
     out.ok = true
     return out
   }
-  const recRun = await recordStatus(E, STATUSES.executing, `spec ${spec.specPath} and plan ${plan.planPath} approved by the reviews; branch ${br} at ${wt}`,
-    `${decisionsTxt}\nAdd ${br} to the inflight block (Branch: ${br}; Kind: the branchLive word of the roadmap vocab; Note: automatic execution).`)
+  const recRun = await recordStatus(E, STATUSES.executing, [spec.specPath, plan.planPath], { ...recordExtra(), inflight: { add: br, note: '' } })
+  if (recRun) out.recordCuts.push(...recRun.cuts)
 
-  if (!recRun || recRun.checkerErrors > 0) out.concerns.push(`the "executing" roadmap record failed (${recRun ? 'checkerErrors=' + recRun.checkerErrors : 'null agent or integration worktree broken'}); decisions and the in-flight entry are not recorded yet`)
+  if (!recRun || !recRun.ok) out.concerns.push(`the "executing" roadmap record failed (${failedRecord(recRun)}); decisions and the in-flight entry are not recorded yet`)
 
   // ---------- Tasks (resumable)
   // Only this subject ends the wait: a re-run that commits and then fails is still waiting for the person.
@@ -2195,7 +2250,10 @@ order.forEach((id, idx) => {
         else {
           if (r.failKind === 'conteudo') op('defect', id, r.error, `Read the review log on the branch ${r.branch}; adjust the spec or plan, or pass an instruction in notes, and run again`, { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: A.notes && A.notes[id] && !NOTES_READ.includes(id) ? A.notes[id] : '<owner instruction>' } })
           if (r.failKind === 'decisao') op('decision', id, r.error, r.doNow || 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes', { ...A, deliverables: [id], notes: { ...(A.notes || {}), [id]: '<owner decision>' } })
-          if (MODE !== 'plan-only') await safe(() => recordStatus(id, STATUSES.blocked, `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`))
+          if (MODE !== 'plan-only') {
+            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: `docs/superpowers/reviews/${TODAY}-${id}-*-reviews.md` }))
+            if (rec && rec.cuts && rec.cuts.length) r.recordCuts = [...(r.recordCuts || []), ...rec.cuts]
+          }
         }
       }
       return r

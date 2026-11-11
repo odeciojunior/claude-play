@@ -45,10 +45,51 @@ function makeJournal() {
   };
 }
 
+// Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
+const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], warnings: [], changed: [], result: {}, ...over });
+const promptCommands = (prompt) => [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]);
+function makeRecordMock(cardsOf) {
+  const st = {};
+  let decN = 900;
+  const init = (E) => {
+    if (st[E]) return st[E];
+    const cell = (cardsOf().find((c) => c.id === E) || {}).status || '';
+    const labelled = /:/.test(cell);
+    const m = /code:\s*([^;(]*)/.exec(cell);
+    return (st[E] = { label: labelled ? 'code' : '', word: labelled ? (m ? m[1].trim() : '') : cell.replace(/\s*\(.*$/, ''), note: '', decisionIds: [] });
+  };
+  return {
+    state: st,
+    run(prompt, E) {
+      const x = init(E);
+      const runs = promptCommands(prompt).map((command) => {
+        const verb = /^node "[^"]*" (\S+)/.exec(command)[1];
+        let over = {};
+        if (verb === 'set-status') x.word = /set-status '[^']*' '[^']*' '([^']*)'/.exec(command)[1];
+        if (verb === 'block-open') { x.word = 'blocked'; x.note = 'BLQ-9'; over = { result: { id: 'BLQ-9' }, changed: ['state.md'] }; }
+        if (verb === 'add-decision') { const id = 'DEC-' + decN++; x.decisionIds.push(id); over = { result: { id }, changed: ['decisions.md'] }; }
+        return { command, exit: 0, stdout: cliJson(over) };
+      });
+      return { runs };
+    },
+    read(E) {
+      const x = init(E);
+      return {
+        status: cliJson({ result: { panel: [{ id: E, segments: [{ label: x.label, word: x.word, note: x.note }] }] } }),
+        brief: cliJson({ result: { checker: { errors: 0, warnings: 0, stale: false } } }),
+        pendingDecisions: cliJson({ result: { decisions: x.decisionIds.map((id) => ({ id })) } }),
+        head: 'abc1234',
+        porcelain: '',
+      };
+    },
+  };
+}
+
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
   const lastAc = {};
+  const recMock = makeRecordMock(() => (typeof cards === 'function' ? cards() : cards));
   const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
   // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
   const liveAgent = async (prompt, o) => {
@@ -62,7 +103,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', trackerAvailable: true, checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
@@ -72,7 +113,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
-    if (/:status-/.test(l)) return { checkerErrors: 0, statusWritten: 'x', head: 'abc1234' };
+    if (/:status-.*-read$/.test(l)) return recMock.read(E);
+    if (/:status-/.test(l)) return recMock.run(prompt, E);
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
     if (/:resync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
@@ -102,7 +144,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', ...args },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', trackerCli: '/t/roadmap.mjs', ...args },
     agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -620,11 +662,10 @@ test('m7: reportPath is null when no report file was written', async () => {
   assert.equal(broken.r.reportPath, null);
 });
 
-test('m8: the inflight row uses the columns of the roadmap format', async () => {
+test('m8: the inflight row is added by the CLI inflight-add command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const p = calls.find((c) => c.label === 'E1:status-d').prompt;
-  assert.match(p, /Kind/);
-  assert.match(p, /branchLive/);
+  assert.match(p, /inflight-add '[^']*' 'feat\/E1' --note '/);
   assert.doesNotMatch(p, /type: deliverable/);
 });
 
@@ -979,7 +1020,6 @@ test('item 7: the owner notes never reach the record or the docs prompts', async
   assert.ok(spec.includes('sk-live-123'));
   assert.match(spec, /Never write or quote a credential/);
   assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /Never write or quote a credential/);
-  assert.match(calls.find((c) => /^E1:status-/.test(c.label)).prompt, /answered for E1 in the run notes/);
 });
 
 test('item 7: the merge-fix prompts carry no owner notes', async () => {
@@ -2889,4 +2929,158 @@ test('recordVerdict: trackerCli com espaços no caminho não perde o verbo (BLQ 
   b.results.runs = [{ command: b.expected[0], exit: 0, stdout: okOut('block-open', { id: 'BLQ-9', affects: ['E1'] }) }];
   b.read.status = panelOut('bloqueado', { note: 'BLQ-8' });
   assert.equal(PU.recordVerdict(b).ok, false);
+});
+
+// ---- E18 T4: registro do status pela CLI do tracker, com veredito por código
+const statusPrompts = (calls) => calls.filter((c) => /:status-/.test(c.label));
+const readWith = (word, over = {}) => ({
+  status: cliJson({ result: { panel: [{ id: 'E1', segments: [{ label: '', word, note: '' }] }] } }),
+  brief: cliJson({ result: { checker: { errors: 0 } } }),
+  pendingDecisions: cliJson({ result: { decisions: [] } }),
+  head: 'abc1234',
+  porcelain: '',
+  ...over,
+});
+const badPlan = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+
+test('AC2 registro de plano e executando pela CLI', async () => {
+  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: ['escolha A. Scope: local.', 'escolha B'], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const full = await exec({ cards: [card('E1')], deliverables: ['E1'], over: humanSpec });
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: humanSpec });
+  const plan = po.calls.find((c) => c.label === 'E1:status-c').prompt;
+  const exe = full.calls.find((c) => c.label === 'E1:status-d').prompt;
+  for (const p of [plan, exe]) {
+    assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' /);
+    assert.match(p, /node "\/t\/roadmap\.mjs" log /);
+    assert.match(p, /--deliverable 'E1'/);
+    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha A\.' --scope 'local'/);
+    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha B' --scope 'contrato'/);
+    assert.match(p, /add-pending '[^']*' --owner 'owner' --text 'precisa de credencial'/);
+  }
+  assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
+  assert.doesNotMatch(plan, /inflight-add/);
+  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(c.prompt, /roadmap-tracker/, c.label);
+  assert.equal(full.r.results[0].merged, true);
+  assert.deepEqual(full.r.results[0].concerns, []);
+});
+
+test('AC3 releitura com outra palavra reprova por código', async () => {
+  const wrong = (l) => (/:status-.*-read$/.test(l) ? readWith('zzz') : undefined);
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: wrong });
+  assert.ok(po.r.results[0].error);
+  assert.equal(po.r.results[0].failKind, 'infra');
+  assert.match(po.r.results[0].error, /zzz/);
+  const run = await exec({ cards: [card('E1')], deliverables: ['E1'], over: wrong });
+  assert.ok(run.r.results[0].concerns.some((x) => /"executing" roadmap record failed/.test(x)));
+});
+
+test('AC3 add-decision com erro da CLI reprova', async () => {
+  const bad = (l, prompt) => {
+    if (!/:status-[a-z]+$/.test(l)) return undefined;
+    const runs = promptCommands(prompt).map((command) => (/add-decision/.test(command)
+      ? { command, exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) }
+      : { command, exit: 0, stdout: cliJson() }));
+    return { runs };
+  };
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: bad });
+  assert.equal(r.results[0].failKind, 'infra');
+  assert.match(r.results[0].error, /add-decision/);
+});
+
+test('AC3 stdout que não é JSON da CLI, ou comando omitido, reprova', async () => {
+  const mk = (alter) => (l, prompt) => (/:status-[a-z]+$/.test(l) ? { runs: alter(promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() }))) } : undefined);
+  const notJson = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: mk((runs) => runs.map((x, i) => (i === 0 ? { ...x, stdout: 'OK done' } : x))) });
+  assert.equal(notJson.r.results[0].failKind, 'infra');
+  assert.match(notJson.r.results[0].error, /not JSON/);
+  const omitted = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: mk((runs) => runs.slice(1)) });
+  assert.equal(omitted.r.results[0].failKind, 'infra');
+  assert.match(omitted.r.results[0].error, /missing|different text/);
+});
+
+test('AC3 no-bash reprova', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+$/.test(l) ? { error: 'no-bash', runs: [] } : undefined) });
+  assert.ok(r.results[0].error);
+  assert.match(r.results[0].error, /no-bash/);
+});
+
+test('o veredito ignora statusWritten e details do agente', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' },
+    over: (l, prompt) => {
+      if (/:status-[a-z]+$/.test(l)) return { runs: promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() })), statusWritten: 'ok', details: 'tudo certo' };
+      if (/:status-.*-read$/.test(l)) return readWith('zzz');
+      return undefined;
+    } });
+  assert.ok(r.results[0].error);
+});
+
+test('textos longos não viram concern', async () => {
+  const long = (w) => `${w} ${'palavra '.repeat(60)}`.trim();
+  const over = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [long('decisao')], humanInputs: [{ what: long('humano'), blocking: false }] } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  let seen = 0;
+  for (const cmd of promptCommands(p)) {
+    for (const m of cmd.matchAll(/--(?:decision|text|what|note|next) '((?:[^']|'\\'')*)'/g)) { seen++; assert.ok(m[1].length <= 300, `${cmd.slice(0, 60)} (${m[1].length})`); }
+  }
+  assert.ok(seen >= 4);
+  assert.ok(!r.results[0].concerns.some((x) => /record/.test(x)));
+  const rl = calls.filter((c) => /review-log/.test(c.label)).map((c) => c.prompt).join('\n');
+  assert.match(rl, /Textos cortados no registro/);
+  assert.ok(rl.includes(long('decisao').replace(/\s+/g, ' ')));
+  assert.ok(rl.includes(long('humano').replace(/\s+/g, ' ')));
+  assert.ok(rl.includes('"recordCuts"'));
+});
+
+test('retomada não repete log: a palavra já gravada tira set-status e log, e o veredito confere a palavra', async () => {
+  const { r, calls } = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  assert.doesNotMatch(p, / set-status /);
+  assert.doesNotMatch(p, /roadmap\.mjs" log /);
+  assert.match(p, /add-decision/);
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.results[0].concerns, []);
+  const wrong = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'], over: (l) => (/:status-.*-read$/.test(l) ? readWith('c') : undefined) });
+  assert.ok(wrong.r.results[0].concerns.some((x) => /"executing" roadmap record failed/.test(x)));
+});
+
+test('célula com rótulos usa --piece code', async () => {
+  const { calls } = await exec({ cards: [card('E1', { status: 'code: c; acceptance: blocked (BLQ-2)' })], deliverables: ['E1'] });
+  assert.match(calls.find((c) => c.label === 'E1:status-d').prompt, /set-status '[^']*' 'E1' 'd' --piece 'code'/);
+});
+
+test('falta de trackerCli: erro antes de qualquer agente', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { trackerCli: undefined } });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /trackerCli/);
+  assert.equal(calls.length, 0);
+});
+
+test('BASH_ONLY literal em todo prompt de registro e de releitura; a descoberta não exige o tracker', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const ps = statusPrompts(calls);
+  assert.ok(ps.length >= 2);
+  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
+  for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+  const disc = calls.find((c) => c.label === 'discovery');
+  assert.doesNotMatch(disc.prompt, /trackerAvailable/);
+  assert.match(disc.prompt, /language/);
+  assert.ok(!('trackerAvailable' in disc.opts.schema.properties));
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { trackerAvailable: false } });
+  assert.equal(d.r.results[0].merged, true);
+});
+
+test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
+  assert.ok(r.operatorActions.length > 0);
+  const rep = calls.find((c) => c.label === 'report').prompt;
+  assert.doesNotMatch(rep, /\/t\/roadmap\.mjs/);
+});
+
+test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
+  const p = calls.find((c) => c.label === 'E1:status-blocked').prompt;
+  assert.match(p, /block-open '[^']*' --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
+  assert.match(p, /--affects 'E1'/);
+  assert.doesNotMatch(p, / set-status /);
+  assert.ok(r.results[0].error);
 });
