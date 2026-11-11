@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E22 | DEC-234 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18 | DEC-217 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18 | DEC-212 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18, E22 | DEC-211, DEC-215, DEC-232, DEC-233, DEC-235 ratificadas pelo dono | `decisions.md` |
 | 2026-11-11 | E4 | Correção de E4 (W6, W1, cabeçalhos pt, lint 0 WARN, validação de itens) integrada na release | `5a8ab1e` |
 | 2026-11-11 | E22 | BLQ-4 aberto: a execução automática de E22 parou na tarefa 8 (despacha subagentes; é do orquestrador da sessão principal, DEC-204; o executor não tem a ferramenta, nada simulado). E22 passa a bloqueado; `feat/E22` mantida. | `8f53396d9d5bb47731d7d4a1fa027d5197922a99` |
 | 2026-11-11 | E22 | E22 passa a executando na feat/E22 (execução automática pelo release, depois de E18); feat/E22 sincronizada com a release e spec e plano aprovados pelas revisões. 17 decisões autônomas do spec gravadas como pendentes (DEC-232 a DEC-248). | `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` |
