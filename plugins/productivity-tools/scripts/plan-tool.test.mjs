@@ -323,3 +323,147 @@ test('CLI check: usage errors exit 2', () => {
   assert.equal(runCli(['check', PLAN_PATH, '--bogus']).status, 2);
   assert.equal(runCli(['check', PLAN_PATH, '--spec']).status, 2);
 });
+
+// ---- Task 4: cobertura, interfaces, efeito externo, pasta do roadmap ----
+import { EXTERNAL_PATTERNS } from './plan-tool.mjs';
+
+const codes = (r) => r.errors.map((e) => e.code);
+
+test('EXTERNAL_PATTERNS has the ten default patterns as strings', () => {
+  assert.equal(EXTERNAL_PATTERNS.length, 10);
+  assert.ok(EXTERNAL_PATTERNS.every((p) => typeof p === 'string' && new RegExp(p, 'i')));
+});
+
+test('AC1: acceptance without evidence row -> acceptance-uncovered naming AC1', () => {
+  const r = check(mutate((d) => (d.evidence = d.evidence.filter((e) => e.ac !== 'AC1'))));
+  const e = r.errors.find((x) => x.code === 'acceptance-uncovered');
+  assert.equal(e.ref, 'AC1');
+  assert.match(e.message, /evidência/);
+});
+
+test('AC1: acceptance covered by no task -> acceptance-uncovered naming AC3', () => {
+  const r = check(mutate((d) => (d.tasks[3].covers = [])));
+  const e = r.errors.find((x) => x.code === 'acceptance-uncovered');
+  assert.equal(e.ref, 'AC3');
+  assert.match(e.message, /nenhuma tarefa/);
+});
+
+test('blocked AC2 needs no covering task', () => {
+  const r = check(mutate(() => {}));
+  assert.equal(r.errors.length, 0);
+  assert.ok(!r.data.tasks.some((t) => t.covers.includes('AC2')));
+});
+
+test('AC1: consumed interface never produced -> interface-unproduced', () => {
+  const r = check(mutate((d) => (d.tasks[2].consumes = [{ task: 1, sig: 'deleteItem(id)' }])));
+  const e = find(r, 'interface-unproduced');
+  assert.equal(e.ref, 'T3');
+  assert.match(e.message, /deleteItem\(id\)/);
+});
+
+test('interface-not-upstream when the producer is not an ancestor', () => {
+  const r = check(mutate((d) => {
+    d.tasks[1].produces = ['validate(item) -> ok'];
+    d.tasks[3].consumes = [{ task: 2, sig: 'validate(item)   ->  ok' }];
+  }));
+  const e = find(r, 'interface-not-upstream');
+  assert.equal(e.ref, 'T4');
+  const viaChain = check(mutate((d) => {
+    d.tasks[1].produces = ['validate(item) -> ok'];
+    d.tasks[3].deps = [1, 2];
+    d.tasks[3].consumes = [{ task: 2, sig: 'validate(item) -> ok' }];
+  }));
+  assert.equal(find(viaChain, 'interface-not-upstream'), undefined);
+});
+
+test('AC1: external command declared internal -> external-undeclared', () => {
+  const r = check(mutate((d) => d.tasks[1].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })));
+  const e = find(r, 'external-undeclared');
+  assert.equal(e.ref, 'T2');
+  assert.match(e.message, /git/);
+  const ext = check(mutate((d) => d.tasks[4].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })));
+  assert.equal(find(ext, 'external-undeclared'), undefined);
+  const custom = check(mutate((d) => {
+    d.externalPatterns = ['\\bsync-backend\\b'];
+    d.tasks[1].checks.push({ cmd: 'node scripts/sync-backend.mjs', expect: 'exit 0' });
+  }));
+  assert.equal(find(custom, 'external-undeclared').ref, 'T2');
+  const ev = check(mutate((d) => (d.evidence[0].command = 'npm publish')));
+  assert.ok(ev.errors.some((e) => e.code === 'external-undeclared' && e.ref === 'AC1'));
+});
+
+test('invalid externalPatterns -> field-type', () => {
+  assert.equal(find(check(mutate((d) => (d.externalPatterns = ['(']))), 'field-type').ref, 'externalPatterns');
+  assert.equal(find(check(mutate((d) => (d.externalPatterns = 'x'))), 'field-type').ref, 'externalPatterns');
+});
+
+test('external task without dedupe -> external-dedupe-missing', () => {
+  for (const v of [null, '']) {
+    const r = check(mutate((d) => (d.tasks[4].externalDedupe = v)));
+    assert.equal(find(r, 'external-dedupe-missing').ref, 'T5');
+  }
+});
+
+test('evidence-kind-differs and evidence-command-differs', () => {
+  assert.equal(find(check(mutate((d) => (d.evidence[0].kind = 'smoke'))), 'evidence-kind-differs').ref, 'AC1');
+  assert.equal(find(check(mutate((d) => (d.evidence[0].command = 'node --test tests/other.test.mjs'))), 'evidence-command-differs').ref, 'AC1');
+  const spaced = check(mutate((d) => (d.evidence[0].command = 'node  --test   tests/e1.test.mjs')));
+  assert.equal(find(spaced, 'evidence-command-differs'), undefined);
+});
+
+test('cover-unknown for a task and for an evidence row', () => {
+  const r = check(mutate((d) => {
+    d.tasks[0].covers.push('AC9');
+    d.evidence.push({ ac: 'AC9', kind: 'test', command: 'node --test x', external: false });
+  }));
+  const refs = r.errors.filter((e) => e.code === 'cover-unknown').map((e) => e.ref).sort();
+  assert.deepEqual(refs, ['AC9', 'T1']);
+});
+
+test('edge-case-uncovered', () => {
+  const r = check(mutate((d) => (d.tasks[1].covers = [])));
+  assert.equal(find(r, 'edge-case-uncovered').ref, 'C1');
+});
+
+test('external-effect-unperformed', () => {
+  const a = check(mutate((d) => (d.tasks[4].external = false)));
+  assert.equal(find(a, 'external-effect-unperformed').ref, 'X1');
+  const b = check(mutate((d) => (d.tasks[4].covers = [])));
+  assert.equal(find(b, 'external-effect-unperformed').ref, 'X1');
+});
+
+test('roadmap-edit', () => {
+  const r = check(mutate((d) => d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo/status.md')));
+  assert.equal(find(r, 'roadmap-edit').ref, 'T6');
+  const other = check(mutate((d) => d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo-2/status.md')));
+  assert.equal(find(other, 'roadmap-edit'), undefined);
+  const noRoadmap = check(mutate((d) => {
+    d.roadmap = null;
+    d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo/status.md');
+  }));
+  assert.equal(find(noRoadmap, 'roadmap-edit'), undefined);
+});
+
+test('task-too-wide is a warning', () => {
+  const r = check(mutate((d) => d.tasks[5].files.modify.push('a.md', 'b.md', 'c.md', 'd.md')));
+  assert.equal(r.errors.length, 0);
+  assert.equal(r.warnings.find((w) => w.code === 'task-too-wide').ref, 'T6');
+});
+
+test('AC1: each planted defect gives its named error', () => {
+  const defects = [
+    ['dependency-cycle', (d) => (d.tasks[0].deps = [4])],
+    ['write-conflict', (d) => d.tasks[3].files.create.push('src/view.mjs')],
+    ['acceptance-uncovered', (d) => (d.evidence = d.evidence.filter((e) => e.ac !== 'AC1'))],
+    ['interface-unproduced', (d) => (d.tasks[2].consumes = [{ task: 1, sig: 'deleteItem(id)' }])],
+    ['external-undeclared', (d) => d.tasks[1].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })],
+  ];
+  for (const [code, fn] of defects) {
+    assert.ok(codes(check(mutate(fn))).includes(code), code);
+  }
+});
+
+test('example plan stays at zero errors and warnings', () => {
+  const r = check(PLAN_TEXT);
+  assert.deepEqual([r.errors.length, r.warnings.length], [0, 0]);
+});

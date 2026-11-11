@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readDataBlock } from '../lib/data-block.mjs';
-import { norm } from '../lib/roadmap-format.mjs';
+import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
 import { checkSpec, checkRecords } from './spec-tool.mjs';
 
 export const SCHEMA = 'plan/1';
@@ -16,6 +16,20 @@ const FILE_KINDS = ['create', 'modify', 'test'];
 const SCORE_KEYS = ['ambiguity', 'reasoning', 'blast', 'verifiability'];
 const EVIDENCE_FIELDS = ['ac', 'kind', 'command', 'external', 'externalDedupe', 'blq'];
 const EVIDENCE_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
+
+// Lista padrao de efeito externo (regex, flag i).
+export const EXTERNAL_PATTERNS = [
+  '\\bgit\\s+push\\b',
+  '\\b(npm|pnpm|yarn)\\s+publish\\b',
+  '\\bdeploy\\b',
+  '\\bcurl\\b.*\\s-X\\s*(POST|PUT|PATCH|DELETE)\\b',
+  '\\bkubectl\\s+(apply|delete|create|patch|rollout)\\b',
+  '\\bterraform\\s+(apply|destroy)\\b',
+  '\\bdocker\\s+push\\b',
+  '\\bgh\\s+(pr\\s+(create|merge)|release\\s+create|issue\\s+create)\\b',
+  '\\b(sendmail|mail)\\b',
+  '\\bclaude\\s+plugin\\s+(update|install|marketplace\\s+(add|update))\\b',
+];
 
 const collapse = (s) => norm(s).replace(/\s+/g, ' ').trim();
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -217,7 +231,19 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
   else if (data.roadmap !== null && !isStr(data.roadmap)) err('field-type', 'roadmap', '"roadmap" deve ser string ou null');
   if (!('constraints' in data)) err('field-missing', 'constraints', 'campo obrigatório "constraints" ausente');
   else if (!isStrList(data.constraints)) err('field-type', 'constraints', '"constraints" deve ser uma lista de strings');
-  if ('externalPatterns' in data && !isStrList(data.externalPatterns)) err('field-type', 'externalPatterns', '"externalPatterns" deve ser uma lista de strings');
+  const extra = [];
+  if ('externalPatterns' in data) {
+    if (!isStrList(data.externalPatterns)) err('field-type', 'externalPatterns', '"externalPatterns" deve ser uma lista de strings');
+    else {
+      for (const src of data.externalPatterns) {
+        try {
+          extra.push(new RegExp(src, 'i'));
+        } catch (e) {
+          err('field-type', 'externalPatterns', `expressão regular inválida ${JSON.stringify(src)}: ${e.message}`);
+        }
+      }
+    }
+  }
   for (const k of Object.keys(data)) {
     if (!TOP.includes(k)) warn('field-unknown', k, `campo desconhecido "${k}" (o esquema cresce por versão)`);
   }
@@ -246,7 +272,12 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
 
   // evidencia
   const evidence = list('evidence');
-  if (evidence) evidence.forEach((row, i) => checkEvidenceSchema(row, i + 1, err, warn));
+  let evidenceOk = false;
+  if (evidence) {
+    const beforeEv = errors.length;
+    evidence.forEach((row, i) => checkEvidenceSchema(row, i + 1, err, warn));
+    evidenceOk = errors.length === beforeEv;
+  }
 
   // registros do esquema de spec
   for (const name of ['rulings', 'needsPerson']) {
@@ -323,6 +354,103 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
             err('write-conflict', `T${group[a]}/T${group[b]}`, `T${group[a]} e T${group[b]} rodam na mesma onda e escrevem ${shared.join(', ')}; ordene com uma dependência`);
           }
         }
+      }
+    }
+  }
+
+  // cobertura, interfaces, efeito externo, pasta do roadmap e largura: só com o esquema das tarefas íntegro
+  if (tasksOk) {
+    const patterns = [...EXTERNAL_PATTERNS.map((src) => new RegExp(src, 'i')), ...extra];
+    const hit = (cmd) => patterns.find((re) => re.test(cmd));
+    const known = new Set(tasks.map((_, i) => i + 1));
+
+    // ancestrais pelo fecho transitivo de deps (dependências desconhecidas ignoradas)
+    const ancestors = (n) => {
+      const seen = new Set();
+      const walk = (m) => {
+        for (const d of tasks[m - 1].deps) {
+          if (known.has(d) && !seen.has(d)) {
+            seen.add(d);
+            walk(d);
+          }
+        }
+      };
+      walk(n);
+      return seen;
+    };
+
+    tasks.forEach((t, i) => {
+      const ref = `T${i + 1}`;
+      for (const c of t.consumes) {
+        const sig = collapse(c.sig);
+        const producer = known.has(c.task) ? tasks[c.task - 1] : null;
+        if (!producer || !producer.produces.some((p) => collapse(p) === sig)) {
+          err('interface-unproduced', ref, `consome "${sig}" de T${c.task}, que não produz essa assinatura`);
+        } else if (!ancestors(i + 1).has(c.task)) {
+          err('interface-not-upstream', ref, `consome "${sig}" de T${c.task}, que não é ancestral de ${ref} pelas dependências`);
+        }
+      }
+      if (t.external === false) {
+        for (const ch of t.checks) {
+          const re = hit(ch.cmd);
+          if (re) err('external-undeclared', ref, `o comando "${ch.cmd}" casa com o padrão de efeito externo ${re.source} e a tarefa é interna`);
+        }
+      } else if (!isStr(t.externalDedupe)) {
+        err('external-dedupe-missing', ref, 'tarefa externa sem "externalDedupe" (como evitar repetir o efeito)');
+      }
+      if (isStr(data.roadmap)) {
+        const root = normPath(data.roadmap).replace(/\/+$/, '') + '/';
+        const inside = [...writeSet(t)].filter((p) => (p + '/').startsWith(root));
+        if (inside.length) err('roadmap-edit', ref, `a tarefa escreve na pasta do roadmap (${inside.join(', ')}); isso é feito só nas etapas de registro`);
+      }
+      const distinct = new Set([...t.files.create, ...t.files.modify, ...t.files.test].map(normPath));
+      if (distinct.size > 4) warn('task-too-wide', ref, `${distinct.size} arquivos em "files" (mais de 4); divida a tarefa`);
+    });
+
+    if (evidenceOk) {
+      for (const row of evidence) {
+        if (typeof row.command === 'string' && row.external === false) {
+          const re = hit(row.command);
+          if (re) err('external-undeclared', row.ac, `o comando "${row.command}" casa com o padrão de efeito externo ${re.source} e a linha é interna`);
+        }
+        if (typeof row.command === 'string' && row.external === true && !isStr(row.externalDedupe)) {
+          err('external-dedupe-missing', row.ac, 'linha de evidência externa sem "externalDedupe"');
+        }
+      }
+    }
+
+    if (spec && evidenceOk) {
+      const accs = Array.isArray(spec.acceptance) ? spec.acceptance : [];
+      const edges = Array.isArray(spec.edgeCases) ? spec.edgeCases : [];
+      const effects = Array.isArray(spec.externalEffects) ? spec.externalEffects : [];
+      const specIds = new Set([...accs, ...edges, ...effects].map((x) => x.id));
+      const coveredBy = (id) => tasks.filter((t) => t.covers.includes(id));
+      for (const a of accs) {
+        const row = evidence.find((r) => r.ac === a.id);
+        const { tag } = parseVerifyTag(String(a.text));
+        if (!row) err('acceptance-uncovered', a.id, `o critério ${a.id} do spec não tem linha de evidência`);
+        const executable = !tag || EXECUTABLE_KINDS.includes(tag.kind);
+        if (executable && coveredBy(a.id).length === 0) err('acceptance-uncovered', a.id, `nenhuma tarefa cobre o critério ${a.id}`);
+        if (row && tag) {
+          if (row.kind !== tag.kind) err('evidence-kind-differs', a.id, `a linha de evidência é "${row.kind}" e a marca do spec é "${tag.kind}"`);
+          if (EXECUTABLE_KINDS.includes(tag.kind) && collapse(row.command ?? '') !== collapse(tag.evidence)) {
+            err('evidence-command-differs', a.id, `o comando da linha difere do da marca do spec ("${collapse(tag.evidence)}"); o da marca é mantido`);
+          }
+        }
+      }
+      for (const row of evidence) {
+        if (!specIds.has(row.ac)) err('cover-unknown', row.ac, `a linha de evidência cita ${row.ac}, que não existe no spec`);
+      }
+      tasks.forEach((t, i) => {
+        for (const id of t.covers) {
+          if (!specIds.has(id)) err('cover-unknown', `T${i + 1}`, `"covers" cita ${id}, que não existe no spec`);
+        }
+      });
+      for (const c of edges) {
+        if (coveredBy(c.id).length === 0) err('edge-case-uncovered', c.id, `nenhuma tarefa cobre o caso de borda ${c.id}`);
+      }
+      for (const x of effects) {
+        if (!coveredBy(x.id).some((t) => t.external === true)) err('external-effect-unperformed', x.id, `nenhuma tarefa externa cobre o efeito ${x.id}`);
       }
     }
   }
