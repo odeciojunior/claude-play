@@ -19,6 +19,7 @@ import {
   findNewerPluginCopy,
 } from './check-roadmap.mjs';
 import * as fmt from '../../../lib/roadmap-format.mjs';
+import { embedText, embedFile, checkPureSource } from '../../../scripts/embed.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VALID = path.join(here, 'fixtures', 'valid');
@@ -1387,4 +1388,82 @@ test('parseRoadmapTexts splits multi-id depends and reqs on commas and whitespac
   const c = fmt.parseRoadmapTexts(t).cards[0];
   assert.deepEqual(c.depends, ['E1', 'E2', 'E3', 'Es4']);
   assert.deepEqual(c.reqs, ['REQ-1', 'REQ-2', 'REQ-3']);
+});
+
+// ---------- E2 T2: embed.mjs ----------
+
+const EMBED = path.join(here, '..', '..', '..', 'scripts', 'embed.mjs');
+const EMBED_TARGET = '// head\n// <embed src="src.mjs" exports="keep">\nold\n// </embed>\ntail\n';
+
+test('embed keep copies the source with exports', () => {
+  const out = embedText(EMBED_TARGET, () => 'export function f() { return 1; }\n');
+  assert.match(out, /Gerado de src\.mjs por /);
+  assert.ok(out.includes('export function f()'));
+  assert.ok(!out.includes('old'));
+  assert.ok(out.startsWith('// head'));
+  assert.ok(out.endsWith('tail\n'));
+});
+
+test('embed strip removes top-level export', () => {
+  const out = embedText(EMBED_TARGET.replace('keep', 'strip'), () => 'export function f() { return 1; }\nexport const k = 2;\n');
+  assert.ok(out.includes('function f()'));
+  assert.ok(!out.includes('export function'));
+  assert.ok(!out.includes('export const'));
+});
+
+test('embed refuses impure sources', () => {
+  for (const src of [
+    "import fs from 'node:fs';\n",
+    "const x = require('y');\n",
+    'process.env.X\n',
+    "Buffer.from('a')\n",
+    'crypto.randomUUID()\n',
+  ]) {
+    assert.equal(typeof checkPureSource(src, 'bad.mjs'), 'string', src);
+    assert.match(checkPureSource(src, 'bad.mjs'), /bad\.mjs/);
+    assert.throws(() => embedText(EMBED_TARGET, () => src), /src\.mjs/);
+  }
+  assert.equal(checkPureSource('// process is a word in a comment\nexport const a = 1;\n', 'ok.mjs'), null);
+});
+
+test('embed rejects unclosed markers and bad exports', () => {
+  assert.throws(() => embedText('// <embed src="a.mjs" exports="keep">\nx\n', () => ''), /a\.mjs/);
+  assert.throws(() => embedText('// <embed src="a.mjs" exports="no">\n// </embed>\n', () => ''), /a\.mjs/);
+});
+
+test('the real roadmap-format module passes the purity check', () => {
+  const file = path.join(here, '..', '..', '..', 'lib', 'roadmap-format.mjs');
+  assert.equal(checkPureSource(fs.readFileSync(file, 'utf8'), 'roadmap-format.mjs'), null);
+});
+
+test('embed keeps CRLF and compares in LF', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'src.mjs'), 'export const a = 1;\n');
+  const p = path.join(dir, 'target.mjs');
+  const src = () => 'export const a = 1;\n';
+  fs.writeFileSync(p, embedText(EMBED_TARGET, src).replace(/\n/g, '\r\n'));
+  assert.equal(embedFile(p, { check: true }).stale, false);
+  fs.writeFileSync(p, EMBED_TARGET.replace(/\n/g, '\r\n'));
+  assert.equal(embedFile(p, { check: true }).stale, true);
+  assert.equal(embedFile(p).stale, true);
+  const final = fs.readFileSync(p, 'utf8');
+  assert.ok(final.includes('\r\n'));
+  assert.ok(!/[^\r]\n/.test(final));
+  assert.equal(embedFile(p, { check: true }).stale, false);
+});
+
+test('embed --check exits 1 when stale and 0 when current', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'src.mjs'), 'export const a = 1;\n');
+  const p = path.join(dir, 'target.mjs');
+  fs.writeFileSync(p, EMBED_TARGET);
+  let r = spawnSync(process.execPath, [EMBED, '--check', p], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /stale:/);
+  assert.equal(fs.readFileSync(p, 'utf8'), EMBED_TARGET);
+  embedFile(p);
+  r = spawnSync(process.execPath, [EMBED, '--check', p], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  r = spawnSync(process.execPath, [EMBED], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
 });
