@@ -377,6 +377,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     let texts = null;
     try { texts = readRoadmapTexts(root, dir, ref, warnings); } catch (e) {
       warnings.push(`roadmap cards not read, so the {verify} commands of open cards are not in the permission list: ${e.message}`);
+      warnings.push(`pending executor decisions not read: ${e.message}`);
     }
     let cards = [];
     if (texts) {
