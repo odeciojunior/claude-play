@@ -234,6 +234,10 @@ function rawBuffer(ctx, role) {
       if (role === 'checkerCopy' && e.code === 'ENOENT') buf = Buffer.alloc(0);
       else throw new Refusal('usage', `cannot read ${file}: ${e.code || e.message}`, 2);
     }
+    const loaded = ctx.roadmap.files[role];
+    if (typeof loaded === 'string' && norm(buf.toString('utf8')) !== loaded) {
+      throw new Refusal('concurrent-change', `${roleFile(ctx, role).name} changed after it was loaded; nothing was written`, 1);
+    }
     ctx.raws.set(role, buf);
   }
   return ctx.raws.get(role);
@@ -656,6 +660,8 @@ const COMMANDS = {
     const [id, word] = ctx.args;
     const row = panelRows(ctx).find((r) => r.id === id);
     if (!row) throw new Refusal('not-found', `${id} is not in the panel`);
+    if (opts.piece !== undefined && /[;:()]/.test(opts.piece)) throw usage('--piece must not contain ";", ":", "(" or ")"');
+    if (opts.note !== undefined && /[;)]/.test(opts.note)) throw usage('--note must not contain ";" or ")"');
     const cells = setSegment(ctx, row.cells, {
       piece: opts.piece, word, evidence: opts.evidence, next: opts.next, note: opts.note,
     });
@@ -1127,6 +1133,7 @@ export function run(argv, io = {}) {
     ctx = {
       folder, args, opts, roadmap, parsed, git, lang, today: date, result: {}, warnings, hooks: io.hooks || {}, raws: new Map(), changed: [],
     };
+    if (ctx.hooks.afterLoad) ctx.hooks.afterLoad(folder);
     COMMANDS[command](ctx);
     output.result = ctx.result;
     output.changed = ctx.changed || [];

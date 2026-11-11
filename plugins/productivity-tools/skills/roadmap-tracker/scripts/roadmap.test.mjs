@@ -577,6 +577,33 @@ test('garantia: arquivo alterado entre leitura e gravação dá concurrent-chang
   assert.deepEqual(fs.readdirSync(f.dir).filter((n) => n.includes('.tmp-')), []);
 });
 
+test('garantia: arquivo alterado entre o carregamento e a leitura bruta dá concurrent-change', (t) => {
+  const f = makeFolder(t);
+  const hook = () => f.write('state.md', f.read('state.md').replace('Wait for E1', 'CONCURRENT NEXT STEP'));
+  const r = run(['set-status', f.dir, 'E2', 'spec', '--evidence', 'docs/s.md', '--json'], { hooks: { afterLoad: hook } });
+  refused(r, 'concurrent-change');
+  assert.match(f.read('state.md'), /CONCURRENT NEXT STEP/);
+  assert.deepEqual(r.output.changed, []);
+});
+
+test('set-status recusa --piece com separador, dois-pontos ou parênteses', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  for (const bad of ['piece 3: discarded; piece 4', 'a;b', 'a:b', 'a(b', 'a)b']) {
+    refused(cli(f.dir, 'set-status', 'E1', 'spec', '--piece', bad), 'usage', 2);
+  }
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('set-status recusa --note com ponto e vírgula ou parêntese de fechamento', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  for (const bad of ['x); discarded (y', 'a;b', 'a)b']) {
+    refused(cli(f.dir, 'set-status', 'E1', 'plan', '--note', bad), 'usage', 2);
+  }
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
 test('garantia: format-newer em comando de escrita sai 1 sem gravar', (t) => {
   const f = makeFolder(t);
   const cfgFile = path.join(f.dir, 'roadmap.config.json');
