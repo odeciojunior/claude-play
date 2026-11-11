@@ -1,13 +1,13 @@
 # Estado
 
-Estratégia v1.1 -- 2026-11-10
+Estratégia v1.2 -- 2026-11-10
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 ## Agora
 
 <!-- roadmap:now -->
-1. Escrever o spec de E1, com a forma da medição já definida pelo experimento do plano semeado. Executa: executor. Aprova: dono. Depende de: DEC-051.
+1. Acompanhar a execução automática do plano de E1 na branch `feat/E1`; ao terminar, o release registra a entrega. Executa: executor. Aprova: dono. Depende de: DEC-087.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -15,7 +15,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E1 | nao-iniciado | - | Escrever o spec |
+| E1 | executando | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `feat/E1` | Concluir a execução do plano na branch e registrar a entrega |
 | E2 | nao-iniciado | - | Escrever o spec |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
@@ -65,6 +65,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
+- (executor) Depois que E1 integrar, acrescentar `tools/**/*.test.mjs` ao gate G1 em `release.config.json` e na tabela de gates da estratégia, antes de E2 rodar (DEC-032, DEC-077).
+- (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
+- (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl`.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -72,4 +75,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| `feat/E1` | viva | Execução automática |
 <!-- /roadmap:inflight -->

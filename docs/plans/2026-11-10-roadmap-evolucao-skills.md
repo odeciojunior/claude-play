@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.1 2026-11-10 -->
-# Evolução das skills de roadmap -- Estratégia v1.1
+<!-- roadmap:version 1.2 2026-11-10 -->
+# Evolução das skills de roadmap -- Estratégia v1.2
 
 ## Registro de mudanças
 
+- v1.2 (2026-11-10): absorve as emendas do dono ao ratificar as decisões do spec de E1 (DEC-081 a DEC-084). Muda a regra do portão na peça 6 de E1: detecção inconclusiva bloqueia até o dono liberar. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.1 (2026-11-10): absorve as decisões das sondas de E14, ratificadas pelo dono (DEC-057 a DEC-061, SRC-15). Mudam E2 (o gerador de cópias embutidas é necessário), E8 (carga do plano com schema, resumo em JavaScript puro, duas novas tentativas), E18, E21 e E23 (regra de permissão pelo nome do script), E19 (autor como agente do plugin) e E25 (cache não legível para o caminho). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.0 (2026-11-10): primeira versão (modo completo), já com as correções das revisões independentes (SRC-10), da análise das decisões (SRC-11) das soluções para as questões em aberto (SRC-12) e dos resultados dos experimentos de DEC-052 (SRC-14). Absorve DEC-001 a DEC-052, incluídas as decisões do executor que o dono ratificou (DEC-013, DEC-026 a DEC-029 e DEC-037 a DEC-045); DEC-053 a DEC-056 são do executor e aguardam ratificação.
 
@@ -164,7 +165,7 @@ Peças:
 - Peça 3: cenário fixo: um entregável de várias tarefas e o roteiro de parada e retomada entram no gerador de sandbox do release; o plano fixo do coordinator, o tema roteirizado do planner e o evento fixo do tracker ficam em `tools/measure/`.
 - Peça 4: defeitos plantados com sentinela: oito de plano, oito de código e oito de spec, semeados em artefatos prontos (DEC-033, DEC-051). Plano semeado: spec e plano tirados de uma execução aprovada, com um commit que planta os defeitos. Código semeado: todas as tarefas commitadas com o assunto que a retomada reconhece e os defeitos na última. Os defeitos de plano são os que só o revisor pega; os que o código do workflow acusa sozinho ficam marcados no manifesto e contados à parte. Cada tentativa tem checagem de validade (plano reusado, conteúdo igual ao semeado), lida do diário completo do workflow, porque o resumo do estágio vem truncado quando há achados (SRC-14), e três desfechos por defeito: capturado, perdido ou indeterminado.
 - Peça 5: lançador em lote que gera o sandbox, roda uma variante o número de vezes pedido e chama o extrator, para que operar um ponto de medição seja iniciar um comando e conferir a saída. As permissões da execução sem interface (regras que o preflight exige e a do Workflow) entram por parâmetro, e o lançador confere as negações de permissão na saída de cada sessão, porque a sessão negada termina sem erro (DEC-043, SRC-14).
-- Peça 6: comparador que aplica a regra do portão por classe de contador e a regra de detecção (DEC-033), e arnês que roda só o estágio de revisão sobre um artefato semeado, para as medições de política de E26 e E27.
+- Peça 6: comparador que aplica a regra do portão por classe de contador e a regra de detecção (DEC-033); detecção inconclusiva por falta de tentativas válidas bloqueia até o dono liberar com decisão registrada, e família de modelo sem peso deixa o contador inconclusivo (DEC-081); e arnês que roda só o estágio de revisão sobre um artefato semeado, para as medições de política de E26 e E27.
 
 Arquivos de teste deste card: `tools/measure/session-metrics.test.mjs`, `tools/measure/make-scenario.test.mjs`, `tools/measure/run-batch.test.mjs`, `tools/measure/compare.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.test.mjs`.
 
@@ -951,7 +952,7 @@ Metas derivadas: a tabela entra por revisão da estratégia depois de E15 (crit�
 
 ## Decisões
 
-Ver `decisions.md`. Esta versão absorve DEC-001 a DEC-061; todas as decisões do executor estão ratificadas pelo dono.
+Ver `decisions.md`. Esta versão absorve DEC-001 a DEC-084; todas as decisões do executor estão ratificadas pelo dono.
 
 ## Pendências externas
 
@@ -975,6 +976,7 @@ Nenhuma.
 |---|---|---|
 | 1.0 | 2026-11-10 | Primeira versão |
 | 1.1 | 2026-11-10 | Absorve as decisões das sondas de E14 (DEC-057 a DEC-061) |
+| 1.2 | 2026-11-10 | Absorve as emendas do dono às decisões do spec de E1 (DEC-081 a DEC-084) |
 
 ## Fontes
 
