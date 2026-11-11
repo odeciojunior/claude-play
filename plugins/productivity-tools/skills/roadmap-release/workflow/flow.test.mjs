@@ -125,8 +125,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:pre-merge$/.test(l)) return { head: 'abc1234', clean: true, branchHasTarget: false, branchMerged: false };
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
-    if (/:docs\d$/.test(l)) return { statusWritten: 'x' };
-    if (/:docs-measure/.test(l)) return { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'e' };
+    if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
+    if (/:docs-measure/.test(l)) return { status: recMock.read(E).status, brief: recMock.read(E).brief, clean: true, head: 'm2' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -621,9 +621,9 @@ test('I5: another red gate keeps the offer', async () => {
 test('m2: the docs are not ok when the panel does not show the status after the merge', async () => {
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
-  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /state\.md/);
-  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('panelStatus'));
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { checkerErrors: 0, clean: true, head: 'm2', panelStatus: 'c' } : undefined) });
+  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --json/);
+  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('status'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { status: readWith('c').status, brief: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
   assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
 });
@@ -1842,7 +1842,7 @@ test('real run: programs that need a directory are run with cd, since a Bash cal
   assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('cd "/wt/E1" && node "/wt/_tmp/E1-integrity.cjs" "integracao/x"'));
   const m = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
   assert.ok(m.includes('cd "/wt/_integracao" && node "/wt/_tmp/E1-docs-measure.cjs"'));
-  assert.ok(m.includes('cd "/wt/_integracao" && node "docs/plans/roadmap-x/check.mjs"'));
+  assert.ok(!m.includes('check.mjs'));
   const res = await exec({ cards: [unfinished()], deliverables: ['E1'] });
   assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "m0^1"'));
 });
@@ -3100,4 +3100,101 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
   assert.equal(logs.length, 1);
   assert.match(logs[0].prompt, /Textos cortados no registro/);
   assert.ok(logs[0].prompt.includes('palavra palavra palavra'));
+});
+
+// ---- E18 T5: etapa de documentação pela CLI
+const docsPrompts = (calls) => calls.filter((c) => /:docs(-measure)?\d$/.test(c.label));
+
+test('AC2 documentação pela CLI', async () => {
+  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(humanSpec, planRows([{ ac: 'AC1', kind: 'human' }])) });
+  const p = calls.find((c) => c.label === 'E1:docs1').prompt;
+  assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
+  assert.match(p, /node "\/t\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
+  assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
+  const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
+  assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
+  assert.ok(pend.some((c) => /criterion AC1 has no automatic evidence/.test(c)), 'critério sem evidência automática');
+  assert.doesNotMatch(p, /roadmap-tracker/);
+  assert.match(p, /Do NOT propose, write or approve a strategy revision/);
+  const order = promptCommands(p).map((c) => /^node "[^"]*" (\S+)/.exec(c)[1]);
+  assert.deepEqual(order.slice(0, 2), ['set-status', 'log']);
+  assert.equal(order[order.length - 1], 'inflight-remove');
+  const risk = await resumedRun(loggedRun);
+  assert.ok(promptCommands(risk.calls.find((c) => c.label === 'E1:docs1').prompt).some((c) => /add-pending/.test(c) && c.includes('RISK-X')), 'risco aceito');
+});
+
+test('AC3 documentação: releitura falha leva à 2ª rodada só com o que faltou', async () => {
+  const mk = (rounds) => (l) => {
+    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { status: readWith('zzz').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    return undefined;
+  };
+  const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(1) });
+  const p1 = one.calls.find((c) => c.label === 'E1:docs1').prompt;
+  const p2 = one.calls.find((c) => c.label === 'E1:docs2').prompt;
+  assert.match(p1, /roadmap\.mjs" log /);
+  assert.doesNotMatch(p2, /roadmap\.mjs" log /);
+  assert.match(p2, /roadmap\.mjs" set-status /);
+  assert.doesNotMatch(p2, /inflight-remove/);
+  assert.match(p2, /FIX ROUND/);
+  assert.equal(one.r.results[0].merge.docsOk, true);
+  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(2) });
+  assert.equal(two.r.results[0].merge.docsOk, false);
+  assert.ok(two.r.operatorActions.some((o) => o.kind === 'docs'));
+});
+
+test('AC3 documentação: comando com erro da CLI repete só ele e o veredito não confia no agente', async () => {
+  let n = 0;
+  const bad = (l, prompt) => {
+    if (/^E1:docs-measure/.test(l)) return { status: readWith('e').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (!/:docs\d$/.test(l)) return undefined;
+    n++;
+    return { runs: promptCommands(prompt).map((command) => (n === 1 && / log /.test(command)
+      ? { command, exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) } : { command, exit: 0, stdout: cliJson() })), statusWritten: 'ok' };
+  };
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: bad });
+  const p2 = calls.find((c) => c.label === 'E1:docs2').prompt;
+  assert.equal(promptCommands(p2).length, 1);
+  assert.match(p2, /roadmap\.mjs" log /);
+  assert.equal(r.results[0].merge.docsOk, true);
+});
+
+test('checker só de brief: nenhum prompt cita o arquivo do checker; docs-measure e releitura pedem status e brief', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  // The discovery keeps returning checker and checkerExists (spec), so only it names the file.
+  for (const c of calls.filter((x) => x.label !== 'discovery')) {
+    assert.ok(!c.prompt.includes('check-roadmap.mjs'), c.label);
+    assert.ok(!c.prompt.includes('docs/plans/roadmap-x/check.mjs'), c.label);
+  }
+  for (const l of ['E1:docs-measure1', 'E1:status-d-read']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.match(p, /roadmap\.mjs" status '[^']*' --json/, l);
+    assert.match(p, /roadmap\.mjs" brief '[^']*' --json/, l);
+  }
+  const rep = calls.find((c) => c.label === 'report').prompt;
+  assert.match(rep, /brief --json/);
+  assert.match(rep, /"errors":0/);
+});
+
+test('forma das chamadas de script: todo roadmap.mjs vem entre aspas, com argumento depois, e consta em WORKFLOW_SCRIPTS', async () => {
+  const { WORKFLOW_SCRIPTS } = await import('../scripts/preflight.mjs');
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  let seen = 0;
+  for (const c of calls.filter((x) => x.label !== 'discovery')) {
+    for (const m of c.prompt.matchAll(/roadmap\.mjs/g)) {
+      seen++;
+      const around = c.prompt.slice(Math.max(0, m.index - 40), m.index + 40);
+      assert.match(around, /node "[^"]*roadmap\.mjs" \S/, c.label + ': ' + around);
+      assert.ok(WORKFLOW_SCRIPTS.includes('roadmap.mjs'));
+    }
+  }
+  assert.ok(seen > 5);
+});
+
+test('BASH_ONLY literal em docs e docs-measure', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const ps = docsPrompts(calls);
+  assert.ok(ps.length >= 2);
+  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
+  for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
 });

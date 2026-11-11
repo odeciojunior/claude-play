@@ -961,6 +961,17 @@ function parseDecision(text) {
   if (!m) return { text: t, scope: 'contrato' }
   return { text: t.slice(0, m.index).trim(), scope: m[1].toLowerCase() === 'local' ? 'local' : 'contrato' }
 }
+// A run of the record agent that counts as done: exit 0 and the JSON of the CLI without errors.
+function runDone(r) {
+  if (!r || r.exit !== 0) return false
+  const o = parseCli(r.stdout)
+  return !!o && !!o.summary && o.summary.exitCode === 0 && !(Array.isArray(o.errors) && o.errors.length)
+}
+// Commands of `all` (in order) that have no done run in `runs`: the only ones a second docs round repeats.
+function commandsLeft(all, runs) {
+  const rs = Array.isArray(runs) ? runs : []
+  return (all || []).filter(c => !runDone(rs.find(r => r && r.command === c)))
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -1122,8 +1133,8 @@ const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, p
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
-const S_DOCS = { type: 'object', properties: { statusWritten: STR, commit: STR, details: STR }, required: ['statusWritten'] }
-const S_DOCMEAS = { type: 'object', properties: { checkerErrors: INT, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR, panelStatus: STR }, required: ['checkerErrors', 'clean', 'panelStatus'] }
+const S_DOCS = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
+const S_DOCMEAS = { type: 'object', properties: { status: STR, brief: STR, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['status', 'brief', 'clean'] }
 const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
 const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, secondParent: STR, branchTip: STR }, required: ['mergeSha', 'rangeOk', 'secondParent', 'branchTip'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
@@ -1356,7 +1367,7 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
-const NO_REVISION = `Do NOT propose, write or approve a strategy revision (roadmap-tracker Step 6, events § 9) or a format migration (§ 11), whatever the event triggers: the owner's pre-approval never covers them. If the recipe asks for one, add only the pending item "(user) approve strategy v<N+1> (absorbs DEC-…)" and leave the strategy untouched. Leave any item you cannot settle in \`pending\`.`
+const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a format migration, whatever the event triggers: the owner's pre-approval never covers them. Do not edit any file of ${RM} by hand: the commands above are the whole roadmap job.`
 // Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const LANG = disc.language || ''
@@ -1369,6 +1380,7 @@ const lastWord = new Map(disc.cards.map(c => {
   const sg = pieceOf(c) ? segs.find(x => /^(code|c[oó]digo)$/.test(x.label)) : segs[0]
   return [c.id, sg ? sg.status : '']
 }))
+const CHECKERS = {}  // E -> result.checker of the last brief --json read by the docs stage
 const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
 // Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
 // extra = { decisions?: string[], pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
@@ -1571,25 +1583,57 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     Object.assign(BASE, refreshBaseline(BASE, GATES, g.m, g.m.changedFiles))
     lastGood = g.m.headSha
 
-    let docs = null, meas = null
-    const measureOk = x => !!x && x.checkerErrors === 0 && x.clean !== false && (!DOCS.measure || x.measureOk === true) && cardStatus(x.panelStatus, STATUSES) === STATUS_AFTER_MERGE
+    // Roadmap part of the docs stage: the exact CLI commands, assembled here; the verdict is computed over raw outputs.
+    const docPiece = pieceOf(byId[E])
+    const ranHuman = h => String(h.what || '').includes('[' + RAN_MARK + ':')
+    const pendRoom = CELL_CHARS - `(${phrases(LANG).owner}) `.length
+    const critPending = (out.acOpen || []).map(x => fitCell(`criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`, pendRoom, planTxt(), LANG).text)
+    const docsRc = skipStatus => recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null,
+      evidence: [mergeCommit, `gates ${GATES.map(d => d.name).join(', ')}`, specTxt(), planTxt(), reviewsTxt()], decisions: [], skipStatus,
+      pending: [...out.acceptedRisks.map(fmtRisk), ...human.filter(h => !ranHuman(h)).map(h => h.what), ...critPending], inflight: { remove: br },
+      lang: LANG, cellChars: CELL_CHARS, source: reviewsTxt(), blockedStatus: STATUSES.blocked })
+    const docsAll = docsRc(false).commands
+    const docsFirst = docsRc(lastWord.get(E) === STATUS_AFTER_MERGE).commands
+    // Human items marked as already run stay with the agent's judgment: it runs the assembled add-pending only for the ones that keep an open need.
+    const docsMaybe = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null, evidence: [], decisions: [], skipStatus: true,
+      pending: human.filter(ranHuman).map(h => h.what), lang: LANG, cellChars: CELL_CHARS, source: reviewsTxt(), blockedStatus: STATUSES.blocked }).commands
+    let docs = null, meas = null, verdict = null, docsMeasure = null
+    let cmds = docsFirst
     for (let k = 0; k < 2; k++) {
       docs = await agent(`${Cn()}
 
 DOCS STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}); merge ${mergeCommit}. Only this stage edits the project docs and ${RM}.
 1. Project docs: ${DOCS.instructions || '(no project docs instructions configured: skip this item)'}
-2. Roadmap: use the skill productivity-tools:roadmap-tracker: ${E} with status "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}; evidence: merge ${mergeCommit}, gates ${g.summary}, spec ${specTxt()}, plan ${planTxt()}, reviews ${reviewsTxt()}; remove ${br} from the inflight block; accepted risks and pending human inputs go to pending, all of them, none omitted except as the next sentence says: ${JSON.stringify([...out.acceptedRisks.map(fmtRisk), ...human.map(h => h.what), ...(out.acOpen || []).map(x => `criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`)])}. A human item marked "[${RAN_MARK}: ...]" names an external effect this run was authorized for and already ran: when the item asks only for that authorization it is fulfilled, so leave it out of pending; any other need the item states stays open in pending. Never record a human act (acceptance, go/no-go, credentials) as done.
+2. Roadmap: ${E} goes to "${STATUS_AFTER_MERGE}"${STATUS_AFTER_MERGE !== STATUSES.integrated[0] ? ` (merged into ${TARGET}, not yet into the integrationBranch ${INTEG})` : ''}, ${br} leaves the inflight block, and the accepted risks, pending human inputs and criteria without automatic evidence go to pending. Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
+${cmds.length ? numbered(cmds) : '(none: everything of this item is already recorded)'}
+${BASH_ONLY}
+${docsMaybe.length ? `A human item marked "[${RAN_MARK}: ...]" names an external effect this run was authorized for and already ran: when the item asks only for that authorization it is fulfilled, so leave it out of pending; any other need the item states stays open in pending. For each such item that keeps an open need, run its assembled command below after the list above, without changing its text:
+${docsMaybe.map(c => '- ' + c).join('\n')}
+` : ''}Never record a human act (acceptance, go/no-go, credentials) as done.
 3. ${NO_REVISION}
-4. Commit the docs ("docs: ${E} on ${TARGET}").${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(meas)}. Fix until checkerErrors=0${DOCS.measure ? ' and measureOk=true' : ''} and the panel row of ${E} shows "${STATUS_AFTER_MERGE}".` : ''}
-Return statusWritten, commit, details.`,
+4. Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then commit the files of item 1 and of ${RM}, adding only them (never git add -A), with "docs: ${E} on ${TARGET}" and the trailer "${TRAILER}", and return the commit hash in commit.${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(docsMeasure)}. Fix what it lists${DOCS.measure ? ' (measureOk must be true)' : ''}; the commands above are only those that still lack a good result.` : ''}`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet', effort: 'medium' })
-      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly: cd "${INTWT}" && node "${disc.checker}" and return checkerErrors; clean = git status --porcelain empty; head = git rev-parse HEAD; panelStatus = the Status cell of the row ${E} in the panel of ${RM}state.md, verbatim.`,
+      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly, one per call, and return the raw stdout of each (not summarized, not reformatted): status = ${cliCmd(A.trackerCli, 'status', absFolder)}; brief = ${cliCmd(A.trackerCli, 'brief', absFolder)}. clean = git status --porcelain empty; head = git rev-parse HEAD.
+${BASH_ONLY}`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku', effort: 'low' })
-      if (docs && measureOk(meas)) break
+      if (docs && meas) {
+        const maybeSet = new Set(docsMaybe)
+        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
+        if (!cmds.length) verdict.failures = verdict.failures.filter(f => f !== 'the record agent ran no command')
+        verdict.ok = verdict.failures.length === 0
+        const bc = parseCli(meas.brief)
+        if (bc && bc.result && bc.result.checker) CHECKERS[E] = bc.result.checker
+        docsMeasure = { failures: verdict.failures, clean: meas.clean, head: meas.head, ...(DOCS.measure ? { measureOk: meas.measureOk, measureDetails: meas.measureDetails } : {}) }
+        if (verdict.ok && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)) break
+        // Second round: only the commands without a good result, plus set-status when the panel does not show the word.
+        const panelFailed = verdict.failures.some(f => /^reread (panel|status)/.test(f))
+        const left = new Set(commandsLeft(docsFirst, docs.runs))
+        cmds = docsAll.filter(c => left.has(c) || (panelFailed && cliVerb(c) === 'set-status'))
+      } else { docsMeasure = { failures: [!docs ? 'null docs agent' : 'null measurement agent'] }; cmds = docsFirst }
     }
-    const docsOk = !!docs && measureOk(meas)
+    const docsOk = !!verdict && verdict.ok && !!meas && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)
     if (docsOk && meas.head) lastGood = meas.head
-    return { ok: true, mergeCommit, conflicts, gates: g.summary, docsOk, docsMeasure: meas }
+    return { ok: true, mergeCommit, conflicts, gates: g.summary, docsOk, docsMeasure }
   }
 
   // Closes the deliverable from the result of the merge block.
@@ -2329,7 +2373,7 @@ Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Authorizations given for this run: ${JSON.stringify(AUTH.items)}
 External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}${RESULTS.some(r => (r.externalRun || []).some(e => e.reviewed === false)) ? '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' : ''}
-Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the result of node ${disc.checker}; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
+Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured by the docs stage from brief --json (result.checker: errors, warnings, folder, stale): ${JSON.stringify(CHECKERS)}; do not run the checker file yourself; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
 Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[${RAN_MARK}: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', model: 'sonnet', effort: 'medium' })))
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
