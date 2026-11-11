@@ -18,6 +18,7 @@ import {
   compareVersions,
   findNewerPluginCopy,
 } from './check-roadmap.mjs';
+import * as fmt from '../../../lib/roadmap-format.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VALID = path.join(here, 'fixtures', 'valid');
@@ -1328,4 +1329,54 @@ test('v150 unknown-id: ids inside the gates Command column and the verify eviden
     retag(x, E1_A, tag('test', 'ruff check --select E501 src'));
   });
   assert.deepEqual(run(f), []);
+});
+
+// ---------- roadmap-format module (E2 T1) ----------
+
+const FMT_PATH = path.join(here, '..', '..', '..', 'lib', 'roadmap-format.mjs');
+
+test('roadmap-format module has no import, require, process, Buffer or crypto', () => {
+  const src = fs.readFileSync(FMT_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(src, /^\s*import\b|\bimport\s*\(|\brequire\s*\(|\b(?:process|Buffer|crypto)\b/m);
+});
+
+test('roadmap-format parser functions match the checker', () => {
+  const files = readFolder(VALID);
+  for (const [text, name] of [[files['strategy.md'], 'card'], [files['strategy.md'], 'gates'], [files['state.md'], 'panel'], [files['decisions.md'], 'decisions']]) {
+    assert.deepEqual(fmt.readBlocks(text, name), readBlocks(text, name), name);
+  }
+  const body = ['| a | b \\| c |', '|---|---|', '| 1 | 2 \\| 3 |', '```', '| x | y |', '| z | w |', '```', ''].join('\n');
+  assert.deepEqual(fmt.parseTable(body), parseTable(body));
+  assert.deepEqual(fmt.parseTable(body.split('```')[0]), [['1', '2 | 3']]);
+  assert.deepEqual(fmt.scanFences(body, false), scanFences(body, false));
+});
+
+function readValidTexts() {
+  const f = readFolder(VALID);
+  return { strategy: f['strategy.md'], files: { state: f['state.md'], decisions: f['decisions.md'], log: f['log.md'], sources: f['sources.md'], requirements: f['requirements.md'], measurements: null } };
+}
+
+test('parseRoadmapTexts reads the valid fixture', () => {
+  const r = fmt.parseRoadmapTexts(readValidTexts());
+  assert.deepEqual(r.version, { _0: '1.0', _1: '2026-01-01' });
+  assert.deepEqual(r.cards.map((c) => c.id), ['E1', 'E2', 'E3']);
+  assert.deepEqual(r.cards[1].depends, ['E1']);
+  assert.equal(r.cards[0].acceptance.length, 2);
+  assert.ok(r.cards[0].body.includes('Definition of done'));
+  assert.ok(!r.cards[0].body.includes('{verify:'));
+  assert.equal(r.blocks.state.panel.rows.length, 3);
+  assert.ok(r.blocks.state.panel.present && r.blocks.state.panel.closed);
+  assert.deepEqual(r.blocks.state.pending.items, ['(owner) Confirm the storage choice.']);
+  assert.equal(r.blocks.strategy.gates.rows[0][0], 'G1');
+  assert.equal(r.blocks.strategy.phases.present, false);
+  assert.deepEqual(r.blocks.measurements.measurements, { present: false, closed: false, malformed: 0, rows: [] });
+});
+
+test('parseRoadmapTexts counts malformed openers and keeps raw rows', () => {
+  const t = readValidTexts();
+  t.files.state = '<!-- roadmap:pending\n<!-- roadmap:panel -->\n| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n<!-- /roadmap:panel -->\n';
+  const r = fmt.parseRoadmapTexts(t);
+  assert.equal(r.blocks.state.pending.malformed, 1);
+  assert.equal(r.blocks.state.pending.present, false);
+  assert.deepEqual(r.blocks.state.panel.rows, [['1', '2', '3']]);
 });
