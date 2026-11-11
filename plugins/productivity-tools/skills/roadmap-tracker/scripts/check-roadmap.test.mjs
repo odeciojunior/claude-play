@@ -14,10 +14,13 @@ import {
   validateConfig,
   scanFences,
   checkRoadmap,
+  parseRoadmap,
   createGitAdapter,
   compareVersions,
   findNewerPluginCopy,
 } from './check-roadmap.mjs';
+import * as fmt from '../../../lib/roadmap-format.mjs';
+import { embedText, embedFile, checkPureSource } from '../../../scripts/embed.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VALID = path.join(here, 'fixtures', 'valid');
@@ -1328,4 +1331,469 @@ test('v150 unknown-id: ids inside the gates Command column and the verify eviden
     retag(x, E1_A, tag('test', 'ruff check --select E501 src'));
   });
   assert.deepEqual(run(f), []);
+});
+
+// ---------- roadmap-format module (E2 T1) ----------
+
+const FMT_PATH = path.join(here, '..', '..', '..', 'lib', 'roadmap-format.mjs');
+
+test('roadmap-format module has no import, require, process, Buffer or crypto', () => {
+  const src = fs.readFileSync(FMT_PATH, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(src, /^\s*import\b|\bimport\s*\(|\brequire\s*\(|\b(?:process|Buffer|crypto)\b/m);
+});
+
+test('roadmap-format parser functions match the checker', () => {
+  const files = readFolder(VALID);
+  for (const [text, name] of [[files['strategy.md'], 'card'], [files['strategy.md'], 'gates'], [files['state.md'], 'panel'], [files['decisions.md'], 'decisions']]) {
+    assert.deepEqual(fmt.readBlocks(text, name), readBlocks(text, name), name);
+  }
+  const body = ['| a | b \\| c |', '|---|---|', '| 1 | 2 \\| 3 |', '```', '| x | y |', '| z | w |', '```', ''].join('\n');
+  assert.deepEqual(fmt.parseTable(body), parseTable(body));
+  assert.deepEqual(fmt.parseTable(body.split('```')[0]), [['1', '2 | 3']]);
+  assert.deepEqual(fmt.scanFences(body, false), scanFences(body, false));
+});
+
+function readValidTexts() {
+  const f = readFolder(VALID);
+  return { strategy: f['strategy.md'], files: { state: f['state.md'], decisions: f['decisions.md'], log: f['log.md'], sources: f['sources.md'], requirements: f['requirements.md'], measurements: null } };
+}
+
+test('parseRoadmapTexts reads the valid fixture', () => {
+  const r = fmt.parseRoadmapTexts(readValidTexts());
+  assert.deepEqual(r.version, { _0: '1.0', _1: '2026-01-01' });
+  assert.deepEqual(r.cards.map((c) => c.id), ['E1', 'E2', 'E3']);
+  assert.deepEqual(r.cards[1].depends, ['E1']);
+  assert.equal(r.cards[0].acceptance.length, 2);
+  assert.ok(r.cards[0].body.includes('Definition of done'));
+  assert.ok(!r.cards[0].body.includes('{verify:'));
+  assert.equal(r.blocks.state.panel.rows.length, 3);
+  assert.ok(r.blocks.state.panel.present && r.blocks.state.panel.closed);
+  assert.deepEqual(r.blocks.state.pending.items, ['(owner) Confirm the storage choice.']);
+  assert.equal(r.blocks.strategy.gates.rows[0][0], 'G1');
+  assert.equal(r.blocks.strategy.phases.present, true);
+  assert.deepEqual(r.blocks.measurements.measurements, { present: false, closed: false, malformed: 0, rows: [] });
+});
+
+test('parseRoadmapTexts counts malformed openers and keeps raw rows', () => {
+  const t = readValidTexts();
+  t.files.state = '<!-- roadmap:pending\n<!-- roadmap:panel -->\n| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n<!-- /roadmap:panel -->\n';
+  const r = fmt.parseRoadmapTexts(t);
+  assert.equal(r.blocks.state.pending.malformed, 1);
+  assert.equal(r.blocks.state.pending.present, false);
+  assert.deepEqual(r.blocks.state.panel.rows, [['1', '2', '3']]);
+});
+
+test('parseRoadmapTexts splits multi-id depends and reqs on commas and whitespace', () => {
+  const t = readValidTexts();
+  t.strategy = '<!-- roadmap:card id="E9" depends="E1 E2,E3,  Es4" reqs="REQ-1 REQ-2,\tREQ-3" -->\ncorpo\n<!-- /roadmap:card -->\n';
+  const c = fmt.parseRoadmapTexts(t).cards[0];
+  assert.deepEqual(c.depends, ['E1', 'E2', 'E3', 'Es4']);
+  assert.deepEqual(c.reqs, ['REQ-1', 'REQ-2', 'REQ-3']);
+});
+
+// ---------- E2 T2: embed.mjs ----------
+
+const EMBED = path.join(here, '..', '..', '..', 'scripts', 'embed.mjs');
+const EMBED_TARGET = '// head\n// <embed src="src.mjs" exports="keep">\nold\n// </embed>\ntail\n';
+
+test('embed keep copies the source with exports', () => {
+  const out = embedText(EMBED_TARGET, () => 'export function f() { return 1; }\n');
+  assert.match(out, /Gerado de src\.mjs por /);
+  assert.ok(out.includes('export function f()'));
+  assert.ok(!out.includes('old'));
+  assert.ok(out.startsWith('// head'));
+  assert.ok(out.endsWith('tail\n'));
+});
+
+test('embed strip removes top-level export', () => {
+  const out = embedText(EMBED_TARGET.replace('keep', 'strip'), () => 'export function f() { return 1; }\nexport const k = 2;\n');
+  assert.ok(out.includes('function f()'));
+  assert.ok(!out.includes('export function'));
+  assert.ok(!out.includes('export const'));
+});
+
+test('embed refuses impure sources', () => {
+  for (const src of [
+    "import fs from 'node:fs';\n",
+    "const x = require('y');\n",
+    'process.env.X\n',
+    "Buffer.from('a')\n",
+    'crypto.randomUUID()\n',
+  ]) {
+    assert.equal(typeof checkPureSource(src, 'bad.mjs'), 'string', src);
+    assert.match(checkPureSource(src, 'bad.mjs'), /bad\.mjs/);
+    assert.throws(() => embedText(EMBED_TARGET, () => src), /src\.mjs/);
+  }
+  assert.equal(checkPureSource('// process is a word in a comment\nexport const a = 1;\n', 'ok.mjs'), null);
+});
+
+test('embed rejects unclosed markers and bad exports', () => {
+  assert.throws(() => embedText('// <embed src="a.mjs" exports="keep">\nx\n', () => ''), /a\.mjs/);
+  assert.throws(() => embedText('// <embed src="a.mjs" exports="no">\n// </embed>\n', () => ''), /a\.mjs/);
+});
+
+test('the real roadmap-format module passes the purity check', () => {
+  const file = path.join(here, '..', '..', '..', 'lib', 'roadmap-format.mjs');
+  assert.equal(checkPureSource(fs.readFileSync(file, 'utf8'), 'roadmap-format.mjs'), null);
+});
+
+test('embed keeps CRLF and compares in LF', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'src.mjs'), 'export const a = 1;\n');
+  const p = path.join(dir, 'target.mjs');
+  const src = () => 'export const a = 1;\n';
+  fs.writeFileSync(p, embedText(EMBED_TARGET, src).replace(/\n/g, '\r\n'));
+  assert.equal(embedFile(p, { check: true }).stale, false);
+  fs.writeFileSync(p, EMBED_TARGET.replace(/\n/g, '\r\n'));
+  assert.equal(embedFile(p, { check: true }).stale, true);
+  assert.equal(embedFile(p).stale, true);
+  const final = fs.readFileSync(p, 'utf8');
+  assert.ok(final.includes('\r\n'));
+  assert.ok(!/[^\r]\n/.test(final));
+  assert.equal(embedFile(p, { check: true }).stale, false);
+});
+
+test('embed --check exits 1 when stale and 0 when current', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'src.mjs'), 'export const a = 1;\n');
+  const p = path.join(dir, 'target.mjs');
+  fs.writeFileSync(p, EMBED_TARGET);
+  let r = spawnSync(process.execPath, [EMBED, '--check', p], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /stale:/);
+  assert.equal(fs.readFileSync(p, 'utf8'), EMBED_TARGET);
+  embedFile(p);
+  r = spawnSync(process.execPath, [EMBED, '--check', p], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  r = spawnSync(process.execPath, [EMBED], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+});
+
+test('AC5: embedded parser copy is current', () => {
+  const text = fs.readFileSync(SCRIPT, 'utf8').replace(/\r\n/g, '\n');
+  const next = embedText(text, (src) => fs.readFileSync(path.resolve(here, src), 'utf8'));
+  assert.equal(next, text);
+  assert.ok(text.includes('// <embed src="../../../lib/roadmap-format.mjs" exports="keep">'));
+});
+
+test('parseRoadmap equals parseRoadmapTexts on the valid fixture', () => {
+  const files = readFolder(VALID);
+  const config = JSON.parse(files['roadmap.config.json']);
+  const texts = {};
+  for (const [role, name] of Object.entries(config.files)) texts[role] = name === null ? null : files[name];
+  const expected = fmt.parseRoadmapTexts({ strategy: files[config.strategy], files: texts });
+  assert.deepEqual(parseRoadmap(loadRoadmap(VALID)), expected);
+});
+
+// ---------- E2 T5: eight new config, state, source and decision checks ----------
+
+const t5HasCode = (dir, code) => codes(run(dir)).includes(code);
+
+test('status-order warns once per violation and is clean on the fixture', () => {
+  assert.ok(!t5HasCode(fixture(), 'status-order'));
+  const dir = fixture((f) => rep(f, 'roadmap.config.json', '"blocked", "discarded"', '"discarded", "blocked"'));
+  const hits = run(dir).filter((p) => p.code === 'status-order');
+  assert.equal(hits.length, 2);
+  expectCode(hits, 'status-order', 'warning');
+  assert.equal(hits[0].file, 'roadmap.config.json');
+});
+
+test('status-order warns on fewer than 8 statuses', () => {
+  const dir = fixture((f) => {
+    rep(f, 'roadmap.config.json', '"deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"]', '"deliverableStatuses": ["not-started", "spec", "integrated", "released"]');
+    rep(f, 'roadmap.config.json', '"integratedStatuses": ["integrated", "released", "measured"]', '"integratedStatuses": ["integrated", "released"]');
+  });
+  assert.ok(t5HasCode(dir, 'status-order'));
+});
+
+test('pending-no-owner', () => {
+  assert.ok(!t5HasCode(fixture(), 'pending-no-owner'));
+  const dir = fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'));
+  expectCode(run(dir), 'pending-no-owner', 'warning');
+});
+
+test('state-header', () => {
+  assert.ok(!t5HasCode(fixture(), 'state-header'));
+  const dir = fixture((f) => rep(f, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy v0.9 -- 2026-01-01'));
+  expectCode(run(dir), 'state-header', 'warning');
+});
+
+const T5_BLQ_ROW = '| BLQ-1 | Storage vendor undecided | E3 | 2026-01-02 | the owner picks a vendor; restores E3 to not-started |\n';
+function t5BlockE3(f, { blq, unblock }) {
+  rep(f, 'state.md', '| E3 | not-started | - | Wait for E2 |', `| E3 | blocked${blq ? ' (BLQ-1)' : ''} | - | Wait for E2 |`);
+  if (blq) rep(f, 'state.md', '<!-- /roadmap:blockers -->', T5_BLQ_ROW.replace('the owner picks a vendor; restores E3 to not-started', unblock) + '<!-- /roadmap:blockers -->');
+}
+
+test('blocked-no-blq', () => {
+  expectCode(run(fixture((f) => t5BlockE3(f, { blq: false }))), 'blocked-no-blq', 'warning');
+  const clean = fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor; restores E3 to not-started' }));
+  assert.ok(!t5HasCode(clean, 'blocked-no-blq'));
+});
+
+test('blocker-no-restore', () => {
+  expectCode(run(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor' }))), 'blocker-no-restore', 'warning');
+  assert.ok(!t5HasCode(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor; restores E3 to not-started' })), 'blocker-no-restore'));
+  assert.ok(!t5HasCode(fixture((f) => t5BlockE3(f, { blq: true, unblock: 'o dono escolhe; restaura E3 a not-started' })), 'blocker-no-restore'));
+});
+
+test('source-uncited', () => {
+  assert.ok(!t5HasCode(fixture(), 'source-uncited'));
+  const dir = fixture((f) => rep(f, 'sources.md', '<!-- /roadmap:sources -->', '| SRC-03 | `docs/extra.md` | Extra notes | 2026-01-01 | Informal |\n<!-- /roadmap:sources -->'));
+  const hit = run(dir).find((p) => p.code === 'source-uncited');
+  assert.ok(hit && hit.message.includes('SRC-03'));
+  assert.equal(hit.severity, 'warning');
+});
+
+test('strategy-plan-suffix', () => {
+  assert.ok(!t5HasCode(fixture(), 'strategy-plan-suffix'));
+  const dir = fixture((f) => {
+    f['roadmap-plan.md'] = f['strategy.md'];
+    delete f['strategy.md'];
+    rep(f, 'roadmap.config.json', '"strategy": "strategy.md"', '"strategy": "roadmap-plan.md"');
+  });
+  expectCode(run(dir), 'strategy-plan-suffix', 'warning');
+});
+
+const T5_EXEC_ROW = (scope) => `| DEC-002 | 2026-01-03 | E1 | Items are stored as JSON files.${scope} | A database | - | Volume grows | executor | pending |\n`;
+function t5AddExec(f, scope) {
+  rep(f, 'decisions.md', '<!-- /roadmap:decisions -->', T5_EXEC_ROW(scope) + '<!-- /roadmap:decisions -->');
+}
+
+test('executor-decision-pending', () => {
+  assert.ok(!t5HasCode(fixture((f) => t5AddExec(f, ' Alcance: contrato.')), 'executor-decision-pending'));
+  const advance = (f) => rep(f, 'state.md', '| E2 | not-started |', '| E2 | plan |');
+  expectCode(run(fixture((f) => { t5AddExec(f, ' Alcance: contrato.'); advance(f); })), 'executor-decision-pending', 'warning');
+  expectCode(run(fixture((f) => { t5AddExec(f, ' Scope: contract.'); advance(f); })), 'executor-decision-pending', 'warning');
+  assert.ok(!t5HasCode(fixture((f) => { t5AddExec(f, ' Alcance: local.'); advance(f); }), 'executor-decision-pending'));
+  expectCode(run(fixture((f) => {
+    t5AddExec(f, ' Alcance: local.');
+    rep(f, 'state.md', '| E1 | spec | `docs/spec-e1.md` |', '| E1 | released | `docs/spec-e1.md` abc1234def |');
+  })), 'executor-decision-pending', 'warning');
+});
+
+test('executor-decision-pending reads English Scope: local as local', () => {
+  assert.ok(!t5HasCode(fixture((f) => { t5AddExec(f, ' Scope: local.'); rep(f, 'state.md', '| E2 | not-started |', '| E2 | plan |'); }), 'executor-decision-pending'));
+});
+
+test('new checks run after git early returns', () => {
+  const dir = fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'));
+  const p = checkRoadmap(loadRoadmap(dir), null);
+  assert.ok(codes(p).includes('no-git') && codes(p).includes('pending-no-owner'));
+  assert.ok(codes(p).indexOf('no-git') < codes(p).indexOf('pending-no-owner'));
+});
+
+// ---------- E2 T6: phase and definition-of-done checks, AC1 and AC2 ----------
+
+const T6_PHASE_ROW2 = '| Users complete the main flow | The thin path is integrated | A user completes the main flow and sees reports | E2, E3 |';
+const T6_PHASE_ROW1 = '| A thin end-to-end path works | Roadmap approved | One item travels input to storage and back | E1 |';
+const t6DropE3 = (f) => rep(f, 'strategy.md', '| E2, E3 |', '| E2 |');
+const t6SwapPhases = (f) => rep(f, 'strategy.md', `${T6_PHASE_ROW1}\n${T6_PHASE_ROW2}`, `${T6_PHASE_ROW2}\n${T6_PHASE_ROW1}`);
+const t6NoPhasesBlock = (f) => {
+  rep(f, 'strategy.md', '<!-- roadmap:phases -->\n', '');
+  rep(f, 'strategy.md', '<!-- /roadmap:phases -->\n', '');
+};
+const t6DodE1 = (f) => rep(f, 'strategy.md', 'Definition of done: acceptance passes in the integration branch; G1 and G2 green.', 'Definition of done: acceptance passes in the integration branch; all checks green.');
+
+test('fixture has a roadmap:phases block', () => {
+  const files = readFolder(VALID);
+  assert.ok(files['strategy.md'].includes('<!-- roadmap:phases -->'));
+  assert.ok(files['strategy.md'].includes('<!-- /roadmap:phases -->'));
+});
+
+test('card-phase-table', () => {
+  assert.ok(!t5HasCode(fixture(), 'card-phase-table'));
+  const hit = run(fixture(t6DropE3)).find((p) => p.code === 'card-phase-table');
+  assert.ok(hit && hit.message.includes('E3'), 'warns about E3');
+  assert.equal(hit.severity, 'warning');
+  assert.equal(hit.file, 'strategy.md');
+});
+
+test('card-phase-table flags a card in two rows and mixed phases', () => {
+  const two = fixture((f) => rep(f, 'strategy.md', '| E1 |\n| Users', '| E1, E2 |\n| Users'));
+  assert.ok(run(two).some((p) => p.code === 'card-phase-table' && p.message.includes('E2')));
+  const mixed = fixture((f) => rep(f, 'strategy.md', '| E2, E3 |', '| E1, E2, E3 |'));
+  assert.ok(codes(run(mixed)).includes('card-phase-table'));
+});
+
+test('card-phase-table flags two rows with the same phase', () => {
+  const dir = fixture((f) => rep(f, 'strategy.md', '| E2, E3 |', '| E2 |\n| Another outcome | x | y | E3 |'));
+  assert.ok(codes(run(dir)).includes('card-phase-table'));
+});
+
+test('phase-order', () => {
+  assert.ok(!t5HasCode(fixture(), 'phase-order'));
+  const hit = run(fixture(t6SwapPhases)).find((p) => p.code === 'phase-order');
+  assert.ok(hit && hit.message.includes('E2') && hit.message.includes('E1'));
+  assert.equal(hit.severity, 'warning');
+});
+
+test('phase checks need the phases block', () => {
+  const dir = fixture((f) => { t6NoPhasesBlock(f); t6DropE3(f); });
+  const c = codes(run(dir));
+  assert.ok(!c.includes('card-phase-table') && !c.includes('phase-order'));
+  const swapped = fixture((f) => { t6NoPhasesBlock(f); t6SwapPhases(f); });
+  assert.ok(!codes(run(swapped)).includes('phase-order'));
+});
+
+test('dod-no-gate', () => {
+  assert.ok(!t5HasCode(fixture(), 'dod-no-gate'));
+  const hit = run(fixture(t6DodE1)).find((p) => p.code === 'dod-no-gate');
+  assert.ok(hit && hit.message.includes('E1'));
+  assert.equal(hit.severity, 'warning');
+  assert.equal(hit.file, 'strategy.md');
+});
+
+test('dod-no-gate ignores gate ids inside acceptance', () => {
+  const dir = fixture((f) => {
+    t6DodE1(f);
+    rep(f, 'strategy.md', 'node --test tests/e1.test.mjs}', 'node --test tests/e1.test.mjs; evidence: G1}');
+  });
+  assert.ok(run(dir).some((p) => p.code === 'dod-no-gate' && p.message.includes('E1')));
+});
+
+test('dod-no-gate skips human-only cards', () => {
+  const dir = fixture((f) => {
+    rep(f, 'strategy.md', '{verify: test; evidence: node --test tests/e2.test.mjs}', '{verify: human; evidence: owner edits an item}');
+    const start = f['strategy.md'].indexOf('id=E2');
+    const end = f['strategy.md'].indexOf('id=E3');
+    f['strategy.md'] = f['strategy.md'].slice(0, start) + f['strategy.md'].slice(start, end).replace('G1 and G2 green', 'all checks green') + f['strategy.md'].slice(end);
+  });
+  assert.ok(!run(dir).some((p) => p.code === 'dod-no-gate' && p.message.includes('E2')));
+});
+
+const NEW_CODES = ['status-order', 'pending-no-owner', 'state-header', 'blocked-no-blq', 'blocker-no-restore', 'source-uncited', 'strategy-plan-suffix', 'executor-decision-pending', 'card-phase-table', 'phase-order', 'dod-no-gate'];
+
+function allNewDefects(files) {
+  // t5 defects
+  rep(files, 'roadmap.config.json', '"blocked", "discarded"', '"discarded", "blocked"');
+  rep(files, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.');
+  rep(files, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy v0.9 -- 2026-01-01');
+  rep(files, 'state.md', '| E3 | not-started | - | Wait for E2 |', '| E3 | blocked | - | Wait for E2 |');
+  rep(files, 'state.md', '<!-- /roadmap:blockers -->', '| BLQ-1 | Storage vendor undecided | E3 | 2026-01-02 | the owner picks a vendor |\n<!-- /roadmap:blockers -->');
+  rep(files, 'sources.md', '<!-- /roadmap:sources -->', '| SRC-03 | `docs/extra.md` | Extra notes | 2026-01-01 | Informal |\n<!-- /roadmap:sources -->');
+  rep(files, 'decisions.md', '<!-- /roadmap:decisions -->', T5_EXEC_ROW(' Alcance: contrato.') + '<!-- /roadmap:decisions -->');
+  rep(files, 'state.md', '| E2 | not-started |', '| E2 | plan |');
+  // t6 defects
+  t6SwapPhases(files);
+  t6DropE3(files);
+  t6DodE1(files);
+  // strategy name last
+  files['roadmap-plan.md'] = files['strategy.md'];
+  delete files['strategy.md'];
+  rep(files, 'roadmap.config.json', '"strategy": "strategy.md"', '"strategy": "roadmap-plan.md"');
+}
+
+test('AC1: one defect of each new check emits its named code', () => {
+  const found = codes(run(fixture(allNewDefects)));
+  for (const code of NEW_CODES) assert.ok(found.includes(code), `missing ${code}; got [${found.join(', ')}]`);
+});
+
+test('AC2: a pre-1.7 folder and a folder with every new defect stay at exit 0 with warnings only', () => {
+  const pre = fixture((f) => {
+    t6NoPhasesBlock(f);
+    rep(f, 'state.md', 'Strategy v1.0 -- 2026-01-01', 'Strategy');
+  });
+  for (const dir of [pre, fixture(allNewDefects)]) {
+    assert.equal(cli([dir]).status, 0, cli([dir]).stdout);
+    for (const p of run(dir)) if (NEW_CODES.includes(p.code)) assert.equal(p.severity, 'warning', p.code);
+  }
+});
+
+// ---------- AC3: --json ----------
+
+function textPairs(stdout) {
+  return [...stdout.matchAll(/\[([a-z0-9-]+)\]$/gm)].map((m) => m[1]);
+}
+
+function textCounts(stdout) {
+  const m = stdout.match(/check-roadmap: (\d+) error\(s\), (\d+) warning\(s\)/);
+  return { errors: Number(m[1]), warnings: Number(m[2]) };
+}
+
+test('AC3: --json matches text mode counts and exit code', async (t) => {
+  await t.test('valid folder', () => {
+    const r = cli([VALID, '--json']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.checker, '1.5.0');
+    assert.equal(o.format, 1);
+    assert.deepEqual(o.summary, { errors: 0, warnings: 0, exitCode: 0 });
+  });
+
+  const cases = [
+    ['folder with an error', () => fixture((f) => rep(f, 'state.md', '| E3 | not-started |', '| E3 | bogus |'))],
+    ['folder with a warning', () => fixture((f) => rep(f, 'state.md', '- (owner) Confirm the storage choice.', '- Confirm the storage choice.'))],
+  ];
+  for (const [name, make] of cases) {
+    await t.test(name, () => {
+      const dir = make();
+      const text = cli([dir]);
+      const json = cli([dir, '--json']);
+      const o = JSON.parse(json.stdout);
+      assert.equal(json.status, text.status);
+      const c = textCounts(text.stdout);
+      assert.equal(o.errors.length, c.errors);
+      assert.equal(o.warnings.length, c.warnings);
+      assert.deepEqual(o.summary, { ...c, exitCode: text.status });
+      const jsonCodes = [...o.errors, ...o.warnings].map((p) => p.code).sort();
+      assert.deepEqual(jsonCodes, textPairs(text.stdout).sort());
+      const order = textPairs(text.stdout);
+      assert.deepEqual(o.errors.map((p) => p.code), order.filter((code) => o.errors.some((e) => e.code === code)));
+      for (const p of [...o.errors, ...o.warnings]) assert.deepEqual(Object.keys(p), ['code', 'file', 'message']);
+    });
+  }
+
+  await t.test('invalid config', () => {
+    const dir = fixture((f) => rep(f, 'roadmap.config.json', '"tracks"', '"trackz"'));
+    const text = cli([dir]);
+    const json = cli([dir, '--json']);
+    assert.equal(text.status, 1);
+    assert.equal(json.status, 1);
+    const o = JSON.parse(json.stdout);
+    assert.equal(o.errors.length, 1);
+    assert.equal(o.errors[0].code, 'config');
+    assert.equal(o.errors[0].file, 'roadmap.config.json');
+    assert.ok(!o.errors[0].message.startsWith('config: '));
+    assert.equal(o.summary.exitCode, 1);
+  });
+
+  await t.test('forced internal failure', () => {
+    const env = { ROADMAP_CHECK_SELFTEST_THROW: '1' };
+    const text = cli([VALID], { env });
+    const json = cli([VALID, '--json'], { env });
+    assert.equal(text.status, 2);
+    assert.equal(json.status, 2);
+    const o = JSON.parse(json.stdout);
+    assert.equal(o.errors.length, 1);
+    assert.equal(o.errors[0].code, 'internal');
+    assert.ok(!o.errors[0].message.includes('\n    at '));
+    assert.equal(o.summary.exitCode, 2);
+  });
+
+  await t.test('--version --json stays text', () => {
+    const r = cli(['--version', '--json']);
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout.trim(), '1.5.0 format 1');
+  });
+});
+
+test('AC5: every code the checker emits is documented in formats.md section 9', () => {
+  const source = fs.readFileSync(SCRIPT, 'utf8');
+  const found = new Set(['config', 'bad-header', 'internal']);
+  for (const re of [/add\([^,()]+,\s*'([a-z0-9-]+)'/g, /code: '([a-z0-9-]+)'/g]) {
+    for (const m of source.matchAll(re)) found.add(m[1]);
+  }
+  const formats = fs.readFileSync(path.join(here, '..', '..', 'roadmap-planner', 'references', 'formats.md'), 'utf8').replace(/\r\n/g, '\n');
+  const start = formats.indexOf('## 9.');
+  assert.ok(start >= 0, 'formats.md has no section 9');
+  const section = formats.slice(start);
+  const missing = [...found].filter((code) => !section.includes('`' + code + '`'));
+  assert.deepEqual(missing, []);
+  assert.ok(section.includes('--json'), 'section 9 does not mention --json');
+  assert.ok(section.includes('since 1.7.0'), 'section 9 does not mention since 1.7.0');
+});
+
+test('AC5: valid fixture is clean', () => {
+  assert.deepEqual(run(fixture()), []);
+  assert.ok(cli([VALID]).stdout.includes('0 error(s), 0 warning(s)'));
 });

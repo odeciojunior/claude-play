@@ -6,9 +6,12 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   validateReleaseConfig, deriveConfig, classifyGate,
-  requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight,
+  requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
 } from './preflight.mjs';
-import { readBlocks, parseTable } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
+import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
+import { readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const good = () => ({
   projectContext: 'ctx',
@@ -452,4 +455,20 @@ test('A1: a derived config points to CLAUDE.md instead of copying it', () => {
   assert.ok(!JSON.stringify(r).includes('SENTINEL-RULE-TEXT'));
   const without = repoWithRoadmap(false);
   assert.equal(runPreflight(without.dir, { home }).config.projectContext, '');
+});
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+test('AC4: preflight and checker read the same blocks and rows', () => {
+  const VALID = join(HERE, '..', '..', 'roadmap-tracker', 'scripts', 'fixtures', 'valid');
+  const mine = readRoadmapStructure(VALID);
+  assert.deepEqual(mine, parseRoadmap(loadRoadmap(VALID)));
+  assert.equal(mine.cards.length, 3);
+  assert.equal(mine.blocks.state.panel.rows.length, 3);
+});
+
+test('preflight carries no copy of the parser', () => {
+  const src = readFileSync(join(HERE, 'preflight.mjs'), 'utf8');
+  for (const fn of ['blankFences', 'splitRow', 'scanComments', 'firstBlockBody']) assert.ok(!src.includes('function ' + fn), fn);
+  assert.ok(src.includes('lib/roadmap-format.mjs'));
 });

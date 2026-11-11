@@ -24,15 +24,21 @@ const ID_RE = /\b(?:DEC-\d+|REQ-\d+|SRC-\d+|BLQ-\d+|E\d+)\b/g;
 
 // ---------- parsing ----------
 
-function norm(text) {
+// <embed src="../../../lib/roadmap-format.mjs" exports="keep">
+// Gerado de ../../../lib/roadmap-format.mjs por plugins/productivity-tools/scripts/embed.mjs; não editar aqui.
+// Parser do formato de roadmap (formats.md): fonte única, pura e sem dependências.
+// Sem imports nem acesso a ambiente: o texto entra, a estrutura sai.
+// Copiado para o checker e o preflight por plugins/productivity-tools/scripts/embed.mjs.
+
+export function norm(text) {
   return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').normalize('NFC');
 }
 
-function escapeRe(s) {
+export function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function parseAttrs(s) {
+export function parseAttrs(s) {
   // Linear tokenizer: key=value, key="quoted value", and positional tokens (_0, _1, ...).
   const attrs = {};
   const str = s || '';
@@ -95,7 +101,7 @@ export function scanFences(text, keepMermaid) {
 }
 
 // One linear pass over the comments of a text; a comment whose `-->` comes after the next `<!--` is malformed.
-function scanComments(text) {
+export function scanComments(text) {
   const out = [];
   let closeAt = -2;
   let openAt = -2;
@@ -116,16 +122,16 @@ function scanComments(text) {
   return out;
 }
 
-const WS_RE = /\s/;
+export const WS_RE = /\s/;
 
 // Position right after leading whitespace of the comment inner text.
-function skipWs(text, from, end) {
+export function skipWs(text, from, end) {
   let k = from;
   while (k < end && WS_RE.test(text[k])) k++;
   return k;
 }
 
-export function readBlocks(text, name) {
+function scanBlocks(text, name) {
   text = norm(text);
   const scan = scanFences(text, false).text;
   const comments = scanComments(scan);
@@ -142,7 +148,7 @@ export function readBlocks(text, name) {
       const block = { attrs: {}, body: '' };
       Object.defineProperty(block, 'closed', { value: false, enumerable: false });
       Object.defineProperty(block, 'malformed', { value: true, enumerable: false });
-      out.push(block);
+      out.push({ block, start: c.start, end: c.after });
       continue;
     }
     let closer = null;
@@ -161,12 +167,16 @@ export function readBlocks(text, name) {
     const block = { attrs: parseAttrs(scan.slice(after, c.end)), body: closer ? text.slice(c.after, closer.start) : '' };
     Object.defineProperty(block, 'closed', { value: Boolean(closer), enumerable: false });
     Object.defineProperty(block, 'malformed', { value: false, enumerable: false });
-    out.push(block);
+    out.push({ block, start: c.start, end: closer ? closer.after : c.after });
   }
   return out;
 }
 
-function splitRow(line) {
+export function readBlocks(text, name) {
+  return scanBlocks(text, name).map((s) => s.block);
+}
+
+export function splitRow(line) {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
   if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
@@ -183,7 +193,7 @@ export function parseTable(body) {
   return rows.slice(1).filter((r) => !isSep(r));
 }
 
-function parseList(body) {
+export function parseList(body) {
   const items = [];
   for (const line of norm(body).split('\n')) {
     if (!line.trim() || line.trim().startsWith('<!--') || line.trim().startsWith('|')) continue;
@@ -194,7 +204,7 @@ function parseList(body) {
   return items;
 }
 
-function stripNote(seg) {
+export function stripNote(seg) {
   const s = seg.trimEnd();
   if (!s.endsWith(')')) return s;
   let depth = 0;
@@ -208,7 +218,7 @@ function stripNote(seg) {
   return s;
 }
 
-function parseStatus(cell) {
+export function parseStatus(cell) {
   return cell
     .split(';')
     .map((s) => s.trim())
@@ -220,15 +230,9 @@ function parseStatus(cell) {
     });
 }
 
-const isEmptyCell = (c) => c === undefined || c.trim() === '' || c.trim() === '-' || c.trim() === '—';
-const localIsoDate = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-};
-const idsIn =(s, re) => [...new Set((s || '').match(re) || [])];
+export const idsIn = (s, re) => [...new Set((s || '').match(re) || [])];
 
-function shasIn(cell) {
+export function shasIn(cell) {
   const out = [];
   for (const m of (cell || '').matchAll(/`([0-9a-f]{7,40})`/g)) {
     out.push(m[1]);
@@ -237,8 +241,8 @@ function shasIn(cell) {
 }
 
 // Acceptance verification tag, at the end of an item: ` {verify: <kind>[ BLQ-n]; evidence: <command or artifact>}`.
-const VERIFY_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
-const EXECUTABLE_KINDS = ['test', 'smoke', 'integration'];
+export const VERIFY_KINDS = ['test', 'smoke', 'integration', 'human', 'blocked'];
+export const EXECUTABLE_KINDS = ['test', 'smoke', 'integration'];
 
 export function parseVerifyTag(item) {
   const at = item.indexOf('{verify:');
@@ -256,6 +260,109 @@ export function parseVerifyTag(item) {
   if (EXECUTABLE_KINDS.includes(kind) && !evidence) return { text, tag, problem: `kind "${kind}" needs a command or artifact as evidence` };
   return { text, tag, problem: null };
 }
+const cols = (n) => n;
+const T = (role, name, c) => ({ role, name, kind: 'table', cols: c });
+const L = (role, name) => ({ role, name, kind: 'list' });
+
+// Blocos do formato (formats.md, secao 3). 'phases' e opcional.
+export const ROADMAP_BLOCKS = [
+  T('strategy', 'gates', cols(5)),
+  T('strategy', 'phases', cols(4)),
+  L('state', 'now'),
+  T('state', 'panel', cols(4)),
+  T('state', 'blockers', cols(5)),
+  L('state', 'pending'),
+  T('state', 'inflight', cols(3)),
+  L('state', 'donot'),
+  T('state', 'releases', cols(6)),
+  T('decisions', 'decisions', cols(9)),
+  T('log', 'log', cols(4)),
+  T('sources', 'sources', cols(5)),
+  L('sources', 'conflicts'),
+  T('requirements', 'requirements', cols(6)),
+  T('measurements', 'measurements', cols(7)),
+];
+
+const FILE_ROLES = ['state', 'decisions', 'log', 'sources', 'requirements', 'measurements'];
+
+function readOne(text, name, kind) {
+  const empty = kind === 'table' ? { present: false, closed: false, malformed: 0, rows: [] } : { present: false, closed: false, malformed: 0, items: [] };
+  if (text === null || text === undefined) return empty;
+  const all = readBlocks(text, name);
+  const good = all.filter((x) => !x.malformed);
+  const out = { present: good.length > 0, closed: good.length > 0 && good[0].closed, malformed: all.length - good.length };
+  if (kind === 'table') out.rows = good.length ? parseTable(good[0].body) : [];
+  else out.items = good.length ? parseList(good[0].body) : [];
+  return out;
+}
+
+function cutBlocks(body, names) {
+  const text = norm(body);
+  const spans = [];
+  for (const n of names) for (const s of scanBlocks(text, n)) if (!s.block.malformed) spans.push([s.start, s.end]);
+  spans.sort((a, b) => a[0] - b[0]);
+  let out = '';
+  let at = 0;
+  for (const [s, e] of spans) {
+    if (s < at) continue;
+    out += text.slice(at, s);
+    at = e;
+  }
+  return out + text.slice(at);
+}
+
+const splitIds = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
+
+export function parseRoadmapTexts({ strategy, files }) {
+  const f = files || {};
+  const blocks = {};
+  for (const role of ['strategy', ...FILE_ROLES]) blocks[role] = {};
+  for (const d of ROADMAP_BLOCKS) {
+    const text = d.role === 'strategy' ? strategy : f[d.role];
+    blocks[d.role][d.name] = readOne(text, d.name, d.kind);
+  }
+
+  const versions = readBlocks(strategy || '', 'version');
+  const goodVersions = versions.filter((x) => !x.malformed);
+  const version = goodVersions.length ? goodVersions[0].attrs : null;
+  blocks.strategy.version = { present: goodVersions.length > 0, malformed: versions.length - goodVersions.length };
+
+  const cardBlocks = readBlocks(strategy || '', 'card');
+  blocks.strategy.card = { malformed: cardBlocks.filter((x) => x.malformed).length };
+
+  const cards = [];
+  for (const b of cardBlocks) {
+    if (b.malformed) continue;
+    const acc = readBlocks(b.body, 'acceptance');
+    const risks = readBlocks(b.body, 'risks');
+    const accGood = acc.filter((x) => !x.malformed)[0];
+    const riskGood = risks.filter((x) => !x.malformed)[0];
+    cards.push({
+      id: b.attrs.id || '',
+      attrs: b.attrs,
+      closed: b.closed,
+      depends: splitIds(b.attrs.depends),
+      reqs: splitIds(b.attrs.reqs),
+      critical: String(b.attrs.critical).toLowerCase() === 'true',
+      acceptance: (accGood ? parseList(accGood.body) : []).map(parseVerifyTag),
+      risks: riskGood ? parseList(riskGood.body) : [],
+      body: cutBlocks(b.body, ['acceptance', 'risks']),
+      malformed: {
+        acceptance: acc.filter((x) => x.malformed).length,
+        risks: risks.filter((x) => x.malformed).length,
+      },
+    });
+  }
+  return { version, cards, blocks };
+}
+// </embed>
+
+const isEmptyCell = (c) => c === undefined || c.trim() === '' || c.trim() === '-' || c.trim() === '—';
+const localIsoDate = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 // Command text (gates Command column, verify evidence) is shell, not a citation: blank it before the ID scan.
 function blankCommandText(text, isStrategy) {
@@ -464,6 +571,10 @@ export function createGitAdapter(folder) {
 
 // ---------- checks ----------
 
+export function parseRoadmap(roadmap) {
+  return parseRoadmapTexts({ strategy: roadmap.strategy, files: roadmap.files });
+}
+
 export function checkRoadmap(r, git, opts = {}) {
   const problems = [];
   const add = (severity, code, file, message) => problems.push({ severity, code, file, message });
@@ -481,83 +592,70 @@ export function checkRoadmap(r, git, opts = {}) {
   const fileName = (role) => r.paths[role] || role;
 
   // ---- block access with structural diagnostics ----
-  // Well-formed blocks of a name; every opener missing its `-->` is reported as malformed-anchor.
-  function blocksOf(text, name, file) {
-    const all = readBlocks(text, name);
-    for (const b of all) {
-      if (b.malformed) add('error', 'malformed-anchor', file, `opener of block roadmap:${name} has no closing --> before the next comment`);
-    }
-    return all.filter((b) => !b.malformed);
+  const parsed = parseRoadmap(r);
+  const noteAnchors = (info, name, file) => {
+    for (let i = 0; i < info.malformed; i++) add('error', 'malformed-anchor', file, `opener of block roadmap:${name} has no closing --> before the next comment`);
+  };
+
+  // Block of a role/name: malformed openers first, then missing-block (when required) and unclosed-block.
+  function blockInfo(role, name, file, text, required = true) {
+    const info = parsed.blocks[role][name];
+    if (text === null || text === undefined) return info;
+    noteAnchors(info, name, file);
+    if (!info.present) {
+      if (required && info.malformed === 0) add('error', 'missing-block', file, `missing block roadmap:${name}`);
+    } else if (!info.closed) add('error', 'unclosed-block', file, `block roadmap:${name} has no closing comment`);
+    return info;
   }
 
-  function firstBlock(text, name, file, required = true) {
-    if (text === null || text === undefined) return null;
-    const blocks = blocksOf(text, name, file);
-    if (blocks.length === 0) {
-      if (required && !readBlocks(text, name).some((b) => b.malformed)) add('error', 'missing-block', file, `missing block roadmap:${name}`);
-      return null;
-    }
-    if (!blocks[0].closed) add('error', 'unclosed-block', file, `block roadmap:${name} has no closing comment`);
-    return blocks[0];
-  }
-
-  function tableRows(text, name, file, cols, required = true) {
-    const b = firstBlock(text, name, file, required);
-    if (!b) return [];
+  function tableRows(role, name, file, text, cols, required = true) {
+    const info = blockInfo(role, name, file, text, required);
     const rows = [];
-    parseTable(b.body).forEach((row, i) => {
+    info.rows.forEach((row, i) => {
       if (row.length !== cols) add('error', 'bad-row', file, `roadmap:${name} row ${i + 1} has ${row.length} columns, expected exactly ${cols} (escape a literal | as \\|)`);
       else rows.push(row);
     });
     return rows;
   }
 
-  function listItems(text, name, file, required = true) {
-    const b = firstBlock(text, name, file, required);
-    return b ? parseList(b.body) : [];
+  function listItems(role, name, file, text, required = true) {
+    return blockInfo(role, name, file, text, required).items;
   }
 
   // ---- strategy: version and cards ----
-  if (blocksOf(r.strategy, 'version', strategyName).length === 0 && !readBlocks(r.strategy, 'version').some((b) => b.malformed)) {
+  noteAnchors(parsed.blocks.strategy.version, 'version', strategyName);
+  if (!parsed.blocks.strategy.version.present && parsed.blocks.strategy.version.malformed === 0) {
     add('error', 'missing-block', strategyName, 'missing roadmap:version anchor');
   }
 
-  const cards = [];
-  for (const b of blocksOf(r.strategy, 'card', strategyName)) {
-    if (!b.closed) add('error', 'unclosed-block', strategyName, `card ${b.attrs.id || '?'} has no closing comment`);
-    const list = (s) => (s || '').split(/[,\s]+/).filter((x) => x && x !== '-' && x !== '—');
-    const acc = blocksOf(b.body, 'acceptance', strategyName)[0];
-    const risks = blocksOf(b.body, 'risks', strategyName)[0];
-    cards.push({
-      id: b.attrs.id || '',
-      attrs: b.attrs,
-      depends: list(b.attrs.depends),
-      reqs: list(b.attrs.reqs),
-      critical: String(b.attrs.critical).toLowerCase() === 'true',
-      acceptance: (acc ? parseList(acc.body) : []).map(parseVerifyTag),
-      risks: risks ? parseList(risks.body) : [],
-    });
+  noteAnchors(parsed.blocks.strategy.card, 'card', strategyName);
+  const cards = parsed.cards;
+  for (const c of cards) {
+    if (!c.closed) add('error', 'unclosed-block', strategyName, `card ${c.id || '?'} has no closing comment`);
+    noteAnchors({ malformed: c.malformed.acceptance }, 'acceptance', strategyName);
+    noteAnchors({ malformed: c.malformed.risks }, 'risks', strategyName);
   }
   if (cards.length === 0) add('error', 'missing-block', strategyName, 'no roadmap:card blocks found');
-  for (const row of tableRows(r.strategy, 'gates', strategyName, 5, false)) {
+  const gateRows = tableRows('strategy', 'gates', strategyName, r.strategy, 5, false);
+  for (const row of gateRows) {
     if (isEmptyCell(row[1])) add('warning', 'gate-no-command', strategyName, `gate ${row[0] || '?'} has no command`);
   }
 
   // ---- tables ----
-  const panel = tableRows(r.files.state, 'panel', fileName('state'), 4);
-  const blockers = tableRows(r.files.state, 'blockers', fileName('state'), 5);
-  const inflight = tableRows(r.files.state, 'inflight', fileName('state'), 3);
-  const donotItems = listItems(r.files.state, 'donot', fileName('state'), false);
-  const releaseBlock = r.files.state ? readBlocks(r.files.state, 'releases').some((b) => !b.malformed) : false;
-  const releases = tableRows(r.files.state, 'releases', fileName('state'), 6, false);
-  const nowItems = listItems(r.files.state, 'now', fileName('state'));
-  const pendingItems = listItems(r.files.state, 'pending', fileName('state'));
-  const decisions = tableRows(r.files.decisions, 'decisions', fileName('decisions'), 9);
-  const logRows = tableRows(r.files.log, 'log', fileName('log'), 4);
-  const sources = tableRows(r.files.sources, 'sources', fileName('sources'), 5);
-  const conflicts = listItems(r.files.sources, 'conflicts', fileName('sources'));
-  const reqs = tableRows(r.files.requirements, 'requirements', fileName('requirements'), 6);
-  const measurements = r.files.measurements === null ? [] : tableRows(r.files.measurements, 'measurements', fileName('measurements'), 7);
+  const panel = tableRows('state', 'panel', fileName('state'), r.files.state, 4);
+  const blockers = tableRows('state', 'blockers', fileName('state'), r.files.state, 5);
+  const inflight = tableRows('state', 'inflight', fileName('state'), r.files.state, 3);
+  const donotItems = listItems('state', 'donot', fileName('state'), r.files.state, false);
+  const releaseBlock = r.files.state ? parsed.blocks.state.releases.present : false;
+  const releases = tableRows('state', 'releases', fileName('state'), r.files.state, 6, false);
+  const nowItems = listItems('state', 'now', fileName('state'), r.files.state);
+  const pendingItems = listItems('state', 'pending', fileName('state'), r.files.state);
+  const decisions = tableRows('decisions', 'decisions', fileName('decisions'), r.files.decisions, 9);
+  const logRows = tableRows('log', 'log', fileName('log'), r.files.log, 4);
+  const sources = tableRows('sources', 'sources', fileName('sources'), r.files.sources, 5);
+  const conflicts = listItems('sources', 'conflicts', fileName('sources'), r.files.sources);
+  const reqs = tableRows('requirements', 'requirements', fileName('requirements'), r.files.requirements, 6);
+  const measurements = r.files.measurements === null ? [] : tableRows('measurements', 'measurements', fileName('measurements'), r.files.measurements, 7);
 
   // ---- ids: duplicates and unknown ----
   const defs = {
@@ -781,14 +879,159 @@ export function checkRoadmap(r, git, opts = {}) {
   void conflicts;
   void measurements;
 
+  // ---- new checks (format 1, E2): status order, state, sources, decisions; always after the older ones ----
+  const extraChecks = () => {
+    const blockedWord = v.blockedStatus || 'blocked';
+    const discardedWord = v.discardedStatus || 'discarded';
+    const releasedWords = v.releasedStatuses || ['released', 'measured'];
+    const stateFile = fileName('state');
+    const word = (w) => new RegExp(`(?<![\\p{L}\\p{N}-])${escapeRe(w)}(?![\\p{L}\\p{N}-])`, 'u');
+    const segments = (cell) => (cell || '').split(';').map((s) => s.trim()).filter(Boolean).map((raw) => {
+      const noNote = stripNote(raw);
+      const idx = noNote.indexOf(':');
+      return { raw, word: (idx >= 0 ? noNote.slice(idx + 1) : noNote).trim() };
+    });
+    const pos = (w) => v.deliverableStatuses.indexOf(w) + 1;
+
+    // status-order
+    {
+      const file = 'roadmap.config.json';
+      const ds = v.deliverableStatuses;
+      if (ds.length < 8) add('warning', 'status-order', file, `deliverableStatuses has ${ds.length} words; the canonical order has at least 8`);
+      for (const w of v.integratedStatuses) if (pos(w) > 0 && (pos(w) < 6 || pos(w) > 8)) add('warning', 'status-order', file, `integrated status "${w}" is at position ${pos(w)}; expected 6-8`);
+      for (const w of releasedWords) if (pos(w) > 0 && (pos(w) < 7 || pos(w) > 8)) add('warning', 'status-order', file, `released status "${w}" is at position ${pos(w)}; expected 7-8`);
+      if (pos(blockedWord) > 0 && pos(blockedWord) !== 9) add('warning', 'status-order', file, `blocked status "${blockedWord}" is at position ${pos(blockedWord)}; expected 9`);
+      if (pos(discardedWord) > 0 && pos(discardedWord) !== 10) add('warning', 'status-order', file, `discarded status "${discardedWord}" is at position ${pos(discardedWord)}; expected 10`);
+    }
+
+    // pending-no-owner
+    for (const t of pendingItems) {
+      if (!/^\(\s*[^)\s][^)]*\)/.test(t)) add('warning', 'pending-no-owner', stateFile, `Pending item has no (owner) prefix: ${t.slice(0, 60)}`);
+    }
+
+    // state-header
+    if (parsed.version && typeof r.files.state === 'string') {
+      const ver = parsed.version._0;
+      const st = r.files.state;
+      const cut = st.search(/<!--\s*roadmap:/);
+      const head = cut === -1 ? st : st.slice(0, cut);
+      if (ver && !new RegExp(`(?<![\\p{L}\\p{N}.])v${escapeRe(ver)}(?![\\p{L}\\p{N}]|\\.\\d)`, 'u').test(head)) {
+        add('warning', 'state-header', stateFile, `the state header does not name the strategy version v${ver}`);
+      }
+    }
+
+    // blocked-no-blq
+    if (v.deliverableStatuses.includes(blockedWord)) {
+      for (const row of panel) {
+        const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
+        for (const seg of segments(row[1])) {
+          if (seg.word === blockedWord && !/\bBLQ-\d+\b/.test(seg.raw) && !/\bBLQ-\d+\b/.test(row[3])) {
+            add('warning', 'blocked-no-blq', stateFile, `${id} is "${blockedWord}" but cites no BLQ-n in the status note or the Next step`);
+          }
+        }
+      }
+    }
+
+    // blocker-no-restore
+    for (const row of blockers) {
+      for (const e of idsIn(row[2], /\bE\d+\b/g)) {
+        const prow = panel.find((x) => (x[0].match(/\bE\d+\b/) || [])[0] === e);
+        if (!prow || !segments(prow[1]).some((s) => s.word === blockedWord)) continue;
+        const m = word(e).exec(row[4]);
+        const rest = m ? row[4].slice(m.index + e.length) : '';
+        if (!v.deliverableStatuses.some((w) => w !== blockedWord && word(w).test(rest))) {
+          add('warning', 'blocker-no-restore', stateFile, `${row[0]} affects ${e}, which is "${blockedWord}", but "Unblocks when" does not say which status ${e} returns to`);
+        }
+      }
+    }
+
+    // source-uncited
+    {
+      const cited = new Set();
+      const roles = ['state', 'decisions', 'log', 'criticalPath', 'measurements', 'requirements'];
+      const texts = [[r.strategy, true], ...roles.map((role) => [r.files[role], false])];
+      for (const [text, isStrategy] of texts) {
+        if (typeof text !== 'string') continue;
+        for (const id of idsIn(blankCommandText(scanFences(text, true).text, isStrategy), ID_RE)) cited.add(id);
+      }
+      for (const row of sources) {
+        if (/^SRC-\d+$/.test(row[0]) && !cited.has(row[0])) add('warning', 'source-uncited', fileName('sources'), `${row[0]} is defined but no other roadmap file cites it`);
+      }
+    }
+
+    // strategy-plan-suffix
+    if (/-plan\.md$/i.test(cfg.strategy)) add('warning', 'strategy-plan-suffix', 'roadmap.config.json', `strategy file "${cfg.strategy}" ends in -plan.md, which collides with the task plans convention`);
+
+    // executor-decision-pending
+    {
+      const statusOf = new Map(panel.map((row) => [(row[0].match(/\bE\d+\b/) || [])[0], segments(row[1]).map((s) => s.word)]));
+      for (const row of decisions) {
+        if (row[7] !== 'executor' || row[8] !== v.decisionPending) continue;
+        const local = /\b(?:Alcance|Scope)\s*:\s*local\s*\.?\s*$/i.test(row[3].trim());
+        const es = idsIn(row[2], /\bE\d+\b/g);
+        if (!local) {
+          const dependents = cards.filter((c) => c.depends.some((d) => es.includes(d)));
+          const hit = dependents.find((c) => (statusOf.get(c.id) || []).some((w) => pos(w) >= 2 && pos(w) <= 8));
+          if (hit) add('warning', 'executor-decision-pending', fileName('decisions'), `${row[0]} (executor, pending, contract scope) is unreviewed while ${hit.id}, which depends on ${es.join(', ')}, is already under way`);
+        }
+        const rel = es.find((e) => (statusOf.get(e) || []).some((w) => releasedWords.includes(w)));
+        if (rel) add('warning', 'executor-decision-pending', fileName('decisions'), `${row[0]} (executor, pending) is unreviewed while ${rel} is already released`);
+      }
+    }
+
+    // card-phase-table and phase-order (only when the optional roadmap:phases block exists)
+    const phases = parsed.blocks.strategy.phases;
+    if (phases.present) {
+      const prows = phases.rows.filter((row) => row.length === 4);
+      const rowIds = prows.map((row) => idsIn(row[3], /\bE\d+\b/g));
+      const where = new Map();
+      rowIds.forEach((ids, i) => ids.forEach((e) => where.set(e, [...(where.get(e) || []), i])));
+      for (const c of cards) {
+        const at = where.get(c.id) || [];
+        if (at.length === 0) add('warning', 'card-phase-table', strategyName, `${c.id} is in no row of the roadmap:phases table`);
+        else if (new Set(at).size > 1) add('warning', 'card-phase-table', strategyName, `${c.id} is in more than one row of the roadmap:phases table`);
+      }
+      const phaseOf = new Map(cards.map((c) => [c.id, c.attrs.phase]));
+      const rowPhases = rowIds.map((ids) => new Set(ids.filter((e) => phaseOf.has(e)).map((e) => phaseOf.get(e))));
+      rowPhases.forEach((set, i) => {
+        if (set.size > 1) add('warning', 'card-phase-table', strategyName, `row ${i + 1} of the roadmap:phases table mixes cards of different phases (${[...set].join(', ')}): ${rowIds[i].join(', ')}`);
+      });
+      for (let i = 0; i < rowPhases.length; i++) {
+        for (let j = i + 1; j < rowPhases.length; j++) {
+          const shared = [...rowPhases[i]].filter((x) => rowPhases[j].has(x));
+          if (shared.length) add('warning', 'card-phase-table', strategyName, `rows ${i + 1} and ${j + 1} of the roadmap:phases table hold cards of the same phase "${shared[0]}"`);
+        }
+      }
+      for (const c of cards) {
+        const ci = (where.get(c.id) || [])[0];
+        if (ci === undefined) continue;
+        for (const d of c.depends) {
+          const di = (where.get(d) || [])[0];
+          if (di !== undefined && di > ci) add('warning', 'phase-order', strategyName, `${c.id} depends on ${d}, whose row comes later in the roadmap:phases table`);
+        }
+      }
+    }
+
+    // dod-no-gate
+    if (gateRows.length > 0) {
+      const gateIds = gateRows.map((row) => row[0]).filter(Boolean);
+      for (const c of cards) {
+        if (!c.acceptance.some((a) => a.tag && EXECUTABLE_KINDS.includes(a.tag.kind))) continue;
+        if (!gateIds.some((g) => word(g).test(c.body))) add('warning', 'dod-no-gate', strategyName, `${c.id} has executable criteria but its definition of done cites no gate (${gateIds.join(', ')})`);
+      }
+    }
+  };
+
   // ---- git ----
   const gitSeverity = opts.requireGit ? 'error' : 'warning';
   if (git && git.unavailable) {
     add(gitSeverity, 'git-unavailable', 'roadmap.config.json', `git could not be used (${git.reason || 'unknown reason'}); git checks skipped`);
+    extraChecks();
     return problems;
   }
   if (git === null || git === undefined) {
     add(gitSeverity, 'no-git', 'roadmap.config.json', 'not inside a git repository; git checks skipped');
+    extraChecks();
     return problems;
   }
 
@@ -851,6 +1094,7 @@ export function checkRoadmap(r, git, opts = {}) {
     if (row[1] === v.branchDeleted && exists) add('error', 'branch-deleted-exists', fileName('state'), `branch ${name} is marked deleted but still exists`);
   }
 
+  extraChecks();
   return problems;
 }
 
@@ -904,12 +1148,31 @@ export function findNewerPluginCopy(selfPath, selfVersion, cacheRoot) {
 
 // ---------- CLI ----------
 
+function emitJson(self, problems, exitCode) {
+  const item = (p) => ({ code: p.code, file: p.file, message: p.message });
+  const errors = problems.filter((p) => p.severity === 'error').map(item);
+  const warnings = problems.filter((p) => p.severity !== 'error').map(item);
+  console.log(JSON.stringify({
+    checker: self ? self.version : null,
+    format: self ? self.format : null,
+    errors,
+    warnings,
+    summary: { errors: errors.length, warnings: warnings.length, exitCode },
+  }));
+  return exitCode;
+}
+
 function main(argv) {
   const args = argv.slice(2);
+  const json = args.includes('--json');
   const selfPath = fileURLToPath(import.meta.url);
   // Line 1 of this very file is the single source of the version at runtime.
   const self = readHeader(selfPath);
   if (!self) {
+    if (json) {
+      const message = 'line 1 must be "// check-roadmap <version> format <n>"';
+      return emitJson(null, [{ severity: 'error', code: 'bad-header', file: path.basename(selfPath), message }], 1);
+    }
     console.log(`ERROR ${path.basename(selfPath)}: line 1 must be "// check-roadmap <version> format <n>" [bad-header]`);
     return 1;
   }
@@ -926,9 +1189,15 @@ function main(argv) {
   } catch (e) {
     const message = String((e && e.message) || e);
     if (message.startsWith('config:')) {
+      if (json) {
+        return emitJson(self, [{ severity: 'error', code: 'config', file: 'roadmap.config.json', message: message.replace(/^config:\s*/, '') }], 1);
+      }
       console.log(`ERROR ${message}`);
       console.log('check-roadmap: 1 error(s), 0 warning(s)');
       return 1;
+    }
+    if (json) {
+      return emitJson(self, [{ severity: 'error', code: 'internal', file: path.basename(selfPath), message: message.split('\n')[0] }], 2);
     }
     console.log(`ERROR internal: ${message.split('\n')[0]}`);
     return 2;
@@ -945,6 +1214,7 @@ function main(argv) {
   } catch {
     // staleness is best-effort
   }
+  if (json) return emitJson(self, problems, problems.some((p) => p.severity === 'error') ? 1 : 0);
   for (const p of problems) console.log(`${p.severity === 'error' ? 'ERROR' : 'WARN'} ${p.file}: ${p.message} [${p.code}]`);
   const errors = problems.filter((p) => p.severity === 'error').length;
   const warnings = problems.length - errors;
@@ -965,7 +1235,16 @@ if (isMain()) {
   try {
     process.exitCode = main(process.argv);
   } catch (e) {
-    console.log(`ERROR internal: ${String((e && e.message) || e).split('\n')[0]}`);
+    const message = String((e && e.message) || e).split('\n')[0];
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({
+        checker: null, format: null,
+        errors: [{ code: 'internal', file: path.basename(fileURLToPath(import.meta.url)), message }],
+        warnings: [], summary: { errors: 1, warnings: 0, exitCode: 2 },
+      }));
+    } else {
+      console.log(`ERROR internal: ${message}`);
+    }
     process.exitCode = 2;
   }
 }
