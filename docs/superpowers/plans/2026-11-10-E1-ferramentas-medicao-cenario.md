@@ -12,6 +12,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`
 
+**Emendas do dono absorvidas:** DEC-081 (comparador: detecção inconclusiva bloqueia; família sem peso deixa o total ponderado inconclusivo) na Task 10; DEC-082 (diário fora do formato dá tentativa inválida com o motivo `formato-do-diario`) na Task 12; DEC-083 (o agregado do arnês registra que o braço `atual` de spec e de plano é cópia do prompt e o commit do workflow de onde saiu) nas Tasks 13 e 14. DEC-084 é só operação de E15 (a variante `plano-semeado-codigo` fica fora das execuções pagas obrigatórias) e não muda nenhuma tarefa: a variante continua sendo entregue e testada aqui.
+
 ## Global Constraints
 
 - ESM, Node 18+ sem dependências, identificadores e comentários em inglês, testes com `node:test`.
@@ -35,6 +37,8 @@
 3. **Saídas com caminho pessoal.** O agregado não pode guardar `--work`, `--out`, `--config-dir` nem `scriptPath` (são caminhos pessoais). Teste: Task 11, `aggregate holds no session id, personal path or agent description`.
 4. **Transcrição com linha final parcial ou CRLF.** O leitor JSONL ignora linha que não é JSON e aceita `\r\n`. Teste: Task 2, `readJsonl tolerates CRLF and a partial last line`.
 5. **`--out` dentro do repositório.** O extrator recusa `--out` no repositório fora de `tools/measure/out/` (código 2), inclusive com `..` e caixa diferente no Windows. Teste: Task 4, `refuses --out inside the repository outside tools/measure/out`.
+6. **Diário incompleto nunca dá tentativa válida (DEC-082).** Campo ausente não pode ser lido como condição satisfeita (`undefined === undefined`, `!undefined`). Teste: Task 12, `journal without the expected fields makes the attempt invalid with formato-do-diario`.
+7. **Inconclusivo de detecção bloqueia, inconclusivo de família sem peso não (DEC-081).** Teste: Task 10, `detection is inconclusive below the attempts threshold and blocks` e `weighted total is inconclusive with an unweighted family`.
 
 ---
 
@@ -63,8 +67,10 @@ Decisões do plano (registradas para o dono; origem executor, status pendente):
 - **DP-1** Cada defeito é um módulo `defects/sentinels/<id>.mjs` que exporta `seed(repoDir)` (aplica o defeito à árvore de trabalho) e `present(repoDir, ref = 'HEAD')`. Junta semeadura e sentinela no mesmo arquivo, para o defeito e sua checagem não divergirem; nenhum módulo é copiado para o sandbox. Alcance: local.
 - **DP-2** O sandbox ganha `DEC-002` ("E5 utilities are pure: no I/O and no dependencies"), para S4 ter uma decisão registrada do sandbox a contrariar. E1 a E4 e DEC-001 não mudam. Alcance: contrato.
 - **DP-3** O extrator chama o lançador por processo (`exec(process.execPath, [session-metrics.mjs, ...])`), o que deixa o teste do AC7 contar as chamadas pelo executor simulado. Alcance: local.
-- **DP-4** O formato do diário (`journal.jsonl`) lido pela checagem de validade é o das fixtures fabricadas (uma linha JSON por agente com `label` e `result`, objeto ou texto JSON); a leitura é tolerante e o formato real é conferido pelo dono na primeira tentativa de E15. Alcance: local.
+- **DP-4** O formato do diário (`journal.jsonl`) lido pela checagem de validade é o das fixtures fabricadas (uma linha JSON por agente com `label` e `result`, objeto ou texto JSON); a leitura é estrita (DEC-082): diário ausente, linha que não é JSON, entrada sem rótulo ou campo de que a regra da variante depende ausente dão tentativa `invalid` com o motivo `formato-do-diario`. O formato real é conferido pelo dono na primeira tentativa de E15. Alcance: local.
 - **DP-5** Execução sem transcrição de agente ligada por `toolUseId`: sob o lançador cada execução é uma sessão, então todo arquivo `agent-*.jsonl` dentro da pasta da sessão pertence a ela. Alcance: local.
+- **DP-6** A linha `Copied from: ... at commit <sha>` (DEC-083) é exigida só nos modelos `atual` de spec e de plano (revisão e correção), que são cópias do prompt do workflow; braços novos de E26 e E27 em `arms/` não a exigem e registram `armSource: "modelo"` com `workflowCommit: null`. O arnês recusa (código 2) um modelo `atual` de spec ou de plano sem a linha, e a tira do texto antes de montar o prompt. Base: DEC-083 fala só do braço atual de spec e de plano. Custo se errada: exigir a linha também nos braços novos. Reversível. Alcance: contrato.
+- **DP-7** Motivos de tentativa inválida no agregado: `formato-do-diario` (DEC-082), `plano-reescrito` (`reused: false`), `blob-diferente` (a revisão mediu outro plano), `tarefa-refeita` (código semeado com `E5:t<k>:impl`, `k ≤ 3`) e `retomada-incompleta` (segunda sessão de parada e retomada sem terminar); o agregado guarda `attempts[i].reason` e `invalidReasons: { [motivo]: contagem }`. Alcance: contrato.
 
 ---
 
@@ -457,21 +463,22 @@ git commit -m "E1 T9: defeitos de código com sentinela e variantes codigo-semea
 - Produces: o formato do agregado que a Task 11 grava e esta task lê:
 
 ```
-Aggregate = { variant, requested, valid, invalid, denied, plugin: { version, commit }, cli, models, pricesDate, permissionMode,
-  attempts: [{ n, status: 'valid'|'invalid'|'denied', counters: AttemptCounters, outcomes: [{ id, class, detectedBy, outcome }] }],
+Aggregate = { variant, requested, valid, invalid, denied, invalidReasons: { [reason]: number }, plugin: { version, commit }, cli, models, pricesDate, permissionMode,
+  harness?: { stage, arm, armSource: 'copia-do-prompt'|'workflow'|'modelo', workflowCommit: string|null },
+  attempts: [{ n, status: 'valid'|'invalid'|'denied', reason?, counters: AttemptCounters, outcomes: [{ id, class, detectedBy, outcome }] }],
   roles, cost: { median, min, max }, outcomes: { [id]: { class, detectedBy, capturado, perdido, indeterminado } },
   deteccaoPorCodigo: { [pxId]: { 'acusado-pelo-codigo', perdido, indeterminado } } }
 AttemptCounters = { structural: { haiku, sonnet, opus, fable, other, weighted }, bytes, perTask: number|null,
   conditional: { extraRounds, fixCalls }, main: { agentCalls, bytes, turns }, static: { bytes } | null, cost: number|null }
 ```
 
-- `compare(before: Aggregate, after: Aggregate, { margin = 6, attempts = 40, bytesTolerance = 0.03 } = {}): Result` com `Result = { counters: { [name]: { class, verdict, before, after } }, detection: { plan|code|spec: { rateBefore, rateAfter, drop, verdict: 'caiu'|'nao-caiu'|'inconclusivo', missing? } }, deteccaoPorCodigo: { [pxId]: { before, after, regrediu } }, bloqueia: boolean }`.
+- `compare(before: Aggregate, after: Aggregate, { margin = 6, attempts = 40, bytesTolerance = 0.03 } = {}): Result` com `Result = { counters: { [name]: { class, verdict, before, after, unweighted? } }, detection: { plan|code|spec: { rateBefore, rateAfter, drop, verdict: 'caiu'|'nao-caiu'|'inconclusivo', missing? } }, deteccaoPorCodigo: { [pxId]: { before, after, regrediu } }, bloqueia: boolean }`. `unweighted` (só no contador `weighted`) = `{ before: { fable, other }, after: { fable, other } }`, as contagens de chamadas em família sem peso nas tentativas válidas de cada lado.
 - Funções puras exportadas: `median(xs)`, `medianVerdict(b, a, tol = 0)`, `separationVerdict(b, a)`, `staticVerdict(b, a)`; vereditos `'piorou'|'nao-piorou'|'inconclusivo'`.
 - CLI: `node tools/measure/compare.mjs --before <a.json> --after <b.json> [--margin 6] [--attempts 40] [--bytes-tolerance 0.03]` imprime o JSON; sai 0 sem bloqueio, 1 com bloqueio, 2 erro de uso.
 
-Regras (peça 6 do spec; só tentativas `valid`): estrutural (cada família e `weighted` = haiku·1 + sonnet·20 + opus·40) e bytes por `medianVerdict` (bytes com `tol = bytesTolerance`: piorou quando depois > (1 + tol) × antes); por tarefa, condicional (`extraRounds`, `fixCalls`), contexto principal (`agentCalls`, `bytes`, `turns`) e custo por `separationVerdict` (piorou: mín depois > máx antes; não piorou: máx depois ≤ mín antes; senão inconclusivo); estático por `staticVerdict`; lado sem valores → inconclusivo. Custo nunca entra em `bloqueia`. Variantes `planner` e `tracker`: todo contador dinâmico sai `verdict: 'registrado'` e só `static` tem veredito. Detecção por classe: taxa = capturados / (capturados + perdidos), só `detectedBy: 'reviewer'`; queda = (taxa antes − taxa depois) × `attempts`; `caiu` quando queda ≥ `margin`; menos de `attempts` tentativas válidas num lado → `inconclusivo` com `missing` = quantas faltam. `deteccaoPorCodigo`: `regrediu` quando o PX foi `acusado-pelo-codigo` em todas as tentativas antes e aparece `perdido` depois; nunca entra em `bloqueia`. `bloqueia` = algum contador bloqueante `piorou` ou alguma classe `caiu`.
+Regras (peça 6 do spec; só tentativas `valid`): estrutural (cada família e `weighted` = haiku·1 + sonnet·20 + opus·40) e bytes por `medianVerdict` (bytes com `tol = bytesTolerance`: piorou quando depois > (1 + tol) × antes); por tarefa, condicional (`extraRounds`, `fixCalls`), contexto principal (`agentCalls`, `bytes`, `turns`) e custo por `separationVerdict` (piorou: mín depois > máx antes; não piorou: máx depois ≤ mín antes; senão inconclusivo); estático por `staticVerdict`; lado sem valores → inconclusivo. Custo nunca entra em `bloqueia`. Variantes `planner` e `tracker`: todo contador dinâmico sai `verdict: 'registrado'` e só `static` tem veredito. Família sem peso (DEC-081): os pesos só existem para haiku, sonnet e opus; se alguma tentativa válida de algum lado tem `structural.fable > 0` ou `structural.other > 0`, o contador `weighted` sai `inconclusivo` com `unweighted` preenchido, em vez de somar essas chamadas com peso zero; os contadores por família (`fable` e `other` incluídos) mantêm veredito próprio por `medianVerdict`. Esse inconclusivo não liga `bloqueia` sozinho (decisão autônoma 2 da spec, pendente). Detecção por classe: taxa = capturados / (capturados + perdidos), só `detectedBy: 'reviewer'`; queda = (taxa antes − taxa depois) × `attempts`; `caiu` quando queda ≥ `margin`; menos de `attempts` tentativas válidas num lado → `inconclusivo` com `missing` = quantas faltam, e esse inconclusivo **bloqueia** o ponto de medição (DEC-081; o dono libera com decisão registrada, fora da ferramenta). `deteccaoPorCodigo`: `regrediu` quando o PX foi `acusado-pelo-codigo` em todas as tentativas antes e aparece `perdido` depois; nunca entra em `bloqueia`. `bloqueia` = algum contador bloqueante `piorou`, alguma classe `caiu` ou alguma classe `inconclusivo` por faltarem tentativas válidas.
 
-Fixtures (texto livre começa com `[fab]`): pares `before`/`after` com um caso de cada veredito por classe, detecção com 40 tentativas válidas e queda de 7 (caiu) e de 5 (não caiu) na classe `plan`, um par com 39 válidas (inconclusivo, `missing: 1`), um par `planner`, e um par com desfechos de PX.
+Fixtures (texto livre começa com `[fab]`): pares `before`/`after` com um caso de cada veredito por classe, detecção com 40 tentativas válidas e queda de 7 (caiu) e de 5 (não caiu) na classe `plan`, um par com 39 válidas (inconclusivo, `missing: 1`, bloqueia), um par com uma chamada `fable` numa tentativa válida do lado `after` e outro com uma chamada `other` no lado `before` (total ponderado inconclusivo), um par `planner`, e um par com desfechos de PX.
 
 - [ ] **Step 1: Escrever os testes que falham** em `compare.test.mjs`:
   - `structural: worse, not worse and inconclusive by median` — os três vereditos e `weighted` com os pesos 1/20/40.
@@ -479,13 +486,14 @@ Fixtures (texto livre começa com `[fab]`): pares `before`/`after` com um caso d
   - `per task, conditional and main context: full separation` — os três vereditos.
   - `cost never blocks` — custo `piorou` e `bloqueia === false` quando nada mais piora.
   - `detection drop at or above the margin blocks` — queda 7 → `caiu`, `bloqueia`; queda 5 → `nao-caiu`.
-  - `detection is inconclusive below the attempts threshold` — `inconclusivo`, `missing: 1`, sem bloqueio.
+  - `detection is inconclusive below the attempts threshold and blocks` (DEC-081) — par com 39 válidas e todos os contadores `nao-piorou`: `detection.plan.verdict === 'inconclusivo'`, `missing: 1`, `bloqueia === true`; a CLI sai com 1.
+  - `weighted total is inconclusive with an unweighted family` (DEC-081) — par com uma chamada `fable` no lado `after`: `counters.weighted.verdict === 'inconclusivo'` (não `nao-piorou` nem `piorou`, embora a soma com peso zero desse um veredito), `unweighted.after.fable === 1`; `counters.fable` tem veredito próprio; `bloqueia === false` quando nada mais piora e a detecção não está inconclusiva. O mesmo com `other` no lado `before`.
   - `code-detected outcomes stay out of the plan rate` — a taxa da classe `plan` é igual com e sem os desfechos de PX; `deteccaoPorCodigo.PX1.regrediu === true` no caso fabricado; `bloqueia === false`.
   - `planner and tracker dynamic counters are recorded only` — `verdict: 'registrado'`.
   - `CLI exit codes` — 0 sem bloqueio, 1 com bloqueio, 2 sem `--before`.
 - [ ] **Step 2:** `node --test tools/measure/compare.test.mjs` → Expected: FAIL (`Cannot find module`).
 - [ ] **Step 3:** Implemente `compare.mjs`.
-- [ ] **Step 4:** `node --test tools/measure/compare.test.mjs` → Expected: PASS, 9 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS (privacidade cobre as fixtures novas).
+- [ ] **Step 4:** `node --test tools/measure/compare.test.mjs` → Expected: PASS, 10 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS (privacidade cobre as fixtures novas).
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -511,7 +519,7 @@ git commit -m "E1 T10: comparador por classe de contador e detecção por classe
   - `toAttemptCounters(run: Run): AttemptCounters` — estrutural/bytes = agentes de workflow fora do laço de tarefas, fora de rodadas `> 1` e fora de `*-fix*`; `perTask` = chamadas ponderadas de `tasks.loop` / `tasks.count` (`null` sem tarefas); `conditional` = `reviewRounds.extra` e agentes de papel `*-fix`; `main` de `Run.main` (`agentCalls` = soma); `cost` = `total.cost`.
   - CLI: `node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]`; faltando um obrigatório: código 2 e `usage:`; `--work` dentro do repositório: código 2.
 
-Fluxo por tentativa `k` (1..n): `makeScenario(<work>/<variant>-<k>, variant)`; para cada prompt, `exec('claude', ['-p', prompt, '--output-format', 'json', '--permission-mode', modo, '--allowedTools', allow.join(','), ...addDir.flatMap(d => ['--add-dir', d]), ...(model ? ['--model', model] : []), ...(maxBudgetUsd ? ['--max-budget-usd', String(maxBudgetUsd)] : [])], { cwd: sandbox })` e lê do JSON `session_id`, `is_error`, `total_cost_usd`, `permission_denials`; `permission_denials` não vazio → tentativa `denied` (fora dos contadores, listada, `exitCode` 1). Antes da primeira: `<configDir>/plugins/installed_plugins.json` → `plugins['productivity-tools@claude-play'][0]` com `version` e `gitCommitSha` (ausente → `'unknown'` e aviso no stderr) e `exec('claude', ['--version'])`. Depois de cada tentativa não negada: grava `private/attempts.json` (`{ attempts: [{ n, sessions }] }`) e chama `exec(process.execPath, [<session-metrics.mjs>, '--root', <configDir>/projects, '--out', <private/metrics/<k>>, '--sessions', ids.join(','), '--runs', <private/attempts-<k>.json>])`, lê `metrics.json` e guarda `toAttemptCounters`. Saída em `<out>/<variant>-<YYYYMMDD-HHmmss de now()>/`: `aggregate.json` e `private/`. O agregado traz `roles` (contadores somados por papel, sem rótulos de agente) e `cost` (mediana, mínimo, máximo); nunca `session_id`, `work`, `out`, `configDir`, `meta.description`. Nas variantes semeadas, `outcomes` fica `[]` nesta task (a Task 12 preenche).
+Fluxo por tentativa `k` (1..n): `makeScenario(<work>/<variant>-<k>, variant)`; para cada prompt, `exec('claude', ['-p', prompt, '--output-format', 'json', '--permission-mode', modo, '--allowedTools', allow.join(','), ...addDir.flatMap(d => ['--add-dir', d]), ...(model ? ['--model', model] : []), ...(maxBudgetUsd ? ['--max-budget-usd', String(maxBudgetUsd)] : [])], { cwd: sandbox })` e lê do JSON `session_id`, `is_error`, `total_cost_usd`, `permission_denials`; `permission_denials` não vazio → tentativa `denied` (fora dos contadores, listada, `exitCode` 1). Antes da primeira: `<configDir>/plugins/installed_plugins.json` → `plugins['productivity-tools@claude-play'][0]` com `version` e `gitCommitSha` (ausente → `'unknown'` e aviso no stderr) e `exec('claude', ['--version'])`. Depois de cada tentativa não negada: grava `private/attempts.json` (`{ attempts: [{ n, sessions }] }`) e chama `exec(process.execPath, [<session-metrics.mjs>, '--root', <configDir>/projects, '--out', <private/metrics/<k>>, '--sessions', ids.join(','), '--runs', <private/attempts-<k>.json>])`, lê `metrics.json` e guarda `toAttemptCounters`. Saída em `<out>/<variant>-<YYYYMMDD-HHmmss de now()>/`: `aggregate.json` e `private/`. O agregado traz `roles` (contadores somados por papel, sem rótulos de agente) e `cost` (mediana, mínimo, máximo); nunca `session_id`, `work`, `out`, `configDir`, `meta.description`. Nas variantes semeadas, `outcomes` fica `[]` e `invalidReasons` fica `{}` nesta task (a Task 12 preenche).
 
 O executor simulado do teste: para `claude --version` devolve `2.1.0 (Claude Code)`; para `claude -p` grava em `<configDir>/projects/fab-sandbox/<uuid fabricado>.jsonl` (e uma pasta `subagents/workflows/wf_fab/` com dois agentes) cópias das fixtures com o id trocado (`00000000-0000-4000-8000-0000000001<kk>`) e devolve `{"session_id": ..., "is_error": false, "total_cost_usd": 0.01, "permission_denials": []}`; para `process.execPath` roda de verdade por `spawnSync` e registra a chamada.
 
@@ -545,24 +553,26 @@ git commit -m "E1 T11: lançador em lote com executor injetável e agregado sem 
 **Interfaces:**
 - Consumes: `runBatch`, `exec` (Task 11); `makeScenario` e o manifesto (Tasks 7 a 9); `STOP_RESUME` (Task 5).
 - Produces:
-  - `readJournal(file: string): { label: string, result: object|null, text: string }[]` — uma linha JSON por entrada; `label` de `label` ou `description`; `result` de `result` (objeto) ou `JSON.parse(resultJson)`; `text` = a linha inteira (para `codeSignal`). Formato das fixtures: DP-4.
-  - `checkValidity(variant, entries, scenario): { valid: boolean, reason: string }` — plano semeado (A/B): resultado de `E5:plan` com `reused: true` **e** `E5:plan-review1` com `measuredPlanBlob === scenario.seededBlobs[E5_PATHS.plan]`; `plano-semeado-codigo`: `E5:plan` com `reused: true`; código semeado: nenhum `E5:t<k>:impl` para `k ≤ 3` e existe `E5:t3:spec1`; spec semeado (arnês, Task 14): a revisão mediu o blob semeado.
+  - `readJournal(file: string): { entries: { label: string, result: object|null, text: string }[], formatError: string|null }` — uma linha JSON por entrada (linhas vazias e `\r` ignorados); `label` de `label` ou `description`; `result` de `result` (objeto) ou `JSON.parse(resultJson)`; `text` = a linha inteira (para `codeSignal`). Leitura estrita (DEC-082, DP-4): arquivo ausente → `formatError: 'journal missing'`; linha que não é JSON → `'line <n> is not JSON'`; entrada sem `label` nem `description` → `'line <n> has no label'`. Formato das fixtures: DP-4.
+  - `checkValidity(variant, journal, scenario): { valid: boolean, reason: string }` — primeiro, `journal.formatError` → `{ valid: false, reason: 'formato-do-diario' }`. Depois, campos esperados por variante; qualquer um ausente (entrada não encontrada, `result` nulo ou campo `undefined`) → `formato-do-diario`, nunca condição satisfeita: plano semeado (A/B) espera `E5:plan` com `result.reused` booleano e `E5:plan-review1` com `result.measuredPlanBlob` string; `plano-semeado-codigo` espera `E5:plan` com `result.reused` booleano; código semeado espera a entrada `E5:t3:spec1`; spec semeado (arnês, Task 14) espera o blob medido pela revisão. Com os campos presentes: `reused: false` → `plano-reescrito`; `measuredPlanBlob !== scenario.seededBlobs[E5_PATHS.plan]` (ou o blob de spec medido diferente) → `blob-diferente`; algum `E5:t<k>:impl` com `k ≤ 3` → `tarefa-refeita`; senão `{ valid: true, reason: 'ok' }` (motivos: DP-7).
   - `stageResult(variant, entries, sandbox): 'approved'|'stopped'` — plano: aprovado quando a última `E5:plan-review<k>` não tem issue `critical` nem `important`; código: aprovado quando `git -C sandbox merge-base --is-ancestor feat/E5 release/sandbox` sai 0.
   - `outcomeFor(entry, { present, stage, entries }): 'capturado'|'perdido'|'indeterminado'|'acusado-pelo-codigo'` — `detectedBy: 'reviewer'`: `capturado` se `!present`; `perdido` se `present && stage === 'approved'`; senão `indeterminado`. `detectedBy: 'code'`: `acusado-pelo-codigo` se algum `entries[i].text` casa `new RegExp(entry.codeSignal)`; `perdido` se `present && stage === 'approved'`; senão `indeterminado`.
-  - Agregado: `attempts[i].outcomes` e os totais `outcomes` (só `detectedBy: 'reviewer'`) e `deteccaoPorCodigo` (só PX), formatos da Task 10; tentativa inválida: `status: 'invalid'`, conta em `invalid`, fora dos contadores e dos desfechos.
-  - Parada e retomada (`parada-retomada`): o primeiro prompt roda com um `AbortController`; a cada `pollMs` (opção, padrão 5000) o lançador chama `exec('git', ['log', 'feat/E5', '--format=%s'], { cwd })` e aborta quando um assunto começa por `STOP_RESUME.stopWhen.subjectPrefix`; depois roda o segundo prompt. As duas sessões entram juntas em `attempts[k].sessions`; se a segunda sessão não terminar (`code !== 0` ou sem `session_id`), a tentativa é `invalid`.
+  - Agregado: `attempts[i].outcomes` e os totais `outcomes` (só `detectedBy: 'reviewer'`) e `deteccaoPorCodigo` (só PX), formatos da Task 10; tentativa inválida: `status: 'invalid'`, `reason` = o motivo de `checkValidity`, conta em `invalid` e em `invalidReasons[reason]`, fica fora dos contadores e dos desfechos. Com `invalidReasons['formato-do-diario'] > 0`, o lançador avisa no stderr (`journal format: <n> attempt(s) invalid`) já na primeira tentativa, para uma mudança de formato da CLI aparecer logo.
+  - Parada e retomada (`parada-retomada`): o primeiro prompt roda com um `AbortController`; a cada `pollMs` (opção, padrão 5000) o lançador chama `exec('git', ['log', 'feat/E5', '--format=%s'], { cwd })` e aborta quando um assunto começa por `STOP_RESUME.stopWhen.subjectPrefix`; depois roda o segundo prompt. As duas sessões entram juntas em `attempts[k].sessions`; se a segunda sessão não terminar (`code !== 0` ou sem `session_id`), a tentativa é `invalid` com o motivo `retomada-incompleta`.
   - O diário de cada sessão é `<configDir>/projects/<slug>/<sid>/subagents/workflows/wf_*/journal.jsonl`.
 
 - [ ] **Step 1: Escrever os testes que falham** (com o executor simulado da Task 11, que agora grava um `journal.jsonl` da fixture escolhida e, para as variantes de código, opcionalmente faz o merge em `release/sandbox` no sandbox):
   - `stop and resume launches two sessions in one attempt` — com `pollMs: 1`, o `claude -p` simulado do primeiro prompt só resolve quando abortado; o `git log` simulado devolve `E5 T1: slugify` na segunda consulta; espera 2 chamadas `claude -p` (`run E5` e depois `resume E5`), uma tentativa com 2 sessões em `private/attempts.json` e uma chamada ao extrator.
-  - `plan seeded attempt is invalid when the plan was rewritten` — diário com `reused: false` → `invalid: 1`, sem desfechos.
+  - `plan seeded attempt is invalid when the plan was rewritten` — diário com `reused: false` → `invalid: 1`, `attempts[0].reason === 'plano-reescrito'`, sem desfechos.
+  - `journal without the expected fields makes the attempt invalid with formato-do-diario` (DEC-082) — tabela de diários fabricados para `plano-semeado-A`, cada um com tudo certo menos uma falha: `E5:plan` sem `reused`; `E5:plan-review1` sem `measuredPlanBlob`; sem a entrada `E5:plan-review1`; uma linha que não é JSON; uma entrada sem `label` nem `description`; e, para `codigo-semeado-A`, sem `E5:t3:spec1`. Em cada caso `checkValidity` devolve `{ valid: false, reason: 'formato-do-diario' }` (nunca `valid: true`); por `runBatch` com um deles, `invalid: 1`, `invalidReasons['formato-do-diario'] === 1`, a tentativa sem desfechos, e o stderr contém `journal format:`.
+  - `missing journal makes the attempt invalid with formato-do-diario` (DEC-082) — o executor simulado não grava `journal.jsonl`: `readJournal` devolve `formatError: 'journal missing'` e a tentativa sai `invalid` com `reason: 'formato-do-diario'`.
   - `plan seeded outcomes come from the sentinels` — `plano-semeado-A`, diário válido com `plan-review2` sem bloqueio; o simulado "corrige" P1 e P2 no sandbox antes de devolver: P1 e P2 `capturado`, P3 e P4 `perdido`.
   - `stopped stage leaves defects indeterminate` — última `plan-review` com issue `critical`: os defeitos ainda presentes saem `indeterminado`.
   - `code-detected defects go to deteccaoPorCodigo only` — `plano-semeado-codigo`, diário com a linha `criterion AC3 has no evidence row in the plan`: `PX1` = `acusado-pelo-codigo`, PX2 e PX3 `indeterminado`; `aggregate.outcomes` não tem chave `PX*`.
-  - `code seeded validity requires resumed tasks and the task 3 review` — diário com `E5:t2:impl` → `invalid`; com só `E5:t3:spec1` e merge feito → `valid` e C1..C4 `capturado` ou `perdido` conforme a sentinela.
-- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 6 novos; os 5 da Task 11 passam.
-- [ ] **Step 3:** Implemente as funções e a ligação em `runBatch`; escreva as fixtures de diário (texto livre `[fab]`).
-- [ ] **Step 4:** `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 11 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS.
+  - `code seeded validity requires resumed tasks and the task 3 review` — diário com `E5:t2:impl` → `invalid` com `reason: 'tarefa-refeita'`; com só `E5:t3:spec1` e merge feito → `valid` e C1..C4 `capturado` ou `perdido` conforme a sentinela.
+- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 8 novos; os 5 da Task 11 passam.
+- [ ] **Step 3:** Implemente as funções e a ligação em `runBatch`; escreva as fixtures de diário (texto livre `[fab]`), inclusive as fora do formato.
+- [ ] **Step 4:** `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 13 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -582,14 +592,16 @@ git commit -m "E1 T12: parada e retomada, validade e desfechos por sentinela" -m
 
 **Interfaces:**
 - Produces: modelos de prompt com marcadores `{{artifactPath}}`, `{{specPath}}`, `{{cardRef}}`, `{{repo}}`, `{{issues}}` (só nos de correção), preenchidos pelo arnês da Task 14. Cada modelo de revisão tem uma linha que começa com `Blocks` copiada **literalmente** de `plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`: no de spec, a linha `Blocks: an acceptance criterion of the card missing or altered (defeito); …` do prompt de `E5:spec-review` até `(defeito; check the code).`; no de plano, a linha `Blocks (defeito): an acceptance criterion with no task or no test; …` até `a canonical gate changed (decisao, critical).`, mantendo as interpolações do script (`${RM}`) como texto. Os de correção copiam o pedido de correção do workflow para o mesmo estágio.
+- Origem da cópia (DEC-083): a primeira linha de cada um dos 4 modelos é exatamente `Copied from: plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js at commit <sha>`, com `<sha>` = saída de `git log -1 --format=%H -- plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js` no momento da cópia (40 hex, o último commit que alterou o script). O arnês da Task 14 lê essa linha e a tira do prompt.
 
 - [ ] **Step 1: Escrever os testes que falham:**
+  - `current arms record the workflow commit they were copied from` (DEC-083) — para os 4 modelos: a primeira linha casa `/^Copied from: plugins\/productivity-tools\/skills\/roadmap-release\/workflow\/roadmap-release\.js at commit ([0-9a-f]{40})$/`; `git cat-file -e <sha>^{commit}` sai com 0; `git log -1 --format=%H <sha> -- <roadmap-release.js>` devolve o próprio `<sha>` (o commit alterou o script). Os comandos git rodam na raiz do repositório (`git rev-parse --show-toplevel` a partir do teste).
   - `current arms quote the workflow block list verbatim` — para `spec-review-atual.md` e `plan-review-atual.md`: a linha do modelo que começa por `Blocks` existe e `readFileSync(roadmap-release.js, 'utf8').includes(linha)` é verdadeiro (com `\r\n` normalizado nos dois lados).
   - `drift check fails when the block list changes` — a mesma função de checagem (`blockListDrift(armText, scriptText): string|null`, no arquivo de teste) devolve a diferença quando o texto do script tem uma palavra a mais.
   - `fix arms carry the issues marker` — os modelos de correção contêm `{{issues}}` e `{{artifactPath}}`.
-- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 3 novos.
-- [ ] **Step 3:** Escreva os 4 modelos.
-- [ ] **Step 4:** `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 14 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS.
+- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 4 novos.
+- [ ] **Step 3:** Escreva os 4 modelos, cada um com a linha de origem no topo.
+- [ ] **Step 4:** `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 17 testes. `node --test tools/measure/session-metrics.test.mjs` → PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -610,9 +622,11 @@ git commit -m "E1 T13: braço atual dos revisores de spec e plano com teste de d
 **Interfaces:**
 - Consumes: `runBatch`, `checkValidity`, `outcomeFor` (Tasks 11, 12); os modelos de `arms/` (Task 13); `loadPure` de `plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs` (para `buildTaskReviewPrompt`).
 - Produces:
-  - `opts.stage?: 'spec-review'|'plan-review'|'task-review'` e `opts.arm?: string` (padrão `atual`); CLI `--stage` e `--arm`; com `--stage`, `--variant` precisa ser semeada da classe certa (`spec-review`→`spec-semeado-*`, `plan-review`→`plano-semeado-A|B`, `task-review`→`codigo-semeado-*`), senão código 2.
+  - `opts.stage?: 'spec-review'|'plan-review'|'task-review'` e `opts.arm?: string` (padrão `atual`); CLI `--stage`, `--arm` e `--arms-dir`; com `--stage`, `--variant` precisa ser semeada da classe certa (`spec-review`→`spec-semeado-*`, `plan-review`→`plano-semeado-A|B`, `task-review`→`codigo-semeado-*`), senão código 2.
   - `buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt }): string` — o script `review-only.js` gravado na raiz do sandbox: `export const meta = { name: 'review-only', ... }`, um `agent(reviewPrompt, { label: 'E5:<stage>1', model: 'opus', schema })`, e, se houver issue `critical` ou `important`, um `agent(fixPrompt + issues, { label: 'E5:<stage>-fix1', model: 'sonnet' })`; devolve `{ review, fix }`. Sem imports nem API do Node (mesmo contrato do cabeçalho de `roadmap-release.js`).
   - Prompt de `task-review` no braço `atual`: `loadPure().buildTaskReviewPrompt(ctx, task3, 'spec', impl)` com `ctx` mínimo do sandbox; outros braços: `arms/<stage>-<arm>.md`.
+  - `readArm(file: string, { requireSource: boolean }): { text: string, source: { path: string, commit: string } | null }` — lê o modelo, reconhece a primeira linha `Copied from: <path> at commit <sha40>` e a tira de `text`; com `requireSource` e sem a linha, lança `UsageError` (a CLI e `runBatch` saem com código 2). `opts.armsDir` (padrão `tools/measure/arms` ao lado do script) permite apontar para modelos de teste.
+  - Origem do braço no agregado (DEC-083, DP-6): `aggregate.harness = { stage, arm, armSource, workflowCommit }`: braço `atual` de `spec-review` e `plan-review` → `armSource: 'copia-do-prompt'` e `workflowCommit` = o sha da linha de origem do modelo de revisão (exigida também no de correção; se os dois shas diferirem, `UsageError`); braço `atual` de `task-review` → `armSource: 'workflow'`, `workflowCommit: null`; outros braços → `armSource: 'modelo'`, `workflowCommit: null`. Sem `--stage`, o agregado não tem `harness`.
   - O lançamento é `claude -p "Run the workflow script at <sandbox>/review-only.js"` com `--allowedTools` acrescido de `Workflow`; os desfechos vêm das sentinelas e de `outcomeFor`, com `stage` = `approved` quando a revisão não tem bloqueio ou o corretor rodou e a sentinela não acusa mais, senão `stopped`.
 
 - [ ] **Step 1: Escrever os testes que falham:**
@@ -620,7 +634,9 @@ git commit -m "E1 T13: braço atual dos revisores de spec e plano com teste de d
   - `harness writes the script in the sandbox and launches it with Workflow allowed` — `runBatch({ stage: 'plan-review', arm: 'atual', variant: 'plano-semeado-A', runs: 1, ... }, { exec: fake })`: `review-only.js` existe no sandbox; a chamada `claude -p` tem `--allowedTools` contendo `Workflow`; o prompt cita o caminho do script.
   - `harness outcomes come from the sentinels` — o simulado corrige P1 no sandbox e devolve um diário com a revisão e o corretor: P1 `capturado`, P2..P4 `perdido`.
   - `stage and variant must match` — `--stage spec-review --variant plano-semeado-A` sai com 2.
-- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 4 novos.
+  - `harness aggregate records the arm source and workflow commit` (DEC-083) — `plan-review` `atual`: `aggregate.harness` = `{ stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: <sha da primeira linha de arms/plan-review-atual.md> }`, e o prompt enviado não contém `Copied from:`; `task-review` `atual` (`codigo-semeado-A`): `armSource: 'workflow'`, `workflowCommit: null`.
+  - `harness refuses a current arm template without the source line` (DEC-083) — `armsDir` temporário com `plan-review-atual.md` sem a linha `Copied from:`: `runBatch` rejeita com `UsageError` sem chamar `claude -p`, e a CLI com `--arms-dir` igual sai com 2.
+- [ ] **Step 2:** `node --test tools/measure/run-batch.test.mjs` → Expected: FAIL nos 6 novos.
 - [ ] **Step 3:** Implemente o modo arnês em `run-batch.mjs`.
 - [ ] **Step 4: Testes de todos os critérios**
 
@@ -629,7 +645,7 @@ Run, cada um:
 - `node --test plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.test.mjs` → Expected: PASS (AC3)
 - `node --test tools/measure/make-scenario.test.mjs` → Expected: PASS (AC4)
 - `node --test tools/measure/compare.test.mjs` → Expected: PASS (AC6)
-- `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 18 testes (AC7)
+- `node --test tools/measure/run-batch.test.mjs` → Expected: PASS, 23 testes (AC7, validade com DEC-082, arnês com DEC-083)
 - `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` (comando novo do `CLAUDE.md`) → Expected: exit 0.
 
 - [ ] **Step 5: Gates canônicos**
@@ -659,13 +675,14 @@ Nenhuma linha tem efeito externo: todos os comandos rodam testes locais em pasta
 | AC3 | test | node --test plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.test.mjs | make-sandbox.test.mjs: sandbox: E5 has more than one piece and criterion, and the folder passes checker and preflight; sandbox: the stop and resume script names a deliverable of the panel | false |
 | AC4 | test | node --test tools/measure/make-scenario.test.mjs | tools/measure/make-scenario.test.mjs: every manifest entry is seeded by exactly one variant; plan/spec/code variants: each defect file changed in the seeded commit and its sentinel reports presence | false |
 | AC5 | test | node --test tools/measure/session-metrics.test.mjs | tools/measure/session-metrics.test.mjs: tools/measure holds no session id, personal path or unfabricated text | false |
-| AC6 | test | node --test tools/measure/compare.test.mjs | tools/measure/compare.test.mjs: todos os testes (vereditos por classe, margem de detecção, deteccaoPorCodigo) | false |
+| AC6 | test | node --test tools/measure/compare.test.mjs | tools/measure/compare.test.mjs: todos os testes (vereditos por classe, margem de detecção, detection is inconclusive below the attempts threshold and blocks, weighted total is inconclusive with an unweighted family, deteccaoPorCodigo) | false |
 | AC7 | test | node --test tools/measure/run-batch.test.mjs | tools/measure/run-batch.test.mjs: launches n attempts, calls the extractor once per attempt and writes an aggregate; aggregate holds no session id, personal path or agent description | false |
 
 Evidência aceitável quando um passo não pode ser exercido neste ambiente: nenhum critério depende de navegador, rede ou `claude -p` real (executor simulado). Se `claude plugin validate` não estiver disponível no ambiente da tarefa, a saída do erro de ambiente é registrada (categoria ambiente) e o gate é rodado no estágio de gates do workflow.
 
 ## Depende de entrada humana (não bloqueia)
 
-- Spec e plano de E5 tirados de uma execução aprovada: E1 entrega os escritos à mão em `tools/measure/scenario/e5/` (fixture sintética) e `--from-run` para a troca, feita pelo dono em E15.
 - Primeira execução real do lançador contra `claude -p` (paga): operada pelo dono em E15; os critérios de E1 usam executor simulado.
-- Formato real do `journal.jsonl` (DP-4): conferido pelo dono na primeira tentativa real de E15.
+- Formato real do `journal.jsonl` (DP-4): conferido pelo dono na primeira tentativa real de E15; se diferir das fixtures, as tentativas saem `invalid` com `formato-do-diario` (DEC-082) e o aviso aparece já na primeira.
+
+Resolvido pelo dono: spec e plano de E5 ficam na versão sintética escrita à mão em `tools/measure/scenario/e5/` (fixture sintética), com `--from-run` para trocá-los pelos de uma execução real aprovada, se o dono quiser.
