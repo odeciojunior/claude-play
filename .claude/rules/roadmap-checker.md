@@ -12,3 +12,4 @@ paths:
 - `roadmap-planner/references/formats.md` is the contract the checker enforces. Change both sides together and keep the fixture `scripts/fixtures/valid/` at 0 errors, 0 warnings.
 - Tests: `node --test plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.test.mjs`; fixture: `node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid`.
 - In tests, build Windows paths and JSON with `\` from code (`String.fromCharCode(92)`, `path.win32.join`): shell-quoted backslashes get collapsed before they reach node.
+- The CLI `roadmap-tracker/scripts/roadmap.mjs` (`node roadmap.mjs <command> <folder> [options] [--json]`; `--help` lists the commands) writes tracker events by replacing only the touched lines and checks the result with the checker before writing. Tests: `roadmap.test.mjs` in the same folder.

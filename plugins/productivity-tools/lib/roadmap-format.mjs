@@ -190,16 +190,61 @@ export function stripNote(seg) {
   return s;
 }
 
-export function parseStatus(cell) {
-  return cell
+export function parseStatusSegments(cell) {
+  return (cell || '')
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((seg) => {
-      const noNote = stripNote(seg);
+    .map((raw) => {
+      const noNote = stripNote(raw);
+      const note = noNote.length < raw.length ? raw.slice(noNote.length).trim().slice(1, -1) : '';
       const idx = noNote.indexOf(':');
-      return (idx >= 0 ? noNote.slice(idx + 1) : noNote).trim();
+      return {
+        raw,
+        label: idx >= 0 ? noNote.slice(0, idx).trim() : '',
+        word: (idx >= 0 ? noNote.slice(idx + 1) : noNote).trim(),
+        note,
+      };
     });
+}
+
+export function parseStatus(cell) {
+  return parseStatusSegments(cell).map((s) => s.word);
+}
+
+export function decisionScope(cell) {
+  return /\b(?:Alcance|Scope)\s*:\s*local\s*\.?\s*$/i.test((cell || '').trim()) ? 'local' : 'contract';
+}
+
+export function blockLines(text, name) {
+  const t = norm(text);
+  const span = scanBlocks(t, name).find((s) => !s.block.malformed && s.block.closed);
+  if (!span) return null;
+  const lines = t.split('\n');
+  const lineOf = (pos) => t.slice(0, pos).split('\n').length - 1;
+  const open = lineOf(span.start);
+  const close = lineOf(span.end - 1);
+  let header = null;
+  const rows = [];
+  const items = [];
+  const isSep = (l) => {
+    const r = splitRow(l);
+    return r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
+  };
+  for (let i = open + 1; i < close; i++) {
+    const line = lines[i];
+    const tr = line.trim();
+    if (!tr || tr.startsWith('<!--')) continue;
+    if (tr.startsWith('|')) {
+      if (header === null) header = i;
+      else if (!isSep(tr)) rows.push(i);
+    } else if (/^(?:\d+[.)]|[-*+])\s+(.*)$/.test(line)) {
+      items.push({ start: i, end: i });
+    } else if (items.length && /^\s/.test(line)) {
+      items[items.length - 1].end = i;
+    }
+  }
+  return { open, close, header, rows, items };
 }
 
 export const idsIn = (s, re) => [...new Set((s || '').match(re) || [])];
