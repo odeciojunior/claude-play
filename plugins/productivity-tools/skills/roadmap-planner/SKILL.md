@@ -22,7 +22,7 @@ Build a **living roadmap**: a versioned strategy document plus a tracking folder
 |------|-------|
 | Planning model contract (read at Step 6) | `references/model.md` |
 | Scaffold that writes the folder from the model | `scripts/scaffold.mjs` |
-| Format contract, consulted by section (`formats.md` §n) when a model field asks for it | `references/formats.md` |
+| Format contract, consulted by section when a model field asks for it | `references/formats.md §n` |
 | Clarification method | `references/clarify.md` |
 | Requirement extraction and decomposition | `references/decompose.md` |
 | Checker source (sibling skill, same plugin) | `${CLAUDE_SKILL_DIR}/../roadmap-tracker/scripts/check-roadmap.mjs` |
@@ -32,8 +32,8 @@ If `${CLAUDE_SKILL_DIR}` appears empty or literally in a command, use the direct
 
 ## Rules
 
-1. **No invented numbers.** Never write a date, duration, metric, target, baseline or estimate that the user or a source did not supply. Today's date in records (`version` anchor, log, decisions, "Read on") is a fact, not an estimate.
-2. **Unsourced claims are tagged.** A claim without a `SRC` or `DEC` carries `ASSUMPTION` (unverified fact, in the Assumptions table with owner and "re-validate when") or `UNSOURCED` (cited from somewhere unverifiable). A number in the objective with no source or baseline (e.g. "halve the response time") is an `ASSUMPTION` and a clarify question, never a target in "Metrics and targets" or an acceptance criterion, until the user names its baseline and basis.
+1. **No invented numbers.** Never write a date, duration, metric, target, baseline or estimate that the user or a source did not supply. Today's date in records is a fact, not an estimate.
+2. **Unsourced claims are tagged.** A claim without a `SRC` or `DEC` carries `ASSUMPTION` (unverified fact, in the Assumptions table with owner and "re-validate when") or `UNSOURCED` (cited from somewhere unverifiable). A number in the objective with no baseline ("halve the response time") is an `ASSUMPTION` and a clarify question, never a target or acceptance criterion until the user names its baseline and basis.
 3. **Conflicts are recorded, never resolved silently.** Every disagreement between sources goes into the `conflicts` block; it is settled only by a user answer (`DEC`) or stays an open question.
 4. **One fact, one place.** The strategy holds no state; `state.md` holds no history; `log.md` and `decisions.md` are append-only.
 5. **Deliverable granularity.** A deliverable (`E<n>`) ends at "gets its own spec and plan". Pieces are vertical slices, each shippable alone. No task-sized deliverables.
@@ -56,11 +56,11 @@ Copy this checklist into your working notes and tick it off:
 
 **Order.** First resolve the roadmap folder and check it (table below); only then ask the mode question.
 
-**Mode.** Ask ONE question, with a recommended answer inferred from the request: "Is this a multi-deliverable initiative that will run for weeks?" Yes -> **full** mode; no -> **light** mode. This question does not count toward the light mode's ≤3 clarification questions. Record the mode in the handoff and in the strategy changelog's v1.0 entry ("light mode" or "full mode"), so a later session can recover it.
+**Mode.** Ask ONE question, with a recommended answer inferred from the request: "Is this a multi-deliverable initiative that will run for weeks?" Yes -> **full** mode; no -> **light** mode. This question does not count toward the Rule 6 budget. Record the mode in the handoff and in the strategy changelog's v1.0 entry ("light mode" or "full mode").
 
 | | Full | Light |
 |---|------|-------|
-| Clarification | ≤5 questions per round, more rounds with consent | ≤3 questions, one round |
+| Clarification | Rule 6 | Rule 6 |
 | Sources | Discovered and read (Step 1) | Only those passed |
 | Card | All attributes of `formats.md` §5 | The minimum and defaults of `decompose.md` §12 |
 | Fresh-context reviewer | Yes (Step 7) | No; the handoff says none ran |
@@ -68,7 +68,7 @@ Copy this checklist into your working notes and tick it off:
 
 Before fixing the slug, look for `docs/plans/*/planning-model.json`. If exactly one exists and its objective matches this request, use its folder and resume. If its objective does not match, ask whether to resume it or start new. If more than one exists, ask which one to resume, or to start new. A `planning-draft.md` left by an earlier version is read once as the source of the resume and converted into the model; it is not read again.
 
-Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a short kebab-case slug).
+Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`).
 
 | Folder state | Action |
 |--------------|--------|
@@ -81,16 +81,16 @@ Resolve the roadmap folder (default `docs/plans/roadmap-<topic>/`, `<topic>` a s
 Also settle now:
 
 - **Language** of the documents (Rule 7).
-- **Integration branch** (config `integrationBranch`): in a git repo, the repo's default branch — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`); if that fails or the repo has several candidate branches, ask. Outside a git repo, ask which branch the work will integrate into (default `main`); the checker then skips git checks with one `no-git` warning, which is expected and listed in the handoff.
-- **Release branch** (config `releaseBranch`): ask whether deliverables merge into an intermediate release branch before the integration branch. If yes, record its name; if no, omit the key.
+- **Integration branch** (`integrationBranch`): in a git repo, the default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`, strip `origin/`); if that fails or several candidates exist, ask. Outside a git repo, ask (default `main`); the checker then warns `no-git`, expected and listed in the handoff.
+- **Release branch** (`releaseBranch`): ask whether deliverables merge into an intermediate release branch first. If yes, record its name; if no, omit the key.
 
-**Planning model.** `<roadmap-folder>/planning-model.json` (contract: `references/model.md`) keeps the work across a crash or `/clear`. Write the whole model, with `nextStep`, after Steps 1, 2, 3, 4 and 5 and after each round of questions (one batch, including the Step 5 priority question); create the folder if needed (the model is then its only file). Never put a secret the user pasted in it: write "[omitted: secret]". If the model exists at Step 0, tell the user you are resuming from it, read it, skip the mode question and any question it records as answered, and continue at `nextStep`. Step 7 deletes it once the checker and the reviewer pass.
+**Planning model.** `<roadmap-folder>/planning-model.json` (contract: `references/model.md`) keeps the work across a crash or `/clear`. Write the whole model, with `nextStep`, after Steps 1 to 5 and after each round of questions; create the folder if needed. Never put a secret in it: write "[omitted: secret]". If the model exists at Step 0, tell the user you are resuming, skip the mode question and any question it records as answered, and continue at `nextStep`. Step 7 deletes it once the checker and the reviewer pass.
 
 ### Step 1: Intake and sources
 
 1. Take the objective and the sources passed as arguments. When the user supplies only an objective (or a brief in the conversation), register it as `SRC-01` (What it is: user brief) so requirements can cite it (`decompose.md` §1).
-2. **Discover** related sources (light mode: skip; use only the sources passed): repo docs, specs, issues, git history (`git log` on the relevant paths). Use the web only if the user allows it; ask once.
-3. **Read** them. With a subagent tool, delegate the reading to subagents with `model: sonnet`, `effort: medium` (several sources per subagent, in parallel when independent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format below in each Agent prompt, then wait for its completion notification before using the result. Without a subagent tool, read the sources directly. Either way, each source yields this summary, at most 10 lines:
+2. **Discover** related sources (light mode: skip): repo docs, specs, issues, `git log` on the relevant paths. Use the web only if the user allows it; ask once.
+3. **Read** them. With a subagent tool, delegate the reading with `model: sonnet`, `effort: medium` (several sources per subagent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format in each prompt and wait for the result. Without a subagent tool, read directly. Each source yields this summary, at most 10 lines:
 
    ```
    SRC-NN | <path or URL> | <what it is> | read <full|partial: which sections>
@@ -105,9 +105,9 @@ Also settle now:
 
 ### Step 2: Clarify
 
-Follow `references/clarify.md`: scan the ambiguity categories, score impact × uncertainty, ask capacity and date constraints before or together with the scope decisions (showing the accumulated cost when a sourced estimate exists), settle the executor autonomy policy (`clarify.md` §7; the autonomy question is a clarification question and counts toward the budget (light mode: one of the 3; full mode: one of the round's 5), unlike the mode question), ask at most 5 questions per round (light mode: at most 3 in one round), **one at a time**, each with a recommended answer (use `AskUserQuestion` when available). Run another round per theme only with the user's consent (never in light mode); stop by the stop rule. Stay at roadmap level: deliverable-level design questions are not asked now; record them as "Open questions" entries in the strategy, prefixed `E<n>:`, for `superpowers:brainstorming` (`clarify.md` §8).
+Follow `references/clarify.md` within the budget of Rule 6 (the autonomy question of `clarify.md` §7 counts toward it, unlike the mode question). Use `AskUserQuestion` when available. Stay at roadmap level: deliverable-level design questions become `E<n>:` entries in "Open questions" for `superpowers:brainstorming` (`clarify.md` §8).
 
-Record every answer: a **choice** becomes a `DEC-NNN` row (origin `user`); an **unverified fact** becomes an Assumption tagged `ASSUMPTION`. A **deferred** or unanswered question is not a `DEC`: it becomes an "Open questions" entry plus a `pending` item with an owner in `state.md`, and a `BLQ-n` in `blockers` when it blocks a deliverable; a related `conflicts` item stays and names that question (`clarify.md` §7). Never record an answer the user did not give. Write the model after each round and when this step ends.
+Record every answer where `clarify.md` §7 says; never record an answer the user did not give. Write the model after each round and when this step ends.
 
 ### Step 3: Requirements
 
@@ -115,17 +115,15 @@ Extract `REQ-NNN` from the source summaries and the answers, per `references/dec
 
 ### Step 4: Decompose
 
-Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices; deliverables grouped into outcome-named phases with entry and exit criteria (the strategy's "Phases" section); one track per card; dependencies as a DAG; critical path as an ordering only (no dates unless supplied). Each card gets ≥2 Given-When-Then acceptance criteria, each with its verification tag, a definition of done citing gate IDs and, when critical, at least one risk; split a deliverable that mixes automatic work with human acceptance or an external environment (`decompose.md` §10). A requirement that closes a class of defects needs the closed ID list and its sweeping gate (`decompose.md` §11). Light mode: cards are minimal (acceptance ≥2, each still with its verification tag, `depends`, `reqs`) with the defaults of the Step 0 table; critical cards still get ≥1 risk.
-
-Then prove coverage: every `REQ` maps to ≥1 deliverable or is `out-of-scope: <reason>`; every card cites ≥1 `REQ`; a requirement's Deliverables and the card's `reqs` agree both ways. A `needs-clarification` requirement still lists in Deliverables the deliverable that will resolve or satisfy it (for example a gate deliverable on the `decisions` or `external` track); this is allowed and keeps it traced.
+Follow `references/decompose.md`: walking skeleton first (`E1`), then vertical slices in outcome-named phases; one track per card; a DAG; critical path as an ordering only (no dates unless supplied). Acceptance criteria and the definition of done follow `decompose.md` §10. Light mode uses the card defaults of `decompose.md` §12. Then run the coverage pass of `decompose.md` §11.
 
 ### Step 5: Prioritize
 
-MoSCoW (`Must`, `Should`, `Could`, `Won't`) plus the DAG is the single default (`decompose.md` §8). Challenge the user when more than half of the deliverables are `Must` (full mode only; in light mode every card is `Must` by default, so skip the challenge and say in the handoff that the priorities were not challenged). Use WSJF only to order deliverables the DAG leaves unconstrained, and only with inputs the user supplies. No RICE. Size is a range with its basis, or `not estimated`.
+Prioritize per `decompose.md` §8 (MoSCoW plus the DAG; the "more than half `Must`" challenge is full mode only) and size per §9.
 
 ### Step 6: Write the files
 
-Complete the model (`model.md` §4-§7): requirements, cards, the strategy fields and the initial state. **Gates**: copy the commands from the project's CLAUDE.md and the sources into `gates`; never invent one, and the cards' `dod` cites the gate IDs. Metrics and Flags only when not empty. A value that changes over time (counts, test totals, versions) is written once, with the command that measures it and the date; every other file points to that place.
+Complete the model (`model.md` §4-§7). **Gates**: copy the commands from the project's CLAUDE.md and the sources into `gates`; never invent one. A value that changes over time (counts, test totals, versions) is written once, with the command that measures it and the date; every other file points to that place.
 
 Then run the scaffold, which writes the folder and the strategy and copies the checker:
 
@@ -137,8 +135,8 @@ On exit 1, fix the model at each error's `path` (codes: `model.md` §11) and run
 
 ### Step 7: Verify
 
-1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"`. Fix and re-run until it reports **0 errors**. Warnings may remain (typically `markers`, `needs-clarification`, `no-git` outside a repo); list them in the handoff. Fix the files, never the checker. If `node` is missing or older than 18, do not claim the folder verified: stop, or hand off saying "checker not run (Node ≥18 missing)".
-2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode: skip the reviewer and say in the handoff that no independent review ran. Without a subagent tool, do not self-review as if independent: say in the handoff that no independent review ran, and recommend running the same brief in a fresh session before the roadmap is used.
+1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"` until it reports **0 errors**; list the remaining warnings in the handoff. Fix the model, never the checker. If `node` is missing or older than 18, hand off saying "checker not run (Node ≥18 missing)".
+2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode, or no subagent tool: skip it, never self-review as if independent, and say in the handoff that no independent review ran (without a subagent tool, recommend the same brief in a fresh session before use).
 3. Loop, at most three review rounds in total: fix each `error` finding in the model, run the scaffold and the checker until 0 errors, and dispatch a fresh reviewer only if the previous round had an `error` finding. `warning` findings go to the handoff. An `error` left after the third round goes to the handoff as a pending item, without another round.
 4. Delete `<roadmap-folder>/planning-model.json`.
 
@@ -146,14 +144,12 @@ On exit 1, fix the model at each error's `path` (codes: `model.md` §11) and run
 
 Report to the user:
 
-- **Summary**: folder and strategy paths, deliverables per phase, requirement coverage (covered / out of scope / to clarify), open questions, checker result with the remaining warnings.
-- **Now**: the `now` list from `state.md`.
+- **Summary**: folder and strategy paths, deliverables per phase, requirement coverage, open questions, checker result with the remaining warnings, and the `now` list from `state.md`.
 - **Next**: the first deliverable goes through the chain below. The downstream skills know nothing about the roadmap, so give the user these exact instructions:
-  1. `superpowers:brainstorming` (runs per deliverable, not for the whole roadmap). Start it with: "Brainstorm deliverable E<n> of the roadmap at <folder>; its card is in <strategy> (section E<n>): acceptance criteria, REQs <ids>, depends on <ids>. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite E<n>."
-  2. `superpowers:writing-plans`: tell it to add the header line `**Roadmap:** <folder>` (it has no such slot; plan-coordinator reads it to call `roadmap-tracker` after each wave). It saves to `docs/superpowers/plans/`, and `plan-coordinator` finds plans there too.
-  3. Execution: writing-plans offers only subagent-driven or native execution; when the roadmap is tracked, pick `plan-coordinator` as the executor.
-- **Several deliverables unattended**: `roadmap-release` runs one or more deliverables end to end into a release branch (spec, plan, reviewed tasks, gates, serialized merge). Prefer it when the roadmap has several deliverables to run.
-- **How to execute each deliverable**: `plan-coordinator` handles the plan of one deliverable at a time and approves its own execution map. It does not integrate branches and does not run several deliverables in one go; integration and the next deliverable are separate steps the user (or the owner) starts.
+  1. `superpowers:brainstorming`, per deliverable. Start it with: "Brainstorm deliverable E<n> of the roadmap at <folder>; its card is in <strategy> (section E<n>): acceptance criteria, REQs <ids>, depends on <ids>. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite E<n>."
+  2. `superpowers:writing-plans`: tell it to add the header line `**Roadmap:** <folder>` (plan-coordinator reads it to call `roadmap-tracker` after each wave).
+  3. Execution: when the roadmap is tracked, pick `plan-coordinator` as the executor.
+- **Several deliverables unattended**: prefer `roadmap-release`, which runs them end to end into a release branch. `plan-coordinator` handles one deliverable's plan at a time and does not integrate branches; integration and the next deliverable are separate steps the user starts.
 - **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.
 
 The files stay in the working tree for the user to review and commit.
@@ -162,11 +158,8 @@ The files stay in the working tree for the user to review and commit.
 
 | Mistake | Fix |
 |---------|-----|
-| Turning the user's "halve X" into a target | `ASSUMPTION` + clarify question; target only with a named baseline and basis (Rule 2) |
-| Picking one side of a source conflict | `conflicts` block + question; settle by `DEC` only (Rule 3) |
-| Deliverables named by layer ("database", "UI") | Vertical slices; layer work only as justified enabling work (`decompose.md` §4) |
-| Phases called Foundation / Build / Scale | Name each phase by the outcome it delivers (`decompose.md` §5) |
-| Task-sized deliverables | Merge until each one needs its own spec and plan (Rule 5) |
-| Asking ten questions in one message | One at a time, ≤5 per round (Rule 6) |
+| Turning the user's "halve X" into a target | `ASSUMPTION` + clarify question (Rule 2) |
+| Picking one side of a source conflict | `conflicts` block + question; `DEC` only (Rule 3) |
+| Deliverables named by layer, phases named Foundation / Build | Vertical slices, outcome-named phases (`decompose.md` §4, §5) |
 | Writing the folder files by hand | Fill the model; the scaffold writes them (`model.md` §10) |
 | Editing the checker to make it pass | Fix the roadmap files |
