@@ -38,4 +38,5 @@
 - SRC-12 vs SRC-13: SRC-12 dizia que lançar o workflow por caminho pede consentimento a cada vez; SRC-13 mostra, pelo código da CLI, que no modo padrão ele é recusado quando o script não está no conjunto legível -> vale SRC-13: o experimento mostrou a recusa em sessão sem interface, antes de qualquer pedido de permissão (SRC-14).
 - SRC-13 vs SRC-14: SRC-13 dava como receita de fixar a loja numa tag editar o ref nas configurações e atualizar a loja; SRC-14 mostra que assim a loja fica ignorada e que é preciso repetir o comando de adicionar com o ref -> vale SRC-14; DEC-056 traz a receita corrigida.
 - SRC-06 vs SRC-15: a divergência entre a página pública e a referência embutida sobre o despacho de agentes foi resolvida por execução: vale `agentType`, da referência embutida; `subagent_type` é ignorado em silêncio -> DEC-057.
+- SRC-10 vs `tools/measure/prices.json`: 10/50 é a linha do Fable 5.1; o arquivo precifica o 5.2 a 8/40/0,20 -> vale o arquivo; `family()` não separa 5.1 de 5.2, então sessão em 5.1 sai subprecificada (decisão delegada pelo dono ao Fable, 2026-11-11).
 <!-- /roadmap:conflicts -->

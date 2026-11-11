@@ -85,4 +85,4 @@ Correções de texto recomendadas pela revisão:
 
 A folga do orçamento de prosa em `feat/E4` é de 45 bytes LF (constante provisória de DEC-203), o que limita acrescentar texto ao SKILL e às referências contadas sem cortar outro trecho.
 
-Aceite do critério 4: pendente do dono.
+Aceite do critério 4: aceito em 2026-11-11, por delegação do dono.

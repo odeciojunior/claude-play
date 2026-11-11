@@ -21,7 +21,7 @@ Desvio do plano: o plano previa uma única `pasta/`. Cada execução usou uma c�
 - Entrada B (repetição, subagent novo, pasta nova): "a página de relatório é montada com a biblioteca de tabelas `simple-table`". Esperado: `-`. Obtido: DEC-002 com Contradicts `-`, sem outras mudanças.
 - Resultado: passa (A e B repetida). Ressalva da revisão: A e B repetida estão próximas dos exemplos da rubrica, então discriminam pouco.
 
-aceite: aguardando o dono
+aceite: aceito em 2026-11-11, por delegação do dono
 
 ## Critério 3: rubrica de conferência de critérios
 
@@ -30,7 +30,7 @@ aceite: aguardando o dono
 - Obtido: critério 1 `igual`, critério 2 `enfraquecido` (sinal 3, test virou human); um pendente `(owner) ... confirm (enfraquecido)`; log "1 igual, 1 enfraquecido"; card intacto; checker 0 erros, 0 avisos. O primeiro `add-pending` foi recusado por passar de 300 caracteres (exit 1, nada mudou) e o agente o repetiu com o texto resumido, pela CLI.
 - Resultado: passa.
 
-aceite: aguardando o dono
+aceite: aceito em 2026-11-11, por delegação do dono
 
 ## Fluxo enxuto (REQ-037)
 

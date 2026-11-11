@@ -72,16 +72,14 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) criterion AC2 has no automatic evidence (human)
 - (dono) criterion AC3 has no automatic evidence (human)
 - (dono) criterion AC4 has no automatic evidence (human)
-- (dono) Aceite do critério 4 de E4 (o revisor devolve achado estruturado para cada defeito plantado): conferir o relatório comportamental em `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md`.
 - (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
-- (dono) Decidir, depois da meta de prosa registrada (DEC-203), se W2 e W4 de E4 (objective em texto e cards de modo completo sem dod e risks) entram com prosa contada, cortando outro trecho (DEC-167).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
-- (dono) Ratificação pelo dono das 20 decisões autônomas do spec de E18 (DEC-030). As de alcance contrato (1, 2, 5 e 7) seguram o início de E25 e E8; as locais esperam o ponto de medição.
-- (dono) Aceite dos critérios 2 e 3 de E22 (verify: human): conferir o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, produzido pelo orquestrador da sessão principal (DEC-204).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (dono) Ratificação em lote das decisões locais de E22 (DEC-236 a DEC-248) no ponto de medição (DEC-030); as de contrato foram ratificadas em 2026-11-11 (DEC-233 a DEC-235, emenda DEC-252).
 - (executor) Ressalvas baixas da revisão final de E22 (achados 5 a 7): Volatile values só em formats.md § 4; sectionsCited lê só a 1a seção de 'formats.md § 6 and § 7'; migração ainda apontada em events.md (formats.md:63, rule do checker).
+- (executor) Branch fix/E4-w2-w4 (DEC-255): avisos do scaffold em modo completo para objective em texto e card sem pieces, dod ou risks, antes da preparação de E17.
+- (executor) Rodar o teste comportamental de E18 (tarefa 7, DEC-230, DEC-204) pela sessão principal e gravar o resumo no log de revisões de E18, antes da preparação de E17.
+- (executor) Correção de DEC-226 (emenda): pendente de critério nomeia o entregável e usa as frases de DEC-225, sem fusão entre entregáveis; antes da preparação de E17.
 <!-- /roadmap:pending -->
 
 ## Em andamento

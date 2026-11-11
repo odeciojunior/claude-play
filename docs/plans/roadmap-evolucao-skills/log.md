@@ -3,6 +3,11 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E4 | DEC-255: W2 e W4 entram sem prosa contada (decisão delegada pelo dono ao Fable) | `decisions.md` |
+| 2026-11-11 | E4 | Critério 4 de E4 aceito por delegação do dono ao Fable | `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md` |
+| 2026-11-11 | E22 | Critérios 2 e 3 de E22 aceitos por delegação do dono ao Fable | `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` |
+| 2026-11-11 | E18 | DEC-226 ratificada pelo dono | `decisions.md` |
+| 2026-11-11 | E18, E22, E4 | DEC-213 a DEC-249 (locais de E18, E22 e E4) ratificadas por delegação do dono ao Fable | `decisions.md` |
 | 2026-11-11 | E22 | E22 integrado na release: tarefa 8 pelo orquestrador, execução extra, revisão final opus/high aprovada com ressalvas corrigidas | `53fe7d1` |
 | 2026-11-11 | E3 | Correção do next-id integrada: ignora o checker vendorizado na raiz da pasta (DEC-253) | `d90420c` |
 | 2026-11-11 | E22 | BLQ-4 resolvido: tarefa 8 de E22 feita pelo orquestrador na feat/E22; relatório com os critérios 2 e 3 aguardando o dono | `14fb3e8` |
