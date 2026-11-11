@@ -8,7 +8,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o código entrou em `release/roadmap-skills-v2`; o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. Escrever o spec e o plano de E5 pelo release, em plan-only. Executa: executor. Aprova: dono. Depende de: DEC-037.
+2. Executar o plano de E5 em `feat/E5` (execução automática). Executa: executor. Aprova: dono. Depende de: DEC-037.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -20,7 +20,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E2 | na-branch | `0202e00f1be5032c95d759a41883de84c57e54b3`; `docs/superpowers/specs/2026-11-11-E2-formato-roadmap-verificado-design.md`; `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md`; `docs/superpowers/reviews/2026-11-11-E2-formato-roadmap-verificado-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
-| E5 | nao-iniciado | - | Escrever o spec |
+| E5 | executando | `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `feat/E5` | Executar o plano na branch `feat/E5` |
 | E6 | nao-iniciado | - | Aguardar E2 e E5 |
 | E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
 | E8 | nao-iniciado | - | Aguardar E17, E18, E19, E20 e E25 |
@@ -70,7 +70,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Escolha, pelo dono, da execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em --from-run, antes das tentativas de detecção (pendente do dono em state.md).
 - (dono) Conferência do dono das linhas da linha de base e de detecção (critérios 1 a 3).
 - (dono) Aprovação do dono da revisão da estratégia com a tabela de metas (critério 4, DEC-034), depois das execuções pagas.
-- (dono) Ratificação das decisões de alcance contrato (2, 3, 4, 5, 8, 12, 13) e as de E2 (DEC-102, DEC-103, DEC-106, DEC-107, DEC-111, DEC-112, DEC-115) antes de E17 começar (DEC-030).
+- (dono) Ratificação das decisões de alcance contrato (2, 3, 4, 5, 8, 12, 13) as de E2 (DEC-102, DEC-103, DEC-106, DEC-107, DEC-111, DEC-112, DEC-115) e as de E5 (DEC-117, DEC-118, DEC-119, DEC-120, DEC-121, DEC-122, DEC-123, DEC-124, DEC-125, DEC-129, DEC-131, DEC-133) antes de E17 começar (DEC-030).
 - (dono) criterion AC1 has no automatic evidence (human)
 - (dono) criterion AC2 has no automatic evidence (human)
 - (dono) criterion AC3 has no automatic evidence (human)
@@ -82,4 +82,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| `feat/E5` | viva | Execução automática |
 <!-- /roadmap:inflight -->
