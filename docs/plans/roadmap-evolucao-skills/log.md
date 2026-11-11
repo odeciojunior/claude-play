@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-10 | E1 | E1 entrou em `release/roadmap-skills-v2` (merge da `feat/E1`); gates iguais à linha de base: G1 exit 0 com 720 testes, G2, G3 e G5 exit 0. Ainda não está em `main`. | `21d1979fb70266b94508ec2b8a64da29a1c2af0f` |
 | 2026-11-10 | E1 | Execução do plano iniciada na branch `feat/E1`, pelo release (execução automática). Spec e plano aprovados pelas revisões; DEC-085 a DEC-087 já ratificadas. | `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md` |
 | 2026-11-10 | E1 | Registro do plano de E1 conferido (status plano, spec e plano na branch `feat/E1`). DEC-085 a DEC-087 registradas, de origem executor e pendentes de ratificação, vindas do spec de E1. | `decisions.md` |
 | 2026-11-10 | E1 | DEC-062 a DEC-080 registradas, de origem executor e pendentes de ratificação, vindas do spec de E1. | `decisions.md` |

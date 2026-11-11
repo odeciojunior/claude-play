@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Acompanhar a execução automática do plano de E1 na branch `feat/E1`; ao terminar, o release registra a entrega. Executa: executor. Aprova: dono. Depende de: DEC-087.
+1. Aguardar o release integrar `release/roadmap-skills-v2` em `main`; depois acrescentar `tools/**/*.test.mjs` ao gate G1 (ver Pendentes) antes de E2 rodar. Executa: executor. Aprova: dono. Depende de: DEC-032, DEC-077.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -15,7 +15,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E1 | executando | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `feat/E1` | Concluir a execução do plano na branch e registrar a entrega |
+| E1 | na-branch | `21d1979fb70266b94508ec2b8a64da29a1c2af0f`; `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `docs/superpowers/reviews/2026-11-10-E1-ferramentas-medicao-cenario-reviews.md` | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E2 | nao-iniciado | - | Escrever o spec |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
@@ -67,7 +67,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
 - (executor) Depois que E1 integrar, acrescentar `tools/**/*.test.mjs` ao gate G1 em `release.config.json` e na tabela de gates da estratégia, antes de E2 rodar (DEC-032, DEC-077).
 - (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
-- (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl`.
+- (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl` (DP-4). Os critérios de E1 usaram executor simulado (DEC-011, DEC-043, DEC-082).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -75,5 +75,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| `feat/E1` | viva | Execução automática |
 <!-- /roadmap:inflight -->
