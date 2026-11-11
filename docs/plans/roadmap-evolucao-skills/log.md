@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E18 | Correção pós-ratificação: preflight avisa quando decisions.md falta ou a pasta não é lida; skill cita só o scope contract (DEC-251) | `52a512d` |
 | 2026-11-11 | E22 | DEC-234 ratificada pelo dono | `decisions.md` |
 | 2026-11-11 | E18 | DEC-217 ratificada pelo dono | `decisions.md` |
 | 2026-11-11 | E18 | DEC-212 ratificada pelo dono | `decisions.md` |
