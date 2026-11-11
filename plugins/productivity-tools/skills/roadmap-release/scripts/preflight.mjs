@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
 
 const KINDS = ['exit', 'tests'];
 
@@ -49,98 +50,29 @@ export function validateReleaseConfig(cfg) {
   return errors;
 }
 
-// Blanks fenced code (same length, newlines kept) with the checker's fence rule: 3+ backticks or tildes, closed by the same char and a length >= the opener.
-function blankFences(text) {
-  const lines = text.split('\n');
-  let open = null;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (open === null) {
-      const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-      if (m && !(m[1][0] === '`' && m[2].includes('`'))) open = { ch: m[1][0], len: m[1].length };
-    } else {
-      const m = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
-      if (m && m[1][0] === open.ch && m[1].length >= open.len) open = null;
-      else lines[i] = ' '.repeat(line.length);
-    }
-  }
-  return lines.join('\n');
-}
-
-// Same cell split as the checker: `\|` is an escaped pipe inside a cell.
-function splitRow(line) {
-  let s = line.trim();
-  if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
-  return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
-}
-
-// One linear pass over the comments of a text, the same logic as scanComments in the vendored checker (check-roadmap.mjs):
-// a comment whose `-->` comes after the next `<!--` is malformed.
-function scanComments(text) {
-  const out = [];
-  let closeAt = -2;
-  let openAt = -2;
-  let i = text.indexOf('<!--');
-  while (i !== -1) {
-    const from = i + 4;
-    if (closeAt !== -1 && closeAt < from) closeAt = text.indexOf('-->', from);
-    if (openAt !== -1 && openAt < from) openAt = text.indexOf('<!--', from);
-    const malformed = closeAt === -1 || (openAt !== -1 && openAt < closeAt);
-    const end = malformed ? (openAt === -1 ? text.length : openAt) : closeAt;
-    out.push({ start: i, innerStart: from, end, after: malformed ? end : closeAt + 3, malformed });
-    if (malformed) i = openAt;
-    else {
-      if (openAt !== -1 && openAt < closeAt + 3) openAt = text.indexOf('<!--', closeAt + 3);
-      i = openAt;
-    }
-  }
-  return out;
-}
-
-// Body of the first block `name`, found the way the checker's readBlocks finds it: the opener is a comment that starts with
-// roadmap:<name> followed by whitespace or its end, the closer a later well-formed comment that is exactly /roadmap:<name>.
-// A malformed opener or a missing closer gives null.
-function firstBlockBody(text, scan, name) {
-  const comments = scanComments(scan);
-  const skip = (from, end) => { let k = from; while (k < end && /\s/.test(scan[k])) k += 1; return k; };
-  const openTag = `roadmap:${name}`;
-  const closeTag = `/roadmap:${name}`;
-  for (let idx = 0; idx < comments.length; idx += 1) {
-    const c = comments[idx];
-    const k = skip(c.innerStart, c.end);
-    if (!scan.startsWith(openTag, k)) continue;
-    const after = k + openTag.length;
-    if (after < c.end && !/\s/.test(scan[after])) continue;
-    if (c.malformed) return null;
-    for (let j = idx + 1; j < comments.length; j += 1) {
-      const d = comments[j];
-      if (d.malformed) continue;
-      const dk = skip(d.innerStart, d.end);
-      if (scan.startsWith(closeTag, dk) && scan.slice(dk + closeTag.length, d.end).trim() === '') return text.slice(c.after, d.start);
-    }
-    return null;
-  }
-  return null;
-}
-
 // Columns are read by position (ID, Command, Environment, When, Baseline); header words are ignored.
 // A row with another number of columns is skipped and reported in `warnings`.
 export function parseGatesTable(markdown, warnings = []) {
-  // Like the checker's norm(): a leading BOM is dropped, so a fence on line 1 is still a fence.
-  const text = String(markdown || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  const body = firstBlockBody(text, blankFences(text), 'gates');
-  if (body === null) return [];
-  const rows = body.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('|')).map(splitRow);
-  const isSep = (r) => r.length > 0 && r.every((c) => /^:?-+:?$/.test(c));
-  return rows.slice(1).filter((r) => {
-    if (isSep(r) || (r.length === 1 && r[0] === '')) return false;
+  const g = parseRoadmapTexts({ strategy: String(markdown || ''), files: {} }).blocks.strategy.gates;
+  if (!g.present || !g.closed || g.malformed > 0) return [];
+  return g.rows.filter((r) => {
+    if (r.length === 1 && r[0] === '') return false;
     if (r.length !== 5) {
       warnings.push(`gates table row "${r[0] || '(empty)'}" has ${r.length} columns, expected 5 (ID, Command, Environment, When, Baseline): row skipped, so that gate is missing from the derived config (write a pipe inside a cell as \\|)`);
       return false;
     }
     return !['', '-', '—'].includes(r[1]);
   }).map(([ID, Command, Environment, When, Baseline]) => ({ ID, Command, Environment, When, Baseline }));
+}
+
+// Reads a roadmap folder (config, strategy, state files) and returns the same structure as the checker's parseRoadmap.
+export function readRoadmapStructure(folder) {
+  const read = (p) => readFileSync(p, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const config = JSON.parse(read(join(folder, 'roadmap.config.json')));
+  const strategy = read(resolve(folder, config.strategy));
+  const files = {};
+  for (const [role, name] of Object.entries(config.files || {})) files[role] = name === null ? null : read(resolve(folder, name));
+  return parseRoadmapTexts({ strategy, files });
 }
 
 // A derived gate is a tests gate only when its command names a test runner: anything else has no test count to read.
