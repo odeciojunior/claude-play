@@ -55,7 +55,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn } =
     }
     const name = typeof journal === 'function' ? journal(n) : journal;
     if (name) {
-      let text = readFileSync(join(JOURNALS, name), 'utf8');
+      let text = name.includes('\n') ? name : readFileSync(join(JOURNALS, name), 'utf8'); // a fixture name or inline journal text
       if (text.includes('{{PLAN_BLOB}}')) text = text.split('{{PLAN_BLOB}}').join(gitIn(cwd, 'rev-parse', `HEAD:${E5_PATHS.plan}`).stdout.trim());
       writeFileSync(join(wf, 'journal.jsonl'), text);
     }
@@ -511,5 +511,144 @@ test('fix arms carry the issues marker', () => {
     const text = readFileSync(join(ARMS, f), 'utf8');
     assert.ok(text.includes('{{issues}}'), f);
     assert.ok(text.includes('{{artifactPath}}'), f);
+  }
+});
+
+// ---- Task 14: review-stage harness (DEC-083) ----
+const { buildReviewOnlyScript, readArm, UsageError } = await import('./run-batch.mjs');
+
+const jl = (...entries) => entries.map((e) => JSON.stringify({ ...e, note: '[fab] fabricated journal entry' })).join('\n') + '\n';
+const planReview = (...issues) =>
+  jl({ label: 'E5:plan-review1', result: { measuredPlanBlob: '{{PLAN_BLOB}}', issues } }, { label: 'E5:plan-review-fix1', result: { summary: '[fab] fix' } });
+const BLOCKER = { severity: 'critical', category: 'defeito', description: '[fab] task 2 has no verification' };
+
+// Like fixP1P2, but only the verification steps of task 2 (P1) are undone.
+function fixP1(cwd) {
+  const file = join(cwd, E5_PATHS.plan);
+  let text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const original = taskSection(ORIGINAL_PLAN, 2).split('\n');
+  const step = (n) => original.find((l) => l.startsWith(`- [ ] **Step ${n}:**`));
+  text = text.replace(taskSection(text, 2), (sec) =>
+    sec.split('\n').flatMap((l) => (l.startsWith('- [ ] **Step 1:**') ? [l, step(2)] : l.startsWith('- [ ] **Step 3:**') ? [l, step(4)] : [l])).join('\n'),
+  );
+  writeFileSync(file, text);
+  gitIn(cwd, 'add', E5_PATHS.plan);
+  gitIn(cwd, 'commit', '-q', '-m', 'docs(plan): E5 review fixes');
+}
+
+test('review-only script is valid JavaScript and dispatches only reviewer and fixer', () => {
+  const text = buildReviewOnlyScript({ stage: 'plan-review', reviewPrompt: 'Review it', fixPrompt: 'Fix it\n{{issues}}' });
+  assert.doesNotMatch(text, /^import /m);
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor; // the script uses top-level await and return
+  new AsyncFunction('agent', text.replace('export const', 'const'));
+  assert.equal(text.split('agent(').length - 1, 2);
+  assert.ok(text.includes("'E5:plan-review1'"));
+  assert.ok(text.includes("'E5:plan-review-fix1'"));
+  assert.ok(text.includes("name: 'review-only'"));
+});
+
+test('harness writes the script in the sandbox and launches it with Workflow allowed', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
+    const call = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.ok(existsSync(join(call.cwd, 'review-only.js')));
+    assert.match(call.args[call.args.indexOf('--allowedTools') + 1], /Workflow/);
+    assert.ok(call.args[1].includes('review-only.js'));
+    assert.equal(gitIn(call.cwd, 'status', '--porcelain').stdout.trim(), '');
+    assert.equal(r.aggregate.valid, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('harness outcomes come from the sentinels', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 1);
+    assert.deepEqual(outcomeMap(r.aggregate.attempts[0]), { P1: 'capturado', P2: 'perdido', P3: 'perdido', P4: 'perdido' });
+    // a fixer that changed nothing leaves the stage stopped
+    const idle = makeFake(s.configDir, { journal: planReview(BLOCKER) });
+    const r2 = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', work: join(s.base, 'work2') }), {
+      exec: idle.exec,
+      now: () => new Date('2026-11-10T12:00:05Z'),
+    });
+    for (const o of r2.aggregate.attempts[0].outcomes) assert.equal(o.outcome, 'indeterminado', o.id);
+  } finally {
+    s.done();
+  }
+});
+
+test('stage and variant must match', async () => {
+  const s = setup();
+  try {
+    const common = ['--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const r = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'spec-review', ...common], { encoding: 'utf8' });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /spec-review/);
+    const bad = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'nonsense', ...common], { encoding: 'utf8' });
+    assert.equal(bad.status, 2);
+    await assert.rejects(runBatch(seededOpts(s, 'completo', { stage: 'task-review' }), { exec: makeFake(s.configDir).exec }), UsageError);
+  } finally {
+    s.done();
+  }
+});
+
+test('harness aggregate records the arm source and workflow commit', async () => {
+  const s = setup();
+  try {
+    const first = norm(readFileSync(join(ARMS, 'plan-review-atual.md'), 'utf8')).split('\n')[0];
+    const sha = first.match(/commit ([0-9a-f]{40})$/)[1];
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha });
+    const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    const scriptText = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
+    assert.ok(!scriptText.includes('Copied from:'));
+    assert.ok(!scriptText.includes('{{artifactPath}}'));
+
+    const code = makeFake(s.configDir, { journal: jl({ label: 'E5:task-review1', result: { issues: [] } }), afterRun: mergeE5 });
+    const rc = await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', work: join(s.base, 'work2') }), {
+      exec: code.exec,
+      now: () => new Date('2026-11-10T12:00:05Z'),
+    });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null });
+    assert.equal(rc.aggregate.valid, 1);
+
+    const plain = makeFake(s.configDir);
+    const rp = await runBatch(baseOpts(s, { runs: 1, work: join(s.base, 'work3') }), { exec: plain.exec, now: () => new Date('2026-11-10T12:00:10Z') });
+    assert.equal(rp.aggregate.harness, undefined);
+  } finally {
+    s.done();
+  }
+});
+
+test('harness refuses a current arm template without the source line', async () => {
+  const s = setup();
+  try {
+    const armsDir = join(s.base, 'arms');
+    mkdirSync(armsDir);
+    for (const f of readdirSync(ARMS)) writeFileSync(join(armsDir, f), norm(readFileSync(join(ARMS, f), 'utf8')));
+    writeFileSync(join(armsDir, 'plan-review-atual.md'), norm(readFileSync(join(ARMS, 'plan-review-atual.md'), 'utf8')).split('\n').slice(1).join('\n'));
+    assert.throws(() => readArm(join(armsDir, 'plan-review-atual.md'), { requireSource: true }), UsageError);
+    assert.equal(readArm(join(armsDir, 'plan-review-atual.md'), { requireSource: false }).source, null);
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', armsDir }), { exec: fake.exec }), UsageError);
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
+    const cli = spawnSync(
+      process.execPath,
+      [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--arms-dir', armsDir, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'],
+      { encoding: 'utf8' },
+    );
+    assert.equal(cli.status, 2);
+    // a reader of a good template strips the source line from the prompt text
+    const good = readArm(join(ARMS, 'plan-review-atual.md'), { requireSource: true });
+    assert.match(good.source.commit, /^[0-9a-f]{40}$/);
+    assert.ok(!good.text.includes('Copied from:'));
+  } finally {
+    s.done();
   }
 });

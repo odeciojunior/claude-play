@@ -2,6 +2,8 @@
 // Batch launcher: runs one measurement variant n times in disposable sandboxes and writes an aggregate.
 // Usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir>
 //          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
+//          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>]]
+// With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -9,6 +11,7 @@ import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
 import { makeScenario, artifactOf, E5_PATHS } from './make-scenario.mjs';
+import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +44,13 @@ export function defaultExec(cmd, args, { cwd, signal } = {}) {
     child.on('error', reject);
     child.on('close', (code) => resolvePromise({ code: code ?? 1, stdout }));
   });
+}
+
+export class UsageError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'UsageError';
+  }
 }
 
 const sumCalls = (c) => FAMILIES.reduce((n, f) => n + (c[f] ?? 0), 0);
@@ -265,22 +275,25 @@ export function outcomeFor(entry, { present, stage, entries }) {
   return stage === 'approved' ? 'perdido' : 'indeterminado';
 }
 
-async function attemptOutcomes(variant, scenario, journal) {
+// stageOf(presents) lets the review-stage harness decide the stage from what the sentinels still see.
+async function attemptOutcomes(variant, scenario, journal, stageOf) {
   const art = artifactOf(variant);
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
-  const stage = stageResult(variant, journal.entries, scenario.dir);
-  const out = [];
-  for (const e of manifest.filter((m) => m.class === art.class && m.artifact === art.artifact)) {
-    let outcome;
+  const entries = manifest.filter((m) => m.class === art.class && m.artifact === art.artifact);
+  const presents = [];
+  for (const e of entries) {
     try {
       const mod = await import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
-      outcome = outcomeFor(e, { present: mod.present(scenario.dir, 'feat/E5'), stage, entries: journal.entries });
+      presents.push(mod.present(scenario.dir, 'feat/E5'));
     } catch {
-      outcome = 'indeterminado';
+      presents.push(null);
     }
-    out.push({ id: e.id, class: e.class, detectedBy: e.detectedBy === 'code' ? 'codigo' : 'reviewer', outcome });
   }
-  return out;
+  const stage = stageOf ? stageOf(presents) : stageResult(variant, journal.entries, scenario.dir);
+  return entries.map((e, i) => {
+    const outcome = presents[i] === null ? 'indeterminado' : outcomeFor(e, { present: presents[i], stage, entries: journal.entries });
+    return { id: e.id, class: e.class, detectedBy: e.detectedBy === 'code' ? 'codigo' : 'reviewer', outcome };
+  });
 }
 
 function totalOutcomes(attempts) {
@@ -320,9 +333,175 @@ function parseClaudeJson(stdout) {
   }
 }
 
+// ---- Review-stage harness (DEC-083, DP-6) ----
+
+const STAGES = {
+  'spec-review': { variant: /^spec-semeado-/, fix: 'spec-fix', label: 'E5:spec-review', blobKey: 'measuredSpecBlob', blobPath: E5_PATHS.spec },
+  'plan-review': { variant: /^plano-semeado-[AB]$/, fix: 'plan-fix', label: 'E5:plan-review', blobKey: 'measuredPlanBlob', blobPath: E5_PATHS.plan },
+  'task-review': { variant: /^codigo-semeado-/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, blobPath: null },
+};
+const COPIED = /^Copied from: (\S+) at commit ([0-9a-f]{40})$/;
+
+export function readArm(file, { requireSource = false } = {}) {
+  let raw;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch (e) {
+    throw new UsageError(`arm template not readable: ${file} (${e.code ?? e.message})`);
+  }
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const m = COPIED.exec(lines[0]);
+  if (!m && requireSource) throw new UsageError(`arm template without the "Copied from: <path> at commit <sha>" first line: ${file}`);
+  return { text: (m ? lines.slice(1) : lines).join('\n'), source: m ? { path: m[1], commit: m[2] } : null };
+}
+
+const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in vars ? vars[k] : all));
+
+// The script review-only.js written at the sandbox root: one reviewer and, on a blocking issue, one fixer.
+// Same contract as roadmap-release.js: no imports and no Node API.
+export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt }) {
+  const st = STAGES[stage];
+  if (!st) throw new UsageError(`unknown stage: ${stage}`);
+  const props = {
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
+          category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
+          description: { type: 'string' }, file: { type: 'string' }, blq: { type: 'string' },
+        },
+        required: ['severity', 'description'],
+      },
+    },
+    summary: { type: 'string' }, headSha: { type: 'string' }, clean: { type: 'boolean' }, commitsInRange: { type: 'integer' },
+  };
+  const required = ['issues', 'headSha', 'clean', 'commitsInRange'];
+  if (st.blobKey) {
+    props[st.blobKey] = { type: 'string' };
+    required.push(st.blobKey);
+  }
+  const schema = { type: 'object', properties: props, required };
+  return [
+    'export const meta = {',
+    "  name: 'review-only',",
+    "  description: 'Measurement harness: one review of a seeded artifact and, if it blocks, one fix.',",
+    "  phases: [{ title: 'Review', detail: 'reviewer and fixer of one stage' }],",
+    '}',
+    `const SCHEMA = ${JSON.stringify(schema)}`,
+    `const REVIEW_PROMPT = ${JSON.stringify(reviewPrompt)}`,
+    `const FIX_PROMPT = ${JSON.stringify(fixPrompt)}`,
+    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', model: 'opus', schema: SCHEMA })`,
+    "const blocking = review && Array.isArray(review.issues) ? review.issues.filter(i => i.severity === 'critical' || i.severity === 'important') : []",
+    'let fix = null',
+    'if (blocking.length > 0) {',
+    "  const listed = blocking.map((i, k) => (k + 1) + '. [' + i.severity + (i.category ? '/' + i.category : '') + '] ' + (i.file || '') + ' ' + i.description).join('\\n')",
+    "  const text = FIX_PROMPT.includes('{{issues}}') ? FIX_PROMPT.split('{{issues}}').join(listed) : FIX_PROMPT + '\\n' + listed",
+    `  fix = await agent(text, { label: '${st.label}-fix1', phase: 'Review', model: 'sonnet' })`,
+    '}',
+    'return { review, fix }',
+    '',
+  ].join('\n');
+}
+
+function prepareHarness(opts) {
+  const { stage } = opts;
+  if (!stage) return null;
+  const st = STAGES[stage];
+  if (!st) throw new UsageError(`--stage must be spec-review, plan-review or task-review (got "${stage}")`);
+  if (!st.variant.test(opts.variant)) throw new UsageError(`--stage ${stage} does not accept the variant "${opts.variant}"`);
+  const arm = opts.arm ?? 'atual';
+  if (!/^[A-Za-z0-9_-]+$/.test(arm)) throw new UsageError(`invalid --arm: ${arm}`);
+  const armsDir = resolve(opts.armsDir ?? join(here, 'arms'));
+  const current = arm === 'atual';
+  const builtIn = stage === 'task-review' && current; // the prompt comes from the workflow itself
+  let review = null;
+  let workflowCommit = null;
+  let armSource = 'modelo';
+  const fixArm = builtIn ? null : readArm(join(armsDir, `${st.fix}-${arm}.md`), { requireSource: current });
+  if (builtIn) {
+    armSource = 'workflow';
+  } else {
+    review = readArm(join(armsDir, `${stage}-${arm}.md`), { requireSource: current });
+    if (current) {
+      if (review.source.commit !== fixArm.source.commit) throw new UsageError('review and fix arm templates were copied from different commits');
+      armSource = 'copia-do-prompt';
+      workflowCommit = review.source.commit;
+    }
+  }
+  return { stage, arm, st, review, fixArm, harness: { stage, arm, armSource, workflowCommit } };
+}
+
+const slash = (p) => p.replace(/\\/g, '/');
+
+function harnessPrompts(h, scenario) {
+  const sb = slash(scenario.dir);
+  const vars = {
+    artifactPath: `${sb}/${h.stage === 'spec-review' ? E5_PATHS.spec : E5_PATHS.plan}`,
+    specPath: `${sb}/${E5_PATHS.spec}`,
+    cardRef: 'card E5 of docs/plans/roadmap-sandbox/ (the sandbox roadmap)',
+    repo: sb,
+  };
+  const measure = (key) =>
+    `\nMeasure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${sb}" rev-list --count main..HEAD)${key ? `, ${key} = the output of git -C "${sb}" rev-parse "HEAD:${h.st.blobPath}", run by you` : ''}.`;
+  if (h.stage === 'task-review' && h.arm === 'atual') {
+    let plan = '';
+    try {
+      plan = readFileSync(join(scenario.dir, E5_PATHS.plan), 'utf8');
+    } catch {
+      /* the title falls back below */
+    }
+    const title = /^### Task 3: (.+?)\s*$/m.exec(plan)?.[1] ?? 'task 3';
+    const ctx = {
+      base: `You work in the sandbox ${sb}. Do NOT perform any external effect.`, envFacts: null, baseline: null, E: 'E5', target: 'main',
+      wt: sb, planPath: E5_PATHS.plan, specPath: E5_PATHS.spec, locks: [], start: `${scenario.seededCommit}~1`, prev: null,
+    };
+    const impl = { summary: 'Task resumed from a previous run: implemented in the seeded commit.', checks: [] };
+    return {
+      reviewPrompt: loadPure().buildTaskReviewPrompt(ctx, { n: 3, title }, 'spec', impl),
+      fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
+    };
+  }
+  return {
+    reviewPrompt: fill(h.review.text, vars).trimEnd() + measure(h.stage === 'task-review' ? null : h.st.blobKey),
+    fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}' }).trimEnd(),
+  };
+}
+
+function excludeFromGit(dir, name) {
+  const p = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: dir, encoding: 'utf8' }).trim();
+  const file = resolve(dir, p);
+  mkdirSync(dirname(file), { recursive: true });
+  const old = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
+}
+
+// Validity of a review-stage attempt: the journal must carry the stage review with its fields.
+function harnessValidity(h, variant, journal, scenario) {
+  if (journal.formatError) return INVALID_FORMAT;
+  if (h.stage === 'spec-review') return checkValidity(variant, journal, scenario);
+  if (h.stage === 'plan-review') {
+    // the harness has no E5:plan agent: the plan is seeded and reused by construction
+    return checkValidity(variant, { ...journal, entries: [...journal.entries, { label: 'E5:plan', result: { reused: true }, text: '' }] }, scenario);
+  }
+  return Array.isArray(find(journal.entries, 'E5:task-review1')?.result?.issues) ? { valid: true, reason: 'ok' } : INVALID_FORMAT;
+}
+
+// approved: the review did not block, or the fixer ran and changed at least one seeded defect.
+function harnessStage(h, entries, presents) {
+  const review = find(entries, `${h.st.label}1`);
+  if (!review) return 'stopped';
+  const issues = review.result?.issues;
+  if (!(Array.isArray(issues) && issues.some((i) => BLOCKING.has(i?.severity)))) return 'approved';
+  const fixed = find(entries, `${h.st.label}-fix1`) !== undefined;
+  return fixed && presents.some((p) => p === false) ? 'approved' : 'stopped';
+}
+
 export async function runBatch(opts, { exec = defaultExec, now = () => new Date() } = {}) {
   const { variant, runs } = opts;
-  const dir = join(resolve(opts.out), `${variant}-${stamp(now())}`);
+  const h = prepareHarness(opts);
+  const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}` : ''}-${stamp(now())}`);
   const priv = join(dir, 'private');
   mkdirSync(priv, { recursive: true });
   const plugin = readPlugin(opts.configDir);
@@ -338,8 +517,16 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let failed = false;
     let failReason = 'execucao-falhou';
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
+    let launchOpts = opts;
+    if (h) {
+      const script = buildReviewOnlyScript({ stage: h.stage, ...harnessPrompts(h, scenario) });
+      writeFileSync(join(scenario.dir, 'review-only.js'), script);
+      excludeFromGit(scenario.dir, 'review-only.js');
+      scenario.prompts = [`Run the workflow script at ${slash(scenario.dir)}/review-only.js`];
+      launchOpts = { ...opts, allow: [...(opts.allow ?? []), 'Workflow'] };
+    }
     for (let i = 0; i < scenario.prompts.length; i++) {
-      const args = promptArgs(scenario.prompts[i], opts);
+      const args = promptArgs(scenario.prompts[i], launchOpts);
       const watch = stop !== null && i === 0;
       let r;
       let aborted = false;
@@ -405,7 +592,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let journal = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
-      const v = checkValidity(variant, journal, scenario);
+      const v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
       if (!v.valid) {
         attempts.push({ n: k, status: 'invalid', reason: v.reason });
         if (v.reason === 'formato-do-diario') {
@@ -433,7 +620,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     if (journal) {
       // The sentinels read the tip of feat/E5 in the working tree.
       await exec('git', ['checkout', '-q', 'feat/E5'], { cwd: scenario.dir });
-      outcomes = await attemptOutcomes(variant, scenario, journal);
+      outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : undefined);
     }
     attempts.push({ n: k, status: 'valid', counters: toAttemptCounters(run), outcomes });
   }
@@ -457,6 +644,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     permissionMode: opts.permissionMode,
     attempts,
     roles: sumRoles(validRuns),
+    ...(h ? { harness: h.harness } : {}),
     cost: costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null },
     ...totalOutcomes(attempts),
   };
@@ -465,14 +653,14 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
   const names = {
     '--variant': 'variant', '--runs': 'runs', '--work': 'work', '--out': 'out', '--config-dir': 'configDir',
     '--permission-mode': 'permissionMode', '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model',
-    '--max-budget-usd': 'maxBudgetUsd',
+    '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir',
   };
   for (let i = 0; i < argv.length; i += 2) {
     const key = names[argv[i]];
@@ -508,6 +696,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exitCode = r.exitCode;
   } catch (e) {
     console.error(e.message);
-    process.exitCode = 1;
+    process.exitCode = e instanceof UsageError ? 2 : 1;
   }
 }
