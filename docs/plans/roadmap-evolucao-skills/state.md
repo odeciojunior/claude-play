@@ -8,7 +8,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. E22: ajustes recomendados pelo Fable (achados 2 e 3, execução extra do critério 2), revisão final T3 e merge na release. Executa: orquestrador. Aprova: dono. Depende de: DEC-204.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -37,7 +36,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
-| E22 | executando | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md` | Ajustes do Fable, execução extra do critério 2, revisão final e merge |
+| E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | nao-iniciado | - | Aguardar E18 |
@@ -79,10 +78,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Decidir, depois da meta de prosa registrada (DEC-203), se W2 e W4 de E4 (objective em texto e cards de modo completo sem dod e risks) entram com prosa contada, cortando outro trecho (DEC-167).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Ratificação pelo dono das 20 decisões autônomas do spec de E18 (DEC-030). As de alcance contrato (1, 2, 5 e 7) seguram o início de E25 e E8; as locais esperam o ponto de medição.
-- (dono) Ratificação das decisões de contrato de E3 ainda pendentes (DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153): forma da CLI, comandos, saída --json e códigos de saída de que E18 depende (DEC-030, DEC-031); E18 e E22 esperam.
 - (dono) Aceite dos critérios 2 e 3 de E22 (verify: human): conferir o relatório `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, produzido pelo orquestrador da sessão principal (DEC-204).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (dono) Ratificação pelo dono das decisões autônomas de E22 (DEC-030); as de alcance contrato (1, 2 e 3 do spec) seguram o início de E7 e E20, as locais em lote no ponto de medição.
+- (dono) Ratificação em lote das decisões locais de E22 (DEC-236 a DEC-248) no ponto de medição (DEC-030); as de contrato foram ratificadas em 2026-11-11 (DEC-233 a DEC-235, emenda DEC-252).
+- (executor) Ressalvas baixas da revisão final de E22 (achados 5 a 7): Volatile values só em formats.md § 4; sectionsCited lê só a 1a seção de 'formats.md § 6 and § 7'; migração ainda apontada em events.md (formats.md:63, rule do checker).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -90,5 +89,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E22 | viva | tarefa 8 feita (14fb3e8), ajustes e merge pendentes; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->
