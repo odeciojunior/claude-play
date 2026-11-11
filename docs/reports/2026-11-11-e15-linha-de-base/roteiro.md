@@ -56,14 +56,14 @@ ls <pasta-aprovada>/docs/superpowers/specs/*-E5-*-design.md
 ls <pasta-aprovada>/docs/superpowers/plans/*-E5-*.md
 ```
 
-4. Veja os comandos com a origem real (a conferência prévia roda aqui, sem `claude -p` e sem custo):
+4. Veja os comandos que serão executados. O `--dry-run` só imprime os comandos e sai com 0: ele não resolve a tag nem confere a semeadura (a conferência de âncora não roda aqui):
 
 ```
 node tools/measure/run-baseline.mjs --work <work> --out <out> --config-dir <config-dir> --permission-mode <modo> --allow "Workflow(productivity-tools:roadmap-release)" --allow "Bash(git:*)" --allow "Bash(node:*)" --from-run <pasta-aprovada> --dry-run
 ```
 
-5. Rode de verdade, com o mesmo comando sem `--dry-run`. As variantes já completas são puladas.
-6. Se a conferência prévia disser `anchor not found` (código 2, antes de gastar), o plano daquela execução tem outra forma e as sentinelas não acham a âncora: escolha outra tentativa aprovada e repita desde o passo 2. Pasta sem spec ou plano de E5 também sai com código 2.
+5. Rode de verdade, com o mesmo comando sem `--dry-run`. A conferência prévia da semeadura roda no início desta execução, antes de qualquer `claude -p` (sem custo): se falhar, o condutor sai com código 2 sem gastar. As variantes já completas são puladas.
+6. Se a conferência prévia (início do passo 5) disser `anchor not found` (código 2, antes de gastar), o plano daquela execução tem outra forma e as sentinelas não acham a âncora: escolha outra tentativa aprovada e repita desde o passo 2. Pasta sem spec ou plano de E5 também sai com código 2.
 
 Nunca semeie com os textos sintéticos para a linha de base. As inválidas das semeadas são repetidas pelo condutor até 5 tentativas extras por variante; se ainda faltar, ele para com código 1 e diz quanto falta, e a decisão é sua (inconclusivo bloqueia e só o dono libera, DEC-081).
 
