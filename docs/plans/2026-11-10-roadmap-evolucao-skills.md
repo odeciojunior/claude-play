@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.2 2026-11-10 -->
-# Evolução das skills de roadmap -- Estratégia v1.2
+<!-- roadmap:version 1.3 2026-11-11 -->
+# Evolução das skills de roadmap -- Estratégia v1.3
 
 ## Registro de mudanças
 
+- v1.3 (2026-11-11): E1 integrado na branch de release. A tabela de gates é atualizada: G1 ganha o padrão `tools/**/*.test.mjs` com a linha de base medida de novo (DEC-032), e a célula Quando de G4 é reescrita para o release reconhecê-lo como local. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.2 (2026-11-10): absorve as emendas do dono ao ratificar as decisões do spec de E1 (DEC-081 a DEC-084). Muda a regra do portão na peça 6 de E1: detecção inconclusiva bloqueia até o dono liberar. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.1 (2026-11-10): absorve as decisões das sondas de E14, ratificadas pelo dono (DEC-057 a DEC-061, SRC-15). Mudam E2 (o gerador de cópias embutidas é necessário), E8 (carga do plano com schema, resumo em JavaScript puro, duas novas tentativas), E18, E21 e E23 (regra de permissão pelo nome do script), E19 (autor como agente do plugin) e E25 (cache não legível para o caminho). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.0 (2026-11-10): primeira versão (modo completo), já com as correções das revisões independentes (SRC-10), da análise das decisões (SRC-11) das soluções para as questões em aberto (SRC-12) e dos resultados dos experimentos de DEC-052 (SRC-14). Absorve DEC-001 a DEC-052, incluídas as decisões do executor que o dono ratificou (DEC-013, DEC-026 a DEC-029 e DEC-037 a DEC-045); DEC-053 a DEC-056 são do executor e aguardam ratificação.
@@ -916,14 +917,14 @@ Definição de pronto: aceite passa em `main`; G1, G2, G3, G4 e G5 verdes; vers�
 <!-- roadmap:gates -->
 | ID | Comando | Ambiente | Quando | Linha de base |
 |---|---|---|---|---|
-| G1 | `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs"` | local | toda tarefa e antes de cada commit | 717 testes, 0 falhas (medido em 2026-11-10 com este comando) |
+| G1 | `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` | local | cada tarefa e antes de cada commit | 800 testes, 0 falhas (medido em 2026-11-11 com este comando, no commit `0e443ce`) |
 | G2 | `claude plugin validate .` | local | antes de cada commit | passa |
 | G3 | `claude plugin validate plugins/productivity-tools` | local | antes de cada commit que toca o plugin | passa |
-| G4 | `node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid` | local | toda mudança no checker ou no contrato de formato | 0 erros, 0 avisos |
+| G4 | `node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid` | local | antes de cada commit que muda o checker ou o contrato de formato | 0 erros, 0 avisos |
 | G5 | `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools` | local | antes de cada commit que toca o plugin | passa |
 <!-- /roadmap:gates -->
 
-G1 a G4 vêm de SRC-03; G5 é o comando do lint dado em SRC-09. A partir de E1, G1 ganha o padrão `tools/**/*.test.mjs`, com a mesma mudança no `CLAUDE.md` (DEC-032); a tabela é atualizada por revisão quando E1 integrar. A suíte de gatilho de E20 não é gate: é rodada pelo dono como critério do card (DEC-025). Regra sem comando (SRC-03): mudança que altera o comportamento de uma skill passa por teste comportamental, com um subagent seguindo a skill ao pé da letra numa entrada real e uma revisão adversarial do resultado.
+G1 a G4 vêm de SRC-03; G5 é o comando do lint dado em SRC-09. Desde a integração de E1, G1 inclui o padrão `tools/**/*.test.mjs`, com a mesma mudança no `CLAUDE.md` (DEC-032). A suíte de gatilho de E20 não é gate: é rodada pelo dono como critério do card (DEC-025). Regra sem comando (SRC-03): mudança que altera o comportamento de uma skill passa por teste comportamental, com um subagent seguindo a skill ao pé da letra numa entrada real e uma revisão adversarial do resultado.
 
 ## Métricas e metas
 
@@ -977,6 +978,7 @@ Nenhuma.
 | 1.0 | 2026-11-10 | Primeira versão |
 | 1.1 | 2026-11-10 | Absorve as decisões das sondas de E14 (DEC-057 a DEC-061) |
 | 1.2 | 2026-11-10 | Absorve as emendas do dono às decisões do spec de E1 (DEC-081 a DEC-084) |
+| 1.3 | 2026-11-11 | Tabela de gates atualizada após a integração de E1: G1 com `tools/**`, G4 reconhecido como local |
 
 ## Fontes
 

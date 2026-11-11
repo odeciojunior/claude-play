@@ -7,7 +7,7 @@
   "gates": [
     {
       "name": "G1",
-      "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\"",
+      "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
       "kind": "tests"
     },
     {
@@ -23,8 +23,7 @@
     {
       "name": "G4",
       "cmd": "node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid",
-      "kind": "exit",
-      "restricted": true
+      "kind": "exit"
     },
     {
       "name": "G5",
