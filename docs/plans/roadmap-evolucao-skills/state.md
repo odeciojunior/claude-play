@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Escrever o spec de E1, com a forma da medição já definida pelo experimento do plano semeado. Executa: executor. Aprova: dono. Depende de: DEC-051.
+1. Executar o plano de E1 na branch `feat/E1`. Executa: executor. Aprova: dono. Depende de: DEC-062 a DEC-080 (decisões de contrato antes de E15, DEC-030).
 <!-- /roadmap:now -->
 
 ## Painel
@@ -15,7 +15,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E1 | nao-iniciado | - | Escrever o spec |
+| E1 | plano | `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md` (branch `feat/E1`) | Executar o plano; ratificar as decisões de contrato antes de E15 |
 | E2 | nao-iniciado | - | Escrever o spec |
 | E3 | nao-iniciado | - | Aguardar E2 |
 | E4 | nao-iniciado | - | Aguardar E2 |
@@ -65,6 +65,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
 - (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
+- (dono) Ratificar DEC-062 a DEC-080, decisões do executor no spec de E1; as de contrato (DEC-062, 064, 065, 067, 068, 070, 071, 073 a 076 e 080) antes de E15, as locais em lote no ponto de medição (DEC-030).
+- (dono) Spec e plano de E5 tirados de uma execução aprovada (recomendação de SRC-13) para a semeadura de plano de E1.
+- (dono) Primeira execução real do lançador de E1 contra `claude -p`, paga.
 <!-- /roadmap:pending -->
 
 ## Em andamento
