@@ -5,6 +5,7 @@ Claude Code plugin marketplace (`claude-play`). Users add this repo as a marketp
 ## Rules that matter
 
 - **Bump the version in two places together**: `plugins/<name>/.claude-plugin/plugin.json` (authoritative: Claude Code uses it over any marketplace value) and the root `README.md` table. Marketplace entries carry no `version`; `lint-plugin` checks plugin.json against the README row and fails an entry that has one. Installed copies resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`, so an edit without a bump never reaches users.
+- **Agent frontmatter keys (repo policy):** `name`, `description`, `tools`, `disallowedTools`, `model`, `effort`, `maxTurns`, `skills`, `memory`, `background`, `isolation`, `omitClaudeMd`, `color`, `autoCompactWindow`, `experimental` are the only allowed keys. `hooks`, `mcpServers`, `permissionMode` and `initialPrompt` are ignored in plugin agents and fail the lint; any other key fails it too (`lint-plugin.mjs` checks every `agents/**/*.md`).
 - **SKILL.md frontmatter keys (repo policy):** `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. `model`/`context`/`agent`/`allowed-tools`/`paths`/`hooks` are valid Claude Code fields that we don't use, to keep skills portable and predictable. Unknown keys are ignored silently, so spelling matters.
 - **Never edit `plugins/_template/`** (the `protect-template` hook blocks it); contributors copy it to a new plugin directory.
 - **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin, and the tests: `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"`. The validator checks manifests only; SKILL.md frontmatter and agent files are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
@@ -28,8 +29,8 @@ plugins/<name>/
   .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); repo-required: name, description, version, author, license, keywords (the spec requires only name)
   skills/<skill>/SKILL.md           # + references/*.md loaded on demand
   agents/<agent>.md                 # Shipped subagents (today only sql-server-tools); plugin agents ignore hooks, mcpServers, permissionMode, initialPrompt
-  lib/                              # Pure source modules embedded into scripts by scripts/embed.mjs (today productivity-tools/lib/roadmap-format.mjs)
-  scripts/                          # Setup/utility scripts; embed.mjs generates the embedded copies
+  lib/                              # Pure source modules: embedded into scripts by scripts/embed.mjs (roadmap-format.mjs) or imported (data-block.mjs, read by spec-tool.mjs)
+  scripts/                          # Setup/utility scripts; embed.mjs generates the embedded copies; spec-tool.mjs checks a spec (`json data` block) against its card
 plugins/_template/                  # Starter template (protected)
 .claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"
 .claude/hooks/*.mjs                 # Wired in .claude/settings.json
