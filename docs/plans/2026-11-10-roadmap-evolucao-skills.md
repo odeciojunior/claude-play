@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.0 2026-11-10 -->
-# Evolução das skills de roadmap -- Estratégia v1.0
+<!-- roadmap:version 1.1 2026-11-10 -->
+# Evolução das skills de roadmap -- Estratégia v1.1
 
 ## Registro de mudanças
 
+- v1.1 (2026-11-10): absorve as decisões das sondas de E14, ratificadas pelo dono (DEC-057 a DEC-061, SRC-15). Mudam E2 (o gerador de cópias embutidas é necessário), E8 (carga do plano com schema, resumo em JavaScript puro, duas novas tentativas), E18, E21 e E23 (regra de permissão pelo nome do script), E19 (autor como agente do plugin) e E25 (cache não legível para o caminho). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.0 (2026-11-10): primeira versão (modo completo), já com as correções das revisões independentes (SRC-10), da análise das decisões (SRC-11) das soluções para as questões em aberto (SRC-12) e dos resultados dos experimentos de DEC-052 (SRC-14). Absorve DEC-001 a DEC-052, incluídas as decisões do executor que o dono ratificou (DEC-013, DEC-026 a DEC-029 e DEC-037 a DEC-045); DEC-053 a DEC-056 são do executor e aguardam ratificação.
 
 ## Objetivo
@@ -134,7 +135,7 @@ Peças:
 
 - Peça 1: agente definido pelo plugin despachado de dentro de um workflow.
 - Peça 2: script do plugin rodado por um subagent por caminho absoluto do cache, no modo de permissão real do dono e no modo padrão, inclusive após uma troca de versão; alternativa se falhar.
-- Peça 3: consentimento do Workflow. Já estabelecido por código e documentação (SRC-13): o nome é `<plugin>:<nome do workflow>`, o "não perguntar de novo" grava a regra de permissão nas configurações locais do projeto e só existe no lançamento pelo nome, e um lançamento por caminho exige script legível. O experimento confirmou no modo padrão, em sessão sem interface e na sessão interativa (SRC-14): o diálogo, a gravação da regra pelo "não perguntar de novo" e a persistência entre sessões, o nome e a regra, a regra valendo por parâmetro e nas configurações locais, a recusa do caminho sem leitura da pasta, a regra sem conteúdo cobrindo o caminho só com a pasta legível, e a concessão por `allowed-tools` (DEC-049). Resta à sonda conferir com o plugin instalado do cache, inclusive se a pasta do cache conta como legível no lançamento por caminho. Plugin de sonda em `docs/reports/2026-11-10-e14-sondas/wfprobe2/`.
+- Peça 3: consentimento do Workflow. Já estabelecido por código e documentação (SRC-13): o nome é `<plugin>:<nome do workflow>`, o "não perguntar de novo" grava a regra de permissão nas configurações locais do projeto e só existe no lançamento pelo nome, e um lançamento por caminho exige script legível. O experimento confirmou no modo padrão, em sessão sem interface e na sessão interativa (SRC-14): o diálogo, a gravação da regra pelo "não perguntar de novo" e a persistência entre sessões, o nome e a regra, a regra valendo por parâmetro e nas configurações locais, a recusa do caminho sem leitura da pasta, a regra sem conteúdo cobrindo o caminho só com a pasta legível, e a concessão por `allowed-tools` (DEC-049). A sonda mostrou que a pasta do cache não é legível para o lançamento por caminho; o lançamento pelo nome com o plugin instalado não pôde ser testado, porque nenhum plugin instalado registra workflow, e fica para o critério do dono em E25 (SRC-15, DEC-061). Plugin de sonda em `docs/reports/2026-11-10-e14-sondas/wfprobe2/`.
 - Peça 4: taxa de erro de um agente ao devolver um plano estruturado conferido por resumo de integridade; o número de novas tentativas de E8 sai daqui.
 - Peça 5: se um script de workflow consegue compartilhar código com outros arquivos, ou só por cópia gerada.
 
@@ -220,7 +221,7 @@ Por quê: REQ-004, REQ-024, REQ-019, REQ-044. Há três leitores do mesmo format
 
 Peças:
 
-- Peça 1: gerador que embute um módulo-fonte nos arquivos que precisam ser únicos (o checker copiável, os scripts de workflow), com teste que falha quando um arquivo gerado está defasado. E6 e E12 reutilizam o gerador. A forma final segue a sonda de E14.
+- Peça 1: gerador que embute um módulo-fonte nos arquivos que precisam ser únicos (o checker copiável, os scripts de workflow), com teste que falha quando um arquivo gerado está defasado. E6 e E12 reutilizam o gerador. A sonda de E14 mostrou que um script de workflow não importa nem lê arquivos, então a cópia embutida é o único caminho, e o código embutido usa só as globais que o ambiente do workflow oferece, sem `crypto`, `process` ou `Buffer` (DEC-058).
 - Peça 2: parser do formato como módulo-fonte, usado pelo checker e pelo preflight.
 - Peça 3: checagens novas: ordem posicional dos status, fase do card contra a tabela de fases, ordem de fase contra dependências, definição de pronto citando gate, dono nos pendentes, cabeçalho do estado contra a versão da estratégia, segmento bloqueado citando bloqueio, texto de restauração no bloqueio, fonte citada, sufixo do nome do arquivo da estratégia, e decisão do executor pendente sob um dependente já iniciado ou sob um entregável publicado (DEC-031).
 - Peça 4: saída `--json` com erros, avisos e resumo.
@@ -298,7 +299,7 @@ Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release
 Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes; teste comportamental da skill feito conforme as regras de SRC-03.
 
 <!-- roadmap:risks -->
-- O caminho do script muda a cada versão e a regra de permissão deixa de casar -> seguir a decisão da sonda de E14 sobre onde o script vive.
+- O caminho do script muda a cada versão e a regra de permissão deixa de casar -> os scripts continuam no plugin e a regra casa pelo nome do arquivo do script, sem a versão no caminho e sem curinga depois de barra invertida, que no Windows vira negação dura (DEC-060).
 - A etapa de documentação grava riscos aceitos e pendências humanas em texto livre, sem comando na CLI -> o spec decide se viram itens pendentes pelos comandos de E3 ou ficam com o agente; decisões e status passam sempre pela CLI.
 - A semântica de autorização de efeito externo e de retomada regride (área com mais correções recentes, SRC-02 §1) -> não alterar essa lógica nesta entrega e manter os testes atuais passando.
 <!-- /roadmap:risks -->
@@ -307,7 +308,7 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 <!-- roadmap:card id=E25 phase=roadmap-sem-llm track=engineering priority=Must size="não estimado" depends=E14,E18 reqs=REQ-033 critical=false -->
 ### E25 -- Workflow do release lançado pelo nome
 
-Por quê: REQ-033. Pelo código da CLI, lançar o workflow por caminho no modo padrão é recusado quando o script não está no conjunto legível, e só o lançamento pelo nome oferece "não perguntar de novo" (SRC-13); o experimento mostrou a recusa, o diálogo com essa opção e o lançamento seguinte sem diálogo (SRC-14). O plugin não embarca hook que aprove o lançamento (DEC-035); a concessão pela própria skill funcionou no experimento e o dono decidiu que ela entra (DEC-049). Fatia de E18: segue a decisão da sonda de consentimento de E14 e tem aceite do dono, por isso fecha separada do registro pela CLI. Vem depois de E18 e antes de E8 porque edita o mesmo arquivo de workflow e o preflight. Não segura E17: entra na publicação que estiver em preparação quando integrar.
+Por quê: REQ-033. Pelo código da CLI, lançar o workflow por caminho no modo padrão é recusado quando o script não está no conjunto legível, e só o lançamento pelo nome oferece "não perguntar de novo" (SRC-13); o experimento mostrou a recusa, o diálogo com essa opção e o lançamento seguinte sem diálogo (SRC-14). O plugin não embarca hook que aprove o lançamento (DEC-035); a concessão pela própria skill funcionou no experimento e o dono decidiu que ela entra (DEC-049). Fatia de E18: segue o que os experimentos e a sonda de E14 mostraram (SRC-14, SRC-15) e tem aceite do dono, por isso fecha separada do registro pela CLI. Vem depois de E18 e antes de E8 porque edita o mesmo arquivo de workflow e o preflight. Não segura E17: entra na publicação que estiver em preparação quando integrar.
 
 Peças:
 
@@ -331,9 +332,9 @@ Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release
 Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes; teste comportamental da skill feito conforme as regras de SRC-03.
 
 <!-- roadmap:risks -->
-- O lançamento pelo nome ou a regra de permissão não se comportam como a documentação indica -> seguir a decisão da sonda de E14; se o lançamento pelo nome falhar, o card se reduz à peça 1 e a skill continua lançando por caminho.
+- O lançamento pelo nome ou a regra de permissão não se comportam como a documentação indica -> o nome e a regra foram vistos com o plugin carregado do caminho local; com o plugin instalado só o critério 4 confere. Se o lançamento pelo nome falhar ali, o card se reduz à peça 1 e a skill continua lançando por caminho.
 - A trava mexe na checagem do token de execução, que hoje só barra a execução com tarefa externa autorizada, e a maior parte dos testes do fluxo roda sem token -> a trava só acrescenta uma recusa anterior, nenhuma condição existente é removida, e o padrão do arnês de teste muda num commit próprio, com a suíte atual passando (G1).
-- No modo padrão o lançamento por caminho é recusado, não perguntado, quando a pasta do script não está no conjunto legível, e a regra do Workflow sem conteúdo não muda isso (SRC-14) -> o lançamento pelo nome é o caminho principal, e a reserva da peça 4 serve a quem roda sem prompts de permissão ou com a pasta legível.
+- No modo padrão o lançamento por caminho é recusado, não perguntado, quando a pasta do script não está no conjunto legível, e a regra do Workflow sem conteúdo não muda isso (SRC-14); a pasta do cache do plugin não é legível (SRC-15) -> o lançamento pelo nome é o caminho principal; a reserva da peça 4 serve só a quem roda sem prompts de permissão ou libera a pasta, e a skill diz isso quando cai nela (DEC-061).
 - O critério 4 só pode ser conferido com o workflow nomeado carregado -> o dono confere com o plugin carregado do caminho local do repositório, como na sonda de E14.
 - A concessão por `allowed-tools` tira o diálogo de lançamento de todo usuário do plugin, o que DEC-035 evitava -> ela é restrita ao workflow do próprio plugin pelo nome, a trava da peça 3 barra o lançamento sem preflight, e a mudança passa por revisão de raio de impacto alto (DEC-049).
 <!-- /roadmap:risks -->
@@ -445,14 +446,14 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 
 <!-- roadmap:risks -->
 - O esquema do spec muda quando o autor (E19) for escrito, depois de a ferramenta de plano (E6) já o ler -> o esquema tem versão, e o spec de exemplo deste card é o mesmo que o teste de E6 usa; mudar o esquema em E19 exige passar nos dois testes.
-- O caminho do script muda a cada versão e a regra de permissão deixa de casar -> seguir a decisão da sonda de E14 sobre onde o script vive.
+- O caminho do script muda a cada versão e a regra de permissão deixa de casar -> os scripts continuam no plugin e a regra casa pelo nome do arquivo do script, sem a versão no caminho e sem curinga depois de barra invertida, que no Windows vira negação dura (DEC-060).
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
 <!-- roadmap:card id=E19 phase=spec-plano track=engineering priority=Must size="não estimado" depends=E5,E14,E17 reqs=REQ-006,REQ-013,REQ-037 critical=true -->
 ### E19 -- Autor de spec e skill interativa de spec
 
-Por quê: REQ-006, REQ-013, REQ-037. Começa depois da primeira publicação, que leva só o que é compatível (DEC-046). Hoje o spec sai de uma skill externa embrulhada num modo autônomo por prompt (SRC-02 §4); a decisão é independência total (DEC-005). SRC-08, seção B2, é a proposta de desenho; o que ela deixa para o dono está nas questões em aberto. A forma do autor (agente do plugin ou texto embutido) segue a sonda de E14.
+Por quê: REQ-006, REQ-013, REQ-037. Começa depois da primeira publicação, que leva só o que é compatível (DEC-046). Hoje o spec sai de uma skill externa embrulhada num modo autônomo por prompt (SRC-02 §4); a decisão é independência total (DEC-005). SRC-08, seção B2, é a proposta de desenho; o que ela deixa para o dono está nas questões em aberto. O autor é um agente do plugin, despachado de dentro do workflow com `agentType` e o nome `<plugin>:<agente>`; um teste acusa a grafia `subagent_type`, que é ignorada em silêncio (DEC-057). O autor de plano de E20 segue a mesma forma.
 
 Peças:
 
@@ -574,7 +575,7 @@ Peças:
 
 - Peça 1: estágios de spec e plano do workflow usando os autores do plugin, sem pergunta à pessoa. Este card é dono de todos os caminhos de artefato do release (spec, plano, registro da execução, log de revisões, relatório de execução), que deixam a pasta do superpowers e seguem DEC-026: a pasta `docs/plans/<slug do roadmap>-<E>/`, com `spec.md`, `plan.md`, `run.json` e `reviews.md`, e o relatório em `docs/reports/`. O registro da execução só é gravado em E23. Começa sobre a versão publicada em E17.
 - Peça 2: guarda para trabalho da versão anterior (DEC-018): uma branch de entregável com commits de tarefa e sem spec nativo para com ação de operador, em vez de receber um spec novo por cima.
-- Peça 3: carga do plano conferida por resumo de integridade, sem transcrição nem releitura por LLM; o número de novas tentativas vem da sonda de E14; nível e effort de cada tarefa vêm da definição de roteamento.
+- Peça 3: carga do plano conferida por resumo de integridade, sem transcrição nem releitura por LLM: o agente roda o script do plano e devolve a saída com schema, e o workflow recalcula o resumo em JavaScript puro; duas novas tentativas, a última em outro modelo (DEC-059); nível e effort de cada tarefa vêm da definição de roteamento.
 - Peça 4: regras de parada em código: como hoje, um item bloqueante que só uma pessoa resolve para o entregável (SRC-04); uma decisão que contraria uma decisão registrada ou um gate também para (DEC-007); uma decisão autônoma marcada como cara de errar e irreversível também para, depois do spec e antes do plano (DEC-020); o resto é registrado como pendente de ratificação e a execução segue. Uma decisão de alcance contrato deixa os dependentes do entregável fora da execução, com o motivo, sem parar os demais (DEC-030).
 
 Arquivo de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`.
@@ -707,7 +708,7 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 - O revisor nativo detecta menos defeitos que o atual -> E16 compara a detecção com a linha de base antes de a versão ser publicada.
 - Um modo de revisão reduzida vira padrão sem medição -> os critérios 2 e 3 fixam o padrão atual; só E27 o muda, com decisão ratificada.
 - O laço de revisão é compartilhado com as revisões de spec, de plano, final e de sincronização -> identificador e modos são ligados por estágio, só na revisão por tarefa, e os testes atuais do laço continuam passando (G1).
-- O script do pacote de revisão roda por caminho do cache e pode pedir permissão -> seguir a decisão da sonda de E14 sobre onde o script vive; o preflight de E18 lista a regra.
+- O script do pacote de revisão roda por caminho do cache e pode pedir permissão -> o script continua no plugin e a regra casa pelo nome do arquivo (DEC-060); o preflight de E18 lista a regra.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
@@ -960,7 +961,7 @@ Nenhuma.
 
 - O laço de revisão de spec e plano e o modelo do autor de plano ficam como estão até E26 (REQ-015); o modelo e o modo da revisão por tarefa, até E27 (REQ-039).
 - Dos três experimentos de DEC-052 (resultados em SRC-14) resta:
-  - se a pasta do cache do plugin conta como legível no lançamento por caminho, o que o experimento não cobriu (E14, peça 3);
+  - o lançamento pelo nome e a concessão por `allowed-tools` com o plugin instalado do cache, que a sonda não pôde testar e o critério do dono em E25 confere (DEC-061);
   - a receita de fixar a loja numa tag foi vista com fonte git local; a loja do GitHub fica para a primeira publicação com tag (DEC-056);
   - a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede, são de E15 (DEC-051).
 
@@ -973,6 +974,7 @@ Nenhuma.
 | Versão | Data | Resumo |
 |---|---|---|
 | 1.0 | 2026-11-10 | Primeira versão |
+| 1.1 | 2026-11-10 | Absorve as decisões das sondas de E14 (DEC-057 a DEC-061) |
 
 ## Fontes
 
