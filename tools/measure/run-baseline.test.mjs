@@ -310,3 +310,33 @@ test('CLI: missing option or unknown variant exits 2; dry run exits 0', () => {
     s.done();
   }
 });
+
+test('every runBatch call gets stopOnDenial (DEC-194)', async () => {
+  const s = setup();
+  try {
+    const deps = makeDeps(s);
+    await runBaseline(baseOpts(s, { only: ['planner', 'plan-only'] }), deps);
+    assert.ok(deps.calls.length >= 2);
+    for (const c of deps.calls) assert.equal(c.stopOnDenial, true);
+  } finally {
+    s.done();
+  }
+});
+
+test('the extra-attempt cap is per invocation (DEC-195)', async () => {
+  const s = setup();
+  try {
+    approvedFolder(s.base);
+    const opts = baseOpts(s, { fromRun: s.base, only: ['plano-semeado-A'] });
+    const first = makeDeps(s, { validOf: () => 0 });
+    const r1 = await runBaseline(opts, first);
+    assert.deepEqual(first.calls.map((c) => c.runs), [5, 5]);
+    assert.equal(r1.exitCode, 1);
+    const second = makeDeps(s, { validOf: () => 0 });
+    const r2 = await runBaseline(opts, second);
+    assert.deepEqual(second.calls.map((c) => c.runs), [5, 5]);
+    assert.equal(r2.exitCode, 1);
+  } finally {
+    s.done();
+  }
+});

@@ -846,3 +846,23 @@ test('--from-run on an unseeded variant is a usage error', async () => {
     s.done();
   }
 });
+
+test('stopOnDenial stops the batch at the first denied attempt (DEC-194)', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { denyOn: 2 });
+    const r = await runBatch(baseOpts(s, { runs: 3, stopOnDenial: true }), { exec: fake.exec, now: () => new Date('2026-11-10T12:00:00Z') });
+    assert.equal(r.exitCode, 1);
+    assert.deepEqual(r.aggregate.attempts.map((a) => [a.n, a.status]), [[1, 'valid'], [2, 'denied']]);
+    assert.equal(r.aggregate.denied, 1);
+    assert.equal(r.aggregate.valid, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('CLI parses --stop-on-denial as a flag (DEC-194)', () => {
+  const r = spawnSync(process.execPath, [join(here, 'run-batch.mjs'), '--stop-on-denial', '--variant', 'x'], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /usage:.*--stop-on-denial/);
+});

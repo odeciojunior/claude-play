@@ -72,7 +72,7 @@ test('routing is pure', () => {
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
-import { checkPlan, SCHEMA } from './plan-tool.mjs';
+import { checkPlan, SCHEMA, main } from './plan-tool.mjs';
 import { checkSpec, checkRecords } from './spec-tool.mjs';
 
 const PLAN_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'plan.md');
@@ -329,8 +329,8 @@ import { EXTERNAL_PATTERNS } from './plan-tool.mjs';
 
 const codes = (r) => r.errors.map((e) => e.code);
 
-test('EXTERNAL_PATTERNS has the ten default patterns as strings', () => {
-  assert.equal(EXTERNAL_PATTERNS.length, 10);
+test('EXTERNAL_PATTERNS has the default patterns as strings', () => {
+  assert.equal(EXTERNAL_PATTERNS.length, 14);
   assert.ok(EXTERNAL_PATTERNS.every((p) => typeof p === 'string' && new RegExp(p, 'i')));
 });
 
@@ -475,7 +475,7 @@ import { embedFile } from './embed.mjs';
 
 const COPY_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'workflow-copy.js');
 const loadCopy = () => vm.runInNewContext(fs.readFileSync(COPY_PATH, 'utf8'), Object.create(null));
-const emit = (text, opts = {}) => emitPlan(text, { planPath: PLAN_PATH, cwd: path.join(HERE, '..', '..', '..'), ...opts });
+const emit = (text, opts = {}) => emitPlan(text, { planPath: PLAN_PATH, root: path.join(HERE, '..', '..', '..'), ...opts });
 
 test('AC2: digest changes when a block value changes', () => {
   const a = emit(PLAN_TEXT);
@@ -499,7 +499,7 @@ test('AC2: digest changes when only the prose changes', () => {
 
 test('AC2: digest changes when the source path changes', () => {
   const a = emit(PLAN_TEXT);
-  const b = emit(PLAN_TEXT, { cwd: HERE });
+  const b = emit(PLAN_TEXT, { root: HERE });
   assert.deepEqual(b.errors, []);
   assert.notEqual(a.out.source.path, b.out.source.path);
   assert.notEqual(a.out.digest, b.out.digest);
@@ -604,7 +604,7 @@ test('map text output has one line per wave', () => {
   const lines = r.stdout.split('\n').filter(Boolean);
   assert.equal(lines.length, 4);
   assert.match(lines[0], /^Onda 1: T1 \(\w+\/\w+, revisor \w+/);
-  assert.match(lines[1], /T5 \(.*, portão, externa\)/);
+  assert.match(lines[1], /T5 \(.*revisor \w+; portão opus, externa\)/);
 });
 
 test('emit wave matches the map', () => {
@@ -736,4 +736,172 @@ test('final-fix: comentário e título dentro de cerca não cortam a seção nem
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- Ratificação: DEC-205, DEC-206, DEC-208 e padrões externos ----
+test('DEC-208: emit honors maxWidth and records it in the plan and the digest', () => {
+  const d4 = emit(PLAN_TEXT);
+  const d2 = emit(PLAN_TEXT, { maxWidth: 2 });
+  assert.deepEqual(d2.errors, []);
+  assert.equal(d4.out.plan.maxWidth, 4);
+  assert.equal(d2.out.plan.maxWidth, 2);
+  assert.deepEqual(d2.out.plan.tasks.map((t) => t.wave), [1, 2, 2, 3, 3, 4]);
+  assert.notEqual(d4.out.digest, d2.out.digest);
+});
+
+test('DEC-208: emit, map and brief CLIs agree on waves with --max-width 2', () => {
+  const m = JSON.parse(runCli(['map', PLAN_PATH, '--max-width', '2', '--json']).stdout);
+  const mapWave = new Map(m.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
+  const r = runCli(['emit', PLAN_PATH, '--max-width', '2']);
+  assert.equal(r.status, 0, r.stderr);
+  const e = JSON.parse(r.stdout);
+  assert.equal(e.plan.maxWidth, 2);
+  for (const t of e.plan.tasks) assert.equal(t.wave, mapWave.get(t.n));
+  const dir = tmpDir();
+  try {
+    const b = runCli(['brief', PLAN_PATH, '--max-width', '2', '--out', dir]);
+    assert.equal(b.status, 0, b.stderr);
+    for (const t of e.plan.tasks) {
+      const txt = fs.readFileSync(path.join(dir, 'T' + t.n + '.md'), 'utf8');
+      assert.match(txt, new RegExp('- Onda: ' + t.wave + '\\n'));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(runCli(['emit', PLAN_PATH, '--max-width', '0']).status, 2);
+});
+
+test('DEC-205: emit from two working directories gives the same summary', () => {
+  const rel = path.relative(HERE, PLAN_PATH);
+  const a = runCli(['emit', PLAN_PATH], { cwd: os.tmpdir() });
+  const b = runCli(['emit', rel], { cwd: HERE });
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(b.status, 0, b.stderr);
+  const ja = JSON.parse(a.stdout);
+  const jb = JSON.parse(b.stdout);
+  assert.equal(ja.digest, jb.digest);
+  assert.deepEqual(ja.source, jb.source);
+  assert.equal(ja.source.path, 'plugins/productivity-tools/scripts/fixtures/plan-tool/plan.md');
+});
+
+test('DEC-205: outside git the source path is relative to the plan folder', () => {
+  const dir = tmpDir();
+  try {
+    const p = path.join(dir, 'plan.md');
+    fs.writeFileSync(p, PLAN_TEXT);
+    const r = emitPlan(PLAN_TEXT, { planPath: p, specText: SPEC_TEXT });
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.out.source.path, 'plan.md');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('DEC-206: map and brief never show a bare ambiguous gate', () => {
+  const r = runCli(['map', PLAN_PATH]);
+  for (const line of r.stdout.split('\n').filter(Boolean)) assert.ok(!/, portão/.test(line), line);
+  assert.match(r.stdout, /T5 \(sonnet\/\w+, revisor opus; portão opus, externa\)/);
+  const dir = tmpDir();
+  try {
+    const b = runCli(['brief', PLAN_PATH, '--out', dir]);
+    assert.equal(b.status, 0, b.stderr);
+    const t5 = fs.readFileSync(path.join(dir, 'T5.md'), 'utf8');
+    assert.match(t5, /gate true \(portão do coordinator: opus\)/);
+    const t1 = fs.readFileSync(path.join(dir, 'T1.md'), 'utf8');
+    assert.match(t1, /gate false\n/);
+    assert.ok(!/portão/.test(t1));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const hits = (cmd) => EXTERNAL_PATTERNS.some((p) => new RegExp(p, 'i').test(cmd));
+
+test('external patterns: writing curl, PowerShell requests with a write method, scp and sqlcmd match', () => {
+  for (const cmd of [
+    'curl -d @body.json https://x.test/api',
+    "curl --data-raw '{}' https://x.test/api",
+    'curl -F file=@a.zip https://x.test/up',
+    'curl -X POST https://x.test/api',
+    'curl -s -X DELETE https://x.test/api/1',
+    'Invoke-RestMethod -Uri https://x.test -Method Post -Body $b',
+    'Invoke-WebRequest https://x.test -Method DELETE',
+    'scp build.zip host:/srv/',
+    'sqlcmd -S srv -Q "DELETE FROM t"',
+  ]) assert.ok(hits(cmd), cmd);
+});
+
+test('external patterns: read-only GET requests are not external effects (decision: reading is not an effect)', () => {
+  for (const cmd of [
+    'curl -s https://x.test/health',
+    'curl -sS -o out.json https://x.test/data',
+    'Invoke-RestMethod https://x.test/data',
+    'Invoke-WebRequest -Uri https://x.test -Method Get',
+    'node --test scripts/',
+    'echo discard',
+  ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('external patterns: PowerShell aliases, -Method variants, curl long and combined flags', () => {
+  for (const cmd of [
+    'irm https://x.test -Method Post -Body $b',
+    'iwr https://x.test -Method DELETE',
+    'Invoke-RestMethod https://x.test -Method:Post',
+    "Invoke-WebRequest https://x.test -Method 'POST'",
+    'Invoke-RestMethod https://x.test -Method "put"',
+    'curl --request POST https://x.test',
+    'curl --request=DELETE https://x.test',
+    'curl --request PATCH https://x.test',
+    'curl --request PUT https://x.test',
+    'curl --json \'{"a":1}\' https://x.test',
+    'curl -sd x https://x.test',
+    'curl -sSd @b.json https://x.test',
+    'curl -sF a=b https://x.test',
+    'cd out && scp a host:/b',
+    'scp a host:/b',
+  ]) assert.ok(hits(cmd), cmd);
+});
+
+test('external patterns: no false positives for GET aliases, curl -f and scp-like names', () => {
+  for (const cmd of [
+    'irm https://x.test/data',
+    'iwr https://x.test -Method:Get',
+    "Invoke-RestMethod https://x.test -Method 'get'",
+    'curl --request GET https://x.test',
+    'curl -sf https://x.test/health',
+    'curl -f https://x.test/?a=b',
+    'node scp-like-name.mjs',
+    'cat docs/scp-notes.md',
+  ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('DEC-205: source path is the same through a junction or symlink', (t) => {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-real-'));
+  const link = path.join(os.tmpdir(), `plan-link-${process.pid}-${Date.now()}`);
+  try {
+    try {
+      fs.symlinkSync(real, link, 'junction');
+    } catch (e) {
+      t.skip(`cannot create link: ${e.code}`);
+      return;
+    }
+    fs.writeFileSync(path.join(real, 'plan.md'), PLAN_TEXT);
+    const viaLink = emitPlan(PLAN_TEXT, { planPath: path.join(link, 'plan.md'), root: real, specText: SPEC_TEXT });
+    const direct = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: real, specText: SPEC_TEXT });
+    assert.equal(viaLink.out.source.path, 'plan.md');
+    assert.equal(viaLink.out.source.path, direct.out.source.path);
+    const viaRootLink = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: link, specText: SPEC_TEXT });
+    assert.equal(viaRootLink.out.source.path, 'plan.md');
+  } finally {
+    try { fs.rmSync(link, { recursive: true, force: true }); } catch {}
+    fs.rmSync(real, { recursive: true, force: true });
+  }
+});
+
+test('usage text does not announce --max-width for check', () => {
+  const err = [];
+  const code = main([], { stdout: { write() {} }, stderr: { write: (s) => err.push(s) } });
+  assert.equal(code, 2);
+  assert.doesNotMatch(err.join(''), /check\|emit[^\n]*--max-width/);
+  assert.match(err.join(''), /check [^\n]*\n/);
 });
