@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Rodar de novo o plan-only de E1 com as emendas do dono como nota (DEC-081 a DEC-083), para o spec e o plano as absorverem; depois executar o plano na branch `feat/E1`. Executa: executor. Aprova: dono. Depende de: DEC-081.
+1. Executar o plano de E1 na branch `feat/E1` pelo release; antes, o dono resolve as regras de permissão que o preflight acusa como ausentes. Executa: executor. Aprova: dono. Depende de: DEC-087.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -68,7 +68,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Depois que E1 integrar, acrescentar `tools/**/*.test.mjs` ao gate G1 em `release.config.json` e na tabela de gates da estratégia, antes de E2 rodar (DEC-032, DEC-077).
 - (dono) Em E15, antes das tentativas de detecção, trocar o spec e o plano sintéticos da semeadura pelos de uma execução aprovada, com a opção `--from-run` do gerador de cenário; o dono aceitou a versão sintética em E1.
 - (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl`.
-- (dono) Ratificar DEC-085 a DEC-087, de contrato, antes de E15 (DEC-030).
 <!-- /roadmap:pending -->
 
 ## Em andamento

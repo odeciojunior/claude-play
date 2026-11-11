@@ -16,4 +16,5 @@
 | 2026-11-10 | E14 | Fechado: as cinco sondas têm resultado registrado como decisão ratificada, e a estratégia v1.1 absorve o que contrariava os cards. Nenhum arquivo do plugin foi alterado. | `baa77bf` |
 | 2026-11-10 | - | O dono ratificou DEC-053 a DEC-056, de alcance local: teste próprio de E4, nota de atualização em `docs/releases/`, artefatos de E1 a E8 na pasta do superpowers e a receita de fixar a loja numa tag. Nenhuma decisão do executor fica pendente. | `decisions.md` |
 | 2026-11-10 | E1 | O dono ratificou DEC-062 a DEC-080, as decisões do spec de E1, com quatro emendas registradas como DEC-081 a DEC-084: detecção inconclusiva bloqueia, diário sem os campos invalida a tentativa, o arnês registra que o prompt é cópia, e a variante de defeitos por código fica fora do pago em E15. | `decisions.md` |
+| 2026-11-10 | E1 | O dono ratificou DEC-085 a DEC-087, as três decisões que o spec de E1 tomou ao absorver as emendas. Nenhuma decisão do executor fica pendente; o plano de E1 está pronto para execução. | `decisions.md` |
 <!-- /roadmap:log -->
