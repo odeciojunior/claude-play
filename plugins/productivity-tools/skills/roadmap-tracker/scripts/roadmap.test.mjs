@@ -1270,3 +1270,19 @@ for (const [variant, opts] of [['LF', { eol: '\n' }], ['CRLF com BOM e NFD', { e
     });
   }
 }
+
+test('ratify: item pendente escrito como intervalo DEC-a a DEC-b fica enquanto um id do meio segue pendente', (t) => {
+  const row = (n) => DEC3_ROW.replace('DEC-003', `DEC-00${n}`);
+  for (const word of ['a', 'to']) {
+    const f = makeFolder(t, {
+      mutate: {
+        'decisions.md': (x) => x.replace('<!-- /roadmap:decisions -->', `${[DEC2_ROW, row(3), row(4)].join('\n')}\n<!-- /roadmap:decisions -->`),
+        'state.md': (x) => x.replace('<!-- /roadmap:pending -->', `- (owner) Review DEC-002 ${word} DEC-004\n<!-- /roadmap:pending -->`),
+      },
+    });
+    const r = cli(f.dir, 'ratify', 'DEC-002', 'DEC-004');
+    assert.equal(r.exitCode, 0, JSON.stringify(r.output.errors));
+    assert.ok(f.read('state.md').includes(`- (owner) Review DEC-002 ${word} DEC-004`));
+    assert.ok(r.output.warnings.some((w) => w.code === 'pending-multi-cite'));
+  }
+});

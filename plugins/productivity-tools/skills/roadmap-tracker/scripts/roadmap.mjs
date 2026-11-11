@@ -531,6 +531,17 @@ function appendDecisionEdit(bl, text) {
   return { op: 'insertAfter', line: bl.rows.length ? bl.rows[bl.rows.length - 1] : bl.header + 1, text };
 }
 
+// DEC ids cited in a text, with "DEC-a a DEC-b" / "DEC-a to DEC-b" ranges expanded to every id in between.
+function decIdsIn(text) {
+  const ids = new Set(idsIn(text, /\bDEC-\d+\b/g));
+  for (const m of (text || '').matchAll(/\bDEC-(\d+)\s+(?:a|to)\s+DEC-(\d+)\b/gi)) {
+    const [lo, hi] = [Number(m[1]), Number(m[2])];
+    const width = Math.max(m[1].length, m[2].length);
+    if (hi >= lo && hi - lo <= 1000) for (let n = lo; n <= hi; n++) ids.add(`DEC-${String(n).padStart(width, '0')}`);
+  }
+  return [...ids];
+}
+
 // Pending items that cite only decisions in `decs` go away; items citing others too stay and are reported.
 function dropPendingFor(ctx, decs) {
   const set = new Set([].concat(decs));
@@ -538,7 +549,7 @@ function dropPendingFor(ctx, decs) {
   const edits = [];
   if (!pend) return edits;
   for (const it of pend.items) {
-    const cited = idsIn(it.text, /\bDEC-\d+\b/g);
+    const cited = decIdsIn(it.text);
     if (!cited.some((d) => set.has(d))) continue;
     if (cited.every((d) => set.has(d))) edits.push({ op: 'remove', line: it.start, end: it.end });
     else ctx.warnings.push({ code: 'pending-multi-cite', message: `pending item cites ${cited.join(', ')}; left in place: ${collapse(it.text).slice(0, 80)}` });
