@@ -29,8 +29,8 @@ plugins/<name>/
   .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); repo-required: name, description, version, author, license, keywords (the spec requires only name)
   skills/<skill>/SKILL.md           # + references/*.md loaded on demand
   agents/<agent>.md                 # Shipped subagents (today only sql-server-tools); plugin agents ignore hooks, mcpServers, permissionMode, initialPrompt
-  lib/                              # Pure source modules: embedded into scripts by scripts/embed.mjs (roadmap-format.mjs) or imported (data-block.mjs, read by spec-tool.mjs)
-  scripts/                          # Setup/utility scripts; embed.mjs generates the embedded copies; spec-tool.mjs checks a spec (`json data` block) against its card
+  lib/                              # Pure source modules: embedded into scripts by scripts/embed.mjs (roadmap-format.mjs) or imported (data-block.mjs, read by spec-tool.mjs); routing.mjs (roteamento único) and plan-digest.mjs (resumo de integridade do plano) are embeddable pure sources
+  scripts/                          # Setup/utility scripts; embed.mjs generates the embedded copies; spec-tool.mjs checks a spec (`json data` block) against its card; plan-tool.mjs checks a plan (`plan/1`) against its spec, emits it with a digest, and generates the wave map and per-task briefs
 plugins/_template/                  # Starter template (protected)
 .claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"
 .claude/hooks/*.mjs                 # Wired in .claude/settings.json
