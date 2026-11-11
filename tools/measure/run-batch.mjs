@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
-import { makeScenario, artifactOf, E5_PATHS } from './make-scenario.mjs';
+import { makeScenario, artifactOf, seedSourceOf, E5_PATHS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
@@ -92,7 +92,7 @@ export function toAttemptCounters(run) {
 
 const stamp = (d) => d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 
-function readPlugin(configDir) {
+export function readPlugin(configDir) {
   const unknown = { version: 'unknown', commit: 'unknown' };
   const file = join(configDir, 'plugins', 'installed_plugins.json');
   try {
@@ -103,6 +103,22 @@ function readPlugin(configDir) {
   }
   console.error(`run-batch: plugin ${PLUGIN_KEY} not found in ${file}; recording version "unknown"`);
   return unknown;
+}
+
+// First "superpowers@<marketplace>" entry of installed_plugins.json, whatever the marketplace is called.
+export function readSuperpowers(configDir) {
+  const absent = { version: 'ausente', commit: 'ausente' };
+  const file = join(configDir, 'plugins', 'installed_plugins.json');
+  try {
+    const plugins = JSON.parse(readFileSync(file, 'utf8')).plugins ?? {};
+    const key = Object.keys(plugins).find((k) => k.startsWith('superpowers@'));
+    const entry = key ? plugins[key]?.[0] : undefined;
+    if (entry?.version) return { version: entry.version, commit: entry.gitCommitSha ?? 'ausente' };
+  } catch {
+    /* fall through */
+  }
+  console.error(`run-batch: plugin superpowers not found in ${file}; recording version "ausente"`);
+  return absent;
 }
 
 function pricesDate() {
@@ -540,18 +556,22 @@ function harnessStage(h, entries, presents) {
 
 export async function runBatch(opts, { exec = defaultExec, now = () => new Date() } = {}) {
   const { variant, runs } = opts;
+  const seeded = variant.includes('semeado');
+  if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
   const h = prepareHarness(opts);
   const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}` : ''}-${stamp(now())}`);
   const priv = join(dir, 'private');
   mkdirSync(priv, { recursive: true });
   const plugin = readPlugin(opts.configDir);
+  const superpowers = readSuperpowers(opts.configDir);
+  const seedSource = seeded ? seedSourceOf(opts.fromRun) : undefined;
   const cli = (await exec('claude', ['--version'], {})).stdout.trim();
 
   const attempts = [];
   const privateAttempts = [];
   const validRuns = [];
   for (let k = 1; k <= runs; k++) {
-    const scenario = await makeScenario(join(resolve(opts.work), `${variant}-${k}`), variant);
+    const scenario = await makeScenario(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun });
     const sessions = [];
     let denied = false;
     let failed = false;
@@ -680,6 +700,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     denied: status('denied'),
     invalidReasons,
     plugin,
+    superpowers,
+    ...(seeded ? { seedSource } : {}),
     cli,
     models,
     pricesDate: pricesDate(),
@@ -695,14 +717,14 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]] [--from-run <pasta>]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
   const names = {
     '--variant': 'variant', '--runs': 'runs', '--work': 'work', '--out': 'out', '--config-dir': 'configDir',
     '--permission-mode': 'permissionMode', '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model',
-    '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir',
+    '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir', '--from-run': 'fromRun',
   };
   for (let i = 0; i < argv.length; i += 2) {
     const key = names[argv[i]];
