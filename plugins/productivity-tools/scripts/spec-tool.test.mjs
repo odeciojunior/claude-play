@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { checkPureSource } from './embed.mjs';
 import { findDataBlocks, readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
+import { checkSpec } from './spec-tool.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(HERE, '..', 'lib', 'data-block.mjs');
@@ -87,4 +89,163 @@ test('replaceDataBlock keeps prose and rewrites body', () => {
 
 test('lib/data-block.mjs is pure source', () => {
   assert.equal(checkPureSource(fs.readFileSync(LIB, 'utf8'), 'data-block.mjs'), null);
+});
+
+// ---- Task 3: esquema spec/1 e check sem roadmap ----
+
+const SCRIPT = path.join(HERE, 'spec-tool.mjs');
+const FIXTURE_SPEC = path.join(HERE, 'fixtures', 'spec-tool', 'spec.md');
+
+function mutate(fn) {
+  const text = fs.readFileSync(FIXTURE_SPEC, 'utf8');
+  const data = JSON.parse(JSON.stringify(readDataBlock(text).data));
+  fn(data);
+  return replaceDataBlock(text, data);
+}
+const codes = (r) => r.errors.map((e) => `${e.code}:${e.ref}`);
+const find = (r, code) => r.errors.find((e) => e.code === code);
+function runCli(args, text) {
+  const d = tmp();
+  const p = path.join(d, 'spec.md');
+  if (text !== undefined) fs.writeFileSync(p, text);
+  const res = spawnSync(process.execPath, [SCRIPT, ...args.map((a) => (a === '$SPEC' ? p : a))], { encoding: 'utf8' });
+  return res;
+}
+
+test('AC2: fixture passes schema check with no errors', () => {
+  const r = checkSpec(fs.readFileSync(FIXTURE_SPEC, 'utf8'));
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.data.id, 'E1');
+});
+
+for (const field of ['basis', 'costIfWrong', 'reversible', 'scope']) {
+  test(`AC2: ruling without ${field} -> ruling-incomplete naming R1`, () => {
+    const r = checkSpec(mutate((d) => { delete d.rulings[0][field]; }));
+    const e = find(r, 'ruling-incomplete');
+    assert.ok(e, JSON.stringify(r.errors));
+    assert.equal(e.ref, 'R1');
+    assert.ok(e.message.includes(field));
+  });
+}
+for (const [field, bad] of [['basis', ''], ['costIfWrong', 'huge'], ['reversible', 'no'], ['scope', 'global']]) {
+  test(`AC2: ruling with ${field} out of domain -> ruling-incomplete naming R1`, () => {
+    const r = checkSpec(mutate((d) => { d.rulings[0][field] = bad; }));
+    const e = find(r, 'ruling-incomplete');
+    assert.ok(e, JSON.stringify(r.errors));
+    assert.equal(e.ref, 'R1');
+    assert.ok(e.message.includes(field));
+  });
+}
+
+test('AC2: needsPerson without blocking -> needs-person-blocking naming H1', () => {
+  let r = checkSpec(mutate((d) => { delete d.needsPerson[0].blocking; }));
+  assert.equal(find(r, 'needs-person-blocking').ref, 'H1');
+  r = checkSpec(mutate((d) => { d.needsPerson[0].blocking = 'yes'; }));
+  assert.equal(find(r, 'needs-person-blocking').ref, 'H1');
+});
+
+test('AC2: non-blocking item without workaround -> needs-person-workaround', () => {
+  const r = checkSpec(mutate((d) => { d.needsPerson[1].workaround = ''; }));
+  assert.equal(find(r, 'needs-person-workaround').ref, 'H2');
+});
+
+test('needsPerson kind out of domain -> needs-person-kind', () => {
+  const r = checkSpec(mutate((d) => { d.needsPerson[0].kind = 'other'; }));
+  assert.equal(find(r, 'needs-person-kind').ref, 'H1');
+});
+
+test('schema: wrong version -> schema-version', () => {
+  const r = checkSpec(mutate((d) => { d.schema = 'spec/2'; }));
+  assert.ok(find(r, 'schema-version'));
+});
+
+test('missing acceptance -> field-missing', () => {
+  const r = checkSpec(mutate((d) => { delete d.acceptance; }));
+  const e = find(r, 'field-missing');
+  assert.equal(e.ref, 'acceptance');
+});
+
+test('rulings item not object -> field-type', () => {
+  const r = checkSpec(mutate((d) => { d.rulings[1] = 'x'; }));
+  assert.equal(find(r, 'field-type').ref, 'rulings[2]');
+});
+
+test('id R1 repeated -> id-duplicate', () => {
+  const r = checkSpec(mutate((d) => { d.rulings[1].id = 'R1'; }));
+  assert.equal(find(r, 'id-duplicate').ref, 'R1');
+});
+
+test('acceptance id AC2 at position 1 -> id-invalid', () => {
+  const r = checkSpec(mutate((d) => { d.acceptance[0].id = 'AC2'; }));
+  assert.ok(codes(r).includes('id-invalid:AC2'), JSON.stringify(r.errors));
+});
+
+test('invalid verify tag -> acceptance-tag-invalid', () => {
+  const r = checkSpec(mutate((d) => { d.acceptance[0].text = 'Algo. {verify: maybe}'; }));
+  assert.equal(find(r, 'acceptance-tag-invalid').ref, 'AC1');
+});
+
+test('unknown field -> field-unknown warning', () => {
+  const r = checkSpec(mutate((d) => { d.extra = 1; d.rulings[0].zzz = 2; }));
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.warnings.filter((w) => w.code === 'field-unknown').length, 2);
+});
+
+test('six edge cases -> edge-cases-limit warning', () => {
+  const r = checkSpec(mutate((d) => {
+    d.edgeCases = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `C${n}`, input: 'i', expected: 'e' }));
+  }));
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.warnings.some((w) => w.code === 'edge-cases-limit'));
+});
+
+test('missing mode -> field-missing; mode "batch" -> field-type', () => {
+  let r = checkSpec(mutate((d) => { delete d.mode; }));
+  assert.equal(find(r, 'field-missing').ref, 'mode');
+  r = checkSpec(mutate((d) => { d.mode = 'batch'; }));
+  assert.equal(find(r, 'field-type').ref, 'mode');
+});
+
+test('falsy values are not missing', () => {
+  const r = checkSpec(mutate((d) => {
+    d.rulings[0].reversible = false;
+    d.rulings[0].alternative = '';
+    d.rulings[0].contradicts = null;
+    d.needsPerson[1].blocking = false;
+  }));
+  assert.deepEqual(r.errors, []);
+});
+
+test('reader error becomes the same code with ref "-"', () => {
+  const r = checkSpec('# nada\n');
+  assert.deepEqual(r.errors.map((e) => [e.code, e.ref]), [['data-block-missing', '-']]);
+  assert.equal(r.data, null);
+});
+
+test('CLI check: fixture exits 0 without --roadmap', () => {
+  const r = runCli(['check', FIXTURE_SPEC]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Result: 0 errors/);
+});
+
+test('CLI check: ruling without basis exits 1 with ERROR line; --json agrees', () => {
+  const text = mutate((d) => { delete d.rulings[0].basis; });
+  const t = runCli(['check', '$SPEC'], text);
+  assert.equal(t.status, 1);
+  assert.match(t.stdout, /^ERROR ruling-incomplete R1:/m);
+  const n = t.stdout.split('\n').filter((l) => l.startsWith('ERROR ')).length;
+  const j = runCli(['check', '$SPEC', '--json'], text);
+  assert.equal(j.status, 1);
+  const out = JSON.parse(j.stdout);
+  assert.equal(out.tool, 'spec-tool');
+  assert.equal(out.schema, 'spec/1');
+  assert.equal(out.summary.errors, n);
+  assert.equal(out.summary.exitCode, 1);
+});
+
+test('CLI check: invalid usage exits 2', () => {
+  assert.equal(runCli([]).status, 2);
+  assert.equal(runCli(['bogus', FIXTURE_SPEC]).status, 2);
+  assert.equal(runCli(['check', path.join(os.tmpdir(), 'nao-existe-spec.md')]).status, 2);
+  assert.equal(runCli(['check']).status, 2);
 });
