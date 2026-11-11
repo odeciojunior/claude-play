@@ -258,3 +258,95 @@ export function applyDefaults(input) {
 
   return { model, defaulted };
 }
+
+// Ordem por prefixo e depois numérica: E2 < E10, REQ-002 < REQ-010.
+export function compareIds(a, b) {
+  const parse = (s) => {
+    const m = /^(.*?)(\d+)$/.exec(String(s));
+    return m ? [m[1], Number(m[2])] : [String(s), -1];
+  };
+  const [pa, na] = parse(a);
+  const [pb, nb] = parse(b);
+  if (pa !== pb) return pa < pb ? -1 : 1;
+  return na - nb;
+}
+
+function compareChains(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const c = compareIds(a[i], b[i]);
+    if (c !== 0) return c;
+  }
+  return a.length - b.length;
+}
+
+// Grafo de dependências, comprimento da maior cadeia, cards críticos e a primeira
+// cadeia máxima em ordem de id. Assume modelo sem ciclo (validateModel recusa antes).
+export function deriveGraph(deliverables) {
+  const byId = new Map(deliverables.map((d) => [d.id, d]));
+  const ids = [...byId.keys()].sort(compareIds);
+  const deps = (id) => (byId.get(id).depends || []).filter((d) => byId.has(d));
+  const edges = [];
+  for (const id of ids) for (const d of deps(id)) edges.push([d, id]);
+  edges.sort((x, y) => compareIds(x[0], y[0]) || compareIds(x[1], y[1]));
+
+  const succ = new Map(ids.map((id) => [id, []]));
+  for (const [d, c] of edges) succ.get(d).push(c);
+
+  // Ordem topológica (Kahn, desempate por id).
+  const indeg = new Map(ids.map((id) => [id, deps(id).length]));
+  const ready = ids.filter((id) => indeg.get(id) === 0);
+  const topo = [];
+  while (ready.length) {
+    ready.sort(compareIds);
+    const id = ready.shift();
+    topo.push(id);
+    for (const s of succ.get(id)) {
+      indeg.set(s, indeg.get(s) - 1);
+      if (indeg.get(s) === 0) ready.push(s);
+    }
+  }
+
+  const fwd = new Map();
+  for (const id of topo) fwd.set(id, 1 + Math.max(0, ...deps(id).map((d) => fwd.get(d))));
+  const bwd = new Map();
+  for (const id of [...topo].reverse()) bwd.set(id, 1 + Math.max(0, ...succ.get(id).map((s) => bwd.get(s))));
+  const longest = topo.length ? Math.max(...topo.map((id) => fwd.get(id))) : 0;
+  const critical = new Set(topo.filter((id) => fwd.get(id) + bwd.get(id) - 1 === longest));
+
+  // Primeira cadeia máxima: começa no menor id crítico sem predecessor crítico e
+  // segue sempre o menor sucessor crítico que continua numa cadeia máxima.
+  const chain = [];
+  if (longest > 0) {
+    let cur = ids.find((id) => critical.has(id) && fwd.get(id) === 1);
+    while (cur !== undefined) {
+      chain.push(cur);
+      cur = succ.get(cur).filter((s) => critical.has(s) && fwd.get(s) === fwd.get(cur) + 1).sort(compareIds)[0];
+    }
+  }
+  return { edges, longest, critical, chain };
+}
+
+// Cobertura derivada: inverte os `reqs` dos cards e conta o resumo.
+export function deriveCoverage(requirements, deliverables, vocab) {
+  const rows = [];
+  const summary = { covered: 0, outOfScope: 0, needsClarification: 0 };
+  for (const r of requirements) {
+    const cards = deliverables.filter((d) => (d.reqs || []).includes(r.id)).map((d) => d.id).sort(compareIds);
+    const kind = r.coverage && r.coverage.kind;
+    let coverage;
+    if (kind === 'out-of-scope') {
+      coverage = r.coverage.reason ? `${vocab.coverageOutOfScope}: ${r.coverage.reason}` : vocab.coverageOutOfScope;
+      summary.outOfScope++;
+    } else if (kind === 'needs-clarification') {
+      coverage = vocab.coverageNeedsClarification;
+      summary.needsClarification++;
+    } else {
+      coverage = vocab.coverageCovered;
+      summary.covered++;
+    }
+    rows.push({ id: r.id, deliverables: cards, coverage });
+  }
+  rows.sort((a, b) => compareIds(a.id, b.id));
+  return { rows, summary };
+}

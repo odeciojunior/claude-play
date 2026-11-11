@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   validateModel, applyDefaults, VOCAB_PT, VOCAB_EN, DEFAULT_TRACKS, DEFAULT_LIMITS, HEADINGS,
+  compareIds, deriveGraph, deriveCoverage,
 } from './scaffold.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -194,5 +195,72 @@ describe('constantes', () => {
     if (!fs.existsSync(cfgPath)) return; // pacote instalado, sem a pasta de docs
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''));
     assert.deepEqual(VOCAB_PT, cfg.vocab);
+  });
+});
+
+const card = (id, depends = []) => ({ id, depends });
+
+describe('compareIds', () => {
+  it('ordena numericamente, não lexicograficamente', () => {
+    assert.ok(compareIds('E2', 'E10') < 0);
+    assert.ok(compareIds('E10', 'E2') > 0);
+    assert.ok(compareIds('REQ-002', 'REQ-010') < 0);
+    assert.equal(compareIds('E3', 'E3'), 0);
+  });
+});
+
+describe('deriveGraph', () => {
+  it('model-full: arestas, caminho crítico e cadeia', () => {
+    const m = full();
+    const g = deriveGraph(m.deliverables);
+    const expected = new Set();
+    for (const c of m.deliverables) for (const d of c.depends || []) expected.add(`${d}>${c.id}`);
+    assert.deepEqual(new Set(g.edges.map(([d, c]) => `${d}>${c}`)), expected);
+    assert.equal(g.edges.length, expected.size);
+    for (const e of ['E1', 'E2', 'E3', 'E4']) assert.ok(g.critical.has(e), e);
+    assert.equal(g.chain[0], 'E1');
+    assert.equal(g.chain[1], 'E2');
+    assert.equal(g.chain.at(-1), 'E4');
+    assert.equal(g.longest, g.chain.length);
+    const isolated = m.deliverables.filter((c) => !(c.depends || []).length
+      && !m.deliverables.some((o) => (o.depends || []).includes(c.id)));
+    for (const c of isolated) assert.ok(!g.critical.has(c.id), c.id);
+  });
+
+  it('empate de comprimento resolvido por ordem numérica de id', () => {
+    const g = deriveGraph([card('E10'), card('E11', ['E10']), card('E2'), card('E3', ['E2'])]);
+    assert.deepEqual(g.chain, ['E2', 'E3']);
+    assert.equal(g.longest, 2);
+    assert.deepEqual([...g.critical].sort(compareIds), ['E2', 'E3', 'E10', 'E11']);
+  });
+
+  it('card isolado é cadeia de comprimento 1; vazio não quebra', () => {
+    const g = deriveGraph([card('E1')]);
+    assert.equal(g.longest, 1);
+    assert.deepEqual(g.chain, ['E1']);
+    assert.equal(deriveGraph([]).longest, 0);
+  });
+});
+
+describe('deriveCoverage', () => {
+  it('inverte os reqs dos cards e conta o resumo', () => {
+    const m = applyDefaults(full()).model;
+    const cov = deriveCoverage(m.requirements, m.deliverables, m.vocab);
+    for (const row of cov.rows) {
+      const exp = m.deliverables.filter((c) => (c.reqs || []).includes(row.id)).map((c) => c.id).sort(compareIds);
+      assert.deepEqual(row.deliverables, exp, row.id);
+    }
+    const r5 = cov.rows.find((r) => r.id === 'REQ-005');
+    assert.equal(r5.coverage, `${m.vocab.coverageOutOfScope}: Deferred to a later roadmap.`);
+    assert.equal(cov.rows.find((r) => r.id === 'REQ-001').coverage, m.vocab.coverageCovered);
+    assert.equal(cov.summary.outOfScope, 1);
+    assert.equal(cov.summary.covered + cov.summary.outOfScope + cov.summary.needsClarification, m.requirements.length);
+  });
+
+  it('needs-clarification usa a palavra do vocab', () => {
+    const v = VOCAB_PT;
+    const cov = deriveCoverage([{ id: 'REQ-001', coverage: { kind: 'needs-clarification' } }], [], v);
+    assert.equal(cov.rows[0].coverage, v.coverageNeedsClarification);
+    assert.equal(cov.summary.needsClarification, 1);
   });
 });
