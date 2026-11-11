@@ -640,6 +640,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     if (denied) {
       attempts.push({ n: k, status: 'denied' });
+      if (opts.stopOnDenial) break;
       continue;
     }
     if (failed || sessions.length === 0) {
@@ -717,7 +718,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]] [--from-run <pasta>]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]] [--from-run <pasta>] [--stop-on-denial]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -727,6 +728,11 @@ function parseCli(argv) {
     '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir', '--from-run': 'fromRun',
   };
   for (let i = 0; i < argv.length; i += 2) {
+    if (argv[i] === '--stop-on-denial') {
+      o.stopOnDenial = true;
+      i -= 1;
+      continue;
+    }
     const key = names[argv[i]];
     if (!key || argv[i + 1] === undefined) return null;
     if (key === 'allow' || key === 'addDir') o[key].push(argv[i + 1]);

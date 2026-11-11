@@ -53,6 +53,63 @@ export function loadRoadmap(dir) {
   return { cards: parsed.cards, openBlockers: new Set(rows.map((r) => r[0])) };
 }
 
+// Valida os registros de uma lista (rulings, needsPerson, externalEffects, edgeCases): usada por spec-tool e plan-tool.
+export function checkRecords(name, items, { roadmap = null } = {}) {
+  const errors = [];
+  const warnings = [];
+  const err = (code, ref, message) => errors.push({ code, ref, message });
+  const warn = (code, ref, message) => warnings.push({ code, ref, message });
+  const spec = RECORDS[name];
+  const pat = new RegExp(`^${spec.prefix}\\d+$`);
+  const seen = new Set();
+  items.forEach((item, i) => {
+    const pos = i + 1;
+    if (!isObj(item)) return err('field-type', `${name}[${pos}]`, 'item deve ser um objeto');
+    let ref = `${name}[${pos}]`;
+    if (!('id' in item)) err('field-missing', ref, 'campo "id" ausente');
+    else if (typeof item.id !== 'string' || !pat.test(item.id)) {
+      ref = String(item.id);
+      err('id-invalid', ref, `id ${JSON.stringify(item.id)} fora do padrão ${spec.prefix}<n>`);
+    } else {
+      ref = item.id;
+      if (seen.has(ref)) err('id-duplicate', ref, `id "${ref}" repetido`);
+      seen.add(ref);
+    }
+    for (const k of Object.keys(item)) {
+      if (!spec.fields.includes(k)) warn('field-unknown', `${name}[${pos}].${k}`, `campo desconhecido "${k}"`);
+    }
+    const need = (k, ok, what) => {
+      if (!(k in item)) err('field-missing', ref, `campo "${k}" ausente`);
+      else if (!ok(item[k])) err('field-type', ref, `"${k}" deve ser ${what}`);
+    };
+    if (name === 'rulings') {
+      for (const k of ['question', 'decision']) need(k, isStr, 'uma string não vazia');
+      need('alternative', (v) => typeof v === 'string', 'uma string (pode ser vazia)');
+      need('contradicts', (v) => v === null || (typeof v === 'string' && /^(DEC-\d+|G\d+)$/.test(v)), 'null ou DEC-<n>/G<n>');
+      const bad = [];
+      if (!isStr(item.basis)) bad.push('basis');
+      if (!COSTS.includes(item.costIfWrong)) bad.push('costIfWrong');
+      if (typeof item.reversible !== 'boolean') bad.push('reversible');
+      if (!SCOPES.includes(item.scope)) bad.push('scope');
+      if (bad.length) err('ruling-incomplete', ref, `campos ausentes ou fora do domínio: ${bad.join(', ')}`);
+    } else if (name === 'needsPerson') {
+      for (const k of ['what', 'why']) need(k, isStr, 'uma string não vazia');
+      if (!KINDS.includes(item.kind)) err('needs-person-kind', ref, `"kind" deve ser ${KINDS.join(', ')}`);
+      if (typeof item.blocking !== 'boolean') err('needs-person-blocking', ref, '"blocking" é obrigatório e booleano');
+      need('workaround', (v) => typeof v === 'string', 'uma string');
+      if (item.blocking === false && !isStr(item.workaround)) err('needs-person-workaround', ref, 'item não bloqueante precisa de "workaround" não vazio');
+      if ('blq' in item && !(typeof item.blq === 'string' && /^BLQ-\d+$/.test(item.blq))) err('field-type', ref, '"blq" deve ser BLQ-<n>');
+      else if (roadmap && typeof item.blq === 'string' && !roadmap.openBlockers.has(item.blq)) err('needs-person-blq', ref, `${item.blq} não está aberto no roadmap`);
+    } else if (name === 'externalEffects') {
+      for (const k of ['what', 'target']) need(k, isStr, 'uma string não vazia');
+    } else {
+      for (const k of ['input', 'expected']) need(k, isStr, 'uma string não vazia');
+    }
+  });
+  if (name === 'edgeCases' && items.length > 5) warn('edge-cases-limit', 'edgeCases', `${items.length} casos de borda; o limite é 5`);
+  return { errors, warnings };
+}
+
 export function checkSpec(text, { roadmap = null } = {}) {
   const errors = [];
   const warnings = [];
@@ -153,56 +210,12 @@ export function checkSpec(text, { roadmap = null } = {}) {
     }
   }
 
-  for (const [name, spec] of Object.entries(RECORDS)) {
+  for (const name of Object.keys(RECORDS)) {
     const items = list(name);
     if (!items) continue;
-    const pat = new RegExp(`^${spec.prefix}\\d+$`);
-    const seen = new Set();
-    items.forEach((item, i) => {
-      const pos = i + 1;
-      if (!isObj(item)) return err('field-type', `${name}[${pos}]`, 'item deve ser um objeto');
-      let ref = `${name}[${pos}]`;
-      if (!('id' in item)) err('field-missing', ref, 'campo "id" ausente');
-      else if (typeof item.id !== 'string' || !pat.test(item.id)) {
-        ref = String(item.id);
-        err('id-invalid', ref, `id ${JSON.stringify(item.id)} fora do padrão ${spec.prefix}<n>`);
-      } else {
-        ref = item.id;
-        if (seen.has(ref)) err('id-duplicate', ref, `id "${ref}" repetido`);
-        seen.add(ref);
-      }
-      for (const k of Object.keys(item)) {
-        if (!spec.fields.includes(k)) warn('field-unknown', `${name}[${pos}].${k}`, `campo desconhecido "${k}"`);
-      }
-      const need = (k, ok, what) => {
-        if (!(k in item)) err('field-missing', ref, `campo "${k}" ausente`);
-        else if (!ok(item[k])) err('field-type', ref, `"${k}" deve ser ${what}`);
-      };
-      if (name === 'rulings') {
-        for (const k of ['question', 'decision']) need(k, isStr, 'uma string não vazia');
-        need('alternative', (v) => typeof v === 'string', 'uma string (pode ser vazia)');
-        need('contradicts', (v) => v === null || (typeof v === 'string' && /^(DEC-\d+|G\d+)$/.test(v)), 'null ou DEC-<n>/G<n>');
-        const bad = [];
-        if (!isStr(item.basis)) bad.push('basis');
-        if (!COSTS.includes(item.costIfWrong)) bad.push('costIfWrong');
-        if (typeof item.reversible !== 'boolean') bad.push('reversible');
-        if (!SCOPES.includes(item.scope)) bad.push('scope');
-        if (bad.length) err('ruling-incomplete', ref, `campos ausentes ou fora do domínio: ${bad.join(', ')}`);
-      } else if (name === 'needsPerson') {
-        for (const k of ['what', 'why']) need(k, isStr, 'uma string não vazia');
-        if (!KINDS.includes(item.kind)) err('needs-person-kind', ref, `"kind" deve ser ${KINDS.join(', ')}`);
-        if (typeof item.blocking !== 'boolean') err('needs-person-blocking', ref, '"blocking" é obrigatório e booleano');
-        need('workaround', (v) => typeof v === 'string', 'uma string');
-        if (item.blocking === false && !isStr(item.workaround)) err('needs-person-workaround', ref, 'item não bloqueante precisa de "workaround" não vazio');
-        if ('blq' in item && !(typeof item.blq === 'string' && /^BLQ-\d+$/.test(item.blq))) err('field-type', ref, '"blq" deve ser BLQ-<n>');
-        else if (roadmap && typeof item.blq === 'string' && !roadmap.openBlockers.has(item.blq)) err('needs-person-blq', ref, `${item.blq} não está aberto no roadmap`);
-      } else if (name === 'externalEffects') {
-        for (const k of ['what', 'target']) need(k, isStr, 'uma string não vazia');
-      } else {
-        for (const k of ['input', 'expected']) need(k, isStr, 'uma string não vazia');
-      }
-    });
-    if (name === 'edgeCases' && items.length > 5) warn('edge-cases-limit', 'edgeCases', `${items.length} casos de borda; o limite é 5`);
+    const r = checkRecords(name, items, { roadmap });
+    errors.push(...r.errors);
+    warnings.push(...r.warnings);
   }
 
   return { data, errors, warnings };

@@ -1,0 +1,907 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { checkPureSource } from './embed.mjs';
+import { canon, fnv1a, planDigest } from '../lib/plan-digest.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+test('fnv1a matches the release fingerprint algorithm', () => {
+  assert.equal(fnv1a(''), '811c9dc5');
+  assert.equal(fnv1a('a'), 'e40c292c');
+});
+
+test('canon sorts keys recursively', () => {
+  assert.equal(JSON.stringify(canon({ b: 1, a: { d: [{ y: 1, x: 2 }], c: 0 } })), '{"a":{"c":0,"d":[{"x":2,"y":1}]},"b":1}');
+});
+
+test('planDigest ignores key order', () => {
+  const a = planDigest({ plan: { a: 1, b: 2 }, source: { path: 'p', textDigest: '0' } });
+  const b = planDigest({ source: { textDigest: '0', path: 'p' }, plan: { b: 2, a: 1 } });
+  assert.equal(a, b);
+  assert.notEqual(a, planDigest({ plan: { a: 3, b: 2 }, source: { path: 'p', textDigest: '0' } }));
+});
+
+test('plan-digest is pure', () => {
+  const text = fs.readFileSync(path.join(HERE, '..', 'lib', 'plan-digest.mjs'), 'utf8');
+  assert.equal(checkPureSource(text, 'plan-digest.mjs'), null);
+});
+
+import { route } from '../lib/routing.mjs';
+
+const ROUTING_TABLE = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'plan-tool', 'routing-table.json'), 'utf8'));
+
+function rowTask(input) {
+  const create = Array.from({ length: input.fileCount }, (_, i) => `f${i + 1}`);
+  return {
+    score: { ambiguity: input.ambiguity, reasoning: input.reasoning, blast: input.blast, verifiability: input.verifiability },
+    files: { create, modify: [], test: [] },
+    external: input.external,
+  };
+}
+
+for (const row of ROUTING_TABLE.rows) {
+  test(`AC3: routing table row ${row.name} (${row.source})`, () => {
+    const r = route(rowTask(row.input), { hasDependents: row.input.hasDependents });
+    assert.deepEqual({ tier: r.tier, effort: r.effort, reviewTier: r.reviewTier, gate: r.gate }, row.expected);
+  });
+}
+
+test('route does not mutate the task', () => {
+  const task = { score: { ambiguity: 0, reasoning: 0, blast: 1, verifiability: 0 }, files: { create: ['a'], modify: [], test: [] }, external: true };
+  const r = route(task, { hasDependents: false });
+  assert.equal(task.score.blast, 1);
+  assert.equal(r.score.blast, 2);
+});
+
+test('route counts distinct files', () => {
+  const task = { score: { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 }, files: { create: ['a'], modify: [], test: ['a'] }, external: false };
+  assert.equal(route(task, { hasDependents: false }).score.scope, 0);
+  task.files.test = ['b'];
+  assert.equal(route(task, { hasDependents: false }).score.scope, 1);
+});
+
+test('routing is pure', () => {
+  const text = fs.readFileSync(path.join(HERE, '..', 'lib', 'routing.mjs'), 'utf8');
+  assert.equal(checkPureSource(text, 'routing.mjs'), null);
+});
+
+// ---- Task 3: check (esquema, spec, prosa, grafo, conflito de escrita) ----
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
+import { checkPlan, SCHEMA, main } from './plan-tool.mjs';
+import { checkSpec, checkRecords } from './spec-tool.mjs';
+
+const PLAN_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'plan.md');
+const SPEC_PATH = path.join(HERE, 'fixtures', 'spec-tool', 'spec.md');
+const TOOL = path.join(HERE, 'plan-tool.mjs');
+const PLAN_TEXT = fs.readFileSync(PLAN_PATH, 'utf8');
+const SPEC_TEXT = fs.readFileSync(SPEC_PATH, 'utf8');
+
+function mutate(fn, text = PLAN_TEXT) {
+  const data = structuredClone(readDataBlock(text).data);
+  fn(data);
+  return replaceDataBlock(text, data);
+}
+function mutateSpec(fn) {
+  return mutate(fn, SPEC_TEXT);
+}
+function check(text, opts = {}) {
+  return checkPlan(text, { planPath: PLAN_PATH, ...opts });
+}
+const find = (r, code) => r.errors.find((e) => e.code === code);
+const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'plan-tool-'));
+function runCli(args, opts = {}) {
+  return spawnSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', ...opts });
+}
+
+test('example plan passes check with zero errors and zero warnings', () => {
+  const r = check(PLAN_TEXT);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings, []);
+  assert.equal(SCHEMA, 'plan/1');
+  assert.equal(r.spec.id, 'E1');
+  assert.deepEqual([...r.levels], [[1, 0], [2, 1], [3, 1], [4, 1], [5, 1], [6, 2]]);
+});
+
+test('CRLF copy of the example plan passes check', () => {
+  const r = check(PLAN_TEXT.replace(/\r?\n/g, '\r\n'), { specText: SPEC_TEXT.replace(/\r?\n/g, '\r\n') });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings, []);
+  const r2 = check('﻿' + PLAN_TEXT.replace(/\r?\n/g, '\r\n'));
+  assert.deepEqual(r2.errors, []);
+});
+
+test('spec path resolves from the plan folder, not the cwd', () => {
+  const ok = runCli(['check', PLAN_PATH], { cwd: os.tmpdir() });
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  const dir = tmpDir();
+  try {
+    const badSpec = path.join(dir, 'bad-spec.md');
+    fs.writeFileSync(badSpec, mutateSpec((d) => delete d.rulings[0].basis));
+    const bad = runCli(['check', PLAN_PATH, '--spec', badSpec], { cwd: os.tmpdir() });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stdout, /ERROR spec-invalid/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('unreadable spec -> spec-invalid', () => {
+  const r = check(mutate((d) => (d.spec = '../nao-existe/spec.md')));
+  assert.ok(find(r, 'spec-invalid'));
+  assert.equal(r.spec, null);
+});
+
+test('checkRecords is exported and matches checkSpec', () => {
+  for (const text of [SPEC_TEXT, mutateSpec((d) => delete d.rulings[0].basis)]) {
+    const s = checkSpec(text);
+    const rec = checkRecords('rulings', s.data.rulings);
+    const fromSpec = s.errors.filter((e) => /^R\d+$|^rulings/.test(e.ref));
+    assert.deepEqual(rec.errors, fromSpec);
+  }
+  const broken = checkSpec(mutateSpec((d) => delete d.rulings[0].basis));
+  assert.equal(checkRecords('rulings', broken.data.rulings).errors[0].code, 'ruling-incomplete');
+  const many = Array.from({ length: 6 }, (_, i) => ({ id: `C${i + 1}`, input: 'a', expected: 'b' }));
+  assert.equal(checkRecords('edgeCases', many).warnings[0].code, 'edge-cases-limit');
+});
+
+test('AC1: dependency cycle -> dependency-cycle naming the tasks', () => {
+  const r = check(mutate((d) => (d.tasks[0].deps = [4])));
+  const e = find(r, 'dependency-cycle');
+  assert.ok(e, JSON.stringify(r.errors));
+  assert.match(e.message, /T1 -> T4 -> T1/);
+});
+
+test('self dependency -> dependency-cycle T2 -> T2', () => {
+  const r = check(mutate((d) => (d.tasks[1].deps = [2])));
+  assert.match(find(r, 'dependency-cycle').message, /T2 -> T2/);
+});
+
+test('unknown dep -> dep-unknown, no exception, cycle detection and levels survive', () => {
+  const r = check(mutate((d) => (d.tasks[1].deps = [9])));
+  const e = find(r, 'dep-unknown');
+  assert.equal(e.ref, 'T2');
+  assert.match(e.message, /9/);
+  assert.equal(find(r, 'dependency-cycle'), undefined);
+  assert.equal(r.levels.has(2), false);
+  assert.equal(r.levels.get(3), 1);
+  const both = check(mutate((d) => {
+    d.tasks[1].deps = [9];
+    d.tasks[2].deps = [4];
+    d.tasks[3].deps = [3];
+  }));
+  assert.ok(find(both, 'dep-unknown'));
+  assert.match(find(both, 'dependency-cycle').message, /T3 -> T4 -> T3/);
+});
+
+test('AC1: two tasks of the same wave write the same file -> write-conflict', () => {
+  const r = check(mutate((d) => d.tasks[3].files.create.push('src/view.mjs')));
+  const e = find(r, 'write-conflict');
+  assert.equal(e.ref, 'T3/T4');
+  assert.match(e.message, /src\/view\.mjs/);
+  const viaWrites = check(mutate((d) => d.tasks[3].writes.push('src/view.mjs')));
+  assert.equal(find(viaWrites, 'write-conflict').ref, 'T3/T4');
+  const viaPrefix = check(mutate((d) => d.tasks[3].writes.push('./src/view.mjs')));
+  assert.equal(find(viaPrefix, 'write-conflict').ref, 'T3/T4');
+  const viaBackslash = check(mutate((d) => d.tasks[3].files.modify.push('src\\view.mjs')));
+  assert.equal(find(viaBackslash, 'write-conflict').ref, 'T3/T4');
+  const otherLevel = check(mutate((d) => d.tasks[5].files.modify.push('src/view.mjs')));
+  assert.equal(find(otherLevel, 'write-conflict'), undefined);
+});
+
+test('schema: schema-version', () => {
+  const r = check(mutate((d) => (d.schema = 'plan/2')));
+  assert.equal(find(r, 'schema-version').ref, 'schema');
+});
+
+test('schema: field-missing (no evidence, no score.blast)', () => {
+  assert.equal(find(check(mutate((d) => delete d.evidence)), 'field-missing').ref, 'evidence');
+  const r = check(mutate((d) => delete d.tasks[0].score.blast));
+  const e = find(r, 'field-missing');
+  assert.equal(e.ref, 'T1');
+  assert.match(e.message, /score\.blast/);
+  assert.equal(r.errors.length, 1);
+});
+
+test('schema: field-type (external string, score 3)', () => {
+  assert.equal(find(check(mutate((d) => (d.tasks[4].external = 'no'))), 'field-type').ref, 'T5');
+  const r = check(mutate((d) => (d.tasks[0].score.reasoning = 3)));
+  assert.match(find(r, 'field-type').message, /score\.reasoning/);
+});
+
+test('schema: task-number', () => {
+  const r = check(mutate((d) => (d.tasks[1].n = 3)));
+  assert.equal(find(r, 'task-number').ref, 'T2');
+});
+
+test('schema: spec-id-mismatch', () => {
+  const r = check(mutate((d) => (d.id = 'E2')));
+  assert.ok(find(r, 'spec-id-mismatch'));
+});
+
+test('schema: field-unknown is a warning', () => {
+  const r = check(mutate((d) => {
+    d.extra = 1;
+    d.tasks[0].extra = 1;
+  }));
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings.map((w) => [w.code, w.ref]), [['field-unknown', 'extra'], ['field-unknown', 'T1']]);
+});
+
+test('schema: evidence row fields', () => {
+  assert.equal(find(check(mutate((d) => (d.evidence[0].kind = 'magic'))), 'field-type').ref, 'AC1');
+  assert.equal(find(check(mutate((d) => delete d.evidence[0].external)), 'field-missing').ref, 'AC1');
+  assert.equal(find(check(mutate((d) => (d.evidence[1].blq = 'x'))), 'field-type').ref, 'AC2');
+});
+
+test('schema: a task with no file and noCommit false -> field-missing', () => {
+  const r = check(mutate((d) => (d.tasks[5].files.modify = [])));
+  assert.equal(find(r, 'field-missing').ref, 'T6');
+  const ok = check(mutate((d) => {
+    d.tasks[5].files.modify = [];
+    d.tasks[5].noCommit = true;
+  }));
+  assert.equal(ok.errors.length, 0);
+});
+
+test('graph and write-conflict checks are skipped when the task schema failed', () => {
+  const r = check(mutate((d) => {
+    d.tasks[0].deps = [4];
+    delete d.tasks[2].score;
+  }));
+  assert.equal(find(r, 'dependency-cycle'), undefined);
+  assert.ok(find(r, 'field-missing'));
+});
+
+test('prose: task-heading-missing', () => {
+  const r = check(PLAN_TEXT.replace('### Tarefa 6: Documentar o armazenamento', '### Passo 6: Documentar o armazenamento'));
+  assert.equal(find(r, 'task-heading-missing').ref, 'T6');
+});
+
+test('prose: task-heading-orphan', () => {
+  const r = check(PLAN_TEXT.replace('## Bloco de dados', '### Task 7: Extra\n\nSobra.\n\n## Bloco de dados'));
+  assert.equal(find(r, 'task-heading-orphan').ref, 'T7');
+});
+
+test('prose: task-title-differs (whitespace is collapsed)', () => {
+  const r = check(PLAN_TEXT.replace('### Tarefa 2: Rejeitar item vazio', '### Tarefa 2: Rejeitar item nulo'));
+  assert.equal(find(r, 'task-title-differs').ref, 'T2');
+  const same = check(PLAN_TEXT.replace('### Tarefa 2: Rejeitar item vazio', '### Task 2:   Rejeitar   item vazio '));
+  assert.deepEqual(same.errors, []);
+});
+
+test('ruling-incomplete via checkRecords in the plan', () => {
+  const r = check(mutate((d) => delete d.rulings[0].basis));
+  const e = find(r, 'ruling-incomplete');
+  assert.equal(e.ref, 'R1');
+  assert.match(e.message, /basis/);
+});
+
+test('data-block-missing', () => {
+  const r = check('# so prosa\n');
+  assert.equal(r.errors[0].code, 'data-block-missing');
+  assert.equal(r.data, null);
+  assert.equal(r.levels.size, 0);
+});
+
+test('CLI check: example plan exits 0', () => {
+  const r = runCli(['check', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Result: 0 errors, 0 warnings/);
+});
+
+test('CLI check: cycle exits 1, --json agrees with the text', () => {
+  const dir = tmpDir();
+  try {
+    const p = path.join(dir, 'plan.md');
+    fs.writeFileSync(p, mutate((d) => (d.tasks[0].deps = [4])));
+    const spec = ['--spec', SPEC_PATH];
+    const text = runCli(['check', p, ...spec]);
+    assert.equal(text.status, 1);
+    assert.match(text.stdout, /^ERROR dependency-cycle /m);
+    const json = runCli(['check', p, ...spec, '--json']);
+    assert.equal(json.status, 1);
+    const out = JSON.parse(json.stdout);
+    assert.equal(out.tool, 'plan-tool');
+    assert.equal(out.schema, 'plan/1');
+    assert.equal(out.summary.errors, text.stdout.split('\n').filter((l) => l.startsWith('ERROR')).length);
+    assert.equal(out.summary.exitCode, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI check: usage errors exit 2', () => {
+  assert.equal(runCli([]).status, 2);
+  assert.equal(runCli(['frobnicate', PLAN_PATH]).status, 2);
+  assert.equal(runCli(['check']).status, 2);
+  assert.equal(runCli(['check', path.join(os.tmpdir(), 'nao-existe-plan.md')]).status, 2);
+  assert.equal(runCli(['check', PLAN_PATH, '--bogus']).status, 2);
+  assert.equal(runCli(['check', PLAN_PATH, '--spec']).status, 2);
+});
+
+// ---- Task 4: cobertura, interfaces, efeito externo, pasta do roadmap ----
+import { EXTERNAL_PATTERNS } from './plan-tool.mjs';
+
+const codes = (r) => r.errors.map((e) => e.code);
+
+test('EXTERNAL_PATTERNS has the default patterns as strings', () => {
+  assert.equal(EXTERNAL_PATTERNS.length, 14);
+  assert.ok(EXTERNAL_PATTERNS.every((p) => typeof p === 'string' && new RegExp(p, 'i')));
+});
+
+test('AC1: acceptance without evidence row -> acceptance-uncovered naming AC1', () => {
+  const r = check(mutate((d) => (d.evidence = d.evidence.filter((e) => e.ac !== 'AC1'))));
+  const e = r.errors.find((x) => x.code === 'acceptance-uncovered');
+  assert.equal(e.ref, 'AC1');
+  assert.match(e.message, /evidência/);
+});
+
+test('AC1: acceptance covered by no task -> acceptance-uncovered naming AC3', () => {
+  const r = check(mutate((d) => (d.tasks[3].covers = [])));
+  const e = r.errors.find((x) => x.code === 'acceptance-uncovered');
+  assert.equal(e.ref, 'AC3');
+  assert.match(e.message, /nenhuma tarefa/);
+});
+
+test('blocked AC2 needs no covering task', () => {
+  const r = check(mutate(() => {}));
+  assert.equal(r.errors.length, 0);
+  assert.ok(!r.data.tasks.some((t) => t.covers.includes('AC2')));
+});
+
+test('AC1: consumed interface never produced -> interface-unproduced', () => {
+  const r = check(mutate((d) => (d.tasks[2].consumes = [{ task: 1, sig: 'deleteItem(id)' }])));
+  const e = find(r, 'interface-unproduced');
+  assert.equal(e.ref, 'T3');
+  assert.match(e.message, /deleteItem\(id\)/);
+});
+
+test('interface-not-upstream when the producer is not an ancestor', () => {
+  const r = check(mutate((d) => {
+    d.tasks[1].produces = ['validate(item) -> ok'];
+    d.tasks[3].consumes = [{ task: 2, sig: 'validate(item)   ->  ok' }];
+  }));
+  const e = find(r, 'interface-not-upstream');
+  assert.equal(e.ref, 'T4');
+  const viaChain = check(mutate((d) => {
+    d.tasks[1].produces = ['validate(item) -> ok'];
+    d.tasks[3].deps = [1, 2];
+    d.tasks[3].consumes = [{ task: 2, sig: 'validate(item) -> ok' }];
+  }));
+  assert.equal(find(viaChain, 'interface-not-upstream'), undefined);
+});
+
+test('AC1: external command declared internal -> external-undeclared', () => {
+  const r = check(mutate((d) => d.tasks[1].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })));
+  const e = find(r, 'external-undeclared');
+  assert.equal(e.ref, 'T2');
+  assert.match(e.message, /git/);
+  const ext = check(mutate((d) => d.tasks[4].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })));
+  assert.equal(find(ext, 'external-undeclared'), undefined);
+  const custom = check(mutate((d) => {
+    d.externalPatterns = ['\\bsync-backend\\b'];
+    d.tasks[1].checks.push({ cmd: 'node scripts/sync-backend.mjs', expect: 'exit 0' });
+  }));
+  assert.equal(find(custom, 'external-undeclared').ref, 'T2');
+  const ev = check(mutate((d) => (d.evidence[0].command = 'npm publish')));
+  assert.ok(ev.errors.some((e) => e.code === 'external-undeclared' && e.ref === 'AC1'));
+});
+
+test('invalid externalPatterns -> field-type', () => {
+  assert.equal(find(check(mutate((d) => (d.externalPatterns = ['(']))), 'field-type').ref, 'externalPatterns');
+  assert.equal(find(check(mutate((d) => (d.externalPatterns = 'x'))), 'field-type').ref, 'externalPatterns');
+});
+
+test('external task without dedupe -> external-dedupe-missing', () => {
+  for (const v of [null, '']) {
+    const r = check(mutate((d) => (d.tasks[4].externalDedupe = v)));
+    assert.equal(find(r, 'external-dedupe-missing').ref, 'T5');
+  }
+});
+
+test('evidence-kind-differs and evidence-command-differs', () => {
+  assert.equal(find(check(mutate((d) => (d.evidence[0].kind = 'smoke'))), 'evidence-kind-differs').ref, 'AC1');
+  assert.equal(find(check(mutate((d) => (d.evidence[0].command = 'node --test tests/other.test.mjs'))), 'evidence-command-differs').ref, 'AC1');
+  const spaced = check(mutate((d) => (d.evidence[0].command = 'node  --test   tests/e1.test.mjs')));
+  assert.equal(find(spaced, 'evidence-command-differs'), undefined);
+});
+
+test('cover-unknown for a task and for an evidence row', () => {
+  const r = check(mutate((d) => {
+    d.tasks[0].covers.push('AC9');
+    d.evidence.push({ ac: 'AC9', kind: 'test', command: 'node --test x', external: false });
+  }));
+  const refs = r.errors.filter((e) => e.code === 'cover-unknown').map((e) => e.ref).sort();
+  assert.deepEqual(refs, ['AC9', 'T1']);
+});
+
+test('edge-case-uncovered', () => {
+  const r = check(mutate((d) => (d.tasks[1].covers = [])));
+  assert.equal(find(r, 'edge-case-uncovered').ref, 'C1');
+});
+
+test('external-effect-unperformed', () => {
+  const a = check(mutate((d) => (d.tasks[4].external = false)));
+  assert.equal(find(a, 'external-effect-unperformed').ref, 'X1');
+  const b = check(mutate((d) => (d.tasks[4].covers = [])));
+  assert.equal(find(b, 'external-effect-unperformed').ref, 'X1');
+});
+
+test('roadmap-edit', () => {
+  const r = check(mutate((d) => d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo/status.md')));
+  assert.equal(find(r, 'roadmap-edit').ref, 'T6');
+  const other = check(mutate((d) => d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo-2/status.md')));
+  assert.equal(find(other, 'roadmap-edit'), undefined);
+  const noRoadmap = check(mutate((d) => {
+    d.roadmap = null;
+    d.tasks[5].files.modify.push('docs/plans/roadmap-exemplo/status.md');
+  }));
+  assert.equal(find(noRoadmap, 'roadmap-edit'), undefined);
+});
+
+test('task-too-wide is a warning', () => {
+  const r = check(mutate((d) => d.tasks[5].files.modify.push('a.md', 'b.md', 'c.md', 'd.md')));
+  assert.equal(r.errors.length, 0);
+  assert.equal(r.warnings.find((w) => w.code === 'task-too-wide').ref, 'T6');
+});
+
+test('AC1: each planted defect gives its named error', () => {
+  const defects = [
+    ['dependency-cycle', (d) => (d.tasks[0].deps = [4])],
+    ['write-conflict', (d) => d.tasks[3].files.create.push('src/view.mjs')],
+    ['acceptance-uncovered', (d) => (d.evidence = d.evidence.filter((e) => e.ac !== 'AC1'))],
+    ['interface-unproduced', (d) => (d.tasks[2].consumes = [{ task: 1, sig: 'deleteItem(id)' }])],
+    ['external-undeclared', (d) => d.tasks[1].checks.push({ cmd: 'git push origin main', expect: 'exit 0' })],
+  ];
+  for (const [code, fn] of defects) {
+    assert.ok(codes(check(mutate(fn))).includes(code), code);
+  }
+});
+
+test('example plan stays at zero errors and warnings', () => {
+  const r = check(PLAN_TEXT);
+  assert.deepEqual([r.errors.length, r.warnings.length], [0, 0]);
+});
+
+// ---- Task 5: emit (resumo de integridade e cópia gerada para os workflows) ----
+import vm from 'node:vm';
+import { emitPlan } from './plan-tool.mjs';
+import { embedFile } from './embed.mjs';
+
+const COPY_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'workflow-copy.js');
+const loadCopy = () => vm.runInNewContext(fs.readFileSync(COPY_PATH, 'utf8'), Object.create(null));
+const emit = (text, opts = {}) => emitPlan(text, { planPath: PLAN_PATH, root: path.join(HERE, '..', '..', '..'), ...opts });
+
+test('AC2: digest changes when a block value changes', () => {
+  const a = emit(PLAN_TEXT);
+  assert.deepEqual(a.errors, []);
+  const b = emit(mutate((d) => (d.tasks[0].checks[0].expect = 'outra coisa')));
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.digest, b.out.digest);
+  const c = emit(mutate((d) => (d.title = (d.title ?? '') + ' x')));
+  assert.equal(a.out.digest === c.out.digest, false);
+});
+
+test('AC2: digest changes when only the prose changes', () => {
+  const a = emit(PLAN_TEXT);
+  const word = /Tarefa/;
+  assert.ok(word.test(PLAN_TEXT));
+  const b = emit(PLAN_TEXT.replace(/(\n[^`#\n][^\n]*?)(\w{4,})/, '$1trocada'));
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.digest, b.out.digest);
+  assert.deepEqual(a.out.plan, b.out.plan);
+});
+
+test('AC2: digest changes when the source path changes', () => {
+  const a = emit(PLAN_TEXT);
+  const b = emit(PLAN_TEXT, { root: HERE });
+  assert.deepEqual(b.errors, []);
+  assert.notEqual(a.out.source.path, b.out.source.path);
+  assert.notEqual(a.out.digest, b.out.digest);
+  assert.ok(!a.out.source.path.includes(String.fromCharCode(92)));
+});
+
+test('AC2: CRLF copy gives the same digest', () => {
+  const lf = emit(PLAN_TEXT.replace(/\r\n/g, '\n'), { specText: SPEC_TEXT.replace(/\r\n/g, '\n') });
+  const crlf = emit(PLAN_TEXT.replace(/\r?\n/g, '\r\n'), { specText: SPEC_TEXT.replace(/\r?\n/g, '\r\n') });
+  const bom = emit('﻿' + PLAN_TEXT.replace(/\r?\n/g, '\r\n'));
+  assert.deepEqual(lf.errors, []);
+  assert.deepEqual(crlf.errors, []);
+  assert.deepEqual(bom.errors, []);
+  assert.equal(crlf.out.digest, lf.out.digest);
+  assert.equal(bom.out.digest, lf.out.digest);
+});
+
+test('AC2: workflow copy recomputes the same digest', () => {
+  const r = runCli(['emit', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.tool, 'plan-tool');
+  assert.equal(out.schema, 'plan/1');
+  assert.equal(loadCopy().planDigest({ plan: out.plan, source: out.source }), out.digest);
+});
+
+test('emit adds route, wave and fileCount', () => {
+  const { out } = emit(PLAN_TEXT);
+  const [t1, , , , t5] = out.plan.tasks;
+  assert.equal(t5.route.tier, 'sonnet');
+  assert.equal(t5.route.reviewTier, 'opus');
+  assert.equal(t5.route.gate, true);
+  assert.equal(t1.fileCount, 2);
+  assert.deepEqual(out.plan.tasks.map((t) => t.wave), [1, 2, 2, 3, 2, 4]);
+});
+
+test('AC3: workflow copy routes every table row like the source', () => {
+  const copy = loadCopy();
+  for (const row of ROUTING_TABLE.rows) {
+    const r = copy.route(rowTask(row.input), { hasDependents: row.input.hasDependents });
+    assert.deepEqual({ tier: r.tier, effort: r.effort, reviewTier: r.reviewTier, gate: r.gate }, row.expected, row.name);
+  }
+});
+
+test('AC3: workflow copy is not stale', () => {
+  assert.equal(embedFile(COPY_PATH, { check: true }).stale, false);
+});
+
+test('workflow copy runs without process, require or crypto', () => {
+  const ctx = vm.createContext(Object.create(null));
+  for (const name of ['process', 'require', 'crypto']) assert.equal(vm.runInContext(`typeof ${name}`, ctx), 'undefined');
+  assert.equal(typeof vm.runInContext(fs.readFileSync(COPY_PATH, 'utf8'), ctx).route, 'function');
+});
+
+test('emit CLI on a plan with errors exits 1 with empty stdout', () => {
+  const dir = tmpDir();
+  try {
+    const bad = path.join(dir, 'plan.md');
+    fs.writeFileSync(bad, mutate((d) => (d.tasks[1].deps = [9])));
+    const r = runCli(['emit', bad, '--spec', SPEC_PATH]);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /ERROR dep-unknown/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- Task 6: map e brief (criterio 4) ----
+const waveNums = (out) => out.waves.map((w) => w.tasks.map((t) => t.n));
+const mapJson = (...extra) => {
+  const r = runCli(['map', PLAN_PATH, '--json', ...extra]);
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout);
+};
+
+test('AC4: map with default width', () => {
+  const out = mapJson();
+  assert.equal(out.tool, 'plan-tool');
+  assert.equal(out.maxWidth, 4);
+  assert.deepEqual(waveNums(out), [[1], [2, 3, 5], [4], [6]]);
+  assert.ok(out.waves.every((w) => w.tasks.length <= 4));
+  assert.ok(!out.waves.some((w) => w.tasks.some((t) => t.n === 3) && w.tasks.some((t) => t.n === 4)));
+  const waveOf = new Map(out.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
+  const { data } = check(PLAN_TEXT);
+  for (const t of data.tasks) for (const d of t.deps) assert.ok(waveOf.get(d) < waveOf.get(t.n), `T${t.n} after T${d}`);
+  assert.deepEqual(out.external, [5]);
+  assert.ok(out.gates.includes(5));
+  assert.deepEqual(Object.keys(out.waves[0].tasks[0]), ['n', 'title', 'tier', 'effort', 'reviewTier', 'gate', 'external', 'locks']);
+});
+
+test('AC4: map with --max-width 2', () => {
+  const out = mapJson('--max-width', '2');
+  assert.equal(out.maxWidth, 2);
+  assert.deepEqual(waveNums(out), [[1], [2, 3], [4, 5], [6]]);
+  assert.ok(out.waves.every((w) => w.tasks.length <= 2));
+});
+
+test('map text output has one line per wave', () => {
+  const r = runCli(['map', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  const lines = r.stdout.split('\n').filter(Boolean);
+  assert.equal(lines.length, 4);
+  assert.match(lines[0], /^Onda 1: T1 \(\w+\/\w+, revisor \w+/);
+  assert.match(lines[1], /T5 \(.*revisor \w+; portão opus, externa\)/);
+});
+
+test('emit wave matches the map', () => {
+  const { out } = emit(PLAN_TEXT);
+  const w = (n) => out.plan.tasks[n - 1].wave;
+  assert.equal(w(3), 2);
+  assert.equal(w(4), 3);
+  assert.equal(w(6), 4);
+});
+
+test('map: invalid --max-width exits 2, plan with errors exits 1', () => {
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', '0']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', 'abc']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width']).status, 2);
+  assert.equal(runCli(['map', PLAN_PATH, '--max-width', '1.5']).status, 2);
+  const dir = tmpDir();
+  try {
+    const bad = path.join(dir, 'plan.md');
+    fs.writeFileSync(bad, mutate((d) => (d.tasks[1].deps = [9])));
+    const r = runCli(['map', bad, '--spec', SPEC_PATH]);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /ERROR dep-unknown/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const sectionOf = (text, n) => {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const start = lines.findIndex((l) => l.startsWith(`### Tarefa ${n}:`));
+  let end = lines.findIndex((l, i) => i > start && /^#{1,3} /.test(l));
+  if (end === -1) end = lines.length;
+  return lines.slice(start + 1, end).join('\n').trim();
+};
+
+test('AC4: brief writes one file per task with the four sections', () => {
+  const dir = tmpDir();
+  try {
+    const r = runCli(['brief', PLAN_PATH, '--out', dir]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['T1.md', 'T2.md', 'T3.md', 'T4.md', 'T5.md', 'T6.md']);
+    assert.equal(r.stdout.split('\n').filter(Boolean).length, 6);
+    const { data } = check(PLAN_TEXT);
+    const briefs = [1, 2, 3, 4, 5, 6].map((n) => fs.readFileSync(path.join(dir, `T${n}.md`), 'utf8'));
+    briefs.forEach((b, i) => {
+      const pos = ['## Restrições', '## Tarefa', '## Interfaces consumidas', '## Passos'].map((h) => b.indexOf(`\n${h}\n`) === -1 ? b.indexOf(`${h}\n`) : b.indexOf(`\n${h}\n`));
+      assert.ok(pos.every((p) => p >= 0), `T${i + 1} sections`);
+      assert.deepEqual([...pos].sort((a, c) => a - c), pos, `T${i + 1} order`);
+      for (const c of data.constraints) assert.ok(b.includes(c), `T${i + 1} constraint`);
+      const t = data.tasks[i];
+      assert.ok(b.includes(t.title));
+      for (const f of [...t.files.create, ...t.files.modify, ...t.files.test]) assert.ok(b.includes(f), `T${i + 1} file ${f}`);
+      for (const k of ['tier', 'effort', 'reviewTier', 'gate']) assert.ok(b.includes(k), `T${i + 1} ${k}`);
+      assert.ok(b.includes(sectionOf(PLAN_TEXT, i + 1)), `T${i + 1} passos`);
+      const passos = b.slice(b.indexOf('## Passos\n') + '## Passos\n'.length).trim();
+      assert.equal(passos, sectionOf(PLAN_TEXT, i + 1));
+    });
+    assert.match(briefs[1], /Item vazio enviado pelo usuário/);
+    assert.match(briefs[4], /Gravar um item no backend de armazenamento real/);
+    assert.match(briefs[4], /consulta o id no backend antes de gravar/);
+    const interfaces = (b) => b.slice(b.indexOf('## Interfaces consumidas'), b.indexOf('## Passos'));
+    assert.ok(interfaces(briefs[2]).includes('T1: loadItem(id) -> item'));
+    assert.ok(interfaces(briefs[0]).includes('nenhuma'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief --task 3 writes only T3.md; --task 9 exits 2', () => {
+  const dir = tmpDir();
+  try {
+    const r = runCli(['brief', PLAN_PATH, '--out', dir, '--task', '3']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(fs.readdirSync(dir), ['T3.md']);
+    assert.equal(runCli(['brief', PLAN_PATH, '--out', dir, '--task', '9']).status, 2);
+    assert.equal(runCli(['brief', PLAN_PATH, '--out', dir, '--task', 'x']).status, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('brief leaves plan and spec untouched and writes LF', () => {
+  const dir = tmpDir();
+  try {
+    const plan = path.join(dir, 'plan.md');
+    const spec = path.join(dir, 'spec.md');
+    fs.writeFileSync(plan, PLAN_TEXT.replace(/\r?\n/g, '\r\n'));
+    fs.writeFileSync(spec, SPEC_TEXT.replace(/\r?\n/g, '\r\n'));
+    const before = [fs.readFileSync(plan), fs.readFileSync(spec)];
+    const out = path.join(dir, 'briefs');
+    const r = runCli(['brief', plan, '--spec', spec, '--out', out]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(before[0].equals(fs.readFileSync(plan)));
+    assert.ok(before[1].equals(fs.readFileSync(spec)));
+    for (const f of fs.readdirSync(out)) assert.equal(fs.readFileSync(path.join(out, f), 'utf8').includes('\r'), false, f);
+    // padrão: briefs/ ao lado do plano
+    const r2 = runCli(['brief', plan, '--spec', spec, '--task', '1']);
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.ok(fs.existsSync(path.join(dir, 'briefs', 'T1.md')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- final-fix: títulos dentro de blocos de código não contam como seções ----
+const fenceProse = (text) => {
+  const { data } = check(PLAN_TEXT);
+  const marker = '### Tarefa 1:';
+  const i = text.indexOf(marker);
+  const j = text.indexOf('\n', i);
+  const inject = '\n\nPasso A.\n\n```bash\n# roda os testes\nnode --test\n### Tarefa 9: falsa\n```\n\nPasso B.\n\n~~~\n# outro comentário\n~~~\n\nPasso C.';
+  assert.ok(data);
+  return text.slice(0, j) + inject + text.slice(j);
+};
+
+test('final-fix: comentário e título dentro de cerca não cortam a seção nem viram órfão', () => {
+  const dir = tmpDir();
+  try {
+    const plan = path.join(dir, 'plan.md');
+    fs.writeFileSync(plan, fenceProse(PLAN_TEXT));
+    const { errors } = check(fs.readFileSync(plan, 'utf8'));
+    assert.deepEqual(errors.filter((e) => e.code === 'task-heading-orphan'), []);
+    const out = path.join(dir, 'briefs');
+    const r = runCli(['brief', plan, '--spec', SPEC_PATH, '--out', out, '--task', '1']);
+    assert.equal(r.status, 0, r.stderr);
+    const b = fs.readFileSync(path.join(out, 'T1.md'), 'utf8');
+    for (const s of ['Passo A.', '# roda os testes', '### Tarefa 9: falsa', 'Passo B.', '# outro comentário', 'Passo C.']) assert.ok(b.includes(s), s);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- Ratificação: DEC-205, DEC-206, DEC-208 e padrões externos ----
+test('DEC-208: emit honors maxWidth and records it in the plan and the digest', () => {
+  const d4 = emit(PLAN_TEXT);
+  const d2 = emit(PLAN_TEXT, { maxWidth: 2 });
+  assert.deepEqual(d2.errors, []);
+  assert.equal(d4.out.plan.maxWidth, 4);
+  assert.equal(d2.out.plan.maxWidth, 2);
+  assert.deepEqual(d2.out.plan.tasks.map((t) => t.wave), [1, 2, 2, 3, 3, 4]);
+  assert.notEqual(d4.out.digest, d2.out.digest);
+});
+
+test('DEC-208: emit, map and brief CLIs agree on waves with --max-width 2', () => {
+  const m = JSON.parse(runCli(['map', PLAN_PATH, '--max-width', '2', '--json']).stdout);
+  const mapWave = new Map(m.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
+  const r = runCli(['emit', PLAN_PATH, '--max-width', '2']);
+  assert.equal(r.status, 0, r.stderr);
+  const e = JSON.parse(r.stdout);
+  assert.equal(e.plan.maxWidth, 2);
+  for (const t of e.plan.tasks) assert.equal(t.wave, mapWave.get(t.n));
+  const dir = tmpDir();
+  try {
+    const b = runCli(['brief', PLAN_PATH, '--max-width', '2', '--out', dir]);
+    assert.equal(b.status, 0, b.stderr);
+    for (const t of e.plan.tasks) {
+      const txt = fs.readFileSync(path.join(dir, 'T' + t.n + '.md'), 'utf8');
+      assert.match(txt, new RegExp('- Onda: ' + t.wave + '\\n'));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(runCli(['emit', PLAN_PATH, '--max-width', '0']).status, 2);
+});
+
+test('DEC-205: emit from two working directories gives the same summary', () => {
+  const rel = path.relative(HERE, PLAN_PATH);
+  const a = runCli(['emit', PLAN_PATH], { cwd: os.tmpdir() });
+  const b = runCli(['emit', rel], { cwd: HERE });
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(b.status, 0, b.stderr);
+  const ja = JSON.parse(a.stdout);
+  const jb = JSON.parse(b.stdout);
+  assert.equal(ja.digest, jb.digest);
+  assert.deepEqual(ja.source, jb.source);
+  assert.equal(ja.source.path, 'plugins/productivity-tools/scripts/fixtures/plan-tool/plan.md');
+});
+
+test('DEC-205: outside git the source path is relative to the plan folder', () => {
+  const dir = tmpDir();
+  try {
+    const p = path.join(dir, 'plan.md');
+    fs.writeFileSync(p, PLAN_TEXT);
+    const r = emitPlan(PLAN_TEXT, { planPath: p, specText: SPEC_TEXT });
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.out.source.path, 'plan.md');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('DEC-206: map and brief never show a bare ambiguous gate', () => {
+  const r = runCli(['map', PLAN_PATH]);
+  for (const line of r.stdout.split('\n').filter(Boolean)) assert.ok(!/, portão/.test(line), line);
+  assert.match(r.stdout, /T5 \(sonnet\/\w+, revisor opus; portão opus, externa\)/);
+  const dir = tmpDir();
+  try {
+    const b = runCli(['brief', PLAN_PATH, '--out', dir]);
+    assert.equal(b.status, 0, b.stderr);
+    const t5 = fs.readFileSync(path.join(dir, 'T5.md'), 'utf8');
+    assert.match(t5, /gate true \(portão do coordinator: opus\)/);
+    const t1 = fs.readFileSync(path.join(dir, 'T1.md'), 'utf8');
+    assert.match(t1, /gate false\n/);
+    assert.ok(!/portão/.test(t1));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const hits = (cmd) => EXTERNAL_PATTERNS.some((p) => new RegExp(p, 'i').test(cmd));
+
+test('external patterns: writing curl, PowerShell requests with a write method, scp and sqlcmd match', () => {
+  for (const cmd of [
+    'curl -d @body.json https://x.test/api',
+    "curl --data-raw '{}' https://x.test/api",
+    'curl -F file=@a.zip https://x.test/up',
+    'curl -X POST https://x.test/api',
+    'curl -s -X DELETE https://x.test/api/1',
+    'Invoke-RestMethod -Uri https://x.test -Method Post -Body $b',
+    'Invoke-WebRequest https://x.test -Method DELETE',
+    'scp build.zip host:/srv/',
+    'sqlcmd -S srv -Q "DELETE FROM t"',
+  ]) assert.ok(hits(cmd), cmd);
+});
+
+test('external patterns: read-only GET requests are not external effects (decision: reading is not an effect)', () => {
+  for (const cmd of [
+    'curl -s https://x.test/health',
+    'curl -sS -o out.json https://x.test/data',
+    'Invoke-RestMethod https://x.test/data',
+    'Invoke-WebRequest -Uri https://x.test -Method Get',
+    'node --test scripts/',
+    'echo discard',
+  ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('external patterns: PowerShell aliases, -Method variants, curl long and combined flags', () => {
+  for (const cmd of [
+    'irm https://x.test -Method Post -Body $b',
+    'iwr https://x.test -Method DELETE',
+    'Invoke-RestMethod https://x.test -Method:Post',
+    "Invoke-WebRequest https://x.test -Method 'POST'",
+    'Invoke-RestMethod https://x.test -Method "put"',
+    'curl --request POST https://x.test',
+    'curl --request=DELETE https://x.test',
+    'curl --request PATCH https://x.test',
+    'curl --request PUT https://x.test',
+    'curl --json \'{"a":1}\' https://x.test',
+    'curl -sd x https://x.test',
+    'curl -sSd @b.json https://x.test',
+    'curl -sF a=b https://x.test',
+    'cd out && scp a host:/b',
+    'scp a host:/b',
+  ]) assert.ok(hits(cmd), cmd);
+});
+
+test('external patterns: no false positives for GET aliases, curl -f and scp-like names', () => {
+  for (const cmd of [
+    'irm https://x.test/data',
+    'iwr https://x.test -Method:Get',
+    "Invoke-RestMethod https://x.test -Method 'get'",
+    'curl --request GET https://x.test',
+    'curl -sf https://x.test/health',
+    'curl -f https://x.test/?a=b',
+    'node scp-like-name.mjs',
+    'cat docs/scp-notes.md',
+  ]) assert.ok(!hits(cmd), cmd);
+});
+
+test('DEC-205: source path is the same through a junction or symlink', (t) => {
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-real-'));
+  const link = path.join(os.tmpdir(), `plan-link-${process.pid}-${Date.now()}`);
+  try {
+    try {
+      fs.symlinkSync(real, link, 'junction');
+    } catch (e) {
+      t.skip(`cannot create link: ${e.code}`);
+      return;
+    }
+    fs.writeFileSync(path.join(real, 'plan.md'), PLAN_TEXT);
+    const viaLink = emitPlan(PLAN_TEXT, { planPath: path.join(link, 'plan.md'), root: real, specText: SPEC_TEXT });
+    const direct = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: real, specText: SPEC_TEXT });
+    assert.equal(viaLink.out.source.path, 'plan.md');
+    assert.equal(viaLink.out.source.path, direct.out.source.path);
+    const viaRootLink = emitPlan(PLAN_TEXT, { planPath: path.join(real, 'plan.md'), root: link, specText: SPEC_TEXT });
+    assert.equal(viaRootLink.out.source.path, 'plan.md');
+  } finally {
+    try { fs.rmSync(link, { recursive: true, force: true }); } catch {}
+    fs.rmSync(real, { recursive: true, force: true });
+  }
+});
+
+test('usage text does not announce --max-width for check', () => {
+  const err = [];
+  const code = main([], { stdout: { write() {} }, stderr: { write: (s) => err.push(s) } });
+  assert.equal(code, 2);
+  assert.doesNotMatch(err.join(''), /check\|emit[^\n]*--max-width/);
+  assert.match(err.join(''), /check [^\n]*\n/);
+});
