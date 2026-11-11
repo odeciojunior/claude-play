@@ -16,6 +16,24 @@ const SKILL_KEYS = new Set([
   'license',
   'metadata',
 ]);
+const AGENT_KEYS = new Set([
+  'name',
+  'description',
+  'tools',
+  'disallowedTools',
+  'model',
+  'effort',
+  'maxTurns',
+  'skills',
+  'memory',
+  'background',
+  'isolation',
+  'omitClaudeMd',
+  'color',
+  'autoCompactWindow',
+  'experimental',
+]);
+const SCRIPT_EXT = /\.(mjs|js|cjs|sh|ps1|py)$/;
 const AGENT_IGNORED_KEYS = ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'];
 const RESERVED_PREFIXES = ['claude-', 'anthropic-', 'anthropics-', 'cc-plugin-'];
 const RESERVED_NAMES = ['claude', 'anthropic', 'anthropics', 'claude-code', 'claude-mods'];
@@ -259,10 +277,9 @@ export function lintPlugin(dir, { marketplace } = {}) {
   }
 
   // ---- Check 5: agents ----
-  for (const e of listDir(path.join(dir, 'agents'))) {
-    if (!e.isFile() || !e.name.endsWith('.md')) continue;
-    const name = `agents/${e.name}`;
-    const fm = parseFrontmatter(readText(path.join(dir, 'agents', e.name)));
+  for (const file of walk(path.join(dir, 'agents')).filter((f) => f.endsWith('.md'))) {
+    const name = rel(dir, file);
+    const fm = parseFrontmatter(readText(file));
     if (!fm) {
       add('FAIL', `${name} frontmatter`, 'line 1 must be --- and the block must be closed');
       continue;
@@ -273,6 +290,11 @@ export function lintPlugin(dir, { marketplace } = {}) {
     if (!fm.keys.get('description')) issues.push('missing description');
     for (const k of AGENT_IGNORED_KEYS) {
       if (fm.keys.has(k)) issues.push(`key ${k} is ignored for plugin agents`);
+    }
+    for (const k of fm.keys.keys()) {
+      if (!AGENT_KEYS.has(k) && !AGENT_IGNORED_KEYS.includes(k)) {
+        issues.push(`key ${k} is outside the allowed agent frontmatter keys (repo policy)`);
+      }
     }
     if (issues.length) for (const i of issues) add('FAIL', `${name} frontmatter`, i);
     else ok(`${name} frontmatter`);
@@ -304,7 +326,7 @@ export function lintPlugin(dir, { marketplace } = {}) {
 
   // ---- Check 7: writes into CLAUDE_PLUGIN_ROOT ----
   const hits = [];
-  for (const top of ['scripts', 'skills', 'hooks']) {
+  for (const top of ['scripts', 'skills', 'hooks', 'lib']) {
     for (const file of walk(path.join(dir, top))) {
       if (file.endsWith('.test.mjs')) continue;
       let text;
@@ -326,6 +348,28 @@ export function lintPlugin(dir, { marketplace } = {}) {
     }
   } else {
     ok('No writes into CLAUDE_PLUGIN_ROOT');
+  }
+
+  // ---- Check 7b: script names are unique ----
+  const byName = new Map();
+  for (const top of ['scripts', 'skills', 'lib']) {
+    for (const file of walk(path.join(dir, top))) {
+      const r = rel(dir, file);
+      const inScope =
+        top !== 'skills' || /^skills\/[^/]+\/(scripts|workflow)\//.test(r);
+      if (!inScope || file.endsWith('.test.mjs') || !SCRIPT_EXT.test(file)) continue;
+      const base = path.basename(file);
+      if (!byName.has(base)) byName.set(base, []);
+      byName.get(base).push(r);
+    }
+  }
+  const dups = [...byName.entries()].filter(([, v]) => v.length > 1);
+  if (dups.length) {
+    for (const [base, paths] of dups) {
+      add('WARN', 'Script names are unique', `${base} appears in ${paths.join(', ')}; permission rules match by file name`);
+    }
+  } else {
+    ok('Script names are unique');
   }
 
   // ---- Check 8: README + marketplace ----
