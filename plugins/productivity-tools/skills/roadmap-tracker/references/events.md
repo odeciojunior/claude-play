@@ -1,29 +1,29 @@
 # Event recipes
 
-One recipe per event. Each names the files in the order they change, the cells to write, and the checker codes to watch. File formats, anchors, column orders and cell rules are in formats.md (see SKILL.md for the formats reference); this file never restates a template.
+One recipe per event, one file per recipe under `references/events/`. The numbering is stable: a citation like `events.md § N` resolves through this table. Each recipe names the files in the order they change, the cells to write, and the checker codes to watch. File formats, anchors, column orders and cell rules are in formats.md (see SKILL.md for the formats reference); this file never restates a template.
 
-## Contents
-
-1. Decision
-2. Piece or step closed
-3. Integration
-4. Branch deleted
-5. Blocker opened or closed
-6. Measurement
-7. New source
-8. New requirement mid-flight
-9. End of piece or phase (revision)
-10. Checker refresh
-11. Migration
-12. Package published
-13. Do not do now
-14. Events from plan-coordinator
-15. Merge into the release branch
-16. Release branch integrated
-17. Acceptance pending
-18. Executor decision
-19. Deliverable closed: criteria check
-20. Spec, plan or execution started
+| § | Event | Recipe file |
+|---|---|---|
+| 1 | Decision | `events/01-decision.md` |
+| 2 | Piece or step closed | `events/02-piece-closed.md` |
+| 3 | Integration | `events/03-integration.md` |
+| 4 | Branch deleted | `events/04-branch-deleted.md` |
+| 5 | Blocker opened or closed | `events/05-blocker.md` |
+| 6 | Measurement | `events/06-measurement.md` |
+| 7 | New source | `events/07-new-source.md` |
+| 8 | New requirement mid-flight | `events/08-new-requirement.md` |
+| 9 | End of piece or phase (revision) | `events/09-revision.md` |
+| 10 | Checker refresh | `events/10-checker-refresh.md` |
+| 11 | Migration | `events/11-migration.md` |
+| 12 | Package published | `events/12-package-published.md` |
+| 13 | Do not do now | `events/13-do-not-do-now.md` |
+| 14 | Events from plan-coordinator | `events/14-plan-coordinator.md` |
+| 15 | Merge into the release branch | `events/15-merge-release.md` |
+| 16 | Release branch integrated | `events/16-release-integrated.md` |
+| 17 | Acceptance pending | `events/17-acceptance-pending.md` |
+| 18 | Executor decision | `events/18-executor-decision.md` |
+| 19 | Deliverable closed: criteria check | `events/19-criteria-check.md` |
+| 20 | Spec, plan or execution started | `events/20-spec-plan-started.md` |
 
 Common to every recipe:
 
