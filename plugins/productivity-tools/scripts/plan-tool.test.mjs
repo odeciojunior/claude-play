@@ -709,3 +709,31 @@ test('brief leaves plan and spec untouched and writes LF', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- final-fix: títulos dentro de blocos de código não contam como seções ----
+const fenceProse = (text) => {
+  const { data } = check(PLAN_TEXT);
+  const marker = '### Tarefa 1:';
+  const i = text.indexOf(marker);
+  const j = text.indexOf('\n', i);
+  const inject = '\n\nPasso A.\n\n```bash\n# roda os testes\nnode --test\n### Tarefa 9: falsa\n```\n\nPasso B.\n\n~~~\n# outro comentário\n~~~\n\nPasso C.';
+  assert.ok(data);
+  return text.slice(0, j) + inject + text.slice(j);
+};
+
+test('final-fix: comentário e título dentro de cerca não cortam a seção nem viram órfão', () => {
+  const dir = tmpDir();
+  try {
+    const plan = path.join(dir, 'plan.md');
+    fs.writeFileSync(plan, fenceProse(PLAN_TEXT));
+    const { errors } = check(fs.readFileSync(plan, 'utf8'));
+    assert.deepEqual(errors.filter((e) => e.code === 'task-heading-orphan'), []);
+    const out = path.join(dir, 'briefs');
+    const r = runCli(['brief', plan, '--spec', SPEC_PATH, '--out', out, '--task', '1']);
+    assert.equal(r.status, 0, r.stderr);
+    const b = fs.readFileSync(path.join(out, 'T1.md'), 'utf8');
+    for (const s of ['Passo A.', '# roda os testes', '### Tarefa 9: falsa', 'Passo B.', '# outro comentário', 'Passo C.']) assert.ok(b.includes(s), s);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

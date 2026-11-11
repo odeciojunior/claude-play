@@ -128,11 +128,31 @@ function checkEvidenceSchema(row, pos, err, warn) {
   if ('blq' in row && row.blq !== null && !(typeof row.blq === 'string' && /^BLQ-\d+$/.test(row.blq))) err('field-type', ref, '"blq" deve ser null ou BLQ-<n>');
 }
 
+// Para cada linha, true quando ela esta dentro (ou e a cerca de) um bloco de codigo cercado; titulos so valem fora de cercas.
+function fencedLines(lines) {
+  const flags = [];
+  let open = null;
+  for (const line of lines) {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (open === null) {
+      flags.push(m !== null);
+      if (m) open = m[1];
+    } else {
+      flags.push(true);
+      if (m && m[1][0] === open[0] && m[1].length >= open.length && /^ {0,3}[`~]+\s*$/.test(line)) open = null;
+    }
+  }
+  return flags;
+}
+
 // Cabecalhos de tarefa na prosa: n -> { title, line }.
 function taskHeadings(prose) {
   const found = new Map();
   const re = /^### (?:Tarefa|Task) (\d+):\s*(.+)$/;
-  for (const line of prose.split('\n')) {
+  const lines = prose.split('\n');
+  const fenced = fencedLines(lines);
+  for (const [i, line] of lines.entries()) {
+    if (fenced[i]) continue;
     const m = re.exec(line);
     if (m && !found.has(Number(m[1]))) found.set(Number(m[1]), m[2]);
   }
@@ -510,9 +530,10 @@ const waveLine = (w) =>
 function proseSection(prose, n) {
   const lines = prose.replace(/\r\n?/g, '\n').split('\n');
   const re = new RegExp('^### (?:Tarefa|Task) ' + n + ':');
-  const start = lines.findIndex((l) => re.test(l));
+  const fenced = fencedLines(lines);
+  const start = lines.findIndex((l, i) => !fenced[i] && re.test(l));
   if (start === -1) return '';
-  let end = lines.findIndex((l, i) => i > start && /^#{1,3} /.test(l));
+  let end = lines.findIndex((l, i) => i > start && !fenced[i] && /^#{1,3} /.test(l));
   if (end === -1) end = lines.length;
   return lines.slice(start + 1, end).join('\n').trim();
 }
