@@ -1,6 +1,6 @@
 # E1 -- Ferramentas de medição e cenário fixo: desenho
 
-Entregável E1 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, card E1). Requisitos: REQ-001, REQ-031, REQ-035. Depende de: nada. Decisões que este desenho segue: DEC-011, DEC-016, DEC-017, DEC-032, DEC-033, DEC-043, DEC-051 (e DEC-034, só como contexto de E15).
+Entregável E1 do roadmap `docs/plans/roadmap-evolucao-skills/` (estratégia `docs/plans/2026-11-10-roadmap-evolucao-skills.md`, card E1). Requisitos: REQ-001, REQ-031, REQ-035. Depende de: nada. Decisões que este desenho segue: DEC-011, DEC-016, DEC-017, DEC-032, DEC-033, DEC-043, DEC-051, as decisões deste desenho ratificadas pelo dono como DEC-062 a DEC-080, e as emendas DEC-081 (comparador), DEC-082 (validade) e DEC-083 (arnês) (e DEC-034 e DEC-084, só como contexto de E15).
 
 Escopo: só ferramentas e dados de exemplo fabricados. Nenhuma execução paga acontece aqui (são de E15), nenhuma transcrição real entra no repositório, e nenhuma versão de plugin muda (branches de entregável não mexem na versão).
 
@@ -164,6 +164,8 @@ Validade de uma tentativa (lida do diário completo do workflow, `subagents/work
 
 Fora disso a tentativa é inválida, contada à parte e repetida pelo operador.
 
+Formato do diário (DEC-082): a checagem só dá `valid` quando encontra no diário os campos de que a regra da variante depende (o rótulo de cada entrada e, conforme a regra, o resultado de `E5:plan` com `reused`, o `measuredPlanBlob` de `E5:plan-review1`, as entradas de tarefa e de revisão, o blob medido pelo arnês). Diário ausente, linha que não é JSON, entrada sem rótulo ou campo esperado ausente fazem a tentativa sair inválida com o motivo `formato-do-diario`, nunca válida por falta de dado. O motivo fica no agregado com a contagem das inválidas, para que uma mudança de formato da CLI apareça logo na primeira tentativa.
+
 Desfecho por defeito, numa tentativa válida, pela sentinela no fim do estágio:
 
 - **capturado**: a sentinela não acusa mais;
@@ -189,13 +191,13 @@ CLI: `node tools/measure/run-batch.mjs --variant <nome> --runs <n> --work <pasta
 
 ### Comparador `compare.mjs`
 
-`node tools/measure/compare.mjs --before <aggregate.json> --after <aggregate.json> [--margin 6] [--attempts 40] [--bytes-tolerance 0.03]` imprime JSON: um veredito por contador (`piorou`, `nao-piorou`, `inconclusivo`), a detecção por classe e `bloqueia` (verdadeiro se algum contador que bloqueia piorou ou se a detecção de alguma classe caiu). Código de saída: 0 sem bloqueio, 1 com bloqueio, 2 erro de uso.
+`node tools/measure/compare.mjs --before <aggregate.json> --after <aggregate.json> [--margin 6] [--attempts 40] [--bytes-tolerance 0.03]` imprime JSON: um veredito por contador (`piorou`, `nao-piorou`, `inconclusivo`), a detecção por classe e `bloqueia` (verdadeiro se algum contador que bloqueia piorou, se a detecção de alguma classe caiu ou se a detecção de alguma classe saiu inconclusiva por faltarem tentativas válidas, DEC-081). Código de saída: 0 sem bloqueio, 1 com bloqueio, 2 erro de uso.
 
 Classes de contador (DEC-033, detalhadas em SRC-12):
 
 | Classe | Contadores | Piorou | Não piorou | Inconclusivo | Bloqueia |
 |---|---|---|---|---|---|
-| estrutural | chamadas por modelo fora do laço de tarefas e de rodadas além da primeira; total ponderado (haiku 1, sonnet 20, opus 40) | mediana depois > mediana antes | mediana depois ≤ mediana antes | algum lado sem valores | sim |
+| estrutural | chamadas por modelo fora do laço de tarefas e de rodadas além da primeira; total ponderado (haiku 1, sonnet 20, opus 40) | mediana depois > mediana antes | mediana depois ≤ mediana antes | algum lado sem valores; no total ponderado, também alguma chamada em família sem peso (`fable`, `other`) em algum lado (DEC-081) | sim |
 | bytes | bytes de prompt dessas mesmas chamadas | mediana depois > 1,03 × mediana antes | caso contrário | algum lado sem valores | sim (o dono pode liberar com decisão registrada, DEC-033) |
 | por tarefa | chamadas ponderadas do laço de tarefas divididas pelo número de tarefas | mínimo depois > máximo antes | máximo depois ≤ mínimo antes | faixas se sobrepõem | sim |
 | condicional | rodadas além da primeira e chamadas de correção | separação total, como acima | idem | idem | sim |
@@ -205,11 +207,13 @@ Classes de contador (DEC-033, detalhadas em SRC-12):
 
 Contadores dinâmicos de planner e tracker (uma execução cada, DEC-016) saem como `registrado`, sem veredito.
 
-Detecção por classe (`plan`, `code`, `spec`): taxa de captura = capturados / (capturados + perdidos). Queda = (taxa antes − taxa depois) × `--attempts`. Com queda ≥ `--margin` (padrão 6 em 40, 15 pontos), a classe `caiu` e bloqueia; abaixo, `nao-caiu`. Com menos de `--attempts` tentativas válidas em algum lado, `inconclusivo`, sem bloqueio, e a saída diz quantas faltam. A taxa conta só defeitos `detectedBy: reviewer`.
+Detecção por classe (`plan`, `code`, `spec`): taxa de captura = capturados / (capturados + perdidos). Queda = (taxa antes − taxa depois) × `--attempts`. Com queda ≥ `--margin` (padrão 6 em 40, 15 pontos), a classe `caiu` e bloqueia; abaixo, `nao-caiu`. Com menos de `--attempts` tentativas válidas em algum lado, `inconclusivo`, e a saída diz quantas faltam; esse inconclusivo bloqueia o ponto de medição (`bloqueia` verdadeiro), e o dono pode liberá-lo com decisão registrada, como já acontece com os bytes (DEC-081, DEC-033). A taxa conta só defeitos `detectedBy: reviewer`.
+
+Família sem peso: os pesos só existem para haiku, sonnet e opus. Uma chamada em `fable` ou `other` nas tentativas de algum lado deixa o total ponderado `inconclusivo`, com a família e a contagem na saída, em vez de entrar com peso zero (DEC-081). Os contadores por família continuam com veredito próprio. Como o estrutural bloqueia só quando piora, esse inconclusivo não liga `bloqueia` sozinho; a saída o lista para o dono.
 
 Detecção por código: a saída traz um campo `deteccaoPorCodigo` à parte, com, para cada PX, a contagem antes e depois e `regrediu` quando algum PX acusado em todas as tentativas antes aparece como perdido depois. É informativo e não entra em `bloqueia`, porque essas checagens são determinísticas e já cobertas pelos testes do workflow em G1.
 
-O teste do critério 6 usa agregados fabricados em `fixtures/` com um caso de cada veredito por classe, um caso de queda de detecção acima e abaixo da margem, e um caso com desfechos de PX que confere que eles saem em `deteccaoPorCodigo` e não mudam a taxa da classe `plan`.
+O teste do critério 6 usa agregados fabricados em `fixtures/` com um caso de cada veredito por classe, um caso de queda de detecção acima e abaixo da margem, um caso de detecção inconclusiva por faltarem tentativas válidas que confere `bloqueia` verdadeiro (DEC-081), um caso com chamada em `fable` ou `other` que confere o total ponderado `inconclusivo` em vez de somado com peso zero (DEC-081), e um caso com desfechos de PX que confere que eles saem em `deteccaoPorCodigo` e não mudam a taxa da classe `plan`.
 
 ### Arnês de estágio de revisão
 
@@ -218,8 +222,9 @@ Modo do lançador: `run-batch.mjs --stage <spec-review|plan-review|task-review> 
 - Gera no sandbox um script de workflow `review-only.js` que chama só o revisor do estágio sobre o artefato semeado e, se houver achado que bloqueia, uma rodada do corretor; depois o lançador avalia as sentinelas e aplica os mesmos desfechos da peça 4 (capturado, perdido, indeterminado).
 - O script fica dentro do sandbox, que é o diretório de trabalho e portanto legível, e é lançado por caminho com `--allowedTools Workflow` (SRC-14).
 - Prompts do braço `atual`: para a revisão por tarefa, `buildTaskReviewPrompt` do bloco `// <pure>` do workflow, carregado com `load-pure.mjs`; para spec e plano, cujos prompts estão embutidos fora do bloco puro, modelos em `arms/spec-review-atual.md` e `arms/plan-review-atual.md` (e os dos corretores), com um teste de defasagem que falha quando a lista de bloqueios do modelo não aparece, literal, em `roadmap-release.js`.
+- Origem da cópia (DEC-083): cada modelo `arms/*-atual.md` de spec e de plano abre com uma linha `Copied from: plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js at commit <sha>`, onde `<sha>` é o commit completo (40 hex) do último commit que alterou `roadmap-release.js` quando a cópia foi tirada. O agregado do arnês registra, por estágio, `arm`, `armSource: "copia-do-prompt"` e `workflowCommit: <sha>` para os braços `atual` de spec e de plano; o braço `atual` de tarefa, carregado do próprio workflow, registra `armSource: "workflow"`. Um modelo sem essa linha faz o arnês recusar o braço (erro de uso, código 2).
 - Outros braços (de E26 e E27) entram como arquivos novos em `arms/`, sem mudar o arnês.
-- Os testes do arnês ficam em `run-batch.test.mjs`, com executor simulado: o script gerado é JavaScript válido, despacha só o revisor e o corretor, e os desfechos saem das sentinelas.
+- Os testes do arnês ficam em `run-batch.test.mjs`, com executor simulado: o script gerado é JavaScript válido, despacha só o revisor e o corretor, os desfechos saem das sentinelas, e o agregado traz `armSource` e `workflowCommit` lidos do modelo (e a recusa de um modelo sem a linha de origem).
 
 ## Privacidade (critério 5)
 
@@ -237,7 +242,7 @@ O extrator e o lançador nunca gravam em `tools/measure/` fora de `out/`, que o 
 - Critério 3: `plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.test.mjs` (casos novos; os atuais continuam passando).
 - Critério 4: `tools/measure/make-scenario.test.mjs`.
 - Critério 6: `tools/measure/compare.test.mjs`.
-- Critério 7 e arnês: `tools/measure/run-batch.test.mjs`.
+- Critério 7, validade e arnês: `tools/measure/run-batch.test.mjs`, com um caso de diário sem os campos esperados (e um de diário ausente) que confere a tentativa `invalid` com o motivo `formato-do-diario` (DEC-082).
 - Nenhum teste chama `claude`, rede ou a pasta de configuração real; tudo roda em pastas temporárias.
 - G1 (comando canônico), G2, G3 e G5 continuam verdes; o lint do plugin (G5) e a validação (G3) cobrem a mudança em `make-sandbox.mjs`. Os testes de `tools/` rodam pelos comandos `{verify}` e pelo comando novo do `CLAUDE.md`.
 - Nenhum servidor nem porta: a faixa 5200-5209 não é usada.
@@ -249,32 +254,20 @@ O extrator e o lançador nunca gravam em `tools/measure/` fora de `out/`, que o 
 - A interrupção da sessão na parada e retomada pode cair no meio da tarefa 2: a retomada lê o estado do git e limpa a árvore (caminho de retomada do próprio release); a tentativa só é contada se a segunda sessão terminar.
 - Execução sem interface com regras faltando: o lançador passa as regras por parâmetro e confere `permission_denials`. No release atual (antes de E25) o workflow é lançado por caminho a partir do cache, que no modo padrão é recusado sem a pasta legível (DEC-061); o operador escolhe o modo e as regras (`--permission-mode`, `--allow`, `--add-dir`), e o modo fica registrado.
 - Lista de bloqueios do revisor muda no workflow: o teste de defasagem dos braços `atual` falha em G1 de quem roda `tools/**`.
+- Pontos de medição retidos por tentativas inválidas (DEC-081, DEC-082): a detecção inconclusiva bloqueia e um diário fora do formato invalida a tentativa; o agregado mostra quantas faltam e o motivo das inválidas, e o dono libera com decisão registrada.
 
 ## Autonomous decisions (reviewable by the owner)
 
+As decisões 1 a 19 da versão anterior deste desenho foram ratificadas pelo dono como DEC-062 a DEC-080 (vigentes em `decisions.md`), com as emendas DEC-081 (a DEC-074, comparador), DEC-082 (a DEC-073, validade) e DEC-083 (a DEC-076, arnês), já absorvidas nas peças 4 e 6; DEC-084 (a DEC-080) é só operação de E15 e não muda este desenho. Não são listadas de novo. Ficam pendentes só as decisões novas que as emendas exigiram.
+
 Origem executor, status pendente. Alcance na última frase.
 
-1. Layout de `tools/measure/` como na visão geral, com o arnês como modo de `run-batch.mjs` e seus testes em `run-batch.test.mjs`, para não criar arquivo de teste fora da lista do card. Base: SRC-12, questão 1. Custo se errada: mover arquivos. Reversível. Alcance: contrato.
-2. Execução = sessão, ou tentativa do lançador quando há manifesto; sai a heurística de janelas EXT/TURN. Base: sob o lançador cada execução é uma sessão `claude -p`. Custo se errada: refazer o agrupamento para sessões interativas, que nenhuma medição do roadmap usa. Reversível. Alcance: local.
-3. Papéis por família de rótulo, com status, progresso, log de revisões e relatório separados (tabela da peça 1). Base: SRC-10, revisão 2, item 1. Custo se errada: reclassificar rótulos. Reversível. Alcance: contrato.
-4. Bytes de prompt = bytes UTF-8 da primeira mensagem de usuário de cada agente; o contexto principal é o papel `main`. Base: SRC-12. Custo se errada: recalcular a linha de base. Reversível antes de E15. Alcance: contrato.
-5. `prices.json` datado com os valores da página oficial, preços de SRC-10 já conhecidos, e custo `null` para modelo sem preço. Base: SRC-10, revisão 2, item 3. Custo se errada: reprecificar. Reversível. Alcance: local.
-6. O sandbox ganha E5 (três peças puras, sem efeito externo) e `scenario/stop-resume.json`; E1 a E4 ficam idênticos. Base: comparabilidade com execuções passadas. Custo se errada: refazer o cenário antes de E15. Reversível antes de E15. Alcance: contrato.
-7. A parada do roteiro é a interrupção da sessão depois do primeiro commit `E5 T1:` e a retomada é um lançamento novo; descartada a parada por tarefa externa sem autorização, que faria a variante completa parar também. Base: o workflow não tem argumento de parada. Custo se errada: variância maior na retomada. Reversível. Alcance: contrato.
-8. Texto do cenário em inglês, a língua do sandbox. Custo se errada: tradução. Reversível. Alcance: local.
-9. Listas de defeitos como na peça 4: oito de plano só do revisor (DEC-051), os três acusados por código registrados com `detectedBy: code`, semeados pela variante própria `plano-semeado-codigo` e contados à parte da taxa da classe, C6 trocado por "teste que grava fora da pasta temporária" porque E5 não tem efeito externo, e oito de spec da lista de bloqueios da revisão de spec. Base: SRC-12, SRC-13, DEC-051. Custo se errada: semear de novo antes de E15. Reversível antes de E15. Alcance: contrato.
-10. Dois artefatos por classe com quatro defeitos cada (A e B). Base: E15, peça 3. Custo se errada: reorganizar o manifesto. Reversível. Alcance: contrato.
-11. Sentinelas como módulos fora do sandbox, testadas também contra o artefato limpo. Base: critério 4. Custo se errada: baixo. Reversível. Alcance: local.
-12. Regras de validade por classe como na peça 4, lidas de `journal.jsonl`. Base: DEC-051, SRC-14. Custo se errada: tentativas mal classificadas em E15. Reversível. Alcance: contrato.
-13. Comparador: classes e regras da tabela da peça 6, pesos 1/20/40, custo nunca bloqueia, detecção por taxa com `inconclusivo` abaixo de 40 tentativas válidas. Base: DEC-033, DEC-017, SRC-12. Custo se errada: um ponto de medição retido ou liberado indevidamente. Reversível. Alcance: contrato.
-14. Lançador com `--permission-mode` obrigatório, versão e commit do plugin lidos de `installed_plugins.json`, tentativa negada fora dos contadores e saída com código 1. Base: DEC-043, SRC-14. Custo se errada: baixo. Reversível. Alcance: contrato.
-15. Arnês roda revisor e uma rodada de corretor e decide pela sentinela; braço `atual` de spec e plano por modelo com teste de defasagem, e de tarefa por `load-pure.mjs`. Base: SRC-12, os prompts de spec e plano estarem fora do bloco puro. Custo se errada: refazer o arnês antes de E26. Reversível. Alcance: contrato.
-16. O gate canônico G1 do release e a tabela de gates da estratégia não mudam nesta branch; só o `CLAUDE.md` muda, e a tabela fica para a revisão no registro de E1 (estratégia, seção de gates). Base: DEC-032, regra de que a branch não edita a pasta do roadmap. Custo se errada: nenhum para o código. Reversível. Alcance: local.
-17. Os scripts de `docs/reports/2026-11-10-session-metrics/` não são alterados nem removidos. Custo se errada: baixo. Reversível. Alcance: local.
-18. Regras do teste de privacidade: faixa reservada de ids fabricados, padrões de diretório pessoal e marca `[fab]` nos textos das fixtures. Base: critério 5. Custo se errada: baixo. Reversível. Alcance: local.
-19. Os defeitos `detectedBy: code` (PX1 a PX3) são semeados por uma variante própria, `plano-semeado-codigo` (artefato `C`), em vez de uma flag de `make-scenario`; o teste do critério 4 cobre toda entrada do manifesto; o desfecho deles vem do diário (acusado-pelo-codigo, perdido, indeterminado), sai em `deteccaoPorCodigo` no agregado e no comparador, fora da taxa da classe `plan`, e não bloqueia. Base: card E1, critério 4 e peça 4 ("contados à parte"), DEC-051. Custo se errada: tornar a regressão de PX bloqueante no comparador. Reversível. Alcance: contrato.
+1. Os campos esperados do diário são os de que a regra de validade da variante depende (rótulo de cada entrada e, conforme a variante, `reused` de `E5:plan`, `measuredPlanBlob` de `E5:plan-review1`, as entradas de tarefa e de revisão, o blob medido pelo arnês); diário ausente, linha que não é JSON e entrada sem rótulo também dão `formato-do-diario`, e o motivo entra no agregado com a contagem das inválidas. Base: DEC-082. Custo se errada: tentativas invalidadas por um campo que a regra não usa, ou aceitas com diário quebrado. Reversível. Alcance: contrato.
+2. O total ponderado inconclusivo por família sem peso não liga `bloqueia` sozinho (o estrutural bloqueia só quando piora, como os demais inconclusivos de contador); a saída lista a família e a contagem para o dono. Só o inconclusivo de detecção bloqueia, como diz DEC-081. Os contadores por família (`fable`, `other` incluídos) mantêm veredito próprio. Base: DEC-081, que trata os dois casos de forma diferente. Custo se errada: uma piora de custo estrutural escondida numa família sem peso passar sem bloqueio até o dono olhar a saída. Reversível. Alcance: contrato.
+3. A origem da cópia dos braços `atual` de spec e de plano fica numa linha `Copied from: ... at commit <sha>` no topo de cada modelo de `arms/`, com o sha completo do último commit que alterou `roadmap-release.js` quando a cópia foi tirada; o agregado do arnês registra `armSource: "copia-do-prompt"` e `workflowCommit`, o braço de tarefa registra `armSource: "workflow"`, e um modelo sem a linha é recusado com código 2. Base: DEC-083. Custo se errada: trocar onde a origem é guardada. Reversível. Alcance: contrato.
 
 ## Depends on human input
 
-- **Spec e plano de E5 tirados de uma execução aprovada** (recomendação de SRC-13 para a semeadura de plano). Não bloqueia: E1 entrega spec e plano de E5 escritos à mão na receita de SRC-13 e marcados como fixture sintética em `tools/measure/scenario/e5/`, e `make-scenario.mjs` aceita `--from-run <pasta>` para trocá-los pelos arquivos de uma execução real aprovada. Quem troca é o dono, com uma execução paga de E15, antes das tentativas de detecção.
-- **Primeira execução real do lançador contra `claude -p`** (pago). Não bloqueia: os critérios de E1 usam executor simulado; a primeira execução real é a primeira tentativa de E15, operada pelo dono, que confere a saída (DEC-011, DEC-043).
+- **Primeira execução real do lançador contra `claude -p`** (pago). Não bloqueia: os critérios de E1 usam executor simulado; a primeira execução real é a primeira tentativa de E15, operada pelo dono, que confere a saída e o formato real do diário (DEC-011, DEC-043, DEC-082).
+
+Resolvido pelo dono: spec e plano de E5 ficam na versão sintética, escrita à mão na receita de SRC-13 e marcada como fixture sintética em `tools/measure/scenario/e5/`, com a opção `--from-run <pasta>` de `make-scenario.mjs` para trocá-los pelos arquivos de uma execução real aprovada, se o dono quiser.
