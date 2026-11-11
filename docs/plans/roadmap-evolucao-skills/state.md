@@ -8,7 +8,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. E18 e depois E22 pelo release, nas `feat/E18` e `feat/E22` sincronizadas com a release. Executa: executor. Aprova: dono. Depende de: DEC-030.
+2. E22 pelo release, na `feat/E22` sincronizada com a release, depois de E18. Executa: executor. Aprova: dono. Depende de: DEC-030.
 3. Correção de E4 (W6 e menores) numa branch sobre a release, antes da peça 2 de E17. Executa: executor. Aprova: dono. Depende de: DEC-204.
 <!-- /roadmap:now -->
 
@@ -34,7 +34,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | nao-iniciado | - | Aguardar E15 e E18 |
-| E18 | executando | `c137ac190b801f255572648d40261f021139a437`; `feat/E18`, `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`, `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md` | Executar o plano na feat/E18 (D:/projects/claude-play-wt/E18) pelo release; depois E22 |
+| E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
@@ -80,7 +80,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Correção de E4 numa branch sobre a release, antes da peça 2 de E17: W6 (cortar a condição em SKILL.md:87 e guarda existing-roadmap no scaffold), títulos e cabeçalhos traduzidos em scaffold.mjs (M1), W1 em formats.md, os 3 avisos do lint e M2 a M4.
 - (dono) Decidir, depois da meta de prosa registrada (DEC-203), se W2 e W4 de E4 (objective em texto e cards de modo completo sem dod e risks) entram com prosa contada, cortando outro trecho (DEC-167).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
-- (dono) Ratificação pelo dono das decisões autônomas do spec de E18 (DEC-030); as de alcance contrato (1, 2, 5 e 7 do spec) seguram o início de E25 e E8, as de alcance local esperam o ponto de medição.
+- (dono) Ratificação pelo dono das 20 decisões autônomas do spec de E18 (DEC-030). As de alcance contrato (1, 2, 5 e 7) seguram o início de E25 e E8; as locais esperam o ponto de medição.
+- (dono) Ratificação das decisões de contrato de E3 ainda pendentes (DEC-136, DEC-140, DEC-141, DEC-143, DEC-145, DEC-146, DEC-148 a DEC-150, DEC-153): forma da CLI, comandos, saída --json e códigos de saída de que E18 depende (DEC-030, DEC-031); E18 e E22 esperam.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -88,6 +89,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E18 | viva | execução automática; worktree `D:/projects/claude-play-wt/E18` mantido |
 | feat/E22 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->

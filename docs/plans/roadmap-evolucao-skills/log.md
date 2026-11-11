@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E18 | E18 entrou em `release/roadmap-skills-v2` (merge da `feat/E18`); gates iguais à linha de base: G1 exit 0 com 1286 testes, 0 falhas, G2, G3, G4 e G5 exit 0. Ainda não está em `main`. DEC-211 em diante seguem pendentes de ratificação; critérios do card comparados, sem mudança. | `48f2c0b3c413774c4683d4720e912311a5826610` |
 | 2026-11-11 | E18 | E18 passa a executando na feat/E18 (execução automática pelo release); spec e plano aprovados pelas revisões. 21 decisões autônomas do spec gravadas como pendentes (DEC-211 em diante); as 11, 18 e 21 foram cortadas na célula, texto inteiro no spec. | `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md` |
 | 2026-11-11 | E4 | E4 entrou em release/roadmap-skills-v2 (merge da feat/E4); G1 com 1236 testes, 0 falhas; G2 a G5 exit 0 (lint com 3 avisos novos). Revisão final opus/high aprovou com ressalvas. | `64e9c54` |
 | 2026-11-11 | E4 | BLQ-1 resolvido: A tarefa 9 rodou pela sessão principal (DEC-204); E4 mesclado em release/roadmap-skills-v2 | `64e9c54` |
