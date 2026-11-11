@@ -460,3 +460,56 @@ test('code seeded validity requires resumed tasks and the task 3 review', async 
     s.done();
   }
 });
+
+// ---- Task 13: braço atual de spec e plano (DEC-083) ----
+const REPO = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: here, encoding: 'utf8' }).stdout.trim();
+const WORKFLOW_REL = 'plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js';
+const WORKFLOW = join(REPO, WORKFLOW_REL);
+const ARMS = join(here, 'arms');
+const ARM_FILES = ['spec-review-atual.md', 'plan-review-atual.md', 'spec-fix-atual.md', 'plan-fix-atual.md'];
+const norm = (s) => s.replace(/\r\n/g, '\n');
+const git = (...args) => spawnSync('git', args, { cwd: REPO, encoding: 'utf8' });
+
+// Returns null when the arm's "Blocks" line appears verbatim in the script; otherwise a description of the difference.
+function blockListDrift(armText, scriptText) {
+  const line = norm(armText).split('\n').find((l) => l.startsWith('Blocks'));
+  if (!line) return 'arm has no line starting with Blocks';
+  return norm(scriptText).includes(line) ? null : `block list differs from the workflow script: ${line.slice(0, 80)}...`;
+}
+
+test('current arms record the workflow commit they were copied from', () => {
+  for (const f of ARM_FILES) {
+    const first = norm(readFileSync(join(ARMS, f), 'utf8')).split('\n')[0];
+    const m = first.match(/^Copied from: plugins\/productivity-tools\/skills\/roadmap-release\/workflow\/roadmap-release\.js at commit ([0-9a-f]{40})$/);
+    assert.ok(m, `${f}: first line is ${first}`);
+    assert.equal(git('cat-file', '-e', `${m[1]}^{commit}`).status, 0, `${f}: commit ${m[1]} does not exist`);
+    assert.equal(git('log', '-1', '--format=%H', m[1], '--', WORKFLOW_REL).stdout.trim(), m[1], `${f}: commit ${m[1]} did not change the script`);
+  }
+});
+
+test('current arms quote the workflow block list verbatim', () => {
+  const script = readFileSync(WORKFLOW, 'utf8');
+  for (const f of ['spec-review-atual.md', 'plan-review-atual.md']) {
+    const text = readFileSync(join(ARMS, f), 'utf8');
+    assert.ok(norm(text).split('\n').some((l) => l.startsWith('Blocks')), `${f}: no Blocks line`);
+    assert.equal(blockListDrift(text, script), null, f);
+  }
+});
+
+test('drift check fails when the block list changes', () => {
+  const script = readFileSync(WORKFLOW, 'utf8');
+  const arm = readFileSync(join(ARMS, 'plan-review-atual.md'), 'utf8');
+  const line = norm(arm).split('\n').find((l) => l.startsWith('Blocks'));
+  const changed = norm(script).replace(line, line.replace('an acceptance criterion', 'an extra an acceptance criterion'));
+  assert.notEqual(changed, norm(script));
+  assert.match(blockListDrift(arm, changed), /differs/);
+  assert.match(blockListDrift('no such line\n', script), /no line/);
+});
+
+test('fix arms carry the issues marker', () => {
+  for (const f of ['spec-fix-atual.md', 'plan-fix-atual.md']) {
+    const text = readFileSync(join(ARMS, f), 'utf8');
+    assert.ok(text.includes('{{issues}}'), f);
+    assert.ok(text.includes('{{artifactPath}}'), f);
+  }
+});
