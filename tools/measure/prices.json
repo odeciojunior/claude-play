@@ -6,7 +6,7 @@
     "haiku": { "model": "Claude Haiku 5.5", "input": 0.1, "output": 0.5, "cacheRead": 0.01, "note": "price for prompts up to 100,000 tokens; above that the page lists 0.5 / 2.5 / 0.05, so cost is a lower bound for long prompts" },
     "sonnet": { "model": "Claude Sonnet 5.5", "input": 2, "output": 10, "cacheRead": 0.1 },
     "opus": { "model": "Claude Opus 5.5", "input": 4, "output": 20, "cacheRead": 0.2 },
-    "fable": { "model": "Claude Fable 5.2", "input": 8, "output": 40, "cacheRead": 0.2 }
+    "fable": { "model": "Claude Fable 5.2", "input": 8, "output": 40, "cacheRead": 0.2, "note": "read on the pricing page on 2026-11-10: Fable 5.2 is 8 / 40 / cache hit 0.20; the 10 / 50 / 0.25 in SRC-10 is the page row for Fable 5.1, which this script does not price" }
   },
   "cacheWrite5m": 1.25,
   "cacheWrite1h": 2
