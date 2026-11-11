@@ -8,7 +8,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 <!-- roadmap:now -->
 1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
-2. E4: sincronizar `feat/E4` com a release, corrigir `scaffold.mjs` e rodar a tarefa 9 pelo orquestrador da sessão (DEC-204); depois E18 e E22 pelo release. Executa: executor. Aprova: dono. Depende de: DEC-204.
+2. E18 e depois E22 pelo release, nas `feat/E18` e `feat/E22` sincronizadas com a release. Executa: executor. Aprova: dono. Depende de: DEC-030.
+3. Correção de E4 (W6 e menores) numa branch sobre a release, antes da peça 2 de E17. Executa: executor. Aprova: dono. Depende de: DEC-204.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -19,7 +20,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E1 | na-branch | `21d1979fb70266b94508ec2b8a64da29a1c2af0f`; `docs/superpowers/specs/2026-11-10-E1-ferramentas-medicao-cenario-design.md`; `docs/superpowers/plans/2026-11-10-E1-ferramentas-medicao-cenario.md`; `docs/superpowers/reviews/2026-11-10-E1-ferramentas-medicao-cenario-reviews.md` | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E2 | na-branch | `0202e00f1be5032c95d759a41883de84c57e54b3`; `docs/superpowers/specs/2026-11-11-E2-formato-roadmap-verificado-design.md`; `docs/superpowers/plans/2026-11-11-E2-formato-roadmap-verificado.md`; `docs/superpowers/reviews/2026-11-11-E2-formato-roadmap-verificado-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E3 | na-branch | `ee7a3d70995f903f260b897327361b2573d5c624`; `docs/superpowers/specs/2026-11-11-E3-cli-eventos-tracker-design.md`; `docs/superpowers/plans/2026-11-11-E3-cli-eventos-tracker.md`; `docs/superpowers/reviews/2026-11-11-E3-cli-eventos-tracker-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E4 | bloqueado (BLQ-1) | `1362158c1ec3a43f8b19f32cb5695dcd11224004`; `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4` | Retomar a tarefa 9 na `feat/E4` com revisor despachado pelo orquestrador (BLQ-1); depois o merge em `release/roadmap-skills-v2` |
+| E4 | na-branch | `1362158c1ec3a43f8b19f32cb5695dcd11224004`; `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4`, `64e9c54`, `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; correção de E4 (W6 e menores) antes da preparação da publicação de E17 |
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
@@ -50,7 +51,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-1 | A execução automática de E4 parou na tarefa 9: ela exige subagentes novos (revisor opus/medium, executor sonnet do fluxo, revisor adversarial opus/medium) e o executor não tinha ferramenta de subagente | E4 | 2026-11-11 | O orquestrador despacha o revisor e passa a saída literal ao executor (restrição da linha 33 do plano) e a tarefa 9 roda; restaura E4 para `executando` |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -77,8 +77,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) criterion AC4 has no automatic evidence (human)
 - (dono) Aceite do critério 4 de E4 (o revisor devolve achado estruturado para cada defeito plantado): conferir o relatório comportamental em `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md`.
 - (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (executor) Em `feat/E4`: saída `--json` em erro de uso e erro interno com código 2 em `scaffold.mjs` (DEC-159).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
+- (executor) Correção de E4 numa branch sobre a release, antes da peça 2 de E17: W6 (cortar a condição em SKILL.md:87 e guarda existing-roadmap no scaffold), títulos e cabeçalhos traduzidos em scaffold.mjs (M1), W1 em formats.md, os 3 avisos do lint e M2 a M4.
+- (dono) Decidir, depois da meta de prosa registrada (DEC-203), se W2 e W4 de E4 (objective em texto e cards de modo completo sem dod e risks) entram com prosa contada, cortando outro trecho (DEC-167).
+- (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -86,7 +88,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E4 | viva | execução parada na tarefa 9 (BLQ-1); worktree `D:/projects/claude-play-wt/E4` mantido |
 | feat/E18 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E18` mantido |
 | feat/E22 | viva | execução parada, desbloqueada pela ratificação de 2026-11-11; worktree `D:/projects/claude-play-wt/E22` mantido |
 <!-- /roadmap:inflight -->

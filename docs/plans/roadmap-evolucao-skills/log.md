@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-11 | E4 | E4 entrou em release/roadmap-skills-v2 (merge da feat/E4); G1 com 1236 testes, 0 falhas; G2 a G5 exit 0 (lint com 3 avisos novos). Revisão final opus/high aprovou com ressalvas. | `64e9c54` |
+| 2026-11-11 | E4 | BLQ-1 resolvido: A tarefa 9 rodou pela sessão principal (DEC-204); E4 mesclado em release/roadmap-skills-v2 | `64e9c54` |
 | 2026-11-11 | E15, E2, E3, E6 | Correções de código das ratificações entraram em `release/roadmap-skills-v2`: G1 com 1169 testes, 0 falhas; G2 a G5 exit 0; revisão final opus/high aprovada com ressalvas, achados corrigidos. | `8303bc9` |
 | 2026-11-11 | E6 | O dono ratificou DEC-210 (padrões de efeito externo do plan-tool). | `decisions.md` |
 | 2026-11-11 | E3, E6 | O dono decidiu Contradiz "-" na linha de emenda de ratify --amend (DEC-209); DEC-210 registrada, de origem executor e pendente, sobre os padrões de efeito externo do plan-tool. | `decisions.md` |
