@@ -153,6 +153,34 @@ test('each runBatch call gets its own work folder', async () => {
   }
 });
 
+test('a second invocation with the same --work does not reuse a work folder on disk', async () => {
+  const s = setup();
+  try {
+    const used = [];
+    const mk = () => {
+      const deps = makeDeps(s, { validOf: () => 0 });
+      const inner = deps.runBatch;
+      deps.runBatch = async (o) => {
+        // Like makeSandbox: refuses a folder that already exists.
+        if (existsSync(o.work)) throw new Error('target directory is not empty');
+        mkdirSync(join(o.work, 'sandbox'), { recursive: true });
+        used.push(o.work);
+        return inner(o);
+      };
+      return deps;
+    };
+    const opts = baseOpts(s, { only: ['plan-only'] });
+    const first = await runBaseline(opts, mk());
+    const second = await runBaseline(opts, mk());
+    assert.equal(first.results[0].status, 'incompleta');
+    assert.equal(second.results[0].status, 'incompleta');
+    assert.equal(used.length, 2);
+    assert.equal(new Set(used).size, 2);
+  } finally {
+    s.done();
+  }
+});
+
 test('retries invalid seeded attempts up to the cap', async () => {
   const s = setup();
   try {

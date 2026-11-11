@@ -159,13 +159,16 @@ export async function runBaseline(opts, deps = {}) {
         extra += n;
       }
       pass += 1;
+      // Unique across invocations: skip numbers whose folder an earlier invocation already used.
+      let seq = pass;
+      while (existsSync(join(resolve(opts.work), `${variant}-p${seq}`))) seq += 1;
       let r;
       try {
         r = await d.runBatch({
           ...opts,
           variant,
           runs: n,
-          work: join(resolve(opts.work), `${variant}-p${pass}`),
+          work: join(resolve(opts.work), `${variant}-p${seq}`),
           fromRun: seeded ? opts.fromRun : undefined,
         });
       } catch (e) {
