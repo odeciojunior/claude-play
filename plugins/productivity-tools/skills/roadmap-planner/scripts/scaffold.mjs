@@ -895,10 +895,11 @@ export function runScaffold(modelPath, { dryRun = false } = {}) {
   const { model, defaulted } = applyDefaults(input);
   let gen;
   try {
+    if (process.env.SCAFFOLD_SELFTEST_THROW) throw new Error('self-test: forced internal failure');
     gen = generate(model, { folder });
   } catch (e) {
     if (e instanceof ScaffoldError) return refuse(e.problems.map(toErr), { defaulted });
-    throw e;
+    return fail('internal', String(e && e.message ? e.message : e).split('\n')[0], { defaulted });
   }
   const warnings = gen.problems.filter((p) => p.severity !== 'error');
   const errors = gen.problems.filter((p) => p.severity === 'error');
@@ -940,7 +941,7 @@ export function main(argv) {
   if (unknown.length || args.length !== 1) {
     const message = unknown.length ? `unknown option ${unknown[0]}` : 'exactly one model path is required';
     if (json) {
-      console.log(JSON.stringify({ tool: 'scaffold', errors: [{ path: '', code: 'usage', message }], usage: USAGE, summary: { errors: 1, warnings: 0, exitCode: 2 } }, null, 2));
+      console.log(JSON.stringify({ ...report(null, null, { errors: [{ path: '', code: 'usage', message }], exitCode: 2 }), usage: USAGE }, null, 2));
     } else {
       console.error(`${message}\n${USAGE}`);
     }

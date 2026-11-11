@@ -566,6 +566,37 @@ describe('cli', () => {
     assert.deepEqual(errorsOf(box.folder), []);
   });
 
+  it('uso errado com --json: saída na forma de DEC-159 e exit 2', () => {
+    const r = run(['--json']);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.tool, 'scaffold');
+    assert.equal(out.model, null);
+    assert.equal(out.folder, null);
+    assert.deepEqual(out.written, []);
+    assert.deepEqual(out.defaulted, []);
+    assert.deepEqual(out.warnings, []);
+    assert.equal(out.errors[0].code, 'usage');
+    assert.deepEqual(out.summary, { errors: 1, warnings: 0, exitCode: 2 });
+  });
+
+  it('exceção inesperada: exit 2 com erro internal (texto e --json), nada gravado', () => {
+    const box = sandbox();
+    put(box, full());
+    const before = listing(box.root);
+    const env = { ...process.env, SCAFFOLD_SELFTEST_THROW: '1' };
+    const t = run([box.model], { env });
+    assert.equal(t.status, 2, t.stdout + t.stderr);
+    assert.match(t.stdout, /^ERROR internal: .*forced internal failure/m);
+    const j = run([box.model, '--json'], { env });
+    assert.equal(j.status, 2, j.stdout + j.stderr);
+    const out = JSON.parse(j.stdout);
+    assert.equal(out.errors[0].code, 'internal');
+    assert.equal(out.summary.exitCode, 2);
+    assert.equal(out.tool, 'scaffold');
+    assert.deepEqual(listing(box.root), before);
+  });
+
   const refusals = {
     'ciclo': (m) => { m.deliverables[0].depends = [m.deliverables[1].id]; m.deliverables[1].depends = [m.deliverables[0].id]; },
     'dependência inexistente': (m) => { m.deliverables[0].depends = ['E99']; },
