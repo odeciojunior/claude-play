@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { checkPureSource } from './embed.mjs';
 import { findDataBlocks, readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
-import { checkSpec } from './spec-tool.mjs';
+import { checkSpec, loadRoadmap } from './spec-tool.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(HERE, '..', 'lib', 'data-block.mjs');
@@ -225,7 +225,7 @@ test('reader error becomes the same code with ref "-"', () => {
 test('CLI check: fixture exits 0 without --roadmap', () => {
   const r = runCli(['check', FIXTURE_SPEC]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Result: 0 errors/);
+  assert.match(r.stdout, /Result: 0 errors, 1 warnings/);
 });
 
 test('CLI check: ruling without basis exits 1 with ERROR line; --json agrees', () => {
@@ -248,4 +248,109 @@ test('CLI check: invalid usage exits 2', () => {
   assert.equal(runCli(['bogus', FIXTURE_SPEC]).status, 2);
   assert.equal(runCli(['check', path.join(os.tmpdir(), 'nao-existe-spec.md')]).status, 2);
   assert.equal(runCli(['check']).status, 2);
+});
+
+// ---- Task 4: check --roadmap contra o card ----
+
+const FIXTURE_ROADMAP = path.join(HERE, 'fixtures', 'spec-tool', 'roadmap');
+const STRATEGY_TEXT = fs.readFileSync(path.join(FIXTURE_ROADMAP, 'strategy.md'), 'utf8');
+const STATE_TEXT = fs.readFileSync(path.join(FIXTURE_ROADMAP, 'state.md'), 'utf8');
+
+function roadmapFrom(strategy, state = STATE_TEXT) {
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'strategy.md'), strategy);
+  fs.writeFileSync(path.join(d, 'state.md'), state);
+  fs.copyFileSync(path.join(FIXTURE_ROADMAP, 'roadmap.config.json'), path.join(d, 'roadmap.config.json'));
+  return d;
+}
+const FIX = () => fs.readFileSync(FIXTURE_SPEC, 'utf8');
+
+test('loadRoadmap reads cards and open blockers', () => {
+  const r = loadRoadmap(FIXTURE_ROADMAP);
+  assert.equal(r.cards.length, 1);
+  assert.equal(r.cards[0].acceptance.length, 3);
+  assert.deepEqual([...r.openBlockers], ['BLQ-1']);
+  assert.throws(() => loadRoadmap(path.join(os.tmpdir(), 'nao-existe-roadmap')), /roadmap/);
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'roadmap.config.json'), '{nope');
+  assert.throws(() => loadRoadmap(d), /roadmap/);
+});
+
+test('AC1: fixture passes check --roadmap with exit 0 and no warnings', () => {
+  const r = runCli(['check', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout.trim().split('\n').pop(), /^Result: 0 errors, 0 warnings$/);
+});
+
+test('AC1: changed criterion text -> acceptance-text naming AC1', () => {
+  const r = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace('stored', 'deleted'); }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  const e = find(r, 'acceptance-text');
+  assert.ok(e, JSON.stringify(r.errors));
+  assert.equal(e.ref, 'AC1');
+  assert.ok(e.message.includes('Given an empty system'));
+});
+
+test('AC1: tag removed -> acceptance-tag-missing', () => {
+  const r = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace(/\s*\{verify:.*$/, ''); }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  assert.equal(find(r, 'acceptance-tag-missing').ref, 'AC1');
+});
+
+test('AC1: evidence changed -> acceptance-tag-differs and kind changed -> acceptance-tag-differs', () => {
+  const rm = loadRoadmap(FIXTURE_ROADMAP);
+  let r = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace('tests/e1.test.mjs', 'tests/outro.test.mjs'); }), { roadmap: rm });
+  assert.equal(find(r, 'acceptance-tag-differs').ref, 'AC1');
+  r = checkSpec(mutate((d) => { d.acceptance[1].text = d.acceptance[1].text.replace('BLQ-1', 'BLQ-2'); }), { roadmap: rm });
+  assert.equal(find(r, 'acceptance-tag-differs').ref, 'AC2');
+  r = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace('verify: test', 'verify: smoke'); }), { roadmap: rm });
+  assert.equal(find(r, 'acceptance-tag-differs').ref, 'AC1');
+});
+
+test('AC1: one criterion fewer -> acceptance-count', () => {
+  const r = checkSpec(mutate((d) => { d.acceptance.pop(); }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  assert.ok(find(r, 'acceptance-count'), JSON.stringify(r.errors));
+});
+
+test('AC1: whitespace, line-ending and NFD-only differences pass', () => {
+  const nfd = STRATEGY_TEXT.replace('shown back', 'shown baçk');
+  const rm = loadRoadmap(roadmapFrom(nfd));
+  const r = checkSpec(mutate((d) => {
+    d.acceptance[0].text = d.acceptance[0].text.replace('when a user', 'when  a\nuser').replace('shown back', 'shown baçk');
+  }), { roadmap: rm });
+  assert.deepEqual(r.errors, []);
+  const changed = checkSpec(mutate((d) => { d.acceptance[0].text = d.acceptance[0].text.replace('shown back', 'shown away'); }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  assert.ok(find(changed, 'acceptance-text'));
+});
+
+test('CRLF copy of the fixture passes check', () => {
+  const crlf = (t) => t.replace(/\r?\n/g, '\r\n');
+  const d = roadmapFrom(crlf(STRATEGY_TEXT), crlf(STATE_TEXT));
+  const r = checkSpec(crlf(FIX()), { roadmap: loadRoadmap(d) });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings, []);
+});
+
+test('AC2: closed blq -> needs-person-blq', () => {
+  const r = checkSpec(mutate((d) => { d.needsPerson[0].blq = 'BLQ-9'; }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  const e = find(r, 'needs-person-blq');
+  assert.ok(e, JSON.stringify(r.errors));
+  assert.equal(e.ref, 'H1');
+});
+
+test('card id not in roadmap -> card-not-found', () => {
+  const r = checkSpec(mutate((d) => { d.id = 'E9'; }), { roadmap: loadRoadmap(FIXTURE_ROADMAP) });
+  assert.ok(find(r, 'card-not-found'));
+});
+
+test('E<n> without --roadmap -> card-not-checked warning, exit 0; kebab-case id -> zero warnings', () => {
+  let r = runCli(['check', FIXTURE_SPEC]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^WARN card-not-checked/m);
+  r = runCli(['check', '$SPEC'], mutate((d) => { d.id = 'spec-writer'; }));
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /Result: 0 errors, 0 warnings/);
+});
+
+test('--roadmap on missing folder -> exit 2', () => {
+  assert.equal(runCli(['check', FIXTURE_SPEC, '--roadmap', path.join(os.tmpdir(), 'nao-existe-roadmap')]).status, 2);
+  assert.equal(runCli(['check', FIXTURE_SPEC, '--roadmap']).status, 2);
 });

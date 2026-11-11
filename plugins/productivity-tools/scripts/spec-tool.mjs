@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // spec-tool: valida um spec com bloco de dados `json data` no esquema spec/1.
-// Uso: node spec-tool.mjs check <spec.md> [--json]
+// Uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]
 // Saida: 0 sem erro, 1 com erro, 2 uso invalido ou arquivo ilegivel.
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readDataBlock } from '../lib/data-block.mjs';
-import { parseVerifyTag } from '../lib/roadmap-format.mjs';
+import { norm, parseVerifyTag, parseRoadmapTexts } from '../lib/roadmap-format.mjs';
 
 export const SCHEMA = 'spec/1';
 const MODES = ['unattended', 'interactive'];
@@ -13,6 +14,7 @@ const COSTS = ['low', 'medium', 'high'];
 const SCOPES = ['local', 'contract'];
 const KINDS = ['data', 'credential', 'acceptance', 'decision'];
 
+const collapse = (s) => norm(s).replace(/\s+/g, ' ').trim();
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -24,8 +26,34 @@ const RECORDS = {
 };
 const TOP = ['schema', 'id', 'title', 'mode', 'acceptance', 'rulings', 'needsPerson', 'externalEffects', 'edgeCases'];
 
+// Le a pasta do roadmap: config, estrategia e arquivos de estado existentes.
+export function loadRoadmap(dir) {
+  const cfgPath = path.join(dir, 'roadmap.config.json');
+  let cfg;
+  try {
+    cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  } catch (e) {
+    throw new Error(`roadmap ilegível em ${dir}: ${e.message}`);
+  }
+  const readIf = (rel) => {
+    try {
+      return fs.readFileSync(path.join(dir, rel), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const files = {};
+  for (const [role, rel] of Object.entries(cfg.files || {})) {
+    if (typeof rel === 'string') files[role] = readIf(rel);
+  }
+  const strategy = typeof cfg.strategy === 'string' ? readIf(cfg.strategy) : null;
+  if (strategy === null) throw new Error(`estratégia não encontrada em ${dir} (${cfg.strategy})`);
+  const parsed = parseRoadmapTexts({ strategy, files });
+  const rows = parsed.blocks.state && parsed.blocks.state.blockers ? parsed.blocks.state.blockers.rows : [];
+  return { cards: parsed.cards, openBlockers: new Set(rows.map((r) => r[0])) };
+}
+
 export function checkSpec(text, { roadmap = null } = {}) {
-  void roadmap; // a comparacao com o card entra na Task 4
   const errors = [];
   const warnings = [];
   const err = (code, ref, message) => errors.push({ code, ref, message });
@@ -93,6 +121,38 @@ export function checkSpec(text, { roadmap = null } = {}) {
     });
   }
 
+  const card = roadmap && isStr(data.id) ? roadmap.cards.find((c) => c.id === data.id) : null;
+  if (roadmap && isStr(data.id) && !card) err('card-not-found', 'id', `card "${data.id}" não existe no roadmap`);
+  if (!roadmap && typeof data.id === 'string' && /^E\d+$/.test(data.id)) {
+    warn('card-not-checked', 'id', 'id de deliverable sem --roadmap: critérios não conferidos contra o card');
+  }
+  if (card && acceptance) {
+    const want = card.acceptance;
+    if (want.length !== acceptance.length) {
+      err('acceptance-count', 'acceptance', `o card ${card.id} tem ${want.length} critérios; o spec tem ${acceptance.length}`);
+    }
+    const n = Math.min(want.length, acceptance.length);
+    for (let i = 0; i < n; i++) {
+      const item = acceptance[i];
+      if (!isObj(item) || !isStr(item.text)) continue;
+      const ref = `AC${i + 1}`;
+      const c = want[i];
+      const s = parseVerifyTag(item.text);
+      const head = `${ref}: `;
+      const tail = ` (card: "${collapse(c.text).slice(0, 60)}...")`;
+      if (collapse(s.text) !== collapse(c.text)) {
+        err('acceptance-text', ref, `${head}texto diferente do card${tail}`);
+        continue;
+      }
+      if (s.problem) continue; // ja reportado como acceptance-tag-invalid
+      if (c.tag && !s.tag) err('acceptance-tag-missing', ref, `${head}falta a marca {verify: ...} do card${tail}`);
+      else if (c.tag && s.tag) {
+        const f = (t) => [t.kind, t.blq || '', collapse(t.evidence || '')].join('|');
+        if (f(c.tag) !== f(s.tag)) err('acceptance-tag-differs', ref, `${head}marca {verify: ...} diferente da do card${tail}`);
+      }
+    }
+  }
+
   for (const [name, spec] of Object.entries(RECORDS)) {
     const items = list(name);
     if (!items) continue;
@@ -135,6 +195,7 @@ export function checkSpec(text, { roadmap = null } = {}) {
         need('workaround', (v) => typeof v === 'string', 'uma string');
         if (item.blocking === false && !isStr(item.workaround)) err('needs-person-workaround', ref, 'item não bloqueante precisa de "workaround" não vazio');
         if ('blq' in item && !(typeof item.blq === 'string' && /^BLQ-\d+$/.test(item.blq))) err('field-type', ref, '"blq" deve ser BLQ-<n>');
+        else if (roadmap && typeof item.blq === 'string' && !roadmap.openBlockers.has(item.blq)) err('needs-person-blq', ref, `${item.blq} não está aberto no roadmap`);
       } else if (name === 'externalEffects') {
         for (const k of ['what', 'target']) need(k, isStr, 'uma string não vazia');
       } else {
@@ -147,7 +208,7 @@ export function checkSpec(text, { roadmap = null } = {}) {
   return { data, errors, warnings };
 }
 
-const USAGE = 'uso: node spec-tool.mjs check <spec.md> [--json]';
+const USAGE = 'uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -160,8 +221,14 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   if (cmd !== 'check') return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
   let file = null;
   let json = false;
-  for (const a of rest) {
+  let roadmapDir = null;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
     if (a === '--json') json = true;
+    else if (a === '--roadmap') {
+      if (i + 1 >= rest.length) return bad(`--roadmap exige uma pasta\n${USAGE}`);
+      roadmapDir = rest[++i];
+    }
     else if (a.startsWith('--')) return bad(`opção desconhecida: ${a}\n${USAGE}`);
     else if (file === null) file = a;
     else return bad(`argumento extra: ${a}\n${USAGE}`);
@@ -173,7 +240,15 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   } catch (e) {
     return bad(`não foi possível ler ${file}: ${e.message}`);
   }
-  const r = checkSpec(text);
+  let roadmap = null;
+  if (roadmapDir !== null) {
+    try {
+      roadmap = loadRoadmap(roadmapDir);
+    } catch (e) {
+      return bad(e.message);
+    }
+  }
+  const r = checkSpec(text, { roadmap });
   const code = r.errors.length ? 1 : 0;
   if (json) {
     out(JSON.stringify({
