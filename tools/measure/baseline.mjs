@@ -264,10 +264,10 @@ function classSection({ name, label, cls }, c, flag) {
 
 export function measurementRows(baseline, { date }) {
   const rows = [];
-  const row = (detail, cost) => `| ${date} | E15 | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | concluído |`;
+  const row = (detail, cost, status = 'concluído') => `| ${date} | E15 | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | ${status} |`;
   for (const { variant } of BASELINE_PLAN) {
     const agg = baseline.variants?.[variant];
-    if (agg) rows.push(row(`${variant}: ${agg.valid}/${agg.requested} execuções válidas`, sumCost(agg)));
+    if (agg) rows.push(row(`${variant}: ${agg.valid}/${agg.requested} execuções válidas`, sumCost(agg), agg.valid < agg.requested ? 'em andamento' : 'concluído'));
   }
   for (const { name, cls } of CLASSES) {
     const agg = baseline.classes?.[name];
@@ -349,6 +349,8 @@ export function buildBaseline({ outDir, tagCommit, date }) {
     permissionMode: first?.permissionMode ?? null,
     variants,
     classes,
+    errors,
+    incomplete,
   };
   const markdown = buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged });
   return { baseline, markdown, errors, incomplete, exitCode: errors.length || incomplete.length ? 1 : 0 };

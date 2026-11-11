@@ -208,3 +208,35 @@ test('CLI usage errors exit 2', () => {
   assert.equal(run('--out', fx('completa')).status, 2);
   assert.equal(run('--out', fx('completa'), '--dest', tmpdir(), '--date', 'ontem').status, 2);
 });
+
+test('baseline.json carries errors and incomplete lists (DEC-196)', () => {
+  const ok = build('completa');
+  assert.deepEqual(ok.baseline.errors, []);
+  assert.deepEqual(ok.baseline.incomplete, []);
+  const inc = build('incompleta');
+  assert.deepEqual(inc.baseline.incomplete, ['parada-retomada']);
+  assert.deepEqual(inc.baseline.errors, []);
+  const bad = build('commit-divergente');
+  assert.ok(bad.baseline.errors.length > 0);
+  assert.deepEqual(bad.baseline.errors, bad.errors);
+});
+
+test('diverging states are written with the lists and exit 1 (DEC-197)', () => {
+  withTmp((dest) => {
+    const code = main(['--out', fx('commit-divergente'), '--dest', dest, '--date', DATE], quiet);
+    assert.equal(code, 1);
+    const json = JSON.parse(readFileSync(join(dest, 'baseline.json'), 'utf8'));
+    assert.ok(json.errors.length > 0);
+    assert.match(readFileSync(join(dest, 'linha-de-base.md'), 'utf8'), /## Pendências/);
+  });
+});
+
+test('measurement row of an incomplete variant is not "concluído"', () => {
+  const r = build('completa');
+  const v = structuredClone(r.baseline);
+  v.variants.coordinator.valid = v.variants.coordinator.requested - 1;
+  const rows = measurementRows(v, { date: DATE });
+  const row = rows.find((x) => x.includes('coordinator:'));
+  assert.ok(row.endsWith('| - | em andamento |'), row);
+  assert.ok(rows.filter((x) => x.endsWith('| concluído |')).length === rows.length - 1);
+});
