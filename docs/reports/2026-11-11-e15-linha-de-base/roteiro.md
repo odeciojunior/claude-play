@@ -1,10 +1,10 @@
 # Roteiro do dono: linha de base de E15
 
-As execuções pagas são ato do dono (DEC-011, DEC-043). Este roteiro traz os comandos completos; `<...>` marca uma pasta ou valor que você escolhe. Nenhum caminho pessoal está gravado aqui. Rode tudo a partir da raiz do repositório, na tag da linha de base.
+As execuções pagas são ato do dono (DEC-011, DEC-043). Este roteiro traz os comandos completos; `<...>` marca uma pasta ou valor que você escolhe. Nenhum caminho pessoal está gravado aqui. Rode tudo a partir da raiz de um checkout da branch que contém E15 (a branch de release): a tag da linha de base não tem `tools/measure`. O que fica na tag é o plugin instalado.
 
 ## 1. Pré-condições
 
-- Plugin `productivity-tools` 1.6.0 instalado, e o repositório no commit da tag `productivity-tools--v1.6.0` (o condutor confere o commit da tag; a opção `--tag <nome>` troca a tag).
+- Plugin `productivity-tools` 1.6.0 instalado, e o plugin instalado no commit da tag `productivity-tools--v1.6.0`, que é o release medido (o condutor confere isso pelo `installed_plugins.json`; a opção `--tag <nome>` troca a tag). O checkout do repositório não precisa estar na tag.
 - Regras de permissão da execução sem interface: as que o preflight do release exige (`Bash(git:*)`, `Bash(node:*)` e as demais que ele listar) e `Workflow(productivity-tools:roadmap-release)` (DEC-043). Passe cada uma com `--allow <regra>`. Se o plugin vier do cache, passe também `--add-dir <pasta da versão do plugin>`; sem isso o lançamento por caminho é negado (sondas de E14).
 - Pasta de trabalho `<work>` fora do repositório, pasta de saída `<out>` (use `tools/measure/out/`, ignorada pelo git) e pasta de configuração `<config-dir>` com o `installed_plugins.json` do plugin medido e do superpowers.
 - Modo de permissão `<modo>` anotado: ele é gravado nos agregados e muda o resultado (risco de E14).
