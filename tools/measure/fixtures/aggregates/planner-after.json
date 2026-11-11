@@ -1,0 +1,117 @@
+{
+  "note": "[fab] fabricated aggregate for the comparator tests",
+  "variant": "planner",
+  "requested": 3,
+  "valid": 3,
+  "invalid": 0,
+  "denied": 0,
+  "invalidReasons": {},
+  "plugin": {
+    "version": "0.0.0",
+    "commit": "unknown"
+  },
+  "cli": "2.1.0 (Claude Code)",
+  "models": [],
+  "pricesDate": "2026-11-10",
+  "permissionMode": "acceptEdits",
+  "attempts": [
+    {
+      "n": 1,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 9,
+          "sonnet": 9,
+          "opus": 9,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1001,
+        "perTask": 21,
+        "conditional": {
+          "extraRounds": 21,
+          "fixCalls": 21
+        },
+        "main": {
+          "agentCalls": 21,
+          "bytes": 21,
+          "turns": 21
+        },
+        "static": {
+          "bytes": 600
+        },
+        "cost": 11
+      },
+      "outcomes": []
+    },
+    {
+      "n": 2,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 9,
+          "sonnet": 9,
+          "opus": 9,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1002,
+        "perTask": 22,
+        "conditional": {
+          "extraRounds": 22,
+          "fixCalls": 22
+        },
+        "main": {
+          "agentCalls": 22,
+          "bytes": 22,
+          "turns": 22
+        },
+        "static": {
+          "bytes": 600
+        },
+        "cost": 12
+      },
+      "outcomes": []
+    },
+    {
+      "n": 3,
+      "status": "valid",
+      "counters": {
+        "structural": {
+          "haiku": 9,
+          "sonnet": 9,
+          "opus": 9,
+          "fable": 0,
+          "other": 0,
+          "weighted": 184
+        },
+        "bytes": 1003,
+        "perTask": 23,
+        "conditional": {
+          "extraRounds": 23,
+          "fixCalls": 23
+        },
+        "main": {
+          "agentCalls": 23,
+          "bytes": 23,
+          "turns": 23
+        },
+        "static": {
+          "bytes": 600
+        },
+        "cost": 13
+      },
+      "outcomes": []
+    }
+  ],
+  "roles": {},
+  "cost": {
+    "median": 11,
+    "min": 11,
+    "max": 13
+  },
+  "outcomes": {},
+  "deteccaoPorCodigo": {}
+}

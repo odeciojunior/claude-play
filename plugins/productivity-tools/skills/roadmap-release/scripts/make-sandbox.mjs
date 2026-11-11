@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Generates a disposable git repository used to verify roadmap-release end to end.
 // Usage: node make-sandbox.mjs <dir>
-// Creates four deliverables: E1 (pure function), E2 (depends on E1), E3 (independent, with an
+// Creates five deliverables: E1 (pure function), E2 (depends on E1), E3 (independent, with an
 // acceptance criterion that cannot be satisfied on purpose), E4 (independent, with an external
-// delivery step: one line appended to ../outbox.log, outside the repository). No npm dependencies, no remote.
+// delivery step: one line appended to ../outbox.log, outside the repository), E5 (independent, three
+// pieces and three criteria). Also writes scenario/stop-resume.json (STOP_RESUME: where a run of E5 is
+// stopped and resumed), outside the roadmap folder. No npm dependencies, no remote.
 import { mkdirSync, writeFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,9 +17,12 @@ const checkerSrc = join(here, '..', '..', 'roadmap-tracker', 'scripts', 'check-r
 const FOLDER = 'docs/plans/roadmap-sandbox';
 const DATE = '2026-11-09';
 
+export const STOP_RESUME = { deliverable: 'E5', first: 'run E5', stopWhen: { branch: 'feat/E5', subjectPrefix: 'E5 T1:' }, then: 'resume E5' };
+
 const files = {
   'package.json': JSON.stringify({ name: 'roadmap-sandbox', version: '0.0.0', private: true, type: 'module' }, null, 2) + '\n',
   '.gitignore': 'node_modules/\n',
+  'scenario/stop-resume.json': JSON.stringify(STOP_RESUME, null, 2) + '\n',
   'README.md': '# Roadmap sandbox\n\nDisposable repository for verifying roadmap-release. Safe to delete.\n',
   'src/greet.mjs': 'export function greet(name) {\n  return `hello, ${name}`;\n}\n',
   'tests/baseline.test.mjs': `import { test } from 'node:test';
@@ -112,7 +117,7 @@ Snapshot. Overwritten on every update; history goes to \`log.md\`.
 ## Now
 
 <!-- roadmap:now -->
-1. Run roadmap-release on E1, E2, E3 and E4.
+1. Run roadmap-release on E1, E2, E3, E4 and E5.
 <!-- /roadmap:now -->
 
 ## Panel
@@ -124,6 +129,7 @@ Snapshot. Overwritten on every update; history goes to \`log.md\`.
 | E2 | not-started | - | Wait for E1 |
 | E3 | not-started | - | Run the release skill |
 | E4 | not-started | - | Run the release skill |
+| E5 | not-started | - | Run the release skill |
 <!-- /roadmap:panel -->
 
 ## Blockers
@@ -154,6 +160,7 @@ Append-only. IDs are global and never reused.
 | ID | Date | Deliverable | Decision | Discarded alternative | Contradicts | Revisit when | Origin | Status |
 |---|---|---|---|---|---|---|---|---|
 | DEC-001 | ${DATE} | E3 | E3 keeps one acceptance criterion that cannot pass, to exercise the operator-action path | Make every criterion satisfiable | - | The sandbox is retired | SRC-01 | in-force |
+| DEC-002 | ${DATE} | E5 | E5 utilities are pure: no I/O and no dependencies | Utilities that log or cache to disk | - | The sandbox is retired | SRC-01 | in-force |
 <!-- /roadmap:decisions -->
 `,
   [`${FOLDER}/log.md`]: `# Log
@@ -173,6 +180,7 @@ graph LR
   E1 --> E2
   E3
   E4
+  E5
 \`\`\`
 
 Critical path: E1, E2. Next gate: run roadmap-release.
@@ -200,6 +208,7 @@ Critical path: E1, E2. Next gate: run roadmap-release.
 | REQ-002 | Numbers can be normalized to a 0..1 scale | functional | SRC-01 | E2 | covered |
 | REQ-003 | Text can be reversed, with an impossible extra check | functional | SRC-01 | E3 | covered |
 | REQ-004 | A report can be published once to an outbox outside the repository | functional | SRC-01 | E4 | covered |
+| REQ-005 | Text can be turned into ASCII slugs, truncated and counted in words | functional | SRC-01 | E5 | covered |
 <!-- /roadmap:requirements -->
 `,
   [`${FOLDER}/strategy.md`]: `<!-- roadmap:version 1.0 ${DATE} -->
@@ -207,7 +216,7 @@ Critical path: E1, E2. Next gate: run roadmap-release.
 
 ## Changelog
 
-- v1.0 (${DATE}): first version. Absorbs DEC-001.
+- v1.0 (${DATE}): first version. Absorbs DEC-001 and DEC-002.
 
 ## Objective
 
@@ -227,7 +236,7 @@ No deliverable started. See \`state.md\`.
 
 ## Thesis
 
-Four tiny deliverables cover the dependency, the independent, the failing and the external-delivery path.
+Five tiny deliverables cover the dependency, the independent, the failing and the external-delivery path.
 
 ## Deliverables overview
 
@@ -237,13 +246,14 @@ Four tiny deliverables cover the dependency, the independent, the failing and th
 | E2 | Normalize function | Core | E1 |
 | E3 | Reverse function | Extras | - |
 | E4 | Publish report | Extras | - |
+| E5 | Text utilities | Extras | - |
 
 ## Phases
 
 | Phase (outcome) | Entry criteria | Exit criteria | Deliverables |
 |---|---|---|---|
 | Numeric helpers work | Roadmap approved | clamp and normalize are tested and merged | E1, E2 |
-| Text helper attempted | Roadmap approved | reverse is merged or reported as an operator action | E3 |
+| Text helper attempted | Roadmap approved | reverse is merged or reported as an operator action | E3, E5 |
 | Delivery step works | Roadmap approved | publish is merged and the outbox holds exactly one line | E4 |
 
 ## Deliverables
@@ -334,6 +344,30 @@ Definition of done: acceptance passes in the integration branch; G1 green.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
+<!-- roadmap:card id=E5 phase=extras track=engineering priority=Should size="not estimated" depends=- reqs=REQ-005 critical=false -->
+### E5 -- Text utilities
+
+Why: REQ-005.
+
+Pieces:
+
+- Piece 1: \`slugify(text)\` in \`src/slugify.mjs\`, with tests in \`tests/e5-slugify.test.mjs\`.
+- Piece 2: \`truncate(text, max)\` in \`src/truncate.mjs\`, with tests in \`tests/e5-truncate.test.mjs\`.
+- Piece 3: \`wordCount(text)\` in \`src/word-count.mjs\`, with tests in \`tests/e5-word-count.test.mjs\`.
+
+<!-- roadmap:acceptance -->
+1. Given text with spaces, punctuation and accented letters, when slugify is called, then lowercase ASCII words joined by single hyphens come back (slugify('Café au Lait!') is 'cafe-au-lait'). {verify: test; evidence: node --test tests/e5-slugify.test.mjs}
+2. Given text longer than max, when truncate is called, then at most max characters come back, ending with '…'; text of length max or less comes back unchanged; max below 1 throws a RangeError (the card test asserts the throw only for a negative max such as -1, never for 0). {verify: test; evidence: node --test tests/e5-truncate.test.mjs}
+3. Given text, when wordCount is called, then the number of whitespace-separated words comes back, and 0 for empty or blank text. {verify: test; evidence: node --test tests/e5-word-count.test.mjs}
+<!-- /roadmap:acceptance -->
+
+Definition of done: acceptance passes in the integration branch; G1 green.
+
+<!-- roadmap:risks -->
+- None significant: the utilities are pure.
+<!-- /roadmap:risks -->
+<!-- /roadmap:card -->
+
 ## Gates and verification
 
 <!-- roadmap:gates -->
@@ -356,7 +390,7 @@ None.
 
 ## Decisions
 
-Decisions live in \`decisions.md\`. This strategy absorbs DEC-001.
+Decisions live in \`decisions.md\`. This strategy absorbs DEC-001 and DEC-002.
 
 ## External pending items
 
@@ -368,7 +402,7 @@ None.
 
 ## Coverage summary
 
-Four requirements covered.
+Five requirements covered.
 
 ## Version history
 

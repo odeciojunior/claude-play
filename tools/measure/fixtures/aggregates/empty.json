@@ -1,0 +1,26 @@
+{
+  "note": "[fab] fabricated aggregate for the comparator tests",
+  "variant": "completo",
+  "requested": 0,
+  "valid": 0,
+  "invalid": 0,
+  "denied": 0,
+  "invalidReasons": {},
+  "plugin": {
+    "version": "0.0.0",
+    "commit": "unknown"
+  },
+  "cli": "2.1.0 (Claude Code)",
+  "models": [],
+  "pricesDate": "2026-11-10",
+  "permissionMode": "acceptEdits",
+  "attempts": [],
+  "roles": {},
+  "cost": {
+    "median": 11,
+    "min": 11,
+    "max": 13
+  },
+  "outcomes": {},
+  "deteccaoPorCodigo": {}
+}

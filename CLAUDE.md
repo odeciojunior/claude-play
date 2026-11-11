@@ -7,7 +7,7 @@ Claude Code plugin marketplace (`claude-play`). Users add this repo as a marketp
 - **Bump the version in two places together**: `plugins/<name>/.claude-plugin/plugin.json` (authoritative: Claude Code uses it over any marketplace value) and the root `README.md` table. Marketplace entries carry no `version`; `lint-plugin` checks plugin.json against the README row and fails an entry that has one. Installed copies resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`, so an edit without a bump never reaches users.
 - **SKILL.md frontmatter keys (repo policy):** `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. `model`/`context`/`agent`/`allowed-tools`/`paths`/`hooks` are valid Claude Code fields that we don't use, to keep skills portable and predictable. Unknown keys are ignored silently, so spelling matters.
 - **Never edit `plugins/_template/`** (the `protect-template` hook blocks it); contributors copy it to a new plugin directory.
-- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin, and the tests: `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs"`. The validator checks manifests only; SKILL.md frontmatter and agent files are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
+- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin, and the tests: `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"`. The validator checks manifests only; SKILL.md frontmatter and agent files are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
 - Path-specific rules load from `.claude/rules/` when a matching file is read or edited: skills, the roadmap checker, mcp-sql-server.
 
 ## Publish an update
@@ -34,6 +34,7 @@ plugins/_template/                  # Starter template (protected)
 .claude/hooks/*.mjs                 # Wired in .claude/settings.json
 .claude/rules/*.md                  # Path-scoped rules
 docs/plans/  docs/reports/          # Designs and plans (YYYY-MM-DD-<topic>-design|plan.md); research reports
+tools/measure/                      # Repo-only measurement tools (not shipped); outputs go to tools/measure/out/, never committed
 docs/diagrams/repo-architecture.{md,excalidraw}
 docs/claude-code-extensibility-reference.md   # Spec digest: plugin/skill/hook/agent formats
 ```

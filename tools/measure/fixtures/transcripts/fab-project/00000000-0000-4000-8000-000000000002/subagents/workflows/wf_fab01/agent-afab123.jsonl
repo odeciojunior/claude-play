@@ -1,0 +1,2 @@
+{"type":"user","isSidechain":true,"uuid":"00000000-0000-4000-8000-0000000d0023","message":{"role":"user","content":"[fab] prompt for commit-plan"}}
+{"type":"assistant","isSidechain":true,"uuid":"00000000-0000-4000-8000-0000000e0023","requestId":"req_fab_afab123","message":{"id":"msg_fab_afab123","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"[fab] reply"}],"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
