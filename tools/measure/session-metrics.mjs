@@ -167,6 +167,61 @@ function measureMain(lines, prices) {
   return { turns: msgs.length, agentCalls, promptBytes, tokens: acc.tokens, cost: acc.cost, unpriced: acc.unpriced };
 }
 
+// Role of an agent from its label (meta.description); rules in the order of the spec table.
+// The label is lowercased, without the `e<n>:` prefix and without a `#<n>` suffix.
+export function normalizeLabel(label) {
+  return String(label ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^e\d+:/, '')
+    .replace(/#\d+$/, '')
+    .trim();
+}
+
+const ROLE_RULES = [
+  [/^discovery$/, 'discovery'],
+  [/^(preflight|preparar)/, 'preflight'],
+  [/^setup$/, 'setup'],
+  [/^spec-review\d+$/, 'spec-review'],
+  [/^spec-fix\d+$/, 'spec-fix'],
+  [/^spec$/, 'spec'],
+  [/^plan-review\d+$/, 'plan-review'],
+  [/^plan-fix\d+$/, 'plan-fix'],
+  [/^plan$/, 'plan'],
+  [/^status-/, 'status-record'],
+  [/^progress/, 'progress'],
+  [/^review-log/, 'review-log'],
+  [/^report$/, 'report'],
+  [/^(t\d+:impl$|exec:)/, 'implementer'],
+  [/^t\d+:spec\d+$/, 'task-spec-review'],
+  [/^t\d+:quality\d+$/, 'task-quality-review'],
+  [/^t\d+:fix/, 'task-fix'],
+  [/^(final|revisao-final|sync|test-integrity)/, 'final-review'],
+  [/^(gates|evidence|suite)/, 'gates'],
+  [/^(merge|pre-merge|cleanup)/, 'merge'],
+  [/^docs/, 'docs'],
+  [/^(guarda|conferir|commit|git-truth)/, 'guards'],
+];
+
+export function classifyRole(label, { workflow, agentType } = {}) {
+  const l = normalizeLabel(label);
+  for (const [re, role] of ROLE_RULES) if (re.test(l)) return role;
+  if (workflow) return `other:${l.replace(/\d+/g, '')}`;
+  return `agent:${agentType ?? 'general'}`;
+}
+
+// Review loops seen in a label: returns { loop, round } or null.
+function reviewLoop(label) {
+  const l = normalizeLabel(label);
+  let m = /^(spec-review|plan-review|final)(\d+)$/.exec(l);
+  if (m) return { loop: m[1], round: Number(m[2]) };
+  m = /^t(\d+):(spec|quality)(\d+)$/.exec(l);
+  if (m) return { loop: `t${m[1]}:${m[2]}`, round: Number(m[3]) };
+  return null;
+}
+
+const taskOf = (label) => /^t(\d+):/.exec(normalizeLabel(label))?.[1] ?? null;
+
 const dirs = (p) => (existsSync(p) ? readdirSync(p).filter((n) => statSync(join(p, n)).isDirectory()) : []);
 const files = (p, re) => (existsSync(p) ? readdirSync(p).filter((n) => re.test(n)) : []);
 
@@ -228,6 +283,7 @@ export function extract({ root, sessions, runs, prices }) {
       tasks: { count: 0, loop: newCounters() },
       main: { turns: 0, agentCalls: {}, promptBytes: 0, tokens: emptyTokens(), cost: null },
     };
+    const taskIds = new Set();
     for (const sid of sids) {
       const s = bySid.get(sid);
       if (!s) continue;
@@ -240,15 +296,23 @@ export function extract({ root, sessions, runs, prices }) {
       for (const f of m.unpriced) unpricedAll.add(f);
       for (const a of listAgents(s.dir)) {
         const c = measureAgent(readJsonl(a.file), prices);
-        // Provisional role; Task 3 replaces this with the classifier.
-        const role = `agent:${a.meta.agentType ?? 'general'}`;
+        const role = classifyRole(a.meta.description, { workflow: a.workflow, agentType: a.meta.agentType });
         r.roles[role] ??= { ...newCounters(), agents: 0 };
         addCounters(r.roles[role], c);
         r.roles[role].agents += 1;
         addCounters(r.total, c);
         for (const f of c.unpriced) unpricedAll.add(f);
+        const rl = reviewLoop(a.meta.description);
+        if (rl) r.reviewRounds.loops[rl.loop] = Math.max(r.reviewRounds.loops[rl.loop] ?? 0, rl.round);
+        const task = taskOf(a.meta.description);
+        if (task !== null) {
+          taskIds.add(task);
+          addCounters(r.tasks.loop, c);
+        }
       }
     }
+    r.tasks.count = taskIds.size;
+    r.reviewRounds.extra = Object.values(r.reviewRounds.loops).reduce((n, max) => n + (max - 1), 0);
     result.push(r);
   }
   return { runs: result, unpriced: [...unpricedAll] };

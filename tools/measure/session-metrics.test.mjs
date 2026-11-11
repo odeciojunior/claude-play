@@ -4,15 +4,17 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extract, readJsonl, loadPrices, family } from './session-metrics.mjs';
+import { extract, readJsonl, loadPrices, family, classifyRole } from './session-metrics.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, 'fixtures', 'transcripts');
 const prices = loadPrices(join(here, 'fixtures', 'prices.json'));
 const close = (a, b) => Math.abs(a - b) < 1e-9;
+const SID1 = '00000000-0000-4000-8000-000000000001';
+const SID2 = '00000000-0000-4000-8000-000000000002';
 
 function run() {
-  const { runs, unpriced } = extract({ root, prices });
+  const { runs, unpriced } = extract({ root, prices, sessions: [SID1] });
   assert.equal(runs.length, 1);
   return { run: runs[0], unpriced };
 }
@@ -74,4 +76,89 @@ test('readJsonl tolerates CRLF and a partial last line', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+function workflowRun() {
+  const { runs } = extract({ root, prices, sessions: [SID2] });
+  assert.equal(runs.length, 1);
+  return runs[0];
+}
+
+test('classifies every label family of the role table', () => {
+  const wf = { workflow: true };
+  const table = [
+    ['E5:discovery', wf, 'discovery'],
+    ['preflight', wf, 'preflight'],
+    ['E5:preflight-checks', wf, 'preflight'],
+    ['preparar-ambiente', wf, 'preflight'],
+    ['setup', wf, 'setup'],
+    ['spec-review1', wf, 'spec-review'],
+    ['spec-fix2', wf, 'spec-fix'],
+    ['E5:spec', wf, 'spec'],
+    ['plan-review2', wf, 'plan-review'],
+    ['plan-fix1', wf, 'plan-fix'],
+    ['plan', wf, 'plan'],
+    ['status-plan', wf, 'status-record'],
+    ['progress', wf, 'progress'],
+    ['progress-update', wf, 'progress'],
+    ['review-log', wf, 'review-log'],
+    ['report', wf, 'report'],
+    ['t1:impl', wf, 'implementer'],
+    ['exec:build', wf, 'implementer'],
+    ['t2:spec2', wf, 'task-spec-review'],
+    ['t3:quality1', wf, 'task-quality-review'],
+    ['t2:fix1', wf, 'task-fix'],
+    ['t2:fix-lint', wf, 'task-fix'],
+    ['final1', wf, 'final-review'],
+    ['revisao-final', wf, 'final-review'],
+    ['sync-main', wf, 'final-review'],
+    ['test-integrity', wf, 'final-review'],
+    ['gates', wf, 'gates'],
+    ['evidence-ac1', wf, 'gates'],
+    ['suite', wf, 'gates'],
+    ['merge', wf, 'merge'],
+    ['pre-merge', wf, 'merge'],
+    ['cleanup', wf, 'merge'],
+    ['docs', wf, 'docs'],
+    ['guarda-1', wf, 'guards'],
+    ['conferir-sha', wf, 'guards'],
+    ['commit-plan', wf, 'guards'],
+    ['git-truth', wf, 'guards'],
+    ['Plan#2', wf, 'plan'],
+    ['E5:wobble3', wf, 'other:wobble'],
+    ['Explore things', { workflow: false, agentType: 'Explore' }, 'agent:Explore'],
+    [undefined, { workflow: false }, 'agent:general'],
+  ];
+  for (const [label, opts, expected] of table) {
+    assert.equal(classifyRole(label, opts), expected, `label ${label}`);
+  }
+});
+
+test('status, progress, review log and report come out as separate rows', () => {
+  const r = workflowRun();
+  for (const role of ['status-record', 'progress', 'review-log', 'report']) {
+    assert.ok(Object.keys(r.roles).includes(role), role);
+    assert.equal(r.roles[role].agents, 1, role);
+  }
+});
+
+test('records review rounds per loop', () => {
+  const r = workflowRun();
+  assert.deepEqual(r.reviewRounds.loops, {
+    'spec-review': 1,
+    'plan-review': 2,
+    't1:spec': 1,
+    't1:quality': 1,
+    't2:spec': 2,
+    final: 1,
+  });
+  assert.equal(r.reviewRounds.extra, 2);
+});
+
+test('counts tasks and the task loop', () => {
+  const r = workflowRun();
+  assert.equal(r.tasks.count, 2);
+  // Seven t* agents; t2:fix1 runs on opus, the other six on sonnet.
+  assert.equal(r.tasks.loop.calls.sonnet, 6);
+  assert.equal(r.tasks.loop.calls.opus, 1);
 });
