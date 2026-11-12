@@ -187,17 +187,42 @@ const parseObject = (text) => {
   }
 };
 
+const labelOf = (o) => (typeof o.label === 'string' && o.label ? o.label : typeof o.description === 'string' && o.description ? o.description : null);
+
 // Strict reader: a missing file, a line that is not JSON or an entry without a label is a format error.
+// Two formats: the simulated one (every line carries a label and a result) and the real Workflow journal
+// (lines with a `type`: `started` carries the label, `result` carries the result and is matched to its
+// `started` by key, else agentId; `launched` and other types are housekeeping and are ignored).
 export function readJournal(file) {
   if (!existsSync(file)) return { entries: [], formatError: 'journal missing' };
   const entries = [];
+  const labelByKey = new Map();
+  const labelByAgent = new Map();
   const lines = readFileSync(file, 'utf8').split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i].replace(/\r$/, '');
     if (text.trim() === '') continue;
     const obj = parseObject(text);
     if (!obj) return { entries, formatError: `line ${i + 1} is not JSON` };
-    const label = typeof obj.label === 'string' && obj.label ? obj.label : typeof obj.description === 'string' && obj.description ? obj.description : null;
+    if (typeof obj.type === 'string') {
+      if (obj.type === 'started') {
+        const l = labelOf(obj);
+        if (l !== null) {
+          if (typeof obj.key === 'string') labelByKey.set(obj.key, l);
+          if (typeof obj.agentId === 'string') labelByAgent.set(obj.agentId, l);
+        }
+        continue;
+      }
+      if (obj.type !== 'result') continue;
+      const l = labelOf(obj) ?? (typeof obj.key === 'string' ? labelByKey.get(obj.key) : undefined) ?? (typeof obj.agentId === 'string' ? labelByAgent.get(obj.agentId) : undefined);
+      if (!l) return { entries, formatError: `line ${i + 1}: result without a started label` };
+      let res = null;
+      if (obj.result && typeof obj.result === 'object' && !Array.isArray(obj.result)) res = obj.result;
+      else if (typeof obj.result === 'string') res = parseObject(obj.result);
+      entries.push({ label: l, result: res, text });
+      continue;
+    }
+    const label = labelOf(obj);
     if (label === null) return { entries, formatError: `line ${i + 1} has no label` };
     let result = null;
     if (obj.result && typeof obj.result === 'object' && !Array.isArray(obj.result)) result = obj.result;
