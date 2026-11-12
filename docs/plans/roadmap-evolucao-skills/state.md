@@ -56,8 +56,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:pending -->
 - (dono) Operar os pontos de medição E15, E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (dono) Os scripts em `docs/reports/2026-11-10-session-metrics/` foram limpos de dados pessoais e ficam como evidência; ainda têm os erros de preço e de agrupamento que E1 corrige.
-- (executor) Incerto, rever no spec de E25: nome, regra e concessão por `allowed-tools` só foram vistos com o plugin carregado do caminho local; nenhum plugin instalado registra workflow, então só o critério do dono em E25 confere. A pasta do cache não é legível para o caminho (SRC-15).
-- (executor) Incerto, rever no spec de E25: nenhuma sessão sem interface grava `skipWorkflowUsageWarning` nas configurações do usuário; resta a sessão interativa ao mostrar o diálogo, não testada. O marcador de sessão filha não influi na permissão (SRC-15).
 - (executor) Incerto, medir em E15: a fidelidade do plano com schema teve uma fixture por tamanho e dez tentativas por célula; sonnet com plano de 30 tarefas não rodou (DEC-059).
 - (executor) Incerto, rever no spec de E1: a causa de a revisão do plano semeado acusar árvore suja logo após um commit limpo, que impede atribuir o conserto só ao revisor (SRC-14).
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
@@ -76,13 +74,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (dono) Criterion 4 (human): after E25 is integrated, the owner checks two consecutive sessions at the pre-grant commit (reachable from release/roadmap-skills-v2) using script A in the spec, and records the permission mode. Never marked met by an agent.
-- (dono) Criterion 6 (human): after integration, the owner checks a new session with the grant (release/roadmap-skills-v2) using script A and records the permission mode. If piece 5 is not merged, the owner records that it cannot be checked.
-- (dono) Script B (cache): the owner checks name and grant with the plugin installed from cache in a disposable CLAUDE_CONFIG_DIR; answers the DEC-061 and DEC-049 revisit triggers.
-- (dono) Any broader allowed-tools policy (other skills or future workflows such as coordinator-workflow) is the owner's decision; this card fixes the single exception.
-- (dono) Owner ratification of the autonomous decisions (DEC-030); contract-scope decisions 1 and 5 hold the start of E8.
+- (dono) E25: roteiro B (cache): conferir nome e concessão com o plugin instalado do cache num CLAUDE_CONFIG_DIR descartável, antes da publicação de E17; responde aos gatilhos de DEC-061 e DEC-049.
 - (dono) E25: critério AC4 sem evidência automática (human)
 - (dono) E25: critério AC6 sem evidência automática (human)
+- (executor) E25: correção de DEC-275 e DEC-276 (disable-model-invocation no SKILL.md do release e no lint, F2, F4, CONTRIBUTING.md:47), em branch fix/, antes de AC6 e de E17; conferir o comando digitado em claude -p.
+- (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
+- (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
 <!-- /roadmap:pending -->
 
 ## Em andamento

@@ -117,3 +117,46 @@ Riscos aceitos: nenhum. Falha da execução: nenhuma. Bloqueantes: nenhum em tod
 ### Textos cortados no registro (esta execução)
 
 Os dois itens recebidos (decisão 10 e decisão 12, origem `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md`, entrada `add-decision --decision`) são os mesmos já transcritos por inteiro nos itens 1 e 2 da seção "Textos cortados no registro" acima.
+
+## Teste comportamental (orquestrador da sessão principal, DEC-204, DEC-271), 2026-11-12
+
+Executor: subagent sonnet seguindo `roadmap-release/SKILL.md` literalmente sobre o sandbox de `make-sandbox.mjs`, em `dry-run`, até a montagem da chamada do passo 4, sem chamar o Workflow, nos três cenários da spec. Checkout de integração e arquivos de settings sem mudança.
+
+### Avisos do preflight (exit 0; 0 erros, 3 missingRules, 2 avisos, 0 decisões pendentes)
+
+(Transcrito do relatório do testador: os arquivos de `_tmp/E25/` foram apagados antes de serem copiados para cá.)
+
+- missingRules: `Bash(node:*)`, `Bash(node *roadmap.mjs" *)`, `Bash(git:*)` (em dry-run não param).
+- Aviso 1: "roadmap cards read from the working tree (release/sandbox has no docs/plans/roadmap-sandbox)".
+- Aviso 2: "release workflow: no permission rule covers it, so a run without the interface (claude -p) or a launch outside this skill is denied; to allow it, add to permissions.allow in .claude/settings.local.json: Workflow(productivity-tools:release-workflow)".
+
+### Cenário (a): nome conhecido
+
+(Transcrito do relatório do testador.)
+
+- `name`: `productivity-tools:release-workflow`; sem `scriptPath`.
+- Chaves dos argumentos: `mode` ("dry-run", do pedido), `config`, `runToken`, `trackerCli`, `repo`, `roadmap`, `wtRoot`.
+
+### Cenário (b): "workflow not found"
+
+The `Workflow` tool answered that `productivity-tools:release-workflow` was not found. Falling back once to the script path (call-b.json: `scriptPath` = `D:/projects/claude-play-wt/_integracao/plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`, same args).
+
+Note: this fallback works only without permission prompts, or with the script folder readable (for example `--add-dir <skill folder>/workflow`), because in the default permission mode the plugin cache folder is not readable (DEC-061 limitation). If this call fails too, I will report both literal errors and stop, with no further attempt.
+
+
+### Cenário (c): negação por permissão
+
+The `Workflow` tool denied the launch of `productivity-tools:release-workflow` by permission. I am not trying the script path and not making any further call. I did not edit any settings file.
+
+To allow it, add this exact rule to `permissions.allow` (for example in `.claude/settings.local.json`):
+
+Workflow(productivity-tools:release-workflow)
+
+Then ask me to run it again. (Preflight in this dry-run also reported missing rules, not blocking in dry-run: Bash(node:*), Bash(node *roadmap.mjs" *), Bash(git:*).)
+
+
+### Revisão adversarial (sonnet, só leitura): aprovada com ressalvas
+
+- Critério 1: a regra `Workflow(productivity-tools:release-workflow)` aparece nos avisos, idêntica ao modelo de `preflight.mjs`, e não entre as regras ausentes. (a) usa o nome, sem `scriptPath`, com as seis chaves. (b) faz uma única chamada de reserva com `scriptPath` absoluto e cita a limitação de DEC-061. (c) não cai na reserva e mostra a regra exata.
+- Baixas, a corrigir no SKILL.md: o passo 4 (linha 39) não diz como distinguir "não encontrado" de "negado" nem o que emitir depois de uma negação; as Regras (pergunta 2) não repetem a exceção de dry-run e plan-only do passo 2; falta a cláusula que pula a pergunta de autorização em dry-run sem ações authorize-external.
+- Fora de E25: qual árvore de trabalho guarda o `release.config.json` da resolução do alvo; condições de pulo do passo 3 sobrepostas.

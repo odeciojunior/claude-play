@@ -3,6 +3,13 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E15 | DEC-278 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E25 | Teste comportamental (DEC-271) rodado pela sessão principal em dry-run nos três cenários, sem Workflow; revisão adversarial aprovada com ressalvas; resumo no log de revisões | `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md` |
+| 2026-11-12 | E25 | O commit 48524fb (rótulo T6) é correção da peça 5: chave de frontmatter repetida dá FAIL no lint. Mantido pelo dono, com revisão em opus e portão final. | `48524fb` |
+| 2026-11-12 | E25 | DEC-274 rejeitada pelo dono; DEC-277 a substitui | `decisions.md` |
+| 2026-11-12 | E25 | DEC-268 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E25 | DEC-265 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E25 | DEC-256, DEC-257, DEC-258, DEC-259, DEC-260, DEC-261, DEC-262, DEC-263, DEC-264, DEC-266, DEC-267, DEC-269, DEC-270, DEC-271, DEC-272, DEC-273 ratificadas pelo dono | `decisions.md` |
 | 2026-11-12 | E25 | E25 passou para na-branch | `1524260022d7e955bb9c1406cf717b9f74189f30`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md` |
 | 2026-11-12 | E25 | E25 passou para executando | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md` |
 | 2026-11-12 | - | Pendentes do executor fechados: ressalvas baixas de E22 (achados 5 a 7) e wtRoot do SKILL.md do release (revisão da tarefa 7 de E18); gates G1 a G5 e embed verdes (1314 testes, 0 falhas) | `01e5807` |
