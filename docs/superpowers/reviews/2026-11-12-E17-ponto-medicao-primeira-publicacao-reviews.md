@@ -431,3 +431,86 @@ Os cortes desta passada estão em "Corte 15 (execução seguinte)" na seção "T
 ### Falha da execução
 
 Nenhuma.
+
+## Execução de 2026-11-12 (passada da fusão, falhou)
+
+Registro transcrito dos dados do orquestrador, sem resumir. Estado final: falha, `not merged: integration worktree D:/projects/claude-play-wt/_integracao dirty before the merge of E17`.
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | regras do sandbox para o preflight 1.7.0 e árvore da semeadura arquivada | RESUMED (already reviewed) | - |
+| 2 | painel do registro por CLI por tentativa | RESUMED (already reviewed) | - |
+| 3 | metas de prosa de E4 e E22 | RESUMED (already reviewed) | - |
+| 4 | ferramenta do ponto de medição checkpoint.mjs | RESUMED (already reviewed) | - |
+| 5 | commit de versão M | RESUMED (already reviewed) | - |
+| 6 | saída dos gates em M | RESUMED (already reviewed) | - |
+| 7 | branch de volta volta/productivity-tools-1.7.1 (externa) | RESUMED (already reviewed) | - |
+| 8 | roteiro do dono e lista de ratificação | DONE | 18 |
+
+### Rodadas de revisão por estágio ou tarefa
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante na lista de bloqueantes (vazia em todos).
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, - | nenhum | 1 | nenhuma |
+| plan | 1: opus, - | nenhum | 0 | nenhuma |
+| T8:spec | 1: sonnet, - | nenhum | 0 | nenhuma |
+| T8:quality | 1: sonnet, - | nenhum | 1 | nenhuma |
+| final | 1: opus, -; 2: opus, correção sonnet | nenhum | 2 | nenhuma |
+
+### Pendências (não resolvidas)
+
+Nenhuma em todos os estágios.
+
+### Riscos aceitos
+
+- T4:quality, important, pelo-plano, `tools/measure/checkpoint.test.mjs`: Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The plan said stop and return to the orchestrator; the implementer instead committed with the test flagged todo (disclosed). Consequence: with the real arms, any run with the plano-semeado class always yields 'inconclusivo (braço defasado)' and blocks (exit 1), until the owner decides how to fix the arm or the matcher. The todo must be removed when decided.
+
+### Concerns
+
+1. the "executing" roadmap record failed (record agent returned error "Step 23 of the record stage exited 1 (checker-errors: unknown-id in state.md, BLQ-5 is cited but not defined), so the stage stopped there. Steps 24 (inflight-add) and the commit were not run. Working tree now holds uncommitted modifications to decisions.md, log.md and state.md (not committed, not cleaned up)."; command 24 (inflight-add) is missing from the runs; command 23 (add-pending) exit 1; command 23 (add-pending) JSON summary.exitCode 1; command 23 (add-pending) JSON has 1 error(s); the integration worktree is not clean after the record (git status --porcelain is not empty): the record agent did not commit); decisions and the in-flight entry are not recorded yet
+2. final fix1: 1) No automated test was added. The defect is a stale report, and a test that pins a git ref or commit hash to prose would be brittle. I checked the report against the real branch instead, by re-running G1 to G5 in a temporary worktree at a951ed5 (since removed). 2) The decision is recorded only in volta.md. Recording it as a DEC in the roadmap folder is the record stage's job, because delivery branches do not edit docs/plans/roadmap-evolucao-skills/. 3) marketplace-tools on the volta differs from M (only the E25 AC5 test) while staying at 1.2.0, which departs from spec Peça 5. I did not edit the spec or plan. volta.md states the exception, says the owner can ratify or revert it with `git revert a951ed5`, and notes that a revert returns G1 to exit 1. I left the volta branch itself untouched.
+
+### Gates
+
+G1: exit 0, total 1421, skipped 0, failing [] (linha de base: exit 0, total 1375, skipped 0, failing []). G2: exit 0 (linha de base: exit 0). G3: exit 0 (linha de base: exit 0). G4: exit 0 (linha de base: exit 0). G5: exit 0 (linha de base: exit 0).
+
+### Entradas humanas
+
+Transcritas como recebidas; várias aparecem duas vezes, em redações ligeiramente diferentes, e foram mantidas.
+
+| O quê | Bloqueante (blq) | Workaround |
+|---|---|---|
+| Execuções pagas do ponto de medição (gasto em dinheiro), das quais dependem os critérios 1 e 6 e o portão do critério 2 | não | O arnês, a versão, a branch de volta, o roteiro e a lista de ratificação são entregues sem elas; os relatórios de comparação ficam marcados como pendentes (DEC-297). |
+| Ratificação em lote das decisões do executor (critério 3) | não | ratificacao.md entregue com respostas recomendadas. |
+| Publicação: avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5) | não | Passos ficam no roteiro do dono. |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md | não | Branch de volta e volta.md produzidos pela Tarefa 7 autorizada. |
+| Roteiros A e B de E25 antes da publicação | não | Pré-condição só da publicação; a preparação segue. |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação. |
+| BLQ-5: árvore suja na revisão final de E17 (registrado no roadmap) | BLQ-5, não | A worktree E17 está limpa agora (git status --porcelain vazio); o bloqueio é tratado pelo workflow, não pelo spec. |
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas | não | Arnês, versão, branch de volta, roteiro e lista de ratificação entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297). |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Passos ficam no roteiro do dono; nenhuma tarefa do plano os executa. |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md | não | Branch de volta e volta.md preparados; a Tarefa 7 (externa) fica retida até o dono autorizar em pessoa (nenhum outro workaround registrado). |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir | não | Pré-condição da publicação, não da preparação. |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação. |
+| Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\|', workflow has '\\\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint. | não | Test marked todo with a comment; checkpoint.mjs reports 'inconclusivo (braço defasado)' for the plan class and exits 1; arms were not edited. |
+
+### External effects run
+
+Uma linha por entrada de externalRun (item, título ou comando, status, revisada). As linhas de execuções anteriores estão nas seções homônimas acima e foram mantidas.
+
+- E17:T7, branch de volta volta/productivity-tools-1.7.1 (externa), status DONE_WITH_CONCERNS, revisada: sim.
+
+### Textos cortados no registro (esta passada)
+
+#### Corte 16 (execução da fusão)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: A versão medida carrega do cache instalado numa CLAUDE_CONFIG_DIR descartável, loja git local fixada na SHA de M (ou tag local leve e17-medicao, nunca enviada), --tag é essa SHA; ratificada com emenda do dono (DEC-298): cópia do CLAUDE.md e settings.json reais sem credencial, o dono entra na conta ali uma vez, diferença de plugins registrada.
+
+### Falha da execução
+
+not merged: integration worktree D:/projects/claude-play-wt/_integracao dirty before the merge of E17
