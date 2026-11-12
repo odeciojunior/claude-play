@@ -417,3 +417,48 @@ test('emit/summary: invalid usage -> exit 2', () => {
   assert.equal(runCli(['emit', FIXTURE_SPEC, '--roadmap']).status, 2);
   assert.equal(runCli(['summary', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]).status, 2);
 });
+
+const AGENT_FILE = path.join(HERE, '..', 'agents', 'spec-author.md');
+const readAgent = () => fs.readFileSync(AGENT_FILE, 'utf8').replace(/\r\n/g, '\n');
+function splitAgent() {
+  const m = readAgent().match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  assert.ok(m, 'agent has frontmatter');
+  return { fm: m[1], body: m[2] };
+}
+
+test('E19: spec-author frontmatter pins opus, medium effort and tools without asking', () => {
+  const { fm } = splitAgent();
+  assert.match(fm, /^name: spec-author$/m);
+  assert.match(fm, /^model: opus$/m);
+  assert.match(fm, /^effort: medium$/m);
+  const tools = fm.match(/^tools: (.*)$/m)[1].split(',').map((s) => s.trim());
+  assert.deepEqual(tools, ['Read', 'Grep', 'Glob', 'Bash', 'Write', 'Edit']);
+  assert.ok(!tools.includes('AskUserQuestion'));
+  assert.ok(!tools.includes('Agent'));
+});
+
+test('E19: spec-author body names the call contract', () => {
+  const { body } = splitAgent();
+  for (const w of ['mode', 'output', 'specTool', 'language', 'roadmap', 'card', 'ownerNote', 'topic', 'intake', 'unattended', 'interactive']) {
+    assert.ok(body.includes(w), `body names ${w}`);
+  }
+});
+
+test('E19: spec-author closes with a quoted spec-tool check and returns emit', () => {
+  const { body } = splitAgent();
+  assert.match(body, /node "<specTool>" check "<output>"/);
+  assert.ok(body.includes('--json'));
+  assert.ok(body.includes('emit'));
+  assert.match(body, /three|3/);
+});
+
+test('E19: spec-author records a credential as needsPerson by variable name', () => {
+  const { body } = splitAgent();
+  for (const w of ['needsPerson', 'credential', 'environment variable']) assert.ok(body.includes(w), `body has ${w}`);
+  assert.match(body, /never ask/i);
+  assert.match(body, /never commit/i);
+});
+
+test('E19: shipped spec texts never mention bypassPermissions', () => {
+  assert.ok(!readAgent().includes('bypassPermissions'));
+});
