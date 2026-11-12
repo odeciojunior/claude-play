@@ -292,7 +292,10 @@ export function lintPlugin(dir, { marketplace } = {}) {
       // Raw-line guard: spellings parseFrontmatter does not map to the bare key (quoted key, space before the colon, other case) are valid YAML for allowed-tools.
       const fmLines = text.replace(/^﻿/, '').split(SPLIT).slice(1, fm.bodyStartLine - 2);
       for (const l of fmLines) {
-        if (/^["']?allowed-tools["']?\s*:/i.test(l) && !/^allowed-tools:/.test(l)) {
+        // Allow-list: a top-level entry (column 0, not a comment or sequence item) must be a plain `key:`; quoted, escaped, explicit (`? key`) or spaced keys are valid YAML spellings of allowed-tools and are refused.
+        if (/^\S/.test(l) && !/^(#|- )/.test(l) && !/^[A-Za-z0-9_-]+:/.test(l)) {
+          problems.push(['FAIL', 'frontmatter keys must be written as a plain `key:` at column 0 (DEC-049: allowed-tools may not be spelled quoted, escaped or as an explicit key); remove this entry']);
+        } else if (/^allowed-tools:/i.test(l) && !/^allowed-tools:/.test(l)) {
           problems.push(['FAIL', 'allowed-tools must be written as the bare key `allowed-tools:` (DEC-049); remove this spelling']);
         }
       }
