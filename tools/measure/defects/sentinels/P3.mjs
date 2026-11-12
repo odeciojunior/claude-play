@@ -25,17 +25,32 @@ function replaceOnce(text, from, to) {
   return text.replace(from, () => to);
 }
 
+// Every "### Task n" block, up to the next task or the next level-2 heading.
+function tasks(text) {
+  return [...text.matchAll(/^### Task \d+: [\s\S]*?(?=^### Task |^## |(?![\s\S]))/gm)]
+    .map((m) => ({ start: m.index, end: m.index + m[0].length, body: m[0] }));
+}
+const runsSuite = (body) => /`node --test`/.test(body);
+
 export function seed(dir) {
   const text = readPlan(dir);
-  const a = section(text, 1) ?? fail();
-  const c = section(text, 3) ?? fail();
+  const all = tasks(text);
+  const k = all.findIndex((t) => runsSuite(t.body));
+  if (k < 1) fail();
+  const a = all[0];
+  const c = all[k];
+  const num = (b) => b.match(/^### Task (\d+): /)[1];
   const retitle = (b, n) => b.replace(/^### Task \d+: /, '### Task ' + n + ': ');
-  writePlan(dir, text.slice(0, a.start) + retitle(c.body, 1) + text.slice(a.end, c.start) + retitle(a.body, 3) + text.slice(c.end));
+  writePlan(dir, text.slice(0, a.start) + retitle(c.body, num(a.body)) + text.slice(a.end, c.start) + retitle(a.body, num(c.body)) + text.slice(c.end));
 }
 
 export function present(dir, ref = 'HEAD') {
   const text = showPlan(dir, ref);
   const i = text.indexOf('- Create: `src/index.mjs`');
   const s = text.indexOf('- Create: `src/slugify.mjs`');
-  return i >= 0 && s >= 0 && i < s;
+  if (i >= 0 && s >= 0 && i < s) return true;
+  const all = tasks(text);
+  const r = all.findIndex((t) => runsSuite(t.body));
+  const g = all.findIndex((t) => t.body.includes('- Create: `src/slugify.mjs`'));
+  return r >= 0 && g >= 0 && r < g;
 }

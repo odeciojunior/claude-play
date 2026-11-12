@@ -27,7 +27,7 @@
     "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
     "sentinel": "sentinels/P3.mjs",
     "detectedBy": "reviewer",
-    "description": "The index task comes before the slugify task it re-exports"
+    "description": "The task that runs the whole suite comes before the slugify task it depends on"
   },
   {
     "id": "P4",
@@ -57,7 +57,7 @@
     "file": "docs/superpowers/plans/2026-11-10-E5-text-utilities.md",
     "sentinel": "sentinels/P6.mjs",
     "detectedBy": "reviewer",
-    "description": "Task 3 runs the whole suite but no longer declares the sandbox-port lock"
+    "description": "The task that runs the whole suite no longer declares the sandbox-port lock"
   },
   {
     "id": "P7",

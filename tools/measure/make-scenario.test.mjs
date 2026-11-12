@@ -349,3 +349,115 @@ test('release run variants carry the permission rules in an excluded settings.lo
     }
   }
 });
+
+// Plan sentinels against the synthetic plan and three plans written by the real pipeline (paths scrubbed).
+const PLAN_FILE = 'docs/superpowers/plans/2026-11-10-E5-text-utilities.md';
+const PLAN_FORMATS = {
+  synthetic: join(here, 'scenario', 'e5', 'plan.md'),
+  'real-1': join(here, 'fixtures', 'plans', 'real-1.md'),
+  'real-2': join(here, 'fixtures', 'plans', 'real-2.md'),
+  'real-3': join(here, 'fixtures', 'plans', 'real-3.md'),
+};
+// Formats without a task that runs the bare suite / declares the sandbox-port lock cannot take P3 / P6.
+const NO_ANCHOR = { 'real-2': { P3: 'P3: anchor not found', P6: 'P6: anchor not found' } };
+const planEntries = manifest.filter((e) => e.class === 'plan');
+
+function planRepo(format) {
+  const t = tmp('plan');
+  mkdirSync(join(t.dir, 'docs', 'superpowers', 'plans'), { recursive: true });
+  writeFileSync(join(t.dir, PLAN_FILE), readFileSync(PLAN_FORMATS[format], 'utf8'));
+  git(t.dir, 'init', '-q');
+  git(t.dir, 'config', 'user.email', 't@t');
+  git(t.dir, 'config', 'user.name', 't');
+  git(t.dir, 'add', '-A');
+  git(t.dir, 'commit', '-q', '-m', 'plan');
+  return t;
+}
+const planSha = (dir) => createHash('sha256').update(readFileSync(join(dir, PLAN_FILE))).digest('hex');
+
+for (const format of Object.keys(PLAN_FORMATS)) {
+  test('plan sentinels on the ' + format + ' plan: each seeds, is present after and absent before', async () => {
+    for (const e of planEntries) {
+      const t = planRepo(format);
+      try {
+        const mod = await sentinel(e);
+        assert.equal(mod.present(t.dir, 'HEAD'), false, format + ' ' + e.id + ': present on the clean plan');
+        const expected = NO_ANCHOR[format]?.[e.id];
+        if (expected) {
+          assert.throws(() => mod.seed(t.dir), { message: expected });
+          continue;
+        }
+        mod.seed(t.dir);
+        git(t.dir, 'add', '-A');
+        git(t.dir, 'commit', '-q', '-m', 'seeded');
+        assert.equal(mod.present(t.dir, 'HEAD'), true, format + ' ' + e.id + ': absent after seeding');
+        assert.equal(mod.present(t.dir, 'HEAD^'), false, format + ' ' + e.id + ': present in the clean plan');
+      } finally {
+        t.done();
+      }
+    }
+  });
+
+  test('plan artifacts A, B and C apply in manifest order on the ' + format + ' plan', async () => {
+    for (const artifact of ['A', 'B', 'C']) {
+      const t = planRepo(format);
+      try {
+        const entries = planEntries.filter((e) => e.artifact === artifact);
+        const blocked = entries.find((e) => NO_ANCHOR[format]?.[e.id]);
+        if (blocked) {
+          for (const e of entries) {
+            const mod = await sentinel(e);
+            if (e === blocked) { assert.throws(() => mod.seed(t.dir), { message: NO_ANCHOR[format][e.id] }); break; }
+            mod.seed(t.dir);
+          }
+          continue;
+        }
+        for (const e of entries) (await sentinel(e)).seed(t.dir);
+        git(t.dir, 'add', '-A');
+        git(t.dir, 'commit', '-q', '-m', 'seeded');
+        for (const e of entries) assert.equal((await sentinel(e)).present(t.dir, 'HEAD'), true, format + ' ' + e.id);
+      } finally {
+        t.done();
+      }
+    }
+  });
+}
+
+// Sha256 of the plan after each sentinel (alone) and after each artifact sequence, captured from the sentinels before they learned the real formats.
+const SYNTHETIC_SEEDED_SHA = {
+  P1: 'b61dbaba33e7a6526d383d678b8ce31c556e6ffbc617369c84bd67bb29f50cf1',
+  P2: '6cd38abb26d9ed87368ade11e1cb02b36242a9599537c2eca1c2e1d4bd056b6b',
+  P3: '3519d07f49c0110ff2d70748797e3d73c96c7e7dbbccc3e715355fb77f60cf9b',
+  P4: '401486a09aa6e208b2367fa6e0230c9decefa8dab313636f29a14c80659a2a3d',
+  P5: 'ea6dc4399fb7524176d32249eb5c2b82694982cc29d40a9f33985781d0e7a064',
+  P6: '1e97a0b5cfc3d532838de533d6b424981134b797a2e1f6f7360cd607a3e4939b',
+  P7: 'b336a6cab144eea60633abb8ea8fe73617a7e1d7110c62c5a6c7231e9b6338f5',
+  P8: 'f99c61ff51d49826e7ee57e27d0574709fdeab13aefced8a38d5b94ee68cd626',
+  PX1: '6d3600582a499f77af9a110e5125a002774126f9357bd173717308dc1a54e62d',
+  PX2: 'bcc08c855ca4340e1f8d802abf5f508f84ed5904c2f80e6141e6eaee887f5c7b',
+  PX3: '842e9b35e52b4a1a3fb039cb97e397e8df39c4a69f1169081bd500d5ab822ed7',
+  seqA: 'eea75bde9ad3289fd728cc8c3036628b62fb8c56b7418083051d7ffa40e5a8d6',
+  seqB: 'd83312de49a468200ad50b03a24fc027a2a0d143e0e09cae3a1d60f6e44e8583',
+  seqC: '820e843ce58ba3706fc421214fd2fa40777833fd125445a863b990293760baa7',
+};
+
+test('the synthetic plan is seeded byte-identically to the sentinels of before', async () => {
+  for (const e of planEntries) {
+    const t = planRepo('synthetic');
+    try {
+      (await sentinel(e)).seed(t.dir);
+      assert.equal(planSha(t.dir), SYNTHETIC_SEEDED_SHA[e.id], e.id);
+    } finally {
+      t.done();
+    }
+  }
+  for (const artifact of ['A', 'B', 'C']) {
+    const t = planRepo('synthetic');
+    try {
+      for (const e of planEntries.filter((x) => x.artifact === artifact)) (await sentinel(e)).seed(t.dir);
+      assert.equal(planSha(t.dir), SYNTHETIC_SEEDED_SHA['seq' + artifact], 'artifact ' + artifact);
+    } finally {
+      t.done();
+    }
+  }
+});

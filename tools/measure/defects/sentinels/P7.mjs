@@ -26,9 +26,13 @@ function replaceOnce(text, from, to) {
 }
 
 export function seed(dir) {
-  writePlan(dir, replaceSection(readPlan(dir), 2, (b) => replaceOnce(b,
-    '- Create: `tests/e5-truncate.test.mjs`',
-    '- Create: `tests/e5-truncate.test.mjs`\n- Modify: `docs/plans/roadmap-sandbox/state.md`')));
+  writePlan(dir, replaceSection(readPlan(dir), 2, (b) => {
+    const lines = b.split('\n');
+    const i = lines.findIndex((l) => /^- (Create|Test): `tests\/e5-truncate\.test\.mjs`/.test(l));
+    if (i < 0) fail();
+    lines.splice(i + 1, 0, '- Modify: `docs/plans/roadmap-sandbox/state.md`');
+    return lines.join('\n');
+  }));
 }
 
 export function present(dir, ref = 'HEAD') {
