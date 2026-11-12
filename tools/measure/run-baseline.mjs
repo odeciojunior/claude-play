@@ -21,8 +21,9 @@ export const BASELINE_PLAN = [
   { variant: 'coordinator', runs: 3 },
   { variant: 'completo', runs: 3 },
   { variant: 'parada-retomada', runs: 3 },
-  { variant: 'plano-semeado-A', runs: 5 },
-  { variant: 'plano-semeado-B', runs: 5 },
+  // The plan class runs in the stage harness (the 1.6.0 workflow prompt copy, DEC-279); the code class stays on the full pipeline.
+  { variant: 'plano-semeado-A', runs: 5, stage: 'plan-review', arm: 'atual' },
+  { variant: 'plano-semeado-B', runs: 5, stage: 'plan-review', arm: 'atual' },
   { variant: 'codigo-semeado-A', runs: 5 },
   { variant: 'codigo-semeado-B', runs: 5 },
 ];
@@ -34,8 +35,9 @@ const PLACEHOLDER = '<pasta-da-execucao-aprovada>';
 
 const isSeeded = (variant) => variant.includes('semeado');
 
-// Valid attempts already recorded in --out for a variant, summed over every aggregate. Harness aggregates are left out.
-export function existingValid(outDir, variant) {
+// Valid attempts already recorded in --out for a variant, summed over the aggregates of the entry's mode: an entry with a stage
+// counts only harness aggregates of that stage and arm; an entry without one counts only pipeline aggregates (no harness field).
+export function existingValid(outDir, variant, entry = {}) {
   if (!existsSync(outDir)) return 0;
   let total = 0;
   for (const e of readdirSync(outDir, { withFileTypes: true })) {
@@ -44,7 +46,8 @@ export function existingValid(outDir, variant) {
     if (!existsSync(file)) continue;
     try {
       const agg = JSON.parse(readFileSync(file, 'utf8'));
-      if (agg.variant === variant && agg.harness === undefined && Number.isInteger(agg.valid)) total += agg.valid;
+      const sameMode = entry.stage ? agg.harness?.stage === entry.stage && agg.harness?.arm === (entry.arm ?? 'atual') : agg.harness === undefined;
+      if (agg.variant === variant && sameMode && Number.isInteger(agg.valid)) total += agg.valid;
     } catch {
       /* an unreadable aggregate counts as nothing */
     }
@@ -56,7 +59,7 @@ const selected = (opts) => BASELINE_PLAN.filter((p) => !opts.only || opts.only.l
 const quote = (v) => (/\s/.test(String(v)) ? `"${v}"` : String(v));
 
 export function dryRunCommands(opts) {
-  return selected(opts).map(({ variant, runs }) => {
+  return selected(opts).map(({ variant, runs, stage, arm }) => {
     const parts = [
       'node tools/measure/run-batch.mjs', '--variant', variant, '--runs', runs,
       '--work', quote(`${opts.work}/${variant}`), '--out', quote(opts.out),
@@ -66,6 +69,7 @@ export function dryRunCommands(opts) {
     for (const d of opts.addDir ?? []) parts.push('--add-dir', quote(d));
     if (opts.model) parts.push('--model', opts.model);
     if (opts.maxBudgetUsd) parts.push('--max-budget-usd', opts.maxBudgetUsd);
+    if (stage) parts.push('--stage', stage, '--arm', arm ?? 'atual');
     if (isSeeded(variant)) parts.push('--from-run', opts.fromRun ? quote(opts.fromRun) : PLACEHOLDER);
     return parts.join(' ');
   });
@@ -132,10 +136,11 @@ export async function runBaseline(opts, deps = {}) {
 
   let exitCode = 0;
   let denied = false;
-  for (const { variant, runs } of plan) {
+  for (const entry of plan) {
+    const { variant, runs, stage } = entry;
     if (denied) break;
     const seeded = isSeeded(variant);
-    const have = existingValid(opts.out, variant);
+    const have = existingValid(opts.out, variant, entry);
     let missing = Math.max(0, runs - have);
     if (missing === 0) {
       results.push({ variant, status: 'pulada', valid: have, missing: 0 });
@@ -171,6 +176,7 @@ export async function runBaseline(opts, deps = {}) {
           stopOnDenial: true,
           work: join(resolve(opts.work), `${variant}-p${seq}`),
           fromRun: seeded ? opts.fromRun : undefined,
+          ...(stage ? { stage, arm: entry.arm ?? 'atual' } : {}),
         });
       } catch (e) {
         d.log(`${variant}: runBatch failed: ${e.message}`);

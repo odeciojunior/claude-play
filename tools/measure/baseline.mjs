@@ -21,8 +21,12 @@ const ATTEMPT_TARGET = 40;
 
 // ---- Reading and merging ----
 
-// Every aggregate.json directly under outDir, in folder-name order. Harness aggregates are left out.
-export function loadAggregates(outDir) {
+// The plan class is measured by the stage harness on the copy of the workflow prompt (DEC-279); the code class by the full pipeline.
+const isPlanVariant = (variant) => /^plano-semeado-[AB]$/.test(variant);
+const isPlanHarness = (h) => h?.stage === 'plan-review' && h?.arm === 'atual' && h?.armSource === 'copia-do-prompt';
+
+// Every aggregate.json directly under outDir, in folder-name order. Harness aggregates are left out unless includeHarness is set.
+export function loadAggregates(outDir, { includeHarness = false } = {}) {
   const out = [];
   if (!existsSync(outDir)) return out;
   const names = readdirSync(outDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
@@ -35,7 +39,7 @@ export function loadAggregates(outDir) {
     } catch {
       continue;
     }
-    if (agg && typeof agg === 'object' && agg.harness === undefined && typeof agg.variant === 'string') out.push(agg);
+    if (agg && typeof agg === 'object' && (includeHarness || agg.harness === undefined) && typeof agg.variant === 'string') out.push(agg);
   }
   return out;
 }
@@ -100,6 +104,7 @@ export function mergeVariant(aggs) {
   return {
     ...(first.note !== undefined ? { note: first.note } : {}),
     variant: first.variant,
+    ...(first.harness ? { harness: first.harness } : {}),
     requested: sum('requested'),
     valid: sum('valid'),
     invalid: sum('invalid'),
@@ -155,6 +160,15 @@ export function coherenceErrors(merged, { tagCommit }) {
 export function classAggregate(name, a, b) {
   const merged = mergeVariant([a, b]);
   return { ...merged, variant: name, ...(a.seedSource ?? b.seedSource ? { seedSource: a.seedSource ?? b.seedSource } : {}) };
+}
+
+// Plan attempts made in pipeline mode: not part of the class, kept as the DEC-051 rewrite rate.
+export function pipelineRewriteStats(aggs) {
+  const valid = aggs.reduce((s, a) => s + (a.valid ?? 0), 0);
+  const invalid = aggs.reduce((s, a) => s + (a.invalid ?? 0), 0);
+  const rewritten = aggs.reduce((s, a) => s + (a.invalidReasons?.['plano-reescrito'] ?? 0), 0);
+  const total = valid + invalid;
+  return { attempts: total, valid, invalid, rewritten, rewriteRate: total ? rewritten / total : null };
 }
 
 // ---- Privacy ----
@@ -252,6 +266,7 @@ function classSection({ name, label, cls }, c, flag) {
   lines.push(`- Execuções inválidas: ${c.invalid} (taxa ${Math.round(invalidRate * 1000) / 10}%).`);
   const reasons = Object.entries(c.invalidReasons ?? {});
   lines.push(`- Motivos de inválida: ${reasons.length ? reasons.map(([k, v]) => `${k} (${v})`).join('; ') : 'nenhum'}.`);
+  if (c.harness) lines.push(`- Medido pelo harness de etapa: ${c.harness.stage}, braço ${c.harness.arm}, commit do workflow ${c.harness.workflowCommit ?? 'ausente'}.`);
   const s = c.seedSource;
   lines.push(
     s
@@ -303,6 +318,10 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged 
   for (const n of RECORDED_ONLY) L.push(...roleRows(n, v[n]));
   L.push('', '## Detecção por classe', '');
   for (const c of CLASSES) L.push(...classSection(c, baseline.classes[c.name], flagged.has(c.name)));
+  if (baseline.dec051) {
+    const d = baseline.dec051;
+    L.push(`Plano em modo pipeline (fora da classe; dado de DEC-051): ${d.attempts} tentativas, ${d.rewritten} com plano reescrito, ${d.invalid} inválidas (taxa de reescrita ${d.rewriteRate == null ? '-' : Math.round(d.rewriteRate * 1000) / 10 + '%'}).`, '');
+  }
   L.push('## Valores de referência para as metas', '', 'Mediana de cada contador por variante, nas execuções válidas.', '');
   const names = BASELINE_PLAN.map((p) => p.variant).filter((n) => v[n]);
   L.push(`| Contador | ${names.join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`);
@@ -317,7 +336,10 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged 
 // ---- Build ----
 
 export function buildBaseline({ outDir, tagCommit, date }) {
-  const raw = loadAggregates(outDir);
+  const loaded = loadAggregates(outDir, { includeHarness: true });
+  // Pipeline-mode plan aggregates leave the class and feed only the DEC-051 rewrite rate; other harness aggregates are ignored.
+  const pipelinePlan = loaded.filter((a) => isPlanVariant(a.variant) && a.harness === undefined);
+  const raw = loaded.filter((a) => (isPlanVariant(a.variant) ? isPlanHarness(a.harness) : a.harness === undefined));
   const groups = {};
   for (const a of raw) (groups[a.variant] ??= []).push(a);
   const variants = {};
@@ -325,6 +347,8 @@ export function buildBaseline({ outDir, tagCommit, date }) {
 
   // Partials are checked too: a mix of states inside one variant is as wrong as a mix between variants.
   const errors = coherenceErrors(raw.filter((a) => BASELINE_PLAN.some((p) => p.variant === a.variant)), { tagCommit });
+  const wfCommits = [...new Set(raw.filter((a) => isPlanVariant(a.variant)).map((a) => a.harness?.workflowCommit ?? 'ausente'))];
+  if (wfCommits.length > 1) errors.push(`plan harness workflow commit diverges: ${wfCommits.join(', ')}`);
   const incomplete = BASELINE_PLAN.filter((p) => (variants[p.variant]?.valid ?? 0) < p.runs).map((p) => p.variant);
 
   const classes = {};
@@ -353,6 +377,7 @@ export function buildBaseline({ outDir, tagCommit, date }) {
     permissionMode: first?.permissionMode ?? null,
     variants,
     classes,
+    ...(pipelinePlan.length ? { dec051: pipelineRewriteStats(pipelinePlan) } : {}),
     errors,
     incomplete,
   };

@@ -16,7 +16,7 @@ const DATE = '2026-11-20';
 const build = (name, tagCommit = TAG_COMMIT) => buildBaseline({ outDir: fx(name), tagCommit, date: DATE });
 const byVariant = (name) => {
   const m = {};
-  for (const a of loadAggregates(fx(name))) (m[a.variant] ??= []).push(a);
+  for (const a of loadAggregates(fx(name), { includeHarness: true })) (m[a.variant] ??= []).push(a);
   return m;
 };
 const quiet = { resolveTag: () => TAG_COMMIT, log: () => {}, err: () => {} };
@@ -279,4 +279,42 @@ test('detection class rows are "em andamento" below the attempt target', () => {
   o.capturado -= 1;
   const row = measurementRows(b, { date: DATE }).find((x) => x.includes(`detecção ${name}:`));
   assert.ok(row.endsWith('| - | em andamento |'), row);
+});
+
+const planHarness = { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: TAG_COMMIT };
+
+test('plan class counts only stage-harness aggregates; pipeline plan aggregates feed the DEC-051 line', () => {
+  withTmp((out) => {
+    cpSync(fx('completa'), out, { recursive: true });
+    const dir = join(out, 'plano-semeado-A-pipeline');
+    cpSync(join(out, 'plano-semeado-A-8'), dir, { recursive: true });
+    const file = join(dir, 'aggregate.json');
+    const { harness, ...pipe } = JSON.parse(readFileSync(file, 'utf8'));
+    writeFileSync(file, JSON.stringify({ ...pipe, valid: 2, invalid: 1, requested: 3, invalidReasons: { 'plano-reescrito': 1 } }));
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE });
+    assert.equal(r.baseline.variants['plano-semeado-A'].valid, 5);
+    assert.equal(r.baseline.classes['plano-semeado'].valid, 10);
+    assert.deepEqual(r.baseline.classes['plano-semeado'].harness, planHarness);
+    assert.equal(r.baseline.dec051.attempts, 3);
+    assert.equal(r.baseline.dec051.rewritten, 1);
+    assert.ok(r.markdown.includes('Plano em modo pipeline (fora da classe; dado de DEC-051): 3 tentativas, 1 com plano reescrito'));
+    assert.ok(r.markdown.includes('Medido pelo harness de etapa: plan-review, braço atual'));
+    assert.equal(r.exitCode, 0);
+  });
+});
+
+test('a plan variant with only pipeline aggregates is incomplete and the class is missing', () => {
+  withTmp((out) => {
+    cpSync(fx('completa'), out, { recursive: true });
+    for (const n of ['plano-semeado-A-8', 'plano-semeado-B-9']) {
+      const file = join(out, n, 'aggregate.json');
+      const { harness, ...pipe } = JSON.parse(readFileSync(file, 'utf8'));
+      writeFileSync(file, JSON.stringify(pipe));
+    }
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE });
+    assert.equal(r.baseline.classes['plano-semeado'], undefined);
+    assert.ok(r.incomplete.includes('plano-semeado-A') && r.incomplete.includes('plano-semeado-B'));
+    assert.equal(r.baseline.dec051.attempts, 10);
+    assert.equal(r.exitCode, 1);
+  });
 });
