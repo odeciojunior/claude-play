@@ -2,7 +2,7 @@
 // de superpowers, nao perguntam e fixam o contrato de chamada.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +26,17 @@ export function frontmatter(text) {
     fields[kv[1]] = kv[2].replace(/^"(.*)"$/, '$1');
   }
   return { keys, fields, body: m[2] };
+}
+
+// Todos os arquivos sob um diretorio relativo a plugins/productivity-tools/, recursivo.
+export function filesUnder(rel) {
+  const out = [];
+  for (const e of readdirSync(join(PLUGIN, rel), { withFileTypes: true })) {
+    const r = `${rel}/${e.name}`;
+    if (e.isDirectory()) out.push(...filesUnder(r));
+    else out.push(r);
+  }
+  return out;
 }
 
 const AGENT = 'agents/plan-author.md';
@@ -146,4 +157,36 @@ test('E20: shipped E20 texts never mention bypassPermissions in plan-writer', ()
 
 test('E20: plan-writer stays under 500 lines', () => {
   assert.ok(read(PLAN_WRITER).split('\n').length < 500);
+});
+
+test('E20: no published planner, tracker or E20 file mentions superpowers (criterion 3)', () => {
+  const files = [
+    ...filesUnder('skills/roadmap-planner'),
+    ...filesUnder('skills/roadmap-tracker'),
+    ...filesUnder('skills/plan-writer'),
+    AGENT,
+  ];
+  const hits = [];
+  for (const f of files) {
+    read(f).split('\n').forEach((line, i) => {
+      if (/superpowers/i.test(line)) hits.push(`${f}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(hits, []);
+});
+
+test('E20: planner chains spec-writer, plan-writer with --roadmap, and plan-coordinator', () => {
+  const text = read('skills/roadmap-planner/SKILL.md');
+  assert.match(text, /spec-writer/);
+  assert.match(text, /plan-writer[^\n]*--roadmap/);
+  assert.match(text, /plan-coordinator/);
+  assert.match(text, /roadmap-release/);
+  const { fields } = frontmatter(text);
+  assert.ok(fields.description.includes('BEFORE spec-writer'));
+  assert.ok(fields.description.includes('use plan-writer'));
+});
+
+test('E20: tracker description points task plans to plan-writer', () => {
+  const { fields } = frontmatter(read('skills/roadmap-tracker/SKILL.md'));
+  assert.ok(fields.description.includes('use plan-writer'));
 });

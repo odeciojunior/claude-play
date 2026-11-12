@@ -1,6 +1,6 @@
 ---
 name: roadmap-planner
-description: "Plans a roadmap: clarifies the objective, reads the sources, traces every requirement (REQ) to deliverables with acceptance criteria, phases, tracks and a dependency DAG, and writes a versioned strategy plus a tracking folder with a vendored checker. Full mode for multi-week initiatives, light mode for small ones. Use when the user wants a roadmap or an initiative with several deliverables to plan or break down: \"plan the roadmap for X\", \"break this initiative into deliverables\", \"we need a roadmap\". It is the choice for a tracked, multi-deliverable roadmap, even when a report is the input. Use it BEFORE superpowers:brainstorming when the work has several deliverables (brainstorming then runs once per deliverable). A report used only as input for SWOT, gap or risk analysis goes to report-analyzer first. Not for updating an existing roadmap folder (one with roadmap.config.json): use roadmap-tracker. Not for task-level plans of one deliverable: use superpowers:writing-plans."
+description: "Plans a roadmap: clarifies the objective, reads the sources, traces every requirement (REQ) to deliverables with acceptance criteria, phases, tracks and a dependency DAG, and writes a versioned strategy plus a tracking folder with a vendored checker. Full mode for multi-week initiatives, light mode for small ones. Use when the user wants a roadmap or an initiative with several deliverables to plan or break down: \"plan the roadmap for X\", \"break this initiative into deliverables\", \"we need a roadmap\". It is the choice for a tracked, multi-deliverable roadmap, even when a report is the input. Use it BEFORE spec-writer when the work has several deliverables (spec-writer then runs once per deliverable). A report used only as input for SWOT, gap or risk analysis goes to report-analyzer first. Not for updating an existing roadmap folder (one with roadmap.config.json): use roadmap-tracker. Not for task-level plans of one deliverable: use plan-writer."
 ---
 
 # Roadmap Planner
@@ -9,7 +9,7 @@ Build a **living roadmap**: a versioned strategy document plus a tracking folder
 
 | This skill does | This skill does not |
 |-----------------|---------------------|
-| Clarify the objective, read sources, trace every requirement | Break deliverables into tasks (`superpowers:writing-plans`) |
+| Clarify the objective, read sources, trace every requirement | Break deliverables into tasks (`plan-writer`) |
 | Organize deliverables into phases, tracks and a DAG | Execute deliverables (`plan-coordinator` for one written plan, `roadmap-release` for unattended runs of one or more deliverables) |
 | Write strategy v1.0 + tracking folder, run the checker | Update an existing roadmap (`roadmap-tracker`) |
 | Order work by dependencies | Produce dates, durations or targets nobody supplied |
@@ -105,7 +105,7 @@ Also settle now:
 
 ### Step 2: Clarify
 
-Follow `references/clarify.md` within the budget of Rule 6 (the autonomy question of `clarify.md` §7 counts toward it, unlike the mode question). Use `AskUserQuestion` when available. Stay at roadmap level: deliverable-level design questions become `E<n>:` entries in "Open questions" for `superpowers:brainstorming` (`clarify.md` §8).
+Follow `references/clarify.md` within the budget of Rule 6 (the autonomy question of `clarify.md` §7 counts toward it, unlike the mode question). Use `AskUserQuestion` when available. Stay at roadmap level: deliverable-level design questions become `E<n>:` entries in "Open questions" for `spec-writer` (`clarify.md` §8).
 
 Record every answer where `clarify.md` §7 says; never record an answer the user did not give. Write the model after each round and when this step ends.
 
@@ -146,9 +146,9 @@ Report to the user:
 
 - **Summary**: folder and strategy paths, deliverables per phase, requirement coverage, open questions, checker result with the remaining warnings, and the `now` list from `state.md`.
 - **Next**: the first deliverable goes through the chain below. The downstream skills know nothing about the roadmap, so give the user these exact instructions:
-  1. `superpowers:brainstorming`, per deliverable. Start it with: "Brainstorm deliverable E<n> of the roadmap at <folder>; its card is in <strategy> (section E<n>): acceptance criteria, REQs <ids>, depends on <ids>. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite E<n>."
-  2. `superpowers:writing-plans`: tell it to add the header line `**Roadmap:** <folder>` (plan-coordinator reads it to call `roadmap-tracker` after each wave).
-  3. Execution: when the roadmap is tracked, pick `plan-coordinator` as the executor.
+  1. `spec-writer`, per deliverable, with the card (<strategy>, section E<n>), REQs <ids> and depends on <ids>; topic `<roadmap slug>-E<n>`. The spec must keep the card's acceptance criteria and cite E<n>.
+  2. `plan-writer <folder of that spec>/spec.md --roadmap <roadmap folder>` (the `roadmap` field of the block lets plan-coordinator call `roadmap-tracker` after each wave).
+  3. Execution: `plan-coordinator`, the executor of a tracked roadmap.
 - **Several deliverables unattended**: prefer `roadmap-release`, which runs them end to end into a release branch. `plan-coordinator` handles one deliverable's plan at a time and does not integrate branches; integration and the next deliverable are separate steps the user starts.
 - **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.
 
