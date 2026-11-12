@@ -288,6 +288,15 @@ export function lintPlugin(dir, { marketplace } = {}) {
         problems.push(['FAIL', `${key} must be true or false, got "${fm.keys.get(key)}"`]);
       }
     }
+    {
+      // Raw-line guard: spellings parseFrontmatter does not map to the bare key (quoted key, space before the colon, other case) are valid YAML for allowed-tools.
+      const fmLines = text.replace(/^﻿/, '').split(SPLIT).slice(1, fm.bodyStartLine - 2);
+      for (const l of fmLines) {
+        if (/^["']?allowed-tools["']?\s*:/i.test(l) && !/^allowed-tools:/.test(l)) {
+          problems.push(['FAIL', 'allowed-tools must be written as the bare key `allowed-tools:` (DEC-049); remove this spelling']);
+        }
+      }
+    }
     if (fm.keys.has('allowed-tools')) {
       const ex = ALLOWED_TOOLS_EXCEPTION;
       if (!(pj && pj.name === ex.plugin && name === ex.skill)) {

@@ -711,3 +711,14 @@ test('E25 AC5: the real productivity-tools SKILL.md declares the grant', () => {
   assert.equal(fm.keys.get('allowed-tools'), ENTRY);
   assert.deepEqual(lint(real).filter((r) => r.level === 'FAIL'), []);
 });
+
+test('E25 AC5: allowed-tools spelled as quoted key, spaced colon or other case -> FAIL (no bypass)', () => {
+  const forms = [`"allowed-tools": Bash`, `'allowed-tools': Bash`, `allowed-tools : Bash`, `Allowed-Tools: Bash`, `"allowed-tools": ${ENTRY}`];
+  for (const f of forms) {
+    for (const skill of ['roadmap-planner', 'roadmap-release']) {
+      const dir = freshGrant();
+      grantSkill(dir, skill, f);
+      assert.ok(has(lint(dir), 'FAIL', 'allowed-tools'), `${skill}: ${f}`);
+    }
+  }
+});
