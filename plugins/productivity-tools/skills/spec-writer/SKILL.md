@@ -10,16 +10,16 @@ Turn one request into a checked `spec/1` spec in a single guided pass: one round
 
 ## Steps
 
-1. Read the request and the code it touches, without asking anything (the minimum needed to word the questions). Derive the topic: a short kebab-case name from the request. If `docs/plans/<topic>/spec.md` already exists, make that one of the questions (overwrite or keep both); with no answer, the topic becomes `<topic>-2`.
-2. Ask one round of at most five questions that only the person can answer, in a single `AskUserQuestion` call, each with the recommended option first. Skip anything the code or the request already settles. A second round only if the person asks for it.
+1. Read the request and the code it touches, without asking anything (the minimum needed to word the questions). Derive the topic: a short kebab-case name from the request. If `docs/plans/<topic>/spec.md` already exists, make that one of the questions (overwrite or keep both); with no answer, the topic becomes `<topic>-2`. That question counts toward the five.
+2. Ask one round of at most five questions that only the person can answer, in a single `AskUserQuestion` call, each with the recommended option first. Skip anything the code or the request already settles. If nothing is left to ask, skip the call. A second round only if the person asks for it.
 3. Build the intake note: the request and the answers verbatim, guesses marked as guesses. Dispatch the agent with the Agent tool, `subagent_type: "productivity-tools:spec-author"`, one `key: value` per line:
    - `mode: interactive`
-   - `output: docs/plans/<topic>/spec.md`
+   - `output: <repository root>/docs/plans/<topic>/spec.md` (absolute path)
    - `specTool: ${CLAUDE_SKILL_DIR}/../../scripts/spec-tool.mjs` (absolute path; if `${CLAUDE_SKILL_DIR}` is empty, use the folder this SKILL.md was loaded from)
    - `topic: <topic>`
    - `language`: the language of the request
-   - `intake`: the note
-4. Run `node "<specTool>" summary "docs/plans/<topic>/spec.md"` and show the decisions and the items only a person can settle. Ask for one approval. If the person asks for a change, dispatch the agent again with the correction in the intake note, run `node "<specTool>" check "docs/plans/<topic>/spec.md"`, and report the result with no second approval. If the person refuses without saying what to change, stop with the written spec and the summary, and ask nothing more.
+   - `intake`: the note, always the last field; it may span several lines, and everything after `intake:` is the note
+4. If the author's last message is a `check` with errors instead of the `emit` JSON, show the errors and stop without asking for approval. Otherwise run `node "<specTool>" summary "<repository root>/docs/plans/<topic>/spec.md"` (the same absolute path) and show the decisions and the items only a person can settle. Ask for one approval with a single `AskUserQuestion` call (approve / request a change / refuse); it does not count as a question round. If the person asks for a change, dispatch the agent again with the correction in the intake note, run `node "<specTool>" check "<repository root>/docs/plans/<topic>/spec.md"`, and report the result with no second approval. If the person refuses without saying what to change, stop with the written spec and the summary, and ask nothing more.
 5. Report the spec path and that the implementation plan comes from `plan-writer` once it exists.
 
 ## Data block
