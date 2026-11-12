@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E7 | E7 passou para executando | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md` |
 | 2026-11-12 | E19 | BLQ-6 aberto: E19 bloqueado: automatic execution stopped (conteudo): task 6 BLOCKED: Task 6 was not run. It needs a subagent tool to dispatch the spec-author agent, and this session has [...] texto completo em docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md | `branch feat/E19` |
 | 2026-11-12 | E19 | E19 passou para executando | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` |
 | 2026-11-12 | E17 | Critério 4 aceito por delegação do dono (Fable, precedente DEC-280/283): volta/productivity-tools-1.7.1 em a951ed5 parte de M; o plugin difere da tag 1.6.0 só na versão, linha 1 do checker e asserções; G1-G5 exit 0 em volta.md. | `volta.md, a951ed5` |

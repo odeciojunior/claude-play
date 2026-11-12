@@ -21,7 +21,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E4 | na-branch | `1362158c1ec3a43f8b19f32cb5695dcd11224004`; `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4`, `64e9c54`, `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release |
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
+| E7 | executando | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md` | E7: seguir o fluxo do release após executando |
 | E8 | nao-iniciado | - | Aguardar E17, E18, E19, E20 e E25 |
 | E9 | nao-iniciado | - | Aguardar E8 |
 | E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
@@ -126,4 +126,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | Branch | Tipo | Nota |
 |---|---|---|
 | feat/E19 | viva | E19 em execução pelo release |
+| feat/E7 | viva | E7 em execução pelo release |
 <!-- /roadmap:inflight -->
