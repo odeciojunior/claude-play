@@ -4,8 +4,9 @@ Data: 2026-11-12. Branch local `volta/productivity-tools-1.7.1` (nunca enviada a
 
 - `M` (pai): `e38cb355de668a334193bd46d783d6f0e6313d5f`
 - Commit da volta: `a5b819feb6027d027e85c755d318d19649073f7b` (`E17 T7: volta productivity-tools 1.7.1 (conteúdo da tag 1.6.0)`)
+- Ponta da branch: `a951ed589b443d6ab3f1a931992701d008393352` (`E17 T7: volta, teste de acoplamento do lint ajustado ao conteúdo da tag (decisão delegada)`), segundo commit sobre `a5b819f`; ver "Decisão delegada" abaixo.
 - Dedupe: `git rev-parse --verify --quiet refs/heads/volta/productivity-tools-1.7.1` saiu 1 (não existia) antes de criar.
-- Conteúdo: `plugins/productivity-tools/` igual à tag `productivity-tools--v1.6.0` (`3fbb59b`), exceto o diff abaixo; `marketplace-tools` fica como em `M` (1.2.0).
+- Conteúdo: `plugins/productivity-tools/` igual à tag `productivity-tools--v1.6.0` (`3fbb59b`), exceto o diff abaixo; `marketplace-tools` fica em 1.2.0, com uma exceção: o teste `E25 AC5` de `lint-plugin.test.mjs` foi ajustado em `a951ed5` (ver "Decisão delegada"); o conteúdo restante é o de `M`.
 
 ## Diff contra a tag (plugins/productivity-tools)
 
@@ -85,19 +86,29 @@ Não existiam na tag (removidos com `git rm`), por falharem no G1 ao ler código
 - `tools/measure/run-batch.mjs`, `run-batch.test.mjs`
 - `tools/measure/session-metrics.mjs`, `session-metrics.test.mjs`
 
-Voltados ao estado da tag (`git checkout productivity-tools--v1.6.0 --`), por descreverem código do plugin novo: `.claude/agents/plugin-reviewer.md`, `.claude/rules/roadmap-checker.md`.
+Voltado ao estado da tag (`git checkout productivity-tools--v1.6.0 --`), por descrever código do plugin novo: `.claude/rules/roadmap-checker.md`. `.claude/agents/plugin-reviewer.md` também foi voltado à tag em `a5b819f`, mas `a951ed5` o restaurou ao conteúdo de `M`; na ponta da branch só `roadmap-checker.md` difere de `M` entre os arquivos de `.claude/`.
 
-## Gates na árvore da volta
+## Decisão delegada (commit a951ed5)
+
+O G1 de `a5b819f` falhava em `plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs:770` (`E25 AC5`), que exige o grant `Workflow(productivity-tools:release-workflow)` no SKILL.md de `roadmap-release`, inexistente no conteúdo da tag 1.6.0. A Tarefa 7 então parou com a falha aberta (a spec Peça 5 diz que falha de G1 dentro de outro plugin não é contornada). O decisor delegado do dono (regra Fable) depois decidiu ajustar esse teste na volta, em `a951ed5`:
+
+- O teste passou a se chamar `volta 1.7.1: the real productivity-tools SKILL.md (tag 1.6.0 content) declares no grant and lints with 0 FAIL`: afirma que `allowed-tools` está ausente e que o lint do plugin real tem 0 FAIL.
+- `.claude/agents/plugin-reviewer.md` foi restaurado ao conteúdo de `M`.
+- Consequência: `marketplace-tools` na volta difere de `M` (só esse teste) apesar de seguir em 1.2.0. É uma exceção à frase da spec Peça 5 "marketplace-tools fica em 1.2.0 com o conteúdo de M", tomada por decisão delegada e que o dono pode reverter (`git revert a951ed5` na volta devolve o G1 a exit 1 com a falha acima).
+- O diff de `plugins/productivity-tools` contra a tag não mudou: continua só `plugin.json`, linha 1 do checker e as quatro asserções do teste dele.
+
+## Gates na árvore da volta (ponta `a951ed5`)
 
 | Gate | Comando | Exit | Resumo |
 |---|---|---|---|
-| G1 (1ª rodada) | `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` | 1 | tests 788, pass 776, fail 12 (7 arquivos de tools/measure e `E25 AC5: the real productivity-tools SKILL.md declares the grant`) |
-| G1 (após voltar tools/.claude) | idem | 1 | tests 777, pass 776, fail 1 |
+| G1 | `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` | 0 | tests 777, pass 777, fail 0 |
 | G2 | `claude plugin validate .` | 0 | Validation passed |
 | G3 | `claude plugin validate plugins/productivity-tools` | 0 | Validation passed |
 | G4 | `node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid` | 0 | 0 error(s), 0 warning(s) |
 | G5 | `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools` | 0 | 40 OK, 0 WARN, 0 FAIL |
 
-## Pendência para o dono (critério 4 não atendido no G1)
+Histórico em `a5b819f` (antes de `a951ed5`): G1 exit 1 (tests 777, pass 776, fail 1, a falha acima); G2 a G5 exit 0.
 
-Falha restante, dentro de outro plugin e por isso não contornada: `plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs:770` (`E25 AC5: the real productivity-tools SKILL.md declares the grant`) espera `Workflow(productivity-tools:release-workflow)` no SKILL.md real de `productivity-tools`, que na tag 1.6.0 não existe (a skill `roadmap-release` é posterior). Sem esse teste G1 daria exit 0. Decisão do dono: aceitar a falha como inerente à volta, ou ajustar o teste do `marketplace-tools` na volta (fora do escopo da Tarefa 7).
+## Critério 4
+
+Atendido na ponta `a951ed5`: G1 a G5 com exit 0. A exceção em `marketplace-tools` (acima) fica registrada para o dono ratificar ou reverter.
