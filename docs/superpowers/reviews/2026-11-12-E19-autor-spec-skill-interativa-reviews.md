@@ -138,3 +138,68 @@ Itens que o registro do roadmap cortou nesta execução; texto completo transcri
 ### 6. Origem: docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md; entrou em: add-decision --decision
 
 Contrato de chamada do agente: campos mode, output, specTool (caminho absoluto passado pelo chamador), language, roadmap e card (modo autônomo), ownerNote, topic e intake (modo interativo); a última mensagem é a saída literal de spec-tool emit, ou a de check --json se a checagem ainda falhar depois de três execuções.
+
+---
+
+# Execução 3 (ressincronização) de 2026-11-12, branch `feat/E19`
+
+Registro transcrito do relatório do orquestrador desta execução, sem resumir. As tarefas 1 a 5 seguem como já revisadas (RESUMED); a tarefa 6 consta como DONE com 2 commits. O que as execuções 1 e 2 registraram acima fica como estava.
+
+## Rodadas de revisão por estágio ou tarefa (execução 3)
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante (lista de bloqueantes vazia em todos). "Menores" é a contagem de problemas menores. Pendências: nenhuma em todos os estágios.
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, - | nenhum | 1 | nenhuma |
+| plan | 1: opus, - | nenhum | 1 | nenhuma |
+| T6:spec | 1: sonnet, - | nenhum | 1 | nenhuma |
+| T6:quality | 1: sonnet, - | nenhum | 0 | nenhuma |
+| E19:sync-review | 1: opus, - | nenhum | 0 | nenhuma |
+| final | 1: opus, - | nenhum | 3 | nenhuma |
+
+Riscos aceitos: nenhum.
+
+## Tarefas (execução 3)
+
+| n | Título | Status | Commits |
+|---|---|---|---|
+| 1 | regra de lint que acusa subagent_type em workflow registrado (DEC-057) | RESUMED (already reviewed) | - |
+| 2 | card E6 com credencial e variante spec-author do cenário | RESUMED (already reviewed) | - |
+| 3 | agente spec-author (peça 1) | RESUMED (already reviewed) | - |
+| 4 | skill interativa spec-writer (peça 2) | RESUMED (already reviewed) | - |
+| 5 | documentação (README do plugin e CLAUDE.md) | RESUMED (already reviewed) | - |
+| 6 | execuções comportamentais e relatório (critérios 1 e 2, REQ-037) | DONE | 2 |
+
+Falha da execução: nenhuma (failure: null).
+
+## Concerns (execução 3, transcritos como registrados)
+
+- the "executing" roadmap record failed (command 1 ran with a different text than the one assembled; command 2 ran with a different text than the one assembled; command 3 ran with a different text than the one assembled; command 4 ran with a different text than the one assembled; command 5 ran with a different text than the one assembled; command 6 ran with a different text than the one assembled; command 7 ran with a different text than the one assembled; command 8 ran with a different text than the one assembled; command 9 ran with a different text than the one assembled; command 10 ran with a different text than the one assembled; command 11 ran with a different text than the one assembled; command 12 ran with a different text than the one assembled; command 13 ran with a different text than the one assembled; command 14 ran with a different text than the one assembled; command 15 ran with a different text than the one assembled; command 16 ran with a different text than the one assembled; command 17 ran with a different text than the one assembled; command 18 ran with a different text than the one assembled; command 19 ran with a different text than the one assembled; command 2 () stdout is not JSON of the CLI (tool "roadmap"); command 3 () stdout is not JSON of the CLI (tool "roadmap"); command 4 () stdout is not JSON of the CLI (tool "roadmap"); command 5 () stdout is not JSON of the CLI (tool "roadmap"); command 6 () stdout is not JSON of the CLI (tool "roadmap"); command 7 () stdout is not JSON of the CLI (tool "roadmap"); command 8 () stdout is not JSON of the CLI (tool "roadmap"); command 9 () stdout is not JSON of the CLI (tool "roadmap"); command 10 () stdout is not JSON of the CLI (tool "roadmap"); command 11 () stdout is not JSON of the CLI (tool "roadmap"); command 12 () stdout is not JSON of the CLI (tool "roadmap"); command 13 () stdout is not JSON of the CLI (tool "roadmap"); command 14 () stdout is not JSON of the CLI (tool "roadmap"); command 15 () stdout is not JSON of the CLI (tool "roadmap"); command 16 () stdout is not JSON of the CLI (tool "roadmap"); command 17 () stdout is not JSON of the CLI (tool "roadmap"); command 18 () stdout is not JSON of the CLI (tool "roadmap"); command 19 () stdout is not JSON of the CLI (tool "roadmap"); reread status --json is missing or has no panel); decisions and the in-flight entry are not recorded yet
+
+## Gates (execução 3)
+
+| Gate | Resultado | Linha de base |
+|---|---|---|
+| G1 | exit 0, total 1514, skipped 0, failing [] | exit 0, total 1494, skipped 0, failing [] |
+| G2 | exit 0 | exit 0 |
+| G3 | exit 0 | exit 0 |
+| G4 | exit 0 | exit 0 |
+| G5 | exit 0 | exit 0 |
+
+## Entradas humanas (execução 3)
+
+| O quê | Bloqueia | Alternativa (workaround) |
+|---|---|---|
+| Ratificação pelo dono das decisões de alcance contrato do spec (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030). | não | As decisões ficam registradas como pendentes (origem executor) e E19 segue; E8 e E20 consomem o contrato tal como registrado. |
+| Conferência do dono dos resultados das execuções comportamentais (critérios 1 e 2, verify: human) registrados em docs/reports/2026-11-12-E19-autor-spec-comportamental.md; nenhum aceite fictício é registrado. | não | As execuções e o relatório são produzidos pelo entregável; o aceite fica pendente com o dono. |
+| Ratificação das decisões de alcance contrato (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030). | não | Decisões registradas como pendentes (origem executor); E19 segue. |
+| Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real (nenhuma credencial real é necessária). | não | Fixture sintética marcada; nenhuma credencial real é necessária. |
+
+## Textos cortados no registro (execução 3)
+
+Itens que o registro do roadmap cortou nesta execução; texto completo transcrito aqui. As entradas das execuções anteriores ficam nas seções "Textos cortados no registro" acima.
+
+### 7. Origem: docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md; entrou em: add-decision --decision
+
+Contrato de chamada do agente: campos mode, output, specTool (caminho absoluto passado pelo chamador), language, roadmap e card (modo autônomo), ownerNote, topic e intake (modo interativo); a última mensagem é a saída literal de spec-tool emit, ou a de check --json se a checagem ainda falhar depois de três execuções.
