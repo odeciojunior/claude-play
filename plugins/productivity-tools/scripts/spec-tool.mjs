@@ -241,37 +241,74 @@ export function summarize(text) {
   const rulings = arr('rulings');
   const needsPerson = arr('needsPerson');
   const externalEffects = arr('externalEffects');
+  return { error: null, rulings, needsPerson, externalEffects, stops: stopsOf(rulings, needsPerson) };
+}
+
+export function stopsOf(rulings, needsPerson) {
   const filled = (v) => v !== null && v !== undefined && v !== '';
-  const stops = [
+  return [
     ...rulings.filter((r) => (r.costIfWrong === 'high' && r.reversible === false) || filled(r.contradicts)).map((r) => r.id),
     ...needsPerson.filter((h) => h.blocking === true).map((h) => h.id),
   ];
-  return { error: null, rulings, needsPerson, externalEffects, stops };
 }
 
 const cell = (v) => (v === null || v === undefined ? '' : String(v)).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 
-export function formatSummary(s) {
-  const stop = (id) => (s.stops.includes(id) ? 'para' : '');
-  const table = (head, rows) => [
+export const SUMMARY_LANGS = ['pt', 'en'];
+
+export const SUMMARY_LABELS = {
+  pt: {
+    decisions: 'Decisões',
+    people: 'Pessoas',
+    effects: 'Efeitos externos',
+    rulingCols: ['ID', 'Decisão', 'Custo se errada', 'Reversível', 'Alcance', 'Contradiz', 'Para'],
+    personCols: ['ID', 'Tipo', 'O quê', 'Bloqueia', 'Contorno', 'BLQ', 'Para'],
+    effectCols: ['ID', 'O quê', 'Alvo'],
+    stop: 'para',
+  },
+  en: {
+    decisions: 'Decisions',
+    people: 'People',
+    effects: 'External effects',
+    rulingCols: ['ID', 'Decision', 'Cost if wrong', 'Reversible', 'Scope', 'Contradicts', 'Stop'],
+    personCols: ['ID', 'Kind', 'What', 'Blocking', 'Workaround', 'BLQ', 'Stop'],
+    effectCols: ['ID', 'What', 'Target'],
+    stop: 'stop',
+  },
+};
+
+export function mdTable(head, rows) {
+  return [
     `| ${head.join(' | ')} |`,
     `|${head.map(() => '---').join('|')}|`,
     ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`),
   ].join('\n');
+}
+
+export function formatRecords(s, { lang = 'pt' } = {}) {
+  const L = SUMMARY_LABELS[lang];
+  const stop = (id) => (s.stops.includes(id) ? L.stop : '');
   return [
-    '## Decisões',
+    `## ${L.decisions}`,
     '',
-    table(['ID', 'Decisão', 'Custo se errada', 'Reversível', 'Alcance', 'Contradiz', 'Para'],
+    mdTable(L.rulingCols,
       s.rulings.map((r) => [r.id, r.decision, r.costIfWrong, r.reversible, r.scope, r.contradicts, stop(r.id)])),
     '',
-    '## Pessoas',
+    `## ${L.people}`,
     '',
-    table(['ID', 'Tipo', 'O quê', 'Bloqueia', 'Contorno', 'BLQ', 'Para'],
+    mdTable(L.personCols,
       s.needsPerson.map((h) => [h.id, h.kind, h.what, h.blocking, h.workaround, h.blq, stop(h.id)])),
     '',
-    '## Efeitos externos',
+  ].join('\n');
+}
+
+export function formatSummary(s, { lang = 'pt' } = {}) {
+  const L = SUMMARY_LABELS[lang];
+  return [
+    formatRecords(s, { lang }),
+    `## ${L.effects}`,
     '',
-    table(['ID', 'O quê', 'Alvo'], s.externalEffects.map((x) => [x.id, x.what, x.target])),
+    mdTable(L.effectCols, s.externalEffects.map((x) => [x.id, x.what, x.target])),
     '',
   ].join('\n');
 }
@@ -279,7 +316,7 @@ export function formatSummary(s) {
 const USAGE = [
   'uso: node spec-tool.mjs check <spec.md> [--roadmap <pasta>] [--json]',
   '     node spec-tool.mjs emit <spec.md> [--roadmap <pasta>]',
-  '     node spec-tool.mjs summary <spec.md> [--json]',
+  '     node spec-tool.mjs summary <spec.md> [--lang pt|en] [--json]',
 ].join('\n');
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
@@ -296,12 +333,19 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   let file = null;
   let json = false;
   let roadmapDir = null;
+  let lang = 'pt';
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json' && takesJson) json = true;
     else if (a === '--roadmap' && takesRoadmap) {
       if (i + 1 >= rest.length) return bad(`--roadmap exige uma pasta\n${USAGE}`);
       roadmapDir = rest[++i];
+    }
+    else if (a === '--lang' && cmd === 'summary') {
+      const v = rest[i + 1];
+      if (!SUMMARY_LANGS.includes(v)) return bad(`--lang exige um de: ${SUMMARY_LANGS.join(', ')}\n${USAGE}`);
+      lang = v;
+      i++;
     }
     else if (a.startsWith('--')) return bad(`opção desconhecida: ${a}\n${USAGE}`);
     else if (file === null) file = a;
@@ -321,7 +365,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
       return 1;
     }
     if (json) out(JSON.stringify({ rulings: s.rulings, needsPerson: s.needsPerson, externalEffects: s.externalEffects, stops: s.stops }, null, 2));
-    else out(formatSummary(s));
+    else out(formatSummary(s, { lang }));
     return 0;
   }
   let roadmap = null;
