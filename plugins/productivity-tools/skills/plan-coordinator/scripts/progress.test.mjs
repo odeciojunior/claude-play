@@ -1066,3 +1066,83 @@ test('no shipped coordinator file recommends bypassPermissions as default', () =
     }
   }
 });
+
+// ---- final-fix: dependentes retidos voltam, portão de onda não é pulado ----
+
+test('a waiting-manual dependent runs after its held upstream is resolved', () => {
+  let s = run(
+    wave2(),
+    { type: 'hold', step: 2, text: 'pergunta' },
+    { type: 'launch', steps: [3] }, { type: 'report', step: 3, value: 'pass' },
+    { type: 'prelaunch-review', step: 5, value: 'pass' }, { type: 'authorize', step: 5 },
+    { type: 'launch', steps: [5] }, { type: 'report', step: 5, value: 'pass' },
+  );
+  while (['review', 'wave-gate', 'advance'].includes(nextAction(s).action)) {
+    const a = nextAction(s);
+    if (a.action === 'review') s = ok(s, { type: 'review-result', step: a.step, value: 'pass' });
+    else if (a.action === 'wave-gate') s = ok(s, { type: 'wave-gate', value: 'pass' });
+    else s = ok(s, { type: 'advance' });
+  }
+  assert.equal(step(s, 6).status, 'waiting-manual');
+  s = ok(s, { type: 'launch', steps: [4] });
+  s = ok(s, { type: 'answer', step: 2, value: 'value' });
+  assert.notEqual(step(s, 6).status, 'waiting-manual', 'T6 released once T2 is no longer held');
+  s = ok(s, { type: 'report', step: 4, value: 'pass' });
+  s = ok(s, { type: 'launch', steps: [2] });
+  s = ok(s, { type: 'report', step: 2, value: 'pass' });
+  for (let i = 0; i < 12 && nextAction(s).action !== 'launch'; i++) {
+    const a = nextAction(s);
+    if (a.action === 'review') s = ok(s, { type: 'review-result', step: a.step, value: 'pass' });
+    else if (a.action === 'wave-gate') s = ok(s, { type: 'wave-gate', value: 'pass' });
+    else if (a.action === 'advance') s = ok(s, { type: 'advance' });
+    else assert.fail('unexpected ' + JSON.stringify(a));
+  }
+  const a = nextAction(s);
+  assert.equal(a.action, 'launch');
+  assert.deepEqual(a.steps.map((x) => x.n), [6]);
+});
+
+test('a wave settled only by hold or refusal still owes its gate', () => {
+  let s = run(
+    wave2(),
+    { type: 'launch', steps: [2] }, { type: 'report', step: 2, value: 'pass' },
+    { type: 'hold', step: 3, text: 'x' },
+  );
+  assert.equal(s.run.waveGateOwed, null, 'T5 still pending');
+  s = ok(s, { type: 'hold', step: 5, text: 'y' });
+  assert.equal(s.run.waveGateOwed, 2);
+  assert.equal(nextAction(s).action, 'wave-gate');
+  refused(s, { type: 'advance' }, 'gate-owed');
+  s = ok(s, { type: 'wave-gate', value: 'pass' });
+  assert.equal(s.run.waveGateOwed, null);
+});
+
+test('a later wave keeps its gate when an earlier wave is reopened', () => {
+  let s = run(
+    wave2(),
+    { type: 'hold', step: 2, text: 'pergunta' },
+    { type: 'launch', steps: [3] }, { type: 'report', step: 3, value: 'pass' },
+    { type: 'prelaunch-review', step: 5, value: 'pass' }, { type: 'authorize', step: 5 },
+    { type: 'launch', steps: [5] }, { type: 'report', step: 5, value: 'pass' },
+  );
+  while (['review', 'wave-gate', 'advance'].includes(nextAction(s).action)) {
+    const a = nextAction(s);
+    if (a.action === 'review') s = ok(s, { type: 'review-result', step: a.step, value: 'pass' });
+    else if (a.action === 'wave-gate') s = ok(s, { type: 'wave-gate', value: 'pass' });
+    else s = ok(s, { type: 'advance' });
+  }
+  s = ok(s, { type: 'launch', steps: [4] });
+  s = ok(s, { type: 'answer', step: 2, value: 'value' });
+  s = ok(s, { type: 'report', step: 4, value: 'pass' });
+  s = ok(s, { type: 'launch', steps: [2] });
+  s = ok(s, { type: 'report', step: 2, value: 'pass' });
+  const seen = [];
+  for (let i = 0; i < 12; i++) {
+    const a = nextAction(s);
+    if (a.action === 'launch') break;
+    if (a.action === 'review') s = ok(s, { type: 'review-result', step: a.step, value: 'pass' });
+    else if (a.action === 'wave-gate') { seen.push(a.wave); s = ok(s, { type: 'wave-gate', value: 'pass' }); }
+    else s = ok(s, { type: 'advance' });
+  }
+  assert.ok(seen.includes(2) && seen.includes(3), 'gates for wave 2 and wave 3: ' + seen);
+});

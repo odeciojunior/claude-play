@@ -490,6 +490,9 @@ const psHandlers = {
       return psRefuse('wrong-status', 'não há portão de onda devido ou há passo em voo');
     }
     const owed = state.run.waveGateOwed;
+    if (ev.value === 'pass' || ev.value === 'fail') {
+      for (const x of state.steps) if (x.wave === owed && x.status === 'pass') x.gated = true;
+    }
     if (ev.value === 'pass') {
       state.run.waveGateOwed = null;
       return null;
@@ -680,11 +683,29 @@ export function applyEvent(state, event, now) {
   const refused = handler(next, event, now);
   if (refused) return refused;
 
+  // Passo que chegou a pass perde a marca de portão: o passo precisa de portão de novo.
+  for (const s of next.steps) if (s.status === 'pass' && before.get(s.n) !== 'pass') delete s.gated;
+
+  // Dependente esperando cujo upstream não está mais retido volta a pending (linha 24),
+  // senão o passo nunca roda e a execução fecha sem ele. Repete até estabilizar.
+  for (let moved = true; moved;) {
+    moved = false;
+    for (const s of next.steps) {
+      if (s.status === 'waiting-manual' && !psDepHeld(next, s)) {
+        s.status = 'pending';
+        psReopen(next, s);
+        moved = true;
+      }
+    }
+  }
+
   // Portão de onda devido: a onda corrente se assentou (nada pending, launched ou
-  // review-owed) depois de um passo seu chegar a pass.
-  if (!psGateOwed(next)) {
-    const reachedPass = next.steps.some((s) => s.wave === next.run.wave && s.status === 'pass' && before.get(s.n) !== 'pass');
-    if (reachedPass && psOpenSteps(next, next.run.wave).length === 0) next.run.waveGateOwed = next.run.wave;
+  // review-owed) com algum pass ainda sem portão, qualquer que seja o evento que a assentou.
+  if (!psGateOwed(next) && next.run.status !== 'completed') {
+    const w = next.run.wave;
+    if (psOpenSteps(next, w).length === 0 && next.steps.some((s) => s.wave === w && s.status === 'pass' && s.gated !== true)) {
+      next.run.waveGateOwed = w;
+    }
   }
 
   const entry = { event: event.type };
