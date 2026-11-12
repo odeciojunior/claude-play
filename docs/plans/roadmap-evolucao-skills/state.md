@@ -85,6 +85,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Corrigir em E8, depois do roteiro B: o aviso do preflight diz que claude -p é negado sem a regra, e a concessão lança o comando digitado (DEC-283). Novo texto: a regra só é precisa para lançamento fora da skill.
 - (executor) tools/measure: SANDBOX_RELEASE_RULES cita Workflow(productivity-tools:roadmap-release), nome antigo e inerte; trocar por Workflow(productivity-tools:release-workflow) quando alguém mexer no arnês. Workflow sem conteúdo já cobre.
 - (executor) Fora de E17: spec-review-atual.md não casa com o workflow em HEAD sob nenhuma normalização; checkpoint.mjs não o confere. Resolver antes de medir a classe spec.
+- (dono) Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas.
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3).
+- (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits.
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md.
+- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir.
+- (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081).
 <!-- /roadmap:pending -->
 
 ## Em andamento
