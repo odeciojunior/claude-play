@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv } from './run-batch.mjs';
+import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -883,4 +883,21 @@ test('execEnv: claude espera as tarefas em segundo plano; outros comandos ficam 
   assert.deepEqual(execEnv('claude', base), { PATH: 'x', CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' });
   assert.equal(execEnv('git', base), base);
   assert.equal(base.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, undefined);
+});
+
+test('e5Integrated: verdadeiro só com o merge de E5 na primeira linha de release/sandbox', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e5int-'));
+  try {
+    const g = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+    g('init', '-q', '-b', 'main');
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init');
+    assert.equal(e5Integrated(dir), false);
+    g('branch', 'release/sandbox');
+    assert.equal(e5Integrated(dir), false);
+    g('checkout', '-q', 'release/sandbox');
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'merge: E5 in release/sandbox');
+    assert.equal(e5Integrated(dir), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

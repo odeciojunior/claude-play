@@ -529,6 +529,15 @@ function harnessPrompts(h, scenario) {
   };
 }
 
+// E5 reached release/sandbox: the release merges it with the subject "merge: E5 in release/sandbox" (the run names its spec and plan by its own date).
+export function e5Integrated(sandbox) {
+  try {
+    return gitOut(sandbox, 'log', '--first-parent', '--format=%s', 'release/sandbox').split(/\r?\n/).some((l) => l.startsWith('merge: E5 in release/sandbox'));
+  } catch {
+    return false;
+  }
+}
+
 // A release run that launched no subagent at all stopped before doing anything (e.g. at preflight).
 export function releaseRunValidity(variant, run) {
   if (variant !== 'completo' && variant !== 'parada-retomada') return { valid: true, reason: 'ok' };
@@ -696,7 +705,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
     const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
-    if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = gitOk(scenario.dir, 'cat-file', '-e', `release/sandbox:${E5_PATHS.plan}`);
+    if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     attempts.push(attempt);
   }
 
