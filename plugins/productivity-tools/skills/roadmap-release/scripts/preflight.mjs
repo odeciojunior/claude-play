@@ -188,6 +188,23 @@ const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 // Scripts of the plugin that the workflow runs through Bash with an exact path (DEC-060): the rule is narrower than Bash(node:*).
 export const WORKFLOW_SCRIPTS = ['roadmap.mjs'];
 
+// The release workflow is launched by name; its permission rule is only warned about (never required), because the skill's own
+// allowed-tools or the dialog grants the launch and only a run without the interface needs the rule.
+export const RELEASE_WORKFLOW = 'productivity-tools:release-workflow';
+
+export function releaseWorkflowRule() {
+  return `Workflow(${RELEASE_WORKFLOW})`;
+}
+
+// True when some permissions.allow has exactly the workflow rule or bare Workflow. Wildcards do not count: an extra warning blocks nothing.
+export function workflowRuleCovered(settingsList) {
+  const rule = releaseWorkflowRule();
+  return (Array.isArray(settingsList) ? settingsList : []).some((s) => {
+    const allow = s?.permissions?.allow;
+    return Array.isArray(allow) && allow.some((r) => { const t = String(r).trim(); return t === rule || t === 'Workflow'; });
+  });
+}
+
 export function scriptRule(name) {
   return `Bash(node *${name}" *)`;
 }
@@ -392,6 +409,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     };
     const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
+    if (!workflowRuleCovered(settings)) warnings.push(`release workflow: no permission rule covers it, so a run without the interface (claude -p) or a launch outside this skill is denied; to allow it, add to permissions.allow in .claude/settings.local.json: ${releaseWorkflowRule()}`);
     for (const g of config.gates.filter((x) => x.restricted === true)) {
       const extra = Object.keys(requiredCommands({ gates: [{ ...g, restricted: false }] })).filter((r) => !(r in cmds));
       const rulesTxt = `if authorized, add permission rule(s): ${extra.length ? extra.join(', ') : '(none beyond the required ones)'}`;
