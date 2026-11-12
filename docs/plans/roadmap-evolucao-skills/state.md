@@ -34,7 +34,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E17 | na-branch | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba` | E17: seguir o fluxo do release após na-branch |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | na-branch | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb` | E19: seguir o fluxo do release após na-branch |
-| E20 | bloqueado (BLQ-7) | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` | E20: seguir o fluxo do release após executando |
+| E20 | executando | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` | E20: seguir o fluxo do release após executando |
 | E21 | nao-iniciado | - | Aguardar E9 |
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
@@ -49,7 +49,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-7 | E20 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: I changed nothing and made no commit. Items 1 to 4 (two pairs of duplicates) need new [...] texto completo em docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md | E20 | 2026-11-12 | quando o bloqueio de E20 for resolvido; restaura E20 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -130,9 +129,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
 - (executor) E8: avaliar se resume do próprio entregável deve parar por decisão de contrato dele mesmo sem dependente iniciado (DEC-030 só exige antes de um dependente); em 2 de 3 retomadas do sandbox a parada pediu resposta humana.
 - (dono) Rodar G1 a G5 sobre a ponta de feat/E17-medicao antes de avançar main e conferir que a árvore do plugin é 214fb3b; a branch de volta segue partindo de M.
-- (executor) E20: refazer só o critério 4 no sha da correção, em claude -p --plugin-dir; conferir F4-1 a F4-3 por SHA e F4-4 pelas conferências fechadas (a) a (e); revisão adversarial sonnet; seção nova no relatório; depois retomar o workflow.
-- (dono) E20: aceite do critério 4 depois da nova execução (por delegação se todas as conferências passarem) e rodar a suíte de gatilho do critério 5.
 - (dono) Não bloqueia: o caminho com AskUserQuestion da adoção nunca foi exercido em sessão interativa; observar na primeira adoção real e registrar o resultado.
+- (executor) E20/N5-1: no passo 3 da adoção do plan-writer, a mensagem de aprovação deve colar literais a seção ## Adoção, o --stat do diff (acima de 200 linhas) e a saída de summary, sem resumir. Conferir com 1 execução claude -p até APPROVAL QUESTION. Portão: DEC-458.
+- (executor) E20/N5-2: no passo 4 do plan-author, valor que o plano antigo não declara (deps, score, effort, título encurtado) entra como acrescentado ou derivado, nunca mantido; coluna sem campo no bloco (Test reference) ganha linha. Junto com N5-1.
+- (executor) E20/cobertura: a adoção não exerceu a recusa (apaga o provisório, original intacto), o caminho com AskUserQuestion, as fontes 2 a 4 da busca do spec nem spec-author. Exercer ao menos a recusa e o spec do card na conferência de N5-1.
+- (dono) E20: rodar a suíte de gatilho do critério 5.
 <!-- /roadmap:pending -->
 
 ## Em andamento

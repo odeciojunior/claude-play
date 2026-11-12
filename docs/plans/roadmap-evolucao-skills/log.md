@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | Critério 4 aceito por delegação em bf4712d (DEC-456): F4-1 a F4-3, F4-4 (a)-(e) e check final passam em claude -p (US$ 2,2). N5-1 e N5-2 (DEC-457) viram pendências com portão na publicação de plan-writer (DEC-458). | `docs/reports/2026-11-12-E20-autor-plano-comportamental.md` |
+| 2026-11-12 | E20 | BLQ-7 resolvido: Critério 4 refeito em bf4712d e aceito por delegação (DEC-456); critérios 1 e 2 aceitos (DEC-453); E20 volta a executando para a revisão final da branch. | `bf4712d, 5a4161a` |
+| 2026-11-12 | E20 | DEC-456, DEC-457, DEC-458 (E20, critério 4) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E20 | Decisão do dono por delegação (Fable): critérios 1 e 2 aceitos e pendência de DEC-400 fechada; critério 4 corrigido em E20 em 3ª e última rodada (conta fechada da Adoção, diff mecânico, check antes do move, busca do spec do card), em opus. | `decisions.md` |
 | 2026-11-12 | E20 | DEC-449 a DEC-455 (E20) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E17 | Medição paga de E17 parada pela regra de duas inválidas seguidas em codigo-semeado-A (US$ 52,4); roteiro B de E25 PASS no cache; decisões DEC-441 a DEC-448 por delegação; codigo-semeado-B em curso e parada-retomada a refazer com arnês corrigido. | `scratchpad/e17-medicao, fix/e17-harness-retomada 5205d1c` |
