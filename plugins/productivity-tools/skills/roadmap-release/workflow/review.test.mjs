@@ -147,11 +147,13 @@ test('the same no-evidence gap repeats as the same finding while id and received
   assert.equal(P2.sameFinding(a, c, new Set()), false);
 });
 
-test('contract: schema describes ac as the id alone; plan and plan-fix prompts require it', () => {
-  assert.match(SRC, /const S_PLAN[\s\S]*?ac: \{ \.\.\.STR, description: 'the exact criterion id, e\.g\. AC1, nothing else'/);
+test('contract: the plan comes from the emit, so S_PLAN is gone and the evidence ac is the criterion id; plan author and plan-fix prompts require it', () => {
+  assert.doesNotMatch(SRC, /const S_PLAN\b/);
+  assert.doesNotMatch(SRC, /evidenceRowGaps|hideRowGaps|roadmapHeader === false/);
+  const rows = P4.evidenceFromPlan({ evidence: [{ ac: 'AC1', kind: 'test', command: 'npm test', external: false }, { ac: 'AC2', kind: 'human' }] });
+  assert.deepEqual(rows.map((r) => r.ac), ['AC1', 'AC2']);
   assert.match(SRC, /ac of each evidence row is ONLY the criterion id/);
   assert.match(SRC, /Fix the plan[\s\S]*?ONLY the criterion id/);
-  assert.match(SRC, /const acTxt = [^\n]*`\[\$\{a\.id\}\]/);
 });
 
 test('m3: parseVerifyTag accepts the grammar of the checker and strips backticks around the evidence', () => {
@@ -316,25 +318,6 @@ test('commandKey ignores only one whole wrapper of backticks and the spaces outs
   assert.notEqual(k('"a" "b"'), k('a b'));
 });
 
-test('evidenceRowGaps: equal rows give no gap, in any order and through a harmless retranscription', () => {
-  const { evidenceRowGaps: g } = P4;
-  assert.deepEqual(g(acCard, [row('a'), row('b')], [row('`b`'), row(' a ')]), []);
-  assert.deepEqual(g(acCard, [{ ac: 'AC1', kind: 'human' }], [{ ac: 'AC1', kind: 'human' }]), []);
-  assert.deepEqual(g(acCard, [{ ac: 'AC1: works', kind: 'test', command: 'a', external: false }], [{ ac: 'AC1', kind: 'smoke', command: 'a', external: false }]), []);
-});
-
-test('evidenceRowGaps: a row or command on one side only, a repeated row, a differing flag and a missing measurement are critical', () => {
-  const { evidenceRowGaps: g } = P4;
-  const one = (a, b) => { const x = g(acCard, a, b); assert.ok(x.length >= 1); assert.ok(x.every((i) => i.severity === 'critical' && i.category === 'defeito')); return x; };
-  assert.match(one([row('a'), row('b')], [row('a')])[0].description, /"b"/);
-  assert.match(one([row('a')], [row('a'), row('c')])[0].description, /"c"/);
-  one([row('a'), row('a')], [row('a')]);
-  one([row('a')], [row('a', false)]);
-  one([row('a')], [{ ac: 'AC1', kind: 'smoke', command: 'a' }]);
-  one([{ ac: 'AC1', kind: 'human' }], [{ ac: 'AC1', kind: 'blocked', blq: 'BLQ-1' }]);
-  assert.match(one([row('a')], undefined)[0].description, /did not return/);
-});
-
 test('parseAuthorizeExternal rejects an undefined item', () => {
   const r = P4.parseAuthorizeExternal([undefined]);
   assert.notEqual(r.error, null);
@@ -353,14 +336,6 @@ test('fix 1: commandKey keeps apart commands the shell runs differently', () => 
   assert.notEqual(k('curl ok\r\nrm prod'), k('curl ok rm prod'));
   assert.notEqual(k('touch a\\  b'), k('touch a\\ b'));
   assert.notEqual(k('echo \\" "a  b"'), k('echo \\" "a b"'));
-});
-
-test('fix 1 minor 5: hideRowGaps removes only the row comparison findings', () => {
-  const { hideRowGaps: h, evidenceRowGaps: g } = P4;
-  const line = '1. [critical/defeito]  ' + g(acCard, [row('secret-cmd')], [])[0].description;
-  assert.equal(h(line), '');
-  assert.equal(h(line + '\n2. [critical/defeito]  a wrong needsLock'), '2. [critical/defeito]  a wrong needsLock');
-  assert.equal(h(null), '');
 });
 
 test('fix round 2: commandKey is exact inside the command', () => {
@@ -408,14 +383,11 @@ test('minor 1: a request in Portuguese is annotated too', () => {
 });
 
 // ---- leva 3, bloco A
-test('decision 3: quotes are part of the command, in comparison and in dispatch', () => {
-  const { commandKey: k, evidenceRowGaps: g } = P4;
+test('decision 3: quotes are part of the command', () => {
+  const { commandKey: k } = P4;
   for (const v of ['"./my tool"', "'npm test'", '"echo hi"']) assert.equal(k(v), v);
   assert.notEqual(k('"./my tool"'), k('./my tool'));
   assert.notEqual(k('"echo hi"'), k('echo hi'));
-  assert.equal(g(acCard, [row('"./my tool"')], [row('"./my tool"')]).length, 0);
-  assert.ok(g(acCard, [row('"./my tool"')], [row('./my tool')]).length >= 1);
-  assert.ok(g(acCard, [row("'a'")], [row('a')]).length >= 1);
 });
 
 test('commandKey changes nothing in a multi-line command', () => {

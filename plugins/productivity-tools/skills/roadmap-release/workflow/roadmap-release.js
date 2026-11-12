@@ -381,21 +381,18 @@ function reviewTruth(r, minCommits, label, marks = 0) {
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
-// The plan's tier drives the implementer; the reviewer is sonnet unless the plan marks blast radius 2, the task is opus or external.
-// E8: the route of the plan/1 emit drives the models; a task without route keeps the transcribed tier/reviewTier until T6 removes that branch.
-const hasRoute = task => !!(task && task.route && typeof task.route === 'object')
+// The route of the plan/1 emit (recalculated here from the score, checked against the emitted one) drives the models; the reviewer is opus for the route's reviewTier, an opus implementer and any external task.
 function implModel(task) {
-  if (hasRoute(task)) return ['haiku', 'sonnet', 'opus'].includes(task.route.tier) ? task.route.tier : 'sonnet'
-  return ['haiku', 'sonnet', 'opus'].includes(task && task.tier) ? task.tier : 'sonnet'
+  const t = task && task.route && task.route.tier
+  return ['haiku', 'sonnet', 'opus'].includes(t) ? t : 'sonnet'
 }
 function implEffort(task) {
-  if (hasRoute(task) && ['low', 'medium', 'high'].includes(task.route.effort)) return task.route.effort
-  return effortFor(implModel(task))
+  const e = task && task.route && task.route.effort
+  return ['low', 'medium', 'high'].includes(e) ? e : effortFor(implModel(task))
 }
-// Opus review for the route's reviewTier, for an opus implementer and for any external-effect task.
 function reviewModelFor(task) {
-  if (hasRoute(task)) return task.route.reviewTier === 'opus' || task.route.tier === 'opus' || task.external === true ? 'opus' : 'sonnet'
-  return task && (task.reviewTier === 'opus' || task.tier === 'opus' || task.external === true) ? 'opus' : 'sonnet'
+  const r = task && task.route
+  return (r && (r.reviewTier === 'opus' || r.tier === 'opus')) || (task && task.external === true) ? 'opus' : 'sonnet'
 }
 // ---- plan/1 adapter (E8): the plan-tool emit is parsed and checked here; nothing is trusted from an agent's transcription.
 function loadPlanEmit(stdout, { E, RM } = {}) {
@@ -448,6 +445,16 @@ function frozenTaskDiffs(prevPlan, nextPlan, committed) {
     else if (JSON.stringify(canon(a)) !== JSON.stringify(canon(b))) out.push(`task ${n} is committed but changed in the new plan`)
   }
   return out
+}
+// The raw output of one plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit and the blob is a git object id.
+function checkPlanLoad(t, { E, RM } = {}) {
+  if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
+  if (!Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit code of emit' }
+  if (t.emitExit !== 0) return { ok: false, why: `plan-tool emit exited ${t.emitExit}: ${collapseWs(t.checkStdout || t.emitStdout).slice(0, 1500)}` }
+  const r = loadPlanEmit(t.emitStdout, { E, RM })
+  if (!r.ok) return r
+  const blob = String(t.blob || '').trim()
+  return { ok: true, plan: r.plan, digest: r.digest, blob: /^[0-9a-f]{40,64}$/.test(blob) ? blob : '' }
 }
 const MODEL_RANK = { haiku: 0, sonnet: 1, opus: 2 }
 function maxModel(a, b) {
@@ -779,29 +786,6 @@ function commandKey(s) {
 function blankCommand(s) {
   const k = commandKey(s).trim()
   return !k || /^(["'])\s*\1$/.test(k)
-}
-// The blob does not cover the JSON the code runs, so the rows the plan agent transcribed must equal the rows another agent read
-// from the plan file at the measured blob. A row or command on one side only is a defect, never a run.
-function evidenceRowGaps(cardAc, planAc, measured) {
-  const gap = description => ({ severity: 'critical', category: 'defeito', description })
-  if (!Array.isArray(measured)) return [gap('the plan reviewer did not return evidenceRows, the rows read from the plan file at the measured blob')]
-  const isExec = k => VERIFY_EXEC.includes(k)
-  const keyOf = p => [String(p.ac), isExec(p.kind) ? 'exec' : String(p.kind), isExec(p.kind) ? commandKey(p.command) : ''].join('\n')
-  const show = p => `${p.ac} (${p.kind}): ${JSON.stringify(String(p.command || ''))}`
-  const left = normalizePlanAc(cardAc, measured).map(m => ({ m, key: keyOf(m) }))
-  const out = []
-  for (const p of normalizePlanAc(cardAc, planAc)) {
-    const at = left.findIndex(x => x.key === keyOf(p))
-    if (at < 0) { out.push(gap(`evidence row ${show(p)} is in the plan JSON but not in the plan file at the measured blob: return the rows exactly as the file has them, or fix the file`)); continue }
-    const m = left.splice(at, 1)[0].m
-    if (isExec(p.kind) && m.external !== p.external) out.push(gap(`evidence row ${show(p)} declares external ${p.external} in the plan JSON and ${m.external} in the plan file`))
-  }
-  for (const x of left) out.push(gap(`evidence row ${show(x.m)} is in the plan file at the measured blob but not in the plan JSON`))
-  return out
-}
-// The reviewer measures the rows on its own, so the next round must not hand it the transcription through a finding of the comparison.
-function hideRowGaps(prev) {
-  return String(prev || '').split('\n').filter(l => !/evidence row .* \([a-z]+\): "/.test(l)).join('\n')
 }
 const RAN_MARK = 'already authorized and run in this run'
 // A human item is never removed: one that asks for approval of something this run was authorized for and ran may also carry a real need, so it stays
@@ -1379,15 +1363,10 @@ const ISSUES = { type: 'array', items: { type: 'object', properties: {
   description: STR, file: STR, blq: STR }, required: ['severity', 'description'] } }
 const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: STR, emitExit: INT, emitStdout: STR, blob: STR, head: STR, clean: BOOL }, required: ['checkExit', 'emitExit', 'emitStdout'] }
-const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, error: STR }, required: ['ok'] }
+const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
-const S_PLAN = { type: 'object', properties: { planPath: STR, planBlob: STR, roadmapHeader: BOOL, reused: BOOL,
-  ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR, external: BOOL, externalDedupe: STR }, required: ['ac', 'kind'] } },
-  tasks: { type: 'array', items: { type: 'object', properties: { n: INT, title: STR, files: STRS, tier: TIER, reviewTier: { type: 'string', enum: ['sonnet', 'opus'] }, needsLock: STRS, external: BOOL, externalDedupe: STR, noCommit: { ...BOOL, description: 'true only when the plan file says this task changes no file and makes no commit' } }, required: ['n', 'title', 'tier', 'external', 'noCommit'] } } }, required: ['planPath', 'planBlob', 'tasks'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
-const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR,
-  evidenceRows: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, blq: STR, external: BOOL }, required: ['ac', 'kind'] } } },
-  required: [...S_REVIEW.required, 'measuredPlanBlob', 'evidenceRows'] }
+const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR }, required: [...S_REVIEW.required, 'measuredPlanBlob'] }
 const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, required: ['head'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
 const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
@@ -2135,28 +2114,110 @@ ${NO_ASK}`,
   spec.humanInputs = specHuman
   spec.decisions = out.decisions
 
-  // ---------- Plan
-  const planName = `docs/superpowers/plans/${TODAY}-${E}-${slug}.md`
-  const acTxt = (card.acceptance || []).map(a => `[${a.id}] ${a.text}`).join('\n')
-  plan = await agent(`${C()}
-
-If this branch already has a plan docs/superpowers/plans/*-${E}-*.md, ${noteE ? 'adjust the not yet committed tasks to the OWNER INSTRUCTION OR ANSWER and the current spec. If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.' : 'reuse it (reused=true). A reused plan whose tasks or command evidence rows do not declare external is not reusable as is: add the declarations, commit and return reused=false.'}
-Otherwise use the skill superpowers:writing-plans on the spec ${spec.specPath}:
-- Header with the exact line: **Roadmap:** ${RM}
-- Save to ${planName}, in the language of the roadmap.
-- Small tasks, with TDD and the exact verification commands, using the canonical gates and respecting the MEASURED ENVIRONMENT. Each task lists the files it touches and the locks it needs (needsLock: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses). For each verification, the expected result; a baseline failure is named as expected.
-- Per task, declare "tier" (the implementer's model) by the routing scoring rules of the plan-coordinator skill (references/routing.md) when available: haiku for mechanical work, sonnet by default, opus only when ambiguity AND blast radius are both high. Declare "reviewTier": opus ONLY for blast radius 2 (authentication, secrets, writes to a production backend, data migration, push); otherwise sonnet.
-- Section "## Acceptance criteria evidence": for EACH criterion below, a line with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. A criterion with no evidence line rejects the plan. The ac of each evidence row is ONLY the criterion id (the text inside the brackets, e.g. AC1): never the id followed by text, never the criterion text. Criteria:
-${acTxt}
+  // ---------- Plan (native author; the tool output is read by code)
+  const planTool = `${pluginRoot}/scripts/plan-tool.mjs`
+  const planAbs = `${wt}/${AP.plan}`
+  const committedTasks = (Array.isArray(setup.committedTasks) ? setup.committedTasks : []).filter(Number.isInteger)
+  const hasPlanFile = setup.nativePlan === true
+  const reusedPlanAsIs = hasPlanFile && !noteE
+  const frozen = hasPlanFile && !!noteE && committedTasks.length > 0
+  const planLoadFail = why => fail('infra', `plan load: integrity digest not confirmed (${why})`)
+  const planRules = `Plan rules of this run:
+- ${NO_ASK}
+- The header of the prose of the plan carries this exact line:
+**Roadmap:** ${RM}
+- Each task lists the locks it needs (locks: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses).
+- Evidence: for EACH criterion of the card, a row with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. The ac of each evidence row is ONLY the criterion id (e.g. AC1).
 - Delivery: there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan (an external evidence row may check that effect, never replaces the task).
 - Per task declare external (true when the task changes or sends anything outside the branch, or reads production: production, deploy, push, e-mail or message, writing shared data, someone's checkout; a command that only reads a local file outside the branch, such as counting the lines of ../outbox.log, is not external; when in doubt, true). An external task also declares externalDedupe: how running it twice avoids a duplicate effect (idempotency key or an existence check before acting). Every external effect the card or the spec requires is a task of the plan with \`external: true\`, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act); "not a task of this plan" does not apply to it. Order an external task after every task whose code it ships. Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or the integration worktree.
 - For each evidence row with a command (kind test, smoke or integration) declare external the same way (the same rule: a command that only reads a local file outside the branch is not external; when in doubt, true). An external row also declares externalDedupe, because the command runs again after every gates fix and every late sync.
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
-- Ignore the skill's execution-mode question. Commit the plan and stop.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader (the file contains the line **Roadmap:**), reused, ac (the evidence section, each command copied verbatim from the file, with a table-escaped \\| written as |: ac, kind, command, testRef, blq, external, externalDedupe) and tasks (n, title, files (copied from the plan's file list for the task), noCommit (true only when the plan file says, in words, that the task changes no file and makes no commit, e.g. "Files: none"; false otherwise, and false when unsure), tier, reviewTier, needsLock, external, externalDedupe).`,
-    { label: `${E}:plan`, phase: 'Plan', schema: S_PLAN, model: 'opus', effort: 'medium' })
-  if (!plan || !plan.tasks || !plan.tasks.length) return fail('infra', 'plan: null agent or no tasks')
+- Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.`
+  const planLoadOnce = k => agent(`${Cs()}
+
+PLAN LOAD of deliverable ${E} (mechanical, read-only; change no file). Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2, blob = 3 (empty when it fails), head = 4, clean = true when 5 prints nothing.
+${numbered([`node "${planTool}" check "${planAbs}" --spec "${specAbs}" --json`, `node "${planTool}" emit "${planAbs}" --spec "${specAbs}"`, `git -C "${wt}" rev-parse "HEAD:${AP.plan}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
+${BASH_ONLY}
+${NO_ASK}`,
+    { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+  // Attempts 1 and 2 in haiku/low, the 3rd in sonnet/medium; the digest is recalculated here from the emit.
+  const loadPlan = async () => {
+    let why = ''
+    for (let k = 1; k <= 3; k++) {
+      const v = checkPlanLoad(await planLoadOnce(k), { E, RM })
+      if (v.ok) return v
+      why = v.why
+    }
+    return { ok: false, why }
+  }
+  const planAuthorOnce = diffs => agent(`mode: unattended
+output: ${planAbs}
+planTool: ${planTool}
+spec: ${specAbs}
+language: ${LANG || 'the language of the roadmap'}
+roadmap: ${RM}
+card: ${E}
+ownerNote:
+${noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''}${hasPlanFile ? `The file ${AP.plan} already exists on this branch: edit it to take the instruction into account; if the instruction changes nothing, leave the file untouched.\n` : ''}${frozen ? `Tasks already committed on this branch (${committedTasks.join(', ')}) are frozen: each keeps its number, its text and every field of its block. Only tasks not yet committed may change, and a new task gets a number greater than the largest existing one.\n` : ''}${diffs.length ? `The previous attempt changed frozen tasks: ${diffs.join('; ')}. Undo those changes.\n` : ''}${planRules}
+${Cn()}`,
+    { agentType: 'productivity-tools:plan-author', label: `${E}:plan`, phase: 'Plan' })
+  let planLoad = null
+  let planCommitted = false
+  let planBlobNow = ''
+  if (reusedPlanAsIs) {
+    planLoad = await loadPlan()
+    if (!planLoad.ok) return planLoadFail(planLoad.why)
+    planBlobNow = planLoad.blob
+  } else {
+    let prevPlan = null
+    if (frozen) {
+      const first = await loadPlan()
+      if (!first.ok) return planLoadFail(first.why)
+      prevPlan = first.plan
+    }
+    let diffs = []
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const authored = await planAuthorOnce(diffs)
+      if (authored == null) return fail('infra', 'plan: null agent')
+      planLoad = await loadPlan()
+      if (!planLoad.ok) return planLoadFail(planLoad.why)
+      diffs = frozen ? frozenTaskDiffs(prevPlan, planLoad.plan, committedTasks) : []
+      if (!diffs.length) break
+    }
+    if (diffs.length) {
+      const restored = await agent(`${Cs()}
+
+RESTORE of the plan of deliverable ${E} (mechanical). The plan edit was refused and nothing is committed: restore the file to the committed version with this one command: git -C "${wt}" checkout -- ${AP.plan}
+Return ok = true only if it succeeded; head = the output of git -C "${wt}" rev-parse HEAD.
+${NO_ASK}`,
+        { label: `${E}:plan-commit`, phase: 'Plan', schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+      const frozenList = diffs.join('; ')
+      op('plan-frozen-tasks', E, `the owner instruction for ${E} rewrote task(s) already committed on ${br}, in two author attempts: ${frozenList}`,
+        `Reword the instruction in notes so that it only touches tasks not yet committed (committed: ${committedTasks.join(', ')}), or revert those task commits on ${br} first. The plan file ${AP.plan} was restored to its committed version${restored && restored.ok ? '' : ' (WARNING: the restore could not be confirmed; check git status in the worktree)'}; no task ran`,
+        { ...A, deliverables: [E] })
+      return fail('conteudo', `the owner instruction rewrote committed task(s) of the plan: ${frozenList}`)
+    }
+    const msgFile = `${WT}/_tmp/${E}-plan-commit.txt`
+    const cm = await agent(`${Cs()}
+
+COMMIT of the plan of deliverable ${E} (mechanical). Only the file ${AP.plan} may enter the commit. One command per call, in this order:
+1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: plan", an empty line, then the line ${TRAILER}
+2. git -C "${wt}" add -- ${AP.plan}
+3. git -C "${wt}" diff --cached --quiet -- ${AP.plan}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
+4. Otherwise git -C "${wt}" commit -F "${msgFile}"
+5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none), and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}". ok is false, with error, when a command failed.
+${NO_ASK}`,
+      { label: `${E}:plan-commit`, phase: 'Plan', schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+    if (!cm || !cm.ok) return fail('infra', `plan commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
+    planCommitted = !!cm.commit
+    planBlobNow = planCommitted ? String(cm.blob || '').trim() || planLoad.blob : planLoad.blob
+  }
+  if (!/^[0-9a-f]{40,64}$/.test(planBlobNow)) return fail('infra', `plan load: the blob of ${AP.plan} on the branch was not measured`)
+  const planFrom = (ld, blob, reused) => ({ planPath: AP.plan, planBlob: blob, reused, tasks: tasksFromPlan(ld.plan), ac: evidenceFromPlan(ld.plan) })
+  plan = planFrom(planLoad, planBlobNow, !planCommitted)
+  if (!plan.tasks.length) return fail('infra', 'plan: no tasks')
+  let planLoadErr = ''
   const planGaps = () => {
     const gap = description => ({ severity: 'critical', category: 'defeito', description })
     const tasks = plan.tasks || []
@@ -2171,16 +2232,17 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   const planBlobGaps = r => {
     const m = r && typeof r.measuredPlanBlob === 'string' ? r.measuredPlanBlob.trim() : ''
     const reported = String(plan.planBlob || '').trim()
-    if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse "HEAD:${plan.planPath}"); the plan agent reported ${JSON.stringify(reported)}` }]
-    return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan agent (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); return the output of git rev-parse "HEAD:${plan.planPath}" after the commit` }]
+    if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse "HEAD:${plan.planPath}"); the plan load reported ${JSON.stringify(reported)}` }]
+    return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan load (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); the plan file changed after the load` }]
   }
   const planLoop = await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; a task with noCommit true whose steps change or commit a file; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; an external effect that the card or the spec requires (a delivery, a send, a deploy) and that no task declared external performs, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act) (defeito, critical); a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target (defeito, critical); a canonical gate changed (decisao, critical).
-THE TASKS THE CODE ACTS ON (transcribed by the plan agent; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${hideRowGaps(prev) ? `\nIssues from the previous round (${repeatRule()}):\n${hideRowGaps(prev)}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan agent; and evidenceRows = every row of the "## Acceptance criteria evidence" section, read from the output of git -C "${wt}" show <measuredPlanBlob>, in order: ac (the criterion id alone), kind, command (the exact text of the row, with a table-escaped \\| written as |; none for human or blocked), blq, external (the boolean the row declares). The script compares these rows with the rows it would run, so list only what you read in that output, even if a previous issue names another row.`,
+THE TASKS THE CODE ACTS ON (read by the script from the plan-tool emit, whose integrity digest it checked; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
+Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan load.
+${NO_ASK}`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus', effort: 'medium' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
@@ -2188,17 +2250,22 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
 Fix the plan ${plan.planPath} according to the review below and commit. Stop after the commit.
 ${fmt(iss)}
 Every ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.
-Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, each command copied verbatim from the file with a table-escaped \\| written as |, with external and externalDedupe) and tasks (full list, with files copied from the plan, noCommit (same rule as the plan stage), tier, reviewTier, needsLock, external and externalDedupe).`,
-        { label: `${E}:plan-fix${k}`, phase: 'Plan', schema: S_PLAN, model: tier, effort: effortFor(tier) })
-      if (fx && fx.tasks && fx.tasks.length) plan = { ...plan, ...fx }
-      return fx && fx.tasks && fx.tasks.length ? { status: 'DONE' } : null
+Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, each command copied verbatim from the file with a table-escaped \\| written as |, with external and externalDedupe) and tasks (full list, with files copied from the plan, noCommit (same rule as the plan stage), tier, reviewTier, needsLock, external and externalDedupe).
+The plan ends with a json data block in the plan/1 schema, which must stay valid: run node "${planTool}" check "${planAbs}" --spec "${specAbs}" before the commit, one simple command per call. Tasks and evidence rows are read from that block, never from your answer.
+${NO_ASK}`,
+        { label: `${E}:plan-fix${k}`, phase: 'Plan', model: tier, effort: effortFor(tier) })
+      if (!fx) return null
+      const again = await loadPlan()
+      if (!again.ok) { planLoadErr = again.why; return null }
+      plan = planFrom(again, again.blob, false)
+      return { status: 'DONE' }
     },
-    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...evidenceRowGaps(cardAc, plan.ac, r && r.evidenceRows), ...planGaps()],
+    r => [...reviewTruth(r, plan.reused ? 0 : spec.reused ? 1 : 2, `${TARGET}..HEAD (spec + plan)`), ...planBlobGaps(r), ...planGaps()],
     { tier: 'sonnet', reviewModel: 'opus' })
+  if (planLoadErr) return planLoadFail(planLoadErr)
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
   // A note is consumed only when it was written into the spec or the plan; one that changed no file stays in resumeWith.
   if (noteE && !(spec.reused === true && plan.reused === true)) NOTES_READ.push(E)
-  if (plan.roadmapHeader === false) return fail('conteudo', 'plan without the **Roadmap:** line in the header')
   out.plan = plan.planPath
   planRef = plan.planPath
   out.acOpen = criteriaOpen(cardAc, plan.ac)
@@ -2345,7 +2412,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
         return fail('externo', `external task ${t.n} awaits authorization (${held[0].item})`)
       }
     }
-    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t), effort: effortFor(implModel(t)) }))
+    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t), effort: implEffort(t) }))
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       if (authorizedExt) {

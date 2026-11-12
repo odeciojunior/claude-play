@@ -56,9 +56,9 @@ test('reviewer model: opus for route.reviewTier opus, an opus route or an extern
   assert.equal(P.implEffort(r('haiku', 'low', 'sonnet')), 'low');
   assert.equal(P.implEffort(r('sonnet', 'high', 'sonnet')), 'high');
   assert.equal(P.implEffort({}), 'medium');
-  // until T6: a task without route keeps the transcribed tier/reviewTier
-  assert.equal(P.implModel({ tier: 'haiku' }), 'haiku');
-  assert.equal(P.reviewModelFor({ tier: 'sonnet', reviewTier: 'opus' }), 'opus');
+  // E8 T6: a transcribed tier/reviewTier without route is no longer read
+  assert.equal(P.implModel({ tier: 'haiku' }), 'sonnet');
+  assert.equal(P.reviewModelFor({ tier: 'sonnet', reviewTier: 'opus' }), 'sonnet');
 });
 
 test('issue helpers: blocking, fmt, compact, reviewTruth', () => {

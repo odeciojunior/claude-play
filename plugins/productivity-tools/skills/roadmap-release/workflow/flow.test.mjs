@@ -58,6 +58,34 @@ function specEmitOf(E, { acceptance, rulings = [], needsPerson = [] }) {
   });
   return JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', data: { id: E, title: 't', mode: 'unattended', acceptance: items, rulings, needsPerson, externalEffects: [], edgeCases: [] } });
 }
+// ---- E8 T6: an old transcribed plan ({ planBlob, ac, tasks: [{ n, title, tier, reviewTier, files, needsLock, external, externalDedupe, noCommit }] }) becomes the plan-tool emit the plan load returns.
+const OLD_DEFAULT_PLAN = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+// A score whose recalculated route has the old tier (and reviewTier) for the task's files, found by search over the lib route.
+function scoreFor(t) {
+  const files = { create: [], modify: t.files || [], test: [] };
+  const wantTier = ['haiku', 'sonnet', 'opus'].includes(t.tier) ? t.tier : 'sonnet';
+  const wantReview = t.reviewTier === 'opus' || wantTier === 'opus' ? 'opus' : 'sonnet';
+  const wantEffort = wantTier === 'haiku' ? 'low' : 'medium';
+  let fallback = null;
+  for (let a = 0; a < 3; a++) for (let r = 0; r < 3; r++) for (let b = 0; b < 3; b++) for (let v = 0; v < 3; v++) {
+    const score = { ambiguity: a, reasoning: r, blast: b, verifiability: v };
+    const got = libRoute({ score, files, external: t.external === true }, { hasDependents: false });
+    if (got.tier !== wantTier) continue;
+    if (got.reviewTier === wantReview && got.effort === wantEffort) return score;
+    if (!fallback && got.reviewTier === wantReview) fallback = score;
+  }
+  return fallback || { ambiguity: 1, reasoning: 1, blast: 1, verifiability: 0 };
+}
+function planLoadOf(old, E, over = {}) {
+  const tasks = old.tasks.map((t) => ({
+    n: t.n, title: t.title, files: { create: [], modify: t.files || [], test: [] }, locks: t.needsLock || [], external: t.external,
+    externalDedupe: t.externalDedupe === undefined ? null : t.externalDedupe, noCommit: t.noCommit === true, deps: [], score: scoreFor(t),
+  }));
+  const evidence = (old.ac || []).map((a) => ({ ac: a.ac, kind: a.kind, command: a.command === undefined ? null : a.command, testRef: a.testRef === undefined ? null : a.testRef, blq: a.blq === undefined ? null : a.blq, external: a.external, externalDedupe: a.externalDedupe === undefined ? null : a.externalDedupe }));
+  const emit = planEmitOf({ id: E, roadmap: 'docs/plans/roadmap-x/', tasks, evidence });
+  return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: old.planBlob, head: 'h1', clean: true, ...over };
+}
+
 const np = (o) => ({ id: 'P1', blocking: false, ...o });
 const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'h1' });
 const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
@@ -111,15 +139,15 @@ function makeRecordMock(cardsOf) {
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
-  const lastAc = {};
+  const planOf = {};
   const recMock = makeRecordMock(() => (typeof cards === 'function' ? cards() : cards));
   const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
-  // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
+  // E8 T6: a test still answers the plan author (and the plan fixer) with the old transcribed plan; the plan load then returns the plan-tool emit of that plan.
   const liveAgent = async (prompt, o) => {
     const v = await answerOf(prompt, o);
     const id = (/^(E\d+):/.exec(o.label) || [])[1];
-    if (/:plan(-fix\d+)?$/.test(o.label) && v && v.ac) lastAc[id] = v.ac;
-    return /plan-review/.test(o.label) && v && !('evidenceRows' in v) ? { ...v, evidenceRows: lastAc[id] || [] } : v;
+    if (/:plan(-fix\d+)?$/.test(o.label) && v && typeof v === 'object' && Array.isArray(v.tasks) && v.tasks.length) { planOf[id] = v; return 'plan written'; }
+    return v;
   };
   const answerOf = async (prompt, o) => {
     const l = o.label;
@@ -133,6 +161,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:spec-load\d$/.test(l)) return specLoadOk(E, { acceptance: ((typeof cards === 'function' ? cards() : cards).find((c) => c.id === E) || {}).acceptance || [] });
     if (/:spec-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+    if (/:plan-load\d$/.test(l)) return planLoadOf(planOf[E] || OLD_DEFAULT_PLAN, E);
+    if (/:plan-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
     if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
@@ -662,7 +692,8 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
   assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
 });
 
-const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+// A plan the reviewer keeps rejecting: the deliverable stops with a content defect (it replaces the old plan without the **Roadmap:** header, which the code no longer reads).
+const noHeader = (l) => (/^E1:plan-review\d$/.test(l) ? { issues: [{ severity: 'critical', category: 'defeito', description: 'plan rejected' }], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix\d$/.test(l) ? 'plan fixed' : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -1194,7 +1225,7 @@ test('I2: human and blocked rows need no flag and are never held', async () => {
 test('I2: the plan prompts ask each evidence row for external', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /each evidence row[^\n]*external/i);
-  assert.equal(calls.find((c) => c.label === 'E1:plan').opts.schema.properties.ac.items.properties.external.type, 'boolean');
+  assert.equal(calls.find((c) => c.label === 'E1:plan').opts.schema, undefined);
 });
 
 test('I2/I3: the plan review checks the flags against the JSON the code acts on', async () => {
@@ -1453,53 +1484,6 @@ test('minor 4: gate and checkout items leave resumeArgs when no deliverable rema
 
 // ---- leva 2, bloco A
 const cmdRow = (command, over = {}) => ({ ac: 'AC1', kind: 'smoke', command, external: true, externalDedupe: 'd', ...over });
-const reviewRows = (rows) => (l) => (/plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1, evidenceRows: rows } : undefined);
-const authAc = () => ({ authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 0 });
-const mism = (plan, measured) => exec({ cards: [card('E1')], deliverables: ['E1'], args: authAc(), over: both(planRows(plan), reviewRows(measured)) });
-
-test('decision 1: a row in the plan JSON that the file does not have is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
-  assert.equal(r.results[0].failKind, 'conteudo');
-  assert.match(r.results[0].error, /cmd-B-not-shown/);
-});
-
-test('decision 1: a command changed in the transcription is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-C-changed')], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.match(r.results[0].error, /cmd-C-changed/);
-  assert.match(r.results[0].error, /cmd-A/);
-});
-
-test('decision 1: a row in the file that the JSON dropped is a defect', async () => {
-  const { r } = await mism([cmdRow('cmd-A')], [cmdRow('cmd-A'), cmdRow('cmd-in-file')]);
-  assert.equal(r.results[0].merged, false);
-  assert.match(r.results[0].error, /cmd-in-file/);
-});
-
-test('decision 1: an external flag that differs from the file is a defect', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-A', { external: false, externalDedupe: undefined })], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.match(r.results[0].error, /external/);
-});
-
-test('decision 1: a harmless retranscription (backticks) still runs under the authorization', async () => {
-  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)] },
-    over: both(planRows([cmdRow(deploy)]), reviewRows([cmdRow('`' + deploy + '`')]), evOk) });
-  assert.ok(labels.includes('E1:evidence1'));
-  assert.equal(r.results[0].merged, true);
-});
-
-test('decision 1: the reviewer reads the rows from git at the measured blob, and its schema requires them', async () => {
-  const rows = planRows([extRow]);
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: rows });
-  const c = calls.find((x) => x.label === 'E1:plan-review1');
-  assert.match(c.prompt, /evidenceRows/);
-  assert.ok(c.prompt.includes('git -C "/wt/E1" show <measuredPlanBlob>'));
-  assert.ok(['measuredPlanBlob', 'evidenceRows'].every((k) => c.opts.schema.required.includes(k)));
-  assert.ok(calls.find((x) => x.label === 'E1:spec-review1').opts.schema.required.every((k) => k !== 'measuredPlanBlob'));
-});
 
 const doneT1 = [{ n: 1, firstParent: 'h0', last: 'c1' }];
 const resumedRun = (over, args = {}) => exec({ cards: [card('E1')], deliverables: ['E1'], args,
@@ -1597,7 +1581,7 @@ test('minor 7: consumed notes leave resumeWith; notes of other deliverables stay
 });
 
 test('minor 7: a template answer is kept, and notes the plan never read stay', async () => {
-  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined) });
   assert.equal(d.r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, '<owner instruction>');
   const s = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: (l) => (l === 'E1:setup' ? null : undefined) });
   assert.ok(s.r.operatorActions.some((o) => hasNotes(o) && o.resumeWith.notes.E1 === 'answer'));
@@ -1679,7 +1663,7 @@ test('ledger: plan-only with every deliverable skipped still explains the hold',
 
 test('ledger: the plan path is quoted in the blob measurement', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.ok(calls.find((c) => c.label === 'E1:plan-review1').prompt.includes('rev-parse "HEAD:docs/p.md"'));
+  assert.ok(calls.find((c) => c.label === 'E1:plan-review1').prompt.includes('rev-parse "HEAD:docs/plans/x-E1/plan.md"'));
 });
 
 test('ledger: resume-review-log says what counts as accepted', async () => {
@@ -1701,9 +1685,13 @@ test('ledger: the report does not attribute the origin of an effect without evid
   assert.match(calls.find((c) => c.label === 'report').prompt, /origin of an external effect[^.]*unknown/i);
 });
 
-test('ledger: a reused plan without the external declarations is not reusable as is', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /A reused plan whose tasks or command evidence rows do not declare external is not reusable/);
+test('ledger: a reused native plan without the external declarations goes to the plan fixer', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true }
+      : l === 'E1:plan-load1' ? planLoadOf({ ...OLD_DEFAULT_PLAN, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] }, 'E1')
+      : l === 'E1:plan-fix1' ? planWith([tk(1, false)]) : undefined) });
+  assert.ok(!labels.includes('E1:plan'));
+  assert.ok(labels.includes('E1:plan-fix1'));
 });
 
 test('ledger: a finished code segment counts with mergeFound false', async () => {
@@ -1712,13 +1700,6 @@ test('ledger: a finished code segment counts with mergeFound false', async () =>
 });
 
 // ---- bloco A, fix round 1
-test('fix 1: a command with a line break does not match the same words on one line', async () => {
-  const { r, labels } = await mism([cmdRow('curl ok\nrm prod')], [cmdRow('curl ok rm prod')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
-  assert.match(r.results[0].error, /rm prod/);
-});
-
 test('fix 2: a fix on a committed external task is told not to perform the effect', async () => {
   const tasks = [tk(1, true), tk(2, false)];
   let n = 0;
@@ -1733,9 +1714,9 @@ test('fix 2: a fix on a committed external task is told not to perform the effec
   assert.doesNotMatch(p, /perform the effect at most once/);
 });
 
-test('minor 2: both agents return a table-escaped pipe as the pipe that must run', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  for (const l of ['E1:plan', 'E1:plan-review1']) assert.ok(calls.find((c) => c.label === l).prompt.includes(String.raw`table-escaped \| written as |`), l);
+test('minor 2: the plan fixer returns a table-escaped pipe as the pipe that must run', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
+  assert.ok(calls.find((c) => c.label === 'E1:plan-fix1').prompt.includes(String.raw`table-escaped \| written as |`));
 });
 
 test('minor 3: a reused worktree with no committed task also restores the log', async () => {
@@ -1745,16 +1726,9 @@ test('minor 3: a reused worktree with no committed task also restores the log', 
 });
 
 test('minor 4: a note stays for the resume when the plan review rejects the plan', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
   assert.equal(r.results[0].merged, false);
   assert.equal(r.resumeArgs.notes.E1, 'answer');
-});
-
-test('minor 5: the next plan review does not receive the transcribed command', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 1 },
-    over: both((l) => (l === 'E1:plan-fix1' ? { ...planWith(safeTasks), ac: [cmdRow('cmd-A')] } : undefined), planRows([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')]), reviewRows([cmdRow('cmd-A')])) });
-  assert.ok(calls.find((c) => c.label === 'E1:plan-fix1').prompt.includes('cmd-B-not-shown'));
-  assert.ok(!calls.find((c) => c.label === 'E1:plan-review2').prompt.includes('cmd-B-not-shown'));
 });
 
 test('minor 7: restored human inputs differing only in spacing are one item', async () => {
@@ -1766,22 +1740,16 @@ test('minor 7: restored human inputs differing only in spacing are one item', as
 const wrapped = '`echo echo PWNED`';
 
 test('fix round 2: a wrapped command is dispatched and shown unwrapped', async () => {
-  const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')])) });
+  const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)])) });
   assert.ok(!ext(held.r)[0].what.includes('`echo'));
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(wrapped)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
   const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
   assert.match(p, /^AC1: echo echo PWNED$/m);
 });
 
-test('fix round 2: extra interior spaces are a defect and never run', async () => {
-  const { r, labels } = await mism([cmdRow('curl  ok')], [cmdRow('curl ok')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].failKind, 'conteudo');
-});
-
 test('fix round 2: the defect action keeps an answer no approved plan consumed', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
   assert.equal(r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, 'answer');
 });
 
@@ -1900,13 +1868,13 @@ test('a mark cleared with success raises no concern', async () => {
 test('resume: the range note names the spec and the plan of the resume', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both((l) => (l === 'E1:plan' ? planWith(ext1) : undefined), pendingProgress, rerunRange) });
   const review = x.calls.find((c) => c.label === 'E1:t1:spec1').prompt;
-  assert.match(review, /not extra scope[^\n]*docs\/plans\/x-E1\/spec\.md[^\n]*docs\/p\.md[^\n]*not extra scope/);
+  assert.match(review, /not extra scope[^\n]*docs\/plans\/x-E1\/spec\.md[^\n]*docs\/plans\/x-E1\/plan\.md[^\n]*not extra scope/);
 });
 
 test('decision 3: a quoted command is dispatched with its quotes', async () => {
   const q = '"./my tool"';
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(q)]), reviewRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
   assert.equal(r.results[0].merged, true);
   assert.match(calls.find((c) => c.label === 'E1:evidence1').prompt, /^AC1: "\.\/my tool"$/m);
 });
@@ -1927,12 +1895,6 @@ test('resume after the mark was cleared: the review of an external task still ge
 test('resume of a task that is not external gets no bookkeeping note', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], clearedProgress) });
   assert.ok(!x.calls.find((c) => c.label === 'E1:t1:spec1').prompt.includes('awaiting person:'));
-});
-
-test('decision 3: a quoted command against its bare form is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('"./my tool"')], [cmdRow('./my tool')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
 });
 
 test('the docs stage explains the mark: a fulfilled request leaves pending, any other need stays', async () => {
@@ -2194,11 +2156,8 @@ test('R3/I-1: files [] without noCommit still needs its own commit and the imple
   assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /Commit "E1 T1: \.\.\."/);
 });
 
-test('R3/I-1: noCommit is required in the plan schema, asked of the plan agent and checked by the plan review', async () => {
+test('R3/I-1: the plan review checks the noCommit flags of the tasks the code reads from the emit', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const p = x.calls.find((c) => c.label === 'E1:plan');
-  assert.ok(p.opts.schema.properties.tasks.items.required.includes('noCommit'));
-  assert.match(p.prompt, /noCommit \(true only when the plan file says, in words, that the task changes no file and makes no commit, e\.g\. "Files: none"; false otherwise, and false when unsure\)/);
   const r = x.calls.find((c) => c.label === 'E1:plan-review1').prompt;
   assert.match(r, /these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect/);
   assert.match(r, /a task with noCommit true whose steps change or commit a file/);
@@ -2215,7 +2174,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
       if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
       return undefined;
     } });
-  const rule = /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/p\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
+  const rule = /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
   for (const l of ['E1:gates-fix1', 'E1:final-fix1']) assert.match(x.calls.find((c) => c.label === l).prompt, rule, l);
   assert.match(x.calls.find((c) => c.label === 'E1:gates-fix1-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
   assert.match(x.calls.find((c) => c.label === 'E1:final-1-r2').prompt, /Blocks \(defeito\): an edit to the spec or the plan/);
@@ -2224,7 +2183,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
 test('R3/I-2: the post-merge fixer may not edit the spec or the plan, and its review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => (/^E1:merge-gates1/.test(l) ? gm('m1', { exit: 1, failedNames: ['new'] }) : l === 'E1:merge-fix' ? { status: 'DONE', summary: 'x', checks: [] } : undefined) });
-  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:merge-fix-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
 });
 
@@ -2278,7 +2237,7 @@ test('PF/I3 and M1, M5, M10, M11: the docs point to CLAUDE.md, agree on the fix 
 test('PF/M2: the late-sync fixer may not edit the spec or the plan, and its re-review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => (l === 'E1:delta-review1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h3', clean: true, commitsInRange: 0 } : l === 'E1:delta-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined) });
-  assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:delta-review2').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan made by a fix round/);
 });
 
@@ -2312,7 +2271,7 @@ test('PF/M7, M8, M9: report wording for unreviewed entries, one entry per task i
 // Fable final review (FF).
 const FF_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ffRead = (f) => readFileSync(join(FF_DIR, f), 'utf8');
-const KEEP_IF_SAME = 'If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.';
+const KEEP_IF_SAME = 'if the instruction changes nothing, leave the file untouched.';
 test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fingerprint and the authorization', async () => {
   const run1 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
   const hi = run1.r.operatorActions.find((o) => o.kind === 'human-input');
@@ -2320,7 +2279,8 @@ test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fi
   const { config, ...rw } = hi.resumeWith;
   const reused = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }
     : l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: '' }
-    : l === 'E1:plan' ? { ...planWith(ext1), reused: true }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: '' }
+    : l === 'E1:plan-load1' ? planLoadOf(planWith(ext1), 'E1')
     : l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
   const run2 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...rw, notes: { E1: 'the key is in DEPLOY_KEY' }, runToken: 'pf-2' }, over: reused });
   assert.ok(run2.calls.find((c) => c.label === 'E1:plan').prompt.includes(KEEP_IF_SAME));
@@ -2427,7 +2387,7 @@ test('FF/M8: a local task that waited for a person closes with a neutral mark, w
 // Fable review 2 (F2).
 test('F2/I-A: a note that changed no file stays in resumeWith; a note written into the plan is consumed', async () => {
   const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
-    : l === 'E1:plan' ? { ...planWith([tk(1, false)]), reused: v }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
     : l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'stop', checks: [] } : undefined);
   const kept = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(true) });
   assert.equal(kept.r.resumeArgs.notes && kept.r.resumeArgs.notes.E1, 'the key is in DEPLOY_KEY');
@@ -3004,7 +2964,7 @@ const readWith = (word, over = {}) => ({
   porcelain: '',
   ...over,
 });
-const badPlan = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const badPlan = noHeader;
 
 test('AC2 registro de plano e executando pela CLI', async () => {
   const humanSpec = specWith({ rulings: [ruling({ id: 'R1', decision: 'escolha A.', scope: 'local' }), ruling({ id: 'R2', decision: 'escolha B', scope: 'contract' })], needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
@@ -3823,4 +3783,128 @@ test('checkSpecLoad separates a failed check from a failed load', () => {
   assert.deepEqual([failed.ok, failed.checkFailed], [true, true]);
   assert.match(failed.why, /ERR schema/);
   for (const bad of [null, { ...good, emitExit: 1 }, { ...good, emitStdout: '{' }, { ...good, checkExit: undefined }, { ...good, emitStdout: specEmitOf('E2', { acceptance: card1.acceptance }) }]) assert.equal(PURE_X.checkSpecLoad(bad, 'E1', card1).ok, false, JSON.stringify(bad));
+});
+
+// ---- E8 T6: native plan stage, load with digest, dispatch by route
+const planSetup = (over = {}) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false, ...over } : undefined);
+const withDigestOff = (load) => ({ ...load, emitStdout: JSON.stringify({ ...JSON.parse(load.emitStdout), digest: '00000000' }) });
+const evRow1 = { ac: 'AC1', kind: 'test', command: 'npm test -- a', testRef: null, blq: null, external: false, externalDedupe: null };
+const zero = { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 };
+
+test('AC3: a plan whose digest does not match after the retries fails as infra without running a task', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^E1:plan-load\d$/.test(l) ? withDigestOff(planLoadOf(OLD_DEFAULT_PLAN, 'E1')) : undefined) });
+  const e = r.results[0];
+  assert.equal(e.failKind, 'infra');
+  assert.match(e.error, /plan load: integrity digest/);
+  assert.deepEqual(['E1:plan-load1', 'E1:plan-load2', 'E1:plan-load3'].map((l) => modelOf(calls, l).model), ['haiku', 'haiku', 'sonnet']);
+  assert.deepEqual(['E1:plan-load1', 'E1:plan-load3'].map((l) => modelOf(calls, l).effort), ['low', 'medium']);
+  assert.ok(!labels.some((l) => /:t\d+:/.test(l)));
+  assert.ok(!labels.some((l) => /^E1:status-/.test(l) && !/blocked|-read/.test(l)), 'no executing record');
+  assert.ok(!labels.includes('E1:plan-review1'));
+});
+
+test('AC4: the implementer and the task reviewer get model and effort from route', async () => {
+  const mk = (n, score) => ({ n, title: 't' + n, files: { create: [], modify: ['a' + n + '.js'], test: [] }, score });
+  const emit = planEmitOf({ id: 'E1', roadmap: 'docs/plans/roadmap-x/', tasks: [mk(1, zero), mk(2, { ambiguity: 1, reasoning: 2, blast: 2, verifiability: 1 })], evidence: [evRow1] });
+  assert.deepEqual(emit.plan.tasks.map((t) => [t.route.tier, t.route.effort, t.route.reviewTier]), [['haiku', 'low', 'sonnet'], ['sonnet', 'high', 'opus']]);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^E1:plan-load\d$/.test(l) ? { checkExit: 0, emitExit: 0, emitStdout: JSON.stringify(emit), blob: B1 } : undefined) });
+  assert.deepEqual([modelOf(calls, 'E1:t1:impl').model, modelOf(calls, 'E1:t1:impl').effort], ['haiku', 'low']);
+  assert.deepEqual([modelOf(calls, 'E1:t2:impl').model, modelOf(calls, 'E1:t2:impl').effort], ['sonnet', 'high']);
+  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t2:spec1').model, 'opus');
+});
+
+test('the plan author gets the native contract and the plan rules', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'use a table' } } });
+  const c = calls.find((x) => x.label === 'E1:plan');
+  assert.equal(c.opts.agentType, 'productivity-tools:plan-author');
+  assert.equal(c.opts.model, undefined);
+  const p = c.prompt;
+  const lines = p.split('\n');
+  for (const k of ['mode: unattended', 'output: /wt/E1/docs/plans/x-E1/plan.md', 'planTool: /p/productivity-tools/scripts/plan-tool.mjs', 'spec: /wt/E1/docs/plans/x-E1/spec.md', 'roadmap: docs/plans/roadmap-x/', 'card: E1']) assert.ok(lines.includes(k), k);
+  assert.ok(lines.some((x) => /^language: /.test(x)));
+  const at = (k) => lines.findIndex((x) => x.startsWith(k));
+  assert.ok(['mode:', 'output:', 'planTool:', 'spec:', 'language:', 'roadmap:', 'card:'].every((k) => at(k) < at('ownerNote:')));
+  assert.equal(lines.filter((x) => /^[a-zA-Z]+: /.test(x) && ['mode', 'output', 'planTool', 'spec', 'language', 'roadmap', 'card', 'ownerNote'].includes(x.split(':')[0])).length, 7);
+  assert.ok(p.indexOf('ownerNote:') > p.indexOf('card: E1'));
+  assert.ok(p.indexOf('**Roadmap:** docs/plans/roadmap-x/') > p.indexOf('ownerNote:'));
+  assert.ok(lines.includes('**Roadmap:** docs/plans/roadmap-x/'));
+  assert.match(p, /use a table/);
+  assert.match(p, /externalDedupe/);
+  assert.match(p, /Task commits start with "E1 T<n>:"/);
+  assert.ok(p.includes(PURE_X.NO_ASK || 'Never ask the person anything'));
+  assert.doesNotMatch(p, /superpowers:writing-plans/);
+});
+
+test('frozen tasks: an owner note that rewrites a committed task restores the plan and stops', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false), tk(3, false)] };
+  const P1 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false, { title: 'changed by the note' }), tk(3, false)] };
+  let n = 0;
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'rewrite task 2' } },
+    over: both(planSetup({ taskCommits: 2, committedTasks: [1, 2], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(n++ === 0 ? P0 : P1, 'E1') : undefined)) });
+  const e = r.results[0];
+  assert.equal(labels.filter((l) => l === 'E1:plan').length, 2);
+  assert.match(calls.filter((c) => c.label === 'E1:plan')[1].prompt, /task 2 is committed but changed/);
+  assert.match(calls.filter((c) => c.label === 'E1:plan')[0].prompt, /Tasks already committed on this branch \(1, 2\) are frozen/);
+  const cm = calls.find((c) => c.label === 'E1:plan-commit');
+  assert.ok(cm.prompt.includes('git -C "/wt/E1" checkout -- docs/plans/x-E1/plan.md'));
+  assert.ok(r.operatorActions.some((o) => o.kind === 'plan-frozen-tasks' && o.deliverable === 'E1'));
+  assert.equal(e.failKind, 'conteudo');
+  assert.ok(!labels.some((l) => /:t\d+:impl/.test(l)));
+  assert.ok(!calls.some((c) => c.label === 'E1:plan-commit' && /commit -F/.test(c.prompt)), 'nothing is committed');
+});
+
+test('frozen tasks: a note that touches only the tasks not yet committed is committed', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false)] };
+  const P1 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false, { title: 'changed by the note' })] };
+  let n = 0;
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'rewrite task 2' } },
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(n++ === 0 ? P0 : P1, 'E1') : undefined)) });
+  assert.equal(labels.filter((l) => l === 'E1:plan').length, 1);
+  assert.match(calls.find((c) => c.label === 'E1:plan-commit').prompt, /commit -F/);
+});
+
+test('a native plan reused without owner note calls no author and makes no commit', async () => {
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:progress' ? { head: 'c1', clean: true, done: [{ n: 1, firstParent: 'h0', last: 'c1' }] } : undefined)) });
+  assert.ok(!labels.includes('E1:plan'));
+  assert.ok(!labels.includes('E1:plan-commit'));
+  assert.ok(labels.includes('E1:plan-load1'));
+  assert.ok(!labels.includes('E1:t1:impl'), 'the committed task is not implemented again');
+  assert.ok(calls.some((c) => c.label === 'E1:t1:spec1'));
+});
+
+test('the plan fixer keeps its text and adds the block sentence', async () => {
+  const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
+  const p = calls.find((c) => c.label === 'E1:plan-fix1').prompt;
+  const keep = 'Fix the plan docs/plans/x-E1/plan.md according to the review below and commit. Stop after the commit.';
+  const ret = String.raw`Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, each command copied verbatim from the file with a table-escaped \| written as |, with external and externalDedupe) and tasks (full list, with files copied from the plan, noCommit (same rule as the plan stage), tier, reviewTier, needsLock, external and externalDedupe).`;
+  assert.ok(p.includes(keep));
+  assert.ok(p.includes(ret));
+  assert.ok(p.indexOf(keep) < p.indexOf(ret));
+  const tail = p.slice(p.indexOf(ret) + ret.length);
+  assert.match(tail, /plan\/1/);
+  assert.match(tail, /plan-tool\.mjs" check "[^"]*plan\.md" --spec/);
+  assert.ok(labels.indexOf('E1:plan-fix1') < labels.lastIndexOf('E1:plan-review2'));
+  assert.ok(labels.indexOf('E1:plan-fix1') < labels.indexOf('E1:plan-load2') || labels.includes('E1:plan-load1'));
+  assert.equal(modelOf(calls, 'E1:plan-fix1').schema, undefined);
+});
+
+test('the plan review no longer asks for evidence rows and the plan stage no longer reads the transcribed header', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const rv = calls.find((c) => c.label === 'E1:plan-review1');
+  assert.doesNotMatch(rv.prompt, /evidenceRows/);
+  assert.deepEqual(rv.opts.schema.required.filter((k) => k === 'evidenceRows' || k === 'measuredPlanBlob'), ['measuredPlanBlob']);
+  assert.match(rv.prompt, /a missing "\*\*Roadmap:\*\* docs\/plans\/roadmap-x\/" line in the header/);
+});
+
+test('checkPlanLoad accepts a faithful emit and rejects exit, digest and blob problems', () => {
+  const good = planLoadOf(OLD_DEFAULT_PLAN, 'E1');
+  const args = { E: 'E1', RM: 'docs/plans/roadmap-x/' };
+  const ok = PURE_X.checkPlanLoad(good, args);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.blob, B1);
+  assert.equal(PURE_X.checkPlanLoad({ ...good, blob: 'nope' }, args).blob, '');
+  for (const bad of [null, { ...good, emitExit: undefined }, { ...good, emitExit: 1, checkStdout: 'ERR x' }, withDigestOff(good), { ...good, emitStdout: '{' }]) assert.equal(PURE_X.checkPlanLoad(bad, args).ok, false, JSON.stringify(bad).slice(0, 80));
+  assert.match(PURE_X.checkPlanLoad({ ...good, emitExit: 1, checkStdout: 'ERR x' }, args).why, /ERR x/);
 });
