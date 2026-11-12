@@ -130,6 +130,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
 - (executor) E8: avaliar se resume do próprio entregável deve parar por decisão de contrato dele mesmo sem dependente iniciado (DEC-030 só exige antes de um dependente); em 2 de 3 retomadas do sandbox a parada pediu resposta humana.
 - (dono) Rodar G1 a G5 sobre a ponta de feat/E17-medicao antes de avançar main e conferir que a árvore do plugin é 214fb3b; a branch de volta segue partindo de M.
+- (executor) E20: refazer só o critério 4 no sha da correção, em claude -p --plugin-dir; conferir F4-1 a F4-3 por SHA e F4-4 pelas conferências fechadas (a) a (e); revisão adversarial sonnet; seção nova no relatório; depois retomar o workflow.
+- (dono) E20: aceite do critério 4 depois da nova execução (por delegação se todas as conferências passarem) e rodar a suíte de gatilho do critério 5.
+- (dono) Não bloqueia: o caminho com AskUserQuestion da adoção nunca foi exercido em sessão interativa; observar na primeira adoção real e registrar o resultado.
 <!-- /roadmap:pending -->
 
 ## Em andamento

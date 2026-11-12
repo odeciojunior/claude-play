@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | Decisão do dono por delegação (Fable): critérios 1 e 2 aceitos e pendência de DEC-400 fechada; critério 4 corrigido em E20 em 3ª e última rodada (conta fechada da Adoção, diff mecânico, check antes do move, busca do spec do card), em opus. | `decisions.md` |
+| 2026-11-12 | E20 | DEC-449 a DEC-455 (E20) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E17 | Medição paga de E17 parada pela regra de duas inválidas seguidas em codigo-semeado-A (US$ 52,4); roteiro B de E25 PASS no cache; decisões DEC-441 a DEC-448 por delegação; codigo-semeado-B em curso e parada-retomada a refazer com arnês corrigido. | `scratchpad/e17-medicao, fix/e17-harness-retomada 5205d1c` |
 | 2026-11-12 | E17 | DEC-441 a DEC-448 (medição de E17) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E20 | BLQ-7 aberto: E20 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: I changed nothing and made no commit. Items 1 to 4 (two pairs of duplicates) need new [...] texto completo em docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md | `branch feat/E20` |
