@@ -77,7 +77,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E25: roteiro B (cache): conferir nome e concessão com o plugin instalado do cache num CLAUDE_CONFIG_DIR descartável, antes da publicação de E17; responde aos gatilhos de DEC-061 e DEC-049.
 - (dono) E25: critério AC4 sem evidência automática (human)
 - (dono) E25: critério AC6 sem evidência automática (human)
-- (executor) E25: correção de DEC-275 e DEC-276 (disable-model-invocation no SKILL.md do release e no lint, F2, F4, CONTRIBUTING.md:47), em branch fix/, antes de AC6 e de E17; conferir o comando digitado em claude -p.
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
 - (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
 <!-- /roadmap:pending -->

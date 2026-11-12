@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E15 | DEC-051, dado: nas 2 tentativas de plano-semeado-A pelo pipeline completo o agente de plano devolveu reused=false e corrigiu os defeitos semeados antes da revisão (2 de 2 inválidas por plano-reescrito); tentativas guardadas em _dados-dec051-plano-pipeline, fora da classe | `tools/measure/out/_dados-dec051-plano-pipeline` |
+| 2026-11-12 | E25 | Correção de DEC-275 e DEC-276 integrada: disable-model-invocation no SKILL.md do release, exigido pelo lint com a concessão; F2 e F4; CONTRIBUTING.md e README do plugin; portão opus high aprovado com ressalvas, aplicadas | `df10773` |
 | 2026-11-12 | E15 | DEC-278 ratificada pelo dono | `decisions.md` |
 | 2026-11-12 | E25 | Teste comportamental (DEC-271) rodado pela sessão principal em dry-run nos três cenários, sem Workflow; revisão adversarial aprovada com ressalvas; resumo no log de revisões | `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md` |
 | 2026-11-12 | E25 | O commit 48524fb (rótulo T6) é correção da peça 5: chave de frontmatter repetida dá FAIL no lint. Mantido pelo dono, com revisão em opus e portão final. | `48524fb` |
