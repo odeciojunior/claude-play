@@ -291,7 +291,14 @@ export function lintPlugin(dir, { marketplace } = {}) {
     {
       // Raw-line guard: spellings parseFrontmatter does not map to the bare key (quoted key, space before the colon, other case) are valid YAML for allowed-tools.
       const fmLines = text.replace(/^﻿/, '').split(SPLIT).slice(1, fm.bodyStartLine - 2);
+      const seen = new Set();
       for (const l of fmLines) {
+        // A repeated top-level key is invalid YAML and parseFrontmatter keeps only the last value, so an earlier allowed-tools line would escape the check (DEC-049).
+        const key = /^([A-Za-z0-9_-]+):/.exec(l)?.[1];
+        if (key !== undefined) {
+          if (seen.has(key)) problems.push(['FAIL', `frontmatter key "${key}" is repeated; YAML keeps only one value, so remove the duplicate`]);
+          seen.add(key);
+        }
         // Allow-list: a top-level entry (column 0, not a comment or sequence item) must be a plain `key:`; quoted, escaped, explicit (`? key`) or spaced keys are valid YAML spellings of allowed-tools and are refused.
         if (/^\S/.test(l) && !/^(#|- )/.test(l) && !/^[A-Za-z0-9_-]+:/.test(l)) {
           problems.push(['FAIL', 'frontmatter keys must be written as a plain `key:` at column 0 (DEC-049: allowed-tools may not be spelled quoted, escaped or as an explicit key); remove this entry']);

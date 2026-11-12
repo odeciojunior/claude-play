@@ -724,3 +724,25 @@ test('E25 AC5: allowed-tools spelled as quoted key, spaced colon or other case -
     }
   }
 });
+
+test('E25 AC5: a repeated allowed-tools key (earlier value hidden by the last) -> FAIL', () => {
+  const forms = [`allowed-tools: Bash
+allowed-tools: ${ENTRY}`, `allowed-tools: ${ENTRY}
+allowed-tools: ${ENTRY}`,
+    `allowed-tools:
+  - Bash
+allowed-tools: ${ENTRY}`];
+  for (const f of forms) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', f);
+    assert.ok(has(lint(dir), 'FAIL', 'frontmatter key "allowed-tools" is repeated'), f);
+  }
+});
+
+test('E25 AC5: any repeated top-level frontmatter key -> FAIL', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}
+license: MIT
+license: Apache-2.0`);
+  assert.ok(has(lint(dir), 'FAIL', 'frontmatter key "license" is repeated'));
+});
