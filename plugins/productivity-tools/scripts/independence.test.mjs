@@ -191,6 +191,66 @@ test('E20: tracker description points task plans to plan-writer', () => {
   assert.ok(fields.description.includes('use plan-writer'));
 });
 
+// Trecho da adocao no SKILL.md: da linha do modo de adocao ate a do plano com bloco.
+function adoptionText() {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  const start = body.indexOf('- **Old plan without a data block**');
+  const end = body.indexOf('- **Plan with a data block**');
+  assert.ok(start >= 0 && end > start, 'sem o trecho de adocao');
+  return body.slice(start, end);
+}
+
+test('E20: plan-writer adoption checks the provisional before approval and before the move', () => {
+  const text = adoptionText();
+  const check = text.indexOf('node "<planTool>" check "<output>"');
+  assert.ok(check >= 0, 'sem check do provisorio');
+  assert.ok(check < text.indexOf('AskUserQuestion'), 'check depois da aprovacao');
+  assert.ok(check < text.indexOf('move the provisional'), 'check depois do move');
+});
+
+test('E20: plan-writer adoption deletes nothing after the move and drops the spec adjustment', () => {
+  const text = adoptionText();
+  assert.match(text, /nothing is deleted after the move/i);
+  assert.ok(!text.includes('adjust the `spec` field'));
+  const step4 = text.split('\n').find((l) => /^\s*4\. /.test(l)) || '';
+  assert.ok(step4, 'sem passo 4');
+  assert.doesNotMatch(step4.slice(step4.indexOf('move the provisional')), /failed check: delete/i);
+});
+
+test('E20: plan-writer adoption shows the mechanical diff as the full record', () => {
+  const text = adoptionText();
+  assert.ok(text.includes('git diff --no-index -- "<original>" "<provisional>"'));
+  assert.match(text, /--stat/);
+  assert.match(text, /full record/i);
+});
+
+test('E20: plan-writer adoption looks up the card spec before dispatching spec-author', () => {
+  const text = adoptionText();
+  const card = text.indexOf('docs/plans/<name>-E<n>/spec.md');
+  assert.ok(card >= 0, 'sem o spec do card');
+  assert.ok(card < text.indexOf('productivity-tools:spec-author'), 'spec do card depois do spec-author');
+  assert.match(text, /named by the person/i);
+});
+
+test('E20: plan-writer adoption stops on a missing row or false origin over the whole table', () => {
+  const text = adoptionText();
+  assert.match(text, /re-dispatch[^.]*once/i);
+  assert.match(text, /false origin/i);
+  assert.match(text, /`constraints` item/);
+});
+
+test('E20: plan-author adopt accounts one row per old step, task, constraints item and field', () => {
+  const { body } = frontmatter(read(AGENT));
+  const step = body.split('\n').find((l) => l.startsWith('4. In `adopt` mode')) || '';
+  assert.ok(step, 'sem passo 4 de adocao');
+  assert.match(step, /one row per old step/i);
+  assert.match(step, /one row per item of the data block's `constraints`/);
+  assert.match(step, /one row per structured-field difference/i);
+  assert.match(step, /literal/i);
+  assert.match(step, /"became", "kept" or "carried over"/);
+  assert.ok(!step.includes('every difference'));
+});
+
 test('E20: plan-writer adoption passes spec-author every field its contract requires', () => {
   const { body } = frontmatter(read(PLAN_WRITER));
   const step = body.split('\n').find((l) => l.includes('productivity-tools:spec-author')) || '';
