@@ -3,6 +3,11 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | Decisões DEC-285 a DEC-296 de E17 ratificadas pelo dono por delegação (Fable); emendas às decisões 1, 10 e 12 como DEC-298 (a DEC-285), DEC-299 (a DEC-294) e DEC-297 (a DEC-296). Nenhuma decisão do executor pendente. | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 10 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 1 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 12 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisões 2 a 9 e 11 de E17 ratificadas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E25 | Critério 4 conferido por agente opus delegado no commit 0b5c1d3 (anterior à concessão), modo padrão: sem regra, negado, e o preflight mostrou Workflow(productivity-tools:release-workflow); com essa regra em .claude/settings.local.json, o lançamento seguinte começou sem diálogo. | `e25-dono/c4-regra/run1-sem-regra.jsonl, run2-com-regra.jsonl` |
 | 2026-11-12 | E17 | E17 passou para plano | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E25 | Roteiro B parado: instalação a partir da worktree criou o cache 1.6.0 com a concessão e a chave workflows, mas a pasta descartável não tem conta (loggedIn false); nenhuma credencial copiada. settings.json do usuário inalterado; skipWorkflowUsageWarning não apareceu. | `e25-dono/cfg, e25-dono/hash-before.txt` |
