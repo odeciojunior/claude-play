@@ -134,6 +134,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E20/N5-2: no passo 4 do plan-author, valor que o plano antigo não declara (deps, score, effort, título encurtado) entra como acrescentado ou derivado, nunca mantido; coluna sem campo no bloco (Test reference) ganha linha. Junto com N5-1.
 - (executor) E20/cobertura: a adoção não exerceu a recusa (apaga o provisório, original intacto), o caminho com AskUserQuestion, as fontes 2 a 4 da busca do spec nem spec-author. Exercer ao menos a recusa e o spec do card na conferência de N5-1.
 - (dono) E20: rodar a suíte de gatilho do critério 5.
+- (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025)
+- (dono) Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458)
 <!-- /roadmap:pending -->
 
 ## Em andamento
