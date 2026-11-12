@@ -4,6 +4,7 @@
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
 | 2026-11-12 | E17 | E17 passou para na-branch | `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
+| 2026-11-12 | E17 | E17 passou para na-branch | `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | E17 passou para executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | BLQ-5 resolvido: desbloqueio de E17 pelo release | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | BLQ-5 aberto: E17 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [critical/defeito] dirty working tree (uncommitted files); branch feat/E17 kept at D:/projects/claude-play-wt/E17 | `branch feat/E17` |
