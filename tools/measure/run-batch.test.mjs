@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,7 @@ function setup({ withPlugins = true } = {}) {
   if (withPlugins) {
     writeFileSync(
       join(dirs.configDir, 'plugins', 'installed_plugins.json'),
-      JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234' }] } }),
+      JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234', installPath: join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9') }] } }),
     );
   }
   return { ...dirs, done: () => rmSync(base, { recursive: true, force: true }) };
@@ -1106,4 +1106,10 @@ test('E17: release attempts carry panel, other variants do not', async () => {
   } finally {
     s.done();
   }
+});
+
+test('E17: panel error texts carry no path', () => {
+  const win = ['C:', 'Users', 'someone', 'AppData', 'Local', 'Temp', 'panel-1', 'wt'].join('\\');
+  assert.equal(redactPaths("fatal: '" + win + "' failed /tmp/panel-1/wt"), "fatal: '<path>' failed <path>");
+  assert.equal(redactPaths('roadmap.mjs exited 2'), 'roadmap.mjs exited 2');
 });

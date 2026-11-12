@@ -578,6 +578,9 @@ export const EXPECTED_PANEL = {
   'parada-retomada': { deliverable: 'E5', status: 'on-branch', mergeEvidence: true },
 };
 
+// An error text can carry a temporary or install path; the aggregate never holds personal paths.
+export const redactPaths = (s) => s.replace(/[A-Za-z]:[\/][^\s'"]*|(?:\/[^\s'"\/]+){2,}/g, '<path>');
+
 // Never throws: any failure (missing CLI, non-JSON output, exit other than 0/1) is { error }.
 // The committed state of release/sandbox is read in a detached temporary worktree: a checkout in the sandbox root is refused
 // when the release preflight keeps that branch in <sandbox>-wt/_integracao. The fields e5Status/e5Evidence hold the row of `deliverable`.
@@ -613,7 +616,7 @@ export function readPanel(sandbox, installPath, { exec = spawnSync, deliverable 
       checkerErrors: checker.summary?.errors ?? (checker.errors ?? []).length,
     };
   } catch (e) {
-    return { error: String(e?.message ?? e) };
+    return { error: redactPaths(String(e?.message ?? e)) };
   } finally {
     if (tmp) {
       try { gitOut(sandbox, 'worktree', 'remove', '--force', join(tmp, 'wt')); } catch { /* never created */ }
@@ -813,6 +816,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
   const costs = attempts.filter((a) => a.status === 'valid' && a.counters.cost !== null).map((a) => a.counters.cost);
   const models = FAMILIES.filter((f) => validRuns.some((r) => r.total.calls[f] > 0));
+  const { installPath: _installPath, ...publicPlugin } = plugin;
   const aggregate = {
     variant,
     requested: runs,
@@ -820,7 +824,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     invalid: status('invalid'),
     denied: status('denied'),
     invalidReasons,
-    plugin,
+    plugin: publicPlugin,
     superpowers,
     ...(seeded ? { seedSource } : {}),
     cli,
