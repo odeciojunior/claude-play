@@ -39,7 +39,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
-| E25 | nao-iniciado | - | Aguardar E18 |
+| E25 | executando | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md` | E25: seguir o fluxo do release após executando |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
 <!-- /roadmap:panel -->
@@ -76,6 +76,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
+- (dono) Criterion 4 (human): after E25 is integrated, the owner checks two consecutive sessions at the pre-grant commit (reachable from release/roadmap-skills-v2) using script A in the spec, and records the permission mode. Never marked met by an agent.
+- (dono) Criterion 6 (human): after integration, the owner checks a new session with the grant (release/roadmap-skills-v2) using script A and records the permission mode. If piece 5 is not merged, the owner records that it cannot be checked.
+- (dono) Script B (cache): the owner checks name and grant with the plugin installed from cache in a disposable CLAUDE_CONFIG_DIR; answers the DEC-061 and DEC-049 revisit triggers.
+- (dono) Any broader allowed-tools policy (other skills or future workflows such as coordinator-workflow) is the owner's decision; this card fixes the single exception.
+- (dono) Owner ratification of the autonomous decisions (DEC-030); contract-scope decisions 1 and 5 hold the start of E8.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -83,4 +88,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E25 | viva | E25 em execução pelo release |
 <!-- /roadmap:inflight -->
