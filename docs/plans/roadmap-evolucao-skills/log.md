@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | E17 passou para executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | Decisões DEC-285 a DEC-296 de E17 ratificadas pelo dono por delegação (Fable); emendas às decisões 1, 10 e 12 como DEC-298 (a DEC-285), DEC-299 (a DEC-294) e DEC-297 (a DEC-296). Nenhuma decisão do executor pendente. | `decisions.md` |
 | 2026-11-12 | E17 | Decisão 10 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E17 | Decisão 1 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |

@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
-| E17 | plano | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após plano |
+| E17 | executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após executando |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
@@ -73,6 +73,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md
 - (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md)
 - (dono) Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
+- (dono) Execuções pagas do ponto de medição (gasto em dinheiro; dono ou orquestrador com autorização), das quais dependem os critérios 1 e 6 e o portão do critério 2
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3)
+- (dono) Publicação pelo dono: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
+- (dono) Aceite da branch de volta pelo dono (critério 4): conferir diff contra a tag e saída dos gates em volta.md
+- (dono) Roteiros A e B de E25 rodados pelo dono antes da publicação
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -80,4 +85,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E17 | viva | E17 em execução pelo release |
 <!-- /roadmap:inflight -->
