@@ -115,15 +115,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E17: critério AC5 sem evidência automática (human)
 - (dono) E17: critério AC6 sem evidência automática (human)
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real.
-- (executor) Na execução comportamental de E20, carregar o plugin da worktree e despachar spec-author uma vez pela forma do plugin (subagent_type), conferindo modelo e ferramentas do frontmatter; E19 só exerceu a forma de reserva.
 - (executor) E8: alinhar o contrato em spec-author.md: output absoluto; intake e ownerNote multilinha, como último campo até o fim do prompt. Não editado em E19 para manter o corpo testado no critério 1.
-- (executor) E20: spec-tool summary imprime títulos em português (Decisões, Pessoas, Efeitos externos) mesmo com language English; dar idioma ao summary de spec-tool e de plan-tool juntos.
 - (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real (nenhuma credencial real é necessária).
 - (executor) E12: escolhas do executor de E7 fora do registro: portão de onda devido só sem passo aberto na onda; baseline.md ao lado do estado (run.baseline sem uso); sem evento para agentId pós-launch nem handoff; code no --json de recusa.
-- (dono) Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 ({verify: human}) em docs/reports/2026-11-12-E20-autor-plano-comportamental.md
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025)
-- (dono) Ratificação das decisões de alcance contrato (1, 2, 4, 7 e 16) antes de E8 (DEC-030)
 - (executor) Corrigir na release antes do próximo run real: o schema de docs-measure do release-workflow confunde o campo status (JSON de status --json) com situação; renomear os campos de saída bruta e testar. Entra na próxima publicação, com versão nova.
 - (dono) A ponta da release tem E7 e E19 com plugin.json ainda em 1.7.0. A publicação seguinte sobe a versão (DEC-382) e mede sobre a árvore nova; até lá ninguém instala a partir da branch de release.
 - (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
@@ -136,11 +132,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E20: rodar a suíte de gatilho do critério 5.
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025)
 - (dono) Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458)
-- (dono) T12:quality: [importante/ambiente] Criterion 4 (adoption) has not been re-run after the fix in 30ff73f. The new SKILL.md/plan-author.md text for F4-1..F4-4 (APPROVAL QUESTION fallback, [...] texto completo em docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md
-- (dono) E20: critério AC1 sem evidência automática (human)
-- (dono) E20: critério AC2 sem evidência automática (human)
-- (dono) E20: critério AC4 sem evidência automática (human)
 - (dono) E20: critério AC5 sem evidência automática (human)
+- (executor) E8: escrever em spec-author.md a regra tópico-id (topic E<n> quando o tópico termina em -E<n>; hoje só o chamador spec-writer a aplica, DEC-477), junto com o alinhamento do contrato (DEC-421, DEC-422).
+- (executor) E20/cadeia: antes de publicar plan-writer, 1 execução claude -p de spec-writer e plan-writer com tópico <slug>-E<n>: id E<n>, check --roadmap em 0 e roadmap gravado no plano. spec-writer não compara critérios com o card. Portão: DEC-458.
+- (executor) E8: a execução retomada do release regrava as decisões do spec como pendentes novas (DEC-459 a DEC-474 repetem DEC-425 a DEC-440) e grava nota de execução como decisão (DEC-475). Corrigir junto com o defeito de DEC-277.
 <!-- /roadmap:pending -->
 
 ## Em andamento

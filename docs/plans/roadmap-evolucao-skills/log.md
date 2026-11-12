@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | Decisões de E20 ratificadas por delegação (Fable): DEC-425 a DEC-440, DEC-459 a DEC-474 como repetição, DEC-475 rejeitada (nota). DEC-477 aceita o id E<n> no spec-writer, DEC-478 delega o critério 5, DEC-479 libera E8 antes da publicação do 1.7.0. | `decisions.md` |
+| 2026-11-12 | E20, E8 | DEC-477 (id E<n> no spec-writer), DEC-478 (critério 5 pelo orquestrador) e DEC-479 (E8 antes da publicação do 1.7.0) decididas pelo dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E20 | DEC-475 rejeitada pelo dono; DEC-476 a substitui | `decisions.md` |
+| 2026-11-12 | E20 | DEC-459 a DEC-474 ratificadas pelo dono (delegação, Fable) como repetição de DEC-425 a DEC-440 (execução retomada de E20); DEC-461, DEC-462 e DEC-463 já trazem as emendas DEC-450 a DEC-452 | `decisions.md` |
+| 2026-11-12 | E20 | DEC-427, DEC-429, DEC-430 e DEC-432 a DEC-439 (local, E20) ratificadas pelo dono por delegação (Fable); DEC-427 e DEC-429 valem com DEC-450 e DEC-451; DEC-436 com a forma de reserva aceita em DEC-453 | `decisions.md` |
+| 2026-11-12 | E20 | DEC-425, DEC-426, DEC-428, DEC-431 e DEC-440 (contrato, E20) ratificadas pelo dono por delegação (Fable); DEC-428 vale com a busca do spec de DEC-452; libera E8 (DEC-030) | `decisions.md` |
 | 2026-11-12 | E20 | E20 passou para na-branch | `4cbf12881845aadf0289c4634b7b5f7f039957b4`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` |
 | 2026-11-12 | E20 | Critério 4 aceito por delegação em bf4712d (DEC-456): F4-1 a F4-3, F4-4 (a)-(e) e check final passam em claude -p (US$ 2,2). N5-1 e N5-2 (DEC-457) viram pendências com portão na publicação de plan-writer (DEC-458). | `docs/reports/2026-11-12-E20-autor-plano-comportamental.md` |
 | 2026-11-12 | E20 | BLQ-7 resolvido: Critério 4 refeito em bf4712d e aceito por delegação (DEC-456); critérios 1 e 2 aceitos (DEC-453); E20 volta a executando para a revisão final da branch. | `bf4712d, 5a4161a` |
