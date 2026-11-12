@@ -120,6 +120,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E8: alinhar o contrato em spec-author.md: output absoluto; intake e ownerNote multilinha, como último campo até o fim do prompt. Não editado em E19 para manter o corpo testado no critério 1.
 - (executor) E20: spec-tool summary imprime títulos em português (Decisões, Pessoas, Efeitos externos) mesmo com language English; dar idioma ao summary de spec-tool e de plan-tool juntos.
 - (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
+- (dono) Ratificação pelo dono das decisões de alcance contrato do spec (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030).
 <!-- /roadmap:pending -->
 
 ## Em andamento
