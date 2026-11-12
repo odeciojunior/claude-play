@@ -631,6 +631,7 @@ const psHandlers = {
           if (x.n !== n2) x.deps = x.deps.map((d) => (d === s.n ? n2 : d));
         }
         for (const w of state.waves) w.tasks = w.tasks.map((t) => (t === s.n ? n2 : t)).sort((a, b) => a - b);
+        if (s.wave < state.run.wave) state.run.wave = s.wave; // portão final: o passo novo nasce numa onda anterior
       } else {
         return psRefuse('wrong-status', 'valor inválido para passo stopped: ' + v);
       }

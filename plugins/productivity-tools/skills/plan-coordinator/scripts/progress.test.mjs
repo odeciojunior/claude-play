@@ -539,6 +539,17 @@ test('wave-gate fail and final-gate defects stop a passed external step', () => 
   assert.equal(f.manual[0].step, 5);
 });
 
+test('final-gate defects on an external step then rerun repositions the wave', () => {
+  const all = approved(stateFor());
+  all.steps.forEach((x) => (x.status = 'pass'));
+  all.run.wave = 4;
+  const f = ok(all, { type: 'final-gate', value: 'defects', step: 5 });
+  const r = ok(f, { type: 'answer', step: 5, value: 'rerun' });
+  const n = step(r, 5).replacedBy;
+  assert.equal(r.run.wave, step(r, n).wave);
+  assert.notEqual(nextAction(r).action, 'ask');
+});
+
 test('card-changed clears review and authorization', () => {
   const c = ok(authorized5(), { type: 'card-changed', step: 5 });
   assert.equal(step(c, 5).preLaunchReview, null);
