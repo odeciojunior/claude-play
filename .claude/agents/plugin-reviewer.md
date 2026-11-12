@@ -105,7 +105,8 @@ Scan all files under `plugins/<name>/` for:
 - Repo-policy keys: `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`
 - FLAG the misspelled key `user-invokable`: Claude Code ignores it; the correct spelling is `user-invocable`
 - FLAG boolean keys (`disable-model-invocation`, `user-invocable`) whose value is not `true` or `false`
-- Keys outside the list (e.g. `model`, `context`, `allowed-tools`) are valid Claude Code fields that this repo does not use: report them as a WARN-level note (repo policy), not a FLAG; they do not force REQUEST CHANGES
+- Keys outside the list (e.g. `model`, `context`) are valid Claude Code fields that this repo does not use: report them as a WARN-level note (repo policy), not a FLAG; they do not force REQUEST CHANGES
+- FLAG `allowed-tools` anywhere (any SKILL.md, and `commands/*.md`, which the lint does not scan, so check it by hand) except the single exception: `productivity-tools/skills/roadmap-release/SKILL.md` with `allowed-tools: Workflow(productivity-tools:release-workflow)`; FLAG that exception too if `disable-model-invocation: true` is missing from the same frontmatter (DEC-275)
 - Flag if `disable-model-invocation` is missing on skills with side effects (deploy, commit, send)
 - Rate: PASS or FLAG (list any WARN notes in the details)
 

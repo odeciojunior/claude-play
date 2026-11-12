@@ -2,6 +2,7 @@
 name: roadmap-release
 description: "Use when the user wants one or more deliverables (E<n>) of a tracked roadmap folder docs/plans/roadmap-*/ run unattended and merged into a release branch, or says \"run E18\", \"execute the next deliverables\", \"release dry-run\", \"plan-only E19\", \"resume the release run\". Not for executing one implementation plan that is already written (use plan-coordinator). Not for creating a roadmap (use roadmap-planner) or updating its tracking files by hand (use roadmap-tracker)."
 compatibility: "Claude Code 2.1.322 or later launches the release workflow by name; older versions fall back to the script path, which works only without permission prompts or with the script folder readable."
+disable-model-invocation: true
 allowed-tools: Workflow(productivity-tools:release-workflow)
 ---
 
