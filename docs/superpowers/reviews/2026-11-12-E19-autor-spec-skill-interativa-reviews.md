@@ -75,3 +75,7 @@ Itens que o registro do roadmap cortou; texto completo transcrito aqui. Cada ent
 ### 4. Origem: docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md; entrou em: add-decision --decision
 
 16. Na execução do critério 2, o orquestrador da sessão principal conduz a skill spec-writer ele mesmo e despacha spec-author (forma do plugin, ou a de reserva do critério 1), com perguntas e aprovação gravadas literais no relatório e respondidas pelo roteiro sintético, sem AskUserQuestion; o relatório diz qual forma rodou. Opção descartada: subagent no papel da pessoa com o orquestrador despachando o autor. Base: limite de subagent aninhado (o mesmo de DEC-204), proibição de perguntar no workflow. Custo se errada: baixo. Reversível.
+
+### 5. Origem: docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md; entrou em: block-open --what
+
+E19 bloqueado: automatic execution stopped (conteudo): task 6 BLOCKED: Task 6 was not run. It needs a subagent tool to dispatch the spec-author agent, and this session has none. The plan says that in this case the task goes back to the orchestrator of the main session (DEC-204) and is never simulated. I created no sandboxes, no report and no commit.; branch feat/E19 kept at D:/projects/claude-play-wt/E19
