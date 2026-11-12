@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | BLQ-7 aberto: E20 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: I changed nothing and made no commit. Items 1 to 4 (two pairs of duplicates) need new [...] texto completo em docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md | `branch feat/E20` |
 | 2026-11-12 | E20 | E20 passou para executando | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` |
 | 2026-11-12 | - | Decisões de E19 e E7 ratificadas pelo dono por delegação (Fable), emendas a DEC-370, DEC-376, DEC-386 e DEC-394; pendências do dono de E19 resolvidas por DEC-400. | `decisions.md` |
 | 2026-11-12 | E7 | DEC-385, DEC-387, DEC-388, DEC-389, DEC-390, DEC-391, DEC-392, DEC-393, DEC-395, DEC-396, DEC-397, DEC-398, DEC-399 ratificadas pelo dono | `decisions.md` |
