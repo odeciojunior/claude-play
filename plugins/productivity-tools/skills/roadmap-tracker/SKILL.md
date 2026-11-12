@@ -26,9 +26,9 @@ Never write a file from memory. If the contract cannot be read, stop and report 
 
 ## Rules
 
-1. **Never commit**, stash, reset or check out. Edit the working tree only, so the update lands in the event's commit.
+1. **Never commit**, stash, reset or check out. Edit the working tree only; the update lands in the event's commit.
 2. **One fact in one place.** The strategy holds no state; `state.md` is overwritten; `log.md` and `decisions.md` are append-only (old decision rows change only in Status and Revisit when).
-3. **Never invent numbers**: no dates, durations, metrics, estimates or costs nobody supplied. Date cells hold the day the event happened. Unknown is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
+3. **Never invent numbers**: no dates, durations, metrics, estimates or costs nobody supplied. Date cells hold the event's day. Unknown is `-` or tagged `ASSUMPTION` / `UNSOURCED`.
 4. **Never replace the vendored checker silently**, and never write a newer format than it reports.
 5. **Outside a git repository, continue.** The `no-git` warning is expected; recipes needing git evidence ask for it.
 6. **The strategy changes only through an approved revision** (Step 6). A pre-approval from a caller or orchestrator never covers a revision or a migration; with no person present, write only the pending item and say so.
