@@ -114,17 +114,13 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E17: critério AC4 sem evidência automática (human)
 - (dono) E17: critério AC5 sem evidência automática (human)
 - (dono) E17: critério AC6 sem evidência automática (human)
-- (dono) Ratificação das decisões de alcance contrato (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030).
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real.
 - (executor) Na execução comportamental de E20, carregar o plugin da worktree e despachar spec-author uma vez pela forma do plugin (subagent_type), conferindo modelo e ferramentas do frontmatter; E19 só exerceu a forma de reserva.
 - (executor) E8: alinhar o contrato em spec-author.md: output absoluto; intake e ownerNote multilinha, como último campo até o fim do prompt. Não editado em E19 para manter o corpo testado no critério 1.
 - (executor) E20: spec-tool summary imprime títulos em português (Decisões, Pessoas, Efeitos externos) mesmo com language English; dar idioma ao summary de spec-tool e de plan-tool juntos.
 - (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
-- (dono) Ratificação pelo dono das decisões de alcance contrato do spec (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030).
-- (dono) Conferência do dono dos resultados das execuções comportamentais (critérios 1 e 2, verify: human) registrados em docs/reports/2026-11-12-E19-autor-spec-comportamental.md; nenhum aceite fictício é registrado.
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real (nenhuma credencial real é necessária).
-- (dono) E19: critério AC1 sem evidência automática (human)
-- (dono) E19: critério AC2 sem evidência automática (human)
+- (executor) E12: escolhas do executor de E7 fora do registro: portão de onda devido só sem passo aberto na onda; baseline.md ao lado do estado (run.baseline sem uso); sem evento para agentId pós-launch nem handoff; code no --json de recusa.
 <!-- /roadmap:pending -->
 
 ## Em andamento

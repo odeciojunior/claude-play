@@ -3,6 +3,15 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | - | Decisões de E19 e E7 ratificadas pelo dono por delegação (Fable), emendas a DEC-370, DEC-376, DEC-386 e DEC-394; pendências do dono de E19 resolvidas por DEC-400. | `decisions.md` |
+| 2026-11-12 | E7 | DEC-385, DEC-387, DEC-388, DEC-389, DEC-390, DEC-391, DEC-392, DEC-393, DEC-395, DEC-396, DEC-397, DEC-398, DEC-399 ratificadas pelo dono | `decisions.md` |
+| 2026-11-12 | E7 | DEC-394 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E7 | DEC-386 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E19 | DEC-420 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E19 | DEC-404 a DEC-419 ratificadas pelo dono como repetição de DEC-369 a DEC-384 (execução retomada de E19); DEC-405 e DEC-411 valem com as emendas a DEC-370 e DEC-376 | `decisions.md` |
+| 2026-11-12 | E19 | DEC-369, DEC-371, DEC-372, DEC-373, DEC-374, DEC-375, DEC-377, DEC-378, DEC-379, DEC-380, DEC-381, DEC-382, DEC-383, DEC-384 ratificadas pelo dono | `decisions.md` |
+| 2026-11-12 | E19 | DEC-376 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E19 | DEC-370 ratificada pelo dono | `decisions.md` |
 | 2026-11-12 | E19 | E19 passou para na-branch | `a03329f62ee1c76ece45767d218f3ba326cfe7bb`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` |
 | 2026-11-12 | E19 | BLQ-6 resolvido: Tarefa 6 rodada pelo orquestrador (relatório em a277199), critérios aceitos por delegação e correção do SKILL.md em 01b3634; E19 volta a executando. | `a277199, 01b3634` |
 | 2026-11-12 | E19 | E19: critérios 1 e 2 aceitos por delegação do dono sobre o relatório das execuções comportamentais (critério 1 com 3/3, critério 2 aprovado, forma de reserva); correção de texto do SKILL.md (01b3634) antes do merge. | `docs/reports/2026-11-12-E19-autor-spec-comportamental.md, a277199` |
