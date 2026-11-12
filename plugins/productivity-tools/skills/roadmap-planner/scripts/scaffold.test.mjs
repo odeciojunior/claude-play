@@ -686,6 +686,26 @@ describe('cli', () => {
     assert.deepEqual(listing(box.root), before);
   });
 
+  it('modo completo: objective em texto e cartão sem pieces, dod ou risks geram aviso; modo leve e entrada completa não', () => {
+    const warnOf = (m) => { const b = sandbox(); put(b, m); const r = run([b.model, '--dry-run', '--json']); assert.equal(r.status, 0, r.stdout + r.stderr); return JSON.parse(r.stdout); };
+    const complete = warnOf(full());
+    assert.ok(!complete.warnings.some((w) => w.code === 'objective-plain-text' || w.code === 'card-fields-missing'));
+    const f = full();
+    f.objective = 'Ship it';
+    delete f.deliverables[0].pieces;
+    delete f.deliverables[0].dod;
+    const out = warnOf(f);
+    assert.ok(out.warnings.some((w) => w.code === 'objective-plain-text'));
+    const w = out.warnings.find((x) => x.code === 'card-fields-missing');
+    assert.ok(w.message.includes(f.deliverables[0].id) && w.message.includes('pieces, dod') && !w.message.includes('risks'));
+    assert.equal(out.defaulted.filter((d) => /pieces|dod|risks|objective/.test(d.path)).length, 0);
+    const l = full();
+    l.mode = 'light';
+    l.objective = 'Ship it';
+    delete l.deliverables[0].risks;
+    const lo = warnOf(l);
+    assert.ok(!lo.warnings.some((x) => x.code === 'objective-plain-text' || x.code === 'card-fields-missing'));
+  });
   it('--dry-run não grava; --json traz as chaves e o exitCode do processo', () => {
     const box = sandbox();
     put(box, full());

@@ -272,6 +272,27 @@ export function applyDefaults(input) {
   return { model, defaulted };
 }
 
+// Avisos do modo completo (W2, W4): objetivo em texto sem aceite e cartões sem
+// pieces, dod ou risks. Nenhum desses campos tem padrão, então só avisa.
+export function fullModeWarnings(input) {
+  const warnings = [];
+  if (!isObj(input) || input.mode !== 'full') return warnings;
+  const o = input.objective;
+  if (isText(o)) {
+    warnings.push({ severity: 'warning', code: 'objective-plain-text', file: 'planning-model.json', path: 'objective', message: 'objective is plain text, so it has no acceptance criterion or definition of done; give { text, acceptance, done }' });
+  }
+  if (Array.isArray(input.deliverables)) {
+    input.deliverables.forEach((card, i) => {
+      if (!isObj(card)) return;
+      const missing = ['pieces', 'dod', 'risks'].filter((k) => card[k] === undefined || card[k] === null || (typeof card[k] === 'string' && card[k].trim() === ''));
+      if (missing.length) {
+        warnings.push({ severity: 'warning', code: 'card-fields-missing', file: 'planning-model.json', path: `deliverables[${i}]`, message: `${card.id ?? `deliverables[${i}]`} has no ${missing.join(', ')}; no default exists, so the card renders without them` });
+      }
+    });
+  }
+  return warnings;
+}
+
 // Ordem por prefixo e depois numérica: E2 < E10, REQ-002 < REQ-010.
 export function compareIds(a, b) {
   const parse = (s) => {
@@ -929,7 +950,7 @@ export function runScaffold(modelPath, { dryRun = false, _generate = generate } 
     if (e instanceof ScaffoldError) return refuse(e.problems.map(toErr), { defaulted });
     return fail('internal', String(e && e.message ? e.message : e).split('\n')[0], { defaulted });
   }
-  const warnings = gen.problems.filter((p) => p.severity !== 'error');
+  const warnings = [...fullModeWarnings(input), ...gen.problems.filter((p) => p.severity !== 'error')];
   const errors = gen.problems.filter((p) => p.severity === 'error');
   if (errors.length) return refuse(errors, { defaulted, warnings });
 
