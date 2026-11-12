@@ -181,7 +181,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
-    if (/:docs-measure/.test(l)) return { status: recMock.read(E).status, brief: recMock.read(E).brief, clean: true, head: 'm2' };
+    if (/:docs-measure/.test(l)) return { statusStdout: recMock.read(E).status, briefStdout: recMock.read(E).brief, clean: true, head: 'm2' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -677,8 +677,8 @@ test('m2: the docs are not ok when the panel does not show the status after the 
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
   assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --json/);
-  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('status'));
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { status: readWith('c').status, brief: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
+  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('statusStdout'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { statusStdout: readWith('c').status, briefStdout: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
   assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
 });
@@ -3149,7 +3149,7 @@ test('AC2 documentação pela CLI', async () => {
 
 test('AC3 documentação: releitura falha leva à 2ª rodada só com o que faltou', async () => {
   const mk = (rounds) => (l) => {
-    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { status: readWith('zzz').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { statusStdout: readWith('zzz').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
     return undefined;
   };
   const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(1) });
@@ -3169,7 +3169,7 @@ test('AC3 documentação: releitura falha leva à 2ª rodada só com o que falto
 test('AC3 documentação: comando com erro da CLI repete só ele e o veredito não confia no agente', async () => {
   let n = 0;
   const bad = (l, prompt) => {
-    if (/^E1:docs-measure/.test(l)) return { status: readWith('e').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (/^E1:docs-measure/.test(l)) return { statusStdout: readWith('e').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
     if (!/:docs\d$/.test(l)) return undefined;
     n++;
     return { runs: promptCommands(prompt).map((command) => (n === 1 && / log /.test(command)
@@ -4003,4 +4003,21 @@ test('discovery requires pendingDecisionsStdout', async () => {
   const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: '' } });
   assert.match(missing.r.error, /pendingDecisionsStdout/);
   assert.equal(r.results[0].merged, true);
+});
+
+test('docs-measure schema has no status field', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const s = calls.find((c) => c.label === 'E1:docs-measure1').opts.schema;
+  assert.equal('status' in s.properties, false);
+  assert.equal('brief' in s.properties, false);
+  assert.deepEqual(s.required, ['statusStdout', 'briefStdout', 'clean']);
+  const p = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
+  assert.match(p, /statusStdout = /);
+  assert.match(p, /briefStdout = /);
+});
+
+test('a docs-measure answer with statusStdout passes without the missing-panel alarm', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(r.results[0].merge.docsOk, true);
+  assert.ok(!JSON.stringify(r).includes('reread status --json is missing or has no panel'));
 });
