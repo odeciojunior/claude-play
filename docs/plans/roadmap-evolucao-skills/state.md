@@ -22,7 +22,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
-| E8 | executando | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` | E8: seguir o fluxo do release após executando |
+| E8 | bloqueado (BLQ-8) | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` | E8: seguir o fluxo do release após executando |
 | E9 | nao-iniciado | - | Aguardar E8 |
 | E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
@@ -49,6 +49,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
+| BLQ-8 | E8 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [important/defeito] [...] texto completo em docs/superpowers/reviews/2026-11-12-E8-release-spec-plano-nativos-paradas-reviews.md | E8 | 2026-11-12 | quando o bloqueio de E8 for resolvido; restaura E8 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
