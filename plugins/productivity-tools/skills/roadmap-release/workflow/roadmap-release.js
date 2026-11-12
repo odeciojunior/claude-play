@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'roadmap-release',
+  name: 'release-workflow',
   description: 'Runs E<n> deliverables of a tracked roadmap: discovery, spec, plan, tasks with double review, final review, gates against the baseline, serialized merge with rollback, docs and roadmap',
   whenToUse: 'Automate one or more deliverables of docs/plans/roadmap-*/. Example args: {"deliverables":["E18"],"targetBranch":"release/2026-11-24"} | {"deliverables":"next","phase":"r1-1"} | {"mode":"dry-run"} | {"mode":"plan-only","deliverables":["E19"]}',
   phases: [
@@ -1002,6 +1002,8 @@ const mkResult = (status, extra) => ({
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
 }
+// Every launch carries the run token from preflight (a whitespace-only token counts as missing): refuse before any agent call.
+if (!RUN_TOKEN) return { status: 'error', error: 'runToken is missing: launch the workflow through the roadmap-release skill, which runs scripts/preflight.mjs and passes its config, runToken and trackerCli' }
 if (typeof A.trackerCli !== 'string' || !A.trackerCli.trim()) return { status: 'error', error: 'args.trackerCli is missing: run scripts/preflight.mjs and pass its trackerCli' }
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))

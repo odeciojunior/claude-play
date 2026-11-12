@@ -33,6 +33,12 @@ const AGENT_KEYS = new Set([
   'autoCompactWindow',
   'experimental',
 ]);
+// DEC-049: the single place where a skill may declare allowed-tools. Fixed, never derived from plugin.json.
+export const ALLOWED_TOOLS_EXCEPTION = {
+  plugin: 'productivity-tools',
+  skill: 'skills/roadmap-release/SKILL.md',
+  entry: 'Workflow(productivity-tools:release-workflow)',
+};
 const SCRIPT_EXT = /\.(mjs|js|cjs|sh|ps1|py)$/;
 const AGENT_IGNORED_KEYS = ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'];
 const RESERVED_PREFIXES = ['claude-', 'anthropic-', 'anthropics-', 'cc-plugin-'];
@@ -101,6 +107,44 @@ export function parseFrontmatter(text) {
   }
   flush();
   return { keys, bodyStartLine: end + 2 };
+}
+
+// Workflows registered in plugin.json ("workflows": list of paths); the name comes from meta.name.
+export function registeredWorkflows(dir, pj) {
+  const list = Array.isArray(pj?.workflows) ? pj.workflows : [];
+  const out = [];
+  for (const file of list) {
+    if (typeof file !== 'string') continue;
+    const p = path.join(dir, ...file.split('/'));
+    if (!isFile(p)) continue;
+    const m = /\bmeta\s*=\s*\{[^}]*?\bname\s*:\s*(['"])([^'"]+)\1/s.exec(readText(p));
+    if (m) out.push({ file, name: m[2], full: `${pj.name}:${m[2]}` });
+  }
+  return out;
+}
+
+// Splits the allowed-tools value into entries (space or comma outside parentheses).
+export function skillAllowedTools(fm) {
+  const raw = fm.keys.get('allowed-tools') ?? '';
+  const entries = [];
+  let depth = 0;
+  let cur = '';
+  const push = () => {
+    let e = cur.trim();
+    cur = '';
+    if (e === '-') return;
+    e = e.replace(/^-\s+/, '');
+    e = e.replace(/^(['"])(.*)\1$/, '$2').trim();
+    if (e) entries.push(e);
+  };
+  for (const ch of raw) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && (ch === ' ' || ch === ',' || ch === '\t')) push();
+    else cur += ch;
+  }
+  push();
+  return entries;
 }
 
 function unquote(v) {
@@ -235,13 +279,55 @@ export function lintPlugin(dir, { marketplace } = {}) {
     for (const key of fm.keys.keys()) {
       if (key === 'user-invokable') {
         problems.push(['FAIL', 'key user-invokable is misspelled, Claude Code ignores it; use user-invocable']);
-      } else if (!SKILL_KEYS.has(key)) {
+      } else if (key !== 'allowed-tools' && !SKILL_KEYS.has(key)) {
         warns.push(['WARN', `key "${key}" is outside the allowed frontmatter keys (repo policy)`]);
       }
     }
     for (const key of ['disable-model-invocation', 'user-invocable']) {
       if (fm.keys.has(key) && !['true', 'false'].includes(fm.keys.get(key).toLowerCase())) {
         problems.push(['FAIL', `${key} must be true or false, got "${fm.keys.get(key)}"`]);
+      }
+    }
+    {
+      // Raw-line guard: spellings parseFrontmatter does not map to the bare key (quoted key, space before the colon, other case) are valid YAML for allowed-tools.
+      const fmLines = text.replace(/^﻿/, '').split(SPLIT).slice(1, fm.bodyStartLine - 2);
+      const seen = new Set();
+      for (const l of fmLines) {
+        // A repeated top-level key is invalid YAML and parseFrontmatter keeps only the last value, so an earlier allowed-tools line would escape the check (DEC-049).
+        const key = /^([A-Za-z0-9_-]+):/.exec(l)?.[1];
+        if (key !== undefined) {
+          if (seen.has(key)) problems.push(['FAIL', `frontmatter key "${key}" is repeated; YAML keeps only one value, so remove the duplicate`]);
+          seen.add(key);
+        }
+        // Allow-list: a top-level entry (column 0, not a comment or sequence item) must be a plain `key:`; quoted, escaped, explicit (`? key`) or spaced keys are valid YAML spellings of allowed-tools and are refused.
+        if (/^\S/.test(l) && !/^(#|- )/.test(l) && !/^[A-Za-z0-9_-]+:/.test(l)) {
+          problems.push(['FAIL', 'frontmatter keys must be written as a plain `key:` at column 0 (DEC-049: allowed-tools may not be spelled quoted, escaped or as an explicit key); remove this entry']);
+        } else if (/^allowed-tools:/i.test(l) && !/^allowed-tools:/.test(l)) {
+          problems.push(['FAIL', 'allowed-tools must be written as the bare key `allowed-tools:` (DEC-049); remove this spelling']);
+        }
+      }
+    }
+    if (fm.keys.has('allowed-tools')) {
+      const ex = ALLOWED_TOOLS_EXCEPTION;
+      if (!(pj && pj.name === ex.plugin && name === ex.skill)) {
+        problems.push(['FAIL', `allowed-tools is allowed only in ${ex.plugin}/${ex.skill} (DEC-049); remove it`]);
+      } else {
+        const entries = skillAllowedTools(fm);
+        const bad = entries.filter((e) => e !== ex.entry);
+        if (entries.length === 0) bad.push('(empty)');
+        for (const e of bad) problems.push(['FAIL', `allowed-tools may only grant ${ex.entry} (DEC-049); remove ${e}`]);
+        if (entries.includes(ex.entry) && !registeredWorkflows(dir, pj).some((w) => w.name === 'release-workflow')) {
+          problems.push(['FAIL', `allowed-tools grants ${ex.entry}, which plugin.json does not register`]);
+        }
+      }
+    }
+    {
+      const body = text.split(SPLIT).slice(fm.bodyStartLine - 1).join('\n');
+      const named = pj ? registeredWorkflows(dir, pj).find((w) => body.includes(w.full)) : null;
+      const grant = skillAllowedTools(fm).find((e) => e.startsWith('Workflow('));
+      const target = named ? named.full : grant ? grant.slice('Workflow('.length).replace(/\)\s*$/, '') : null;
+      if (target && !/\d+\.\d+\.\d+/.test(fm.keys.get('compatibility') ?? '')) {
+        problems.push(['FAIL', `compatibility must declare the minimum Claude Code version that launches ${target} by name`]);
       }
     }
     const combined = (fm.keys.get('description') ?? '').length + (fm.keys.get('when_to_use') ?? '').length;

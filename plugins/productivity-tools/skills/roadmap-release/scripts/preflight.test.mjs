@@ -8,6 +8,7 @@ import {
   validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
   WORKFLOW_SCRIPTS, scriptRule, openCardCommands, trackerCliPath,
+  RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered,
 } from './preflight.mjs';
 import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -257,6 +258,9 @@ test('I5: a derived config detects the lockfile for install, or warns about the 
   assert.ok(none.warnings.some((w) => /install/.test(w)));
   const locked = repoWithRoadmap(false);
   writeFileSync(join(locked.root, 'package-lock.json'), '{}');
+  // E25: the workflow-rule warning is not what this test is about, so the rule is granted here.
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Workflow(productivity-tools:release-workflow)'] } }));
   const npm = runPreflight(locked.dir, { home });
   assert.equal(npm.config.install, 'npm ci');
   assert.deepEqual(npm.warnings, ['roadmap cards read from the working tree (no --ref given)']);
@@ -647,4 +651,85 @@ test('config ilegível: o aviso diz que as decisões pendentes ficaram de fora',
   writeFileSync(join(dir, 'roadmap.config.json'), '{ not json');
   const r = runPreflight(dir, pfOpts());
   assert.ok(r.warnings.some((w) => /pending executor decisions not read/.test(w)), r.warnings.join());
+});
+
+// ---- E25 piece 1: warning for the release workflow rule ----
+const WF_RULE = 'Workflow(productivity-tools:release-workflow)';
+const WF_WARNING = 'release workflow: no permission rule covers it, so a run without the interface (claude -p) or a launch outside this skill is denied; to allow it, add to permissions.allow in .claude/settings.local.json: ' + WF_RULE;
+const WS = (...allow) => ({ permissions: { allow } });
+const wfWarnings = (r) => r.warnings.filter((w) => w.startsWith('release workflow:'));
+const writeSettings = (dir, name, obj) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), JSON.stringify(obj)); };
+
+test('E25 AC1: workflowRuleCovered accepts only the exact rule or bare Workflow', () => {
+  assert.equal(releaseWorkflowRule(), WF_RULE);
+  assert.equal(workflowRuleCovered([WS(WF_RULE)]), true);
+  assert.equal(workflowRuleCovered([WS('Workflow')]), true);
+  assert.equal(workflowRuleCovered([null, WS('Bash'), WS('Workflow')]), true);
+  assert.equal(workflowRuleCovered([WS('Bash'), null, WS('x', WF_RULE)]), true);
+  for (const list of [[], [WS('Workflow(*)')], [WS('Workflow(productivity-tools:roadmap-release)')], [WS('Bash')], [null], [{}],
+    [{ permissions: {} }], [{ permissions: { allow: 'Workflow' } }]]) {
+    assert.equal(workflowRuleCovered(list), false, JSON.stringify(list));
+  }
+});
+
+test('E25 AC1: without a covering rule the warning carries the exact rule and missingRules does not', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const r = runPreflight(dir, { home, ref: 'rel' });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(wfWarnings(r), [WF_WARNING]);
+  assert.ok(!r.missingRules.includes(WF_RULE));
+  assert.ok(!r.missingRules.some((x) => x.startsWith('Workflow')));
+});
+
+test('E25 AC1: with the rule in any of the three settings, or bare Workflow, no warning', () => {
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const check = (setup) => {
+    const { root, dir } = repoWithRoadmap(true);
+    const h = mkdtempSync(join(tmpdir(), 'home-'));
+    const cfg = mkdtempSync(join(tmpdir(), 'cc-'));
+    const opts = setup({ root, home: h, cfg });
+    return wfWarnings(runPreflight(dir, { home: h, ref: 'rel', ...opts }));
+  };
+  assert.deepEqual(check(({ home: h }) => { writeSettings(join(h, '.claude'), 'settings.json', WS(WF_RULE)); }), []);
+  assert.deepEqual(check(({ cfg }) => { writeSettings(cfg, 'settings.json', WS(WF_RULE)); return { configDir: cfg }; }), []);
+  assert.deepEqual(check(({ root }) => { writeSettings(join(root, '.claude'), 'settings.json', WS(WF_RULE)); }), []);
+  assert.deepEqual(check(({ root }) => { writeSettings(join(root, '.claude'), 'settings.local.json', WS(WF_RULE)); }), []);
+  assert.deepEqual(check(({ root }) => { writeSettings(join(root, '.claude'), 'settings.local.json', WS('Workflow')); }), []);
+  assert.ok(home);
+});
+
+test('E25 AC1: Workflow(*) does not cover, so the warning appears', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  writeSettings(join(home, '.claude'), 'settings.json', WS('Workflow(*)'));
+  assert.deepEqual(wfWarnings(runPreflight(dir, { home, ref: 'rel' })), [WF_WARNING]);
+});
+
+test('E25 AC1: unreadable or malformed settings count as not covered, without throwing', () => {
+  const { root, dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  mkdirSync(join(root, '.claude'), { recursive: true });
+  writeFileSync(join(root, '.claude', 'settings.json'), '{ not json');
+  writeSettings(join(root, '.claude'), 'settings.local.json', { permissions: { allow: 'Workflow' } });
+  assert.deepEqual(wfWarnings(runPreflight(dir, { home, ref: 'rel' })), [WF_WARNING]);
+});
+
+test('E25 AC1: with errors the warning is not computed', () => {
+  const { root, dir } = repoWithRoadmap(false);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const git = (...a) => execFileSync('git', ['-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { cwd: root, stdio: 'ignore' });
+  git('checkout', '-q', 'rel');
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify({ projectContext: '', install: '' }));
+  git('add', '.'); git('commit', '-qm', 'bad cfg');
+  git('checkout', '-q', 'main');
+  const r = runPreflight(dir, { home, ref: 'rel' });
+  assert.ok(r.errors.length > 0);
+  assert.deepEqual(wfWarnings(r), []);
+});
+
+test('E25 AC1: RELEASE_WORKFLOW starts with the plugin.json name', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const { name } = JSON.parse(readFileSync(join(here, '../../../.claude-plugin/plugin.json'), 'utf8'));
+  assert.equal(RELEASE_WORKFLOW, `${name}:release-workflow`);
 });

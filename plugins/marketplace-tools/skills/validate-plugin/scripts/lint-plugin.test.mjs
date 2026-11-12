@@ -553,3 +553,196 @@ test('real plugins have no FAIL', () => {
     assert.ok(has(r, 'OK', 'Script names are unique'), p);
   }
 });
+
+// ---------- E25 AC5: compatibility with a version for skills that name a registered workflow ----------
+function freshNamed(name, withWorkflows = true) {
+  const dir = fresh();
+  mutatePluginJson(dir, (j) => {
+    j.name = name;
+    if (withWorkflows) j.workflows = ['./workflow/w.js'];
+  });
+  write(dir, 'workflow/w.js', "export const meta = { name: 'w1' }\n");
+  return dir;
+}
+const COMPAT_FAIL = 'compatibility must declare the minimum Claude Code version';
+const skillNaming = (dir, fm, body) => write(dir, 'skills/valid-skill/SKILL.md', SKILL(`name: valid-skill\ndescription: Use when testing.${fm}`, body));
+
+test('E25 AC5: a skill naming a registered workflow without compatibility -> FAIL', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: compatibility without a version -> FAIL', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '\ncompatibility: Claude Code recent', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: compatibility with a version -> OK', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: a skill not naming any registered workflow needs no compatibility', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '', '# Body\n\nNothing here.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: plugin.json without workflows -> nothing is registered', () => {
+  const dir = freshNamed('valid', false);
+  skillNaming(dir, '', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: the real productivity-tools plugin lints with 0 FAIL', () => {
+  const real = path.join(here, '..', '..', '..', '..', 'productivity-tools');
+  const fails = lint(real).filter((r) => r.level === 'FAIL');
+  assert.deepEqual(fails, []);
+});
+
+// ---------- E25 AC5 (part 2): allowed-tools grant, single exception (DEC-049) ----------
+const ENTRY = 'Workflow(productivity-tools:release-workflow)';
+const AT_ONLY = 'allowed-tools is allowed only in productivity-tools/skills/roadmap-release/SKILL.md';
+const AT_GRANT = 'allowed-tools may only grant';
+const AT_REG = 'which plugin.json does not register';
+const COMPAT = '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"';
+
+function freshGrant(pluginName = 'productivity-tools', workflows = ['release-workflow', 'other-workflow']) {
+  const dir = fresh();
+  const root = path.dirname(dir);
+  const target = path.join(root, pluginName);
+  if (target !== dir) fs.renameSync(dir, target);
+  mutatePluginJson(target, (j) => {
+    j.name = pluginName;
+    if (workflows.length) j.workflows = workflows.map((w) => `./workflow/${w}.js`);
+  });
+  for (const w of workflows) write(target, `workflow/${w}.js`, `export const meta = { name: '${w}' }\n`);
+  return target;
+}
+const grantSkill = (dir, skillDir, atLines, extraFm = COMPAT) =>
+  write(dir, `skills/${skillDir}/SKILL.md`, SKILL(`name: ${skillDir}\ndescription: Use when testing.${extraFm}\n${atLines}`));
+
+test('E25 AC5: the exception skill with only the allowed entry -> OK', () => {
+  const forms = [
+    `allowed-tools: ${ENTRY}`,
+    `allowed-tools:\n  - ${ENTRY}`,
+    `allowed-tools: "${ENTRY}"`,
+  ];
+  for (const f of forms) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', f);
+    const r = lint(dir);
+    assert.ok(!has(r, 'FAIL', 'allowed-tools'), f);
+    assert.ok(!has(r, 'WARN', 'allowed-tools'), f);
+  }
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+  const p = 'skills/roadmap-release/SKILL.md';
+  write(dir, p, read(dir, p).replace(/\n/g, '\r\n'));
+  const r = lint(dir);
+  assert.ok(!has(r, 'FAIL', 'allowed-tools'));
+  assert.ok(!has(r, 'WARN', 'allowed-tools'));
+});
+
+test('E25 AC5: escape forms in the exception skill -> FAIL naming the entry', () => {
+  const cases = [
+    ['allowed-tools: Workflow', 'Workflow'],
+    ['allowed-tools: Workflow(*)', 'Workflow(*)'],
+    ['allowed-tools: Bash(git:*)', 'Bash(git:*)'],
+    ['allowed-tools: Workflow(other-plugin:x)', 'Workflow(other-plugin:x)'],
+    ['allowed-tools: Workflow(productivity-tools:other-workflow)', 'Workflow(productivity-tools:other-workflow)'],
+    [`allowed-tools:\n  - ${ENTRY}\n  - Bash`, 'Bash'],
+    [`allowed-tools: ${ENTRY},Bash`, 'Bash'],
+    ['allowed-tools:', '(empty)'],
+  ];
+  for (const [fm, bad] of cases) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', fm);
+    const r = lint(dir);
+    assert.ok(has(r, 'FAIL', `${AT_GRANT} ${ENTRY} (DEC-049); remove ${bad}`), fm);
+  }
+});
+
+test('E25 AC5: allowed-tools in another skill of productivity-tools -> FAIL even with the allowed entry', () => {
+  for (const s of ['roadmap-planner', 'roadmap-release-x']) {
+    const dir = freshGrant();
+    grantSkill(dir, s, `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_ONLY), s);
+  }
+});
+
+test('E25 AC5: allowed-tools in a skill of another plugin -> FAIL', () => {
+  for (const name of ['valid', 'other']) {
+    const dir = freshGrant(name, ['release-workflow']);
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_ONLY), name);
+  }
+});
+
+test('E25 AC5: the allowed entry without a registered release-workflow -> FAIL', () => {
+  for (const wf of [[], ['other-workflow']]) {
+    const dir = freshGrant('productivity-tools', wf);
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_REG), wf.join());
+  }
+});
+
+test('E25 AC5: allowed-tools with a Workflow entry and no compatibility -> FAIL', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`, '');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: allowed-tools is no longer reported as outside the allowed keys', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+  assert.ok(!has(lint(dir), 'WARN', 'key "allowed-tools" is outside'));
+  const other = freshGrant();
+  grantSkill(other, 'roadmap-planner', `allowed-tools: ${ENTRY}`);
+  assert.ok(!has(lint(other), 'WARN', 'key "allowed-tools" is outside'));
+});
+
+test('E25 AC5: the real productivity-tools SKILL.md declares the grant', () => {
+  const real = path.join(here, '..', '..', '..', '..', 'productivity-tools');
+  const fm = parseFrontmatter(fs.readFileSync(path.join(real, 'skills', 'roadmap-release', 'SKILL.md'), 'utf8'));
+  assert.equal(fm.keys.get('allowed-tools'), ENTRY);
+  assert.deepEqual(lint(real).filter((r) => r.level === 'FAIL'), []);
+});
+
+test('E25 AC5: allowed-tools spelled as quoted key, spaced colon or other case -> FAIL (no bypass)', () => {
+  const forms = [`"allowed-tools": Bash`, `'allowed-tools': Bash`, `allowed-tools : Bash`, `Allowed-Tools: Bash`, `"allowed-tools": ${ENTRY}`,
+    String.raw`"allowed-tools": Bash`, String.raw`"allowed-tools": Bash`, `? allowed-tools
+: Bash`];
+  for (const f of forms) {
+    for (const skill of ['roadmap-planner', 'roadmap-release']) {
+      const dir = freshGrant();
+      grantSkill(dir, skill, f);
+      assert.ok(has(lint(dir), 'FAIL', 'allowed-tools'), `${skill}: ${f}`);
+    }
+  }
+});
+
+test('E25 AC5: a repeated allowed-tools key (earlier value hidden by the last) -> FAIL', () => {
+  const forms = [`allowed-tools: Bash
+allowed-tools: ${ENTRY}`, `allowed-tools: ${ENTRY}
+allowed-tools: ${ENTRY}`,
+    `allowed-tools:
+  - Bash
+allowed-tools: ${ENTRY}`];
+  for (const f of forms) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', f);
+    assert.ok(has(lint(dir), 'FAIL', 'frontmatter key "allowed-tools" is repeated'), f);
+  }
+});
+
+test('E25 AC5: any repeated top-level frontmatter key -> FAIL', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}
+license: MIT
+license: Apache-2.0`);
+  assert.ok(has(lint(dir), 'FAIL', 'frontmatter key "license" is repeated'));
+});
