@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.4 -- 2026-11-12
+Estratégia v1.5 -- 2026-11-12
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -62,9 +62,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
-- (dono) E25: roteiro B (cache): conferir nome e concessão com o plugin instalado do cache num CLAUDE_CONFIG_DIR descartável, antes da publicação de E17; responde aos gatilhos de DEC-061 e DEC-049.
-- (dono) E25: critério AC4 sem evidência automática (human)
-- (dono) E25: critério AC6 sem evidência automática (human)
+- (dono) E25: roteiro B antes da publicação de E17 (DEC-284): entrar na conta uma vez no CLAUDE_CONFIG_DIR descartável; o agente delegado roda concessão e regra a partir do cache e apaga a pasta. Responde aos gatilhos de DEC-061, DEC-049 e DEC-275.
+- (executor) Rever no spec de E8: o diálogo do Workflow não aprova script grande (213.337 caracteres; limite não medido). Medir o limite, conferir que concessão e regra lançam acima dele e decidir um teste de tamanho; E9, E21, E23, E24 e E10 também aumentam o arquivo.
+- (executor) E25, baixo, corrigir em E8: os passos do dono no spec não dizem que sem interface o preflight precisa de --allowedTools "Bash(git:*)" "Bash(node:*)"; conferir se o aviso do preflight ainda diz que claude -p é negado sem regra, o que a concessão desmente.
+- (executor) E25: critério 4 emendado (DEC-282): falta rodar, no commit anterior à concessão, o lançamento com a regra exata em .claude/settings.local.json e registrar que começa sem diálogo; a recusa sem regra já tem evidência.
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
 - (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
 <!-- /roadmap:pending -->

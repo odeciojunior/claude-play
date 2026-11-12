@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E25 | Roteiro B parado: instalação a partir da worktree criou o cache 1.6.0 com a concessão e a chave workflows, mas a pasta descartável não tem conta (loggedIn false); nenhuma credencial copiada. settings.json do usuário inalterado; skipWorkflowUsageWarning não apareceu. | `e25-dono/cfg, e25-dono/hash-before.txt` |
+| 2026-11-12 | E25 | Critério 4, roteiro A, sessão interativa no commit anterior à concessão: o diálogo diz que o script de 213.337 caracteres não pode ser mostrado e oferece só "No". Critério emendado (DEC-282, estratégia v1.5); falta rodar o lançamento com a regra exata. | `e25-dono/c4-A-s1.snap06-workflow-dialog.txt` |
+| 2026-11-12 | E25 | Critério 6 conferido por agente delegado (roteiro A, modo padrão, sem regra): workflow lançado pelo nome, permission_denials vazio, journal criado, nenhuma regra gravada; controle sem concessão negado. Sem interface o preflight precisa de Bash(git:*) e Bash(node:*). | `e25-dono/c6-A-com2.json, e25-dono/c6-A-ctl.json` |
+| 2026-11-12 | E25 | DEC-282 a DEC-284 ratificadas pelo dono | `decisions.md` |
 | 2026-11-12 | E15 | Estratégia v1.4: tabela de metas derivadas após a linha de base de E15 (DEC-034), aprovada por delegação do dono; medições de E15 registradas em measurements.md | `docs/reports/2026-11-11-e15-linha-de-base/linha-de-base.md` |
 | 2026-11-12 | E15 | Aceite de E15 e tabela de metas por delegação do dono | `decisions.md` |
 | 2026-11-12 | E15 | DEC-279 ratificada pelo dono | `decisions.md` |
