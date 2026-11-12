@@ -154,7 +154,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, pendingDecisionsStdout: cliJson({ result: { decisions: [] } }), ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return 'spec written';
@@ -3946,4 +3946,61 @@ test('the fixed rules ask for simple commands', async () => {
   assert.match(p, /Write tool/);
   assert.match(p, /git commit -F/);
   assert.ok(!/never an unquoted shell heredoc/.test(p));
+});
+
+// ---- E8 T8: dependents held by a pending contract decision
+const chain = () => [card('E1'), card('E2', { deps: ['E1'] }), card('E3')];
+const contractSpec = (E = 'E1') => specWith({ rulings: [ruling({ id: 'R1', decision: 'Hold contract wording ' + E + ' alpha.', scope: 'contract' })] }, E);
+const runsOf = (r) => Object.fromEntries(r.results.map((x) => [x.id, x]));
+test('AC8: a contract ruling holds a selected dependent citing the decision and an independent deliverable runs', async () => {
+  const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E3.merged, true);
+  assert.equal(m.E2.merged, false);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+  assert.ok(labels.includes('E3:merge'));
+  assert.ok(labels.includes('E1:merge'));
+});
+
+test('a transitive dependent is held citing the origin decision', async () => {
+  const cards = [card('E1'), card('E2', { deps: ['E1'] }), card('E3', { deps: ['E2'] })];
+  const { r, labels } = await exec({ cards, deliverables: ['E1', 'E2', 'E3'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.equal(m.E3.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E[23]:/.test(l)));
+});
+
+test('a pending contract decision read in discovery holds unstarted dependents and not its owner', async () => {
+  const pend = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }] } });
+  const reason = 'held by DEC-7 (E1, contract, pending ratification)';
+  const live = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], discOver: { pendingDecisionsStdout: pend } });
+  assert.equal(runsOf(live.r).E1.merged, true);
+  assert.equal(runsOf(live.r).E2.error, reason);
+  assert.ok(!live.labels.some((l) => /^E2:/.test(l)));
+  const po = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'plan-only' }, discOver: { pendingDecisionsStdout: pend } });
+  assert.equal(runsOf(po.r).E1.planOnly, true);
+  assert.equal(runsOf(po.r).E2.error, reason);
+  assert.ok(!po.labels.some((l) => /^E2:/.test(l)));
+  const dry = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: pend } });
+  assert.ok(!dry.labels.some((l) => /^E\d:/.test(l)));
+  assert.deepEqual(dry.r.selection.held, [{ id: 'E2', reason }]);
+  const started = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: ['E2'] }] } });
+  const st = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: started } });
+  assert.deepEqual(st.r.selection.held, []);
+});
+
+test('discovery requires pendingDecisionsStdout', async () => {
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(calls.find((c) => c.label === 'discovery').opts.schema.required.includes('pendingDecisionsStdout'));
+  const bad = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: 'not json' } });
+  assert.equal(bad.r.status, 'error');
+  assert.match(bad.r.error, /pendingDecisionsStdout/);
+  const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: '' } });
+  assert.match(missing.r.error, /pendingDecisionsStdout/);
+  assert.equal(r.results[0].merged, true);
 });

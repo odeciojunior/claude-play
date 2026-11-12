@@ -1348,7 +1348,8 @@ const S_DISC = { type: 'object', properties: {
   blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
   donot: STRS,
   donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
-}, required: ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker'] }
+  pendingDecisionsStdout: { ...STR, description: 'raw stdout of the tracker CLI pending-decisions --json, not summarized and not reformatted' },
+}, required: ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker', 'pendingDecisionsStdout'] }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
@@ -1404,6 +1405,7 @@ const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token:
 7. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The ancestor rules (mergeCommit or integrationBranch an ancestor of the target) count ONLY when the code segment is finished. A card with several pieces (labels other than "code", like "piece 1: integrated; piece 2: spec") or whose Status is not an integrated or on-branch word is NOT onTarget by those rules, whatever commit its Evidence cites. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
 8. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
 9. language = the "language" field of roadmap.config.json (empty when absent); cellChars = limits.cellChars of the same file (omit when absent).
+10. pendingDecisionsStdout = the raw stdout, not summarized and not reformatted, of: node "${A.trackerCli}" pending-decisions "<absolute path of the roadmap folder>" --json. Use the roadmap folder of the worktree that has ${PRE_TARGET || 'the target branch'} checked out (git worktree list), else "${String(A.wtRoot || '').replace(/\/+$/, '')}/_integracao/<roadmapDir>" if it exists, else the roadmap folder of the repository. Run it even when it prints an empty list.
 `,
   { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet', effort: 'medium' })
 if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
@@ -1414,6 +1416,8 @@ for (const f of ['integrationBranch', 'integratedStatuses', 'deliverableStatuses
   const v = disc[f]
   if (!v || (Array.isArray(v) && !v.length)) return { status: 'error', error: `discovery failed: ${f} not reported` }
 }
+const pendingParsed = parseCli(disc.pendingDecisionsStdout)
+if (!pendingParsed || !pendingParsed.result || !Array.isArray(pendingParsed.result.decisions)) return { status: 'error', error: 'discovery failed: pendingDecisionsStdout is not the JSON of the CLI pending-decisions (result.decisions missing)' }
 if ((disc.deliverableStatuses || []).length < 5) return { status: 'error', error: 'discovery failed: deliverableStatuses not reported (needs at least 5 items)' }
 if (!(A.today || disc.today)) return { status: 'error', error: 'discovery failed: today not reported' }
 disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
@@ -1456,8 +1460,19 @@ const notes = [...picked.notes, ...(disc.donot || []).map(d => `roadmap "do not"
 const interrupted = unfinishedOutside(disc.cards, STATUSES, order)
 for (const id of interrupted) notes.push(`${id}: interrupted merge on the target, outside this selection`)
 if (A.force) for (const id of order) if (isUnfinished(byId[id], STATUSES)) notes.push(`${id}: force does not apply to an interrupted merge: it is validated and documented first`)
+// Contract decisions still pending ratification: dependents of their owner that did not start are held (the owner never is).
+const isContract = d => d && (d.scope === 'contract' || d.scope === 'contrato')
+const pendContract = pendingParsed.result.decisions.filter(d => isContract(d) && d.id && d.deliverable).map(d => ({ id: d.id, deliverable: d.deliverable }))
+const startedByPending = pendingParsed.result.decisions.flatMap(d => (isContract(d) && Array.isArray(d.startedDependents) ? d.startedDependents : []))
+const dynContract = []  // contract decisions recorded by this run
+const begun = new Set()  // deliverables whose run started in this invocation
+const holdOf = id => {
+  const h = heldBy({ cards: disc.cards, selected: order, contractDecisions: [...pendContract, ...dynContract], started: [...startedByPending, ...begun] }).get(id)
+  return h ? holdReason(h) : ''
+}
+const heldAtStart = order.map(id => ({ id, reason: holdOf(id) })).filter(h => h.reason)
 const isDone = c => !!c && ((c.onTarget && !isUnfinished(c, STATUSES)) || c.status === STATUSES.discarded)
-const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, readFrom: disc.readFrom, statusAfterMerge: STATUS_AFTER_MERGE, order, skippedUpfront: picked.skipped, notes,
+const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, readFrom: disc.readFrom, statusAfterMerge: STATUS_AFTER_MERGE, order, skippedUpfront: picked.skipped, held: heldAtStart, notes,
   deps: Object.fromEntries(order.map(id => [id, byId[id].deps.map(d => `${d}:${isDone(byId[d]) ? 'on target' : 'in this run'}`)])) }
 log(`selection: ${order.join(' -> ') || '(empty)'}${picked.skipped.length ? ` | skipped: ${picked.skipped.map(s => s.id).join(', ')}` : ''}`)
 if (MODE === 'run' && order.length && interrupted.length) {
@@ -1665,6 +1680,8 @@ ${BASH_ONLY}`,
   const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
   const ok = failures.length === 0
   if (ok) {
+    const rds = rulingDecisions(x.rulings)
+    v.decisionIds.forEach((id, i) => { if (rds[i] && rds[i].scope === 'contrato' && !dynContract.some(d => d.id === id)) dynContract.push({ id, deliverable: E }) })
     lastWord.set(E, status)
     if (read.head) lastGood = read.head  // a record-only commit does not invalidate what was already validated
   }
@@ -2707,12 +2724,15 @@ order.forEach((id, idx) => {
       if (!runs[d]) continue  // dependency already on the target
       if (finishing && !FINISH.includes(d)) continue
       const r = await runs[d]
-      if (!r.ok) return { id, merged: false, ok: false, skipped: true, error: `dependency ${d} did not finish in this run` }
+      if (!r.ok) { const why = holdOf(id); return { id, merged: false, ok: false, skipped: true, error: why || `dependency ${d} did not finish in this run` } }
     }
     return sem(async () => {
+      const why = holdOf(id)
+      if (why) return { id, merged: false, ok: false, skipped: true, error: why }
       if (integBroken) return { id, merged: false, ok: false, skipped: true, error: `integration worktree compromised: ${integBroken}` }
       if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) return { id, merged: false, ok: false, skipped: true, error: 'token budget too low' }
       let r
+      begun.add(id)
       try { r = await runDeliverable(id, idx) } catch (e) { r = { id, merged: false, ok: false, error: `unexpected error: ${e && e.message ? e.message : e}`, failKind: 'infra' } }
       // An interrupted merge that did not finish validated (including a thrown error) stops every later merge.
       if (FINISH.includes(id) && !r.ok && !integBroken) integBroken = `the interrupted merge of ${id} did not finish validation: ${r.error || 'not ok'}`
