@@ -283,7 +283,11 @@ export function checkValidity(variant, journal, scenario) {
     return { valid: true, reason: 'ok' };
   }
   // code: the run resumes at task 3, so its review must exist and tasks 1 to 3 must not be redone
-  if (!find(entries, 'E5:t3:spec1')) return INVALID_FORMAT;
+  if (!find(entries, 'E5:t3:spec1')) {
+    // A pipeline that stopped in the spec or plan review never reaches the code: that is a stop, not a journal format error.
+    const stoppedEarly = entries.some((e) => e.label === 'E5:status-blocked') && !entries.some((e) => /^E5:t\d+:/.test(e.label));
+    return stoppedEarly ? { valid: false, reason: 'parou-antes-do-codigo' } : INVALID_FORMAT;
+  }
   const redone = entries.some((e) => {
     const m = /^E5:t(\d+):impl/.exec(e.label);
     return m && Number(m[1]) <= 3;

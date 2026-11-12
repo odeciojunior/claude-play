@@ -956,3 +956,13 @@ test('checkValidity on a real-format journal reports plano-reescrito, not format
     s.done();
   }
 });
+
+test('checkValidity: código que parou na revisão de spec ou plano é parou-antes-do-codigo, não formato', () => {
+  const e = (label) => ({ label, result: {}, text: '' });
+  const stopped = { formatError: null, entries: ['E5:spec', 'E5:spec-review1', 'E5:status-blocked', 'report'].map(e) };
+  assert.deepEqual(checkValidity('codigo-semeado-A', stopped, {}), { valid: false, reason: 'parou-antes-do-codigo' });
+  const noTask = { formatError: null, entries: ['E5:spec', 'E5:plan'].map(e) };
+  assert.equal(checkValidity('codigo-semeado-A', noTask, {}).reason, 'formato-do-diario');
+  const ok = { formatError: null, entries: ['E5:status-blocked', 'E5:t3:spec1', 'E5:t4:impl'].map(e) };
+  assert.equal(checkValidity('codigo-semeado-A', ok, {}).valid, true);
+});
