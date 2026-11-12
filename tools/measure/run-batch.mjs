@@ -646,6 +646,72 @@ export function releaseRunValidity(variant, run) {
   return sumCalls(calls) === 0 ? { valid: false, reason: 'sem-agentes' } : { valid: true, reason: 'ok' };
 }
 
+// A resume session that launched no subagent did not resume anything (E15 finding 11, analogous to sem-agentes).
+// `run` holds the metrics of the resume session alone.
+export function resumeRunValidity(run) {
+  const calls = run?.total?.calls ?? {};
+  return sumCalls(calls) === 0 ? { valid: false, reason: 'retomada-sem-agentes' } : { valid: true, reason: 'ok' };
+}
+
+// Worktree that holds release/sandbox, or null (the release keeps it in <sandbox>-wt/_integracao while a stage runs).
+function releaseWorktreeOf(sandbox) {
+  for (const block of gitOut(sandbox, 'worktree', 'list', '--porcelain').split(/\r?\n\r?\n/)) {
+    const wt = /^worktree (.+)$/m.exec(block)?.[1];
+    if (wt && /^branch refs\/heads\/release\/sandbox$/m.test(block)) return wt;
+  }
+  return null;
+}
+
+// D2 (E17): between the stop and the resume of parada-retomada, ratifies the pending E5 decisions of contract scope with the
+// measured plugin's own tracker CLI (same install path and roadmap folder as readPanel), in the release/sandbox worktree, and
+// commits there. No model call. Never throws: { ok: true, ratified: [DEC...] } or { ok: false, reason }.
+export function ratifyE5Contract(sandbox, installPath, { exec = spawnSync } = {}) {
+  let tmp = null;
+  try {
+    if (!gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/release/sandbox')) throw new Error('release/sandbox missing');
+    let cwd = releaseWorktreeOf(sandbox);
+    if (cwd === null) {
+      tmp = mkdtempSync(join(tmpdir(), 'ratify-'));
+      cwd = join(tmp, 'wt');
+      gitOut(sandbox, 'worktree', 'add', '-q', cwd, 'release/sandbox');
+    }
+    if (gitOut(cwd, 'status', '--porcelain') !== '') return { ok: false, reason: 'integracao-suja' };
+    const script = join(installPath, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs');
+    const folder = 'docs/plans/roadmap-sandbox';
+    const run = (args) => {
+      const r = exec(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+      if (!r || r.status !== 0) throw new Error(`roadmap.mjs ${args[0]} exited ${r?.status ?? 'without status'}`);
+      return r;
+    };
+    const pendingE5 = () => {
+      let json;
+      try {
+        json = JSON.parse(run(['pending-decisions', folder, '--json']).stdout ?? '');
+      } catch (e) {
+        throw new Error(e instanceof SyntaxError ? 'pending-decisions printed no JSON' : e.message);
+      }
+      const list = json.result?.decisions ?? json.decisions;
+      if (!Array.isArray(list)) throw new Error('pending-decisions has no decisions list');
+      return list.filter((d) => d.scope === 'contract' && /\bE5\b/.test(String(d.deliverable ?? ''))).map((d) => d.id);
+    };
+    const ids = pendingE5();
+    if (ids.length === 0) return { ok: true, ratified: [] };
+    run(['ratify', folder, ...ids, '--json']);
+    if (pendingE5().length > 0) return { ok: false, reason: 'decisao-pendente-apos-ratificar' };
+    gitOut(cwd, 'add', '-A', '--', folder);
+    gitOut(cwd, '-c', 'user.name=measure', '-c', 'user.email=measure@example.invalid', 'commit', '-q', '-m', `chore(sandbox): ratify E5 contract decisions ${ids.join(' ')}`);
+    return { ok: true, ratified: ids };
+  } catch (e) {
+    console.error(`ratify E5: ${redactPaths(String(e?.message ?? e))}`);
+    return { ok: false, reason: 'ratificacao-falhou' };
+  } finally {
+    if (tmp) {
+      try { gitOut(sandbox, 'worktree', 'remove', '--force', join(tmp, 'wt')); } catch { /* never created */ }
+      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
+  }
+}
+
 // Validity of a review-stage attempt: the journal must carry the stage review with its fields.
 function harnessValidity(h, variant, journal, scenario) {
   if (journal.formatError) return INVALID_FORMAT;
@@ -667,7 +733,7 @@ function harnessStage(h, entries, presents) {
   return fixed && presents.some((p) => p === false) ? 'approved' : 'stopped';
 }
 
-export async function runBatch(opts, { exec = defaultExec, now = () => new Date() } = {}) {
+export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract } = {}) {
   const { variant, runs } = opts;
   const seeded = variant.includes('semeado');
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
@@ -690,6 +756,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let failed = false;
     let failReason = 'execucao-falhou';
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
+    let ratified = null;
+    let resumeFrom = 1;
+    const extra = () => (ratified ? { ratified } : {});
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -700,6 +769,17 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       launchOpts = { ...opts, allow: [...(opts.allow ?? []), 'Workflow'] };
     }
     for (let i = 0; i < scenario.prompts.length; i++) {
+      if (stop !== null && i === 1 && !h) {
+        // D2 (E17): the stopped run left executor decisions of E5 pending; the owner's ratification happens here, with no model call.
+        const rat = ratify(scenario.dir, plugin.installPath);
+        if (!rat.ok) {
+          failed = true;
+          failReason = rat.reason;
+          break;
+        }
+        ratified = rat.ratified ?? [];
+        resumeFrom = sessions.length; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
+      }
       const args = promptArgs(scenario.prompts[i], launchOpts);
       const watch = stop !== null && i === 0;
       let r;
@@ -757,19 +837,19 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       continue;
     }
     if (failed || sessions.length === 0) {
-      attempts.push({ n: k, status: 'invalid', reason: failReason });
-      privateAttempts.push({ n: k, sessions });
+      attempts.push({ n: k, ...extra(), status: 'invalid', reason: failReason });
+      privateAttempts.push({ n: k, sessions, ...extra() });
       writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
       continue;
     }
-    privateAttempts.push({ n: k, sessions });
+    privateAttempts.push({ n: k, sessions, ...extra() });
     writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
     let journal = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
       const v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
       if (!v.valid) {
-        attempts.push({ n: k, status: 'invalid', reason: v.reason });
+        attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
         if (v.reason === 'formato-do-diario') {
           const n = attempts.filter((a) => a.reason === 'formato-do-diario').length;
           console.error(`journal format: ${n} attempt(s) invalid`);
@@ -786,15 +866,39 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       { cwd: here },
     );
     if (ex.code !== 0) {
-      attempts.push({ n: k, status: 'invalid', reason: 'extrator-falhou' });
+      attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'extrator-falhou' });
       continue;
     }
     const run = JSON.parse(readFileSync(join(metricsDir, 'metrics.json'), 'utf8')).runs[0];
     if (!h) {
       const rv = releaseRunValidity(variant, run);
       if (!rv.valid) {
-        attempts.push({ n: k, status: 'invalid', reason: rv.reason });
+        attempts.push({ n: k, ...extra(), status: 'invalid', reason: rv.reason });
         continue;
+      }
+      if (stop !== null) {
+        // D3 (E17): the resume session alone must have launched an agent; the whole-attempt total can come from the first session.
+        if (sessions.length <= resumeFrom) {
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: resumeRunValidity(undefined).reason });
+          continue;
+        }
+        const resumeFile = join(priv, `attempts-${k}-resume.json`);
+        const resumeDir = join(metricsDir, 'resume');
+        writeFileSync(resumeFile, JSON.stringify({ attempts: [{ n: k, sessions: sessions.slice(resumeFrom) }] }, null, 2) + '\n');
+        const rex = await exec(
+          process.execPath,
+          [EXTRACTOR, '--root', join(opts.configDir, 'projects'), '--out', resumeDir, '--sessions', sessions.slice(resumeFrom).join(','), '--runs', resumeFile],
+          { cwd: here },
+        );
+        if (rex.code !== 0) {
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'extrator-falhou' });
+          continue;
+        }
+        const rrv = resumeRunValidity(sessions.length > resumeFrom ? JSON.parse(readFileSync(join(resumeDir, 'metrics.json'), 'utf8')).runs[0] : undefined);
+        if (!rrv.valid) {
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: rrv.reason });
+          continue;
+        }
       }
     }
     validRuns.push(run);
@@ -805,7 +909,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const reachable = settleSandbox(scenario.dir, scenario.seededCommit);
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
-    const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
+    const attempt = { n: k, ...extra(), status: 'valid', counters: toAttemptCounters(run), outcomes };
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath, { deliverable: EXPECTED_PANEL[variant].deliverable });
     attempts.push(attempt);
