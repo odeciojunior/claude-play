@@ -225,3 +225,18 @@ test('E17: CLI usage errors exit 2', () => {
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('E17: the real E15 baseline against itself does not block on its seeded variants', () => {
+  const real = JSON.parse(disk('docs/reports/2026-11-11-e15-linha-de-base/baseline.json'));
+  assert.ok(['plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B'].every((v) => real.variants[v]));
+  const r = run(real, real);
+  assert.ok(!r.blockReasons.some((x) => /semeado/.test(x)), JSON.stringify(r.blockReasons));
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B']) assert.equal(r.variants[v].bloqueia, false, v);
+});
+
+test('E17: a seeded variant still blocks when a counter got worse', () => {
+  const seeded = (over) => ({ 'plano-semeado-A': variant('plano-semeado-A', 3, over) });
+  const r = run(agg(seeded()), agg(seeded({ bytes: 5000 })));
+  assert.equal(r.variants['plano-semeado-A'].bloqueia, true);
+  assert.ok(r.blockReasons.some((x) => x.startsWith('variante plano-semeado-A')));
+});

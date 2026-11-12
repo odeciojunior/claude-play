@@ -6,7 +6,8 @@
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
@@ -571,19 +572,25 @@ export function e5Integrated(sandbox) {
 // the target release/sandbox is not the integrationBranch, so the workflow records on-branch after the merge and plan in plan-only.
 export const PANEL_VARIANTS = ['plan-only', 'completo', 'parada-retomada'];
 export const EXPECTED_PANEL = {
-  'plan-only': { status: 'plan', mergeEvidence: false },
-  completo: { status: 'on-branch', mergeEvidence: true },
-  'parada-retomada': { status: 'on-branch', mergeEvidence: true },
+  // plan-only runs `plan-only E1` (make-scenario.mjs), so its row is E1; the others run E5.
+  'plan-only': { deliverable: 'E1', status: 'plan', mergeEvidence: false },
+  completo: { deliverable: 'E5', status: 'on-branch', mergeEvidence: true },
+  'parada-retomada': { deliverable: 'E5', status: 'on-branch', mergeEvidence: true },
 };
 
 // Never throws: any failure (missing CLI, non-JSON output, exit other than 0/1) is { error }.
-export function readPanel(sandbox, installPath, { exec = spawnSync } = {}) {
+// The committed state of release/sandbox is read in a detached temporary worktree: a checkout in the sandbox root is refused
+// when the release preflight keeps that branch in <sandbox>-wt/_integracao. The fields e5Status/e5Evidence hold the row of `deliverable`.
+export function readPanel(sandbox, installPath, { exec = spawnSync, deliverable = 'E5' } = {}) {
+  let tmp = null;
   try {
     if (!gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/release/sandbox')) return { error: 'release/sandbox missing' };
-    gitOut(sandbox, 'checkout', '-q', 'release/sandbox');
+    tmp = mkdtempSync(join(tmpdir(), 'panel-'));
+    const cwd = join(tmp, 'wt');
+    gitOut(sandbox, 'worktree', 'add', '-q', '--detach', cwd, 'refs/heads/release/sandbox');
     const scripts = join(installPath, 'skills', 'roadmap-tracker', 'scripts');
     const run = (script, args) => {
-      const r = exec(process.execPath, [join(scripts, script), ...args], { cwd: sandbox, encoding: 'utf8' });
+      const r = exec(process.execPath, [join(scripts, script), ...args], { cwd, encoding: 'utf8' });
       if (!r || (r.status !== 0 && r.status !== 1)) throw new Error(`${script} exited ${r?.status ?? 'without status'}`);
       try {
         return JSON.parse(r.stdout ?? '');
@@ -592,8 +599,8 @@ export function readPanel(sandbox, installPath, { exec = spawnSync } = {}) {
       }
     };
     const status = run('roadmap.mjs', ['status', 'docs/plans/roadmap-sandbox', '--json']);
-    const row = (status.result?.panel ?? []).find((p) => p.id === 'E5');
-    if (!row) throw new Error('no E5 row in the panel');
+    const row = (status.result?.panel ?? []).find((p) => p.id === deliverable);
+    if (!row) throw new Error(`no ${deliverable} row in the panel`);
     const checker = run('check-roadmap.mjs', ['docs/plans/roadmap-sandbox', '--json']);
     const merge = gitOut(sandbox, 'log', '--first-parent', '--format=%H%x09%s', 'release/sandbox')
       .split(/\r?\n/)
@@ -607,6 +614,11 @@ export function readPanel(sandbox, installPath, { exec = spawnSync } = {}) {
     };
   } catch (e) {
     return { error: String(e?.message ?? e) };
+  } finally {
+    if (tmp) {
+      try { gitOut(sandbox, 'worktree', 'remove', '--force', join(tmp, 'wt')); } catch { /* never created */ }
+      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
   }
 }
 
@@ -792,7 +804,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
-    if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath);
+    if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath, { deliverable: EXPECTED_PANEL[variant].deliverable });
     attempts.push(attempt);
   }
 

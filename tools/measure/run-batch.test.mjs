@@ -1031,12 +1031,54 @@ test('E17: readPanel reads the E5 row, the merge commit and the checker errors',
     };
     const p = readPanel(sandbox, '/inst', { exec });
     assert.deepEqual(p, { e5Status: 'on-branch', e5Evidence: `merge \`${sha.slice(0, 7)}\``, mergeCommit: sha, checkerErrors: 2 });
-    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'release/sandbox');
+    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'main');
     assert.equal(panelMatches('completo', { ...p, checkerErrors: 0 }).ok, true);
     assert.equal(readPanel(join(s.base, 'sb'), '/inst', { exec: () => ({ status: 3, stdout: '' }) }).error !== undefined, true);
   } finally {
     s.done();
   }
+});
+
+test('E17: readPanel works when release/sandbox is held by another worktree and leaves no worktree behind', () => {
+  const s = setup();
+  try {
+    const sandbox = join(s.base, 'sbw');
+    mkdirSync(sandbox, { recursive: true });
+    gitIn(sandbox, 'init', '-q', '-b', 'main');
+    gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'seed');
+    gitIn(sandbox, 'branch', 'release/sandbox');
+    const held = join(s.base, 'sbw-wt', '_integracao');
+    assert.equal(gitIn(sandbox, 'worktree', 'add', '-q', held, 'release/sandbox').status, 0);
+    const before = gitIn(sandbox, 'worktree', 'list', '--porcelain').stdout;
+    const seen = [];
+    const exec = (cmd, args, opts) => {
+      seen.push(opts.cwd);
+      if (/[\\/]roadmap\.mjs$/.test(args[0])) return { status: 0, stdout: JSON.stringify({ result: { panel: [{ id: 'E1', segments: [{ word: 'plan' }], evidence: '-' }, { id: 'E5', segments: [{ word: 'not-started' }], evidence: '-' }] } }) };
+      return { status: 0, stdout: JSON.stringify({ summary: { errors: 0 } }) };
+    };
+    const p = readPanel(sandbox, '/inst', { exec, deliverable: 'E1' });
+    assert.equal(p.error, undefined);
+    assert.equal(p.e5Status, 'plan');
+    assert.ok(seen.every((c) => c !== sandbox));
+    assert.equal(gitIn(sandbox, 'worktree', 'list', '--porcelain').stdout, before);
+    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'main');
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: the panel row of each variant is the deliverable its prompt targets', async () => {
+  const { makeScenario } = await import('./make-scenario.mjs');
+  for (const v of PANEL_VARIANTS) {
+    const dir = mkdtempSync(join(tmpdir(), 'pv-'));
+    try {
+      const sc = await makeScenario(dir, v);
+      assert.ok(sc.prompts.every((pr) => pr.endsWith(` ${EXPECTED_PANEL[v].deliverable}`)), `${v}: ${sc.prompts.join(' | ')}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  assert.equal(EXPECTED_PANEL['plan-only'].deliverable, 'E1');
 });
 
 test('E17: readPanel reports a missing release/sandbox', () => {

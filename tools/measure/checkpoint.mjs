@@ -78,7 +78,10 @@ export function checkpoint(before, after, { readAt, listAt, margin, attempts, by
   const cost = {};
   for (const v of names('variants')) {
     variants[v] = pair(before.variants?.[v], after.variants?.[v]);
-    if (variants[v].bloqueia) blockReasons.push(`variante ${v}: ${variants[v].refusal ?? 'o comparador bloqueia'}`);
+    // A variant blocks on its counters only: the detection unit is the consolidated class (DEC-033, DEC-089), and one seeded variant alone holds half of its attempts.
+    const worse = Object.entries(variants[v].counters ?? {}).filter(([name, c]) => name !== 'cost' && c.verdict === 'piorou').map(([name]) => name);
+    variants[v].bloqueia = Boolean(variants[v].refusal) || worse.length > 0;
+    if (variants[v].bloqueia) blockReasons.push(`variante ${v}: ${variants[v].refusal ?? `contadores pioraram (${worse.join(', ')})`}`);
     cost[v] = { before: costSide(before.variants?.[v]), after: costSide(after.variants?.[v]) };
   }
 
