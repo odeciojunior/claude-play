@@ -21,7 +21,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E4 | na-branch | `1362158c1ec3a43f8b19f32cb5695dcd11224004`; `docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md`; `docs/superpowers/plans/2026-11-11-E4-planner-scaffold-rubrica.md`; `feat/E4`, `64e9c54`, `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release |
 | E5 | na-branch | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E7 | nao-iniciado | - | Aguardar E3, E6 e E17 |
+| E7 | executando | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md` | E7: seguir o fluxo do release após executando |
 | E8 | nao-iniciado | - | Aguardar E17, E18, E19, E20 e E25 |
 | E9 | nao-iniciado | - | Aguardar E8 |
 | E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
@@ -33,7 +33,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | na-branch | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba` | E17: seguir o fluxo do release após na-branch |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E19 | nao-iniciado | - | Aguardar E5 e E17 |
+| E19 | bloqueado (BLQ-6) | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` | E19: seguir o fluxo do release após executando |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
@@ -49,6 +49,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
+| BLQ-6 | E19 bloqueado: automatic execution stopped (conteudo): task 6 BLOCKED: Task 6 was not run. It needs a subagent tool to dispatch the spec-author agent, and this session has [...] texto completo em docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md | E19 | 2026-11-12 | quando o bloqueio de E19 for resolvido; restaura E19 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -114,6 +115,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E17: critério AC4 sem evidência automática (human)
 - (dono) E17: critério AC5 sem evidência automática (human)
 - (dono) E17: critério AC6 sem evidência automática (human)
+- (dono) Conferência do dono dos resultados das execuções comportamentais (critérios 1 e 2, verify: human) registrados em docs/reports/2026-11-12-E19-autor-spec-comportamental.md; nenhum aceite fictício é registrado.
+- (dono) Ratificação das decisões de alcance contrato (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030).
+- (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -121,4 +125,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E19 | viva | E19 em execução pelo release |
+| feat/E7 | viva | E7 em execução pelo release |
 <!-- /roadmap:inflight -->
