@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
-| E17 | executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após executando |
+| E17 | na-branch | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba` | E17: seguir o fluxo do release após na-branch |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
@@ -101,6 +101,19 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (commit a951ed5)
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro, DEC-297): critérios 1 e 6 e o portão do critério 2 dependem delas
 - (dono) Aceite da branch de volta (critério 4) e ratificação ou reversão do ajuste do teste acoplado de marketplace-tools (a951ed5)
+- (dono) T4:quality: [important/pelo-plano] Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The [...] texto completo em docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md
+- (dono) Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas
+- (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md, e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (decisão 13, commit a951ed5)
+- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir
+- (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
+- (dono) Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\|', workflow has '\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint.
+- (dono) E17: critério AC1 sem evidência automática (human)
+- (dono) E17: critério AC2 sem evidência automática (human)
+- (dono) E17: critério AC3 sem evidência automática (human)
+- (dono) E17: critério AC4 sem evidência automática (human)
+- (dono) E17: critério AC5 sem evidência automática (human)
+- (dono) E17: critério AC6 sem evidência automática (human)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -108,5 +121,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E17 | viva | E17 em execução pelo release |
 <!-- /roadmap:inflight -->
