@@ -169,3 +169,63 @@ Uma entrada por item de recordCuts. Origem: docs/superpowers/reviews/2026-11-12-
 ## Execução do estágio blocked-record
 
 Nesta execução o registro foi refeito com os mesmos dados de revisões, tarefas, concerns, riscos aceitos e entradas humanas já transcritos acima, que permanecem inalterados. O que esta execução acrescenta: o Corte 7 (texto cortado ao abrir o bloqueio de E20) e o resultado final "falhou", com a branch feat/E20 mantida em D:/projects/claude-play-wt/E20.
+
+## Execução de 2026-11-12 (nova rodada, sem falha final)
+
+Esta execução é acrescentada ao registro; tudo o que as execuções anteriores gravaram acima fica como está. Resultado desta execução: sem falha no estágio final (failure: null); revisão final aprovada na rodada 3, sem bloqueios abertos.
+
+### Revisões por estágio (esta execução)
+
+Legenda: rodada (número, modelo do revisor, tier da correção que a precedeu). "Menores" é a contagem de achados menores. Nenhum estágio teve achado crítico ou importante em aberto.
+
+| Estágio | Rodadas | Críticos/importantes | Menores | Não resolvidos |
+|---|---|---|---|---|
+| spec | 1 (opus, sem correção) | nenhum | 0 | nenhum |
+| plan | 1 (opus, sem correção) | nenhum | 0 | nenhum |
+| T12:spec | 1 (sonnet, sem correção) | nenhum | 0 | nenhum |
+| T12:quality | 1 (sonnet, sem correção) | nenhum | 0 | nenhum |
+| final | 1 (opus, sem correção); 2 (opus, correção sonnet); 3 (opus, correção sonnet) | nenhum (lista de bloqueios vazia) | 2 | nenhum |
+
+### Tarefas (esta execução)
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | spec-tool summary --lang | RESUMED (already reviewed) | |
+| 2 | plan-tool summary | RESUMED (already reviewed) | |
+| 3 | agente plan-author (peça 1) | RESUMED (already reviewed) | |
+| 4 | skill plan-writer (peça 2) e ajuste de spec-writer | RESUMED (already reviewed) | |
+| 5 | referências do planner apontam spec-writer e plan-writer | RESUMED (already reviewed) | |
+| 6 | planner e tracker sem superpowers (critério 3) | RESUMED (already reviewed) | |
+| 7 | parser e pontuação da suíte de gatilho | RESUMED (already reviewed) | |
+| 8 | casos de gatilho, executor e --dry-run (peça 4) | RESUMED (already reviewed) | |
+| 9 | variante plan-author do cenário | RESUMED (already reviewed) | |
+| 10 | roteiro sintético da aprovação da adoção | RESUMED (already reviewed) | |
+| 11 | README do plugin | RESUMED (already reviewed) | |
+| 12 | execuções comportamentais e relatório (critérios 1, 2 e 4; REQ-037; pendência de E19) | DONE | 11 |
+
+### Riscos aceitos (esta execução)
+
+- T12:quality, importante, categoria ambiente, arquivo plugins/productivity-tools/skills/plan-writer/SKILL.md: Criterion 4 (adoption) has not been re-run after the fix in 30ff73f. The new SKILL.md/plan-author.md text for F4-1..F4-4 (APPROVAL QUESTION fallback, missing-spec rule, fixed .adopted.md name, per-step Adoção table, foreground dispatch) is plausible on reading but unverified behaviorally; it needs the main-session orchestrator because the Agent tool is required (DEC-204).
+
+### Concerns (esta execução)
+
+- the "executing" roadmap record failed (command 1 ran with a different text than the one assembled; command 2 ran with a different text than the one assembled; command 3 ran with a different text than the one assembled; command 4 ran with a different text than the one assembled; command 5 ran with a different text than the one assembled; command 6 ran with a different text than the one assembled; command 7 ran with a different text than the one assembled; command 8 ran with a different text than the one assembled; command 9 ran with a different text than the one assembled; command 10 ran with a different text than the one assembled; command 11 ran with a different text than the one assembled; command 12 ran with a different text than the one assembled; command 13 ran with a different text than the one assembled; command 14 ran with a different text than the one assembled; command 15 ran with a different text than the one assembled; command 16 ran with a different text than the one assembled; command 17 ran with a different text than the one assembled; command 18 ran with a different text than the one assembled; command 19 ran with a different text than the one assembled; command 20 ran with a different text than the one assembled; command 21 ran with a different text than the one assembled; 2 command(s) ran beyond the assembled list; command 22 () exit 1; command 22 () stdout is not JSON of the CLI (tool "roadmap"); command 23 () stdout is not JSON of the CLI (tool "roadmap")); decisions and the in-flight entry are not recorded yet
+- final fix1: 1. Finding 2 is only partly fixed. The planner still gives the topic `<roadmap slug>-E<n>`, which the approved spec requires (DEC-026), so I did not touch the spec, plan or planner text. Instead, spec-writer and spec-author now use id E<n> when the topic ends in -E<n>. This also reverses the earlier spec-writer line that said the id is "not E<n>". It stays within E20's chain, but it is a behavior change in E19's skill.
+  2. spec-writer in interactive mode still runs `spec-tool check` without --roadmap, so the spec's acceptance criteria are not compared with the card at spec time. The only check against the card is plan-writer's pointer resolution, which runs `spec-tool check --roadmap`. Comparing the criteria at spec time would need a roadmap argument on spec-writer, which the approved spec does not provide.
+  3. I added no end-to-end test of the whole planner-to-coordinator chain. The new test only checks the id rule in the skill and agent text.
+  4. I did not bump the plugin version, following the owner's instruction.
+- final fix2: The full G1 suite was not rerun, only independence.test.mjs, which is the only test file touched. Only the mechanical caller-side fix is in; the topic-to-id contract in spec-author.md is unchanged, so E8 may still want to formalize it. This is an autonomous decision, recorded as pending for the owner.
+
+### Gates (esta execução)
+
+Os dados desta execução não trazem resultado de gates além do que consta nas concerns acima: após a correção final 1 rodaram só independence.test.mjs e G5; após a correção final 2 rodou só independence.test.mjs. A suíte G1 completa não foi reexecutada depois das correções finais.
+
+### Entradas humanas (esta execução)
+
+| O quê | Bloqueia | Alternativa |
+|---|---|---|
+| Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025) | não | A suíte, o executor com --dry-run e os testes estão entregues; a rodada paga fica com o dono |
+| Ratificação das decisões de alcance contrato (1, 2, 4, 7 e 16) antes de E8 (DEC-030) | não | Ficam como pendentes com origem executor |
+| Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458) | não | Pendência rastreada; não bloqueia o merge de E20 |
+| Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 ({verify: human}) em docs/reports/2026-11-12-E20-autor-plano-comportamental.md | não | As execuções e o relatório são produzidos pelo entregável; nenhum aceite fictício é registrado. (Spec: respondida; critérios 1 e 2 aceitos, DEC-453; critério 4 aceito por delegação em bf4712d, DEC-456; não bloqueia mais.) |
+| Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025) | não | A suíte, o executor com --dry-run e os testes são entregues; a rodada fica com o dono. |
