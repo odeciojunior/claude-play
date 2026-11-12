@@ -553,3 +553,52 @@ test('real plugins have no FAIL', () => {
     assert.ok(has(r, 'OK', 'Script names are unique'), p);
   }
 });
+
+// ---------- E25 AC5: compatibility with a version for skills that name a registered workflow ----------
+function freshNamed(name, withWorkflows = true) {
+  const dir = fresh();
+  mutatePluginJson(dir, (j) => {
+    j.name = name;
+    if (withWorkflows) j.workflows = ['./workflow/w.js'];
+  });
+  write(dir, 'workflow/w.js', "export const meta = { name: 'w1' }\n");
+  return dir;
+}
+const COMPAT_FAIL = 'compatibility must declare the minimum Claude Code version';
+const skillNaming = (dir, fm, body) => write(dir, 'skills/valid-skill/SKILL.md', SKILL(`name: valid-skill\ndescription: Use when testing.${fm}`, body));
+
+test('E25 AC5: a skill naming a registered workflow without compatibility -> FAIL', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: compatibility without a version -> FAIL', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '\ncompatibility: Claude Code recent', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: compatibility with a version -> OK', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: a skill not naming any registered workflow needs no compatibility', () => {
+  const dir = freshNamed('valid');
+  skillNaming(dir, '', '# Body\n\nNothing here.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: plugin.json without workflows -> nothing is registered', () => {
+  const dir = freshNamed('valid', false);
+  skillNaming(dir, '', '# Body\n\nRuns valid:w1 now.\n');
+  assert.ok(!has(lint(dir), 'FAIL', 'compatibility'));
+});
+
+test('E25 AC5: the real productivity-tools plugin lints with 0 FAIL', () => {
+  const real = path.join(here, '..', '..', '..', '..', 'productivity-tools');
+  const fails = lint(real).filter((r) => r.level === 'FAIL');
+  assert.deepEqual(fails, []);
+});

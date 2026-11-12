@@ -103,6 +103,44 @@ export function parseFrontmatter(text) {
   return { keys, bodyStartLine: end + 2 };
 }
 
+// Workflows registered in plugin.json ("workflows": list of paths); the name comes from meta.name.
+export function registeredWorkflows(dir, pj) {
+  const list = Array.isArray(pj?.workflows) ? pj.workflows : [];
+  const out = [];
+  for (const file of list) {
+    if (typeof file !== 'string') continue;
+    const p = path.join(dir, ...file.split('/'));
+    if (!isFile(p)) continue;
+    const m = /\bmeta\s*=\s*\{[^}]*?\bname\s*:\s*(['"])([^'"]+)\1/s.exec(readText(p));
+    if (m) out.push({ file, name: m[2], full: `${pj.name}:${m[2]}` });
+  }
+  return out;
+}
+
+// Splits the allowed-tools value into entries (space or comma outside parentheses).
+export function skillAllowedTools(fm) {
+  const raw = fm.keys.get('allowed-tools') ?? '';
+  const entries = [];
+  let depth = 0;
+  let cur = '';
+  const push = () => {
+    let e = cur.trim();
+    cur = '';
+    if (e === '-') return;
+    e = e.replace(/^-\s+/, '');
+    e = e.replace(/^(['"])(.*)\1$/, '$2').trim();
+    if (e) entries.push(e);
+  };
+  for (const ch of raw) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && (ch === ' ' || ch === ',' || ch === '\t')) push();
+    else cur += ch;
+  }
+  push();
+  return entries;
+}
+
 function unquote(v) {
   if (v.length >= 2 && ((v[0] === '"' && v.at(-1) === '"') || (v[0] === "'" && v.at(-1) === "'"))) {
     return v.slice(1, -1);
@@ -242,6 +280,15 @@ export function lintPlugin(dir, { marketplace } = {}) {
     for (const key of ['disable-model-invocation', 'user-invocable']) {
       if (fm.keys.has(key) && !['true', 'false'].includes(fm.keys.get(key).toLowerCase())) {
         problems.push(['FAIL', `${key} must be true or false, got "${fm.keys.get(key)}"`]);
+      }
+    }
+    {
+      const body = text.split(SPLIT).slice(fm.bodyStartLine - 1).join('\n');
+      const named = pj ? registeredWorkflows(dir, pj).find((w) => body.includes(w.full)) : null;
+      const grant = skillAllowedTools(fm).find((e) => e.startsWith('Workflow('));
+      const target = named ? named.full : grant ? grant.slice('Workflow('.length).replace(/\)\s*$/, '') : null;
+      if (target && !/\d+\.\d+\.\d+/.test(fm.keys.get('compatibility') ?? '')) {
+        problems.push(['FAIL', `compatibility must declare the minimum Claude Code version that launches ${target} by name`]);
       }
     }
     const combined = (fm.keys.get('description') ?? '').length + (fm.keys.get('when_to_use') ?? '').length;
