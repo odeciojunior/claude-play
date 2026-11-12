@@ -1,5 +1,5 @@
 // Orçamento de prosa do contexto principal do planner (E4, critério 3).
-// Spec: docs/superpowers/specs/2026-11-11-E4-planner-scaffold-rubrica-design.md,
+// Card E4 do roadmap evolucao-skills,
 // seção "Meta derivada de prosa" (SRC-02 §1, commit bf9d948; DEC-034).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

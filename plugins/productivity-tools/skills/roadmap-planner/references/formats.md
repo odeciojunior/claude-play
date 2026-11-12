@@ -217,7 +217,7 @@ See decisions.md. (Cite a DEC only where this version absorbs it.)
 
 ## Open questions
 - <question>
-- E<n>: <deliverable-level question, for superpowers:brainstorming>
+- E<n>: <deliverable-level question, for spec-writer>
 
 ## Coverage summary
 <N covered, M out of scope, K to clarify>
