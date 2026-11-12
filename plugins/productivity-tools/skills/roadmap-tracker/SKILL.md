@@ -33,12 +33,12 @@ Never write a file from memory. If the contract cannot be read, stop and report 
 5. **Outside a git repository, continue.** The `no-git` warning is expected; recipes needing git evidence ask for it.
 6. **The strategy changes only through an approved revision** (Step 6). A pre-approval from a caller or orchestrator never covers a revision or a migration; with no person present, write only the pending item and say so.
 7. **Status words are positional.** `vocab.deliverableStatuses` keeps the canonical order (1 not-started, 2 spec, 3 plan, 4 executing, 5 on-branch, 6 integrated, 7 released, 8 measured, then blocked and discarded), so write the configured word at that position, whatever the language.
-8. **Ask little.** Read files, git history and the progress file first; ask only what they cannot tell, one question at a time, with a recommendation. With `no questions` in the event, never ask: write pending items and report them under `Pending for the user:`.
+8. **Ask little.** Read files, git history and the coordinator's progress.json first; ask only what they cannot tell, one question at a time, with a recommendation. With `no questions` in the event, never ask: write pending items and report them under `Pending for the user:`.
 9. **CLI exit codes.** 0 done or no-op; 1 refused, nothing changed: report it and never work around it by editing by hand; 2 stop and report.
 
 ## Workflow
 
-0. **Locate the folder** (the directory with `roadmap.config.json`): the path given; the `**Roadmap**:` field of the plan-coordinator progress file; `**Roadmap:**` in the plan header; else search `docs/plans/**/roadmap.config.json`. Several: ask which. None: stop, point to `roadmap-planner`, create nothing.
+0. **Locate the folder** (the directory with `roadmap.config.json`): the path given; `plan.roadmap` of the coordinator's `progress.json`; `**Roadmap:**` in the plan header; else search `docs/plans/**/roadmap.config.json`. Several: ask which. None: stop, point to `roadmap-planner`, create nothing.
 1. **Cold start:** `roadmap.mjs brief "<folder>"`, then `roadmap.config.json` and the touched card; the recipe names the rest.
 2. **Layer 1, checker:** `roadmap.mjs refresh-checker "<folder>"`; detail in `events/10-checker-refresh.md`.
 3. **Layer 3, format:** compare the contract's formatVersion (its title), the config's `formatVersion` and the vendored checker's `format <n>`. Contract newer than the config: migrate first, with approval (`events/11-migration.md`). Config newer than the contract: stop, tell the user to update the plugin.

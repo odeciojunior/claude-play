@@ -3,6 +3,13 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E19 | BLQ-6 resolvido: Tarefa 6 rodada pelo orquestrador (relatório em a277199), critérios aceitos por delegação e correção do SKILL.md em 01b3634; E19 volta a executando. | `a277199, 01b3634` |
+| 2026-11-12 | E19 | E19: critérios 1 e 2 aceitos por delegação do dono sobre o relatório das execuções comportamentais (critério 1 com 3/3, critério 2 aprovado, forma de reserva); correção de texto do SKILL.md (01b3634) antes do merge. | `docs/reports/2026-11-12-E19-autor-spec-comportamental.md, a277199` |
+| 2026-11-12 | E19 | DEC-400, DEC-401, DEC-402, DEC-403 ratificadas pelo dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E7 | E7 passou para na-branch | `ae16fa55b143503921f58a5041b40b9113a47b77`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md` |
+| 2026-11-12 | E7 | E7 passou para executando | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md` |
+| 2026-11-12 | E19 | BLQ-6 aberto: E19 bloqueado: automatic execution stopped (conteudo): task 6 BLOCKED: Task 6 was not run. It needs a subagent tool to dispatch the spec-author agent, and this session has [...] texto completo em docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md | `branch feat/E19` |
+| 2026-11-12 | E19 | E19 passou para executando | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` |
 | 2026-11-12 | E17 | Critério 4 aceito por delegação do dono (Fable, precedente DEC-280/283): volta/productivity-tools-1.7.1 em a951ed5 parte de M; o plugin difere da tag 1.6.0 só na versão, linha 1 do checker e asserções; G1-G5 exit 0 em volta.md. | `volta.md, a951ed5` |
 | 2026-11-12 | E17 | DEC-368 ratificada pelo dono | `decisions.md` |
 | 2026-11-12 | E17 | DEC-365 ratificada pelo dono | `decisions.md` |

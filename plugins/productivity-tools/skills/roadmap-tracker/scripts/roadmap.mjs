@@ -2,6 +2,7 @@
 // Usage: node roadmap.mjs <command> <folder> [arguments] [--json]
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   parseRoadmapTexts, parseStatusSegments, decisionScope, releasedDeliverable, norm, idsIn, shasIn, blockLines, splitRow, stripNote,
@@ -21,19 +22,26 @@ export class Refusal extends Error {
 
 const usage = (message) => new Refusal('usage', message, 2);
 
+// Contrato do progress.json do coordinator que o tracker lê (lib/progress-state.mjs o escreve).
+export const PROGRESS_CONTRACT = {
+  schema: 'progress/1',
+  fields: ['schema', 'plan.id', 'plan.roadmap', 'piece', 'run.status', 'finalGate.status', 'steps[].n', 'steps[].status', 'steps[].replacedBy', 'steps[].sha'],
+  statuses: ['pending', 'launched', 'review-owed', 'pass', 'skip', 'skip-manual', 'waiting-manual', 'stopped'],
+};
+
 export const COMMAND_NAMES = [
   'status', 'brief', 'next-id', 'pending-decisions', 'verify-commit',
   'log', 'set-status', 'integrate', 'block-open', 'block-close', 'prune', 'refresh-checker',
-  'add-decision', 'add-pending', 'inflight-add', 'inflight-remove', 'ratify', 'reject',
+  'add-decision', 'add-pending', 'inflight-add', 'inflight-remove', 'ratify', 'reject', 'close-from-state',
 ];
 
 // Options that take a value; `true` marks the ones that may repeat.
 const VALUE_OPTIONS = {
   date: false, what: false, evidence: true, next: true, deliverable: false, sha: false, only: false,
   affects: false, unblocks: false, piece: false, since: false, how: false, note: false, owner: false,
-  text: false, decision: false, scope: false, discarded: false, revisit: false, contradicts: false, amend: false,
+  text: false, decision: false, scope: false, discarded: false, revisit: false, contradicts: false, amend: false, state: false,
 };
-const FLAGS = ['json', 'help'];
+const FLAGS = ['json', 'help', 'dry-run'];
 
 const HELP = `roadmap: deterministic events for the roadmap tracker
 
@@ -60,6 +68,7 @@ Write commands:
   inflight-remove <branch>
   ratify <DEC-NNN>... [--amend <text> [--revisit <t>]] [--date] [--what]   one log row per call; --amend only with one DEC
   reject <DEC-NNN> --decision <text> [--discarded <t>] [--revisit <t>] [--date] [--what]
+  close-from-state <folder> --state <progress.json> [--dry-run]   close the deliverable of a completed coordinator state (on-branch), else lift it to plan
 
 Flags: --json (machine output, same exit code), --help.
 Exit codes: 0 done or no-op; 1 refused by rule, nothing changed; 2 usage, read or write failure.
@@ -581,7 +590,102 @@ function inflightRows(ctx) {
 
 // ---------- commands ----------
 
+// Passos efetivos: o último de cada cadeia replacedBy.
+function effectiveSteps(steps) {
+  const byN = new Map(steps.map((st) => [st.n, st]));
+  const out = new Map();
+  for (const st of steps) {
+    let cur = st;
+    const seen = new Set();
+    while (cur && cur.replacedBy !== null && cur.replacedBy !== undefined && !seen.has(cur.n)) {
+      seen.add(cur.n);
+      cur = byN.get(cur.replacedBy) || { n: cur.replacedBy, status: 'missing', sha: null, replacedBy: null };
+    }
+    out.set(cur.n, cur);
+  }
+  return [...out.values()];
+}
+
+function realOrResolved(p) {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+function closeFromState(ctx) {
+  const { opts, git } = ctx;
+  if (ctx.args.length) throw usage('close-from-state takes options only');
+  if (opts.state === undefined) throw usage('close-from-state needs --state <progress.json>');
+  const stateFile = path.resolve(process.cwd(), opts.state);
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(stateFile, 'utf8').replace(/^\uFEFF/, ''));
+  } catch (e) {
+    throw new Refusal('usage', `cannot read ${opts.state}: ${e.code || String(e.message).split(/\r?\n/)[0]}`, 2);
+  }
+  if (!state || typeof state !== 'object' || state.schema !== PROGRESS_CONTRACT.schema) {
+    throw new Refusal('state-schema', `schema is not ${PROGRESS_CONTRACT.schema}`);
+  }
+  if (!gitUsable(git)) throw new Refusal('git-unavailable', 'close-from-state needs a git repository to resolve plan.roadmap');
+  const top = spawnSync('git', ['-C', ctx.folder, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  const topDir = !top.error && top.status === 0 ? top.stdout.trim() : '';
+  const planRoadmap = state.plan && typeof state.plan.roadmap === 'string' ? state.plan.roadmap : '';
+  if (!topDir || !planRoadmap
+    || path.relative(realOrResolved(path.resolve(topDir, planRoadmap)), realOrResolved(ctx.folder)) !== '') {
+    throw new Refusal('roadmap-mismatch', `plan.roadmap "${planRoadmap}" is not this folder`);
+  }
+  const id = state.plan.id;
+  const row = panelRows(ctx).find((r) => r.id === id);
+  if (!row) throw new Refusal('deliverable-unknown', `${id} is not in the panel`);
+  const steps = Array.isArray(state.steps) ? state.steps : [];
+  const piece = typeof state.piece === 'string' && state.piece !== '' ? state.piece : undefined;
+  const reasons = [];
+  if (!state.run || state.run.status !== 'completed') reasons.push(`run.status is "${state.run && state.run.status}", not completed`);
+  if (!state.finalGate || state.finalGate.status !== 'pass') reasons.push(`finalGate.status is "${state.finalGate && state.finalGate.status}", not pass`);
+  const effective = effectiveSteps(steps);
+  for (const st of effective) {
+    if (st.status !== 'pass' && st.status !== 'skip') reasons.push(`step ${st.n} is ${st.status}`);
+  }
+  const closed = reasons.length === 0;
+  const ds = ctx.roadmap.config.vocab.deliverableStatuses;
+  const word = closed ? ds[4] : ds[2];
+  const dry = Boolean(ctx.flags && ctx.flags['dry-run']);
+  ctx.result = { decision: closed ? 'closed' : 'not-closed', deliverable: id, piece: piece === undefined ? null : piece, word, reasons: closed ? [] : [reasons[0]] };
+  if (dry) {
+    commitWrites(ctx, new Map());
+    return;
+  }
+  if (closed) {
+    const rel = path.relative(realOrResolved(topDir), realOrResolved(stateFile)).split(path.sep).join('/');
+    const stateRef = rel && !rel.startsWith('..') ? rel : opts.state;
+    const shas = [...new Set(effective.map((st) => st.sha).filter((x) => typeof x === 'string' && x !== ''))];
+    for (const sha of shas) if (!git.commitExists(sha)) throw new Refusal('sha-missing', `commit ${sha} does not exist in this repository`);
+    const evidence = [stateRef, ...shas];
+    const cells = setSegment(ctx, row.cells, { piece, word, evidence });
+    const what = ctx.lang === 'pt'
+      ? `${id}${piece ? ` (${piece})` : ''} fechada pelo estado do coordinator: plano concluído e portão final aprovado`
+      : `${id}${piece ? ` (${piece})` : ''} closed from the coordinator state: plan completed, final gate passed`;
+    const logEdit = logRow(ctx, { deliverable: id, what, evidence, date: ctx.today });
+    commitEdits(ctx, new Map([['state', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]], ['log', [logEdit]]]));
+    return;
+  }
+  // Não fechado: só sobe para plan, nunca rebaixa nem grava a posição 6.
+  const segs = parseStatusSegments(row.cells[1]);
+  const idx = piece === undefined ? (segs.length === 1 ? 0 : -1) : segs.findIndex((sg) => sg.label === piece);
+  const cur = idx >= 0 ? ds.indexOf(segs[idx].word) + 1 : 0;
+  if (idx < 0 || cur < 1 || cur >= 3) {
+    commitWrites(ctx, new Map());
+    return;
+  }
+  const cells = setSegment(ctx, row.cells, { piece, word });
+  commitEdits(ctx, new Map([['state', [{ op: 'replace', line: row.line, text: serializeRow(cells) }]]]));
+}
+
 const COMMANDS = {
+  'close-from-state': closeFromState,
+
   status(ctx) {
     const { roadmap, parsed } = ctx;
     const b = parsed.blocks.state;
@@ -1178,7 +1282,7 @@ export function run(argv, io = {}) {
     const parsed = parseRoadmapTexts({ strategy: roadmap.strategy, files: roadmap.files });
     const lang = String(roadmap.config.language || '').toLowerCase().startsWith('pt') ? 'pt' : 'en';
     ctx = {
-      folder, args, opts, roadmap, parsed, git, lang, today: date, result: {}, warnings, hooks: io.hooks || {}, raws: new Map(), changed: [],
+      folder, args, opts, flags, roadmap, parsed, git, lang, today: date, result: {}, warnings, hooks: io.hooks || {}, raws: new Map(), changed: [],
     };
     if (ctx.hooks.afterLoad) ctx.hooks.afterLoad(folder);
     COMMANDS[command](ctx);

@@ -14,7 +14,7 @@ claude plugin install productivity-tools@claude-play
 | Skill | Trigger | Description |
 |-------|---------|-------------|
 | deep-researcher | in-depth investigation, technical deep-dives, market or competitive analysis, architectural research | Multi-source research on authoritative sources, written as a cited Markdown report |
-| plan-coordinator | executing a multi-step plan from `docs/plans/` or `docs/superpowers/plans/` with subagents, per-step model-tier routing, resuming from the progress file | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
+| plan-coordinator | executing a multi-step plan from `docs/plans/<topic>/plan.md` with subagents, per-step model-tier routing, resuming from `progress.json` | Routes plan steps to agents and model tiers by complexity, groups them into conflict-free parallel waves, and runs them with shared-brief context handoffs |
 | report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT, gap and risk analysis of an existing report, turned into a phased roadmap document. No extra dependencies |
 | roadmap-planner | "plan the roadmap for X", "break this initiative into deliverables", "we need a roadmap" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker. Full mode for multi-week initiatives, light mode for small ones |
 | roadmap-tracker | an existing roadmap folder (`roadmap.config.json`) after an event: a decision (DEC), blocker (BLQ), closed piece or wave, status request | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
@@ -54,7 +54,7 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 | report-analyzer | `docs/roadmaps/roadmap-<topic>-YYYY-MM-DD.md` |
 | roadmap-planner | `docs/plans/roadmap-<topic>/` (tracking folder) + `docs/plans/<date>-roadmap-<topic>.md` (strategy) |
 | roadmap-tracker | Updates the existing roadmap folder in place; strategy revisions written only after approval |
-| plan-coordinator | `docs/plans/<topic>/progress-<plan>.md` |
+| plan-coordinator | `docs/plans/<topic>/progress.json` (+ `briefs/`) |
 | mermaid-designer | Inline or `docs/diagrams/<topic>.md` |
 | excalidraw-designer | `docs/diagrams/<name>.excalidraw` |
 
