@@ -266,3 +266,83 @@ Transcritas como recebidas; várias aparecem duas vezes, em redações ligeirame
 ### Falha da execução
 
 external task 7 awaits authorization (E17:T7@41d16895)
+
+## Execução de 2026-11-12 (passada com Tarefas 7 e 8 e portão final, falhou)
+
+Registro transcrito dos dados do orquestrador, sem resumir. Estado final: falha, `final has open issues after 2 fixes: 1. [critical/defeito] dirty working tree (uncommitted files)`.
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | regras do sandbox para o preflight 1.7.0 e árvore da semeadura arquivada | RESUMED (already reviewed) | - |
+| 2 | painel do registro por CLI por tentativa | RESUMED (already reviewed) | - |
+| 3 | metas de prosa de E4 e E22 | RESUMED (already reviewed) | - |
+| 4 | ferramenta do ponto de medição checkpoint.mjs | RESUMED (already reviewed) | - |
+| 5 | commit de versão M | RESUMED (already reviewed) | - |
+| 6 | saída dos gates em M | DONE | 9 |
+| 7 | branch de volta volta/productivity-tools-1.7.1 (externa) | DONE_WITH_CONCERNS | 3 |
+| 8 | roteiro do dono e lista de ratificação | DONE | 2 |
+
+### Rodadas de revisão por estágio ou tarefa
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante na lista de bloqueantes (vazia em todos); a única pendência é a do estágio final, abaixo.
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, - | nenhum | 3 | nenhuma |
+| plan | 1: opus, - | nenhum | 0 | nenhuma |
+| T6:spec | 1: sonnet, - | nenhum | 0 | nenhuma |
+| T6:quality | 1: sonnet, - | nenhum | 0 | nenhuma |
+| T7:spec | 1: opus, - | nenhum | 2 | nenhuma |
+| T7:quality | 1: opus, - | nenhum | 2 | nenhuma |
+| T8:spec | 1: sonnet, - | nenhum | 0 | nenhuma |
+| T8:quality | 1: sonnet, -; 2: sonnet, correção sonnet | nenhum | 0 | nenhuma |
+| final | 1: opus, -; 2: opus, correção sonnet; 3: opus, correção sonnet | nenhum na lista de bloqueantes | 2 | 1 critical (ver abaixo) |
+
+### Pendências (não resolvidas)
+
+- final, critical, defeito: dirty working tree (uncommitted files).
+
+### Riscos aceitos
+
+- T4:quality, important, pelo-plano, `tools/measure/checkpoint.test.mjs`: Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The plan said stop and return to the orchestrator; the implementer instead committed with the test flagged todo (disclosed). Consequence: with the real arms, any run with the plano-semeado class always yields 'inconclusivo (braço defasado)' and blocks (exit 1), until the owner decides how to fix the arm or the matcher. The todo must be removed when decided.
+
+### Concerns
+
+1. T7: G1 on the return branch exits 1 with 1 failure out of 777 tests: 'E25 AC5: the real productivity-tools SKILL.md declares the grant' in plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs:770. It expects Workflow(productivity-tools:release-workflow) in the productivity-tools SKILL.md, which does not exist on tag 1.6.0. The failure is inside another plugin, so per the plan it was not worked around. Criterion 4 is not fully met, and the owner has to decide whether to accept it or adjust that marketplace-tools test on the return branch. It is recorded in volta.md. Judgment call: I also reverted the two .claude docs files to the tag, because they describe code the tag does not have.
+2. T8: G2 to G5 were not re-run in this task, because only docs and one test file changed and the plan asks only for the task test and G1. The marketplace add syntax with "<repo>#<ref>" in the roteiro comes from the spec and DEC-056 and was not run, since no external effect was allowed. The roteiro tells the owner to stop and record the finding if the CLI rejects it. The 30 pending rows include repeats of the same decisions (DEC-300/314/326 and so on). The file says so and recommends ratifying each id or rejecting the repeats as duplicates without changing content.
+3. final fix1: The approved plan (Task 2, plan decision 3) and ratificacao.md ('plano 3') still say plan-only expects the E5 row to be 'plan'. I did not edit them, per the instruction. The code now reads E1 for plan-only, so the owner may want to correct 'plano 3' in the ratification list. The panel fields in the attempt JSON keep the names e5Status and e5Evidence, although for plan-only they hold the E1 row. This avoids a rename that would ripple through the tests and the plan docs. G2 to G5 were not re-run because only tools/measure files changed.
+
+### Gates
+
+Nenhum dado de gate estruturado fornecido nesta passada; os resultados de gate aparecem nos concerns acima (T7: G1 na branch de volta com 1 falha em 777 testes; T8 e final fix1: G2 a G5 não rerodados).
+
+### Entradas humanas
+
+Transcritas como recebidas; várias aparecem duas vezes, em redações ligeiramente diferentes, e foram mantidas.
+
+| O quê | Bloqueante (blq) | Workaround |
+|---|---|---|
+| Execuções pagas do ponto de medição (gasto em dinheiro), das quais dependem os critérios 1 e 6 e o portão do critério 2 | não | Arnês, versão, branch de volta, roteiro e lista de ratificação entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297) |
+| Ratificação em lote das decisões do executor de E17 (critério 3) | não | ratificacao.md entregue com respostas recomendadas |
+| Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5) | não | Passos ficam no roteiro do dono; nenhuma tarefa do plano os executa |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md | não | Branch e volta.md produzidos pela Tarefa 7 já autorizada; aceite fica para o dono |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md) | não | Não bloqueia a preparação; é pré-condição da publicação |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; a preparação segue |
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas | não | Arnês, versão, branch de volta, roteiro e lista de ratificação entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297). |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Passos completos no roteiro do dono; nenhuma tarefa do plano os executa. |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md | não | Branch de volta e volta.md preparados; a Tarefa 7 (externa) fica retida até o dono autorizar em pessoa. |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir | não | Pré-condição só da publicação; a preparação segue. |
+| Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\\|', workflow has '\\\\\\\\\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint. | não | Test marked todo with a comment; checkpoint.mjs reports 'inconclusivo (braço defasado)' for the plan class and exits 1; arms were not edited. |
+
+### External effects run
+
+Uma linha por entrada de externalRun (item, título ou comando, status, revisada). Sem linhas de execução anterior neste arquivo.
+
+- E17:T7, branch de volta volta/productivity-tools-1.7.1 (externa), status DONE_WITH_CONCERNS, revisada: sim.
+
+### Falha da execução
+
+final has open issues after 2 fixes:
+1. [critical/defeito]  dirty working tree (uncommitted files)
