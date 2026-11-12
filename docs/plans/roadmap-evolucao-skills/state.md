@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
-| E17 | nao-iniciado | - | Aguardar E15 e E18 |
+| E17 | plano | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após plano |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
@@ -68,6 +68,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E25: critério 4 emendado (DEC-282): falta rodar, no commit anterior à concessão, o lançamento com a regra exata em .claude/settings.local.json e registrar que começa sem diálogo; a recusa sem regra já tem evidência.
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
 - (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
+- (dono) Execuções pagas do ponto de medição (gasto em dinheiro); critérios 1 e 6 e o portão do critério 2 dependem delas
+- (dono) Ratificação em lote das decisões do executor (critério 3)
+- (dono) Publicação (critérios 2 e 5): envio da tag productivity-tools--v1.6.0, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md
+- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md)
+- (dono) Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
 <!-- /roadmap:pending -->
 
 ## Em andamento

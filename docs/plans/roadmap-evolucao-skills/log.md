@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | E17 passou para plano | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E25 | Roteiro B parado: instalação a partir da worktree criou o cache 1.6.0 com a concessão e a chave workflows, mas a pasta descartável não tem conta (loggedIn false); nenhuma credencial copiada. settings.json do usuário inalterado; skipWorkflowUsageWarning não apareceu. | `e25-dono/cfg, e25-dono/hash-before.txt` |
 | 2026-11-12 | E25 | Critério 4, roteiro A, sessão interativa no commit anterior à concessão: o diálogo diz que o script de 213.337 caracteres não pode ser mostrado e oferece só "No". Critério emendado (DEC-282, estratégia v1.5); falta rodar o lançamento com a regra exata. | `e25-dono/c4-A-s1.snap06-workflow-dialog.txt` |
 | 2026-11-12 | E25 | Critério 6 conferido por agente delegado (roteiro A, modo padrão, sem regra): workflow lançado pelo nome, permission_denials vazio, journal criado, nenhuma regra gravada; controle sem concessão negado. Sem interface o preflight precisa de Bash(git:*) e Bash(node:*). | `e25-dono/c6-A-com2.json, e25-dono/c6-A-ctl.json` |
