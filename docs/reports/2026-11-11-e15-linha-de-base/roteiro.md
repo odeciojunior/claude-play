@@ -42,6 +42,8 @@ Como retomar após uma parada (negação de permissão, orçamento, queda): corr
 
 Pendente do dono em `state.md`; faça antes das tentativas de detecção. A escolha da execução é sua; o executor não a faz.
 
+Modo de medição (DEC-279): `plano-semeado-A` e `plano-semeado-B` rodam pelo harness de etapa (cópia do prompt do workflow 1.6.0, commit 3fbb59b, braço `atual`, 5 execuções por artefato); `codigo-semeado-A` e `codigo-semeado-B` seguem pelo pipeline completo. O condutor já monta o comando de plano com a forma `node tools/measure/run-batch.mjs --variant plano-semeado-A --runs 5 ... --stage plan-review --arm atual --from-run <pasta-aprovada>` (o `--dry-run` do passo 4 mostra). Tentativas de plano em modo pipeline não entram na classe; o consolidador as mostra só como taxa de reescrita (DEC-051). O comparador devolve inconclusivo se os dois lados diferem no modo.
+
 1. Escolha uma tentativa de `completo` que aprova (E5 integrado em `release/sandbox` do sandbox daquela tentativa). O sandbox fica sob `<work>` (a pasta exata consta na saída do lançador).
 2. Crie uma árvore dessa branch fora do repositório:
 

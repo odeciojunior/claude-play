@@ -66,8 +66,8 @@ test('plan order and counts', () => {
     { variant: 'coordinator', runs: 3 },
     { variant: 'completo', runs: 3 },
     { variant: 'parada-retomada', runs: 3 },
-    { variant: 'plano-semeado-A', runs: 5 },
-    { variant: 'plano-semeado-B', runs: 5 },
+    { variant: 'plano-semeado-A', runs: 5, stage: 'plan-review', arm: 'atual' },
+    { variant: 'plano-semeado-B', runs: 5, stage: 'plan-review', arm: 'atual' },
     { variant: 'codigo-semeado-A', runs: 5 },
     { variant: 'codigo-semeado-B', runs: 5 },
   ]);
@@ -336,6 +336,55 @@ test('the extra-attempt cap is per invocation (DEC-195)', async () => {
     const r2 = await runBaseline(opts, second);
     assert.deepEqual(second.calls.map((c) => c.runs), [5, 5]);
     assert.equal(r2.exitCode, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('dry run emits the stage harness options only for the plan class', () => {
+  const s = setup();
+  try {
+    const cmds = dryRunCommands(baseOpts(s, { fromRun: '/pasta' }));
+    for (const c of cmds) {
+      const plan = c.includes('--variant plano-semeado');
+      assert.equal(c.includes('--stage plan-review --arm atual'), plan, c);
+      if (plan) assert.ok(c.includes('--from-run /pasta'), c);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('existingValid counts by mode: stage entries only harness aggregates, others only pipeline', () => {
+  const s = setup();
+  try {
+    writeAggregate(s.out, 'a-1', { variant: 'plano-semeado-A', valid: 2 });
+    writeAggregate(s.out, 'a-2', { variant: 'plano-semeado-A', valid: 3, harness: { stage: 'plan-review', arm: 'atual' } });
+    writeAggregate(s.out, 'a-3', { variant: 'plano-semeado-A', valid: 4, harness: { stage: 'plan-review', arm: 'outro' } });
+    writeAggregate(s.out, 'a-4', { variant: 'plano-semeado-A', valid: 5, harness: { stage: 'spec-review', arm: 'atual' } });
+    const stage = BASELINE_PLAN.find((p) => p.variant === 'plano-semeado-A');
+    assert.equal(existingValid(s.out, 'plano-semeado-A', stage), 3);
+    assert.equal(existingValid(s.out, 'plano-semeado-A', { variant: 'plano-semeado-A' }), 2);
+    assert.equal(existingValid(s.out, 'plano-semeado-A'), 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('the conductor passes stage and arm to runBatch for the plan class and resumes from harness aggregates only', async () => {
+  const s = setup();
+  try {
+    writeAggregate(s.out, 'pipe', { variant: 'plano-semeado-A', valid: 5 });
+    writeAggregate(s.out, 'h', { variant: 'plano-semeado-B', valid: 2, harness: { stage: 'plan-review', arm: 'atual' } });
+    const deps = makeDeps(s);
+    await runBaseline(baseOpts(s, { only: ['plano-semeado-A', 'plano-semeado-B', 'tracker'], fromRun: '/pasta-inexistente' }), { ...deps, seedSourceOf: () => {}, makeScenario: async () => {} });
+    const byVariant = Object.fromEntries(deps.calls.map((c) => [c.variant, c]));
+    assert.equal(byVariant['plano-semeado-A'].runs, 5);
+    assert.equal(byVariant['plano-semeado-A'].stage, 'plan-review');
+    assert.equal(byVariant['plano-semeado-A'].arm, 'atual');
+    assert.equal(byVariant['plano-semeado-B'].runs, 3);
+    assert.equal(byVariant['plano-semeado-B'].fromRun, '/pasta-inexistente');
+    assert.equal(byVariant.tracker.stage, undefined);
   } finally {
     s.done();
   }

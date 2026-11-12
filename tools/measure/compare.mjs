@@ -78,6 +78,11 @@ function detectionFor(cls, before, after, { margin, attempts }) {
   // Applicability comes from the variant, not from the outcomes: attempts that are all invalid leave no outcomes.
   const seeded = seededClass(before.variant) === cls || seededClass(after.variant) === cls;
   if (!seeded && b.reviewer + a.reviewer === 0) return { verdict: 'nao-aplicavel' };
+  // Two modes (stage harness vs full pipeline, or different stages) do not measure the same thing: never compare their rates.
+  if (seeded && before.harness?.stage !== after.harness?.stage) {
+    const mode = (agg) => (agg.harness?.stage ? `harness ${agg.harness.stage}` : 'pipeline completo');
+    return { verdict: 'inconclusivo', missing: 0, modeMismatch: true, reason: `modo de medição diferente: antes ${mode(before)}, depois ${mode(after)}` };
+  }
   const missing = Math.max(0, attempts - b.valid, attempts - a.valid);
   const rate = (t) => (t.capturado + t.perdido ? t.capturado / (t.capturado + t.perdido) : null);
   const sides = { before: { capturado: b.capturado, perdido: b.perdido, indeterminado: b.indeterminado }, after: { capturado: a.capturado, perdido: a.perdido, indeterminado: a.indeterminado } };
@@ -161,7 +166,7 @@ export function compare(before, after, { margin = 6, attempts = 40, bytesToleran
   for (const cls of DETECTION_CLASSES) {
     const d = detectionFor(cls, before, after, { margin, attempts });
     detection[cls] = d;
-    if (d.verdict === 'caiu' || (d.verdict === 'inconclusivo' && d.missing > 0)) detectionBlocks = true;
+    if (d.verdict === 'caiu' || (d.verdict === 'inconclusivo' && (d.missing > 0 || d.modeMismatch))) detectionBlocks = true;
   }
 
   return {

@@ -1,6 +1,12 @@
 {
   "note": "[fab] baseline fixture plano-semeado-A",
   "variant": "plano-semeado-A",
+  "harness": {
+    "stage": "plan-review",
+    "arm": "atual",
+    "armSource": "copia-do-prompt",
+    "workflowCommit": "fab0000000000000000000000000000000000016"
+  },
   "requested": 5,
   "valid": 5,
   "invalid": 0,

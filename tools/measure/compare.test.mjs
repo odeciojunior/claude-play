@@ -238,3 +238,20 @@ test('CLI refuses an input without variant or attempts, and a pair of different 
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('detection is inconclusive and blocks when the two sides differ in measurement mode', () => {
+  const mk = (variant, harness) => ({
+    variant,
+    attempts: Array.from({ length: 40 }, (_, i) => ({ n: i + 1, status: 'valid', counters: {}, outcomes: [{ id: 'P1', class: 'plan', detectedBy: 'reviewer', outcome: 'capturado' }] })),
+    ...(harness ? { harness } : {}),
+  });
+  const h = { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt' };
+  const same = compare(mk('plano-semeado', h), mk('plano-semeado', h));
+  assert.equal(same.detection.plan.verdict, 'nao-caiu');
+  for (const [b, a] of [[h, undefined], [undefined, h], [h, { ...h, stage: 'spec-review' }]]) {
+    const r = compare(mk('plano-semeado', b), mk('plano-semeado', a));
+    assert.equal(r.detection.plan.verdict, 'inconclusivo');
+    assert.match(r.detection.plan.reason, /modo de medição diferente/);
+    assert.equal(r.bloqueia, true);
+  }
+});
