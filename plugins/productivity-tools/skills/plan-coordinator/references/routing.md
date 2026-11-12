@@ -18,47 +18,34 @@ Unknown information scores **1**, not 0 — and flag it in the map report (SKILL
 
 ## 2. Map score to route
 
-| Score | Route | Typical work |
-|-------|-------|--------------|
-| 0–2 | **Inline** if it meets the inline limits below; else **haiku** | Renames, config values, doc edits, boilerplate from an existing example, running a command and summarizing |
-| 3–5 | **sonnet** | Typical feature work, tests for existing code, refactors inside one module, bug fixes with a clear repro |
-| 6–10 | **opus** only if Blast radius = 2 **and** Ambiguity = 2; otherwise **sonnet** with `effort: high` | Cross-module design, ambiguous specs, concurrency/security-sensitive logic, migrations, debugging without a repro |
+The route (tier, effort, reviewer, gate) is the one computed by `route` in `lib/routing.mjs`. `plan-tool emit` and `plan-tool map` return it, and `init` copies it into `progress.json`; this file does not repeat the table and the coordinator never re-scores a step. Read the dimensions above to understand a route, not to recompute it.
 
-**Split, don't promote:** a step that would touch 5 or more files is split into steps of at most 4 files each (disjoint file lists or a declared dependency) before it is scored. Size alone never sends a step to opus. Mechanical-ceiling work (§3.2) is exempt: it keeps its directory bundles.
+**Split, don't promote:** a step that would touch 5 or more files is split into steps of at most 4 files each before it is scored. Size alone never sends a step to opus.
 
-**Reasoning effort per tier** (not the step-effort hours in the progress file). Pass it as the `Agent` call's `effort`, or set it in the agent's frontmatter: **haiku → `low`**, **sonnet → `medium`**, **opus → `medium`**. A step scored 6–10 that is routed to sonnet runs with `high`. `high` is otherwise reserved for the final whole-branch gate (§4) and for a capability-shortfall retry (§5 step 1). Inline steps run at the orchestrator's own effort.
+**Inline** is the launch mode of the `inline-start` event: haiku, not external, no gate, at most 3 per plan, run between waves with nothing in flight. A failed inline step goes back as a delegated sonnet step (`inline-result --value fail`).
 
-**Inline limits** — all must hold: the files are docs/config or already read in this conversation, ≤2 files, <~50 changed lines, no dependency install/codegen, no test run longer than a single quick command, Blast radius ≤ 1, and at most 3 inline steps per plan. Inline skips subagent cold start but spends orchestrator context, which is why it's capped. Inline steps run **between waves** (Wave loop item 10 of the delegation protocol), never while agents are in flight — an inline edit mid-wave is an undeclared parallel writer.
+## 3. Overrides
 
-## 3. Overrides (apply after the table, in this order)
+`route` applies them in its own order; the coordinator only reads the outcome.
 
-1. **Risk floor (always wins):** Blast radius = 2 → implementation at least sonnet **and** a review gate by an opus-tier reviewer. No later override or self-approval decision can take a step below this.
-   External effect: an external step counts as Blast radius 2 (opus pre-launch review and opus review gate, §4), is never Inline, and never starts without a recorded authorization (SKILL.md Step 8). It launches at most once and takes no retry, fix-up or escalation; its states are in delegation-protocol, § Step lifecycle.
-2. **Mechanical ceiling:** high Scope, Ambiguity = 0, Reasoning = 0 and Blast radius ≤ 1 (bulk rename of internal names, repetitive edits, formatting, codemod-like changes) → haiku, split into parallel bundles by directory. With Blast radius 2 the floor applies instead: sonnet, bundled, plus review.
-3. **Verification-heavy:** Verifiability = 2 and Reasoning ≥ 1 → one tier up; nothing will catch a subtle mistake. A step scored 6–10 does not reach opus through this override: it stays on sonnet with `effort: high` and gets a review gate.
-4. **Research/read-only:** locating code or answering "where/how is X" → `Explore` (read-only, fast); design questions → `Plan` or an opus `general-purpose` agent.
+1. **Risk floor:** Blast radius 2 means at least sonnet and a gate with an opus reviewer, whatever `reviewTier` says. A true gate always means an opus reviewer in the coordinator.
+   1. **External effect (DEC-206):** an external step counts as Blast radius 2 before the total and the table. It runs on sonnet at least, with an opus pre-launch review and an opus gate, never inline, and launches at most once, only with a recorded authorization. It takes no retry, fix-up or escalation; its states are in delegation-protocol, § Step lifecycle.
+2. **Mechanical ceiling:** high Scope with Ambiguity 0, Reasoning 0 and Blast radius <= 1 runs on haiku in directory bundles; with Blast radius 2 the floor applies.
+3. **Verification-heavy:** Verifiability 2 with Reasoning >= 1 raises one tier; a step scored 6-10 stays on sonnet with `effort: high` and gets a gate.
+4. **Research/read-only:** locating code or answering "where/how is X" goes to `Explore`; design questions to `Plan` or an opus `general-purpose` agent.
 
-**Passing the tier:** always pass the routed tier as the `Agent` tool's `model` parameter — it's the only reliable way for built-in and plugin agents, whose model you usually can't read. Two exceptions: a project/user agent whose frontmatter pins `model` that you decide to keep (record why), and `fork`, which always inherits the orchestrator's model and so cannot be down-tiered. Only fork when the step needs unwritten conversation context (see the Fork vs fresh section of the delegation protocol, linked from SKILL.md).
+**Passing the tier:** pass the tier from `launch` as the `Agent` call's `model` and its effort as `effort`. Exceptions: a project/user agent whose frontmatter pins `model` that you decide to keep (record why), and `fork`, which inherits the orchestrator's model. Fork only when the step needs unwritten conversation context.
 
 ## 4. Review gates
 
-Add a separate review step (read-only reviewer agent, e.g. a `code-reviewer` type if one exists, else `general-purpose` told not to edit) when:
+A gate is the `gate` field of the step in `progress.json`; it is set by `route`, and the reviewer is a read-only agent told not to edit.
 
-- the risk floor fired, or
-- score ≥ 7, or
-- a haiku step writes code other steps build on **and** no automated check fully proves it (Verifiability ≥ 1). A cheap implementation plus a strong review is usually cheaper than an opus implementation.
+- **Reviewer tier = executor tier or above, never below.** Per-step gates run on opus (`effort: medium`) without measured evidence for another model; the final whole-branch review is opus with `effort: high`.
+- A gated step is done only after `review-result --value pass`; its dependents wait for that, and its handoff is rewritten after any fix-up.
+- The reviewer gets the step card, the executor's report and the changed file paths, never the executor's transcript. Its verdict is PASS or concrete defects.
+- Defects go back to the same executor via `SendMessage` (`Explore` and `Plan`: a fresh agent). At most 2 fix-up rounds at the same tier; the third round runs on opus (§5 step 3). An external step has no fix-up.
 
-Rules:
-
-- **Reviewer tier = executor tier or above, never below.** Per-step review gates run on opus (`effort: medium`); do not move them to another model without measured evidence; the final whole-branch review is always opus with `effort: high`.
-- A gated step is **done** only after the reviewer's PASS. Its dependents don't start before that, and its Handoff is (re)written after any fix-up.
-- The reviewer gets the step card, the executor's report and the changed file paths — never the executor's transcript. Its verdict is PASS or a list of concrete defects.
-- Defects go back to the **same** executor via `SendMessage` (`Explore` and `Plan`: a fresh agent). **At most 2 fix-up rounds** (same tier) — a third defect list is a capability shortfall (§5 step 3), and the third round runs on opus. This holds at every executor tier and takes precedence over §5 step 3's one-tier-up. An external step has no fix-up (§3.1).
-
-**External step: two opus gates.** Both are read-only, run at `effort: medium`, and never cause the effect themselves. Their outcomes are in delegation-protocol, § Step lifecycle.
-
-- **Pre-launch review** (SKILL.md Step 8 item 4), before the authorization question and before launch. It gets the Shared Brief, the step card and the plan's text of the step, and returns PASS or concrete defects. It checks that the card states the exact effect and its target, nothing broader than the step; how a duplicate is avoided or detected; and how the result will be verified. A parameter that comes from an upstream handoff is named in the card.
-- **Review gate after the effect**, as above: it checks the result of a PASS report, the only thing reviewed after launch.
+**External step: two opus gates**, read-only, at `effort: medium`, never causing the effect. The pre-launch review (SKILL.md Step 8 item 4) runs before the authorization question and launch, and returns PASS or defects: the card states the exact effect and target, how a duplicate is avoided or detected, and how the result is verified. The review gate after the effect checks the result of a PASS report.
 
 ## 5. Escalation ladder (on FAIL, BLOCKED, or exhausted review rounds)
 
@@ -66,14 +53,14 @@ Non-external steps only; see delegation-protocol, § Step lifecycle.
 
 1. **Diagnose first.** Read the report: spec gap, environment problem, or capability shortfall? For a shortfall, try a higher per-call `effort` on the `Agent` call before a tier bump.
 2. **Spec gap / environment** → fix the card or environment and retry **same tier**, via `SendMessage` to the same agent (Explore/Plan: fresh agent, same tier). One such retry per step.
-3. **Capability shortfall** (wrong approach, looping, shallow fix) → retry **one tier up** with a fresh agent, including the failed attempt's report as "what was tried and why it failed". Inline → sonnet (skip haiku: the step already proved harder than it looked). Already at opus → one fresh opus retry with the failure report and a narrowed card.
+3. **Capability shortfall** (wrong approach, looping, shallow fix) → retry **one tier up** (`launch --steps n --tier <tier>`) with a fresh agent, including the failed attempt's report as "what was tried and why it failed". Inline → sonnet (skip haiku), which `inline-result --value fail` does. Already at opus → one fresh opus retry with the failure report and a narrowed card.
 4. **Still failing after that** (second failure at opus), or any failure needing a decision → stop that branch: hold the step with `Open question: Step N: <exact question and what each answer does>` under Manual Actions (delegation-protocol, § Step lifecycle) and record it in Issues & Decisions.
 
 Never resend an identical prompt at an identical tier.
 
 ## 6. Calibrate as you go
 
-Record `tier · attempts · outcome` per step in the progress file. Before each wave, re-check the remaining waves:
+The state records `tier · attempts · outcome` per step. Before each wave, re-check the remaining waves:
 
 - 2+ failures at a tier for similar steps → bump the remaining similar steps one tier.
 - A sonnet step that turned out trivial doesn't justify down-tiering others; only a pattern does.

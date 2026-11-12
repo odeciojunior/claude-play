@@ -376,13 +376,13 @@ test('processo: status em texto e em JSON, mesmo código de saída', (t) => {
   assert.equal(spawnCli('status', f.dir, '--bogus', '--json').status, 2);
 });
 
-test('processo: --help lista os 18 comandos', () => {
+test('processo: --help lista os 19 comandos', () => {
   const r = spawnCli('--help');
   assert.equal(r.status, 0, r.stderr);
   const names = ['status', 'brief', 'next-id', 'pending-decisions', 'verify-commit', 'log', 'set-status', 'integrate',
     'block-open', 'block-close', 'prune', 'refresh-checker', 'add-decision', 'add-pending', 'inflight-add',
-    'inflight-remove', 'ratify', 'reject'];
-  assert.equal(names.length, 18);
+    'inflight-remove', 'ratify', 'reject', 'close-from-state'];
+  assert.equal(names.length, 19);
   for (const n of names) assert.ok(r.stdout.includes(n), n);
 });
 
@@ -1295,4 +1295,162 @@ test('next-id ignora a cópia vendorizada do checker na raiz da pasta (emenda a 
   fs.mkdirSync(path.join(f.dir, 'notes'));
   fs.writeFileSync(path.join(f.dir, 'notes', 'check-roadmap.mjs'), '// DEC-50\n');
   assert.equal(nextId(f.dir, path.join(f.dir, 'strategy.md'), 'DEC'), 'DEC-051');
+});
+
+// ---------- close-from-state (E7 T6): o tracker fecha pelo progress.json do coordinator ----------
+
+import { initState, applyEvent, STATE_SCHEMA, STEP_STATUSES } from '../../../lib/progress-state.mjs';
+import { emitPlan } from '../../../scripts/plan-tool.mjs';
+import { PROGRESS_CONTRACT } from './roadmap.mjs';
+
+const PLAN_PATH = path.join(here, '..', '..', '..', 'scripts', 'fixtures', 'plan-tool', 'plan.md');
+const NOW6 = '2026-11-12T10:00:00.000Z';
+
+// Estado do plano de exemplo levado a completed só com applyEvent.
+function completedState(sha) {
+  const emitted = emitPlan(fs.readFileSync(PLAN_PATH, 'utf8'), { planPath: PLAN_PATH });
+  assert.deepEqual(emitted.errors, []);
+  let s = initState(emitted.out, { planPath: 'plan.md', now: NOW6 });
+  const ev = (event) => {
+    const r = applyEvent(s, event, NOW6);
+    assert.equal(r.ok, true, `${JSON.stringify(event)}: ${r.code} ${r.message}`);
+    s = r.state;
+  };
+  ev({ type: 'approve-map' });
+  const waves = s.waves.map((w) => w.n);
+  for (const w of waves) {
+    for (const n of s.waves.find((x) => x.n === w).tasks) {
+      const st = s.steps.find((x) => x.n === n);
+      if (st.external) {
+        ev({ type: 'prelaunch-review', step: n, value: 'pass' });
+        ev({ type: 'authorize', step: n });
+      }
+      ev({ type: 'launch', steps: [n] });
+      ev({ type: 'report', step: n, value: 'pass' });
+      if (s.steps.find((x) => x.n === n).status === 'review-owed') ev({ type: 'review-result', step: n, value: 'pass' });
+      ev({ type: 'commit', step: n, sha });
+    }
+    if (s.run.waveGateOwed !== null) ev({ type: 'wave-gate', value: 'pass' });
+    if (w !== waves[waves.length - 1]) ev({ type: 'advance' });
+  }
+  ev({ type: 'final-gate', value: 'pass' });
+  assert.equal(s.run.status, 'completed');
+  return s;
+}
+
+// Repositório temporário com a fixture valid/ em <tmp>/docs/plans/roadmap-exemplo/ e um commit em main.
+function makeRepo6(t, { status } = {}) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'roadmap-close-'));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const dir = path.join(base, 'docs', 'plans', 'roadmap-exemplo');
+  fs.cpSync(validDir, dir, { recursive: true });
+  if (status) {
+    const f = path.join(dir, 'state.md');
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('| E1 | spec |', `| E1 | ${status} |`));
+  }
+  sh(base, 'init', '-q', '-b', 'main');
+  sh(base, 'add', '.');
+  sh(base, 'commit', '-q', '-m', 'init');
+  const sha = sh(base, 'rev-parse', 'HEAD');
+  const stateFile = path.join(dir, 'progress.json');
+  const writeState = (s, { bom = false, eol = '\n' } = {}) => {
+    const text = JSON.stringify(s, null, 2).replace(/\n/g, eol);
+    fs.writeFileSync(stateFile, (bom ? '﻿' : '') + text);
+  };
+  return { base, dir, sha, stateFile, writeState, read: (n) => fs.readFileSync(path.join(dir, n), 'utf8') };
+}
+
+const closeCli = (r, ...extra) => run(['close-from-state', r.dir, '--state', r.stateFile, ...extra, '--json']);
+const e1Row = (text) => lineSplit(text).find((l) => l.startsWith('| E1 |'));
+
+test('AC5: close-from-state closes a completed plan from the JSON', (t) => {
+  const r = makeRepo6(t);
+  const state = completedState(r.sha);
+  assert.equal(state.plan.id, 'E1');
+  assert.equal(state.plan.roadmap, 'docs/plans/roadmap-exemplo/');
+  r.writeState(state, { bom: true, eol: '\r\n' });
+  const logBefore = lineSplit(r.read('log.md')).length;
+  const out = closeCli(r, '--date', '2026-01-05');
+  assert.equal(out.exitCode, 0, JSON.stringify(out.output.errors));
+  assert.equal(out.output.result.decision, 'closed');
+  assert.equal(out.output.result.word, 'on-branch');
+  assert.equal(out.output.result.deliverable, 'E1');
+  const cells = splitRow(e1Row(r.read('state.md')));
+  assert.equal(cells[1], 'on-branch');
+  assert.ok(cells[2].includes('docs/plans/roadmap-exemplo/progress.json'), cells[2]);
+  assert.ok(cells[2].includes(r.sha), cells[2]);
+  const log = r.read('log.md');
+  assert.equal(lineSplit(log).length, logBefore + 1);
+  assert.ok(lineSplit(log).some((l) => l.includes('| E1 |') && l.includes(r.sha) && l.includes('2026-01-05')));
+});
+
+test('AC5: contract -- STATE_SCHEMA and statuses match PROGRESS_CONTRACT', () => {
+  assert.equal(STATE_SCHEMA, PROGRESS_CONTRACT.schema);
+  assert.deepEqual(STEP_STATUSES, PROGRESS_CONTRACT.statuses);
+  const state = completedState('a'.repeat(40));
+  for (const field of PROGRESS_CONTRACT.fields) {
+    const walk = (node, rest, where) => {
+      if (rest.length === 0) return;
+      let [key] = rest;
+      const many = key.endsWith('[]');
+      if (many) key = key.slice(0, -2);
+      assert.ok(node !== null && typeof node === 'object' && key in node, `${field}: missing "${key}" at ${where}`);
+      if (many) {
+        assert.ok(Array.isArray(node[key]) && node[key].length > 0, `${field}: ${key} is not a non-empty array`);
+        node[key].forEach((item, i) => walk(item, rest.slice(1), `${where}.${key}[${i}]`));
+      } else {
+        walk(node[key], rest.slice(1), `${where}.${key}`);
+      }
+    };
+    walk(state, field.split('.'), '$');
+  }
+});
+
+test('close-from-state not closed moves only to plan', (t) => {
+  const r = makeRepo6(t);
+  const state = completedState(r.sha);
+  state.steps[1].status = 'skip-manual';
+  r.writeState(state);
+  const out = closeCli(r);
+  assert.equal(out.exitCode, 0, JSON.stringify(out.output.errors));
+  assert.equal(out.output.result.decision, 'not-closed');
+  assert.equal(out.output.result.reasons.length, 1);
+  assert.equal(splitRow(e1Row(r.read('state.md')))[1], 'plan');
+  assert.equal(r.read('log.md'), fs.readFileSync(path.join(validDir, 'log.md'), 'utf8'));
+  // já em executing: não muda, nunca rebaixa
+  const r2 = makeRepo6(t, { status: 'executing' });
+  r2.writeState(state);
+  const before = snapshot(r2.dir);
+  const out2 = closeCli(r2);
+  assert.equal(out2.exitCode, 0, JSON.stringify(out2.output.errors));
+  assert.equal(out2.output.result.decision, 'not-closed');
+  assert.deepEqual(snapshot(r2.dir), before);
+});
+
+test('close-from-state --dry-run decides and writes nothing', (t) => {
+  const r = makeRepo6(t);
+  r.writeState(completedState(r.sha));
+  const before = snapshot(r.dir);
+  const out = closeCli(r, '--dry-run');
+  assert.equal(out.exitCode, 0, JSON.stringify(out.output.errors));
+  assert.equal(out.output.result.decision, 'closed');
+  assert.deepEqual(out.output.changed, []);
+  assert.deepEqual(snapshot(r.dir), before);
+});
+
+test('close-from-state refuses state-schema, roadmap-mismatch and deliverable-unknown', (t) => {
+  const cases = [
+    ['state-schema', (s) => { s.schema = 'progress/2'; }],
+    ['roadmap-mismatch', (s) => { s.plan.roadmap = 'docs/plans/outro/'; }],
+    ['deliverable-unknown', (s) => { s.plan.id = 'E9'; }],
+  ];
+  for (const [code, mutate] of cases) {
+    const r = makeRepo6(t);
+    const state = completedState(r.sha);
+    mutate(state);
+    r.writeState(state);
+    const before = snapshot(r.dir);
+    refused(closeCli(r), code);
+    assert.deepEqual(snapshot(r.dir), before, code);
+  }
 });
