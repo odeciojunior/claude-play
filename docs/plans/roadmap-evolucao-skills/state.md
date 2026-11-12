@@ -95,6 +95,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Publicação: avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Roteiros A e B de E25 antes da publicação
+- (dono) Execuções pagas do ponto de medição (critérios 1 e 6 e portão do critério 2), pelo dono ou orquestrador com autorização do dono
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3), incluindo a decisão 13
+- (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (commit a951ed5)
 <!-- /roadmap:pending -->
 
 ## Em andamento
