@@ -54,7 +54,7 @@ A deliverable (`E<n>`) is an outcome a stakeholder can verify, and it **ends at 
 | Dozens of deliverables | Over-decomposition: merge by outcome; the detail belongs in plans |
 | A deliverable with no `REQ` | Orphan work: find its requirement or drop it |
 
-Each deliverable lists **pieces**: vertical slices inside it, each shippable alone, in the order they will ship. Pieces are not tasks; tasks are for `superpowers:writing-plans`.
+Each deliverable lists **pieces**: vertical slices inside it, each shippable alone, in the order they will ship. Pieces are not tasks; tasks are for `plan-writer`.
 
 ## 3. Walking skeleton first
 

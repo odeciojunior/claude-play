@@ -1,6 +1,6 @@
 ---
 name: roadmap-tracker
-description: "Requires an existing roadmap folder (roadmap.config.json). Use when it needs updating after an event: roadmap status, a deliverable E<n> changed, a DEC or \"we decided\", a blocker (BLQ) opened or closed, a piece, wave or plan step closed, a branch integrated or deleted, a measurement or paid run, a release published, a new source or requirement, the end of a piece or phase (strategy revision), or a plan-coordinator \"wave N closed\" / \"plan completed\". Updates the tracking files in the working tree, keeps the vendored checker current, runs it, and proposes strategy revisions written only after approval. Never commits. Not for creating a roadmap (use roadmap-planner) or for task plans (use superpowers:writing-plans)."
+description: "Requires an existing roadmap folder (roadmap.config.json). Use when it needs updating after an event: roadmap status, a deliverable E<n> changed, a DEC or \"we decided\", a blocker (BLQ) opened or closed, a piece, wave or plan step closed, a branch integrated or deleted, a measurement or paid run, a release published, a new source or requirement, the end of a piece or phase (strategy revision), or a plan-coordinator \"wave N closed\" / \"plan completed\". Updates the tracking files in the working tree, keeps the vendored checker current, runs it, and proposes strategy revisions written only after approval. Never commits. Not for creating a roadmap (use roadmap-planner) or for task plans (use plan-writer)."
 ---
 
 # Roadmap Tracker

@@ -4,3 +4,6 @@
 # Measurement scenario text and reviewer prompt copies are seeded into sandboxes and counted in bytes: keep LF
 tools/measure/scenario/** text eol=lf
 tools/measure/arms/** text eol=lf
+
+# Trigger fixture that exercises the CRLF path of parseTranscript: keep CRLF in the working tree on every platform
+tools/measure/fixtures/trigger/wrong-skill-superpowers-off.jsonl text eol=crlf

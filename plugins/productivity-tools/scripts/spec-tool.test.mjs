@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { checkPureSource } from './embed.mjs';
 import { findDataBlocks, readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
-import { checkSpec, loadRoadmap } from './spec-tool.mjs';
+import { checkSpec, loadRoadmap, main, summarize, formatRecords } from './spec-tool.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(HERE, '..', 'lib', 'data-block.mjs');
@@ -416,6 +416,59 @@ test('emit/summary: invalid usage -> exit 2', () => {
   }
   assert.equal(runCli(['emit', FIXTURE_SPEC, '--roadmap']).status, 2);
   assert.equal(runCli(['summary', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]).status, 2);
+});
+
+function runMain(args) {
+  let stdout = '';
+  let stderr = '';
+  const status = main(args, { stdout: { write: (s) => { stdout += s; } }, stderr: { write: (s) => { stderr += s; } } });
+  return { status, stdout, stderr };
+}
+
+test('E20: summary without --lang is byte-identical to --lang pt and keeps the Portuguese headers', () => {
+  const a = runMain(['summary', FIXTURE_SPEC]);
+  const b = runMain(['summary', FIXTURE_SPEC, '--lang', 'pt']);
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(a.stdout, b.stdout);
+  assert.ok(a.stdout.includes('| ID | Decisão | Custo se errada | Reversível | Alcance | Contradiz | Para |'));
+  assert.ok(a.stdout.includes('## Efeitos externos'));
+});
+
+test('E20: summary --lang en prints English headers', () => {
+  const r = runMain(['summary', FIXTURE_SPEC, '--lang', 'en']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes('## Decisions'));
+  assert.ok(r.stdout.includes('| ID | Decision | Cost if wrong | Reversible | Scope | Contradicts | Stop |'));
+  assert.ok(r.stdout.includes('## People'));
+  assert.ok(r.stdout.includes('## External effects'));
+  assert.ok(!r.stdout.includes('Decisões'));
+});
+
+test('E20: summary --lang with an unknown or missing value is a usage error', () => {
+  for (const args of [['summary', FIXTURE_SPEC, '--lang', 'fr'], ['summary', FIXTURE_SPEC, '--lang']]) {
+    const r = runMain(args);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--lang/);
+  }
+});
+
+test('E20: --lang is refused outside summary', () => {
+  assert.equal(runMain(['check', FIXTURE_SPEC, '--lang', 'en']).status, 2);
+  assert.equal(runMain(['emit', FIXTURE_SPEC, '--lang', 'en']).status, 2);
+});
+
+test('E20: summary --json ignores --lang', () => {
+  const a = runMain(['summary', FIXTURE_SPEC, '--json']);
+  const b = runMain(['summary', FIXTURE_SPEC, '--json', '--lang', 'en']);
+  assert.equal(b.status, 0, b.stderr);
+  assert.equal(a.stdout, b.stdout);
+});
+
+test('E20: formatRecords holds decisions and people only', () => {
+  const out = formatRecords(summarize(fs.readFileSync(FIXTURE_SPEC, 'utf8')), { lang: 'en' });
+  assert.ok(out.includes('## Decisions'));
+  assert.ok(out.includes('## People'));
+  assert.ok(!out.includes('## External effects'));
 });
 
 const AGENT_FILE = path.join(HERE, '..', 'agents', 'spec-author.md');

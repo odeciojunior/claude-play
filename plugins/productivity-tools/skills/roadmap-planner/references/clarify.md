@@ -11,7 +11,7 @@ How `roadmap-planner` Step 2 finds what is ambiguous, decides what to ask, asks 
 5. Recommended answers
 6. Rounds and the stop rule
 7. Recording answers
-8. Boundary with brainstorming
+8. Boundary with spec-writer
 9. Light mode
 
 ## 1. Inputs
@@ -125,9 +125,9 @@ When the user picks an option other than the recommended one, note its cost in t
 
 Record only what the user actually answered. When the user accepts a recommendation, the decision is still the user's (Origin `user`). Requirements derived from an answer cite its `DEC`.
 
-## 8. Boundary with brainstorming
+## 8. Boundary with spec-writer
 
-Clarification stays at **roadmap level**: objectives, scope and non-goals, constraints, source conflicts, deliverable boundaries. Questions about how one deliverable should be designed (UI details, data model, algorithm, library choice) belong to `superpowers:brainstorming`, which runs per deliverable. Do not ask them now: record each as an entry in the strategy's "Open questions" section, prefixed `E<n>:` (the card template has no open-questions slot), not as a `DEC` and not as a blocker unless it gates another deliverable.
+Clarification stays at **roadmap level**: objectives, scope and non-goals, constraints, source conflicts, deliverable boundaries. Questions about how one deliverable should be designed (UI details, data model, algorithm, library choice) belong to `spec-writer`, which runs per deliverable. Do not ask them now: record each as an entry in the strategy's "Open questions" section, prefixed `E<n>:` (the card template has no open-questions slot), not as a `DEC` and not as a blocker unless it gates another deliverable.
 
 ## 9. Light mode
 
