@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","plugins":[{"name":"productivity-tools"}],"skills":["productivity-tools:plan-writer"],"slash_commands":["productivity-tools:plan-writer"]}
+
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"productivity-tools:roadmap-planner"}}]}}

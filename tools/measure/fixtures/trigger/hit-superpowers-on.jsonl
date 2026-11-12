@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","plugins":[{"name":"productivity-tools"},{"name":"superpowers"}],"skills":["productivity-tools:plan-writer","superpowers:brainstorming"],"slash_commands":["superpowers:brainstorming"]}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"productivity-tools:plan-writer"}}]}}
