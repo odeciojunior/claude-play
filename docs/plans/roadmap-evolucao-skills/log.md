@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | Critério 4 aceito por delegação do dono (Fable, precedente DEC-280/283): volta/productivity-tools-1.7.1 em a951ed5 parte de M; o plugin difere da tag 1.6.0 só na versão, linha 1 do checker e asserções; G1-G5 exit 0 em volta.md. | `volta.md, a951ed5` |
+| 2026-11-12 | E17 | DEC-368 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | DEC-365 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | DEC-366 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | DEC-314 a DEC-364 ratificadas pelo dono por delegação (Fable); repetem DEC-285 a DEC-299 e DEC-310, que prevalecem onde o texto diferir | `decisions.md` |
+| 2026-11-12 | E17 | DEC-300 a DEC-309 ratificadas pelo dono | `decisions.md` |
 | 2026-11-12 | E17 | E17 passou para na-branch | `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | E17 passou para na-branch | `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | E17 passou para executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
