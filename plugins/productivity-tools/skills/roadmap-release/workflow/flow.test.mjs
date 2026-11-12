@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -3267,4 +3267,75 @@ test('set-status do registro de documentação passa pela CLI real com a célula
     const r = spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// E25 AC3: the workflow is registered in the manifest, launched by name, and the skill declares the minimum version.
+const HERE3 = dirname(fileURLToPath(import.meta.url));
+const PLUGIN_ROOT3 = join(HERE3, '..', '..', '..');
+const lf3 = (s) => s.replace(/\r\n?/g, '\n');
+const pluginJson3 = () => JSON.parse(lf3(readFileSync(join(PLUGIN_ROOT3, '.claude-plugin', 'plugin.json'), 'utf8')));
+const skillText3 = () => lf3(readFileSync(join(HERE3, '..', 'SKILL.md'), 'utf8'));
+const skillParts3 = () => {
+  const m = skillText3().match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  return { front: m[1], body: m[2] };
+};
+const step4of = () => {
+  const { body } = skillParts3();
+  const m = body.match(/\n4\. \*\*Run the workflow\.\*\*[\s\S]*?(?=\n5\. \*\*)/);
+  assert.ok(m, 'step 4 found');
+  return m[0];
+};
+
+test('E25 AC3: plugin.json registers the release workflow file', () => {
+  const p = pluginJson3();
+  assert.ok(Array.isArray(p.workflows));
+  assert.ok(p.workflows.includes('./skills/roadmap-release/workflow/roadmap-release.js'));
+  assert.ok(existsSync(join(PLUGIN_ROOT3, 'skills/roadmap-release/workflow/roadmap-release.js')));
+  assert.equal(p.version, '1.6.0');
+});
+
+test('E25 AC3: the workflow name is release-workflow and is no skill\'s name', async () => {
+  const meta = readFileSync(join(HERE3, 'roadmap-release.js'), 'utf8').match(/export const meta = \{[\s\S]*?\bname:\s*'([^']+)'/);
+  assert.ok(meta);
+  assert.equal(meta[1], 'release-workflow');
+  const { RELEASE_WORKFLOW } = await import('../scripts/preflight.mjs');
+  assert.equal(RELEASE_WORKFLOW, `${pluginJson3().name}:${meta[1]}`);
+  const skillsDir = join(PLUGIN_ROOT3, 'skills');
+  const dirs = readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  assert.ok(!dirs.includes(meta[1]));
+  for (const d of dirs) {
+    const f = join(skillsDir, d, 'SKILL.md');
+    if (!existsSync(f)) continue;
+    const n = lf3(readFileSync(f, 'utf8')).match(/^name:\s*(.+)$/m);
+    if (n) assert.notEqual(n[1].trim().replace(/^["']|["']$/g, ''), meta[1]);
+  }
+});
+
+test('E25 AC3: the skill launches by that name', () => {
+  const { body } = skillParts3();
+  const step4 = step4of();
+  assert.ok(step4.includes('`name` set to `productivity-tools:release-workflow`'));
+  assert.ok(!/Call the `Workflow` tool with `scriptPath`/.test(step4));
+  const mentions = step4.split('\n').filter((l) => l.includes('scriptPath'));
+  assert.ok(mentions.length >= 1);
+  for (const l of mentions) {
+    assert.ok(/not found|unknown/.test(l) || /--add-dir/.test(l), 'scriptPath only in the fallback paragraph');
+  }
+  assert.ok(/not found|unknown/.test(step4) && step4.includes('--add-dir'));
+  assert.ok(body.split('\n')[3].includes('productivity-tools:release-workflow'), 'opening line names the workflow');
+});
+
+test('E25 AC3: the fallback is only for an unknown name and a permission denial shows the rule', () => {
+  const step4 = step4of();
+  assert.ok(/permission/i.test(step4));
+  assert.ok(step4.includes('Workflow(productivity-tools:release-workflow)'));
+  assert.ok(/do not try the path|does not try the path|never try the path|not try the path/i.test(step4));
+});
+
+test('E25 AC3: compatibility declares the minimum version', () => {
+  const { front } = skillParts3();
+  const m = front.match(/^compatibility:\s*"([^"]*)"$/m);
+  assert.ok(m, 'compatibility present');
+  assert.ok(m[1].includes('2.1.322'));
+  assert.ok(m[1].length < 500);
 });

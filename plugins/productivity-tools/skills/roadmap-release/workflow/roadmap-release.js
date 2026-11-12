@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'roadmap-release',
+  name: 'release-workflow',
   description: 'Runs E<n> deliverables of a tracked roadmap: discovery, spec, plan, tasks with double review, final review, gates against the baseline, serialized merge with rollback, docs and roadmap',
   whenToUse: 'Automate one or more deliverables of docs/plans/roadmap-*/. Example args: {"deliverables":["E18"],"targetBranch":"release/2026-11-24"} | {"deliverables":"next","phase":"r1-1"} | {"mode":"dry-run"} | {"mode":"plan-only","deliverables":["E19"]}',
   phases: [
