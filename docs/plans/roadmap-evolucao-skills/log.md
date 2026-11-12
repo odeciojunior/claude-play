@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E19 | E19 passou para na-branch | `a03329f62ee1c76ece45767d218f3ba326cfe7bb`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` |
 | 2026-11-12 | E19 | BLQ-6 resolvido: Tarefa 6 rodada pelo orquestrador (relatório em a277199), critérios aceitos por delegação e correção do SKILL.md em 01b3634; E19 volta a executando. | `a277199, 01b3634` |
 | 2026-11-12 | E19 | E19: critérios 1 e 2 aceitos por delegação do dono sobre o relatório das execuções comportamentais (critério 1 com 3/3, critério 2 aprovado, forma de reserva); correção de texto do SKILL.md (01b3634) antes do merge. | `docs/reports/2026-11-12-E19-autor-spec-comportamental.md, a277199` |
 | 2026-11-12 | E19 | DEC-400, DEC-401, DEC-402, DEC-403 ratificadas pelo dono por delegação (Fable) | `decisions.md` |
