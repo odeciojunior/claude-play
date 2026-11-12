@@ -68,17 +68,15 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Escolha, pelo dono, da execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em --from-run, antes das tentativas de detecção (pendente do dono em state.md).
 - (dono) Conferência do dono das linhas da linha de base e de detecção (critérios 1 a 3).
 - (dono) Aprovação do dono da revisão da estratégia com a tabela de metas (critério 4, DEC-034), depois das execuções pagas.
-- (dono) criterion AC1 has no automatic evidence (human)
-- (dono) criterion AC2 has no automatic evidence (human)
-- (dono) criterion AC3 has no automatic evidence (human)
-- (dono) criterion AC4 has no automatic evidence (human)
+- (dono) E15: critério AC1 sem evidência automática (human)
+- (dono) E15: critério AC2 sem evidência automática (human)
+- (dono) E15: critério AC3 sem evidência automática (human)
+- (dono) E15: critério AC4 sem evidência automática (human)
 - (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (executor) Ressalvas baixas da revisão final de E22 (achados 5 a 7): Volatile values só em formats.md § 4; sectionsCited lê só a 1a seção de 'formats.md § 6 and § 7'; migração ainda apontada em events.md (formats.md:63, rule do checker).
-- (executor) Branch fix/E4-w2-w4 (DEC-255): avisos do scaffold em modo completo para objective em texto e card sem pieces, dod ou risks, antes da preparação de E17.
-- (executor) Correção de DEC-226 (emenda): pendente de critério nomeia o entregável e usa as frases de DEC-225, sem fusão entre entregáveis; antes da preparação de E17.
 - (executor) Corrigir roadmap-release/SKILL.md: a fórmula de wtRoot do passo 1 contradiz o passo 3 quando repo já é o worktree _integracao (revisão da tarefa 7 de E18); junto, o fallback de releaseBranch do passo 2 e o passo 3 em itens.
 <!-- /roadmap:pending -->
 
