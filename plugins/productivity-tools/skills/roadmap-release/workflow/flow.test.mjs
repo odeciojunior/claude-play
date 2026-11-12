@@ -3339,3 +3339,27 @@ test('E25 AC3: compatibility declares the minimum version', () => {
   assert.ok(m[1].includes('2.1.322'));
   assert.ok(m[1].length < 500);
 });
+
+test('parseDecision: scope sentence, trailing parenthetical, default contrato', () => {
+  const P = PU.parseDecision;
+  assert.deepEqual(P('Usar X. Alcance: local.'), { text: 'Usar X.', scope: 'local' });
+  assert.deepEqual(P('Usar X. Alcance: contrato.'), { text: 'Usar X.', scope: 'contrato' });
+  assert.deepEqual(P('Use X. Scope: local.'), { text: 'Use X.', scope: 'local' });
+  assert.deepEqual(P('Use X. Scope: contract.'), { text: 'Use X.', scope: 'contrato' });
+  assert.deepEqual(P('Usar X (local)'), { text: 'Usar X', scope: 'local' });
+  assert.deepEqual(P('Usar X (LOCAL).'), { text: 'Usar X', scope: 'local' });
+  assert.deepEqual(P('Usar X (contrato)'), { text: 'Usar X', scope: 'contrato' });
+  assert.deepEqual(P('Use X (contract).'), { text: 'Use X', scope: 'contrato' });
+  assert.deepEqual(P('Use X (scope: local)'), { text: 'Use X', scope: 'local' });
+  assert.deepEqual(P('Usar X (alcance: local).'), { text: 'Usar X', scope: 'local' });
+  assert.deepEqual(P('Usar X (local) e depois Y'), { text: 'Usar X (local) e depois Y', scope: 'contrato' });
+  assert.deepEqual(P('Usar X sem escopo'), { text: 'Usar X sem escopo', scope: 'contrato' });
+});
+
+test('spec prompt tells the agent how decisions end (pt and en)', async () => {
+  for (const [language, w, c] of [['pt-BR', 'Alcance', 'contrato'], ['en', 'Scope', 'contract']]) {
+    const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { language } });
+    const p = calls.find((x) => x.label === 'E1:spec').prompt;
+    assert.ok(p.includes(`"${w}: local." or "${w}: ${c}."`), language);
+  }
+});

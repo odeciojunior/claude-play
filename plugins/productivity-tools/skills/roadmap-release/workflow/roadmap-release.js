@@ -959,12 +959,18 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   }
   return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id) }
 }
-// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence becomes scope local (and leaves the text); anything else is contrato.
+// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence, or a trailing "(local)" / "(contract)" / "(scope: local)" parenthetical, sets the scope and leaves the text; anything else is contrato.
 function parseDecision(text) {
   const t = collapseWs(text)
-  const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t)
+  const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t) || /\s*\(\s*(?:(?:alcance|scope)\s*:\s*)?(local|contrato|contract)\s*\)\.?$/i.exec(t)
   if (!m) return { text: t, scope: 'contrato' }
   return { text: t.slice(0, m.index).trim(), scope: m[1].toLowerCase() === 'local' ? 'local' : 'contrato' }
+}
+// Instruction for the agents whose decisions go through parseDecision: how each decision line must end.
+function scopeEndingRule(lang) {
+  const w = isPt(lang) ? 'Alcance' : 'Scope'
+  const c = isPt(lang) ? 'contrato' : 'contract'
+  return `Each decision line ends with the sentence "${w}: local." or "${w}: ${c}." (exactly that, as the last words of the line, no parenthetical): ${c} when the decision binds other deliverables or a public interface, local when it only affects this deliverable.`
 }
 // A run of the record agent that counts as done: exit 0 and the JSON of the CLI without errors.
 function runDone(r) {
@@ -1748,7 +1754,8 @@ Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstor
 - For each human input set blocking=true ONLY if no useful part of the card can be delivered without it (a placeholder does not count); otherwise blocking=false with the workaround.
 - Save to docs/superpowers/specs/${TODAY}-${E}-<slug>-design.md (short kebab-case slug, WITHOUT the ID), written in the language of the roadmap, with: the card's acceptance criteria (verbatim, including any {verify: ...} tag), the design, "Autonomous decisions (reviewable by the owner)" and "Depends on human input".
 - Commit only the spec. Do not write the plan. Stop after the commit.
-Return specPath, slug (without the ID), decisions (one line per autonomous decision), humanInputs, reused.`,
+Return specPath, slug (without the ID), decisions (one line per autonomous decision), humanInputs, reused.
+${scopeEndingRule(LANG)} Use the same ending in the lines of "Autonomous decisions (reviewable by the owner)" in the spec.`,
     { label: `${E}:spec`, phase: 'Spec', schema: S_SPEC, model: 'opus', effort: 'medium' })
   if (!spec) return fail('infra', 'spec: null agent')
   const specLoop = await reviewLoop('spec',
@@ -1763,7 +1770,8 @@ Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt
 
 Fix the spec ${spec.specPath} according to the review below, in autonomous mode, and commit. Stop after the commit.
 ${fmt(iss)}
-Return specPath, slug (without the ID), decisions (full list), humanInputs (full list).`,
+Return specPath, slug (without the ID), decisions (full list), humanInputs (full list).
+${scopeEndingRule(LANG)}`,
         { label: `${E}:spec-fix${k}`, phase: 'Spec', schema: S_SPEC, model: tier, effort: effortFor(tier) })
       if (fx) spec = { ...spec, ...fx }
       return fx ? { status: 'DONE' } : null
