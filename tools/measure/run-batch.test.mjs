@@ -901,3 +901,58 @@ test('e5Integrated: verdadeiro só com o merge de E5 na primeira linha de releas
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Real Workflow journal shape (synthetic): launched, started/result pairs keyed by key, results without a label.
+function realJournal(base, { reused = true, blob = 'b'.repeat(40), orphanResult = false } = {}) {
+  const pair = (key, agentId, label, result) => [
+    { type: 'started', key, agentId, label, phase: 'P' },
+    { type: 'result', key, agentId, result },
+  ];
+  const lines = [
+    { type: 'launched' },
+    ...pair('v2:k1', 'a1', 'E5:plan', { reused }),
+    ...pair('v2:k2', 'a2', 'E5:plan-review1', { measuredPlanBlob: blob }),
+    { type: 'started', key: 'v2:k3', agentId: 'a3', label: 'E5:status-plan', phase: 'P' },
+    { type: 'note', info: 'unknown housekeeping' },
+    ...(orphanResult ? [{ type: 'result', key: 'v2:zz', agentId: 'azz', result: { x: 1 } }] : []),
+  ];
+  const file = join(base, orphanResult ? 'real-orphan.jsonl' : `real-${reused}.jsonl`);
+  writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\r\n') + '\r\n');
+  return file;
+}
+
+test('readJournal resolves the labels of a real-format journal from the started lines', () => {
+  const s = setup();
+  try {
+    const j = readJournal(realJournal(s.base));
+    assert.equal(j.formatError, null);
+    assert.deepEqual(j.entries.map((e) => e.label), ['E5:plan', 'E5:plan-review1']);
+    assert.deepEqual(j.entries[0].result, { reused: true });
+    assert.equal(j.entries[1].result.measuredPlanBlob, 'b'.repeat(40));
+    assert.equal(JSON.parse(j.entries[0].text).type, 'result');
+    // a result matched by agentId when the key is unknown
+    const f = join(s.base, 'by-agent.jsonl');
+    writeFileSync(f, [{ type: 'started', key: 'k', agentId: 'a', label: 'L' }, { type: 'result', key: 'other', agentId: 'a', result: { ok: 1 } }].map((l) => JSON.stringify(l)).join('\n'));
+    assert.deepEqual(readJournal(f).entries.map((e) => e.label), ['L']);
+    // a result without a started label is a format error; the old format is unchanged
+    assert.equal(readJournal(realJournal(s.base, { orphanResult: true })).formatError, 'line 8: result without a started label');
+    const old = join(s.base, 'old.jsonl');
+    writeFileSync(old, JSON.stringify({ label: 'E5:plan', result: { reused: true } }) + '\n' + JSON.stringify({ result: {} }) + '\n');
+    assert.equal(readJournal(old).formatError, 'line 2 has no label');
+    assert.equal(readJournal(old).entries.length, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('checkValidity on a real-format journal reports plano-reescrito, not formato-do-diario', () => {
+  const s = setup();
+  try {
+    const blob = 'b'.repeat(40);
+    const scenario = { seededBlobs: { [E5_PATHS.plan]: blob } };
+    assert.deepEqual(checkValidity('plano-semeado-A', readJournal(realJournal(s.base, { reused: false })), scenario), { valid: false, reason: 'plano-reescrito' });
+    assert.deepEqual(checkValidity('plano-semeado-A', readJournal(realJournal(s.base, { reused: true })), scenario), { valid: true, reason: 'ok' });
+  } finally {
+    s.done();
+  }
+});
