@@ -44,7 +44,7 @@ Each skill needs a YAML frontmatter with `name` and `description` fields. The de
 
 SKILL.md frontmatter policy (repo policy, stricter than the official spec):
 - Allowed keys: `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`.
-- Other valid Claude Code fields such as `model`, `context` and `allowed-tools` aren't used in this repo.
+- Other valid Claude Code fields such as `model`, `context` and `allowed-tools` aren't used in this repo. The single exception is the release SKILL.md (`plugins/productivity-tools/skills/roadmap-release/SKILL.md`): it declares `allowed-tools: Workflow(productivity-tools:release-workflow)` together with `disable-model-invocation: true`, and `lint-plugin` fails any other use of `allowed-tools`.
 - Claude Code ignores unknown keys silently, so check spelling (it is `user-invocable`).
 
 Other format notes:

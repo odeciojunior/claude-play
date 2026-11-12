@@ -608,7 +608,9 @@ const ENTRY = 'Workflow(productivity-tools:release-workflow)';
 const AT_ONLY = 'allowed-tools is allowed only in productivity-tools/skills/roadmap-release/SKILL.md';
 const AT_GRANT = 'allowed-tools may only grant';
 const AT_REG = 'which plugin.json does not register';
-const COMPAT = '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"';
+const COMPAT = '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"\ndisable-model-invocation: true';
+const DMI_FAIL = 'requires disable-model-invocation: true in the same frontmatter (DEC-275)';
+const COMPAT_ONLY = '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"';
 
 function freshGrant(pluginName = 'productivity-tools', workflows = ['release-workflow', 'other-workflow']) {
   const dir = fresh();
@@ -705,16 +707,77 @@ test('E25 AC5: allowed-tools is no longer reported as outside the allowed keys',
   assert.ok(!has(lint(other), 'WARN', 'key "allowed-tools" is outside'));
 });
 
+test('DEC-275: the exception with disable-model-invocation: true -> no FAIL for the grant', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+  assert.ok(!has(lint(dir), 'FAIL', DMI_FAIL));
+  assert.ok(!has(lint(dir), 'FAIL', 'allowed-tools'));
+});
+
+test('DEC-275: the exception without disable-model-invocation, or with false -> FAIL citing DEC-275', () => {
+  const forms = [COMPAT_ONLY, `${COMPAT_ONLY}\ndisable-model-invocation: false`, `${COMPAT_ONLY}\ndisable-model-invocation: "no"`];
+  for (const extra of forms) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`, extra);
+    assert.ok(has(lint(dir), 'FAIL', DMI_FAIL), extra);
+  }
+});
+
+test('DEC-275: other spellings of true, duplicates, indented or body-only key -> FAIL', () => {
+  const bad = [
+    `${COMPAT_ONLY}\ndisable-model-invocation: "TRUE"`,
+    `${COMPAT_ONLY}\ndisable-model-invocation: tRuE`,
+    `${COMPAT_ONLY}\ndisable-model-invocation: "true"`,
+    `${COMPAT_ONLY}\ndisable-model-invocation: |\n  true`,
+    `${COMPAT_ONLY}\ndisable-model-invocation: true\ndisable-model-invocation: false`,
+    `${COMPAT_ONLY}\ndisable-model-invocation: false\ndisable-model-invocation: true`,
+    `${COMPAT_ONLY}\n  disable-model-invocation: true`,
+  ];
+  for (const extra of bad) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`, extra);
+    assert.ok(has(lint(dir), 'FAIL', DMI_FAIL) || has(lint(dir), 'FAIL', 'is repeated'), extra);
+  }
+  const body = freshGrant();
+  write(body, 'skills/roadmap-release/SKILL.md', SKILL(`name: roadmap-release\ndescription: Use when testing.${COMPAT_ONLY}\nallowed-tools: ${ENTRY}`, '# Body\ndisable-model-invocation: true\n'));
+  assert.ok(has(lint(body), 'FAIL', DMI_FAIL));
+});
+
+test('DEC-275: correct line with a comment, CRLF or BOM -> PASS', () => {
+  for (const mode of ['comment', 'crlf', 'bom']) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`, `${COMPAT_ONLY}\ndisable-model-invocation: true${mode === 'comment' ? ' # only typed' : ''}`);
+    const p = 'skills/roadmap-release/SKILL.md';
+    let t = read(dir, p);
+    if (mode === 'crlf') t = t.replace(/\n/g, '\r\n');
+    if (mode === 'bom') t = '\uFEFF' + t;
+    write(dir, p, t);
+    const r = lint(dir);
+    assert.ok(!has(r, 'FAIL', DMI_FAIL), mode);
+    assert.ok(!has(r, 'FAIL', 'allowed-tools'), mode);
+  }
+});
+
+test('frontmatter `key:value` without a space after the colon -> FAIL', () => {
+  const dir = fresh();
+  write(dir, 'skills/nospace/SKILL.md', SKILL('name: nospace\ndescription:Use when testing.'));
+  assert.ok(has(lint(dir), 'FAIL', 'needs a space after the colon'));
+  const ok = fresh();
+  write(ok, 'skills/urlval/SKILL.md', SKILL('name: urlval\ndescription: Use when testing http://x.y and a:b.\nmetadata:\n  link:https://x.y'));
+  assert.ok(!has(lint(ok), 'FAIL', 'needs a space after the colon'));
+});
+
 test('E25 AC5: the real productivity-tools SKILL.md declares the grant', () => {
   const real = path.join(here, '..', '..', '..', '..', 'productivity-tools');
   const fm = parseFrontmatter(fs.readFileSync(path.join(real, 'skills', 'roadmap-release', 'SKILL.md'), 'utf8'));
   assert.equal(fm.keys.get('allowed-tools'), ENTRY);
+  assert.equal(fm.keys.get('disable-model-invocation'), 'true');
   assert.deepEqual(lint(real).filter((r) => r.level === 'FAIL'), []);
 });
 
 test('E25 AC5: allowed-tools spelled as quoted key, spaced colon or other case -> FAIL (no bypass)', () => {
   const forms = [`"allowed-tools": Bash`, `'allowed-tools': Bash`, `allowed-tools : Bash`, `Allowed-Tools: Bash`, `"allowed-tools": ${ENTRY}`,
-    String.raw`"allowed-tools": Bash`, String.raw`"allowed-tools": Bash`, `? allowed-tools
+    String.raw`"allowed\x2Dtools": Bash`, String.raw`"allowed\u002Dtools": Bash`, `? allowed-tools
 : Bash`];
   for (const f of forms) {
     for (const skill of ['roadmap-planner', 'roadmap-release']) {

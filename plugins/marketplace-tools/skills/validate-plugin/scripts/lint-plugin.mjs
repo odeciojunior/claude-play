@@ -299,6 +299,10 @@ export function lintPlugin(dir, { marketplace } = {}) {
           if (seen.has(key)) problems.push(['FAIL', `frontmatter key "${key}" is repeated; YAML keeps only one value, so remove the duplicate`]);
           seen.add(key);
         }
+        // `key:value` with no space after the colon is not a mapping in YAML: the frontmatter fails to parse and Claude Code drops every field.
+        if (/^[A-Za-z0-9_-]+:\S/.test(l)) {
+          problems.push(['FAIL', `frontmatter line "${l.split(':')[0]}:..." needs a space after the colon, otherwise YAML does not parse the frontmatter and Claude Code drops every field`]);
+        }
         // Allow-list: a top-level entry (column 0, not a comment or sequence item) must be a plain `key:`; quoted, escaped, explicit (`? key`) or spaced keys are valid YAML spellings of allowed-tools and are refused.
         if (/^\S/.test(l) && !/^(#|- )/.test(l) && !/^[A-Za-z0-9_-]+:/.test(l)) {
           problems.push(['FAIL', 'frontmatter keys must be written as a plain `key:` at column 0 (DEC-049: allowed-tools may not be spelled quoted, escaped or as an explicit key); remove this entry']);
@@ -316,6 +320,12 @@ export function lintPlugin(dir, { marketplace } = {}) {
         const bad = entries.filter((e) => e !== ex.entry);
         if (entries.length === 0) bad.push('(empty)');
         for (const e of bad) problems.push(['FAIL', `allowed-tools may only grant ${ex.entry} (DEC-049); remove ${e}`]);
+        // DEC-275 (amends DEC-265): the grant holds only for the command the person types, so the same frontmatter must keep the model from invoking the skill.
+        // The raw line must be exactly `disable-model-invocation: true` (lowercase, unquoted, one line, optional comment): other YAML spellings of true are not guaranteed to be read as the boolean by Claude Code.
+        const dmiLines = text.replace(/^﻿/, '').split(SPLIT).slice(1, fm.bodyStartLine - 2).filter((l) => /^disable-model-invocation:/i.test(l));
+        if (!(dmiLines.length === 1 && /^disable-model-invocation:[ \t]+true[ \t]*(#.*)?$/.test(dmiLines[0]))) {
+          problems.push(['FAIL', `allowed-tools in ${ex.plugin}/${ex.skill} requires disable-model-invocation: true in the same frontmatter (DEC-275): the grant applies only to the command the person types`]);
+        }
         if (entries.includes(ex.entry) && !registeredWorkflows(dir, pj).some((w) => w.name === 'release-workflow')) {
           problems.push(['FAIL', `allowed-tools grants ${ex.entry}, which plugin.json does not register`]);
         }
