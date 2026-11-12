@@ -421,3 +421,180 @@ test('commit needs a passed step and a sha', () => {
   refused(started(), { type: 'commit', step: 1, sha: 'a' }, 'wrong-status');
   refused(withSteps(started(), { 1: { status: 'pass' } }), { type: 'commit', step: 1 }, 'wrong-status');
 });
+
+// ---- Task 3: passos externos e respostas manuais ----
+
+const reviewed5 = () => ok(wave2(), { type: 'prelaunch-review', step: 5, value: 'pass' });
+const authorized5 = () => ok(reviewed5(), { type: 'authorize', step: 5 }, T1);
+const launched5 = () => ok(authorized5(), { type: 'launch', steps: [5], agentId: 'a5' });
+const stopped5 = () => ok(launched5(), { type: 'report', step: 5, value: 'fail' });
+
+test('external launch needs review and authorization', () => {
+  refused(wave2(), { type: 'launch', steps: [5] }, 'external-unauthorized');
+  refused(reviewed5(), { type: 'launch', steps: [5] }, 'external-unauthorized');
+  const a = authorized5();
+  assert.equal(step(a, 5).authorized, T1);
+  const l = ok(a, { type: 'launch', steps: [5] });
+  assert.equal(step(l, 5).status, 'launched');
+  assert.equal(step(l, 5).attempts, 1);
+  refused(a, { type: 'inline-start', step: 5 }, 'inline-not-allowed');
+});
+
+test('authorize needs a reviewed external step', () => {
+  refused(wave2(), { type: 'authorize', step: 5 }, 'wrong-status');
+  refused(wave2(), { type: 'authorize', step: 2 }, 'wrong-status');
+});
+
+test('external step launches at most once', () => {
+  const r = ok(stopped5(), { type: 'answer', step: 5, value: 'rerun' });
+  assert.equal(step(r, 5).status, 'stopped');
+  assert.equal(step(r, 5).replacedBy, 7);
+  const n7 = step(r, 7);
+  assert.equal(n7.status, 'pending');
+  assert.equal(n7.external, true);
+  assert.deepEqual(n7.deps, [1]);
+  assert.equal(n7.attempts, 0);
+  assert.equal(n7.preLaunchReview, null);
+  assert.equal(n7.authorized, null);
+  assert.equal(n7.wave, step(r, 5).wave);
+  const t6 = step(r, 6);
+  assert.ok(t6.deps.includes(7) && !t6.deps.includes(5));
+  assert.ok(r.waves.some((w) => w.tasks.includes(7)) && !r.waves.some((w) => w.tasks.includes(5)));
+  assert.deepEqual(r.manual.filter((m) => m.step === 5).map((m) => [m.kind, m.open]), [['refused', false]]);
+  refused(r, { type: 'launch', steps: [5] }, 'wrong-status');
+  refused(withSteps(wave2(), { 5: { attempts: 1 } }), { type: 'launch', steps: [5] }, 'external-relaunch');
+});
+
+test('no event takes a launched external step back to pending', () => {
+  const values = {
+    report: ['pass', 'fail', 'blocked'],
+    'inline-result': ['pass', 'fail'],
+    'review-result': ['pass', 'defects', 'lost'],
+    'wave-gate': ['pass', 'fail'],
+    'final-gate': ['pass', 'defects', 'skip'],
+    'prelaunch-review': ['pass', 'defects'],
+    refuse: ['refused', 'not-named'],
+    answer: ['done', 'no', 'rerun', 'value'],
+    skip: ['outputs', 'no-outputs'],
+  };
+  const events = [];
+  for (const type of EVENT_TYPES) {
+    for (const value of values[type] ?? [undefined]) {
+      const e = { type, step: 5, steps: [5], tier: 'opus', agentId: 'x', sha: 's', text: 't' };
+      if (value !== undefined) e.value = value;
+      events.push(e);
+    }
+  }
+  const keyOf = (s) => JSON.stringify(s.steps) + JSON.stringify(s.run) + JSON.stringify(s.manual);
+  let frontier = [launched5()];
+  const seen = new Set(frontier.map(keyOf));
+  let applied = 0;
+  for (let depth = 0; depth < 3; depth += 1) {
+    const next = [];
+    for (const s of frontier) {
+      for (const e of events) {
+        const r = applyEvent(s, e, T1);
+        if (!r.ok) continue;
+        applied += 1;
+        assert.notEqual(step(r.state, 5).status, 'pending', 'pending after ' + JSON.stringify(e));
+        if (!seen.has(keyOf(r.state))) {
+          seen.add(keyOf(r.state));
+          next.push(r.state);
+        }
+      }
+    }
+    frontier = next;
+  }
+  assert.ok(applied > 50);
+});
+
+test('external launched outcomes stop the step with an open question', () => {
+  const evs = [{ type: 'report', step: 5, value: 'fail' }, { type: 'report', step: 5, value: 'blocked' }, { type: 'no-report', step: 5 }];
+  for (const ev of evs) {
+    const s = ok(launched5(), ev);
+    assert.equal(step(s, 5).status, 'stopped');
+    assert.deepEqual(s.manual.map((m) => [m.kind, m.step, m.open]), [['open-question', 5, true]]);
+  }
+  const owed = ok(launched5(), { type: 'report', step: 5, value: 'pass' });
+  assert.equal(step(owed, 5).status, 'review-owed');
+  const bad = ok(owed, { type: 'review-result', step: 5, value: 'defects' });
+  assert.equal(step(bad, 5).status, 'stopped');
+  assert.equal(bad.manual[0].kind, 'open-question');
+  assert.equal(step(ok(owed, { type: 'review-result', step: 5, value: 'pass' }), 5).status, 'pass');
+});
+
+test('wave-gate fail and final-gate defects stop a passed external step', () => {
+  const owed = withSteps(wave2(), { 2: { status: 'pass' }, 3: { status: 'pass' }, 5: { status: 'pass', attempts: 1 } });
+  owed.run.waveGateOwed = 2;
+  const w = ok(owed, { type: 'wave-gate', value: 'fail', step: 5 });
+  assert.equal(step(w, 5).status, 'stopped');
+  assert.equal(w.run.waveGateOwed, null);
+  assert.equal(w.manual[0].kind, 'open-question');
+  const all = approved(stateFor());
+  all.steps.forEach((x) => (x.status = 'pass'));
+  all.run.wave = 4;
+  const f = ok(all, { type: 'final-gate', value: 'defects', step: 5 });
+  assert.equal(step(f, 5).status, 'stopped');
+  assert.equal(f.finalGate.rounds, 1);
+  assert.equal(f.manual[0].step, 5);
+});
+
+test('card-changed clears review and authorization', () => {
+  const c = ok(authorized5(), { type: 'card-changed', step: 5 });
+  assert.equal(step(c, 5).preLaunchReview, null);
+  assert.equal(step(c, 5).authorized, null);
+  refused(c, { type: 'launch', steps: [5] }, 'external-unauthorized');
+  const held = ok(reviewed5(), { type: 'refuse', step: 5, value: 'refused' });
+  const c2 = ok(held, { type: 'card-changed', step: 5 });
+  assert.equal(step(c2, 5).status, 'skip-manual');
+  refused(wave2(), { type: 'card-changed', step: 2 }, 'wrong-status');
+});
+
+test('prelaunch defects twice holds the step as prelaunch-failed', () => {
+  const one = ok(wave2(), { type: 'prelaunch-review', step: 5, value: 'defects' });
+  assert.equal(step(one, 5).status, 'pending');
+  assert.equal(step(one, 5).rounds, 1);
+  assert.equal(step(one, 5).preLaunchReview, null);
+  const two = ok(one, { type: 'prelaunch-review', step: 5, value: 'defects' });
+  assert.equal(step(two, 5).status, 'skip-manual');
+  assert.deepEqual(two.manual.map((m) => [m.kind, m.step, m.open]), [['prelaunch-failed', 5, true]]);
+  assert.equal(step(two, 6).status, 'waiting-manual');
+  refused(two, { type: 'prelaunch-review', step: 5, value: 'pass' }, 'wrong-status');
+});
+
+test('refuse not-named then authorize returns to pending', () => {
+  refused(wave2(), { type: 'refuse', step: 5, value: 'refused' }, 'wrong-status');
+  const r = ok(reviewed5(), { type: 'refuse', step: 5, value: 'not-named' });
+  assert.equal(step(r, 5).status, 'skip-manual');
+  assert.equal(r.manual[0].kind, 'not-named');
+  const a = ok(r, { type: 'authorize', step: 5 }, T1);
+  assert.equal(step(a, 5).status, 'pending');
+  assert.equal(step(a, 5).authorized, T1);
+  assert.equal(a.manual[0].open, false);
+  assert.equal(step(ok(a, { type: 'launch', steps: [5] }), 5).status, 'launched');
+});
+
+test('answer done on stopped is pass', () => {
+  const s = ok(stopped5(), { type: 'answer', step: 5, value: 'done' });
+  assert.equal(step(s, 5).status, 'pass');
+  assert.equal(s.manual[0].open, false);
+  const no = ok(stopped5(), { type: 'answer', step: 5, value: 'no' });
+  assert.equal(step(no, 5).status, 'stopped');
+  assert.deepEqual(no.manual.map((m) => [m.kind, m.open]), [['refused', false]]);
+  refused(stopped5(), { type: 'answer', step: 5, value: 'value' }, 'wrong-status');
+  refused(wave2(), { type: 'answer', step: 5, value: 'done' }, 'wrong-status');
+});
+
+test('answer value writes the note and returns to pending', () => {
+  const held = ok(reviewed5(), { type: 'refuse', step: 5, value: 'refused' });
+  const v = ok(held, { type: 'answer', step: 5, value: 'value', text: 'use o id 42' });
+  assert.equal(step(v, 5).status, 'pending');
+  assert.equal(step(v, 5).note, 'use o id 42');
+  assert.equal(step(v, 5).preLaunchReview, null);
+  assert.equal(step(v, 5).authorized, null);
+  assert.equal(v.manual[0].open, false);
+  assert.equal(step(ok(held, { type: 'answer', step: 5, value: 'done' }), 5).status, 'pass');
+  const no = ok(held, { type: 'answer', step: 5, value: 'no' });
+  assert.equal(step(no, 5).status, 'skip-manual');
+  assert.equal(no.manual[0].kind, 'refused');
+});

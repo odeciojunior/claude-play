@@ -260,6 +260,22 @@ function psFailStep(state, step, text) {
   }
 }
 
+// Passo externo cujo resultado não foi conferido: para na pessoa, nunca volta a pending. // linha 12, 14, 25
+function psStopStep(state, step, text) {
+  step.status = 'stopped';
+  state.manual.push({ kind: 'open-question', step: step.n, text, open: true });
+}
+
+// Fecha as entradas manuais abertas do passo; com kind, também as reclassifica.
+function psCloseManual(state, n, kind) {
+  for (const m of state.manual) {
+    if (m.step === n && m.open) {
+      m.open = false;
+      if (kind) m.kind = kind;
+    }
+  }
+}
+
 // Pré-condições comuns de launch e inline-start.
 function psLaunchChecks(state, list, tier) {
   if (state.run.status === 'blocked') return psRefuse('blocked', 'execução bloqueada; responda a pergunta primeiro');
@@ -306,6 +322,13 @@ const psHandlers = {
     if (r.ok === false) return r;
     const bad = psLaunchChecks(state, r.list, ev.tier);
     if (bad) return bad;
+    for (const s of r.list) { // linha 1, 6
+      if (!s.external) continue;
+      if (s.attempts >= 1) return psRefuse('external-relaunch', 'passo externo ' + s.n + ' já foi lançado e não se repete');
+      if (s.preLaunchReview !== 'pass' || !s.authorized) {
+        return psRefuse('external-unauthorized', 'passo externo ' + s.n + ' exige revisão prévia e autorização');
+      }
+    }
     for (const s of r.list) {
       s.status = 'launched';
       s.attempts += 1;
@@ -352,11 +375,12 @@ const psHandlers = {
     if (r.ok === false) return r;
     const s = r.list[0];
     if (s.status !== 'launched') return psRefuse('wrong-status', 'passo ' + s.n + ' não está launched');
-    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
     if (!['pass', 'fail', 'blocked'].includes(ev.value)) return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
     if (ev.text !== undefined) s.note = ev.text;
     if (ev.value === 'pass') {
       s.status = s.gate ? 'review-owed' : 'pass';
+    } else if (s.external) { // linha 12
+      psStopStep(state, s, ev.text ?? 'passo externo ' + s.n + ' sem resultado conferido');
     } else {
       psFailStep(state, s, ev.text ?? 'passo ' + s.n + ' falhou ' + s.attempts + ' vezes');
     }
@@ -368,7 +392,10 @@ const psHandlers = {
     if (r.ok === false) return r;
     const s = r.list[0];
     if (s.status !== 'launched') return psRefuse('wrong-status', 'passo ' + s.n + ' não está launched');
-    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    if (s.external) { // linha 12
+      psStopStep(state, s, ev.text ?? 'passo externo ' + s.n + ' sem relatório; resultado não conferido');
+      return null;
+    }
     s.status = 'pending';
     return null;
   },
@@ -378,13 +405,14 @@ const psHandlers = {
     if (r.ok === false) return r;
     const s = r.list[0];
     if (s.status !== 'review-owed') return psRefuse('wrong-status', 'passo ' + s.n + ' não está review-owed');
-    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
     if (ev.value === 'pass') {
       s.status = 'pass';
     } else if (ev.value === 'lost') {
       s.note = 'reviewer lost';
     } else if (ev.value === 'defects') {
-      if (s.rounds < 2) {
+      if (s.external) { // linha 14
+        psStopStep(state, s, ev.text ?? 'passo externo ' + s.n + ' com defeitos na revisão; resultado não conferido');
+      } else if (s.rounds < 2) {
         s.status = 'launched';
         s.rounds += 1;
       } else {
@@ -464,9 +492,12 @@ const psHandlers = {
     if (r.ok === false) return r;
     const s = r.list[0];
     if (s.status !== 'pass' || s.wave !== owed) return psRefuse('wrong-status', 'passo ' + s.n + ' não é pass da onda ' + owed);
-    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
     state.run.waveGateOwed = null;
-    psFailStep(state, s, ev.text ?? 'portão da onda ' + owed + ' reprovou o passo ' + s.n);
+    if (s.external) { // linha 25
+      psStopStep(state, s, ev.text ?? 'portão da onda ' + owed + ' reprovou o passo externo ' + s.n);
+    } else {
+      psFailStep(state, s, ev.text ?? 'portão da onda ' + owed + ' reprovou o passo ' + s.n);
+    }
     return null;
   },
 
@@ -490,16 +521,138 @@ const psHandlers = {
       if (r.ok === false) return r;
       s = r.list[0];
       if (s.status !== 'pass') return psRefuse('wrong-status', 'passo ' + s.n + ' não está pass');
-      if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
     }
     state.finalGate.rounds += 1;
     state.finalGate.lastVerdict = ev.value;
     if (ev.value === 'pass' || ev.value === 'skip') {
       state.finalGate.status = ev.value;
       state.run.status = 'completed';
+    } else if (s && s.external) { // linha 25
+      psStopStep(state, s, ev.text ?? 'portão final reprovou o passo externo ' + s.n);
     } else if (s) {
       psFailStep(state, s, ev.text ?? 'portão final reprovou o passo ' + s.n);
       if (s.status === 'pending') state.run.wave = s.wave;
+    }
+    return null;
+  },
+
+  'prelaunch-review'(state, ev) { // linha 5
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (!s.external || s.status !== 'pending') return psRefuse('wrong-status', 'passo ' + s.n + ' não é externo pending');
+    if (ev.value === 'pass') {
+      s.preLaunchReview = 'pass';
+    } else if (ev.value === 'defects') {
+      s.rounds += 1;
+      s.preLaunchReview = null;
+      if (s.rounds >= 2) psHoldStep(state, s, 'prelaunch-failed', ev.text ?? 'revisão prévia do passo ' + s.n + ' com defeitos após duas rodadas');
+    } else {
+      return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    }
+    return null;
+  },
+
+  authorize(state, ev, now) { // linha 6, 20, 23
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (!s.external) return psRefuse('wrong-status', 'passo ' + s.n + ' não é externo');
+    if (s.status === 'pending' && s.preLaunchReview === 'pass') {
+      s.authorized = now;
+    } else if (s.status === 'skip-manual' && state.manual.some((m) => m.step === s.n && (m.kind === 'refused' || m.kind === 'not-named'))) {
+      s.authorized = now;
+      s.status = 'pending';
+      psCloseManual(state, s.n);
+    } else {
+      return psRefuse('wrong-status', 'passo ' + s.n + ' não está pronto para autorização');
+    }
+    return null;
+  },
+
+  refuse(state, ev) { // linha 6
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (!s.external || s.status !== 'pending' || s.preLaunchReview !== 'pass') {
+      return psRefuse('wrong-status', 'passo ' + s.n + ' não é externo pending revisado');
+    }
+    if (ev.value !== 'refused' && ev.value !== 'not-named') return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    psHoldStep(state, s, ev.value, ev.text ?? 'autorização do passo externo ' + s.n + ' não concedida');
+    return null;
+  },
+
+  'card-changed'(state, ev) { // linha 7, 19
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (!s.external || (s.status !== 'pending' && s.status !== 'skip-manual')) {
+      return psRefuse('wrong-status', 'passo ' + s.n + ' não é externo pending ou skip-manual');
+    }
+    s.preLaunchReview = null;
+    s.authorized = null;
+    return null;
+  },
+
+  answer(state, ev) { // linha 15-17, 19, 21, 22
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    const v = ev.value;
+    if (s.status === 'stopped') {
+      if (v === 'done') {
+        s.status = 'pass';
+        psCloseManual(state, s.n);
+      } else if (v === 'no') {
+        psCloseManual(state, s.n, 'refused');
+      } else if (v === 'rerun') {
+        if (!s.external) return psRefuse('wrong-status', 'passo ' + s.n + ' não é externo');
+        const n2 = Math.max(...state.steps.map((x) => x.n)) + 1;
+        psCloseManual(state, s.n, 'refused');
+        s.replacedBy = n2;
+        state.steps.push({
+          ...psClone(s),
+          n: n2,
+          mode: 'delegated',
+          status: 'pending',
+          attempts: 0,
+          rounds: 0,
+          agentId: null,
+          preLaunchReview: null,
+          authorized: null,
+          handoff: null,
+          sha: null,
+          replacedBy: null,
+          note: null,
+          outputs: null,
+          brief: 'briefs/T' + n2 + '.md',
+        });
+        for (const x of state.steps) {
+          if (x.n !== n2) x.deps = x.deps.map((d) => (d === s.n ? n2 : d));
+        }
+        for (const w of state.waves) w.tasks = w.tasks.map((t) => (t === s.n ? n2 : t)).sort((a, b) => a - b);
+      } else {
+        return psRefuse('wrong-status', 'valor inválido para passo stopped: ' + v);
+      }
+    } else if (s.status === 'skip-manual') {
+      if (v === 'done') {
+        s.status = 'pass';
+        psCloseManual(state, s.n);
+      } else if (v === 'no') {
+        psCloseManual(state, s.n, 'refused');
+      } else if (v === 'value') {
+        s.note = ev.text ?? null;
+        s.status = 'pending';
+        psCloseManual(state, s.n);
+        if (s.external) {
+          s.preLaunchReview = null;
+          s.authorized = null;
+        }
+      } else {
+        return psRefuse('wrong-status', 'valor inválido para passo skip-manual: ' + v);
+      }
+    } else {
+      return psRefuse('wrong-status', 'passo ' + s.n + ' não está stopped nem skip-manual');
     }
     return null;
   },
@@ -513,7 +666,7 @@ export function applyEvent(state, event, now) {
 
   const next = psClone(state);
   const before = new Map(next.steps.map((s) => [s.n, s.status]));
-  const refused = handler(next, event);
+  const refused = handler(next, event, now);
   if (refused) return refused;
 
   // Portão de onda devido: a onda corrente se assentou (nada pending, launched ou
