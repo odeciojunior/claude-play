@@ -211,9 +211,9 @@ Resposta recomendada para todas as linhas: **ratificar**. As respostas são grav
 | DEC-332 | local | relatório entrando por outro caminho; reversível | seção "Execuções pagas" do roteiro (T8) | ratificar |
 | DEC-333 | local | nenhum; reversível | nada novo | ratificar |
 
-## Decisões autônomas da spec (1 a 12)
+## Decisões autônomas da spec (1 a 13)
 
-Cada uma tem linha no alvo (id na coluna 2); a linha da lista acima é a mesma decisão.
+As de 1 a 12 têm linha no alvo (id na coluna 2); a linha da lista acima é a mesma decisão. A 13 ainda não tem id no alvo.
 
 | decisão | id no alvo | alcance | custo se errada | o que já foi construído em cima | resposta recomendada |
 |---|---|---|---|---|---|
@@ -229,6 +229,7 @@ Cada uma tem linha no alvo (id na coluna 2); a linha da lista acima é a mesma d
 | spec 10 | DEC-323 | contrato | volta que não publica limpo, descoberta antes de ser necessária; reversível | branch local e `volta.md` (T7) | ratificar |
 | spec 11 | DEC-324 | local | nenhum; reversível | seção "Publicação" do roteiro (T8) | ratificar |
 | spec 12 | DEC-325 | local | relatório entrando por outro caminho; reversível | seção "Execuções pagas" do roteiro (T8) | ratificar |
+| spec 13 | sem id no alvo | local | o dono reverte `a951ed5` na volta e o critério 4 fica não atendido com a falha registrada; reversível | ajuste do teste acoplado de `marketplace-tools` na branch de volta (`a951ed5`, `lint-plugin.test.mjs`), registrado em `volta.md` (T7) | ratificar |
 
 ## Decisões autônomas do plano (1 a 7)
 

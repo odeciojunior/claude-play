@@ -105,12 +105,15 @@ test('E17 roteiro: no personal path', () => {
 const PLAN_DECISIONS = 7;
 test('E17 ratificacao: lists every autonomous decision with a recommended answer', () => {
   const rows = ratificacao.split('\n').filter((l) => l.startsWith('|'));
-  for (let n = 1; n <= 12; n += 1) {
+  for (let n = 1; n <= 13; n += 1) {
     const row = rows.find((l) => l.startsWith(`| spec ${n} |`));
     assert.ok(row, `missing row for spec decision ${n}`);
     assert.match(row, /DEC-\d{3}|sem id no alvo/);
     assert.match(row, /ratificar/);
   }
+  const spec13 = rows.find((l) => l.startsWith('| spec 13 |'));
+  assert.match(spec13, /a951ed5/);
+  assert.match(spec13, /lint-plugin.test.mjs/);
   for (let n = 1; n <= PLAN_DECISIONS; n += 1) {
     const row = rows.find((l) => l.startsWith(`| plano ${n} |`));
     assert.ok(row, `missing row for plan decision ${n}`);
