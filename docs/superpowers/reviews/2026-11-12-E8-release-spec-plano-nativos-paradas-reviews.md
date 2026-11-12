@@ -668,3 +668,75 @@ Os dados desta execução não trazem resultados de gates.
 2. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato). Bloqueia (blq): não. Contorno: Comportamento da decisão 15 é relatado; DEC-218 vale para os demais casos.
 3. O quê: Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob a delegação do dono. Bloqueia (blq): não. Contorno: Sem a sonda, o relatório registra 'não rodada' e o gatilho de DEC-312 fica em aberto.
 4. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato, única exceção à parada de DEC-218). Bloqueia (blq): não. Contorno: O comportamento novo é o da decisão 15, relatado; DEC-218 vale para todos os outros casos.
+
+## Execução 7 (2026-11-12, ressincronização do registro)
+
+Execução sem falha registrada (failure: null). O portão final fechou na rodada 2, depois de uma correção em sonnet, sem item crítico ou importante. As tarefas 1 a 12 foram RESUMED (já revisadas em execução anterior, sem nova revisão) e só a tarefa 13 rodou (25 commits). Esta execução repete os dados da execução 6 e acrescenta os resultados dos gates.
+
+### Revisões por estágio
+
+Cada rodada traz o número, o modelo do revisor e o tier da correção que a precedeu (nenhuma na rodada 1).
+
+| Estágio | Rodada | Modelo do revisor | Tier da correção anterior | Bloqueantes | Menores | Não resolvidos |
+|---|---|---|---|---|---|---|
+| spec | 1 | opus | nenhuma | 0 | 0 | 0 |
+| plan | 1 | opus | nenhuma | 0 | 0 | 0 |
+| plan | 2 | opus | sonnet | 0 | 1 | 0 |
+| T13:spec | 1 | sonnet | nenhuma | 0 | 1 | 0 |
+| T13:quality | 1 | sonnet | nenhuma | 0 | 1 | 0 |
+| final | 1 | opus | nenhuma | 0 | 0 | 0 |
+| final | 2 | opus | sonnet | 0 | 1 | 0 |
+
+Nota: os dados da execução trazem os menores por estágio (spec 0, plan 1, T13:spec 1, T13:quality 1, final 1), não por rodada. A tabela atribui os menores à última rodada de cada estágio.
+
+Nota: os dados da execução trazem os menores por estágio (spec 0, plan 1, T13:spec 1, T13:quality 1, final 1), não por rodada. A tabela atribui os menores à última rodada de cada estágio.
+
+### Portão final: problemas críticos e importantes
+
+Nenhum. Total de menores no portão final: 1.
+
+### Itens não resolvidos
+
+Nenhum.
+
+### Riscos aceitos
+
+Nenhum.
+
+### Falha registrada
+
+Nenhuma.
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | cópias embutidas, artifactPaths e pluginRootOf | RESUMED (already reviewed) | |
+| 2 | funções puras de parada, decisões e retenção | RESUMED (already reviewed) | |
+| 3 | adaptador de plan/1, carga do plano e roteamento | RESUMED (already reviewed) | |
+| 4 | guarda da versão anterior e medições do setup | RESUMED (already reviewed) | |
+| 5 | estágio de spec nativo, paradas e registro das decisões | RESUMED (already reviewed) | |
+| 6 | estágio de plano nativo, carga com resumo e despacho pelo route | RESUMED (already reviewed) | |
+| 7 | caminhos de artefato, sem superpowers nos estágios e comandos simples | RESUMED (already reviewed) | |
+| 8 | retenção dos dependentes por decisão de contrato | RESUMED (already reviewed) | |
+| 9 | campo status do docs-measure (DEC-444) | RESUMED (already reviewed) | |
+| 10 | preflight com permissões declaradas e novo aviso da regra (DEC-313, DEC-283) | RESUMED (already reviewed) | |
+| 11 | SKILL.md e operator.md (receita sem interface, ações novas, passo 2) | RESUMED (already reviewed) | |
+| 12 | agents/spec-author.md alinhado (DEC-421, DEC-422, DEC-477) | RESUMED (already reviewed) | |
+| 13 | teto de tamanho do script de workflow | DONE | 25 |
+
+
+### Concerns
+
+1. the "executing" roadmap record failed (2 command(s) ran beyond the assembled list; command 33 () stdout is not JSON of the CLI (tool "roadmap"); command 34 () stdout is not JSON of the CLI (tool "roadmap")); decisions and the in-flight entry are not recorded yet
+
+### Gates
+
+G1: exit 0, total 1638, skipped 0, failing [] (linha de base: exit 0, total 1581, skipped 0, failing []). G2: exit 0 (linha de base: exit 0). G3: exit 0 (linha de base: exit 0). G4: exit 0 (linha de base: exit 0). G5: exit 0 (linha de base: exit 0).
+
+### Entradas humanas
+
+1. O quê: Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030). Bloqueia (blq): não. Contorno: Ficam pendentes com origem executor e E8 segue; o workflow retém os dependentes em código.
+2. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato). Bloqueia (blq): não. Contorno: Comportamento da decisão 15 é relatado; DEC-218 vale para os demais casos.
+3. O quê: Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob a delegação do dono. Bloqueia (blq): não. Contorno: Sem a sonda, o relatório registra 'não rodada' e o gatilho de DEC-312 fica em aberto.
+4. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato, única exceção à parada de DEC-218). Bloqueia (blq): não. Contorno: O comportamento novo é o da decisão 15, relatado; DEC-218 vale para todos os outros casos.
