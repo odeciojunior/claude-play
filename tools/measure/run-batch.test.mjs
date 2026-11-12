@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,7 +36,7 @@ const gitIn = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=fab', '-c', 'use
 // and git run for real. Options: journal (fixture name, or a function of the call number), afterRun(cwd, n)
 // (changes the sandbox like the run would), stopResume (the first claude -p waits for the abort and the
 // simulated git log answers with the stop commit on its second query), failOn (call number that fails).
-function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn } = {}) {
+function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, noAgentsOn } = {}) {
   const calls = [];
   const issued = [];
   let n = 0;
@@ -48,7 +48,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn } =
     writeFileSync(join(proj, `${id}.jsonl`), readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id));
     const wf = join(proj, id, 'subagents', 'workflows', 'wf_fab');
     mkdirSync(wf, { recursive: true });
-    for (const a of ['afab101', 'afab102']) {
+    for (const a of noAgentsOn === n ? [] : ['afab101', 'afab102']) {
       for (const ext of ['jsonl', 'meta.json']) {
         copyFileSync(join(FIX, SRC_SID, 'subagents', 'workflows', 'wf_fab01', `agent-${a}.${ext}`), join(wf, `agent-${a}.${ext}`));
       }
@@ -237,6 +237,7 @@ test('toAttemptCounters separates structural, per-task and conditional work', ()
 // ---- Task 12: stop and resume, validity and outcomes of the seeded variants ----
 
 const NOW = () => new Date('2026-11-10T12:00:00Z');
+const okRatify = () => ({ ok: true, ratified: [] });
 const ORIGINAL_PLAN = readFileSync(join(here, 'scenario', 'e5', 'plan.md'), 'utf8').replace(/\r\n/g, '\n');
 const taskSection = (text, k) => new RegExp(`^### Task ${k}: [\\s\\S]*?(?=^### Task |^## Acceptance criteria evidence)`, 'm').exec(text)[0];
 
@@ -280,7 +281,7 @@ test('stop and resume launches two sessions in one attempt', async () => {
   const s = setup();
   try {
     const fake = makeFake(s.configDir, { stopResume: true });
-    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW, ratify: okRatify });
     const claudeP = fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p');
     assert.equal(claudeP.length, 2);
     assert.match(claudeP[0].args[1], /run E5$/);
@@ -288,14 +289,14 @@ test('stop and resume launches two sessions in one attempt', async () => {
     const priv = JSON.parse(readFileSync(join(r.dir, 'private', 'attempts.json'), 'utf8'));
     assert.equal(priv.attempts.length, 1);
     assert.deepEqual(priv.attempts[0].sessions, [sid(1), sid(2)]);
-    assert.equal(fake.calls.filter((c) => c.args[0]?.endsWith('session-metrics.mjs')).length, 1);
+    assert.equal(fake.calls.filter((c) => c.args[0]?.endsWith('session-metrics.mjs')).length, 2); // whole attempt + resume session alone
     assert.equal(r.aggregate.valid, 1);
     assert.equal(r.exitCode, 0);
     // a resumed session that does not finish makes the attempt invalid
     const s2 = setup();
     try {
       const failing = makeFake(s2.configDir, { stopResume: true, failOn: 2 });
-      const r2 = await runBatch(baseOpts(s2, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: failing.exec, now: NOW });
+      const r2 = await runBatch(baseOpts(s2, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: failing.exec, now: NOW, ratify: okRatify });
       assert.equal(r2.aggregate.attempts[0].status, 'invalid');
       assert.equal(r2.aggregate.attempts[0].reason, 'retomada-incompleta');
       assert.deepEqual(r2.aggregate.invalidReasons, { 'retomada-incompleta': 1 });
@@ -1112,4 +1113,177 @@ test('E17: panel error texts carry no path', () => {
   const win = ['C:', 'Users', 'someone', 'AppData', 'Local', 'Temp', 'panel-1', 'wt'].join('\\');
   assert.equal(redactPaths("fatal: '" + win + "' failed /tmp/panel-1/wt"), "fatal: '<path>' failed <path>");
   assert.equal(redactPaths('roadmap.mjs exited 2'), 'roadmap.mjs exited 2');
+});
+
+// ---- E17: parada-retomada ratifica as decisões de contrato de E5 entre as sessões (D2) e invalida retomada sem agentes (D3)
+
+function ratifySandbox(s, { holdInWorktree = false } = {}) {
+  const sandbox = join(s.base, 'rsb');
+  mkdirSync(sandbox, { recursive: true });
+  gitIn(sandbox, 'init', '-q', '-b', 'main');
+  gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'seed');
+  gitIn(sandbox, 'branch', 'release/sandbox');
+  let held = null;
+  if (holdInWorktree) {
+    held = join(s.base, 'rsb-wt');
+    assert.equal(gitIn(sandbox, 'worktree', 'add', '-q', held, 'release/sandbox').status, 0);
+  }
+  return { sandbox, held };
+}
+
+// Fake tracker CLI: keeps the pending list in memory; `ratify` clears the given ids and writes a file in cwd.
+function fakeTracker(pending, { keep = [], status = 0 } = {}) {
+  const calls = [];
+  const exec = (cmd, args, o) => {
+    calls.push({ cmd, args, cwd: o.cwd });
+    assert.equal(cmd, process.execPath);
+    assert.match(args[0], /roadmap-tracker[\\/]scripts[\\/]roadmap\.mjs$/);
+    const sub = args[1];
+    assert.equal(args[2], 'docs/plans/roadmap-sandbox');
+    if (sub === 'pending-decisions') {
+      assert.ok(args.includes('--json'));
+      return { status: 0, stdout: JSON.stringify({ result: { decisions: pending } }) };
+    }
+    if (sub === 'ratify') {
+      const ids = args.slice(3).filter((a) => /^DEC-\d+$/.test(a));
+      mkdirSync(join(o.cwd, 'docs', 'plans', 'roadmap-sandbox'), { recursive: true });
+      writeFileSync(join(o.cwd, 'docs', 'plans', 'roadmap-sandbox', 'decisions.md'), `ratified ${ids.join(',')}\n`);
+      for (let i = pending.length - 1; i >= 0; i--) if (ids.includes(pending[i].id) && !keep.includes(pending[i].id)) pending.splice(i, 1);
+      return { status, stdout: JSON.stringify({ result: { ids } }) };
+    }
+    throw new Error(`unexpected ${sub}`);
+  };
+  return { exec, calls };
+}
+
+const dec = (id, deliverable, scope) => ({ id, deliverable, scope, startedDependents: [], released: false });
+
+test('E17 D2: ratifyE5Contract ratifies only E5 contract decisions in the release/sandbox worktree and commits', () => {
+  const s = setup();
+  try {
+    const { sandbox } = ratifySandbox(s);
+    const pending = [dec('DEC-501', 'E5', 'contract'), dec('DEC-502', 'E5', 'local'), dec('DEC-503', 'E6', 'contract'), dec('DEC-504', 'E4, E5', 'contract')];
+    const t = fakeTracker(pending);
+    const r = ratifyE5Contract(sandbox, '/inst', { exec: t.exec });
+    assert.deepEqual(r, { ok: true, ratified: ['DEC-501', 'DEC-504'] });
+    const ratifyCall = t.calls.find((c) => c.args[1] === 'ratify');
+    assert.deepEqual(ratifyCall.args.slice(1), ['ratify', 'docs/plans/roadmap-sandbox', 'DEC-501', 'DEC-504', '--json']);
+    assert.deepEqual(pending.map((p) => p.id), ['DEC-502', 'DEC-503']);
+    // the commit is on release/sandbox, the temporary worktree is gone and the sandbox root stays on main
+    assert.match(gitIn(sandbox, 'log', '-1', '--format=%s', 'release/sandbox').stdout, /ratif/i);
+    assert.equal(gitIn(sandbox, 'show', 'release/sandbox:docs/plans/roadmap-sandbox/decisions.md').stdout.trim(), 'ratified DEC-501,DEC-504');
+    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'main');
+    assert.equal(gitIn(sandbox, 'worktree', 'list', '--porcelain').stdout.split('worktree ').length - 1, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D2: ratifyE5Contract uses the worktree that already holds release/sandbox', () => {
+  const s = setup();
+  try {
+    const { sandbox, held } = ratifySandbox(s, { holdInWorktree: true });
+    const t = fakeTracker([dec('DEC-501', 'E5', 'contract')]);
+    const r = ratifyE5Contract(sandbox, '/inst', { exec: t.exec });
+    assert.equal(r.ok, true);
+    assert.ok(t.calls.every((c) => resolve(c.cwd) === resolve(held)));
+    assert.equal(gitIn(held, 'status', '--porcelain').stdout.trim(), '');
+    assert.equal(gitIn(sandbox, 'rev-parse', 'release/sandbox').stdout, gitIn(held, 'rev-parse', 'HEAD').stdout);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D2: ratifyE5Contract with nothing to ratify changes nothing; a decision left pending is a failure', () => {
+  const s = setup();
+  try {
+    const { sandbox } = ratifySandbox(s);
+    const before = gitIn(sandbox, 'rev-parse', 'release/sandbox').stdout;
+    const none = fakeTracker([dec('DEC-502', 'E5', 'local')]);
+    assert.deepEqual(ratifyE5Contract(sandbox, '/inst', { exec: none.exec }), { ok: true, ratified: [] });
+    assert.equal(none.calls.some((c) => c.args[1] === 'ratify'), false);
+    assert.equal(gitIn(sandbox, 'rev-parse', 'release/sandbox').stdout, before);
+    const left = fakeTracker([dec('DEC-501', 'E5', 'contract')], { keep: ['DEC-501'] });
+    const r = ratifyE5Contract(sandbox, '/inst', { exec: left.exec });
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'decisao-pendente-apos-ratificar');
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D2: ratifyE5Contract never throws: missing branch, CLI failure and bad JSON are { ok: false }', () => {
+  const s = setup();
+  try {
+    const bare = join(s.base, 'bare');
+    mkdirSync(bare, { recursive: true });
+    gitIn(bare, 'init', '-q', '-b', 'main');
+    gitIn(bare, 'commit', '-q', '--allow-empty', '-m', 'seed');
+    const miss = ratifyE5Contract(bare, '/inst', { exec: () => ({ status: 0, stdout: '{}' }) });
+    assert.equal(miss.ok, false);
+    assert.equal(miss.reason, 'ratificacao-falhou');
+    const { sandbox } = ratifySandbox(s);
+    assert.equal(ratifyE5Contract(sandbox, '/inst', { exec: () => ({ status: 2, stdout: '' }) }).ok, false);
+    assert.equal(ratifyE5Contract(sandbox, '/inst', { exec: () => ({ status: 0, stdout: 'nope' }) }).ok, false);
+    assert.equal(ratifyE5Contract(sandbox, '/inst', { exec: () => { throw new Error('boom'); } }).ok, false);
+    const bad = fakeTracker([dec('DEC-501', 'E5', 'contract')], { status: 1 });
+    assert.equal(ratifyE5Contract(sandbox, '/inst', { exec: bad.exec }).ok, false);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D3: resumeRunValidity marks a resume session without any subagent as retomada-sem-agentes', () => {
+  const zero = { total: { calls: { haiku: 0, sonnet: 0, opus: 0, fable: 0, other: 0 } } };
+  const some = { total: { calls: { haiku: 0, sonnet: 1, opus: 0, fable: 0, other: 0 } } };
+  assert.deepEqual(resumeRunValidity(zero), { valid: false, reason: 'retomada-sem-agentes' });
+  assert.deepEqual(resumeRunValidity(some), { valid: true, reason: 'ok' });
+  assert.deepEqual(resumeRunValidity(undefined), { valid: false, reason: 'retomada-sem-agentes' });
+});
+
+test('E17 D2: runBatch ratifies between the two sessions of parada-retomada', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    const ratify = (sandbox, installPath) => {
+      fake.calls.push({ cmd: 'ratify', args: [], cwd: sandbox, installPath });
+      return { ok: true, ratified: ['DEC-1'] };
+    };
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW, ratify });
+    const order = fake.calls.filter((c) => c.cmd === 'ratify' || (c.cmd === 'claude' && c.args[0] === '-p')).map((c) => c.cmd);
+    assert.deepEqual(order, ['claude', 'ratify', 'claude']);
+    assert.match(fake.calls.find((c) => c.cmd === 'ratify').installPath, /productivity-tools[\\/]9\.9\.9$/);
+    assert.equal(r.aggregate.valid, 1);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D2: a failed ratification invalidates the attempt and the resume session is not launched', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    const ratify = () => ({ ok: false, reason: 'decisao-pendente-apos-ratificar' });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW, ratify });
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 1);
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'decisao-pendente-apos-ratificar');
+    assert.deepEqual(r.aggregate.invalidReasons, { 'decisao-pendente-apos-ratificar': 1 });
+  } finally {
+    s.done();
+  }
+});
+
+test('E17 D3: parada-retomada whose resume session launches no agent is invalid as retomada-sem-agentes', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true, noAgentsOn: 2 });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW, ratify: () => ({ ok: true, ratified: [] }) });
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'retomada-sem-agentes');
+    assert.deepEqual(r.aggregate.invalidReasons, { 'retomada-sem-agentes': 1 });
+    assert.equal(r.aggregate.valid, 0);
+  } finally {
+    s.done();
+  }
 });
