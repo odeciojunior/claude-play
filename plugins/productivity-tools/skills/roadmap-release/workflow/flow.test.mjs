@@ -2747,6 +2747,9 @@ test('phrases: pt e en, curtas e citam entregável e status', () => {
       assert.doesNotMatch(s, /this commit|este commit/i);
     }
     assert.match(P.log('E1', 'plano'), /E1/);
+    assert.equal(P.critNoEvidence('E15', 'AC1', 'human'), lang === 'en' ? 'E15: criterion AC1 has no automatic evidence (human)' : 'E15: critério AC1 sem evidência automática (human)');
+    assert.equal(P.critNoEvidence('E22', 'AC1', 'human', 'BLQ-3'), lang === 'en' ? 'E22: criterion AC1 has no automatic evidence (human, BLQ-3)' : 'E22: critério AC1 sem evidência automática (human, BLQ-3)');
+    assert.notEqual(P.critNoEvidence('E15', 'AC1', 'human'), P.critNoEvidence('E22', 'AC1', 'human'));
     assert.match(P.log('E1', 'plano'), /plano/);
     assert.match(P.commit('E1', 'plano'), /E1/);
   }
@@ -3115,7 +3118,7 @@ test('AC2 documentação pela CLI', async () => {
   assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
   const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
   assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
-  assert.ok(pend.some((c) => /criterion AC1 has no automatic evidence/.test(c)), 'critério sem evidência automática');
+  assert.ok(pend.some((c) => /E1: criterion AC1 has no automatic evidence \(human\)/.test(c)), 'critério sem evidência automática');
   assert.doesNotMatch(p, /roadmap-tracker/);
   assert.match(p, /Do NOT propose, write or approve a strategy revision/);
   const order = promptCommands(p).map((c) => /^node "[^"]*" (\S+)/.exec(c)[1]);

@@ -825,6 +825,7 @@ function phrases(lang) {
       blockUnblocks: E => `quando o bloqueio de ${E} for resolvido`,
       blockHow: E => `desbloqueio de ${E} pelo release`,
       commit: (E, word) => `docs(roadmap): ${E} em ${word}`,
+      critNoEvidence: (E, ac, kind, blq) => `${E}: critério ${ac} sem evidência automática (${kind}${blq ? ', ' + blq : ''})`,
     }
   }
   return {
@@ -836,6 +837,7 @@ function phrases(lang) {
     blockUnblocks: E => `when the block on ${E} is resolved`,
     blockHow: E => `unblock of ${E} by the release`,
     commit: (E, word) => `docs(roadmap): ${E} at ${word}`,
+    critNoEvidence: (E, ac, kind, blq) => `${E}: criterion ${ac} has no automatic evidence (${kind}${blq ? ', ' + blq : ''})`,
   }
 }
 // statusEvidence (optional) replaces the evidence of set-status only: the CLI appends it to the panel Evidence cell, which already holds
@@ -1590,7 +1592,7 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
     const docPiece = pieceOf(byId[E])
     const ranHuman = h => String(h.what || '').includes('[' + RAN_MARK + ':')
     const pendRoom = CELL_CHARS - `(${phrases(LANG).owner}) `.length
-    const critPending = (out.acOpen || []).map(x => fitCell(`criterion ${x.ac} has no automatic evidence (${x.kind}${x.blq ? ', ' + x.blq : ''})`, pendRoom, planTxt(), LANG).text)
+    const critPending = (out.acOpen || []).map(x => fitCell(phrases(LANG).critNoEvidence(E, x.ac, x.kind, x.blq), pendRoom, planTxt(), LANG).text)
     const docsRc = skipStatus => recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedBy: null,
       evidence: [mergeCommit, `gates ${GATES.map(d => d.name).join(', ')}`, specTxt(), planTxt(), reviewsTxt()], statusEvidence: [mergeCommit], decisions: [], skipStatus,
       pending: [...out.acceptedRisks.map(fmtRisk), ...human.filter(h => !ranHuman(h)).map(h => h.what), ...critPending], inflight: { remove: br },
