@@ -21,10 +21,14 @@ const WEIGHTS = { haiku: 1, sonnet: 20, opus: 40 };
 const FAMILIES = ['haiku', 'sonnet', 'opus', 'fable', 'other'];
 
 // Real executor. On abort the whole process tree is ended (taskkill on Windows, process group elsewhere).
+// claude -p stops background tasks (the release Workflow) 10 minutes after its last turn; a measured run must wait for them.
+export const CLAUDE_ENV = { CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' };
+export const execEnv = (cmd, base = process.env) => (cmd === 'claude' ? { ...base, ...CLAUDE_ENV } : base);
+
 export function defaultExec(cmd, args, { cwd, signal } = {}) {
   return new Promise((resolvePromise, reject) => {
     const win = process.platform === 'win32';
-    const child = spawn(cmd, args, { cwd, detached: !win, stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawn(cmd, args, { cwd, env: execEnv(cmd), detached: !win, stdio: ['ignore', 'pipe', 'inherit'] });
     let stdout = '';
     child.stdout.on('data', (d) => (stdout += d));
     const kill = () => {
@@ -525,6 +529,15 @@ function harnessPrompts(h, scenario) {
   };
 }
 
+// E5 reached release/sandbox: the release merges it with the subject "merge: E5 in release/sandbox" (the run names its spec and plan by its own date).
+export function e5Integrated(sandbox) {
+  try {
+    return gitOut(sandbox, 'log', '--first-parent', '--format=%s', 'release/sandbox').split(/\r?\n/).some((l) => l.startsWith('merge: E5 in release/sandbox'));
+  } catch {
+    return false;
+  }
+}
+
 // A release run that launched no subagent at all stopped before doing anything (e.g. at preflight).
 export function releaseRunValidity(variant, run) {
   if (variant !== 'completo' && variant !== 'parada-retomada') return { valid: true, reason: 'ok' };
@@ -692,7 +705,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
     const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
-    if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = gitOk(scenario.dir, 'cat-file', '-e', `release/sandbox:${E5_PATHS.plan}`);
+    if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     attempts.push(attempt);
   }
 

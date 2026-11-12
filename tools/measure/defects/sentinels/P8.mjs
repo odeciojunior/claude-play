@@ -26,10 +26,13 @@ function replaceOnce(text, from, to) {
 }
 
 export function seed(dir) {
-  writePlan(dir, replaceSection(readPlan(dir), 3, (b) => replaceOnce(b, '**reviewTier:** sonnet', '**reviewTier:** opus')));
+  writePlan(dir, replaceSection(readPlan(dir), 3, (b) => {
+    if (!/(\*\*)?reviewTier:(\*\*)? sonnet/.test(b)) fail();
+    return b.replace(/((?:\*\*)?reviewTier:(?:\*\*)? )sonnet/, '$1opus');
+  }));
 }
 
 export function present(dir, ref = 'HEAD') {
   const s = section(showPlan(dir, ref), 3);
-  return !!s && /reviewTier:\*\* opus/.test(s.body);
+  return !!s && /reviewTier:(\*\*)? opus/.test(s.body);
 }

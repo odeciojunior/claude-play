@@ -25,14 +25,26 @@ function replaceOnce(text, from, to) {
   return text.replace(from, () => to);
 }
 
+const LOCK = /(\*\*)?needsLock:(\*\*)? sandbox-port(?: \([^)]*\))?/;
+
 export function seed(dir) {
   const text = readPlan(dir);
-  const s = section(text, 3) ?? fail();
-  const b = replaceOnce(s.body, '**needsLock:** sandbox-port', '**needsLock:** none');
-  const all = b.split('\n');
-  const kept = all.filter((l) => !l.includes('sandbox-port'));
-  if (kept.length === all.length) fail();
-  writePlan(dir, text.slice(0, s.start) + kept.join('\n').replace(/\n{3,}/g, '\n\n') + text.slice(s.end));
+  const tasks = [...text.matchAll(/^### Task \d+: [\s\S]*?(?=^### Task |^## |(?![\s\S]))/gm)];
+  const t = tasks.find((m) => LOCK.test(m[0])) ?? fail();
+  const locked = t[0].replace(LOCK, (_, b1 = '', b2 = '') => b1 + 'needsLock:' + b2 + ' none');
+  const plan = text.slice(0, t.index) + locked + text.slice(t.index + t[0].length);
+  // Step headings lose the parenthetical that names the lock; every other line that names it goes.
+  const kept = [];
+  let afterDrop = false;
+  for (const line of plan.split('\n')) {
+    const l = /^- \[[ x]\] \*\*Step/.test(line) ? line.replace(/ ?\([^)]*sandbox-port[^)]*\)/, '') : line;
+    if (l.includes('sandbox-port')) { afterDrop = true; continue; }
+    // A deleted line leaves no double blank line behind.
+    if (afterDrop && l === '' && kept[kept.length - 1] === '') { afterDrop = false; continue; }
+    afterDrop = false;
+    kept.push(l);
+  }
+  writePlan(dir, kept.join('\n'));
 }
 
 export function present(dir, ref = 'HEAD') {

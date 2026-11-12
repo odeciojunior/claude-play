@@ -28,12 +28,14 @@ function replaceOnce(text, from, to) {
 export function seed(dir) {
   writePlan(dir, replaceSection(readPlan(dir), 2, (b) => {
     const lines = b.split('\n');
-    const i = lines.findIndex((l) => l.startsWith('- [ ] **Step 1:**'));
-    const j = lines.findIndex((l) => l.startsWith('- [ ] **Step 3:**'));
-    if (i < 0 || j < 0 || !lines[j].includes('throw `RangeError` when')) fail();
-    lines[i] = "- [ ] **Step 1:** Write `tests/e5-truncate.test.mjs` asserting only that `typeof truncate === 'function'`.";
-    lines[j] = lines[j].replace('throw `RangeError` when', 'throw an error when');
-    return lines.join('\n');
+    const i = lines.findIndex((l) => l.startsWith('- [ ] **Step 1'));
+    // Step 2, or the next step heading when an earlier defect (P1) already removed that line.
+    const j = lines.findIndex((l, k) => k > i && /^- \[[ x]\] \*\*Step/.test(l));
+    if (i < 0 || j <= i) fail();
+    lines.splice(i, j - i, "- [ ] **Step 1:** Write `tests/e5-truncate.test.mjs` asserting only that `typeof truncate === 'function'`.");
+    const out = lines.join('\n').replace(/new RangeError/g, 'new Error').replace(/`RangeError`/g, 'an error');
+    if (out.includes('RangeError')) fail();
+    return out;
   }));
 }
 
