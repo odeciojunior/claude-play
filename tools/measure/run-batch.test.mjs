@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters, readJournal, checkValidity } from './run-batch.mjs';
+import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -865,4 +865,15 @@ test('CLI parses --stop-on-denial as a flag (DEC-194)', () => {
   const r = spawnSync(process.execPath, [join(here, 'run-batch.mjs'), '--stop-on-denial', '--variant', 'x'], { encoding: 'utf8' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage:.*--stop-on-denial/);
+});
+
+test('releaseRunValidity marks a release run without any subagent as sem-agentes', () => {
+  const zero = { total: { calls: { haiku: 0, sonnet: 0, opus: 0, fable: 0, other: 0 } } };
+  const some = { total: { calls: { haiku: 0, sonnet: 2, opus: 0, fable: 0, other: 0 } } };
+  for (const v of ['completo', 'parada-retomada']) {
+    assert.deepEqual(releaseRunValidity(v, zero), { valid: false, reason: 'sem-agentes' });
+    assert.equal(releaseRunValidity(v, some).valid, true);
+  }
+  assert.equal(releaseRunValidity('plan-only', zero).valid, true);
+  assert.equal(releaseRunValidity('codigo-semeado-A', zero).valid, true);
 });

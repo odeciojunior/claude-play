@@ -25,6 +25,20 @@ export const E5_PATHS = {
 };
 
 const RELEASE = '/productivity-tools:roadmap-release';
+
+// The release skill's preflight reads permission rules only from settings files (never from CLI
+// --allowedTools), so the "run" variants carry them in an excluded settings.local.json.
+export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)'];
+const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B'];
+const LOCAL_SETTINGS = '.claude/settings.local.json';
+
+export function excludeFromGit(dir, name) {
+  const p = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: dir, encoding: 'utf8' }).trim();
+  const file = resolve(dir, p);
+  mkdirSync(dirname(file), { recursive: true });
+  const old = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
+}
 const FIXED_PLAN = 'docs/plans/2026-11-10-fixed-plan.md';
 
 function git(cwd, ...args) {
@@ -229,6 +243,10 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'tracker':
       scenario.prompts = ['/productivity-tools:roadmap-tracker ' + readText(join(SCEN, 'tracker-event.md'))];
       break;
+  }
+  if (RELEASE_RUN_VARIANTS.includes(variant)) {
+    writeIn(sandbox, LOCAL_SETTINGS, JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
+    excludeFromGit(sandbox, LOCAL_SETTINGS);
   }
   return scenario;
 }
