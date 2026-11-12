@@ -3414,3 +3414,102 @@ test('pluginRootOf strips the tracker suffix or returns null', () => {
   assert.equal(pure.pluginRootOf('C:\\p\\pt\\skills\\roadmap-tracker\\scripts\\roadmap.mjs'), 'C:/p/pt');
   assert.equal(pure.pluginRootOf('/t/roadmap.mjs'), null);
 });
+
+import { stopsOf } from '../../../scripts/spec-tool.mjs';
+
+const rl = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
+const np = (o) => ({ id: 'P1', blocking: false, ...o });
+
+test('stopOrCarry stops equal spec-tool stopsOf', () => {
+  const pure = loadPure();
+  const table = [
+    { rulings: [rl({ id: 'R1' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', contradicts: 'DEC-12' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', contradicts: 'G1' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', costIfWrong: 'high', reversible: false })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', costIfWrong: 'high', reversible: true })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1' })], needsPerson: [np({ id: 'P1', blocking: true })] },
+    { rulings: [rl({ id: 'R1' })], needsPerson: [np({ id: 'P1', blocking: false })] },
+    { rulings: [rl({ id: 'R1', contradicts: 'DEC-1' }), rl({ id: 'R2', costIfWrong: 'high', reversible: false }), rl({ id: 'R3' })], needsPerson: [np({ id: 'P2', blocking: true })] },
+  ];
+  for (const t of table) {
+    const got = pure.stopOrCarry({ ...t, approved: [] }).stops.map((s) => s.id).sort();
+    assert.deepEqual(got, stopsOf(t.rulings, t.needsPerson).sort(), JSON.stringify(t));
+  }
+  const r = pure.stopOrCarry({
+    rulings: [rl({ id: 'R1', contradicts: 'DEC-1' }), rl({ id: 'R2', costIfWrong: 'high', reversible: false }), rl({ id: 'R3' })],
+    needsPerson: [np({ id: 'P2', blocking: true })],
+    approved: [],
+  });
+  assert.deepEqual(r.stops.map((s) => [s.id, s.kind, s.action]), [
+    ['P2', 'humano', 'human-input'],
+    ['R1', 'decisao', 'decision'],
+    ['R2', 'approve-ruling', 'approve-ruling'],
+  ]);
+  assert.equal(r.stops[2].key, pure.approveKey(r.stops[2] && rl({ id: 'R2', costIfWrong: 'high', reversible: false })));
+  assert.deepEqual(r.carry.map((x) => x.id), ['R3']);
+});
+
+test('stopOrCarry releases an approved costly ruling only for the same text', () => {
+  const pure = loadPure();
+  const r = rl({ id: 'R2', decision: 'Drop  the\ntable.', costIfWrong: 'high', reversible: false });
+  assert.match(pure.approveKey(r), /^R2:[0-9a-f]+$/);
+  assert.equal(pure.approveKey(r), pure.approveKey({ ...r, decision: 'Drop the table.' }));
+  const ok = pure.stopOrCarry({ rulings: [r], needsPerson: [], approved: [pure.approveKey(r)] });
+  assert.deepEqual(ok.stops, []);
+  assert.deepEqual(ok.carry.map((x) => x.id), ['R2']);
+  const other = pure.stopOrCarry({ rulings: [r], needsPerson: [], approved: [pure.approveKey({ ...r, decision: 'Keep the table.' })] });
+  assert.deepEqual(other.stops.map((s) => s.id), ['R2']);
+  assert.equal(other.stops[0].key, pure.approveKey(r));
+  assert.deepEqual(other.carry, []);
+});
+
+test('rulingDecisions maps scope and alternative', () => {
+  const pure = loadPure();
+  assert.deepEqual(
+    pure.rulingDecisions([rl({ decision: 'A.', scope: 'contract', alternative: 'B' }), rl({ decision: 'C.', scope: 'local', alternative: 'D' })]),
+    [{ text: 'A.', scope: 'contrato', discarded: 'B' }, { text: 'C.', scope: 'local', discarded: 'D' }],
+  );
+});
+
+test('specCardMismatch compares ids, text and verify', () => {
+  const pure = loadPure();
+  const card = { id: 'E8', acceptance: [
+    { id: 'AC1', text: 'Does  a thing. {verify: test; evidence: node --test x}' },
+    { id: 'AC2', text: 'Human thing. {verify: human}' },
+  ] };
+  const item = (id, textWithoutTag, verify) => ({ id, text: textWithoutTag, textWithoutTag, verify });
+  const good = {
+    id: 'E8',
+    acceptance: [
+      item('AC1', 'Does a thing.', { kind: 'test', blq: null, evidence: 'node --test x' }),
+      item('AC2', 'Human thing.', { kind: 'human', blq: null, evidence: '' }),
+    ],
+  };
+  assert.deepEqual(pure.specCardMismatch(good, 'E8', card), []);
+  assert.notEqual(pure.specCardMismatch({ ...good, id: 'E9' }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [...good.acceptance, item('AC3', 'More.', null)] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Other text.', good.acceptance[0].verify), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Does a thing.', { kind: 'test', blq: null, evidence: 'node other' }), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Does a thing.', null), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC2', 'Does a thing.', good.acceptance[0].verify), good.acceptance[1]] }, 'E8', card).length, 0);
+});
+
+test('heldBy holds transitive dependents and never the owner', () => {
+  const pure = loadPure();
+  const cards = [
+    { id: 'E1', deps: [] },
+    { id: 'E2', deps: ['E1'] },
+    { id: 'E3', deps: ['E2'] },
+    { id: 'E4', deps: [] },
+  ];
+  const base = { cards, selected: ['E1', 'E2', 'E3', 'E4'], contractDecisions: [{ id: 'DEC-9', deliverable: 'E1' }], started: [] };
+  const m = pure.heldBy(base);
+  assert.deepEqual([...m.keys()].sort(), ['E2', 'E3']);
+  assert.deepEqual(m.get('E2'), { decision: 'DEC-9', owner: 'E1' });
+  assert.deepEqual(m.get('E3'), { decision: 'DEC-9', owner: 'E1' });
+  const s = pure.heldBy({ ...base, started: ['E2'] });
+  assert.deepEqual([...s.keys()], ['E3']);
+  assert.equal(pure.heldBy({ ...base, selected: ['E1', 'E4'] }).size, 0);
+  assert.equal(pure.holdReason({ decision: 'DEC-9', owner: 'E1' }), 'held by DEC-9 (E1, contract, pending ratification)');
+});

@@ -997,6 +997,72 @@ function pluginRootOf(trackerCli) {
   const suffix = '/skills/roadmap-tracker/scripts/roadmap.mjs'
   return p.endsWith(suffix) ? p.slice(0, -suffix.length) : null
 }
+// Key the person types to approve a costly, irreversible ruling: tied to the ruling id and the text of its decision.
+function approveKey(ruling) {
+  return `${ruling.id}:${fnv1a(collapseWs(ruling.decision))}`
+}
+// Stop rules over the spec data (same stop set as spec-tool stopsOf, plus the approval release): blocking human input, a ruling that contradicts a decision or gate, a costly irreversible ruling not yet approved. The rest is carried on.
+function stopOrCarry({ rulings, needsPerson, approved }) {
+  const ok = Array.isArray(approved) ? approved : []
+  const filled = v => v !== null && v !== undefined && v !== ''
+  const stops = []
+  const carry = []
+  for (const h of needsPerson || []) if (h.blocking === true) stops.push({ id: h.id, kind: 'humano', action: 'human-input' })
+  for (const r of rulings || []) {
+    if (filled(r.contradicts)) stops.push({ id: r.id, kind: 'decisao', action: 'decision' })
+    else if (r.costIfWrong === 'high' && r.reversible === false && !ok.includes(approveKey(r))) stops.push({ id: r.id, kind: 'approve-ruling', action: 'approve-ruling', key: approveKey(r) })
+    else carry.push(r)
+  }
+  return { stops, carry }
+}
+// Decisions to record, from the spec rulings only: the shape recordCommands takes from parseDecision, plus the discarded alternative.
+function rulingDecisions(rulings) {
+  return (rulings || []).map(r => ({ text: r.decision, scope: r.scope === 'contract' ? 'contrato' : 'local', discarded: r.alternative }))
+}
+// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify.
+function specCardMismatch(data, E, card) {
+  const out = []
+  if (!data || data.id !== E) out.push(`spec id ${data && data.id} is not ${E}`)
+  const want = (card && card.acceptance) || []
+  const got = (data && Array.isArray(data.acceptance)) ? data.acceptance : []
+  if (want.length !== got.length) out.push(`spec has ${got.length} criteria, the card has ${want.length}`)
+  const vkey = t => t ? [t.kind || '', t.blq || '', collapseWs(t.evidence)].join('|') : ''
+  for (let i = 0; i < Math.min(want.length, got.length); i++) {
+    const c = want[i]
+    const g = got[i] || {}
+    const full = collapseWs(c.text)
+    const at = full.lastIndexOf('{verify:')
+    const bare = at === -1 ? full : collapseWs(full.slice(0, at))
+    if (g.id !== c.id) out.push(`criterion ${i + 1}: id ${g.id} is not ${c.id}`)
+    if (collapseWs(g.textWithoutTag) !== bare) out.push(`${c.id}: text differs from the card`)
+    const tag = parseVerifyTag(c.text)
+    const cardTag = tag && !tag.invalid ? tag : null
+    if (vkey(cardTag) !== vkey(g.verify)) out.push(`${c.id}: verify differs from the card`)
+  }
+  return out
+}
+// Selected, not started dependents (direct or transitive, by card deps) of each pending contract decision; the owner is never held.
+function heldBy({ cards, selected, contractDecisions, started }) {
+  const byId = Object.fromEntries((cards || []).map(c => [c.id, c]))
+  const sel = new Set(selected || [])
+  const begun = new Set(started || [])
+  const out = new Map()
+  const dependsOn = (id, target, seen = new Set()) => {
+    if (seen.has(id)) return false
+    seen.add(id)
+    return ((byId[id] && byId[id].deps) || []).some(d => d === target || dependsOn(d, target, seen))
+  }
+  for (const d of contractDecisions || []) {
+    for (const id of sel) {
+      if (id === d.deliverable || begun.has(id) || out.has(id)) continue
+      if (dependsOn(id, d.deliverable)) out.set(id, { decision: d.id, owner: d.deliverable })
+    }
+  }
+  return out
+}
+function holdReason({ decision, owner }) {
+  return `held by ${decision} (${owner}, contract, pending ratification)`
+}
 // <embed src="../../../lib/routing.mjs" exports="strip">
 // Gerado de ../../../lib/routing.mjs por plugins/productivity-tools/scripts/embed.mjs; não editar aqui.
 // Definição única de roteamento (E6, peça 2): fonte pura (DEC-058), sem imports nem acesso a ambiente.
