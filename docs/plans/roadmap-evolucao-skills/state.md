@@ -125,6 +125,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 ({verify: human}) em docs/reports/2026-11-12-E20-autor-plano-comportamental.md
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025)
 - (dono) Ratificação das decisões de alcance contrato (1, 2, 4, 7 e 16) antes de E8 (DEC-030)
+- (executor) Corrigir na release antes do próximo run real: o schema de docs-measure do release-workflow confunde o campo status (JSON de status --json) com situação; renomear os campos de saída bruta e testar. Entra na próxima publicação, com versão nova.
+- (dono) A ponta da release tem E7 e E19 com plugin.json ainda em 1.7.0. A publicação seguinte sobe a versão (DEC-382) e mede sobre a árvore nova; até lá ninguém instala a partir da branch de release.
+- (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
+- (executor) E8: avaliar se resume do próprio entregável deve parar por decisão de contrato dele mesmo sem dependente iniciado (DEC-030 só exige antes de um dependente); em 2 de 3 retomadas do sandbox a parada pediu resposta humana.
+- (dono) Rodar G1 a G5 sobre a ponta de feat/E17-medicao antes de avançar main e conferir que a árvore do plugin é 214fb3b; a branch de volta segue partindo de M.
 <!-- /roadmap:pending -->
 
 ## Em andamento
