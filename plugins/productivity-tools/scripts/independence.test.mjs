@@ -190,3 +190,12 @@ test('E20: tracker description points task plans to plan-writer', () => {
   const { fields } = frontmatter(read('skills/roadmap-tracker/SKILL.md'));
   assert.ok(fields.description.includes('use plan-writer'));
 });
+
+test('E20: plan-writer adoption passes spec-author every field its contract requires', () => {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  const step = body.split('\n').find((l) => l.includes('productivity-tools:spec-author')) || '';
+  assert.ok(step, 'falta o despacho de productivity-tools:spec-author');
+  for (const w of ['mode: interactive', '`output`', '`specTool`', '`topic`', '`language`', '`intake`']) {
+    assert.ok(step.includes(w), `falta "${w}" no despacho do spec-author`);
+  }
+});
