@@ -1481,7 +1481,7 @@ const gatesTxt = GATES.map(gateDesc).join('; ')
 const RULE_GIT = `- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push, except the effect of a task you were told is external and AUTHORIZED. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}, except the integration worktree of the target when the operator authorized checkout:${TARGET}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".`
 const RULE_RM = `- Delivery branches do NOT edit the roadmap folder ${RM} (that is done only in the record and docs stages, on the target).`
 const RULE_CLEAN = `- When done, the working tree must be clean (git status --porcelain empty). Line-ending-only differences: git checkout -- <file>.`
-const RULE_TMP = `- Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; never an unquoted shell heredoc containing backticks.`
+const RULE_TMP = `- Temporary files only in ${WT}/_tmp/<your label>/ (create and delete when done). Nothing loose in ${WT}/. Scripts: write them to a file and run it; one simple command per call: no heredoc, no loop, no chaining with '&&' or ';'. Write files with the Write tool and commit with git commit -F <file>.`
 const RULE_PROC = `- Processes: start servers only if the task needs them, in your deliverable's port range; stop everything you started before returning.`
 const RULE_LOCKS = `- Shared resources: only agents told they HOLD a lock may use the resource that lock protects (${LOCK_ORDER.join(', ')}). Without the lock and needing it: return BLOCKED with needsLock=<name>.`
 const RULE_EXT = `- NEVER perform an external effect (production, deploy, push, sending e-mail or messages, writing shared data, resetting or rolling back someone's checkout) unless your task is marked external and authorized; when in doubt it is external.`
@@ -1693,7 +1693,7 @@ Never write or quote a credential, token or key from the owner instruction in an
   const noteE = A.notes && A.notes[E]
   const cardAc = (card.acceptance || []).map(a => ({ id: a.id, text: a.text, tag: parseVerifyTag(a.text) }))
   const TASK_LOCKS = LOCK_ORDER.filter(n => n !== 'merge')
-  let slug = 'entrega'
+  const AP = artifactPaths(disc.roadmapSlug, E)
   let spec = null, plan = null
   let specRef = null, planRef = null  // null while recovering an interrupted merge
   let setupOk = false  // the worktree exists: only then can the review log be written there
@@ -1707,13 +1707,13 @@ Never write or quote a credential, token or key from the owner instruction in an
     const ranTxt = out.externalRun.length ? ', plus a section "External effects run" with one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the lines an earlier run wrote there' : ''
     const w = await agent(`${Cs()}
 
-Write docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
+Write ${AP.reviews} on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
   // Not enumerable: the blocked record, written after this function returns, uses them to land its cut texts in the review log.
-  Object.defineProperty(out, 'logPath', { value: () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md` })
+  Object.defineProperty(out, 'logPath', { value: () => AP.reviews })
   Object.defineProperty(out, 'persistLog', { value: persistReviews })
   const fail = async (kind, msg) => {
     out.error = msg; out.failKind = kind; out.branch = br; out.worktree = wt
@@ -1721,7 +1721,7 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     return out
   }
   // The human acts and accepted risks of an earlier run live only in the persisted files: both resume paths read them with this agent.
-  const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read docs/superpowers/reviews/*-${E}-*-reviews.md (the review log), docs/superpowers/specs/*-${E}-*-design.md (the spec) and docs/superpowers/plans/*-${E}-*.md (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. Transcribe faithfully, do not invent.`,
+  const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read ${AP.reviews} (the review log), ${AP.spec} (the spec) and ${AP.plan} (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet', effort: 'medium' })
   const restoreFromLog = (rl, unsettled = []) => {
     const strip = h => unsettled.reduce((x, item) => ({ ...x, what: String(x.what || '').replace(` [${RAN_MARK}: ${item}]`, '') }), h)
@@ -1750,9 +1750,9 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     return true
   }
 
-  const specTxt = () => specRef || `(locate docs/superpowers/specs/*-${E}-*-design.md on the branch ${br} or on the target)`
-  const planTxt = () => planRef || `(locate docs/superpowers/plans/*-${E}-*.md on the branch ${br} or on the target)`
-  const reviewsTxt = () => (specRef ? `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md` : `(review log of the branch ${br}, if any)`)
+  const specTxt = () => specRef || AP.spec
+  const planTxt = () => planRef || AP.plan
+  const reviewsTxt = () => (specRef ? AP.reviews : `(review log of the branch ${br}, if any)`)
   const conflictTxt = CFG.conflictRules ? ` Rules for generated files: ${CFG.conflictRules}.` : ''
 
   const reviewConflicts = async (sha, dir, label) => {
@@ -1782,7 +1782,7 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
     if (!fresh.length) return exp
     const w = await agent(`${Cs()}
 
-Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the merge of ${E}. Add them to the accepted risks of its review log on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), keeping everything the file holds: ${JSON.stringify(fresh)}
+Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the merge of ${E}. Add them to the accepted risks of its review log on ${TARGET}, ${AP.reviews} (create it if there is none), keeping everything the file holds: ${JSON.stringify(fresh)}
 Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev-parse HEAD after the commit) and commit.`,
       { label: `${E}:merge-risks`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
     if (!w || !w.head) { out.concerns.push(`merge-stage accepted risks not committed to the review log: ${fresh.map(fmtRisk).join('; ')}`); return exp }
@@ -1795,7 +1795,7 @@ Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev
     if (!ran.length) return exp
     const w = await agent(`${Cs()}
 
-Integration worktree ${INTWT} (branch ${TARGET}). In the section "External effects run" of the review log of ${E} on ${TARGET}, docs/superpowers/reviews/*-${E}-*-reviews.md (create the section, or docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md if there is none), add one line per entry (item, command, exit) that is not there yet, keeping everything the file holds: ${JSON.stringify(ran)}
+Integration worktree ${INTWT} (branch ${TARGET}). In the section "External effects run" of the review log of ${E} on ${TARGET}, ${AP.reviews} (create the section, or the file if there is none), add one line per entry (item, command, exit) that is not there yet, keeping everything the file holds: ${JSON.stringify(ran)}
 Commit only that file ("${E}: external effects of the acceptance evidence"). Return head (git rev-parse HEAD after the commit) and commit.`,
       { label: `${E}:merge-effects`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
     if (!w || !w.head) { out.concerns.push(`external effects not committed to the review log, so a resume of this merge would not know they ran: ${ran.map(e => e.item).join(', ')}`); return exp }
@@ -1987,7 +1987,6 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   }
 
   // ---------- Spec (native author; the tool output is read by code)
-  const AP = artifactPaths(disc.roadmapSlug, E)
   const pluginRoot = pluginRootOf(A.trackerCli)
   if (!pluginRoot) return fail('infra', `args.trackerCli (${A.trackerCli}) does not end with skills/roadmap-tracker/scripts/roadmap.mjs, so the plugin root and the path of spec-tool cannot be derived`)
   const specTool = `${pluginRoot}/scripts/spec-tool.mjs`
@@ -2279,7 +2278,7 @@ ${NO_ASK}`,
       { ...A, authorizeExternal: [...boundItems(E), h.item], deliverables: [E] }, { item: h.item })
   }
 
-  const logSource = () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md`
+  const logSource = () => AP.reviews
   const recordExtra = () => ({ rulings: out.rulings || [], pending: human.filter(h => h.blocking !== true).map(h => h.what), source: logSource() })
   const failedRecord = rec => `${rec ? rec.failures.join('; ') : 'null agent or integration worktree broken'}`
   if (MODE === 'plan-only') {
@@ -2726,7 +2725,7 @@ order.forEach((id, idx) => {
           if (MODE !== 'plan-only') {
             // The full text of a cut goes to the review log of the branch (the file persistLog writes), so the source names that real file.
             const canLog = typeof r.logPath === 'function' && typeof r.persistLog === 'function'
-            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: canLog ? r.logPath() : `docs/superpowers/reviews/${TODAY}-${id}-*-reviews.md` }))
+            const rec = await safe(() => recordStatus(id, STATUSES.blocked, [r.branch ? 'branch ' + r.branch : RM + 'state.md'], { reason: `automatic execution stopped (${r.failKind}): ${String(r.error).slice(0, 400)}; branch ${r.branch} kept at ${r.worktree}`, source: canLog ? r.logPath() : artifactPaths(disc.roadmapSlug, id).reviews }))
             if (rec && rec.cuts && rec.cuts.length) {
               r.recordCuts = [...(r.recordCuts || []), ...rec.cuts]
               if (canLog) await safe(() => r.persistLog('blocked-record'))
@@ -2764,7 +2763,7 @@ targetHead = git rev-parse HEAD; clean = git status --porcelain empty on the tar
 const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!(integBroken || foreignHold))
 for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
 const ids = order.join('-').slice(0, 60)
-const reportPath = `docs/superpowers/reports/${TODAY}-${ids}-run.md`
+const reportPath = reportPathFor(TODAY, ids)
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
 const resumeArgs = resumeIds.length ? { ...A, deliverables: resumeIds, targetBranch: TARGET } : null
 if (foreignHold) {
@@ -2792,7 +2791,7 @@ const report = await safe(() => mergeLock(() => agent(`${COMMON_SLIM()}
 
 ${integBroken || foreignHold ? `The integration worktree is ${integBroken ? 'compromised' : "the person's checkout and was not authorized"}: do NOT write a file or commit, only build the execution report and return the text.` : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
 Selection: ${JSON.stringify(selection)}
-Results (summary per deliverable; details in the docs/superpowers/reviews/ log of each branch): ${JSON.stringify(slim)}
+Results (summary per deliverable; details in the reviews.md log of each branch, under docs/plans/<roadmap slug>-<E>/): ${JSON.stringify(slim)}
 Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConfig(o.resumeWith) })))}
 Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)}
 Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}

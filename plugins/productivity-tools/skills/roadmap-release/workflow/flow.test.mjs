@@ -1272,7 +1272,7 @@ test('I5: finish-merge reads the logged human inputs and the plan evidence rows'
   const { r, calls } = await exec({ cards: [unfinished()], deliverables: ['E1'],
     over: (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'real API key' }, { what: 'real API key' }], ac: [{ ac: 'AC1', kind: 'human' }] } : undefined) });
   const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
-  assert.match(p, /docs\/superpowers\/plans\/\*-E1-\*\.md/);
+  assert.match(p, /docs\/plans\/x-E1\/plan\.md/);
   assert.match(p, /Acceptance criteria evidence/);
   assert.match(p, /humanInputs[^.]*review log/);
   assert.ok(calls.find((c) => c.label === 'E1:resume-review-log').opts.schema.required.includes('ac'));
@@ -3118,7 +3118,7 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
   const blocked = calls.find((c) => c.label === 'E1:status-blocked');
   assert.ok(blocked);
   assert.doesNotMatch(blocked.prompt, /-\*-reviews\.md/);
-  assert.match(blocked.prompt, /docs\/superpowers\/reviews\/[^ ']*-E1-[^ *']*-reviews\.md/);
+  assert.match(blocked.prompt, /docs\/plans\/x-E1\/reviews\.md/);
   const logs = calls.filter((c) => /review-log-blocked-record$/.test(c.label));
   assert.equal(logs.length, 1);
   assert.match(logs[0].prompt, /Textos cortados no registro/);
@@ -3851,7 +3851,7 @@ test('frozen tasks: an owner note that rewrites a committed task restores the pl
   assert.ok(r.operatorActions.some((o) => o.kind === 'plan-frozen-tasks' && o.deliverable === 'E1'));
   assert.equal(e.failKind, 'conteudo');
   assert.ok(!labels.some((l) => /:t\d+:impl/.test(l)));
-  assert.ok(!calls.some((c) => c.label === 'E1:plan-commit' && /commit -F/.test(c.prompt)), 'nothing is committed');
+  assert.ok(!calls.some((c) => c.label === 'E1:plan-commit' && /-C "[^"]*" commit -F/.test(c.prompt)), 'nothing is committed');
 });
 
 test('frozen tasks: a note that touches only the tasks not yet committed is committed', async () => {
@@ -3907,4 +3907,43 @@ test('checkPlanLoad accepts a faithful emit and rejects exit, digest and blob pr
   assert.equal(PURE_X.checkPlanLoad({ ...good, blob: 'nope' }, args).blob, '');
   for (const bad of [null, { ...good, emitExit: undefined }, { ...good, emitExit: 1, checkStdout: 'ERR x' }, withDigestOff(good), { ...good, emitStdout: '{' }]) assert.equal(PURE_X.checkPlanLoad(bad, args).ok, false, JSON.stringify(bad).slice(0, 80));
   assert.match(PURE_X.checkPlanLoad({ ...good, emitExit: 1, checkStdout: 'ERR x' }, args).why, /ERR x/);
+});
+
+// E8 T7: artifacts live in docs/plans/<roadmap slug>-<E>/, the spec and plan stages never name superpowers, and the fixed rules ask for simple commands.
+test('AC1: spec and plan stage prompts and artifact paths never cite superpowers and all forbid asking the person', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const stage = calls.filter((c) => ['Spec', 'Plan'].includes(c.opts.phase) && /:(spec|plan)(-load\d|-commit|-review\d|-fix\d)?$/.test(c.label));
+  assert.ok(stage.length >= 6, stage.map((c) => c.label).join(','));
+  for (const c of stage) {
+    assert.ok(c.prompt.includes(NO_ASK_TEXT), c.label);
+    assert.ok(!/superpowers/.test(c.prompt), c.label);
+  }
+  assert.ok(!/superpowers/.test(r.reportPath));
+  assert.match(r.reportPath, /^docs\/reports\/2026-11-09-E1-run\.md$/);
+  const log = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.match(log, /docs\/plans\/x-E1\/reviews\.md/);
+  assert.ok(!/superpowers/.test(log));
+  const rr = await resumedRun();
+  const rl = rr.calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.ok(!/superpowers/.test(rl));
+  assert.match(rl, /docs\/plans\/x-E1\/reviews\.md/);
+  assert.ok(!/docs\/superpowers/.test(readFileSync(new URL('./roadmap-release.js', import.meta.url), 'utf8')));
+});
+
+test('a finish-merge resume of a previous-version deliverable reports review log not read', async () => {
+  const { r, calls } = await exec({ cards: [unfinished()], deliverables: ['E1'], over: (l) => (l === 'E1:resume-review-log' ? { found: false, acceptedRisks: [], humanInputs: [] } : undefined) });
+  const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.ok(p.includes('docs/plans/x-E1/'));
+  assert.ok(!/docs\/superpowers/.test(p));
+  assert.ok(r.results[0].concerns.some((c) => /review log not read/.test(c)));
+});
+
+test('the fixed rules ask for simple commands', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:t1:impl').prompt;
+  assert.match(p, /One simple command per call/i);
+  assert.match(p, /no heredoc, no loop, no chaining with '&&' or ';'/);
+  assert.match(p, /Write tool/);
+  assert.match(p, /git commit -F/);
+  assert.ok(!/never an unquoted shell heredoc/.test(p));
 });
