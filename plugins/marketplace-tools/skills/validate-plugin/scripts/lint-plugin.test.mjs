@@ -602,3 +602,112 @@ test('E25 AC5: the real productivity-tools plugin lints with 0 FAIL', () => {
   const fails = lint(real).filter((r) => r.level === 'FAIL');
   assert.deepEqual(fails, []);
 });
+
+// ---------- E25 AC5 (part 2): allowed-tools grant, single exception (DEC-049) ----------
+const ENTRY = 'Workflow(productivity-tools:release-workflow)';
+const AT_ONLY = 'allowed-tools is allowed only in productivity-tools/skills/roadmap-release/SKILL.md';
+const AT_GRANT = 'allowed-tools may only grant';
+const AT_REG = 'which plugin.json does not register';
+const COMPAT = '\ncompatibility: "Claude Code 2.1.322 or later launches it by name"';
+
+function freshGrant(pluginName = 'productivity-tools', workflows = ['release-workflow', 'other-workflow']) {
+  const dir = fresh();
+  const root = path.dirname(dir);
+  const target = path.join(root, pluginName);
+  if (target !== dir) fs.renameSync(dir, target);
+  mutatePluginJson(target, (j) => {
+    j.name = pluginName;
+    if (workflows.length) j.workflows = workflows.map((w) => `./workflow/${w}.js`);
+  });
+  for (const w of workflows) write(target, `workflow/${w}.js`, `export const meta = { name: '${w}' }\n`);
+  return target;
+}
+const grantSkill = (dir, skillDir, atLines, extraFm = COMPAT) =>
+  write(dir, `skills/${skillDir}/SKILL.md`, SKILL(`name: ${skillDir}\ndescription: Use when testing.${extraFm}\n${atLines}`));
+
+test('E25 AC5: the exception skill with only the allowed entry -> OK', () => {
+  const forms = [
+    `allowed-tools: ${ENTRY}`,
+    `allowed-tools:\n  - ${ENTRY}`,
+    `allowed-tools: "${ENTRY}"`,
+  ];
+  for (const f of forms) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', f);
+    const r = lint(dir);
+    assert.ok(!has(r, 'FAIL', 'allowed-tools'), f);
+    assert.ok(!has(r, 'WARN', 'allowed-tools'), f);
+  }
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+  const p = 'skills/roadmap-release/SKILL.md';
+  write(dir, p, read(dir, p).replace(/\n/g, '\r\n'));
+  const r = lint(dir);
+  assert.ok(!has(r, 'FAIL', 'allowed-tools'));
+  assert.ok(!has(r, 'WARN', 'allowed-tools'));
+});
+
+test('E25 AC5: escape forms in the exception skill -> FAIL naming the entry', () => {
+  const cases = [
+    ['allowed-tools: Workflow', 'Workflow'],
+    ['allowed-tools: Workflow(*)', 'Workflow(*)'],
+    ['allowed-tools: Bash(git:*)', 'Bash(git:*)'],
+    ['allowed-tools: Workflow(other-plugin:x)', 'Workflow(other-plugin:x)'],
+    ['allowed-tools: Workflow(productivity-tools:other-workflow)', 'Workflow(productivity-tools:other-workflow)'],
+    [`allowed-tools:\n  - ${ENTRY}\n  - Bash`, 'Bash'],
+    [`allowed-tools: ${ENTRY},Bash`, 'Bash'],
+    ['allowed-tools:', '(empty)'],
+  ];
+  for (const [fm, bad] of cases) {
+    const dir = freshGrant();
+    grantSkill(dir, 'roadmap-release', fm);
+    const r = lint(dir);
+    assert.ok(has(r, 'FAIL', `${AT_GRANT} ${ENTRY} (DEC-049); remove ${bad}`), fm);
+  }
+});
+
+test('E25 AC5: allowed-tools in another skill of productivity-tools -> FAIL even with the allowed entry', () => {
+  for (const s of ['roadmap-planner', 'roadmap-release-x']) {
+    const dir = freshGrant();
+    grantSkill(dir, s, `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_ONLY), s);
+  }
+});
+
+test('E25 AC5: allowed-tools in a skill of another plugin -> FAIL', () => {
+  for (const name of ['valid', 'other']) {
+    const dir = freshGrant(name, ['release-workflow']);
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_ONLY), name);
+  }
+});
+
+test('E25 AC5: the allowed entry without a registered release-workflow -> FAIL', () => {
+  for (const wf of [[], ['other-workflow']]) {
+    const dir = freshGrant('productivity-tools', wf);
+    grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+    assert.ok(has(lint(dir), 'FAIL', AT_REG), wf.join());
+  }
+});
+
+test('E25 AC5: allowed-tools with a Workflow entry and no compatibility -> FAIL', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`, '');
+  assert.ok(has(lint(dir), 'FAIL', COMPAT_FAIL));
+});
+
+test('E25 AC5: allowed-tools is no longer reported as outside the allowed keys', () => {
+  const dir = freshGrant();
+  grantSkill(dir, 'roadmap-release', `allowed-tools: ${ENTRY}`);
+  assert.ok(!has(lint(dir), 'WARN', 'key "allowed-tools" is outside'));
+  const other = freshGrant();
+  grantSkill(other, 'roadmap-planner', `allowed-tools: ${ENTRY}`);
+  assert.ok(!has(lint(other), 'WARN', 'key "allowed-tools" is outside'));
+});
+
+test('E25 AC5: the real productivity-tools SKILL.md declares the grant', () => {
+  const real = path.join(here, '..', '..', '..', '..', 'productivity-tools');
+  const fm = parseFrontmatter(fs.readFileSync(path.join(real, 'skills', 'roadmap-release', 'SKILL.md'), 'utf8'));
+  assert.equal(fm.keys.get('allowed-tools'), ENTRY);
+  assert.deepEqual(lint(real).filter((r) => r.level === 'FAIL'), []);
+});

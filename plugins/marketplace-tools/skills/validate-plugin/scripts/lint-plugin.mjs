@@ -33,6 +33,12 @@ const AGENT_KEYS = new Set([
   'autoCompactWindow',
   'experimental',
 ]);
+// DEC-049: the single place where a skill may declare allowed-tools. Fixed, never derived from plugin.json.
+export const ALLOWED_TOOLS_EXCEPTION = {
+  plugin: 'productivity-tools',
+  skill: 'skills/roadmap-release/SKILL.md',
+  entry: 'Workflow(productivity-tools:release-workflow)',
+};
 const SCRIPT_EXT = /\.(mjs|js|cjs|sh|ps1|py)$/;
 const AGENT_IGNORED_KEYS = ['hooks', 'mcpServers', 'permissionMode', 'initialPrompt'];
 const RESERVED_PREFIXES = ['claude-', 'anthropic-', 'anthropics-', 'cc-plugin-'];
@@ -273,13 +279,27 @@ export function lintPlugin(dir, { marketplace } = {}) {
     for (const key of fm.keys.keys()) {
       if (key === 'user-invokable') {
         problems.push(['FAIL', 'key user-invokable is misspelled, Claude Code ignores it; use user-invocable']);
-      } else if (!SKILL_KEYS.has(key)) {
+      } else if (key !== 'allowed-tools' && !SKILL_KEYS.has(key)) {
         warns.push(['WARN', `key "${key}" is outside the allowed frontmatter keys (repo policy)`]);
       }
     }
     for (const key of ['disable-model-invocation', 'user-invocable']) {
       if (fm.keys.has(key) && !['true', 'false'].includes(fm.keys.get(key).toLowerCase())) {
         problems.push(['FAIL', `${key} must be true or false, got "${fm.keys.get(key)}"`]);
+      }
+    }
+    if (fm.keys.has('allowed-tools')) {
+      const ex = ALLOWED_TOOLS_EXCEPTION;
+      if (!(pj && pj.name === ex.plugin && name === ex.skill)) {
+        problems.push(['FAIL', `allowed-tools is allowed only in ${ex.plugin}/${ex.skill} (DEC-049); remove it`]);
+      } else {
+        const entries = skillAllowedTools(fm);
+        const bad = entries.filter((e) => e !== ex.entry);
+        if (entries.length === 0) bad.push('(empty)');
+        for (const e of bad) problems.push(['FAIL', `allowed-tools may only grant ${ex.entry} (DEC-049); remove ${e}`]);
+        if (entries.includes(ex.entry) && !registeredWorkflows(dir, pj).some((w) => w.name === 'release-workflow')) {
+          problems.push(['FAIL', `allowed-tools grants ${ex.entry}, which plugin.json does not register`]);
+        }
       }
     }
     {
