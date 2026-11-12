@@ -27,7 +27,7 @@ Objetivos:
 - A skill lança pelo nome, e cai para o caminho só quando a CLI não conhece o nome (peças 2 e 4).
 - O preflight avisa, sem bloquear, a regra `Workflow(productivity-tools:release-workflow)` quando nenhuma configuração lida a cobre (peça 1).
 - O workflow recusa, antes de qualquer agente, um lançamento sem `config` ou sem `runToken` (peça 3).
-- A skill concede o próprio workflow por `allowed-tools`, e o lint acusa qualquer outra entrada; o `CLAUDE.md` ganha uma frase de exceção (peça 5).
+- A skill `roadmap-release` concede o próprio workflow por `allowed-tools`; o lint aceita `allowed-tools` só nesse SKILL.md e só com essa entrada, e acusa qualquer outra; o `CLAUDE.md` ganha uma frase com essa exceção única (peça 5).
 
 Não objetivos:
 
@@ -41,7 +41,7 @@ Anti-objetivos:
 
 - Nenhum hook do plugin aprova o lançamento (DEC-035).
 - A skill nunca edita arquivos de configuração (`settings.json`, `settings.local.json`); só mostra a regra.
-- `allowed-tools` nunca recebe outra ferramenta além do workflow do próprio plugin (critério 5, instrução do dono item 3).
+- `allowed-tools` nunca recebe outra ferramenta além de `Workflow(productivity-tools:release-workflow)`, e nenhuma outra skill, deste ou de outro plugin, pode declarar `allowed-tools` (critério 5, instrução do dono item 3, DEC-049). Uma política mais ampla (outras skills ou workflows futuros, como o do coordinator) não é deste card: fica para o dono.
 - A trava da peça 3 não remove nenhuma condição existente (instrução do dono item 4).
 
 ## Desenho
@@ -130,18 +130,20 @@ Teste do critério 3 (em `flow.test.mjs`): lê `plugin.json`, confere que `workf
 - Lint, parte da peça 5:
   - `allowed-tools` sai do aviso "outside the allowed frontmatter keys" e passa a ter checagem própria.
   - As entradas são separadas por espaço ou vírgula fora de parênteses, sem o `-` de item de lista.
-  - Cada entrada precisa ser exatamente `Workflow(<name de plugin.json>:<meta.name>)` de um arquivo listado em `workflows` do próprio `plugin.json`. Qualquer outra entrada (outra ferramenta, `Workflow` sem conteúdo, workflow de outro plugin, nome não registrado, curinga) é FAIL `allowed-tools may only grant a workflow of this plugin (DEC-049); remove <entrada>`. `allowed-tools` vazio também é FAIL.
-  - Plugin sem `workflows`: qualquer `allowed-tools` é FAIL.
+  - A exceção é uma só, fixada no lint como constante: plugin `productivity-tools`, skill `skills/roadmap-release/SKILL.md`, entrada única `Workflow(productivity-tools:release-workflow)`. O lint não deriva a lista de entradas permitidas de `workflows` nem de outro plugin: um workflow registrado no futuro (por exemplo `coordinator-workflow`, E12) não passa a ser aceito.
+  - `allowed-tools` em qualquer outro SKILL.md, de qualquer plugin (inclusive as outras skills de `productivity-tools`, mesmo com `Workflow(productivity-tools:release-workflow)`), é FAIL `allowed-tools is allowed only in productivity-tools/skills/roadmap-release/SKILL.md (DEC-049); remove it`.
+  - No SKILL.md da exceção, a lista precisa ter exatamente uma entrada, igual a `Workflow(productivity-tools:release-workflow)`. Qualquer outra entrada (outra ferramenta, `Workflow` sem conteúdo, `Workflow(*)`, workflow de outro plugin, outro workflow deste plugin, curinga) é FAIL `allowed-tools may only grant Workflow(productivity-tools:release-workflow) (DEC-049); remove <entrada>`. `allowed-tools` vazio também é FAIL.
+  - Ainda no SKILL.md da exceção, o lint confere que a entrada aponta para um workflow registrado: `plugin.json` tem `workflows` com um arquivo cujo `meta.name` é `release-workflow`; sem isso, FAIL `allowed-tools grants Workflow(productivity-tools:release-workflow), which plugin.json does not register`.
 - `CLAUDE.md`, na regra "SKILL.md frontmatter keys (repo policy)", uma única frase acrescentada ao fim, sem tocar no resto:
 
-  `Exception (DEC-049): a skill may declare \`allowed-tools\` only to grant a workflow of its own plugin, today \`roadmap-release\` with \`Workflow(productivity-tools:release-workflow)\`; \`lint-plugin\` fails any other entry.`
+  `Single exception (DEC-049): \`productivity-tools/skills/roadmap-release/SKILL.md\` declares \`allowed-tools: Workflow(productivity-tools:release-workflow)\`, and \`lint-plugin\` fails \`allowed-tools\` in any other skill and any other entry.`
 
 Revisão de raio de impacto alto (instrução do dono item 2; DEC-049; GLOBAL T2/T3): a revisão por tarefa da peça 5 e a revisão de segurança rodam em opus; o portão final da branch em opus/high; nenhum revisor sonnet na peça 5. A revisão de segurança confere, no mínimo:
 
-1. Que a concessão vale só para `Workflow(productivity-tools:release-workflow)`, e que nenhum outro texto do SKILL.md ou do lint a amplia.
+1. Que a concessão vale só para `Workflow(productivity-tools:release-workflow)` e só no SKILL.md do release, e que nenhum outro texto do SKILL.md, do lint ou do `CLAUDE.md` a amplia (nem a outra skill, nem a workflow registrado depois).
 2. Que um lançamento sem preflight é recusado antes de qualquer agente (peça 3) e que `authorizeExternal` continua crescendo só pela resposta da pessoa (regras do SKILL.md): a concessão tira o diálogo de lançamento, não a pergunta de autorização de efeito externo nem a parada do passo 2.
 3. O cenário de injeção: conteúdo do repositório (card, plano, nota) que leve o modelo a carregar a skill e lançar o workflow sem a pessoa pedir. O que o workflow pode fazer sem autorização: criar worktrees e branches em `<wtRoot>`, rodar agentes, comitar e fazer merge local no alvo (nunca na `integrationBranch` sem `allowIntegrationBranch`, nunca push sem tarefa externa autorizada), com custo de LLM. A revisão diz se a restrição ao próprio workflow, a trava e as regras da skill cobrem esse cenário.
-4. Que o lint acusa as formas de escape (`Workflow`, `Workflow(*)`, `Bash(...)`, `Workflow(outro-plugin:x)`, nome não registrado, lista YAML com entrada extra).
+4. Que o lint acusa as formas de escape (`Workflow`, `Workflow(*)`, `Bash(...)`, `Workflow(outro-plugin:x)`, outro workflow de `productivity-tools`, lista YAML com entrada extra, e `allowed-tools` em outra skill de `productivity-tools` ou de outro plugin, mesmo com a entrada permitida).
 
 Se a revisão de segurança apontar risco que essas restrições não cobrem, a execução para como decisão (gatilho de revisão de DEC-049), devolvida ao dono, e a peça 5 não entra no merge; as peças 1 a 4 seguem (instrução do dono item 8).
 
@@ -154,11 +156,14 @@ Se a revisão de segurança apontar risco que essas restrições não cobrem, a 
 
 Com a concessão presente nenhum diálogo aparece, então o critério 4 é conferido no código anterior à concessão (instrução do dono item 6).
 
+Os passos rodam depois da integração de E25 em `release/roadmap-skills-v2` (o card pede o aceite na branch de release). Depois do merge, a limpeza do workflow remove a worktree `D:/projects/claude-play-wt/E25` e apaga `feat/E25` (sem `keepBranches`), então nenhum passo usa essa worktree nem essa branch. O git roda a partir da worktree de integração `D:/projects/claude-play-wt/_integracao` (ou de outra cópia do dono que tenha `release/roadmap-skills-v2`). O merge é `--no-ff`, então o commit anterior à concessão continua alcançável a partir de `release/roadmap-skills-v2`. Se a peça 5 não entrar no merge (instrução do dono item 8), o critério 6 não pode ser conferido e o dono registra isso.
+
 Preparação (comum):
 
-1. Numa pasta fora de `D:/projects/claude-play` e de `D:/projects/claude-play-wt`, por exemplo `<tmp>/e25-dono`, criar duas cópias de trabalho da branch: `git -C D:/projects/claude-play-wt/E25 worktree add <tmp>/e25-dono/sem-concessao <SHA do commit "feat(roadmap-release): workflow do release lançado pelo nome (E25)">` e `git -C D:/projects/claude-play-wt/E25 worktree add <tmp>/e25-dono/com-concessao feat/E25` (o relatório da execução traz o SHA).
-2. Gerar um sandbox novo para cada critério: `node <tmp>/e25-dono/sem-concessao/plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs <tmp>/e25-dono/sb4` e o mesmo com `sb6`. Conferir que `<sandbox>/.claude/` não tem `settings.local.json` com regra `Workflow`, e que nenhuma configuração do usuário tem `Workflow` ou `Workflow(productivity-tools:release-workflow)`.
-3. Anotar o hash de `~/.claude/settings.json` (`certutil -hashfile` ou `sha256sum`).
+1. Achar o SHA do commit anterior à concessão na branch de release: `git -C D:/projects/claude-play-wt/_integracao log --format=%H -1 --fixed-strings --grep="feat(roadmap-release): workflow do release lançado pelo nome (E25)" release/roadmap-skills-v2` (o relatório da execução também traz o SHA; os dois devem coincidir). Chamá-lo `<SHA-sem>`.
+2. Numa pasta fora de `D:/projects/claude-play` e de `D:/projects/claude-play-wt`, por exemplo `<tmp>/e25-dono`, criar duas cópias de trabalho destacadas (`--detach`, porque `release/roadmap-skills-v2` já está em uso em `_integracao`): `git -C D:/projects/claude-play-wt/_integracao worktree add --detach <tmp>/e25-dono/sem-concessao <SHA-sem>` e `git -C D:/projects/claude-play-wt/_integracao worktree add --detach <tmp>/e25-dono/com-concessao release/roadmap-skills-v2`. Conferir que a segunda tem a concessão: `git -C <tmp>/e25-dono/com-concessao grep -n "allowed-tools" -- plugins/productivity-tools/skills/roadmap-release/SKILL.md` mostra a linha; na primeira, o mesmo comando não mostra nada.
+3. Gerar um sandbox novo para cada critério: `node <tmp>/e25-dono/sem-concessao/plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs <tmp>/e25-dono/sb4` e o mesmo com `sb6`. Conferir que `<sandbox>/.claude/` não tem `settings.local.json` com regra `Workflow`, e que nenhuma configuração do usuário tem `Workflow` ou `Workflow(productivity-tools:release-workflow)`.
+4. Anotar o hash de `~/.claude/settings.json` (`certutil -hashfile` ou `sha256sum`).
 
 Critério 4, roteiro A (plugin do caminho local):
 
@@ -176,7 +181,7 @@ Critério 6, roteiro A:
 
 Roteiro B (cache, para os dois critérios): repetir os roteiros acima com `CLAUDE_CONFIG_DIR=<tmp>/e25-dono/cfg` (pasta vazia; entrar na conta nela se a CLI pedir), trocando `--plugin-dir` por `claude plugin marketplace add <worktree>` e `claude plugin install productivity-tools@claude-play` (uma cópia de trabalho por vez, desinstalando entre os critérios), e conferir antes de lançar que `<tmp>/e25-dono/cfg/plugins/cache/claude-play/productivity-tools/1.6.0/` existe. Registrar o mesmo que no roteiro A.
 
-Limpeza: `git -C D:/projects/claude-play-wt/E25 worktree remove` das duas cópias e apagar `<tmp>/e25-dono`.
+Limpeza: `git -C D:/projects/claude-play-wt/_integracao worktree remove <tmp>/e25-dono/sem-concessao` e o mesmo com `com-concessao`, depois apagar `<tmp>/e25-dono`.
 
 `dry-run` para depois da seleção e não faz merge; ainda assim paga a descoberta (um agente). O lançamento pelo nome é o que o critério observa.
 
@@ -185,7 +190,7 @@ Limpeza: `git -C D:/projects/claude-play-wt/E25 worktree remove` das duas cópia
 - `preflight.test.mjs` (critério 1): configurações sem regra `Workflow`: o aviso aparece com o texto exato `Workflow(productivity-tools:release-workflow)` e a regra não está em `missingRules`; com `Workflow(productivity-tools:release-workflow)` em qualquer das três configurações, ou `Workflow` sem conteúdo, o aviso não aparece; com `Workflow(*)`, aparece; com `errors` não vazio, o aviso não é calculado; `RELEASE_WORKFLOW` igual a `<plugin.json name>:<meta.name>`.
 - `flow.test.mjs` (critério 2): sem `config`: erro e zero chamadas de agente; sem `runToken` em `run`, `plan-only` e `dry-run`, sem item autorizado: erro que casa `/runToken/` e zero chamadas de agente; os testes existentes de `runToken` continuam passando.
 - `flow.test.mjs` (critério 3): manifesto, `meta.name`, nome distinto das skills, SKILL.md manda lançar por esse nome; o SKILL.md descreve a reserva por caminho só para nome desconhecido e cita a limitação de DEC-061.
-- `lint-plugin.test.mjs` (critério 5): `compatibility` ausente ou sem versão num SKILL.md que nomeia um workflow registrado: FAIL; presente com versão: OK; `allowed-tools` só com o workflow do próprio plugin (linha única e lista YAML): OK; cada forma de escape listada na revisão de segurança: FAIL; plugin sem `workflows` com `allowed-tools`: FAIL; o lint sobre `plugins/productivity-tools` real (G5) sai 0.
+- `lint-plugin.test.mjs` (critério 5): `compatibility` ausente ou sem versão num SKILL.md que nomeia um workflow registrado: FAIL; presente com versão: OK; `allowed-tools` em `productivity-tools/skills/roadmap-release/SKILL.md` só com `Workflow(productivity-tools:release-workflow)` (linha única e lista YAML): OK; a mesma entrada em outra skill de `productivity-tools` ou em skill de outro plugin: FAIL; outro workflow registrado do mesmo plugin no SKILL.md do release: FAIL; cada forma de escape listada na revisão de segurança: FAIL; a entrada permitida com `plugin.json` sem `workflows` (ou sem arquivo de `meta.name` `release-workflow`): FAIL; o lint sobre `plugins/productivity-tools` real (G5) sai 0.
 
 ### Teste comportamental (definição de pronto, SRC-03)
 
@@ -203,7 +208,8 @@ Antes de cada commit: G1, G2, G3, G4 e G5, mais `claude plugin validate plugins/
 - Retomada (`resumeArgs`): o `runToken` nunca volta neles; a skill sempre passa o do preflight novo, então a trava não muda a retomada correta, e uma retomada sem preflight passa a falhar antes da descoberta (antes falhava só com item autorizado).
 - Lançamento pelo nome fora da skill (pessoa digita a chamada, ou outra skill): sem `runToken` e `config`, recusa imediata, sem custo de agente.
 - Plugin de sonda ou outro plugin com workflow de mesmo `meta.name`: o nome inclui o plugin, sem colisão.
-- `allowed-tools` em lista YAML: aceita pelo lint se a única entrada for a permitida.
+- `allowed-tools` em lista YAML: aceita pelo lint se a única entrada for a permitida e o arquivo for o SKILL.md do release.
+- Workflow novo registrado no plugin (por exemplo o do coordinator, E12): o lint continua aceitando só `Workflow(productivity-tools:release-workflow)`; conceder outro exige decisão do dono e mudança explícita da constante do lint.
 
 ## Deixado ao planejador
 
@@ -226,20 +232,22 @@ Execução decidida pelo decisor delegado do dono (Fable), não digitada pelo do
 7. A reserva por caminho dispara só com nome desconhecido, uma única vez; negação por permissão não cai para o caminho e mostra a regra. Alcance: local.
 8. `compatibility` declara 2.1.322, a versão em que o nome do workflow de plugin e a concessão foram observados (SRC-14, SRC-15); versões anteriores não foram testadas e ficam com a reserva (DEC-050). Alcance: local.
 9. O lint exige `compatibility` com versão em todo SKILL.md que nomeia um workflow registrado do plugin ou concede `Workflow(...)`. Alcance: local.
-10. `allowed-tools` em linha única; o lint aceita linha única ou lista YAML e acusa qualquer entrada que não seja `Workflow(<plugin>:<meta.name registrado>)`, inclusive `Workflow` sem conteúdo e curingas. Alcance: local.
-11. A frase de exceção no `CLAUDE.md` é genérica (qualquer skill pode conceder só workflow do próprio plugin), cita o caso de hoje e fica numa frase só. Alcance: local.
-12. A peça 5 é o último commit de código, para que o critério 4 seja conferido no commit anterior; os passos do dono usam worktrees descartáveis e o sandbox de `make-sandbox.mjs`, em `dry-run`. Alcance: local.
+10. `allowed-tools` em linha única; o lint aceita linha única ou lista YAML, mas só em `productivity-tools/skills/roadmap-release/SKILL.md` e só com a entrada única `Workflow(productivity-tools:release-workflow)`, fixada como constante (não derivada de `workflows`), e confere que esse workflow está registrado em `plugin.json`; acusa `allowed-tools` em qualquer outra skill e qualquer outra entrada, inclusive `Workflow` sem conteúdo, curingas e outros workflows do plugin. Alcance: local.
+11. A frase de exceção no `CLAUDE.md` declara a exceção única (o SKILL.md do release com `Workflow(productivity-tools:release-workflow)`) e fica numa frase só; uma política mais ampla vai ao dono. Alcance: local.
+12. A peça 5 é o último commit de código, para que o critério 4 seja conferido no commit anterior; os passos do dono rodam depois da integração, com o git da worktree de integração, worktrees destacadas descartáveis no SHA anterior à concessão e em `release/roadmap-skills-v2`, e o sandbox de `make-sandbox.mjs`, em `dry-run`. Alcance: local.
 13. `CONTRIBUTING.md`, que diz que `allowed-tools` não é usado, não muda nesta branch, para manter a edição de política na frase única do `CLAUDE.md` (instrução do dono item 3); fica como item para a etapa de documentação. Alcance: local.
 14. `tools/measure/make-scenario.mjs` não muda: sua lista já tem `Workflow` sem conteúdo, que cobre o nome novo; a entrada com o nome antigo fica inerte e é item para quem mexer na medição. Alcance: local.
 15. As pendências do executor de `state.md` sobre E25 são resolvidas pelos roteiros A (caminho local) e B (cache num `CLAUDE_CONFIG_DIR` descartável) do dono, e `skipWorkflowUsageWarning` vira só observação registrada. Alcance: local.
 16. O teste comportamental vai até a montagem da chamada do passo 4, sem chamar o Workflow, com três respostas simuladas; é tarefa do orquestrador (DEC-204). Alcance: local.
 17. Nenhuma versão sobe, nenhum push, nada em `main` (instrução do dono item 7). Alcance: local.
+18. O SHA anterior à concessão é achado pelo assunto exato do commit em `release/roadmap-skills-v2` e conferido contra o SHA do relatório da execução. Alcance: local.
 
 ## Depende de entrada humana
 
 Nenhuma entrada humana é bloqueante: os critérios 1, 2, 3 e 5 são `verify: test`, o teste comportamental é do orquestrador com subagents, e o card não pede efeito externo.
 
-- Critério 4 (humano): o dono confere em duas sessões seguidas, no commit anterior à concessão, pelo roteiro A acima, e registra o modo de permissão. Não bloqueante; nunca marcado como cumprido por agente; registrado como pendência do dono.
-- Critério 6 (humano): o dono confere numa sessão nova, com a concessão, pelo roteiro A, e registra o modo de permissão. Não bloqueante; pendência do dono.
+- Critério 4 (humano): o dono confere, depois da integração, em duas sessões seguidas, no commit anterior à concessão (alcançável de `release/roadmap-skills-v2`), pelo roteiro A acima, e registra o modo de permissão. Não bloqueante; nunca marcado como cumprido por agente; registrado como pendência do dono.
+- Critério 6 (humano): o dono confere, depois da integração, numa sessão nova, com a concessão (em `release/roadmap-skills-v2`), pelo roteiro A, e registra o modo de permissão. Não bloqueante; pendência do dono.
 - Roteiro B (cache): o dono confere nome e concessão com o plugin instalado do cache num `CLAUDE_CONFIG_DIR` descartável; responde os gatilhos de DEC-061 e DEC-049. Não bloqueante; se falhar, o dono abre a revisão dessas decisões.
+- Política mais ampla de `allowed-tools` (outras skills ou workflows futuros): só o dono decide; este card fixa a exceção única. Não bloqueante.
 - Ratificação pelo dono das decisões autônomas acima (DEC-030); as de alcance contrato (1 e 5) seguram o início de E8.
