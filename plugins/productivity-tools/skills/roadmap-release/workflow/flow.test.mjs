@@ -2356,6 +2356,37 @@ test('FF/M6: an authorized task item without a runToken stops before discovery',
   assert.equal(x.labels.length, 0);
 });
 
+test('E25 AC2: without config the workflow errors before any agent call', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { config: undefined } });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /args\.config is missing/);
+  assert.equal(x.labels.length, 0);
+});
+
+test('E25 AC2: without a runToken and with no authorized item, every mode errors before any agent call', async () => {
+  for (const mode of ['run', 'plan-only', 'dry-run']) {
+    const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode, runToken: undefined } });
+    assert.equal(x.r.status, 'error', mode);
+    assert.match(x.r.error, /runToken is missing: launch the workflow through the roadmap-release skill/, mode);
+    assert.equal(x.labels.length, 0, mode);
+  }
+});
+
+test('E25 AC2: a whitespace-only runToken counts as missing', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { runToken: '   ' } });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /runToken is missing: launch the workflow through the roadmap-release skill/);
+  assert.equal(x.labels.length, 0);
+});
+
+test('E25 AC2: a malformed authorizeExternal keeps its own error without a runToken', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: 42, runToken: undefined } });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /authorizeExternal must be a list/);
+  assert.doesNotMatch(x.r.error, /runToken/);
+  assert.equal(x.labels.length, 0);
+});
+
 test('FF/M8: a local task that waited for a person closes with a neutral mark, which also clears the wait', async () => {
   const prog = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{ n: 1, firstParent: 'p', last: 'c' }], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], prog) });

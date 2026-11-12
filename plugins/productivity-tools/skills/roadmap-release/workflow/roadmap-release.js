@@ -1002,6 +1002,8 @@ const mkResult = (status, extra) => ({
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
 }
+// Every launch carries the run token from preflight (a whitespace-only token counts as missing): refuse before any agent call.
+if (!RUN_TOKEN) return { status: 'error', error: 'runToken is missing: launch the workflow through the roadmap-release skill, which runs scripts/preflight.mjs and passes its config, runToken and trackerCli' }
 if (typeof A.trackerCli !== 'string' || !A.trackerCli.trim()) return { status: 'error', error: 'args.trackerCli is missing: run scripts/preflight.mjs and pass its trackerCli' }
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
