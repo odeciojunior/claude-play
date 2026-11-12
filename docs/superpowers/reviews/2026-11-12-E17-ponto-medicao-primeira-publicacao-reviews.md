@@ -672,3 +672,78 @@ Uma linha por entrada de externalRun (item, título ou comando, status, revisada
 ### Falha da execução
 
 nenhuma
+
+## Execução de 2026-11-12 (ressincronização, concluída)
+
+Registro transcrito dos dados do orquestrador, sem resumir. Falha da execução: nenhuma.
+
+### Tarefas
+
+| Tarefa | Título | Estado |
+|---|---|---|
+| 1 | regras do sandbox para o preflight 1.7.0 e árvore da semeadura arquivada | RESUMED (already reviewed) |
+| 2 | painel do registro por CLI por tentativa | RESUMED (already reviewed) |
+| 3 | metas de prosa de E4 e E22 | RESUMED (already reviewed) |
+| 4 | ferramenta do ponto de medição checkpoint.mjs | RESUMED (already reviewed) |
+| 5 | commit de versão M | RESUMED (already reviewed) |
+| 6 | saída dos gates em M | RESUMED (already reviewed) |
+| 7 | branch de volta volta/productivity-tools-1.7.1 | RESUMED (already reviewed) |
+| 8 | roteiro do dono e lista de ratificação | DONE (28 commits) |
+
+### Rodadas de revisão por estágio ou tarefa
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante na lista de bloqueantes (vazia em todos).
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, - | nenhum | 1 | nenhuma |
+| plan | 1: opus, - | nenhum | 1 | nenhuma |
+| T8:spec | 1: sonnet, -; 2: sonnet, correção sonnet | nenhum | 0 | nenhuma |
+| T8:quality | 1: sonnet, - | nenhum | 0 | nenhuma |
+| final | 1: opus, - | nenhum | 5 | nenhuma |
+
+### Pendências (não resolvidas)
+
+Nenhuma em todos os estágios.
+
+### Riscos aceitos
+
+- T4:quality, important, `tools/measure/checkpoint.test.mjs`: pelo-plano. Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The plan said stop and return to the orchestrator; the implementer instead committed with the test flagged todo (disclosed). Consequence: with the real arms, any run with the plano-semeado class always yields 'inconclusivo (braço defasado)' and blocks (exit 1), until the owner decides how to fix the arm or the matcher. The todo must be removed when decided.
+
+### Concerns
+
+1. the "executing" roadmap record failed (command 14 ran with a different text than the one assembled; reread status --json is missing or has no panel; reread brief --json is missing or is not JSON of the CLI; reread pending-decisions --json is missing or is not JSON of the CLI); decisions and the in-flight entry are not recorded yet
+
+### Gates
+
+G1: exit 0, total 1421, skipped 0, failing [] (baseline: exit 0, total 1375, skipped 0, failing []). G2: exit 0 (baseline: exit 0). G3: exit 0 (baseline: exit 0). G4: exit 0 (baseline: exit 0). G5: exit 0 (baseline: exit 0).
+
+### Entradas humanas
+
+Transcritas como recebidas; várias aparecem duas vezes, em redações ligeiramente diferentes, e foram mantidas. A barra invertida antes de barra vertical nas células escapa o caractere da tabela.
+
+| O quê | Bloqueante (blq) | Workaround |
+|---|---|---|
+| Execuções pagas do ponto de medição (gasto em dinheiro, DEC-297): critérios 1 e 6 e o portão do critério 2 dependem delas | não | Arnês, versão, branch de volta, roteiro e lista de ratificação entregues sem elas; relatórios de comparação marcados como pendentes |
+| Ratificação em lote das decisões do executor de E17 (critério 3) | não | ratificacao.md entregue com respostas recomendadas |
+| Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5) | não | Passos ficam no roteiro do dono |
+| Aceite da branch de volta (critério 4) e ratificação ou reversão do ajuste do teste acoplado de marketplace-tools (a951ed5) | não | Diff contra a tag e saída dos gates registrados em volta.md para conferência do dono |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md) | não | Não bloqueia a preparação; é pré-condição da publicação |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação |
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas | não | O arnês, a versão, a branch de volta, o roteiro e a lista de ratificação são entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297) |
+| Ratificação em lote das decisões do executor (critério 3) | não | ratificacao.md é entregue com respostas recomendadas |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Os passos ficam no roteiro do dono; nenhuma tarefa do plano os executa |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md, e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (decisão 13, commit a951ed5) | não | Volta pronta na ponta a951ed5 com G1 a G5 exit 0; revert devolve G1 a exit 1 com a falha registrada |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir | não | Não bloqueia a preparação; é pré-condição da publicação |
+| Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação |
+| Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\\|', workflow has '\\\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint. | não | Test marked todo with a comment; checkpoint.mjs reports 'inconclusivo (braço defasado)' for the plan class and exits 1; arms were not edited. |
+
+### External effects run
+
+Uma linha por entrada de externalRun (item, título ou comando, status, revisada). As linhas de execuções anteriores estão nas seções homônimas acima e foram mantidas.
+
+- E17:T7, branch de volta volta/productivity-tools-1.7.1 (externa), status DONE_WITH_CONCERNS, revisada: sim.
+
+### Falha da execução
+
+nenhuma
