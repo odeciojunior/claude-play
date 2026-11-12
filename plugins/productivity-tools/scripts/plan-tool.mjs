@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readDataBlock } from '../lib/data-block.mjs';
 import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
-import { checkSpec, checkRecords } from './spec-tool.mjs';
+import { checkSpec, checkRecords, SUMMARY_LANGS, mdTable, stopsOf, formatRecords } from './spec-tool.mjs';
 import { route } from '../lib/routing.mjs';
 import { fnv1a, planDigest } from '../lib/plan-digest.mjs';
 
@@ -635,7 +635,48 @@ export function emitPlan(text, { planPath, root = null, specText = null, specPat
   };
 }
 
-const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]';
+export function summarizePlan(data) {
+  const tasks = data.tasks.map((t) => {
+    const r = routeOf(data, t);
+    return { n: t.n, title: t.title, deps: t.deps, tier: r.tier, effort: r.effort, reviewTier: r.reviewTier, external: t.external };
+  });
+  const evidence = data.evidence.map((e) => ({ ac: e.ac, kind: e.kind, command: e.command }));
+  const rulings = Array.isArray(data.rulings) ? data.rulings : [];
+  const needsPerson = Array.isArray(data.needsPerson) ? data.needsPerson : [];
+  return { tasks, evidence, rulings, needsPerson, stops: stopsOf(rulings, needsPerson) };
+}
+
+const PLAN_LABELS = {
+  pt: {
+    tasks: 'Tarefas',
+    taskCols: ['N', 'Título', 'Dependências', 'Nível', 'Effort', 'Revisão', 'Externo'],
+    evidence: 'Evidência',
+    evidenceCols: ['Critério', 'Tipo', 'Comando'],
+  },
+  en: {
+    tasks: 'Tasks',
+    taskCols: ['N', 'Title', 'Deps', 'Tier', 'Effort', 'Review', 'External'],
+    evidence: 'Evidence',
+    evidenceCols: ['Criterion', 'Kind', 'Command'],
+  },
+};
+
+export function formatPlanSummary(s, { lang = 'pt' } = {}) {
+  const L = PLAN_LABELS[lang];
+  return [
+    `## ${L.tasks}`,
+    '',
+    mdTable(L.taskCols, s.tasks.map((t) => [t.n, t.title, t.deps.join(', '), t.tier, t.effort, t.reviewTier, t.external])),
+    '',
+    `## ${L.evidence}`,
+    '',
+    mdTable(L.evidenceCols, s.evidence.map((e) => [e.ac, e.kind, e.command])),
+    '',
+    formatRecords(s, { lang }),
+  ].join('\n');
+}
+
+const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]\n     node plan-tool.mjs summary <plan.md> [--spec <spec.md>] [--lang pt|en] [--json]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -645,13 +686,14 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (!['check', 'emit', 'map', 'brief'].includes(cmd)) return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
+  if (!['check', 'emit', 'map', 'brief', 'summary'].includes(cmd)) return bad(`comando desconhecido: ${cmd}\n${USAGE}`);
   let file = null;
   let json = false;
   let specPath = null;
   let maxWidth = 4;
   let outDir = null;
   let only = null;
+  let lang = 'pt';
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json') json = true;
@@ -662,6 +704,11 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
       const v = rest[++i];
       if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1) return bad('--max-width exige um inteiro >= 1\n' + USAGE);
       maxWidth = Number(v);
+    } else if (a === '--lang' && cmd === 'summary') {
+      const v = rest[i + 1];
+      if (!SUMMARY_LANGS.includes(v)) return bad(`--lang exige um de: ${SUMMARY_LANGS.join(', ')}\n${USAGE}`);
+      lang = v;
+      i++;
     } else if (a === '--out' && cmd === 'brief') {
       if (i + 1 >= rest.length) return bad('--out exige um caminho\n' + USAGE);
       outDir = rest[++i];
@@ -702,6 +749,18 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
       fs.writeFileSync(p, b.text.replace(/\r\n?/g, '\n'));
       out(p);
     }
+    return 0;
+  }
+  if (cmd === 'summary') {
+    const r = checkPlan(text, { planPath: file, specPath });
+    if (r.errors.length) {
+      for (const e of r.errors) out(`ERROR ${e.code} ${e.ref}: ${e.message}`);
+      for (const w of r.warnings) out(`WARN ${w.code} ${w.ref}: ${w.message}`);
+      out(`Result: ${r.errors.length} errors, ${r.warnings.length} warnings`);
+      return 1;
+    }
+    const sm = summarizePlan(r.data);
+    out(json ? JSON.stringify(sm, null, 2) : formatPlanSummary(sm, { lang }));
     return 0;
   }
   if (cmd === 'emit') {

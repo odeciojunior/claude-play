@@ -905,3 +905,75 @@ test('usage text does not announce --max-width for check', () => {
   assert.doesNotMatch(err.join(''), /check\|emit[^\n]*--max-width/);
   assert.match(err.join(''), /check [^\n]*\n/);
 });
+
+// ---- E20 T2: summary ----
+function runMainCapture(args) {
+  let stdout = '';
+  let stderr = '';
+  const status = main(args, { stdout: { write: (s) => { stdout += s; } }, stderr: { write: (s) => { stderr += s; } } });
+  return { status, stdout, stderr };
+}
+
+test('E20: plan summary lists tasks with the route of each', () => {
+  const r = runMainCapture(['summary', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  for (const h of ['## Tarefas', '## Evidência', '## Decisões', '## Pessoas']) assert.ok(r.stdout.includes(h), h);
+  const data = readDataBlock(PLAN_TEXT).data;
+  const rowOf = (t) => {
+    const ro = route(t, { hasDependents: data.tasks.some((o) => o.deps.includes(t.n)) });
+    return `| ${t.n} | ${t.title} | ${t.deps.join(', ')} | ${ro.tier} | ${ro.effort} | ${ro.reviewTier} | ${t.external} |`;
+  };
+  const t1 = data.tasks.find((t) => t.n === 1);
+  assert.ok(r.stdout.includes(rowOf(t1)), rowOf(t1));
+  assert.ok(r.stdout.includes('| 1 | Armazenamento local de itens |'));
+  const t5 = data.tasks.find((t) => t.n === 5);
+  assert.equal(t5.external, true);
+  assert.ok(r.stdout.includes(rowOf(t5)), rowOf(t5));
+  assert.ok(/\| 5 \|.*\| true \|/.test(r.stdout));
+});
+
+test('E20: plan summary --lang en prints English headers', () => {
+  const r = runMainCapture(['summary', PLAN_PATH, '--lang', 'en']);
+  assert.equal(r.status, 0, r.stderr);
+  for (const h of ['## Tasks', '| N | Title | Deps | Tier | Effort | Review | External |', '## Evidence', '## Decisions', '## People']) {
+    assert.ok(r.stdout.includes(h), h);
+  }
+  assert.ok(!r.stdout.includes('## Tarefas'));
+});
+
+test('E20: plan summary of an invalid plan prints the errors and exits 1', () => {
+  const data = readDataBlock(PLAN_TEXT).data;
+  delete data.tasks;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-summary-'));
+  try {
+    const p = path.join(dir, 'plan.md');
+    fs.writeFileSync(p, replaceDataBlock(PLAN_TEXT, data));
+    const r = runMainCapture(['summary', p]);
+    assert.equal(r.status, 1);
+    const all = r.stdout + r.stderr;
+    assert.ok(all.includes('ERROR'));
+    assert.ok(all.includes('Result:'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('E20: plan summary rejects an unknown --lang and --lang outside summary', () => {
+  const r = runMainCapture(['summary', PLAN_PATH, '--lang', 'fr']);
+  assert.equal(r.status, 2);
+  assert.ok(r.stderr.includes('--lang'));
+  assert.equal(runMainCapture(['summary', PLAN_PATH, '--lang']).status, 2);
+  assert.equal(runMainCapture(['check', PLAN_PATH, '--lang', 'en']).status, 2);
+});
+
+test('E20: plan summary --json returns tasks, evidence, rulings, needsPerson and stops', () => {
+  const r = runMainCapture(['summary', PLAN_PATH, '--json']);
+  assert.equal(r.status, 0, r.stderr);
+  const s = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(s).sort(), ['evidence', 'needsPerson', 'rulings', 'stops', 'tasks']);
+  const data = readDataBlock(PLAN_TEXT).data;
+  assert.equal(s.tasks.length, data.tasks.length);
+  assert.equal(s.evidence.length, data.evidence.length);
+  assert.deepEqual(Object.keys(s.tasks[0]), ['n', 'title', 'deps', 'tier', 'effort', 'reviewTier', 'external']);
+  assert.deepEqual(Object.keys(s.evidence[0]), ['ac', 'kind', 'command']);
+});
