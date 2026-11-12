@@ -689,8 +689,6 @@ Cada rodada traz o número, o modelo do revisor e o tier da correção que a pre
 
 Nota: os dados da execução trazem os menores por estágio (spec 0, plan 1, T13:spec 1, T13:quality 1, final 1), não por rodada. A tabela atribui os menores à última rodada de cada estágio.
 
-Nota: os dados da execução trazem os menores por estágio (spec 0, plan 1, T13:spec 1, T13:quality 1, final 1), não por rodada. A tabela atribui os menores à última rodada de cada estágio.
-
 ### Portão final: problemas críticos e importantes
 
 Nenhum. Total de menores no portão final: 1.
