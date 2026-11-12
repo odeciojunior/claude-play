@@ -112,3 +112,224 @@ Conferido por mim contra os sandboxes: pontos 1 a 7 e o ponto 8 sobre despacho a
 ## Critério 5 (não é desta tarefa)
 
 A rodada paga da suíte de gatilho é do dono (DEC-025, DEC-011). Comando: `node tools/measure/run-trigger.mjs --plugin-dir <plugin> --work <pasta fora do repositório> --out docs/reports/<data>-E20-gatilho.md --lang both`.
+
+## Execuções em 169c3db (2026-11-12)
+
+As execuções acima foram feitas em `5a53f31`. Os commits `30ff73f` e `169c3db` reescreveram `plugins/productivity-tools/agents/plan-author.md` e `plugins/productivity-tools/skills/plan-writer/SKILL.md`, então a revisão final da branch considerou a evidência vencida. Esta seção refaz os critérios 1, 2 e 4 sobre o texto de `169c3db`. Os commits seguintes, até `b2e348b` (HEAD no momento das execuções), só mudam o registro de revisões: `git diff --stat 169c3db HEAD` mostra apenas `docs/superpowers/reviews/...-reviews.md`. As execuções anteriores continuam acima, sem alteração.
+
+### Forma das execuções (diferente da rodada anterior)
+
+- O orquestrador (DEC-204) é uma sessão com a ferramenta Agent. Ele mesmo é um subagent da sessão principal; os agentes despachados aparecem com `spawnDepth: 2`. Não houve sessões `claude -p`, ao contrário do passo da Tarefa 12 e da decisão 12 do plano. A instrução da sessão principal para esta rodada mandou rodar dentro da sessão, com a forma de reserva e com o orquestrador seguindo o SKILL.md passo a passo.
+- `productivity-tools:plan-author` e `productivity-tools:spec-author` não estão entre os tipos de subagent desta sessão (o plugin da worktree não está carregado nela). Por isso o despacho usou a forma de reserva: `subagent_type: general-purpose`, `model: opus`, `effort: medium` (do frontmatter do agente), e como prompt o corpo literal do agente sem frontmatter, uma linha em branco e as linhas `key: value` da chamada. O `meta.json` de cada um dos seis despachos mostra `"agentType":"general-purpose" "model":"opus" "effort":"medium" "pickedEffortModel":"claude-opus-5-5" "requestShape":"background"`.
+- Pendência de E19 (despachar `spec-author` uma vez pelo nome do plugin da worktree e conferir modelo e ferramentas): NÃO exercida nesta rodada, porque o tipo `productivity-tools:spec-author` não existe nesta sessão. O registro por nome da rodada anterior (seção "Pendência de E19") continua sendo a única evidência.
+- A forma de reserva contraria duas coisas: a recusa do SKILL.md ("Do not paste the agent body into the prompt") e a decisão 12 do plano ("sem forma de reserva"). Ela também não restringe as ferramentas: `general-purpose` tem todas. Por isso a conferência de ferramentas abaixo é sobre as ferramentas efetivamente usadas, não sobre as permitidas.
+- O harness lançou todos os despachos em segundo plano (`requestShape: "background"`, "Async agent launched"), embora o SKILL.md peça primeiro plano. O orquestrador esperou o resultado de cada um antes do passo seguinte (spec-author antes de plan-author; plan-author antes da aprovação).
+- O diretório de trabalho dos subagents foi `D:\projects\claude-play` (a sessão), não o sandbox. Todos os caminhos da chamada eram absolutos. Depois das execuções, `git status --porcelain` saiu vazio em `D:/projects/claude-play` e em `D:/projects/claude-play-wt/E20`.
+- Modelo, ferramentas e chamadas de `check`/`emit` vêm das transcrições dos subagents gravadas em disco (`<sessão>/subagents/agent-<id>.jsonl`, blocos `tool_use` das mensagens `assistant`), lidas por um script do orquestrador, e não do relato dos agentes.
+- Sandboxes: `node tools/measure/make-scenario.mjs D:/projects/claude-play-wt/_tmp/E20/<c1-1|c1-2|c1-3|c2|c4> --variant plan-author`, apagados ao fim. `planTool` = `D:/projects/claude-play-wt/E20/plugins/productivity-tools/scripts/plan-tool.mjs`, `specTool` = `.../spec-tool.mjs`.
+
+### Critério 1 em 169c3db: três execuções de `plan-author`, `mode: unattended`
+
+Entrada (só muda o sandbox): `mode: unattended`, `output: <sandbox>/docs/plans/roadmap-sandbox-E5/plan.md`, `planTool`, `spec: <sandbox>/docs/plans/roadmap-sandbox-E5/spec.md`, `language: English`, `roadmap: docs/plans/roadmap-sandbox/`, `card: E5`. Nenhum adendo sobre modelo foi necessário: o modelo foi passado explicitamente na chamada de reserva.
+
+| execução | modelo das mensagens | ferramentas usadas | `check` do agente | `AskUserQuestion` | última chamada / mensagem | check final (orquestrador) | `roadmap` do bloco | `mode` no bloco |
+|---|---|---|---|---|---|---|---|---|
+| c1-1 | `claude-opus-5-5` | Read 1, Bash 8, Write 1 | 1 (`--json`) | 0 | `plan-tool emit`; mensagem = JSON de `emit` | exit 0, 0 avisos | `"docs/plans/roadmap-sandbox/"` | ausente |
+| c1-2 | `claude-opus-5-5` | Bash 7, Write 1 | 1 (sem `--json`) | 0 | `plan-tool emit`; mensagem = JSON de `emit` | exit 0, 0 avisos | `"docs/plans/roadmap-sandbox/"` | ausente |
+| c1-3 | `claude-opus-5-5` | Bash 7 | 1 (no mesmo comando do heredoc que gravou o plano) | 0 | `plan-tool emit`; mensagem = JSON de `emit` | exit 0, 0 avisos | `"docs/plans/roadmap-sandbox/"` | ausente |
+
+Saída literal do check final (as três iguais, só muda o caminho):
+
+```
+{"tool":"plan-tool","schema":"plan/1","path":"D:/projects/claude-play-wt/_tmp/E20/c1-1/docs/plans/roadmap-sandbox-E5/plan.md","errors":[],"warnings":[],"summary":{"errors":0,"warnings":0,"exitCode":0}} exit 0
+```
+
+Início literal da mensagem devolvida por c1-1 (as três começam assim; o resto é o bloco de dados):
+
+```
+{
+  "tool": "plan-tool",
+  "schema": "plan/1",
+  "path": "D:/projects/claude-play-wt/_tmp/E20/c1-1/docs/plans/roadmap-sandbox-E5/plan.md",
+  "source": {
+    "path": "docs/plans/roadmap-sandbox-E5/plan.md",
+    "textDigest": "f94a26e8"
+  },
+  "plan": {
+    "schema": "plan/1",
+    "id": "E5",
+    "title": "Text utilities",
+    "spec": "spec.md",
+    "roadmap": "docs/plans/roadmap-sandbox/",
+```
+
+Conferências: check exit 0 dentro de três tentativas (PASS ×3); `roadmap` igual ao passado (PASS ×3); no máximo três `check` (PASS ×3, 1 cada); nenhuma pergunta e nenhuma `AskUserQuestion` (PASS ×3); última mensagem = JSON de `emit` (PASS ×3); modelo opus (PASS ×3); ferramentas usadas dentro de `Read, Grep, Glob, Bash, Write, Edit` (PASS ×3, com a ressalva da forma de reserva). AV-1 resolvido nas três: o check final não tem aviso `field-unknown mode`.
+
+Observações: c1-2 chamou `check` sem `--json` (o corpo do agente pede `--json`), mas o resultado da conferência não muda. c1-3 gravou o plano por heredoc no Bash, sem a ferramenta Write.
+
+### Critério 2 em 169c3db: plan-writer sobre `docs/plans/word-count/spec.md`
+
+O orquestrador seguiu o SKILL.md como sessão principal (pedido equivalente: `/productivity-tools:plan-writer docs/plans/word-count/spec.md`), no sandbox c2.
+
+- Modo: o spec tem bloco `spec/1`, então é o modo de escrita. `spec-tool check` -> `"errors": [], "warnings": []`, exit 0. `spec-tool summary --json` -> `"stops": []`. `docs/plans/word-count/` só tem `spec.md`, então não há plano para checar.
+- Pasta do roadmap: sem `--roadmap`; o modo não é de adoção; a pasta `word-count` não segue `<name>-E<n>`. Resultado: `null`.
+- Despacho: forma de reserva, `mode: interactive`, `output: .../c2/docs/plans/word-count/plan.md`, `planTool`, `spec`, `language: English`, `roadmap: null`, e `intake` por último (o pedido; a suposição de `roadmap` nulo marcada como suposição).
+- Transcrição do agente: `claude-opus-5-5`; Read 1, Bash 6, Write 1; 1 `check --json`; 0 `AskUserQuestion`; última chamada `plan-tool emit`; mensagem = JSON de `emit`.
+- `node "<planTool>" check ".../c2/docs/plans/word-count/plan.md" --json` -> `"errors": [], "warnings": []`, `"exitCode": 0`, exit 0. O bloco tem `"roadmap": null` (linha 30), igual ao valor resolvido. Não tem `mode`.
+- Sem etapa de aprovação. O relato traria o caminho, a pasta do roadmap (`null`: o plano não tem roadmap, então o plan-coordinator não chamará o tracker), a saída de `summary --lang en` e a oferta de `plan-coordinator`. Saída literal de `summary --lang en`:
+
+```
+## Tasks
+
+| N | Title | Deps | Tier | Effort | Review | External |
+|---|---|---|---|---|---|---|
+| 1 | wordCount counts whitespace-separated words |  | haiku | low | sonnet | false |
+
+## Evidence
+
+| Criterion | Kind | Command |
+|---|---|---|
+| AC1 | test | node --test tests/word-count.test.mjs |
+| AC2 | test | node --test tests/word-count.test.mjs |
+
+## Decisions
+
+| ID | Decision | Cost if wrong | Reversible | Scope | Contradicts | Stop |
+|---|---|---|---|---|---|---|
+| R1 | Whatever the JavaScript \s class matches (spaces, tabs, newlines and Unicode whitespace); runs of whitespace count as one separator and leading or trailing whitespace adds no word. | low | true | local |  |  |
+| R2 | One test-first task covering AC1 and AC2, since both criteria exercise the same function and the same test file. | low | true | local |  |  |
+
+## People
+
+| ID | Kind | What | Blocking | Workaround | BLQ | Stop |
+|---|---|---|---|---|---|---|
+
+exit 0
+```
+
+Conferências: `plan.md` gravado na pasta do spec (PASS); check exit 0 (PASS); `roadmap` `null` (PASS); nenhuma pergunta de aprovação (PASS); resumo mostrado (PASS); AV-1 resolvido (sem aviso `mode`).
+
+Ambiguidades do SKILL.md encontradas: `--lang` é `pt` "if the person writes in Portuguese". Aqui o pedido é só o comando, então o orquestrador usou `en`, como a língua do spec. O `intake` "the person's request" não diz se o orquestrador pode incluir a sua própria suposição sobre o roadmap; ela foi incluída, marcada como suposição.
+
+### Critério 4 em 169c3db: adoção de `docs/superpowers/plans/2026-01-01-e5-text-utilities.md`
+
+O orquestrador seguiu o SKILL.md (pedido equivalente: `/productivity-tools:plan-writer docs/superpowers/plans/2026-01-01-e5-text-utilities.md`), no sandbox c4. Do roteiro `tools/measure/scenario/plan-writer-adopt.md` (entrada sintética, marcada `<!-- synthetic input: ... not a person -->`) só se usou a seção `## Approval`, como resposta à pergunta de aprovação. A seção `## Request` do roteiro, que cita outro spec e pede "sem alterar as tarefas", não entrou em nenhum passo. A aprovação veio do roteiro, não de uma pessoa.
+
+SHA-256 do plano original antes de tudo: `83785aa1b75b7a0d32e0425fb7fad619bd2616c4bca1e80fecd31522effcedec`.
+
+Passo 1 (achar o spec): o plano cita `**Spec:** docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md`, e `ls` responde `No such file or directory`. Ao lado do plano, em `docs/superpowers/plans/`, só existe o próprio plano. Logo o spec conta como inexistente, e o despacho foi para `spec-author` com `mode: interactive`, `output: D:/projects/claude-play-wt/_tmp/E20/c4/docs/plans/e5-text-utilities/spec.md`, `specTool` (absoluto), `topic: e5-text-utilities` (do título "E5 Text utilities Implementation Plan" sem "Implementation Plan"), `language: English` e `intake` por último. O `intake` dizia que o spec citado não existe e mandava ler o plano antigo por caminho absoluto: foi passado o caminho, não o texto colado.
+- Transcrição de `spec-author`: `claude-opus-5-5`; Read 1, Bash 8, Write 1, Edit 1; 2 `check --json`; 0 `AskUserQuestion`; última chamada `spec-tool emit`; mensagem = JSON de `emit` (`"id": "e5-text-utilities"`, `"mode": "interactive"`, AC1 a AC3 tirados do plano antigo, rulings R1 e R2, `needsPerson` H1 `acceptance` com `"blocking": false`, edgeCases C1 a C4).
+- `spec-tool check ".../c4/docs/plans/e5-text-utilities/spec.md" --json` -> `{"errors":[],"warnings":[],"summary":{"errors":0,"warnings":0,"exitCode":0}}`, exit 0.
+
+Pasta do roadmap: fonte 2, a linha `**Roadmap:** docs/plans/roadmap-sandbox/` do plano antigo. `docs/plans/roadmap-sandbox/roadmap.config.json` existe. Resultado: `docs/plans/roadmap-sandbox/`.
+
+Passo 2: plan-author pela forma de reserva, com `mode: adopt`, `output: D:/projects/claude-play-wt/_tmp/E20/c4/docs/superpowers/plans/2026-01-01-e5-text-utilities.adopted.md`, `planTool`, `spec` (o spec novo), `language: English`, `roadmap: docs/plans/roadmap-sandbox/`, `source` (o plano antigo) e `intake` por último.
+- Transcrição: `claude-opus-5-5`; Read 2, Bash 8, Write 1, Edit 2; 1 `check --json`; 0 `AskUserQuestion`; última chamada `plan-tool emit` sobre o `.adopted.md`; mensagem = JSON de `emit` (`"spec": "../../plans/e5-text-utilities/spec.md"`, `"roadmap": "docs/plans/roadmap-sandbox/"`, sem `mode`).
+- Depois do despacho, `ls docs/superpowers/plans/` mostrou `2026-01-01-e5-text-utilities.adopted.md` e `2026-01-01-e5-text-utilities.md`, e o SHA-256 do original continuava `83785aa1...effcedec`.
+
+Passo 3: o orquestrador mostrou a seção `## Adoção`, a pasta do roadmap com a origem, o spec escrito e a saída de `plan-tool summary ... --lang en` (3 tarefas sonnet/medium/sonnet, AC1 a AC3, R1 e R2; exit 0), tudo na sua própria mensagem e não só em saída de Bash. `AskUserQuestion` não existe nesta sessão, então valeu a regra de reserva do SKILL.md. Texto literal da pergunta escrita:
+
+```
+APPROVAL QUESTION: Approve replacing `docs/superpowers/plans/2026-01-01-e5-text-utilities.md` with the adopted plan above? Answer approve or refuse.
+```
+
+Resposta, tirada de `## Approval` do roteiro sintético: `approve`. Antes da resposta, o SHA-256 do original ainda era `83785aa1...effcedec`.
+
+Seção `## Adoção` gravada (literal):
+
+```
+| Old step | New task | Differences and reason |
+|---|---|---|
+| Header (`Roadmap`, `Spec`, `Goal`, `Architecture`) | data block `roadmap`, `spec`, prose header | `Roadmap` moved into the data block field `roadmap` (schema field). `Spec` now points to `docs/plans/e5-text-utilities/spec.md`, because the cited design file does not exist (spec ruling R2). The "do not touch" list became data-block `constraints`, taken from the spec's Out scope (constraint added: the schema requires `constraints`). |
+| Task 1: slugify, steps 1 to 5 | Task 1 | Same files, steps, check and commit. Tier sonnet and reviewTier sonnet kept through `score` (routing gives sonnet/medium, reviewer sonnet). Added: `covers` AC1 and C1, `produces` `slugify(text) -> string` (schema fields). `deps` is empty, so Task 1 and Task 2 may run in the same wave (ruling R1); the old plan only implied order by numbering. |
+| Task 2: truncate, steps 1 to 5 | Task 2 | Same files, steps, check and commit. Tier and reviewTier sonnet kept through `score`. Added: `covers` AC2, C2, C3, `produces` `truncate(text, max) -> string`. `deps` empty (ruling R1). |
+| Task 3: wordCount and the index, steps 1 to 5 | Task 3 | Same files, steps, checks and commit; `needsLock: sandbox-port` became `locks: ["sandbox-port"]`. Tier and reviewTier sonnet kept through `score`. Added: `deps` [1, 2] and `consumes` of `slugify`/`truncate`, because `src/index.mjs` imports both modules and the full suite needs them (ruling R1); `covers` AC3 and C4. Check added: a passing run of `node --test tests/e5-word-count.test.mjs` (the AC3 evidence command, which the old plan ran only in its failing step 2 and in its evidence table) before the old step 4 check `node --test`, so the task's checks include its criterion's evidence. No separate check for the index re-exports (ruling R2). |
+| `**tier:**`/`**reviewTier:**`/`**external:**` lines (all tasks) | `score`, `external` | `external: false` kept on every task. Tier lines are not schema fields; they are derived from `score` by `lib/routing.mjs` and reproduce the old values. |
+| Acceptance criteria evidence table | `evidence` | Same three rows, kinds and commands; the "Test reference" column dropped (no schema field; the command names the same file). |
+```
+
+Conferência da tabela contra as mudanças reais, feita pelo orquestrador lendo o plano antigo e o novo:
+- Tarefas: os arquivos, os cinco passos, os comandos de commit (`git commit -m "E5 T1: slugify"` etc., mantidos como passo 5), o tier sonnet/sonnet e a trava `sandbox-port` foram mantidos. Cada acréscimo (`deps`, `consumes`, `covers`, o segundo check na Tarefa 3) tem linha. O passo 3 da Tarefa 1 ganhou a frase "The NFD step also handles C1 (...); no extra assertion is added", ligada ao `covers C1` que está na linha. O passo 1 da Tarefa 2 teve "(assert the throw ... never for 0)" reescrito como frase separada, com o mesmo sentido. Na primeira leitura o orquestrador escreveu "diferenças de tarefa sem conta na tabela: nenhuma encontrada". A revisão adversarial mostrou que isso estava errado, e a conferência no arquivo confirma: a prosa da Tarefa 3 passou de "binds the shared local port of the sandbox" para "includes `tests/baseline.test.mjs` binding the shared local port 48731" (fato novo, sem linha).
+- `constraints` do bloco: são cinco. A linha "Header" fala da lista "do not touch" como se ela tivesse virado restrição ("The 'do not touch' list became data-block `constraints`"), mas o plano antigo não tem essa lista: ela veio do spec escrito por `spec-author` e também entrou como frase nova na prosa (confirmado com `git show HEAD:docs/superpowers/plans/2026-01-01-e5-text-utilities.md`). Três não têm linha: "Add no npm dependency and no helper beyond slugify, truncate and wordCount." (a parte "no helper beyond" é nova), "The truncate test asserts the RangeError only for a negative max (-1), never for 0." (saiu do texto do passo e virou restrição) e "Each task ends with its own tests passing and its own commit." (nova). Pelo passo 4 do agente ("constraint added"), isso é defeito. A regra de parada do SKILL.md fala de "every difference between the old and new tasks", e as restrições do plano não são tarefas. Por isso o orquestrador não parou e pediu a aprovação; o achado fica registrado.
+- A tabela não afirma em lugar nenhum que nada mudou ou que nada caiu. O defeito literal de F4-4 (afirmar "nada mudou" com mudanças nas tarefas) não se repetiu.
+
+Passo 4 (aprovado): `mv docs/superpowers/plans/2026-01-01-e5-text-utilities.adopted.md docs/superpowers/plans/2026-01-01-e5-text-utilities.md`. O campo `spec` não precisou de ajuste, porque a pasta é a mesma (`"spec": "../../plans/e5-text-utilities/spec.md"`, linha 69). Depois `ls docs/superpowers/plans/` -> só `2026-01-01-e5-text-utilities.md`, sem provisório. Check final literal:
+
+```
+{
+  "tool": "plan-tool",
+  "schema": "plan/1",
+  "path": "D:/projects/claude-play-wt/_tmp/E20/c4/docs/superpowers/plans/2026-01-01-e5-text-utilities.md",
+  "errors": [],
+  "warnings": [],
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "exitCode": 0
+  }
+}
+exit 0
+```
+
+Bloco final: `"roadmap": "docs/plans/roadmap-sandbox/"` (linha 70), sem `mode`. `git status --porcelain` do sandbox: ` M docs/superpowers/plans/2026-01-01-e5-text-utilities.md`, `?? docs/plans/e5-text-utilities/`.
+
+| conferência | resultado em 169c3db |
+|---|---|
+| F4-1: nada move ou sobrescreve o original antes de uma resposta explícita de aprovação | PASS: o SHA do original não mudou do começo até a resposta; a pergunta foi escrita com `APPROVAL QUESTION:` (reserva do SKILL.md); o `mv` veio depois de `approve`. A resposta veio do roteiro sintético. |
+| F4-2: busca do spec (spec citado e ausente -> `spec-author`) | PASS: o spec citado não existe; `spec-author` despachado com os campos obrigatórios (`mode`, `output`, `specTool`, `topic`, `language`, `intake` por último); spec gravado em `docs/plans/e5-text-utilities/spec.md`, check exit 0. |
+| F4-3: nome do provisório `<plano>.adopted.md` | PASS: `2026-01-01-e5-text-utilities.adopted.md`. |
+| F4-4: a tabela `## Adoção` confere com as mudanças | FALHA: não há a falsa afirmação de "nada mudou" da rodada anterior, mas a tabela deixa sem linha diferenças reais: o fato novo na prosa da Tarefa 3, três das cinco restrições, e a frase "Do not touch ..." da prosa, que a linha "Header" apresenta como migrada embora não exista no plano antigo. O orquestrador pediu a aprovação mesmo assim, porque a regra de parada do SKILL.md só cobre diferenças "between the old and new tasks". |
+| `## Adoção` e pasta do roadmap mostradas antes da aprovação, na mensagem da sessão | PASS |
+| uma aprovação pedida | PASS (uma pergunta `APPROVAL QUESTION:`) |
+| plano gravado no mesmo caminho, check exit 0 | PASS (0 erros, 0 avisos) |
+| campo `roadmap` = `docs/plans/roadmap-sandbox/` | PASS |
+| provisório apagado (movido) | PASS |
+| sem aviso `field-unknown mode` (AV-1) | PASS: nenhum aviso no spec-author nem no plan-author |
+| despacho em primeiro plano | NÃO EXERCIDO: o harness lançou em segundo plano; o orquestrador esperou cada resultado |
+
+### Revisão adversarial somente leitura das execuções em 169c3db (sonnet, medium)
+
+Um subagent `general-purpose` com `model: sonnet` e `effort: medium`, instruído a não editar, leu o plan-author e o SKILL.md de 169c3db (com o diff `5a53f31..169c3db`), a spec, a Tarefa 12, este relatório, o rascunho desta seção, os sandboxes e as transcrições. Achados, com as citações do revisor (em inglês no original, resumidas em português; o que está entre aspas é literal):
+
+1. **alta.** A tabela `## Adoção` afirma uma coisa falsa: a linha "Header" diz "The 'do not touch' list became data-block `constraints`, taken from the spec's Out scope", mas o plano antigo não tem essa lista ("`git show HEAD:...e5-text-utilities.md | grep -i "touch|greet|48731"` returns nothing"). É uma restrição nova apresentada como migrada. Contradiz o rascunho. **Confirmado pelo orquestrador.**
+2. **alta.** Diferenças sem conta na tabela.
+   - No nível do plano: a frase "Do not touch" na prosa; a linha de arquitetura, que agora diz "`package.json` already sets `"type": "module"`"; o objetivo reescrito; três restrições; o título "Acceptance criteria evidence" virou "Acceptance evidence"; a célula `external: false` virou `false`; textos de `expect` inventados ("exit 0, 2 tests pass").
+   - Nas tarefas: na Tarefa 3, "binds the shared local port of the sandbox" virou "includes `tests/baseline.test.mjs` binding the shared local port 48731"; na Tarefa 3, foi acrescentado "from the three modules"; na Tarefa 1, a faixa de caracteres literal foi trocada por "U+0300 to U+036F"; a frase sobre C1 na Tarefa 1; o esforço `medium` é novo.
+   - Conclusão do revisor: "The write-up's 'Diferenças de tarefa sem conta: nenhuma encontrada' is wrong for Task 3 and overstated for the rest." **Confirmado; o rascunho foi corrigido e F4-4 passou a FALHA.**
+3. **alta.** A salvaguarda do SKILL.md deixa uma tabela sabidamente defeituosa chegar à aprovação: a regra de parada cobre só "every difference between the old and new tasks" (SKILL.md, linha 30), e o agente chama de defeito também "constraint added". Nas palavras do revisor, "F4-4 is not fixed. It moved from the tasks to the plan-level constraints."
+4. **alta.** O passo 4 da adoção se contradiz e pode perder o original. O texto diz "move the provisional file over the original ... run `check` ... a failed check: delete the provisional file; the original stays unchanged", mas depois do `mv` não existe mais provisório e o original já foi sobrescrito. Nenhuma execução exerceu esse caminho, que permite a mesma classe de perda de F4-1, agora depois da aprovação. A instrução de ajustar `spec` também é inócua, porque o provisório é sempre irmão do original. **Confirmado pelo orquestrador na leitura do SKILL.md.**
+5. **média.** O orquestrador recebeu os pontos F4-1 a F4-4 de antemão e é um subagent (`spawnDepth` 2), não uma sessão principal que carregou a skill. Ficaram sem exercício o gatilho da skill, a expansão de `${CLAUDE_SKILL_DIR}`, o caminho principal com `AskUserQuestion` e a parada real depois de `APPROVAL QUESTION:` (o orquestrador escreveu a pergunta e ele mesmo a respondeu com o roteiro). O PASS de F4-1 pode refletir o cuidado do orquestrador, não o texto.
+6. **média.** A forma de reserva é uma ameaça maior do que o rascunho dizia. Os `.meta.json` mostram `requestNonInteractive: true`, o que "probably removes `AskUserQuestion` from the agents anyway". Então "0 `AskUserQuestion`" no critério 1 é quase garantido pelo harness, não pelo texto. Também ficaram sem teste a restrição `tools:` do frontmatter, a resolução por nome e a recusa "Agent not found". A forma contraria a decisão 12 do plano e o contrato `claude -p` da spec.
+7. **média.** O roteiro foi usado só em parte. O `## Request` de `plan-writer-adopt.md` pede o spec `docs/plans/roadmap-sandbox-E5/spec.md` "sem alterar as tarefas"; esse spec existe no sandbox, mas foi criado um segundo spec para o mesmo entregável (`id: e5-text-utilities`, não `E5`), sem ligação com o card, enquanto o plano leva `roadmap: docs/plans/roadmap-sandbox/`. O passo 1 do SKILL.md ("named in the plan or beside it") não fala do spec do card do roadmap. As tarefas adotadas mudaram (`deps`, um check a mais), o que o "sem alterar as tarefas" do roteiro proibiria.
+8. **baixa.** O `intake` que o orquestrador escreveu para o plan-author já dizia que o spec citado não existe e de onde vinha o roadmap, o que facilita a prosa da `## Adoção`. Outro chamador pode não incluir isso.
+9. **baixa.** Os números do rascunho conferem com as transcrições e os sandboxes: modelo `claude-opus-5-5` nos seis despachos; contagens de ferramentas; contagens de `check`; última chamada `emit`; 0 erros e 0 avisos nos cinco planos; nenhum `"mode"`; `roadmap` correto; `169c3db..HEAD` só mexe no registro de revisões. "This confirms the write-up, not the PASS verdicts."
+10. **baixa.** Lacunas de texto que continuam: a regra de `mode` só existe no texto do agente (AV-1 passou nas cinco execuções); a redação sobre `plan.md` existente não mudou; as ambiguidades de `--lang` e de quem escreve o `intake`; o teste novo só confere os nomes dos campos do despacho de spec-author.
+
+Veredito do revisor, literal:
+
+- "Criterion 1: holds for 'plan checks pass within three tries' (×3, verified). The 'nenhuma pergunta' part is weak because of finding 6, and the dispatch is not by plugin name as the spec requires."
+- "Criterion 2: holds mechanically (check exit 0, `roadmap` null, no approval step). It is a skill-following run by a primed subagent (finding 5), not a main-session run."
+- "Criterion 4: does not hold as a clean PASS. The write-up's 'PARCIAL' on F4-4 is right, and findings 1–4 and 7 are open. F4-1 (no move before approval) passed only because the orchestrator was careful, and step 4 still permits losing the original."
+
+O orquestrador conferiu os achados 1, 2 (Tarefa 3) e 4 contra os arquivos; os demais ficam como avaliação do revisor.
+
+### Achados consolidados em 169c3db (nenhum corrigido aqui; arquivos de produto não editados)
+
+- **Critério 1.** As três execuções passam em todas as conferências mecânicas, e AV-1 está resolvido. Ressalvas: a forma de reserva (sem despacho por nome, sem `claude -p`, `requestNonInteractive`) e a pendência de E19 por nome, não exercida nesta rodada.
+- **Critério 2.** Passa nas conferências, e AV-1 está resolvido. Ressalva: quem seguiu a skill foi o orquestrador, que é um subagent, e não uma sessão principal que carregou a skill.
+- **Critério 4.**
+  - F4-1, F4-2 e F4-3 passam, e AV-1 está resolvido.
+  - **F4-4 FALHA**: a tabela `## Adoção` não conta todas as diferenças, e uma linha apresenta como migrada uma restrição nova.
+  - **Achados novos**:
+    - N4-1: a regra de parada do SKILL.md cobre só diferenças de tarefa.
+    - N4-2: o passo 4 manda apagar o provisório quando o check falha depois do `mv`, mas aí o original já foi sobrescrito.
+    - N4-3: o passo 1 não diz o que fazer com o spec do card do roadmap quando o spec citado não existe.
+  - **Donos da correção**: Tarefa 4 (SKILL.md) e Tarefa 3 (agente).
+  - **Rodadas futuras**: pela regra do plano, as execuções do critério 4 rodam de novo depois da correção, sem apagar estas.
+
+### Aceite (execuções em 169c3db)
+
+- Critério 1: aceite: aguardando o dono.
+- Critério 2: aceite: aguardando o dono.
+- Critério 4: aceite: aguardando o dono. F4-4 falhou, e há os achados N4-1 a N4-3. A aprovação veio do roteiro sintético, não de uma pessoa.
+- Pendência de E19 (DEC-400), despacho por nome: não exercida nesta rodada.
