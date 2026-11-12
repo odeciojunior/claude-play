@@ -333,3 +333,119 @@ O orquestrador conferiu os achados 1, 2 (Tarefa 3) e 4 contra os arquivos; os de
 - Critério 2: aceite: aguardando o dono.
 - Critério 4: aceite: aguardando o dono. F4-4 falhou, e há os achados N4-1 a N4-3. A aprovação veio do roteiro sintético, não de uma pessoa.
 - Pendência de E19 (DEC-400), despacho por nome: não exercida nesta rodada.
+
+## Execuções em bf4712d
+
+Data: 2026-11-12. Commit sob teste: `bf4712d49634928e32dec97ff788ddf0a825bb1e` (terceira e última rodada de correção da adoção). Por decisão delegada do dono (DEC-455), só o critério 4 rodou de novo. As execuções anteriores continuam acima, sem alteração. Nenhum arquivo de produto foi editado.
+
+### Forma
+
+- Forma da decisão 12 do plano (passo 4 da Tarefa 12), igual à de c4/c4b em `5a53f31`: sessão `claude -p` com o sandbox como diretório de trabalho, `--plugin-dir D:/projects/claude-play-wt/E20/plugins/productivity-tools --model opus --permission-mode bypassPermissions --output-format stream-json --verbose --append-system-prompt "Do not pass a model or effort override when dispatching plugin agents; the agent's own frontmatter decides."`. O despacho é por nome, sem forma de reserva.
+- Sandbox novo: `node tools/measure/make-scenario.mjs D:/projects/claude-play-wt/_tmp/E20/c4 --variant plan-author`, com commits `9b01438` e `0195de8`. Foi apagado ao fim, junto com `D:/projects/claude-play-wt/_tmp/E20/`.
+- Prompt: a seção `## Request` de `tools/measure/scenario/plan-writer-adopt.md`, literal: "Adote o plano antigo `docs/superpowers/plans/2026-01-01-e5-text-utilities.md` para o spec `docs/plans/roadmap-sandbox-E5/spec.md`: reescreva o plano no formato com bloco de dados, no mesmo caminho, sem alterar as tarefas." A sessão não recebeu nenhuma menção às conferências nem a F4-1..F4-4.
+- Depois da parada em `APPROVAL QUESTION:`, a sessão foi retomada com `claude -p 'approve' --resume <sessão>` e as mesmas opções. `approve` é a seção `## Approval` do roteiro sintético, não uma pessoa.
+- Evento `init` (nas duas invocações): `"name":"productivity-tools","path":"D:\\projects\\claude-play-wt\\E20\\plugins\\productivity-tools","source":"productivity-tools@inline","version":"1.7.0"`, `model=claude-opus-5-5`, `permissionMode=bypassPermissions`. `AskUserQuestion` não estava entre as ferramentas, então valeu a regra de reserva do SKILL.md.
+- Sessão `093460b3-7af2-45b8-8a49-0fdd6f5d4a95`. A retomada manteve o mesmo id.
+- Custo, segundo o evento `result` do CLI:
+  - primeira invocação: `total_cost_usd=1.0702822`, 8 turnos, 164534 ms;
+  - retomada: `total_cost_usd=1.1191988`, 2 turnos, 7672 ms.
+
+### O que a sessão fez (do `stream-json`)
+
+1. `Skill productivity-tools:plan-writer` foi carregada pelo pedido.
+2. Bash: leu o plano antigo e o spec nomeado. Depois rodou `spec-tool check docs/plans/roadmap-sandbox-E5/spec.md --roadmap docs/plans/roadmap-sandbox/`, que deu `Result: 0 errors, 0 warnings` e `exit 0`; o `Exit code 2` da ferramenta veio do `ls docs/superpowers/specs`, pasta que não existe.
+3. `Agent` com `subagent_type: "productivity-tools:plan-author"` e `"run_in_background": false`. Campos: `mode: adopt`, `output: .../2026-01-01-e5-text-utilities.adopted.md`, `planTool`, `spec: .../docs/plans/roadmap-sandbox-E5/spec.md`, `language: pt`, `roadmap: docs/plans/roadmap-sandbox/`, `source` (o plano antigo) e `intake` por último.
+   - Subagent: todas as mensagens em `claude-opus-5-5`, 13 chamadas de Bash e nenhuma outra ferramenta. Fez 2 `check`, ambos com exit 0 e 0 avisos. A última chamada foi `plan-tool emit` sobre o `.adopted.md`.
+4. A sessão principal rodou `plan-tool check` no provisório, que deu `Result: 0 errors, 0 warnings`, `exit 0`. Rodou também `git diff --no-index --stat` e `wc -l` do diff. Depois escreveu o texto "Tabela de adoção conferida, sem defeitos." e rodou `plan-tool summary ... --lang pt`.
+5. A mensagem final terminou com o texto literal:
+
+```
+APPROVAL QUESTION: Aprova a adoção? Com **aprovar**, o arquivo provisório substitui `docs/superpowers/plans/2026-01-01-e5-text-utilities.md` no mesmo caminho e eu rodo a verificação de novo. Com **recusar**, apago o provisório e o original fica como está.
+```
+
+   A mesma mensagem trazia o spec usado e o motivo (o spec citado no cabeçalho antigo não existe), a pasta do roadmap com a origem ("vindo da linha `**Roadmap:**` do plano antigo. A pasta tem `roadmap.config.json`"), uma tabela de tarefas montada pela sessão, R2 a R4 e o registro do diff:
+
+```
+**Diferença entre os arquivos:** 281 linhas acrescentadas e nenhuma removida. Para ver tudo:
+git diff --no-index -- docs/superpowers/plans/2026-01-01-e5-text-utilities.md docs/superpowers/plans/2026-01-01-e5-text-utilities.adopted.md
+```
+
+6. Retomada (`approve`): uma única chamada de Bash, `mv -f ".../2026-01-01-e5-text-utilities.adopted.md" ".../2026-01-01-e5-text-utilities.md" && node "<planTool>" check ...`, que deu `Result: 0 errors, 0 warnings`, `exit 0` e `"roadmap": "docs/plans/roadmap-sandbox/"`. Não houve outra chamada de ferramenta.
+
+### Conferências mecânicas (feitas pelo orquestrador, não pela sessão)
+
+- SHA-256 do original na criação do sandbox: `83785aa1b75b7a0d32e0425fb7fad619bd2616c4bca1e80fecd31522effcedec`. É o mesmo de `5a53f31`.
+  - Depois da primeira invocação: o mesmo valor. A pasta tinha `2026-01-01-e5-text-utilities.adopted.md` (`aa32ae49...f83977`) e `2026-01-01-e5-text-utilities.md`, e `git status --porcelain` mostrava `?? ...adopted.md`.
+  - Imediatamente antes da retomada: o mesmo `83785aa1...effcedec`.
+  - Nenhum comando de `rm`, `mv` ou `unlink` em `r1.jsonl` (`grep` vazio).
+- Depois da retomada:
+  - `ls docs/superpowers/plans` mostra só `2026-01-01-e5-text-utilities.md`.
+  - O SHA-256 do arquivo final é `aa32ae499ff53e01016da6158199f872e2a8d993d2d0ae3761d9b0879bf83977`, igual ao do provisório. `cmp` com a cópia do provisório tirada antes da aprovação deu `SAME_AS_PROVISIONAL`.
+  - `git status --porcelain` mostra só ` M docs/superpowers/plans/2026-01-01-e5-text-utilities.md`.
+- `docs/plans/` continua com `roadmap-sandbox`, `roadmap-sandbox-E5` e `word-count`. Nenhum spec novo foi criado e `spec-author` não foi despachado.
+- `git diff --no-index -- <original> <provisório>`:
+  - `--stat`: `1 file changed, 281 insertions(+)`.
+  - Linhas removidas (`^-[^-]`): `0`.
+  - Único trecho: `@@ -76,0 +77,281 @@`. Todo o texto do plano antigo ficou literal, e o diff só acrescenta a seção `## Adoção` e o bloco de dados.
+- Linhas de passo: `grep -c '^- \[ \] \*\*Step'` no plano antigo dá `15`. As linhas `| Task <t>, Step <s>` da tabela também são `15`, e o laço de t=1..3 e s=1..5 não reportou nenhum `MISSING`.
+- Origens citadas, contadas com `grep -cF` no plano antigo (todas ≥ 1):
+  - `Run every command from the repository root.` 1
+  - `` one module per helper under `src/`, one test file per helper under `tests/`, plain Node ESM, no dependencies. `` 1
+  - `needsLock:** none` 2
+  - `needsLock:** sandbox-port` 1
+  - `Expected: PASS, 2 tests` 1
+  - `Expected: PASS, 3 tests` 1
+  - `Expected: PASS, every test of the repository` 1
+  - `` exporting `slugify(text)` `` 1
+  - `` exporting `truncate(text, max)` `` 1
+  - `` exporting `wordCount(text)` `` 1
+  - `` re-exporting `slugify`, `truncate` and `wordCount` `` 1
+  - `**tier:** sonnet · **reviewTier:** sonnet` 3
+  - `external:** false` 3
+  - `docs/plans/roadmap-sandbox/` 1
+  - `Create:` 7
+- `constraints` do bloco: são 2 itens, cada um com uma linha na tabela "Restrições" que cita a origem no plano antigo (as duas primeiras citações da lista acima).
+- `## Adoção` gravada: 16 linhas de "Passos antigos" (15 passos e a tabela de evidência), 2 de "Restrições" e 15 de "Campos estruturados" (`spec`, `roadmap`, `id`/`title`, files, `writes`, deps, checks, tier e reviewTier, locks, external, commit, `produces`/`consumes`, `covers`, `testFirst`, `rulings`/`needsPerson`). Há ainda uma linha "Lacuna registrada", sobre o exemplo acentuado de AC1 (R4). O texto diz "Nenhuma tarefa foi dividida, fundida, acrescentada ou removida; nenhum passo foi descartado", e o diff confirma.
+- Check final: `node "<planTool>" check ".../2026-01-01-e5-text-utilities.md" --json` dá `"errors": [], "warnings": [], "summary": {"errors": 0, "warnings": 0, "exitCode": 0}`, exit 0. `grep -c '"mode"'` no arquivo final dá `0`. Bloco: `"roadmap": "docs/plans/roadmap-sandbox/"`, `"spec": "../../plans/roadmap-sandbox-E5/spec.md"`.
+
+| conferência | resultado em bf4712d |
+|---|---|
+| F4-1: original intacto até a resposta de aprovação | PASS. O SHA do original não mudou do início até imediatamente antes de `approve`. A primeira invocação parou em `APPROVAL QUESTION:` e manteve o provisório. O único `mv` está na retomada. |
+| F4-2: ordem da busca do spec | PASS. Primeira fonte: o spec nomeado pela pessoa, `docs/plans/roadmap-sandbox-E5/spec.md` (`spec-tool check --roadmap` sem erros). Nenhum segundo spec foi criado e `spec-author` não foi despachado. Só a primeira fonte foi exercida. |
+| F4-3: provisório `<x>.adopted.md`, check antes da aprovação, nada apagado depois do move | PASS. Nome `2026-01-01-e5-text-utilities.adopted.md`. O check rodou no provisório antes da pergunta: 2 vezes pelo agente e 1 pela sessão, todas com exit 0. Depois do `mv -f` não houve nenhum `rm`. |
+| F4-4 (a) linha para cada passo antigo e cada tarefa nova | PASS (15 de 15; nenhuma tarefa nova) |
+| F4-4 (b) cada item de `constraints` com linha e origem | PASS (2 de 2) |
+| F4-4 (c) nada dito "do plano antigo"/"mantido"/"virou" ausente dele | PASS, com as ressalvas da revisão (achados 3 a 6: descrições imprecisas, origem existente) |
+| F4-4 (d) cada diferença de campo estruturado com linha | PASS (files, deps, checks, tier, locks, external, commit; a linha de deps é enganosa, achado 3) |
+| F4-4 (e) nenhuma linha antiga alterada sem linha na tabela | PASS (0 linhas removidas no `git diff --no-index`) |
+| check final exit 0, sem aviso `mode` | PASS |
+| a mensagem de aprovação mostrou o registro do `git diff --no-index` | FALHA na letra do SKILL.md. O diff tem mais de 200 linhas, e a mensagem trouxe o comando e a paráfrase "281 linhas acrescentadas e nenhuma removida", não o `--stat` literal. A informação está certa. |
+| resto do passo 3 (imprimir na própria mensagem a `## Adoção` e o `summary`) | FALHA. A seção `## Adoção` não foi impressa na mensagem: apareceu só na saída de Bash (`gzff1c`). A mensagem traz uma tabela de tarefas montada pela sessão em vez da saída de `plan-tool summary --lang pt`, que também ficou só no Bash. |
+
+### Revisão adversarial somente leitura (sonnet, medium)
+
+Um subagent `general-purpose` com `model: sonnet` e `effort: medium`, instruído a não editar, leu o SKILL.md e o agente de `bf4712d`, o roteiro, as transcrições `r1.jsonl`/`r2.jsonl`, a cópia do provisório, o sandbox (`git show HEAD:` do plano antigo) e este relatório até a seção anterior. Achados (resumidos; o que está entre aspas é literal):
+
+1. **alta.** A mensagem de aprovação não imprimiu a seção `## Adoção`. O SKILL.md exige "Bash output alone is not shown", mas a tabela só apareceu no resultado do Bash `gzff1c`. Nas palavras do revisor, "a pessoa aprovou sem ver as 17 linhas de passos, as restrições nem a tabela de campos estruturados". **Confirmado pelo orquestrador.**
+2. **alta.** O diff, de 281 linhas, não foi mostrado como o SKILL.md pede: faltou o `--stat` literal (`1 file changed, 281 insertions(+)`), e a mensagem trouxe só a paráfrase e o comando. "nenhuma removida" é verdadeiro. **Confirmado.**
+3. **média.** Dependências inventadas, apresentadas como preservação. O plano antigo não declara dependências, e o bloco grava `T2 deps [1]` e `T3 deps [1,2]` com o motivo "preserva a ordem sequencial do plano antigo". A Tarefa 2 não usa `slugify`, então `T2→T1` não tem base técnica, e o `map` serializa tudo em três ondas. O R2 registra a alternativa, mas a mensagem diz "preservando a ordem antiga". A linha existe na tabela; o problema é a honestidade da origem.
+4. **média.** A linha da tabela de evidência ("mantida, texto literal / virou `evidence`") não registra que a coluna "Test reference" não tem campo no bloco. A tabela antiga continua na prosa, então não há perda real.
+5. **média.** O tier não é "mantido": ele vem de um `score` novo (0,1,0,1). A linha diz "mantidos por derivação", e o `effort medium` é novo. A mensagem de aprovação ("sem mudança em ... níveis de modelo") simplifica demais.
+6. **baixa.** "`id`, `title` mantidos": o título antigo é "E5 Text utilities Implementation Plan", e o bloco grava `"Text utilities"`, um valor derivado.
+7. **baixa.** O `summary` não foi impresso literalmente: a sessão montou a tabela de tarefas à mão, e o `summary --lang pt` real ficou só no Bash. **Confirmado.**
+8. **baixa.** A forma da execução enfraquece a evidência. Sem `AskUserQuestion`, o caminho principal da pergunta não foi exercido. O pedido nomeia o spec, então só a primeira fonte da busca foi testada: as fontes 2 a 4 e `spec-author` ficaram de fora. O adendo sobre modelo foi cosmético nesta execução.
+
+Veredito do revisor, literal: "F4-1: PASS", "F4-2: PASS", "F4-3: PASS", "F4-4 (a): PASS", "F4-4 (b): PASS", "F4-4 (c): PASS com ressalva", "F4-4 (d): PASS", "F4-4 (e): PASS", "`check` final: PASS", "Mensagem de aprovação exibiu o registro do diff: FAIL", "Resto do passo 3: FAIL parcial". Geral: "o conteúdo do plano adotado está correto e verificável. A etapa de aprovação do SKILL.md não foi seguida à risca, e isso é falha de skill, não de agente."
+
+O orquestrador conferiu os achados 1, 2 e 7 contra `r1.jsonl`. Conferiu também o fato do achado 3 (o plano antigo não tem dependências declaradas; a Tarefa 2 não importa `slugify`). Os demais ficam como avaliação do revisor.
+
+### Achados consolidados em bf4712d (nenhum corrigido; sem quarta rodada, por decisão do dono)
+
+- F4-1, F4-2, F4-3 e as cinco conferências fechadas de F4-4, de (a) a (e), passam. O check final dá exit 0 sem aviso `mode`.
+- **N5-1 (SKILL.md, passo 3).** A sessão principal não imprimiu na própria mensagem a seção `## Adoção`, o `--stat` literal do diff nem a saída de `summary`, como o passo 3 manda. A pessoa aprova vendo um resumo da sessão, que diz "Tabela de adoção conferida, sem defeitos", e não a tabela.
+- **N5-2 (agente, valores derivados).** `deps` sequenciais sem base no plano antigo, apresentados como preservação, e descrições "mantido" para valores derivados (tier por `score`, `title`). As conferências fechadas não pegam isso, porque a linha existe e a origem citada existe.
+- **Cobertura.** Só a primeira fonte da busca do spec (o spec nomeado) foi exercida. O caminho com `AskUserQuestion` e a recusa (`refuse`) não foram exercidos.
+
+### Aceite (execuções em bf4712d)
+
+- Critério 4: aceite: aguardando o dono. A aprovação veio do roteiro sintético, não de uma pessoa.
