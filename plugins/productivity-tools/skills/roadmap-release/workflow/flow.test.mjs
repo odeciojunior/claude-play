@@ -3451,6 +3451,13 @@ test('rulingDecisions maps scope and alternative', () => {
   );
 });
 
+test('specCardMismatch ignores verify when the card criterion has no tag', () => {
+  const pure = loadPure();
+  const card = { id: 'E8', acceptance: [{ id: 'AC1', text: 'Plain criterion.' }] };
+  const item = verify => ({ id: 'AC1', text: 'Plain criterion.', textWithoutTag: 'Plain criterion.', verify });
+  assert.deepEqual(pure.specCardMismatch({ id: 'E8', acceptance: [item({ kind: 'test', blq: null, evidence: 'node x' })] }, 'E8', card), []);
+  assert.deepEqual(pure.specCardMismatch({ id: 'E8', acceptance: [item(null)] }, 'E8', card), []);
+});
 test('specCardMismatch compares ids, text and verify', () => {
   const pure = loadPure();
   const card = { id: 'E8', acceptance: [

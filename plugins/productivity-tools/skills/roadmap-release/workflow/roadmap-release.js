@@ -1073,7 +1073,7 @@ function stopOrCarry({ rulings, needsPerson, approved }) {
 function rulingDecisions(rulings) {
   return (rulings || []).map(r => ({ text: r.decision, scope: r.scope === 'contract' ? 'contrato' : 'local', discarded: r.alternative }))
 }
-// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify.
+// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify (compared only when the card criterion carries a valid tag, as spec-tool check --roadmap does).
 function specCardMismatch(data, E, card) {
   const out = []
   if (!data || data.id !== E) out.push(`spec id ${data && data.id} is not ${E}`)
@@ -1091,7 +1091,7 @@ function specCardMismatch(data, E, card) {
     if (collapseWs(g.textWithoutTag) !== bare) out.push(`${c.id}: text differs from the card`)
     const tag = parseVerifyTag(c.text)
     const cardTag = tag && !tag.invalid ? tag : null
-    if (vkey(cardTag) !== vkey(g.verify)) out.push(`${c.id}: verify differs from the card`)
+    if (cardTag && vkey(cardTag) !== vkey(g.verify)) out.push(`${c.id}: verify differs from the card`)
   }
   return out
 }
