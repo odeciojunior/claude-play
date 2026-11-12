@@ -21,10 +21,14 @@ const WEIGHTS = { haiku: 1, sonnet: 20, opus: 40 };
 const FAMILIES = ['haiku', 'sonnet', 'opus', 'fable', 'other'];
 
 // Real executor. On abort the whole process tree is ended (taskkill on Windows, process group elsewhere).
+// claude -p stops background tasks (the release Workflow) 10 minutes after its last turn; a measured run must wait for them.
+export const CLAUDE_ENV = { CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' };
+export const execEnv = (cmd, base = process.env) => (cmd === 'claude' ? { ...base, ...CLAUDE_ENV } : base);
+
 export function defaultExec(cmd, args, { cwd, signal } = {}) {
   return new Promise((resolvePromise, reject) => {
     const win = process.platform === 'win32';
-    const child = spawn(cmd, args, { cwd, detached: !win, stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawn(cmd, args, { cwd, env: execEnv(cmd), detached: !win, stdio: ['ignore', 'pipe', 'inherit'] });
     let stdout = '';
     child.stdout.on('data', (d) => (stdout += d));
     const kill = () => {

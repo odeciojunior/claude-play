@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity } from './run-batch.mjs';
+import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -876,4 +876,11 @@ test('releaseRunValidity marks a release run without any subagent as sem-agentes
   }
   assert.equal(releaseRunValidity('plan-only', zero).valid, true);
   assert.equal(releaseRunValidity('codigo-semeado-A', zero).valid, true);
+});
+
+test('execEnv: claude espera as tarefas em segundo plano; outros comandos ficam com o ambiente dado', () => {
+  const base = { PATH: 'x' };
+  assert.deepEqual(execEnv('claude', base), { PATH: 'x', CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' });
+  assert.equal(execEnv('git', base), base);
+  assert.equal(base.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, undefined);
 });
