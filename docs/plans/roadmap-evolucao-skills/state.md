@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
-| E17 | bloqueado (BLQ-5) | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após executando |
+| E17 | executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após executando |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
@@ -49,7 +49,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-5 | E17 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [critical/defeito] dirty working tree (uncommitted files); branch feat/E17 kept at D:/projects/claude-play-wt/E17 | E17 | 2026-11-12 | quando o bloqueio de E17 for resolvido; restaura E17 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -94,6 +93,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081).
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro), das quais dependem os critérios 1 e 6 e o portão do critério 2
 - (dono) Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
+- (dono) Publicação: avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
+- (dono) Roteiros A e B de E25 antes da publicação
+- (dono) Execuções pagas do ponto de medição (critérios 1 e 6 e portão do critério 2), pelo dono ou orquestrador com autorização do dono
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3), incluindo a decisão 13
+- (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (commit a951ed5)
 <!-- /roadmap:pending -->
 
 ## Em andamento
