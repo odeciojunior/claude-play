@@ -3363,3 +3363,54 @@ test('spec prompt tells the agent how decisions end (pt and en)', async () => {
     assert.ok(p.includes(`"${w}: local." or "${w}: ${c}."`), language);
   }
 });
+
+// ---- E8 T1: embedded copies, artifact paths, plugin root
+import { embedFile } from '../../../scripts/embed.mjs';
+import { route as libRoute } from '../../../lib/routing.mjs';
+import { planDigest as libPlanDigest } from '../../../lib/plan-digest.mjs';
+
+const WF_PATH = join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js');
+const PLAN_TOOL_FIX = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'fixtures', 'plan-tool');
+
+test('embedded copies of routing and plan-digest are not stale', () => {
+  assert.equal(embedFile(WF_PATH, { check: true }).stale, false);
+});
+
+test('embedded route and planDigest equal the lib ones', () => {
+  const table = JSON.parse(readFileSync(join(PLAN_TOOL_FIX, 'routing-table.json'), 'utf8'));
+  const pure = loadPure();
+  for (const row of table.rows) {
+    const i = row.input;
+    const t = {
+      score: { ambiguity: i.ambiguity, reasoning: i.reasoning, blast: i.blast, verifiability: i.verifiability },
+      files: { create: Array.from({ length: i.fileCount }, (_, k) => `f${k + 1}`), modify: [], test: [] },
+      external: i.external,
+    };
+    assert.deepEqual(pure.route(t, { hasDependents: i.hasDependents }), libRoute(t, { hasDependents: i.hasDependents }), row.name);
+  }
+  const text = readFileSync(join(PLAN_TOOL_FIX, 'plan.md'), 'utf8').replace(/\r\n/g, '\n');
+  const emitted = {
+    plan: { tasks: [{ n: 1, title: 'a', deps: [] }], b: 2, a: 1 },
+    source: { path: 'plan.md', textDigest: pure.fnv1a(text) },
+  };
+  assert.equal(pure.planDigest(emitted), libPlanDigest(emitted));
+  assert.deepEqual(pure.canon({ b: 1, a: [{ d: 1, c: 2 }] }), { a: [{ c: 2, d: 1 }], b: 1 });
+});
+
+test('artifactPaths follows DEC-026', () => {
+  const pure = loadPure();
+  assert.deepEqual(pure.artifactPaths('evolucao-skills', 'E8'), {
+    dir: 'docs/plans/evolucao-skills-E8/',
+    spec: 'docs/plans/evolucao-skills-E8/spec.md',
+    plan: 'docs/plans/evolucao-skills-E8/plan.md',
+    reviews: 'docs/plans/evolucao-skills-E8/reviews.md',
+  });
+  assert.equal(pure.reportPathFor('2026-11-12', 'E8'), 'docs/reports/2026-11-12-E8-run.md');
+});
+
+test('pluginRootOf strips the tracker suffix or returns null', () => {
+  const pure = loadPure();
+  assert.equal(pure.pluginRootOf('/p/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs'), '/p/productivity-tools');
+  assert.equal(pure.pluginRootOf('C:\\p\\pt\\skills\\roadmap-tracker\\scripts\\roadmap.mjs'), 'C:/p/pt');
+  assert.equal(pure.pluginRootOf('/t/roadmap.mjs'), null);
+});
