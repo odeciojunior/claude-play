@@ -566,3 +566,28 @@ test('E19: shipped spec texts never mention bypassPermissions (skill)', () => {
 test('E19: spec-writer stays under 500 lines', () => {
   assert.ok(readWriter().split('\n').length < 500);
 });
+
+test('spec-author contract: absolute output, multiline last field, topic as given', () => {
+  const { body } = splitAgent();
+  const row = (name) => body.split('\n').find((l) => l.startsWith(`| \`${name}\``)) || '';
+  assert.match(row('output'), /absolute path of the spec to write/);
+  assert.match(row('ownerNote'), /last field, may span several lines to the end of the prompt/);
+  assert.match(row('intake') || body.split('\n').find((l) => /^\| `topic`, `intake`/.test(l)) || '', /last field, may span several lines to the end of the prompt/);
+  const topicRow = body.split('\n').find((l) => /^\| `topic`/.test(l)) || '';
+  assert.match(topicRow, /used as given/);
+  assert.match(topicRow, /E<n>/);
+});
+
+test('spec-author step 5 asks for the verify tag in both modes', () => {
+  const { body } = splitAgent();
+  const step = body.split('\n').find((l) => /^5\. /.test(l)) || '';
+  assert.match(step, /\{verify: \.\.\.\}/);
+  assert.match(step, /both modes/);
+  assert.doesNotMatch(step, /in unattended mode they are identical/);
+});
+
+test('spec-author keeps ruling ids when merging an owner note', () => {
+  const { body } = splitAgent();
+  assert.match(body, /ruling ids/i);
+  assert.match(body, /ownerNote/);
+});
