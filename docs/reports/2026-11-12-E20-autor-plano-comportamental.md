@@ -448,4 +448,4 @@ O orquestrador conferiu os achados 1, 2 e 7 contra `r1.jsonl`. Conferiu também 
 
 ### Aceite (execuções em bf4712d)
 
-- Critério 4: aceite: aguardando o dono. A aprovação veio do roteiro sintético, não de uma pessoa.
+- Critério 4: aceito por delegação do dono (Fable) em bf4712d, DEC-456; N5-1 e N5-2 viram pendências com portão na publicação de plan-writer (DEC-457, DEC-458). Critérios 1 e 2 aceitos por delegação (DEC-453). A aprovação veio do roteiro sintético, não de uma pessoa.
