@@ -20,8 +20,10 @@ const lf = (t) => String(t).replace(/\r\n?/g, '\n');
 // The arm template (minus its "Copied from" line) must appear in the workflow, piece by piece in order, byte for byte.
 export function armMatches(armText, workflowText) {
   const lines = lf(armText).split('\n');
-  const body = (/^Copied from:/.test(lines[0]) ? lines.slice(1) : lines).join('\n');
-  const workflow = lf(workflowText);
+  // A table-escaped pipe is the same text with or without its escape: the JS source has \\|, the runtime prompt \|, the arm | (DEC-310).
+  const pipe = (t) => t.replace(/\\+\|/g, '|');
+  const body = pipe((/^Copied from:/.test(lines[0]) ? lines.slice(1) : lines).join('\n').trimEnd());
+  const workflow = pipe(lf(workflowText));
   let at = 0;
   for (const piece of body.split(/\{\{[^}]*\}\}/)) {
     if (piece === '') continue;

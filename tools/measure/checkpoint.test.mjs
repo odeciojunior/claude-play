@@ -172,11 +172,18 @@ test('E17: armMatches', () => {
   assert.equal(armMatches(arm, wf.replace('against', 'versus')), false);
   assert.equal(armMatches(arm, wf.replace('\n', '\r\n')), true);
   assert.equal(armMatches(arm, 'Second line. then Review X against Y now.'), false);
+  // A table-escaped pipe: the JS source has two backslashes, the arm has none.
+  const pipeArm = 'Copied from: x.js at commit abc\nA | b.\n';
+  assert.equal(armMatches(pipeArm, 'p = `A \\\\| b.`,'), true);
+  assert.equal(armMatches(pipeArm, 'p = `A \\| b.`,'), true);
+  assert.equal(armMatches(pipeArm, 'p = `A | b.`,'), true);
+  assert.equal(armMatches(pipeArm, 'p = `A | c.`,'), false);
+  // The arm ends in a newline, the workflow text is followed by a backtick: the harness trims too.
+  assert.equal(armMatches('Copied from: x.js at commit abc\nEnds here.\n', 'p = `Ends here.`;'), true);
 });
 
-// OPEN (owner decision, DEC-279): plan-fix-atual.md has "table-escaped | written as |" where the workflow has "table-escaped \\| written as |" (the arm lost the backslash).
-// The arms are not edited; the todo flag keeps G1 green until the owner decides. Remove { todo } once decided.
-test('E17: arms match the workflow at HEAD', { todo: 'owner decision: plan-fix-atual.md differs from the workflow at the table-escaped pipe (DEC-279)' }, () => {
+// DEC-310: plan-fix-atual.md keeps "|" where the workflow has the escaped pipe; armMatches ignores the escape and the arm trailing newline.
+test('E17: arms match the workflow at HEAD', () => {
   const wf = disk(WORKFLOW);
   for (const f of ['plan-review-atual.md', 'plan-fix-atual.md']) {
     assert.equal(armMatches(disk(`tools/measure/arms/${f}`), wf), true, f);
