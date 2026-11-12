@@ -63,7 +63,8 @@ Contrato de chamada, uma linha `chave: valor` por campo, na forma emendada por D
 | `planTool` | todos | caminho absoluto de `plan-tool.mjs`; nunca adivinhado nem procurado no cache |
 | `spec` | todos | caminho absoluto do spec `spec/1` (o campo `spec` do bloco é gravado relativo à pasta de `output`) |
 | `language` | todos | idioma da prosa do plano |
-| `roadmap`, `card` | unattended | pasta do roadmap e id do card; `roadmap` vai para o campo `roadmap` do bloco |
+| `roadmap` | todos | pasta do roadmap relativa à raiz do repositório, com `/` e terminada em `/`, ou `null`; vai literal para o campo `roadmap` do bloco; o agente não procura nem troca o valor |
+| `card` | unattended | id do card |
 | `source` | adopt | caminho absoluto do plano antigo a reescrever (lido, nunca alterado pelo agente) |
 | `ownerNote` | unattended, opcional | instrução do dono; último campo, pode ter várias linhas até o fim do prompt |
 | `intake` | interactive, adopt | nota do chamador (pedido da pessoa, palpites marcados); último campo, várias linhas até o fim do prompt |
@@ -82,15 +83,26 @@ Regras fixas no corpo: não perguntar, não esperar resposta, não oferecer esco
 
 ### Peça 2 -- skill `plan-writer` (critérios 2 e 4)
 
-Arquivo novo `plugins/productivity-tools/skills/plan-writer/SKILL.md`, frontmatter `name`, `description`, `argument-hint` (política de chaves do repositório). A descrição diz: escreve o plano de implementação de um spec `spec/1`, ou adota um plano antigo sem bloco de dados (modo de adoção); não para escrever spec (`spec-writer`), não para roadmap (`roadmap-planner`), não para executar (`plan-coordinator`).
+Arquivo novo `plugins/productivity-tools/skills/plan-writer/SKILL.md`, frontmatter `name`, `description`, `argument-hint` (`<spec.md ou plano.md> [--roadmap <pasta>]`; política de chaves do repositório). A descrição diz: escreve o plano de implementação de um spec `spec/1`, ou adota um plano antigo sem bloco de dados (modo de adoção); não para escrever spec (`spec-writer`), não para roadmap (`roadmap-planner`), não para executar (`plan-coordinator`).
 
-Entrada: um caminho. A skill decide o modo pelo arquivo, sem perguntar:
+Entrada: um caminho e, opcional, `--roadmap <pasta>`. A skill decide o modo pelo arquivo, sem perguntar.
 
-- Spec `spec/1` (o bloco tem `schema: "spec/1"`): modo de escrita. `output` = `<pasta do spec>/plan.md` (DEC-026). Se o spec tiver item de pessoa bloqueante (`spec-tool summary --json`, campo `stops`), a skill para e mostra o resumo, sem despachar. Se `plan.md` já existe com bloco de dados, a skill roda `plan-tool check` nele e relata, sem reescrever, salvo pedido explícito da pessoa na própria chamada. Despacha `plan-author` com `mode: interactive`. Sem aprovação (DEC-040): relata o caminho, a saída de `plan-tool summary --lang <idioma>` e oferece a execução com `plan-coordinator`.
+Pasta do roadmap (o campo `roadmap` do bloco, que `plan-coordinator` lê para chamar `roadmap-tracker` depois de cada onda e no fim do plano; antes vinha da linha `**Roadmap:**` do cabeçalho). A skill resolve o valor antes de despachar, sem perguntar, na primeira fonte que existir:
+
+1. `--roadmap <pasta>` da chamada. Pasta sem `roadmap.config.json`: a skill para e relata, sem despachar.
+2. Só no modo de adoção: a linha `**Roadmap:** <pasta>` do cabeçalho do plano antigo.
+3. A pasta do spec com nome `<nome>-E<n>` (DEC-026): `docs/plans/<nome>/` e, se não existir, `docs/plans/roadmap-<nome>/`, aceita só se tiver `roadmap.config.json`, se o `id` do bloco `spec/1` for `E<n>` e se `spec-tool check <spec> --roadmap <pasta>` sair 0.
+4. Nenhuma: `null` (spec fora de roadmap).
+
+O valor é normalizado (relativo à raiz do repositório, `/`, terminado em `/`) e vai no campo `roadmap` do despacho de `plan-author` em todos os modos. Uma fonte 2 ou 3 que aponte para pasta sem `roadmap.config.json`, ou cujo card não confira, não é usada em silêncio: a skill grava `null` e diz no relato (e, na adoção, no texto da aprovação) qual ponteiro foi achado e por que caiu. Depois da escrita, a skill confere que o `roadmap` do bloco gravado é o valor resolvido; diferente, relata como falha.
+
+Modos:
+
+- Spec `spec/1` (o bloco tem `schema: "spec/1"`): modo de escrita. `output` = `<pasta do spec>/plan.md` (DEC-026). Se o spec tiver item de pessoa bloqueante (`spec-tool summary --json`, campo `stops`), a skill para e mostra o resumo, sem despachar. Se `plan.md` já existe com bloco de dados, a skill roda `plan-tool check` nele e relata, sem reescrever, salvo pedido explícito da pessoa na própria chamada. Despacha `plan-author` com `mode: interactive` e o `roadmap` resolvido. Sem aprovação (DEC-040): relata o caminho, a pasta do roadmap gravada (ou que o plano não tem roadmap), a saída de `plan-tool summary --lang <idioma>` e oferece a execução com `plan-coordinator`.
 - Plano sem bloco de dados, de qualquer origem: modo de adoção (DEC-018). Passos:
   1. Achar o spec: um `spec/1` citado no plano ou ao lado dele. Se não houver, a skill despacha `spec-author` em `mode: interactive` com o plano antigo e o design que ele citar no `intake`, gravando `docs/plans/<tópico>/spec.md` (DEC-026, tópico kebab a partir do título do plano). Esse spec não pede aprovação separada: o seu resumo entra na aprovação única da adoção.
-  2. Despachar `plan-author` com `mode: adopt`, `source` = o plano antigo e `output` = `<plano antigo>.adopted.md` (arquivo irmão provisório). O original fica intacto.
-  3. Mostrar a seção `## Adoção` do plano novo (o que mudou nas tarefas) e a saída de `plan-tool summary --lang <idioma>`, e pedir uma aprovação numa única chamada de `AskUserQuestion` (aprovar / recusar).
+  2. Despachar `plan-author` com `mode: adopt`, `source` = o plano antigo, `roadmap` resolvido (a linha `**Roadmap:**` do plano antigo passa ao campo do bloco) e `output` = `<plano antigo>.adopted.md` (arquivo irmão provisório). O original fica intacto.
+  3. Mostrar a seção `## Adoção` do plano novo (o que mudou nas tarefas), a pasta do roadmap do bloco (com a origem: argumento, cabeçalho antigo ou pasta do spec, ou o ponteiro que caiu e por quê) e a saída de `plan-tool summary --lang <idioma>`, e pedir uma aprovação numa única chamada de `AskUserQuestion` (aprovar / recusar).
   4. Aprovado: mover o provisório por cima do original (mesmo caminho), ajustar o campo `spec` relativo à pasta do original e rodar `plan-tool check` no caminho final; relatar. Recusado: apagar o provisório; o original segue como estava.
 - Plano com bloco de dados: relatar `plan-tool check`; nada a adotar.
 
@@ -108,7 +120,7 @@ O que só a pessoa decide: nada mais. A skill não faz commit. Recusas: agente n
 
 Trocas nos arquivos publicados das duas skills, sem mudar comportamento além do ponteiro:
 
-- `skills/roadmap-planner/SKILL.md`: na descrição, "BEFORE superpowers:brainstorming" passa a "BEFORE spec-writer" e "use superpowers:writing-plans" passa a "use plan-writer"; a tabela de limites aponta para `plan-writer`; o passo 8 encadeia `spec-writer` por entregável (pedido com o card, os REQs e as dependências; tópico `<slug do roadmap>-E<n>`, DEC-026), depois `plan-writer` sobre esse spec (o campo `roadmap` do bloco faz o papel da antiga linha `**Roadmap:**`), depois `plan-coordinator`; vários entregáveis sem pessoa continuam em `roadmap-release`.
+- `skills/roadmap-planner/SKILL.md`: na descrição, "BEFORE superpowers:brainstorming" passa a "BEFORE spec-writer" e "use superpowers:writing-plans" passa a "use plan-writer"; a tabela de limites aponta para `plan-writer`; o passo 8 encadeia `spec-writer` por entregável (pedido com o card, os REQs e as dependências; tópico `<slug do roadmap>-E<n>`, DEC-026), depois `plan-writer` sobre esse spec com `--roadmap <pasta do roadmap>` (o campo `roadmap` do bloco, preenchido por `plan-writer`, faz o papel da antiga linha `**Roadmap:**`), depois `plan-coordinator`; vários entregáveis sem pessoa continuam em `roadmap-release`.
 - `skills/roadmap-planner/references/clarify.md` §8, `references/decompose.md` e `references/formats.md`: "brainstorming"/"writing-plans" passam a `spec-writer`/`plan-writer`.
 - `skills/roadmap-planner/scripts/prose-budget.test.mjs`: o comentário de cabeçalho cita o card E4 e DEC-034 em vez do caminho do spec sob a pasta do superpowers.
 - `skills/roadmap-tracker/SKILL.md`: na descrição, "use superpowers:writing-plans" passa a "use plan-writer".
@@ -119,6 +131,7 @@ Teste novo `plugins/productivity-tools/scripts/independence.test.mjs` (arquivo d
 
 - Critério 3: nenhum arquivo sob `skills/roadmap-planner/` e `skills/roadmap-tracker/` contém "superpowers" (sem diferenciar caixa); o mesmo para os arquivos novos deste card (`skills/plan-writer/`, `agents/plan-author.md`).
 - REQ-013: o frontmatter de `agents/plan-author.md` não lista `AskUserQuestion` nem `Agent`, e o corpo proíbe perguntar.
+- Ponteiro do roadmap: o corpo de `agents/plan-author.md` lista o campo `roadmap` para todos os modos, e `skills/plan-writer/SKILL.md` cita `--roadmap`, a linha `**Roadmap:**` e `roadmap.config.json` (as três fontes da resolução); `skills/roadmap-planner/SKILL.md` passa `--roadmap` ao `plan-writer`.
 - REQ-020: a mensagem de `plan-no-data-block` de `progress.mjs` cita `plan-writer` e o modo de adoção, e `skills/plan-writer/SKILL.md` existe, com `name: plan-writer` e o modo de adoção descrito; o teste falha se um lado mudar sem o outro.
 
 E13 estende o arquivo às demais skills (card).
@@ -139,9 +152,9 @@ Tarefas do orquestrador da sessão principal (DEC-204), na worktree de E20, ante
 
 - Cenário: variante nova `plan-author` de `tools/measure/make-scenario.mjs`, que monta o sandbox como as outras e acrescenta `docs/plans/roadmap-sandbox-E5/spec.md`, um spec `spec/1` do E5 do sandbox escrito à mão em `tools/measure/scenario/plan-author-spec.md` (mesmos critérios do card E5 do sandbox), e, para o critério 4, o plano em prosa `tools/measure/scenario/e5/plan.md` copiado para `docs/superpowers/plans/2026-01-01-e5-text-utilities.md` do sandbox (forma de um plano da versão anterior; a cópia vive só no sandbox). `make-scenario.test.mjs` (existente) ganha a variante e confere `spec-tool check --roadmap` em 0 no sandbox. O roadmap de `make-sandbox.mjs` não muda (DEC-301, DEC-413).
 - Pendência de E19: uma execução que despacha `productivity-tools:spec-author` por nome, no modo autônomo sobre o card E6 da variante `spec-author`, e confere que o despacho achou o agente, que o modelo das mensagens dele é opus e que só usou ferramentas da lista `Read, Grep, Glob, Bash, Write, Edit`; `spec-tool check` em 0.
-- Critério 1: três execuções de `plan-author` em `mode: unattended` sobre o spec do sandbox, cada uma num sandbox novo. Conferido em cada uma: `plan-tool check` em 0 no plano gravado; no máximo três `check` na transcrição do agente; nenhuma chamada de `AskUserQuestion` e nenhuma pergunta à pessoa na saída; modelo e ferramentas como acima.
-- Critério 2: uma execução da skill `plan-writer` sobre um spec fora de roadmap (`docs/plans/<tópico>/spec.md` do sandbox, `spec/1` escrito à mão em `tools/measure/scenario/plan-writer-spec.md`). A sessão segue o SKILL.md; conferido: `plan.md` gravado na pasta do spec, `plan-tool check` em 0, nenhuma pergunta de aprovação.
-- Critério 4: uma execução da skill `plan-writer` sobre o plano antigo do sandbox. Onde a skill chamaria `AskUserQuestion`, a sessão grava no relatório o texto literal da aprovação e toma a resposta "aprovar" do roteiro sintético `tools/measure/scenario/plan-writer-adopt.md` (marcado como entrada sintética, como DEC-419). Conferido: a seção `## Adoção` mostrada antes da aprovação, uma aprovação pedida, o plano gravado no mesmo caminho e `plan-tool check` em 0, o provisório apagado.
+- Critério 1: três execuções de `plan-author` em `mode: unattended` sobre o spec do sandbox, cada uma num sandbox novo, com `roadmap: docs/plans/roadmap-sandbox/`. Conferido em cada uma: `plan-tool check` em 0 no plano gravado; campo `roadmap` do bloco igual ao passado; no máximo três `check` na transcrição do agente; nenhuma chamada de `AskUserQuestion` e nenhuma pergunta à pessoa na saída; modelo e ferramentas como acima.
+- Critério 2: uma execução da skill `plan-writer` sobre um spec fora de roadmap (`docs/plans/<tópico>/spec.md` do sandbox, `spec/1` escrito à mão em `tools/measure/scenario/plan-writer-spec.md`). A sessão segue o SKILL.md; conferido: `plan.md` gravado na pasta do spec, `plan-tool check` em 0, campo `roadmap` do bloco `null`, nenhuma pergunta de aprovação.
+- Critério 4: uma execução da skill `plan-writer` sobre o plano antigo do sandbox. Onde a skill chamaria `AskUserQuestion`, a sessão grava no relatório o texto literal da aprovação e toma a resposta "aprovar" do roteiro sintético `tools/measure/scenario/plan-writer-adopt.md` (marcado como entrada sintética, como DEC-419). Conferido: a seção `## Adoção` e a pasta do roadmap mostradas antes da aprovação, uma aprovação pedida, o plano gravado no mesmo caminho e `plan-tool check` em 0, o campo `roadmap` do bloco igual a `docs/plans/roadmap-sandbox/` (a linha `**Roadmap:**` de `tools/measure/scenario/e5/plan.md`), o provisório apagado.
 - Relatório: `docs/reports/2026-11-12-E20-autor-plano-comportamental.md`, escrito pelo orquestrador com as saídas literais, commitado em `feat/E20`. Depois, uma revisão adversarial somente leitura do resultado (regra de skills). O aceite é do dono.
 
 ### Documentação
@@ -156,6 +169,9 @@ Tarefas do orquestrador da sessão principal (DEC-204), na worktree de E20, ante
 - Adoção recusada: o original não muda.
 - Plano antigo sem spec nem design citado: o `intake` do `spec-author` leva só o plano antigo; os critérios de aceite saem dele, cada um com a marca `{verify: ...}`.
 - `plan.md` já existente com bloco de dados: relatado, não reescrito.
+- `--roadmap` apontando para pasta sem `roadmap.config.json`: a skill para antes de despachar e relata.
+- Linha `**Roadmap:**` do plano antigo, ou pasta `<nome>-E<n>` do spec, apontando para pasta sem `roadmap.config.json` ou com card que não confere: `roadmap: null` no bloco, com o ponteiro achado e o motivo no relato e no texto da aprovação; nunca descartado em silêncio.
+- Spec fora de roadmap (pasta sem sufixo `-E<n>`, sem argumento): `roadmap: null`, e o relato diz que o coordinator não chamará o tracker.
 
 ## Deixado ao planejador
 
@@ -164,7 +180,7 @@ Ordem e divisão das tarefas (no máximo quatro arquivos por tarefa); texto exat
 ## Decisões autônomas (revisáveis pelo dono)
 
 1. O autor de plano é o agente `plugins/productivity-tools/agents/plan-author.md`, com `model: opus`, `effort: medium` (o do estágio Plan do release hoje) e `tools: Read, Grep, Glob, Bash, Write, Edit`, sem `AskUserQuestion` nem `Agent`. Opção descartada: sonnet. Base: card peça 1, DEC-057, DEC-404, REQ-013. Custo se errada: médio. Reversível. Alcance: contrato.
-2. Contrato de chamada do `plan-author`: `mode` (`unattended`, `interactive`, `adopt`), `output` e `planTool` e `spec` absolutos, `language`, `roadmap` e `card` (autônomo), `source` (adoção), e a nota (`ownerNote` ou `intake`) como último campo, com várias linhas; nunca commita; última mensagem é a saída literal de `plan-tool emit`, ou a do último `check --json` depois de três execuções. Base: DEC-421, DEC-405, DEC-406. Custo se errada: médio (E8 consome). Reversível. Alcance: contrato.
+2. Contrato de chamada do `plan-author`: `mode` (`unattended`, `interactive`, `adopt`), `output` e `planTool` e `spec` absolutos, `language`, `roadmap` em todos os modos (pasta relativa terminada em `/`, ou `null`, gravada literal no bloco), `card` (autônomo), `source` (adoção), e a nota (`ownerNote` ou `intake`) como último campo, com várias linhas; nunca commita; última mensagem é a saída literal de `plan-tool emit`, ou a do último `check --json` depois de três execuções. Base: DEC-421, DEC-405, DEC-406. Custo se errada: médio (E8 consome). Reversível. Alcance: contrato.
 3. A adoção grava o plano novo num arquivo irmão provisório e só o move por cima do original depois da aprovação; recusa apaga o provisório. Opção descartada: reescrever no lugar antes de aprovar. Base: DEC-018, DEC-026, risco 1 do card. Custo se errada: baixo. Reversível. Alcance: local.
 4. Um plano adotado sem spec `spec/1` ganha um spec escrito por `spec-author` em `docs/plans/<tópico>/spec.md`, cujo resumo entra na aprovação única da adoção; o plano fica onde está, com `spec` relativo. Opção descartada: exigir um spec antes de adotar. Base: `plan-tool` exige spec válido (DEC-180), DEC-026, DEC-018 ("de qualquer origem"). Custo se errada: médio. Reversível. Alcance: contrato.
 5. O que mudou nas tarefas vem da seção `## Adoção` escrita pelo autor na prosa do plano novo, por passo antigo; o esquema `plan/1` não ganha campo. Base: DEC-176. Custo se errada: baixo. Reversível. Alcance: local.
@@ -178,10 +194,11 @@ Ordem e divisão das tarefas (no máximo quatro arquivos por tarefa); texto exat
 13. O cenário dos critérios 1 e 4 entra por uma variante nova `plan-author` de `make-scenario.mjs`, com spec `spec/1` escrito à mão e o plano em prosa do E5 do sandbox posto numa pasta da versão anterior; o roadmap de `make-sandbox.mjs` não muda. Base: DEC-301, DEC-413. Custo se errada: baixo. Reversível. Alcance: local.
 14. Nenhuma versão sobe na branch; `spec-author.md` não é editado (fica para E8). Base: instrução do dono, DEC-421. Custo se errada: baixo. Reversível. Alcance: local.
 15. Documentação: README de `productivity-tools` ganha `plan-writer` e o agente `plan-author`; diagramas e `CLAUDE.md` não mudam. Base: regras do `CLAUDE.md`. Custo se errada: baixo. Reversível. Alcance: local.
+16. `plan-writer` resolve a pasta do roadmap antes de despachar, sem perguntar, nesta ordem: `--roadmap <pasta>` da chamada, a linha `**Roadmap:**` do plano antigo (adoção), a pasta do spec `<nome>-E<n>` (`docs/plans/<nome>/` ou `docs/plans/roadmap-<nome>/`, com `roadmap.config.json`, `id` igual a `E<n>` e `spec-tool check --roadmap` em 0), senão `null`; um ponteiro achado e recusado vira `null` com o motivo no relato e na aprovação da adoção; o planner passa `--roadmap` explícito. Opção descartada: aceitar `roadmap` só no modo autônomo, que deixava o coordinator sem chamar o tracker nos planos vindos do planner e nos adotados. Base: DEC-026, DEC-018, `delegation-protocol.md` do coordinator (`plan.roadmap`). Custo se errada: médio (o tracker deixa de rodar ou roda na pasta errada). Reversível. Alcance: contrato.
 
 ## Depende de entrada humana
 
 - Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 (`{verify: human}`) em `docs/reports/2026-11-12-E20-autor-plano-comportamental.md`. Não bloqueante: as execuções e o relatório são produzidos pelo entregável; nenhum aceite fictício é registrado.
 - Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em `docs/reports/` (critério 5, DEC-025). Não bloqueante: a suíte, o executor com `--dry-run` e os testes são entregues; a rodada fica com o dono.
-- Ratificação das decisões de alcance contrato (1, 2, 4 e 7) antes de E8 (DEC-030). Não bloqueante: ficam como pendentes de origem executor.
+- Ratificação das decisões de alcance contrato (1, 2, 4, 7 e 16) antes de E8 (DEC-030). Não bloqueante: ficam como pendentes de origem executor.
 - Nenhuma credencial é necessária.
