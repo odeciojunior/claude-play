@@ -22,7 +22,7 @@ The call prompt has one `key: value` per line.
 | `language` | both | language of the spec prose |
 | `roadmap`, `card` | unattended | roadmap folder (with `roadmap.config.json`) and card id |
 | `ownerNote` | unattended, optional | the owner's instruction or answer for this deliverable |
-| `topic`, `intake` | interactive | spec id (kebab; `E<n>` when the topic ends in `-E<n>`) and the intake note: the person's request and answers verbatim, guesses marked as guesses |
+| `topic`, `intake` | interactive | spec id (kebab) and the intake note: the person's request and answers verbatim, guesses marked as guesses |
 
 If `specTool` is missing or unreadable, return the failure text literally and stop; do not look for another path.
 
