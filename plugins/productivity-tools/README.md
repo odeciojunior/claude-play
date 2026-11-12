@@ -18,7 +18,6 @@ claude plugin install productivity-tools@claude-play
 | report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT, gap and risk analysis of an existing report, turned into a phased roadmap document. No extra dependencies |
 | roadmap-planner | "plan the roadmap for X", "break this initiative into deliverables", "we need a roadmap" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker. Full mode for multi-week initiatives, light mode for small ones |
 | roadmap-tracker | an existing roadmap folder (`roadmap.config.json`) after an event: a decision (DEC), blocker (BLQ), closed piece or wave, status request | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
-| plan-writer | `docs/plans/<topic>/plan.md` (or the old plan's own path in adoption mode) |
 | spec-writer | a design spec for one change outside a roadmap: "write a spec for X", "spec this change" | Asks one round of at most five questions, takes one approval, and writes `docs/plans/<topic>/spec.md` through the `spec-author` agent. Not for a roadmap deliverable (use `roadmap-release`) or an implementation plan |
 | plan-writer | an implementation plan for a checked spec from `spec-writer`, or adopting an old plan that has no data block: "write the plan for this spec", "adopt this plan" | Dispatches the `plan-author` agent and writes `plan.md` next to the spec. Adoption mode rewrites the old plan in place after one approval. Not for specs, roadmaps or executing a plan (use `plan-coordinator`) |
 | roadmap-release | running several roadmap deliverables (E<n>) unattended into a release branch: "run E18", "execute the next deliverables", "release dry-run". The model does not start it; type `/productivity-tools:roadmap-release <args>` | Runs deliverables end to end with a bundled Workflow (spec, plan, reviewed tasks, gates against a baseline, serialized merge with rollback), then verifies the result with git. One plan with one deliverable stays with `plan-coordinator` |
@@ -57,6 +56,7 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 | report-analyzer | `docs/roadmaps/roadmap-<topic>-YYYY-MM-DD.md` |
 | roadmap-planner | `docs/plans/roadmap-<topic>/` (tracking folder) + `docs/plans/<date>-roadmap-<topic>.md` (strategy) |
 | roadmap-tracker | Updates the existing roadmap folder in place; strategy revisions written only after approval |
+| plan-writer | `docs/plans/<topic>/plan.md` (or the old plan's own path in adoption mode) |
 | plan-coordinator | `docs/plans/<topic>/progress.json` (+ `briefs/`) |
 | mermaid-designer | Inline or `docs/diagrams/<topic>.md` |
 | excalidraw-designer | `docs/diagrams/<name>.excalidraw` |
