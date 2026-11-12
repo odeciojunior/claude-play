@@ -4018,6 +4018,17 @@ test('AC8: a contract ruling holds a selected dependent citing the decision and 
   assert.ok(labels.includes('E1:merge'));
 });
 
+test('AC8 fail safe: a failed executing record of a contract ruling still holds the dependent', async () => {
+  const over = (l) => (/^E1:/.test(l) ? (l === 'E1:status-d' ? { error: 'boom', runs: [] } : contractSpec('E1')(l)) : undefined);
+  const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over });
+  const m = runsOf(r);
+  assert.equal(m.E2.merged, false);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, 'held by unconfirmed contract ruling of E1 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+  assert.equal(m.E3.merged, true);
+});
+
 test('a transitive dependent is held citing the origin decision', async () => {
   const cards = [card('E1'), card('E2', { deps: ['E1'] }), card('E3', { deps: ['E2'] })];
   const { r, labels } = await exec({ cards, deliverables: ['E1', 'E2', 'E3'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });

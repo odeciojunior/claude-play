@@ -1472,6 +1472,14 @@ const pendContract = pendingParsed.result.decisions.filter(d => isContract(d) &&
 const startedByPending = pendingParsed.result.decisions.flatMap(d => (isContract(d) && Array.isArray(d.startedDependents) ? d.startedDependents : []))
 const dynContract = []  // contract decisions recorded by this run
 const begun = new Set()  // deliverables whose run started in this invocation
+// A failed or unconfirmed record of a contract ruling still holds the dependents.
+function holdUnconfirmed(E, x, ids) {
+  rulingDecisions(x.rulings).forEach((r, i) => {
+    if (r.scope !== 'contrato') return
+    const id = ids[i] || `unconfirmed contract ruling of ${E}${i ? ' #' + i : ''}`
+    if (!dynContract.some(d => d.id === id)) dynContract.push({ id, deliverable: E })
+  })
+}
 const holdOf = id => {
   const h = heldBy({ cards: disc.cards, selected: order, contractDecisions: [...pendContract, ...dynContract], started: [...startedByPending, ...begun] }).get(id)
   return h ? holdReason(h) : ''
@@ -1666,7 +1674,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   }
   const rc = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: status, piece, blockedBy, evidence: refs, logWhat: x.reason, decisions: rulingDecisions(x.rulings), pending: x.pending,
     inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
-  if (rc.error) return { ok: false, failures: [rc.error], head: null, cuts: [] }
+  if (rc.error) { holdUnconfirmed(E, x, []); return { ok: false, failures: [rc.error], head: null, cuts: [] } }
   const msg = phrases(LANG).commit(E, status)
   const results = rc.commands.length ? await agent(`${COMMON_SLIM()}
 
@@ -1681,7 +1689,7 @@ READ-ONLY re-read in the integration worktree ${INTWT} after the record of ${E}.
 ${numbered([cliCmd(A.trackerCli, 'status', absFolder), cliCmd(A.trackerCli, 'brief', absFolder), cliCmd(A.trackerCli, 'pending-decisions', absFolder), `git -C "${INTWT}" rev-parse HEAD`, `git -C "${INTWT}" status --porcelain`])}
 ${BASH_ONLY}`,
     { label: `${E}:status-${status}-read`, phase: 'Plan', schema: S_RECORD_READ, model: 'haiku', effort: 'low' })
-  if (!results || !read) return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts }
+  if (!results || !read) { holdUnconfirmed(E, x, []); return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts } }
   const v = recordVerdict({ expected: rc.commands, results, read, E, word: status, piece, blockedStatus: STATUSES.blocked })
   const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
   const ok = failures.length === 0
@@ -1690,7 +1698,7 @@ ${BASH_ONLY}`,
     v.decisionIds.forEach((id, i) => { if (rds[i] && rds[i].scope === 'contrato' && v.holdIds.includes(id) && !dynContract.some(d => d.id === id)) dynContract.push({ id, deliverable: E }) })
     lastWord.set(E, status)
     if (read.head) lastGood = read.head  // a record-only commit does not invalidate what was already validated
-  }
+  } else holdUnconfirmed(E, x, v.decisionIds)  // fail safe (AC8)
   return { ok, failures, head: ok ? read.head : null, cuts: rc.cuts }
 })
 
