@@ -24,7 +24,7 @@ Turn one request into a checked `spec/1` spec in a single guided pass: one round
 
 ## Data block
 
-In interactive mode `id` is the topic (not `E<n>`). The agent writes the acceptance criteria from the request, each with a `{verify: ...}` mark (a test with its command, or human), so later plan tooling has evidence per criterion.
+In interactive mode `id` is the topic, except a topic ending in `-E<n>` (a roadmap deliverable, from roadmap-planner): then `id` is `E<n>`, so the plan keeps the id the tracker closes from. The agent writes the acceptance criteria from the request, each with a `{verify: ...}` mark (a test with its command, or human), so later plan tooling has evidence per criterion.
 
 ## Refusals
 

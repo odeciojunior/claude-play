@@ -131,3 +131,15 @@ test('run scores cases from recorded transcripts', async () => {
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('a failed launch or a transcript without init is an error, not a miss', () => {
+  const c = { id: 'x', category: 'plan', lang: 'pt', expect: PW };
+  const ok = parseTranscript(fx('no-skill.jsonl'));
+  assert.equal(scoreCase(c, ok, { code: 0 }).error, undefined);
+  const bad = scoreCase(c, ok, { code: 1 });
+  assert.equal(bad.got, 'ERROR');
+  assert.equal(bad.hit, false);
+  assert.equal(bad.error, true);
+  assert.equal(scoreCase(c, ok, { code: 0, error: 'spawn claude ENOENT' }).error, true);
+  assert.equal(scoreCase(c, parseTranscript(''), { code: 0 }).error, true);
+});

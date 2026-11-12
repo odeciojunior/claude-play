@@ -45,10 +45,14 @@ export function parseTranscript(text) {
       break;
     }
   }
-  return { skill, superpowers, plugins };
+  return { skill, superpowers, plugins, init: Boolean(init) };
 }
 
-export function scoreCase(c, parsed) {
+export function scoreCase(c, parsed, run = {}) {
+  const failed = (run.code !== undefined && run.code !== 0) || run.error !== undefined || parsed.init === false;
+  if (failed) {
+    return { id: c.id, category: c.category, lang: c.lang, expect: c.expect, got: 'ERROR', hit: false, error: true, superpowers: parsed.superpowers };
+  }
   return {
     id: c.id,
     category: c.category,
@@ -126,7 +130,7 @@ export async function runTrigger(opts, deps = {}) {
       try {
         await d.spawn('git', ['init', '-q'], { cwd: sandbox });
         const r = await d.spawn('claude', args, { cwd: sandbox });
-        results.push(scoreCase({ ...c, lang: l }, parseTranscript(r?.stdout ?? '')));
+        results.push(scoreCase({ ...c, lang: l }, parseTranscript(r?.stdout ?? ''), { code: r?.code, error: r?.error }));
       } finally {
         await d.rm(sandbox);
       }
@@ -167,7 +171,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const only = opt('--only')?.split(',').filter(Boolean);
   const { exitCode } = await runTrigger({
     casesFile: opt('--cases') ?? DEFAULT_CASES,
-    pluginDir,
+    pluginDir: resolve(pluginDir),
     work: resolve(work),
     out: resolve(out),
     lang,

@@ -278,3 +278,8 @@ test('E20: plan-writer adoption passes spec-author every field its contract requ
     assert.ok(step.includes(w), `falta "${w}" no despacho do spec-author`);
   }
 });
+
+test('E20: a roadmap deliverable spec keeps id E<n> so the tracker can close it', () => {
+  assert.match(read('skills/spec-writer/SKILL.md'), /topic ending in `-E<n>`[^\n]*`id` is `E<n>`/);
+  assert.match(read('agents/spec-author.md'), /`E<n>` when the topic ends in `-E<n>`/);
+});
