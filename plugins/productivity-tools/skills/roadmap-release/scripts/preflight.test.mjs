@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
@@ -655,7 +655,7 @@ test('config ilegível: o aviso diz que as decisões pendentes ficaram de fora',
 
 // ---- E25 piece 1: warning for the release workflow rule ----
 const WF_RULE = 'Workflow(productivity-tools:release-workflow)';
-const WF_WARNING = 'release workflow: no permission rule covers it, so a run without the interface (claude -p) or a launch outside this skill is denied; to allow it, add to permissions.allow in .claude/settings.local.json: ' + WF_RULE;
+const WF_WARNING = 'release workflow: no permission rule covers it; a run launched by this skill needs no rule, which is only needed to launch the workflow outside this skill (for example claude -p); to allow that, add to permissions.allow in .claude/settings.local.json: ' + WF_RULE;
 const WS = (...allow) => ({ permissions: { allow } });
 const wfWarnings = (r) => r.warnings.filter((w) => w.startsWith('release workflow:'));
 const writeSettings = (dir, name, obj) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), JSON.stringify(obj)); };
@@ -732,4 +732,32 @@ test('E25 AC1: RELEASE_WORKFLOW starts with the plugin.json name', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const { name } = JSON.parse(readFileSync(join(here, '../../../.claude-plugin/plugin.json'), 'utf8'));
   assert.equal(RELEASE_WORKFLOW, `${name}:release-workflow`);
+});
+
+// ---- E8 T10: declared permissions (DEC-313) and the new workflow rule warning (DEC-283) ----
+const PF_CLI = join(dirname(fileURLToPath(import.meta.url)), 'preflight.mjs');
+const cliJson = (dir, ...extra) => {
+  const r = spawnSync(process.execPath, [PF_CLI, dir, '--ref', 'rel', ...extra], { encoding: 'utf8', env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), 'home-')), USERPROFILE: mkdtempSync(join(tmpdir(), 'home-')) } });
+  return JSON.parse(r.stdout);
+};
+
+test('--declare-permissions is returned as permissionsDeclared', () => {
+  const { dir } = repoWithRoadmap(true);
+  assert.equal(cliJson(dir, '--declare-permissions', 'granted by managed settings').permissionsDeclared, 'granted by managed settings');
+});
+
+test('without the flag permissionsDeclared is null', () => {
+  const { dir } = repoWithRoadmap(true);
+  assert.equal(cliJson(dir).permissionsDeclared, null);
+  assert.equal(cliJson(dir, '--declare-permissions', '').permissionsDeclared, null);
+  assert.equal(runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), ref: 'rel' }).permissionsDeclared, null);
+  assert.equal(runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), ref: 'rel', declarePermissions: 'x' }).permissionsDeclared, 'x');
+});
+
+test('the workflow rule warning says the skill launch needs no rule', () => {
+  const { dir } = repoWithRoadmap(true);
+  const [w] = wfWarnings(runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), ref: 'rel' }));
+  assert.match(w, /launched by this skill/i);
+  assert.match(w, /outside (this|the) skill/i);
+  assert.doesNotMatch(w, /claude -p[^.]*denied/);
 });
