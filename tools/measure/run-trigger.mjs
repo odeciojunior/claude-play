@@ -1,4 +1,11 @@
-// Suíte de gatilho: parser do stream-json, pontuação e tabela. Sem CLI nesta etapa.
+// Suíte de gatilho: parser do stream-json, pontuação, tabela, executor e CLI.
+import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CASES = join(here, 'trigger', 'cases.json');
 
 function events(text) {
   const out = [];
@@ -66,4 +73,106 @@ export function renderTable(results) {
   rows.push('', '| category | hits | total |', '| --- | --- | --- |');
   for (const [cat, k] of cats) rows.push(`| ${cat} | ${k.hits} | ${k.total} |`);
   return rows.join('\n') + '\n';
+}
+
+export function buildArgs(prompt, { pluginDir }) {
+  return ['-p', prompt, '--plugin-dir', pluginDir, '--output-format', 'stream-json', '--verbose', '--max-turns', '2'];
+}
+
+function quote(a) {
+  return /^[A-Za-z0-9_@%+=:,./\-]+$/.test(a) ? a : JSON.stringify(a);
+}
+
+// Roda um comando e junta stdout; nunca lança por código de saída diferente de zero.
+function defaultSpawn(cmd, args, { cwd } = {}) {
+  return new Promise((res) => {
+    const child = nodeSpawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.on('error', (e) => res({ stdout, code: 1, error: e.message }));
+    child.on('close', (code) => res({ stdout, code }));
+  });
+}
+
+const defaultDeps = {
+  spawn: defaultSpawn,
+  mkdtemp: async (prefix) => {
+    await mkdir(dirname(prefix), { recursive: true });
+    return mkdtemp(prefix);
+  },
+  rm: (p) => rm(p, { recursive: true, force: true }),
+  writeFile: async (p, data) => {
+    await mkdir(dirname(p), { recursive: true });
+    return writeFile(p, data);
+  },
+  log: (line) => console.log(line),
+};
+
+export async function runTrigger(opts, deps = {}) {
+  const d = { ...defaultDeps, ...deps };
+  const { casesFile = DEFAULT_CASES, pluginDir, work, out, lang = 'both', only, dryRun = false } = opts;
+  const { cases } = JSON.parse(await readFile(casesFile, 'utf8'));
+  const langs = lang === 'both' ? ['pt', 'en'] : [lang];
+  const selected = only?.length ? cases.filter((c) => only.includes(c.id)) : cases;
+  const results = [];
+  for (const c of selected) {
+    for (const l of langs) {
+      const args = buildArgs(c.prompt[l], { pluginDir });
+      if (dryRun) {
+        d.log(['claude', ...args].map(quote).join(' '));
+        continue;
+      }
+      const sandbox = await d.mkdtemp(join(work, `${c.id}-${l}-`));
+      try {
+        await d.spawn('git', ['init', '-q'], { cwd: sandbox });
+        const r = await d.spawn('claude', args, { cwd: sandbox });
+        results.push(scoreCase({ ...c, lang: l }, parseTranscript(r?.stdout ?? '')));
+      } finally {
+        await d.rm(sandbox);
+      }
+    }
+  }
+  if (!dryRun) await d.writeFile(out, renderTable(results));
+  return { exitCode: 0, results };
+}
+
+function insideRepo(target) {
+  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: here, encoding: 'utf8' }).stdout.trim();
+  const root = resolve(top);
+  let rel = relative(root, resolve(target));
+  if (process.platform === 'win32') rel = relative(root.toLowerCase(), resolve(target).toLowerCase());
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+const USAGE = 'usage: node tools/measure/run-trigger.mjs --plugin-dir <dir> --work <dir> --out <file> [--cases <json>] [--lang pt|en|both] [--only <id,...>] [--dry-run]';
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  const opt = (name) => {
+    const i = args.indexOf(name);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  const pluginDir = opt('--plugin-dir');
+  const work = opt('--work');
+  const out = opt('--out');
+  const lang = opt('--lang') ?? 'both';
+  if (!pluginDir || !work || !out || !['pt', 'en', 'both'].includes(lang)) {
+    console.error(USAGE);
+    process.exit(2);
+  }
+  if (insideRepo(work)) {
+    console.error(`--work is inside the repository: ${resolve(work)}`);
+    process.exit(1);
+  }
+  const only = opt('--only')?.split(',').filter(Boolean);
+  const { exitCode } = await runTrigger({
+    casesFile: opt('--cases') ?? DEFAULT_CASES,
+    pluginDir,
+    work: resolve(work),
+    out: resolve(out),
+    lang,
+    only,
+    dryRun: args.includes('--dry-run'),
+  });
+  process.exit(exitCode);
 }

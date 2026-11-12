@@ -1,0 +1,28 @@
+{
+  "cases": [
+    { "id": "spec-1", "category": "spec", "expect": "productivity-tools:spec-writer",
+      "prompt": { "pt": "Quero escrever a especificação de uma função que conta palavras de um texto, antes de planejar a implementação.", "en": "I want to write the specification for a function that counts the words in a text, before planning the implementation." } },
+    { "id": "spec-2", "category": "spec", "expect": "productivity-tools:spec-writer",
+      "prompt": { "pt": "Preciso de uma spec com critérios de aceite verificáveis para uma tela de exportação de relatórios.", "en": "I need a spec with verifiable acceptance criteria for a report export screen." } },
+    { "id": "spec-3", "category": "spec", "expect": "productivity-tools:spec-writer",
+      "prompt": { "pt": "Vamos desenhar o que o entregável E3 deve fazer: escreva a spec dele a partir do card do roadmap.", "en": "Let us define what deliverable E3 must do: write its spec from the roadmap card." } },
+    { "id": "plan-1", "category": "plan", "expect": "productivity-tools:plan-writer", "pairOf": "roadmap-1",
+      "prompt": { "pt": "Tenho a spec em docs/plans/word-count/spec.md. Escreva o plano de implementação em tarefas a partir dela.", "en": "I have the spec at docs/plans/word-count/spec.md. Write the task-by-task implementation plan from it." } },
+    { "id": "plan-2", "category": "plan", "expect": "productivity-tools:plan-writer", "pairOf": "plan-execution-1",
+      "prompt": { "pt": "Transforme esta spec aprovada em um plano de tarefas com tiers e arquivos, sem executar nada ainda.", "en": "Turn this approved spec into a task plan with tiers and files, without executing anything yet." } },
+    { "id": "plan-3", "category": "plan", "expect": "productivity-tools:plan-writer",
+      "prompt": { "pt": "Adote o plano antigo em docs/superpowers/plans/2026-01-01-e5-text-utilities.md para o formato com bloco de dados.", "en": "Adopt the old plan at docs/superpowers/plans/2026-01-01-e5-text-utilities.md into the data-block format." } },
+    { "id": "roadmap-1", "category": "roadmap", "expect": "productivity-tools:roadmap-planner", "pairOf": "plan-1",
+      "prompt": { "pt": "Planeje o roadmap da migração do sistema de pagamentos: quebre a iniciativa em entregáveis com dependências e fases.", "en": "Plan the roadmap for the payments system migration: break the initiative into deliverables with dependencies and phases." } },
+    { "id": "roadmap-2", "category": "roadmap", "expect": "productivity-tools:roadmap-planner",
+      "prompt": { "pt": "Precisamos de um roadmap de várias semanas para reformular o onboarding, com requisitos rastreados até os entregáveis.", "en": "We need a multi-week roadmap to rework onboarding, with requirements traced to deliverables." } },
+    { "id": "roadmap-3", "category": "roadmap", "expect": "productivity-tools:roadmap-planner",
+      "prompt": { "pt": "Divida esta iniciativa grande em entregáveis com critérios de aceite e um grafo de dependências.", "en": "Break this large initiative into deliverables with acceptance criteria and a dependency graph." } },
+    { "id": "plan-execution-1", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator", "pairOf": "plan-2",
+      "prompt": { "pt": "Execute o plano docs/superpowers/plans/2026-01-01-e5-text-utilities.md com subagentes, roteando o modelo por tarefa.", "en": "Execute the plan docs/superpowers/plans/2026-01-01-e5-text-utilities.md with subagents, routing the model per task." } },
+    { "id": "plan-execution-2", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator",
+      "prompt": { "pt": "Retome a execução do plano a partir do arquivo de progresso; rode as ondas pendentes em paralelo.", "en": "Resume the plan execution from its progress file; run the pending waves in parallel." } },
+    { "id": "plan-execution-3", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator",
+      "prompt": { "pt": "O plano está pronto em docs/plans/. Coordene a implementação em ondas sem conflito, com tier de modelo por passo.", "en": "The plan is ready under docs/plans/. Coordinate the implementation in conflict-free waves, with a model tier per step." } }
+  ]
+}

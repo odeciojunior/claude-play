@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","plugins":[{"name":"productivity-tools"}],"skills":["productivity-tools:plan-writer"],"slash_commands":[]}
+{"type":"assistant","message":{"content":[{"type":"text","text":"[fab] Claro, posso ajudar com isso sem usar nenhuma skill."}]}}

@@ -49,3 +49,85 @@ test('renderTable lists each case and the hits per category', () => {
   assert.match(out, /\| category \| hits \| total \|/);
   assert.match(out, /\| plan \| 1 \| 2 \|/);
 });
+
+// ---- Tarefa 8: casos, executor e dry-run ----
+import { mkdtempSync, readFileSync as rf, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildArgs, runTrigger } from './run-trigger.mjs';
+
+const CASES_FILE = new URL('./trigger/cases.json', import.meta.url);
+const CATEGORY_EXPECT = {
+  spec: 'productivity-tools:spec-writer',
+  plan: 'productivity-tools:plan-writer',
+  roadmap: 'productivity-tools:roadmap-planner',
+  'plan-execution': 'productivity-tools:plan-coordinator',
+};
+
+test('cases.json covers four categories with at least three cases each', () => {
+  const { cases } = JSON.parse(rf(CASES_FILE, 'utf8'));
+  const ids = cases.map((c) => c.id);
+  assert.equal(new Set(ids).size, ids.length);
+  const count = {};
+  for (const c of cases) {
+    assert.ok(c.prompt.pt?.trim(), `${c.id} pt`);
+    assert.ok(c.prompt.en?.trim(), `${c.id} en`);
+    assert.equal(c.expect, CATEGORY_EXPECT[c.category], `${c.id} expect`);
+    count[c.category] = (count[c.category] ?? 0) + 1;
+  }
+  for (const cat of Object.keys(CATEGORY_EXPECT)) assert.ok(count[cat] >= 3, `${cat} has ${count[cat]}`);
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const pairs = new Set();
+  for (const c of cases) {
+    if (!c.pairOf) continue;
+    const other = byId.get(c.pairOf);
+    assert.ok(other, `${c.id} pairOf ${c.pairOf} exists`);
+    pairs.add([c.category, other.category].sort().join('|'));
+  }
+  assert.ok(pairs.has('plan|roadmap'));
+  assert.ok(pairs.has('plan|plan-execution'));
+});
+
+test('buildArgs keeps the prompt as one argument', () => {
+  const prompt = 'faça o "plano" de  tarefas';
+  const a = buildArgs(prompt, { pluginDir: 'plugins/productivity-tools' });
+  assert.deepEqual(a, ['-p', prompt, '--plugin-dir', 'plugins/productivity-tools', '--output-format', 'stream-json', '--verbose', '--max-turns', '2']);
+  assert.equal(a.filter((x) => x === prompt).length, 1);
+});
+
+test('dry-run lists one command per case and language without spawning', async () => {
+  const { cases } = JSON.parse(rf(CASES_FILE, 'utf8'));
+  const lines = [];
+  const r = await runTrigger(
+    { casesFile: CASES_FILE, pluginDir: 'plugins/productivity-tools', work: join(tmpdir(), 'nope-work'), out: join(tmpdir(), 'nope-out.md'), lang: 'both', dryRun: true },
+    { spawn: () => { throw new Error('spawned'); }, log: (l) => lines.push(l) },
+  );
+  assert.equal(r.exitCode, 0);
+  assert.equal(lines.length, 2 * cases.length);
+  for (const l of lines) {
+    assert.match(l, /--plugin-dir/);
+    assert.match(l, /stream-json/);
+    assert.match(l, /--max-turns 2/);
+  }
+});
+
+test('run scores cases from recorded transcripts', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'trigger-test-'));
+  try {
+    const out = join(tmp, 'out', 'trigger.md');
+    const r = await runTrigger(
+      { casesFile: CASES_FILE, pluginDir: 'plugins/productivity-tools', work: join(tmp, 'work'), out, lang: 'pt' },
+      { spawn: async () => ({ stdout: fx('no-skill.jsonl'), code: 0 }), log: () => {} },
+    );
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.results.length >= 12);
+    for (const x of r.results) {
+      assert.equal(x.got, null);
+      assert.equal(x.hit, false);
+      assert.equal(x.superpowers, false);
+    }
+    assert.match(rf(out, 'utf8'), /\| category \| hits \| total \|/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
