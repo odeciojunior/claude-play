@@ -142,6 +142,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030)
 - (dono) Avaliação pelo dono do gatilho de revisão de DEC-442 (exceção à parada de DEC-218 na retomada do próprio dono)
 - (dono) Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob delegação do dono
+- (dono) Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato).
 <!-- /roadmap:pending -->
 
 ## Em andamento
