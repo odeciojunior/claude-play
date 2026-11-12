@@ -514,3 +514,86 @@ Uma linha por entrada de externalRun (item, título ou comando, status, revisada
 ### Falha da execução
 
 not merged: integration worktree D:/projects/claude-play-wt/_integracao dirty before the merge of E17
+
+
+## Execução de 2026-11-12 (passada após a Tarefa 7, falhou)
+
+Registro transcrito dos dados do orquestrador, sem resumir. Estado final: falha, `committed task 7 is now declared external and awaits authorization (E17:T7@edf70bc0)`. Nesta passada não foram informadas tarefas nem gates.
+
+### Rodadas de revisão por estágio ou tarefa
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante na lista de bloqueantes (vazia em ambos).
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, -; 2: opus, correção opus | nenhum | 0 | nenhuma |
+| plan | 1: opus, -; 2: opus, correção sonnet | nenhum | 0 | nenhuma |
+
+### Pendências (não resolvidas)
+
+Nenhuma em ambos os estágios.
+
+### Riscos aceitos
+
+- T4:quality, important, `tools/measure/checkpoint.test.mjs`: pelo-plano. Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The plan said stop and return to the orchestrator; the implementer instead committed with the test flagged todo (disclosed). Consequence: with the real arms, any run with the plano-semeado class always yields 'inconclusivo (braço defasado)' and blocks (exit 1), until the owner decides how to fix the arm or the matcher. The todo must be removed when decided.
+
+### Concerns
+
+1. the "executing" roadmap record failed (command 2 ran with a different text than the one assembled; command 3 ran with a different text than the one assembled; command 4 ran with a different text than the one assembled; command 5 ran with a different text than the one assembled; command 6 ran with a different text than the one assembled; command 7 ran with a different text than the one assembled; command 8 ran with a different text than the one assembled; command 9 ran with a different text than the one assembled; command 10 ran with a different text than the one assembled; command 11 ran with a different text than the one assembled; command 12 ran with a different text than the one assembled; command 13 ran with a different text than the one assembled; command 14 ran with a different text than the one assembled; command 15 ran with a different text than the one assembled; command 16 ran with a different text than the one assembled; command 17 ran with a different text than the one assembled; command 18 ran with a different text than the one assembled; command 19 ran with a different text than the one assembled; command 20 ran with a different text than the one assembled; reread pending-decisions --json is missing or is not JSON of the CLI); decisions and the in-flight entry are not recorded yet
+
+### Gates
+
+Nenhum registrado nesta passada.
+
+### Entradas humanas
+
+Transcritas como recebidas; várias aparecem duas vezes, em redações ligeiramente diferentes, e foram mantidas. A barra invertida antes de barra vertical nas células abaixo escapa o caractere da tabela.
+
+| O quê | Bloqueante (blq) | Workaround |
+|---|---|---|
+| Execuções pagas do ponto de medição (critérios 1 e 6 e portão do critério 2), pelo dono ou orquestrador com autorização do dono | não | Arnês, versão, volta, roteiro e ratificação entregues sem elas; relatórios de comparação marcados pendentes |
+| Ratificação em lote das decisões do executor de E17 (critério 3), incluindo a decisão 13 | não | ratificacao.md entregue com respostas recomendadas |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Passos ficam no roteiro do dono |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (commit a951ed5) | não | Volta pronta na ponta a951ed5 com G1 a G5 exit 0; revert devolve G1 a exit 1 com a falha registrada |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md) | não | Não bloqueia a preparação; pré-condição da publicação |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação |
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas | não | O arnês, a versão, a branch de volta, o roteiro e a lista de ratificação são entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297) |
+| Ratificação em lote das decisões do executor (critério 3) | não | ratificacao.md entregue com respostas recomendadas |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Os passos ficam no roteiro do dono; nenhuma tarefa do plano os executa |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md, e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (decisão 13, commit a951ed5) | não | Branch de volta e volta.md preparados; a Tarefa 7 (externa) foi retida até o dono autorizar em pessoa |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir | não | Pré-condição da publicação, não da preparação; a preparação segue |
+| Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação |
+| Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\\\|', workflow has a doubled backslash form). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint. | não | Test marked todo with a comment; checkpoint.mjs reports 'inconclusivo (braço defasado)' for the plan class and exits 1; arms were not edited. |
+| BLQ-5: árvore suja na revisão final de E17 (registrado no roadmap) | BLQ-5, não | A worktree E17 está limpa agora (git status --porcelain vazio); o bloqueio é tratado pelo workflow, não pelo spec. |
+
+### External effects run
+
+Uma linha por entrada de externalRun (item, título ou comando, status, revisada). As linhas de execuções anteriores estão nas seções homônimas acima e foram mantidas.
+
+- E17:T7, branch de volta volta/productivity-tools-1.7.1 (externa), status DONE_WITH_CONCERNS, revisada: sim.
+
+### Textos cortados no registro (esta passada)
+
+#### Corte 17 (passada após a Tarefa 7)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 1. A versão medida carrega do cache instalado numa CLAUDE_CONFIG_DIR descartável, com a loja como fonte git local fixada na SHA de M (ou na tag local leve e17-medicao em M, nunca enviada, se a CLI não aceitar SHA), nunca no nome da branch feat/E17, e --tag é essa SHA; sem gitCommitSha gravado, o dono para e registra. Ratificada com emenda do dono (DEC-298).
+
+#### Corte 18 (passada após a Tarefa 7)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 9. A ratificação das decisões anteriores a E17 está satisfeita; as de E17 são ratificadas pelo dono antes da publicação, a partir de ratificacao.md gerado pela CLI sobre uma cópia somente leitura da pasta do roadmap da ponta de release/roadmap-skills-v2, nunca sobre a pasta de feat/E17.
+
+#### Corte 19 (passada após a Tarefa 7)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 10. A branch de volta volta/productivity-tools-1.7.1 parte de M, é a Tarefa 7 externa do plano autorizada pelo dono em pessoa, nunca é enviada, devolve só plugins/productivity-tools à tag e mantém marketplace-tools 1.2.0; arquivos repo-only acoplados ao plugin novo voltam ao estado da tag. Ratificada com emenda do dono (DEC-299).
+
+#### Corte 20 (passada após a Tarefa 7)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 13. Na branch de volta, o teste 'E25 AC5: the real productivity-tools SKILL.md declares the grant' de lint-plugin.test.mjs (marketplace-tools), acoplado ao roadmap-release/SKILL.md real, é ajustado ao conteúdo da tag (afirma a ausência de allowed-tools e o lint com 0 FAIL); é a única diferença de marketplace-tools entre a volta e M, a versão segue 1.2.0 (DEC-299) e o teste de M e da branch de release não muda; decidida pelo decisor delegado do dono (regra Fable) no commit a951ed5, agora nomeada na spec (Peça 5, decisão 13), reversível pelo dono com git revert a951ed5 na volta.
+
+### Falha da execução
+
+committed task 7 is now declared external and awaits authorization (E17:T7@edf70bc0)
