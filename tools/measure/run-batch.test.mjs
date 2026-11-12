@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated } from './run-batch.mjs';
+import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,7 @@ function setup({ withPlugins = true } = {}) {
   if (withPlugins) {
     writeFileSync(
       join(dirs.configDir, 'plugins', 'installed_plugins.json'),
-      JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234' }] } }),
+      JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234', installPath: join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9') }] } }),
     );
   }
   return { ...dirs, done: () => rmSync(base, { recursive: true, force: true }) };
@@ -965,4 +965,151 @@ test('checkValidity: código que parou na revisão de spec ou plano é parou-ant
   assert.equal(checkValidity('codigo-semeado-A', noTask, {}).reason, 'formato-do-diario');
   const ok = { formatError: null, entries: ['E5:status-blocked', 'E5:t3:spec1', 'E5:t4:impl'].map(e) };
   assert.equal(checkValidity('codigo-semeado-A', ok, {}).valid, true);
+});
+
+// ---- E17 T2: registry panel read by the measured plugin's CLI, per attempt ----
+
+test('E17: readPlugin returns installPath', () => {
+  const s = setup({ withPlugins: false });
+  try {
+    const file = join(s.configDir, 'plugins', 'installed_plugins.json');
+    writeFileSync(file, JSON.stringify({ plugins: { 'productivity-tools@claude-play': [{ version: '1.7.0', gitCommitSha: 'abc1234', installPath: '/c/x' }] } }));
+    assert.deepEqual(readPlugin(s.configDir), { version: '1.7.0', commit: 'abc1234', installPath: '/c/x' });
+    writeFileSync(file, JSON.stringify({ plugins: { 'productivity-tools@claude-play': [{ version: '1.7.0', gitCommitSha: 'abc1234' }] } }));
+    assert.deepEqual(readPlugin(s.configDir), { version: '1.7.0', commit: 'abc1234', installPath: 'unknown' });
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: panelMatches accepts the expected panel per variant', () => {
+  assert.deepEqual(PANEL_VARIANTS, ['plan-only', 'completo', 'parada-retomada']);
+  assert.equal(EXPECTED_PANEL.completo.status, 'on-branch');
+  const good = { e5Status: 'on-branch', e5Evidence: 'merge abc1234', mergeCommit: 'abc1234def', checkerErrors: 0 };
+  assert.equal(panelMatches('completo', good).ok, true);
+  const wrong = panelMatches('completo', { ...good, e5Status: 'integrated' });
+  assert.equal(wrong.ok, false);
+  assert.ok(wrong.reasons.some((r) => r.includes('integrated')));
+  assert.equal(panelMatches('completo', { ...good, checkerErrors: 2 }).ok, false);
+  assert.equal(panelMatches('completo', { error: 'x' }).ok, false);
+  assert.equal(panelMatches('completo', { ...good, e5Evidence: 'nothing' }).ok, false);
+  assert.equal(panelMatches('completo', { ...good, mergeCommit: null }).ok, false);
+  assert.equal(panelMatches('plan-only', { e5Status: 'plan', mergeCommit: null, checkerErrors: 0, e5Evidence: '' }).ok, true);
+});
+
+test('E17: readPanel never throws', () => {
+  const s = setup();
+  try {
+    const sandbox = join(s.base, 'nope');
+    assert.ok(readPanel(sandbox, '/nope', { exec: () => ({ status: 0, stdout: 'not json' }) }).error);
+    assert.ok(readPanel(sandbox, '/nope', { exec: () => { throw new Error('boom'); } }).error);
+    assert.ok(readPanel(sandbox, '/nope').error);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: readPanel reads the E5 row, the merge commit and the checker errors', () => {
+  const s = setup();
+  try {
+    const sandbox = join(s.base, 'sb');
+    mkdirSync(sandbox, { recursive: true });
+    gitIn(sandbox, 'init', '-q', '-b', 'main');
+    gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'seed');
+    gitIn(sandbox, 'checkout', '-q', '-b', 'release/sandbox');
+    gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'merge: E5 in release/sandbox');
+    const sha = gitIn(sandbox, 'rev-parse', 'HEAD').stdout.trim();
+    gitIn(sandbox, 'checkout', '-q', 'main');
+    const exec = (cmd, args) => {
+      assert.equal(cmd, process.execPath);
+      if (/[\\/]roadmap\.mjs$/.test(args[0])) {
+        assert.deepEqual(args.slice(1), ['status', 'docs/plans/roadmap-sandbox', '--json']);
+        const panel = [{ id: 'E4', segments: [{ word: 'plan' }], evidence: '-' }, { id: 'E5', segments: [{ word: 'on-branch' }], evidence: `merge \`${sha.slice(0, 7)}\`` }];
+        return { status: 0, stdout: JSON.stringify({ result: { panel } }) };
+      }
+      return { status: 1, stdout: JSON.stringify({ errors: [{}, {}], summary: { errors: 2 } }) };
+    };
+    const p = readPanel(sandbox, '/inst', { exec });
+    assert.deepEqual(p, { e5Status: 'on-branch', e5Evidence: `merge \`${sha.slice(0, 7)}\``, mergeCommit: sha, checkerErrors: 2 });
+    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'main');
+    assert.equal(panelMatches('completo', { ...p, checkerErrors: 0 }).ok, true);
+    assert.equal(readPanel(join(s.base, 'sb'), '/inst', { exec: () => ({ status: 3, stdout: '' }) }).error !== undefined, true);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: readPanel works when release/sandbox is held by another worktree and leaves no worktree behind', () => {
+  const s = setup();
+  try {
+    const sandbox = join(s.base, 'sbw');
+    mkdirSync(sandbox, { recursive: true });
+    gitIn(sandbox, 'init', '-q', '-b', 'main');
+    gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'seed');
+    gitIn(sandbox, 'branch', 'release/sandbox');
+    const held = join(s.base, 'sbw-wt', '_integracao');
+    assert.equal(gitIn(sandbox, 'worktree', 'add', '-q', held, 'release/sandbox').status, 0);
+    const before = gitIn(sandbox, 'worktree', 'list', '--porcelain').stdout;
+    const seen = [];
+    const exec = (cmd, args, opts) => {
+      seen.push(opts.cwd);
+      if (/[\\/]roadmap\.mjs$/.test(args[0])) return { status: 0, stdout: JSON.stringify({ result: { panel: [{ id: 'E1', segments: [{ word: 'plan' }], evidence: '-' }, { id: 'E5', segments: [{ word: 'not-started' }], evidence: '-' }] } }) };
+      return { status: 0, stdout: JSON.stringify({ summary: { errors: 0 } }) };
+    };
+    const p = readPanel(sandbox, '/inst', { exec, deliverable: 'E1' });
+    assert.equal(p.error, undefined);
+    assert.equal(p.e5Status, 'plan');
+    assert.ok(seen.every((c) => c !== sandbox));
+    assert.equal(gitIn(sandbox, 'worktree', 'list', '--porcelain').stdout, before);
+    assert.equal(gitIn(sandbox, 'rev-parse', '--abbrev-ref', 'HEAD').stdout.trim(), 'main');
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: the panel row of each variant is the deliverable its prompt targets', async () => {
+  const { makeScenario } = await import('./make-scenario.mjs');
+  for (const v of PANEL_VARIANTS) {
+    const dir = mkdtempSync(join(tmpdir(), 'pv-'));
+    try {
+      const sc = await makeScenario(dir, v);
+      assert.ok(sc.prompts.every((pr) => pr.endsWith(` ${EXPECTED_PANEL[v].deliverable}`)), `${v}: ${sc.prompts.join(' | ')}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  assert.equal(EXPECTED_PANEL['plan-only'].deliverable, 'E1');
+});
+
+test('E17: readPanel reports a missing release/sandbox', () => {
+  const s = setup();
+  try {
+    const sandbox = join(s.base, 'sb2');
+    mkdirSync(sandbox, { recursive: true });
+    gitIn(sandbox, 'init', '-q', '-b', 'main');
+    gitIn(sandbox, 'commit', '-q', '--allow-empty', '-m', 'seed');
+    assert.deepEqual(readPanel(sandbox, '/inst', { exec: () => ({ status: 0, stdout: '{}' }) }), { error: 'release/sandbox missing' });
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: release attempts carry panel, other variants do not', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { variant: 'completo', runs: 1 }), { exec: fake.exec, now: NOW });
+    assert.ok('panel' in r.aggregate.attempts[0]);
+    assert.ok(r.aggregate.attempts[0].panel.error);
+    const t = await runBatch(baseOpts(s, { variant: 'planner', runs: 1 }), { exec: makeFake(s.configDir).exec, now: NOW });
+    assert.equal('panel' in t.aggregate.attempts[0], false);
+  } finally {
+    s.done();
+  }
+});
+
+test('E17: panel error texts carry no path', () => {
+  const win = ['C:', 'Users', 'someone', 'AppData', 'Local', 'Temp', 'panel-1', 'wt'].join('\\');
+  assert.equal(redactPaths("fatal: '" + win + "' failed /tmp/panel-1/wt"), "fatal: '<path>' failed <path>");
+  assert.equal(redactPaths('roadmap.mjs exited 2'), 'roadmap.mjs exited 2');
 });

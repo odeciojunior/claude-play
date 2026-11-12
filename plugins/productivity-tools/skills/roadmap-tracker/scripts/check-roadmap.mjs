@@ -1,4 +1,4 @@
-// check-roadmap 1.5.0 format 1
+// check-roadmap 1.7.0 format 1
 // Deterministic checker for roadmap folders (format contract: roadmap-planner/references/formats.md).
 // Single file, Node >= 18, no dependencies, no network. Vendored into each roadmap folder.
 import fs from 'node:fs';

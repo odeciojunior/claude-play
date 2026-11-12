@@ -28,7 +28,7 @@ const RELEASE = '/productivity-tools:roadmap-release';
 
 // The release skill's preflight reads permission rules only from settings files (never from CLI
 // --allowedTools), so the "run" variants carry them in an excluded settings.local.json.
-export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)'];
+export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)'];
 const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B'];
 const LOCAL_SETTINGS = '.claude/settings.local.json';
 
