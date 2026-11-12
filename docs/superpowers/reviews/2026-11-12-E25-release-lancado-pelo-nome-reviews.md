@@ -97,3 +97,23 @@ Um item por texto que o registro do roadmap cortou. Origem = fonte do texto; "en
 ### 2. Origem: docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md; entrou em: add-decision --decision
 
 12. Piece 5 is the last code commit so criterion 4 is checked on the previous commit; owner steps run after integration, using git from the integration worktree D:/projects/claude-play-wt/_integracao, detached disposable worktrees at the pre-grant SHA and at release/roadmap-skills-v2, and the make-sandbox.mjs sandbox in dry-run (local).
+
+## Ressincronização (segunda execução, 2026-11-12)
+
+Esta execução recebeu os mesmos dados de revisão, tarefas, concerns, entradas humanas e textos cortados já registrados acima (sem diferença nas rodadas, nos modelos, nas contagens de menores, nas pendências ou nos riscos aceitos). O que ela acrescenta é o campo de gates, que a execução anterior não tinha. Nada do que a execução anterior registrou foi removido ou reescrito.
+
+### Gates (campo estruturado, transcrito)
+
+| Gate | Saída | Baseline |
+|---|---|---|
+| G1 | exit 0, total 1347, ignorados 0, falhas [] | exit 0, total 1314, ignorados 0, falhas [] |
+| G2 | exit 0 | exit 0 |
+| G3 | exit 0 | exit 0 |
+| G4 | exit 0 | exit 0 |
+| G5 | exit 0 | exit 0 |
+
+Riscos aceitos: nenhum. Falha da execução: nenhuma. Bloqueantes: nenhum em todos os estágios.
+
+### Textos cortados no registro (esta execução)
+
+Os dois itens recebidos (decisão 10 e decisão 12, origem `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md`, entrada `add-decision --decision`) são os mesmos já transcritos por inteiro nos itens 1 e 2 da seção "Textos cortados no registro" acima.
