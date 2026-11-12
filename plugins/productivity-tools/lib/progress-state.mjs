@@ -189,3 +189,346 @@ export function nextAction(state) {
 
   return { action: 'ask', question: 'nenhum passo pendente pode começar; confira o estado com show' };
 }
+
+// ---------------------------------------------------------------------------
+// applyEvent: transições do ciclo de vida (delegation-protocol, Step lifecycle).
+// Cada psOn<Evento> recebe um clone profundo e devolve uma recusa antes de qualquer
+// escrita, ou null depois de mutar o clone. Comentários "// linha <n>" citam a tabela.
+// ---------------------------------------------------------------------------
+
+const PS_TIER_RANK = { haiku: 0, sonnet: 1, opus: 2 };
+
+const psRefuse = (code, message) => ({ ok: false, code, message });
+
+const psOpenSteps = (state, wave) => state.steps.filter((s) => s.wave === wave && ['pending', 'launched', 'review-owed'].includes(s.status));
+
+const psAnyOf = (state, statuses) => state.steps.some((s) => statuses.includes(s.status));
+
+const psGateOwed = (state) => state.run.waveGateOwed !== null && state.run.waveGateOwed !== undefined;
+
+// Resolve a lista de passos do evento; devolve { list } ou uma recusa.
+function psResolve(state, ev, plural) {
+  const ns = plural ? ev.steps : [ev.step];
+  if (!Array.isArray(ns) || ns.length === 0 || ns.some((n) => !Number.isInteger(n))) {
+    return psRefuse('unknown-step', 'passo não informado');
+  }
+  const list = [];
+  for (const n of ns) {
+    const s = psStep(state, n);
+    if (!s) return psRefuse('unknown-step', 'passo inexistente: ' + n);
+    list.push(s);
+  }
+  return { list };
+}
+
+// Passos dependentes, direta ou transitivamente, de n.
+function psDependents(state, n) {
+  const seen = new Set([n]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of state.steps) {
+      if (!seen.has(s.n) && s.deps.some((d) => seen.has(d))) {
+        seen.add(s.n);
+        grew = true;
+      }
+    }
+  }
+  seen.delete(n);
+  return state.steps.filter((s) => seen.has(s.n)).sort(psByN);
+}
+
+function psMarkDependentsWaiting(state, n) {
+  for (const d of psDependents(state, n)) {
+    if (d.status === 'pending') d.status = 'waiting-manual';
+  }
+}
+
+// Retém o passo com uma entrada manual aberta e marca os dependentes. // linha 3, 4
+function psHoldStep(state, step, kind, text) {
+  step.status = 'skip-manual';
+  state.manual.push({ kind, step: step.n, text, open: true });
+  psMarkDependentsWaiting(state, step.n);
+}
+
+// Falha de um passo não externo: repete até 3 tentativas, depois retém. // linha 10
+function psFailStep(state, step, text) {
+  if (step.attempts < 3) {
+    step.status = 'pending';
+  } else {
+    psHoldStep(state, step, 'open-question', text);
+  }
+}
+
+// Pré-condições comuns de launch e inline-start.
+function psLaunchChecks(state, list, tier) {
+  if (state.run.status === 'blocked') return psRefuse('blocked', 'execução bloqueada; responda a pergunta primeiro');
+  if (state.run.status !== 'in-progress') return psRefuse('wrong-status', 'execução não está em andamento');
+  for (const s of list) {
+    if (s.status !== 'pending') return psRefuse('wrong-status', 'passo ' + s.n + ' não está pending (' + s.status + ')');
+    if (s.wave !== state.run.wave || psGateOwed(state)) {
+      return psRefuse('wave-order', 'passo ' + s.n + ' não é da onda corrente ou há portão de onda devido');
+    }
+    if (!psDepsOk(state, s)) return psRefuse('dependency-not-passed', 'passo ' + s.n + ' tem dependência que não passou');
+    if (tier !== undefined && tier !== null) {
+      if (!(tier in PS_TIER_RANK)) return psRefuse('tier-down', 'nível desconhecido: ' + tier);
+      if (PS_TIER_RANK[tier] < PS_TIER_RANK[s.tier]) return psRefuse('tier-down', 'nível ' + tier + ' abaixo do registrado (' + s.tier + ')');
+    }
+  }
+  return null;
+}
+
+const psHandlers = {
+  'approve-map'(state) { // linha 28
+    if (state.run.status !== 'map-ready') return psRefuse('wrong-status', 'o mapa já foi aprovado');
+    state.run.status = 'in-progress';
+    return null;
+  },
+
+  block(state, ev) { // linha 29, 30
+    if (state.run.status !== 'map-ready' && state.run.status !== 'in-progress') {
+      return psRefuse('wrong-status', 'só se bloqueia com map-ready ou in-progress');
+    }
+    state.run.status = 'blocked';
+    state.run.question = ev.text ?? null;
+    return null;
+  },
+
+  unblock(state) { // linha 30
+    if (state.run.status !== 'blocked') return psRefuse('wrong-status', 'execução não está bloqueada');
+    state.run.status = 'in-progress';
+    state.run.question = null;
+    return null;
+  },
+
+  launch(state, ev) { // linha 1, 8
+    const r = psResolve(state, ev, true);
+    if (r.ok === false) return r;
+    const bad = psLaunchChecks(state, r.list, ev.tier);
+    if (bad) return bad;
+    for (const s of r.list) {
+      s.status = 'launched';
+      s.attempts += 1;
+      if (ev.agentId !== undefined) s.agentId = ev.agentId;
+      if (ev.tier) s.tier = ev.tier;
+    }
+    return null;
+  },
+
+  'inline-start'(state, ev) { // linha 2
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const bad = psLaunchChecks(state, r.list, null);
+    if (bad) return bad;
+    const s = r.list[0];
+    if (!psInline(s) || psAnyOf(state, ['launched'])) {
+      return psRefuse('inline-not-allowed', 'passo ' + s.n + ' não pode rodar inline agora');
+    }
+    s.status = 'launched';
+    s.mode = 'inline';
+    s.attempts += 1;
+    return null;
+  },
+
+  'inline-result'(state, ev) { // linha 2
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'launched' || s.mode !== 'inline') return psRefuse('wrong-status', 'passo ' + s.n + ' não está inline em execução');
+    if (ev.value === 'pass') {
+      s.status = 'pass';
+    } else if (ev.value === 'fail') {
+      s.status = 'pending';
+      s.mode = 'delegated';
+      s.tier = 'sonnet';
+    } else {
+      return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    }
+    return null;
+  },
+
+  report(state, ev) { // linha 9, 10
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'launched') return psRefuse('wrong-status', 'passo ' + s.n + ' não está launched');
+    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    if (!['pass', 'fail', 'blocked'].includes(ev.value)) return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    if (ev.text !== undefined) s.note = ev.text;
+    if (ev.value === 'pass') {
+      s.status = s.gate ? 'review-owed' : 'pass';
+    } else {
+      psFailStep(state, s, ev.text ?? 'passo ' + s.n + ' falhou ' + s.attempts + ' vezes');
+    }
+    return null;
+  },
+
+  'no-report'(state, ev) { // linha 11
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'launched') return psRefuse('wrong-status', 'passo ' + s.n + ' não está launched');
+    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    s.status = 'pending';
+    return null;
+  },
+
+  'review-result'(state, ev) { // linha 13, 14
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'review-owed') return psRefuse('wrong-status', 'passo ' + s.n + ' não está review-owed');
+    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    if (ev.value === 'pass') {
+      s.status = 'pass';
+    } else if (ev.value === 'lost') {
+      s.note = 'reviewer lost';
+    } else if (ev.value === 'defects') {
+      if (s.rounds < 2) {
+        s.status = 'launched';
+        s.rounds += 1;
+      } else {
+        psFailStep(state, s, ev.text ?? 'passo ' + s.n + ' com defeitos após duas rodadas de correção');
+      }
+    } else {
+      return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    }
+    return null;
+  },
+
+  hold(state, ev) { // linha 3, 4
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'pending') return psRefuse('wrong-status', 'passo ' + s.n + ' não está pending');
+    const upstream = s.deps.some((d) => {
+      const dep = psStep(state, d);
+      return dep && ['skip-manual', 'waiting-manual', 'stopped'].includes(dep.status);
+    });
+    if (upstream) {
+      s.status = 'waiting-manual';
+      psMarkDependentsWaiting(state, s.n);
+    } else {
+      psHoldStep(state, s, 'open-question', ev.text ?? 'passo ' + s.n + ' retido');
+    }
+    return null;
+  },
+
+  release(state, ev) { // linha 18, 24
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status === 'skip-manual') {
+      for (const m of state.manual) if (m.step === s.n && m.open) m.open = false;
+    } else if (s.status === 'waiting-manual') {
+      if (psDepHeld(state, s)) return psRefuse('dependency-held', 'passo ' + s.n + ' ainda depende de passo retido');
+    } else {
+      return psRefuse('wrong-status', 'passo ' + s.n + ' não está retido nem esperando');
+    }
+    s.status = 'pending';
+    return null;
+  },
+
+  skip(state, ev) { // linha 26
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'pending' || state.run.status !== 'map-ready') return psRefuse('wrong-status', 'skip só vale para passo pending com o mapa por aprovar');
+    if (ev.value !== 'outputs' && ev.value !== 'no-outputs') return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    s.status = 'skip';
+    s.outputs = ev.value === 'outputs';
+    return null;
+  },
+
+  commit(state, ev) { // linha 25
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'pass' || typeof ev.sha !== 'string' || ev.sha === '') return psRefuse('wrong-status', 'commit exige passo pass e sha');
+    s.sha = ev.sha;
+    return null;
+  },
+
+  'wave-gate'(state, ev) { // linha 25
+    if (!psGateOwed(state) || psAnyOf(state, ['launched', 'review-owed'])) {
+      return psRefuse('wrong-status', 'não há portão de onda devido ou há passo em voo');
+    }
+    const owed = state.run.waveGateOwed;
+    if (ev.value === 'pass') {
+      state.run.waveGateOwed = null;
+      return null;
+    }
+    if (ev.value !== 'fail') return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    if (ev.step === undefined) return null;
+    const r = psResolve(state, ev, false);
+    if (r.ok === false) return r;
+    const s = r.list[0];
+    if (s.status !== 'pass' || s.wave !== owed) return psRefuse('wrong-status', 'passo ' + s.n + ' não é pass da onda ' + owed);
+    if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    state.run.waveGateOwed = null;
+    psFailStep(state, s, ev.text ?? 'portão da onda ' + owed + ' reprovou o passo ' + s.n);
+    return null;
+  },
+
+  advance(state) { // laço de ondas
+    if (psGateOwed(state)) return psRefuse('gate-owed', 'portão da onda ' + state.run.waveGateOwed + ' devido');
+    if (psOpenSteps(state, state.run.wave).length) return psRefuse('steps-open', 'há passo da onda corrente pending, launched ou review-owed');
+    const next = state.waves.map((w) => w.n).filter((n) => n > state.run.wave).sort((a, b) => a - b)[0];
+    if (next === undefined) return psRefuse('steps-open', 'não há próxima onda');
+    state.run.wave = next;
+    return null;
+  },
+
+  'final-gate'(state, ev) { // linha 27, 31
+    if (psAnyOf(state, ['pending', 'launched', 'review-owed']) || psGateOwed(state)) {
+      return psRefuse('steps-open', 'há passo aberto ou portão de onda devido');
+    }
+    if (!['pass', 'defects', 'skip'].includes(ev.value)) return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
+    let s = null;
+    if (ev.value === 'defects' && ev.step !== undefined) {
+      const r = psResolve(state, ev, false);
+      if (r.ok === false) return r;
+      s = r.list[0];
+      if (s.status !== 'pass') return psRefuse('wrong-status', 'passo ' + s.n + ' não está pass');
+      if (s.external) return psRefuse('wrong-status', 'passo externo: tratado na Task 3');
+    }
+    state.finalGate.rounds += 1;
+    state.finalGate.lastVerdict = ev.value;
+    if (ev.value === 'pass' || ev.value === 'skip') {
+      state.finalGate.status = ev.value;
+      state.run.status = 'completed';
+    } else if (s) {
+      psFailStep(state, s, ev.text ?? 'portão final reprovou o passo ' + s.n);
+      if (s.status === 'pending') state.run.wave = s.wave;
+    }
+    return null;
+  },
+};
+
+export function applyEvent(state, event, now) {
+  if (!state || state.schema !== STATE_SCHEMA) return psRefuse('state-schema', 'schema diferente de ' + STATE_SCHEMA);
+  if (!event || !EVENT_TYPES.includes(event.type)) return psRefuse('unknown-event', 'evento desconhecido: ' + (event && event.type));
+  const handler = psHandlers[event.type];
+  if (!handler) return psRefuse('unknown-event', 'evento ainda não suportado: ' + event.type);
+
+  const next = psClone(state);
+  const before = new Map(next.steps.map((s) => [s.n, s.status]));
+  const refused = handler(next, event);
+  if (refused) return refused;
+
+  // Portão de onda devido: a onda corrente se assentou (nada pending, launched ou
+  // review-owed) depois de um passo seu chegar a pass.
+  if (!psGateOwed(next)) {
+    const reachedPass = next.steps.some((s) => s.wave === next.run.wave && s.status === 'pass' && before.get(s.n) !== 'pass');
+    if (reachedPass && psOpenSteps(next, next.run.wave).length === 0) next.run.waveGateOwed = next.run.wave;
+  }
+
+  const entry = { event: event.type };
+  if (event.steps !== undefined) entry.steps = event.steps;
+  else if (event.step !== undefined) entry.step = event.step;
+  if (event.value !== undefined) entry.value = event.value;
+  entry.at = now;
+  next.history.push(entry);
+  next.run.updated = now;
+  return { ok: true, state: next };
+}
