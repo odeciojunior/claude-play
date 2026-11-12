@@ -675,6 +675,7 @@ export function ratifyE5Contract(sandbox, installPath, { exec = spawnSync } = {}
       cwd = join(tmp, 'wt');
       gitOut(sandbox, 'worktree', 'add', '-q', cwd, 'release/sandbox');
     }
+    if (gitOut(cwd, 'status', '--porcelain') !== '') return { ok: false, reason: 'integracao-suja' };
     const script = join(installPath, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs');
     const folder = 'docs/plans/roadmap-sandbox';
     const run = (args) => {
@@ -755,6 +756,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let failed = false;
     let failReason = 'execucao-falhou';
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
+    let ratified = null;
+    let resumeFrom = 1;
+    const extra = () => (ratified ? { ratified } : {});
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -773,6 +777,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
           failReason = rat.reason;
           break;
         }
+        ratified = rat.ratified ?? [];
+        resumeFrom = sessions.length; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
       }
       const args = promptArgs(scenario.prompts[i], launchOpts);
       const watch = stop !== null && i === 0;
@@ -831,19 +837,19 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       continue;
     }
     if (failed || sessions.length === 0) {
-      attempts.push({ n: k, status: 'invalid', reason: failReason });
-      privateAttempts.push({ n: k, sessions });
+      attempts.push({ n: k, ...extra(), status: 'invalid', reason: failReason });
+      privateAttempts.push({ n: k, sessions, ...extra() });
       writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
       continue;
     }
-    privateAttempts.push({ n: k, sessions });
+    privateAttempts.push({ n: k, sessions, ...extra() });
     writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
     let journal = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
       const v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
       if (!v.valid) {
-        attempts.push({ n: k, status: 'invalid', reason: v.reason });
+        attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
         if (v.reason === 'formato-do-diario') {
           const n = attempts.filter((a) => a.reason === 'formato-do-diario').length;
           console.error(`journal format: ${n} attempt(s) invalid`);
@@ -860,33 +866,37 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       { cwd: here },
     );
     if (ex.code !== 0) {
-      attempts.push({ n: k, status: 'invalid', reason: 'extrator-falhou' });
+      attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'extrator-falhou' });
       continue;
     }
     const run = JSON.parse(readFileSync(join(metricsDir, 'metrics.json'), 'utf8')).runs[0];
     if (!h) {
       const rv = releaseRunValidity(variant, run);
       if (!rv.valid) {
-        attempts.push({ n: k, status: 'invalid', reason: rv.reason });
+        attempts.push({ n: k, ...extra(), status: 'invalid', reason: rv.reason });
         continue;
       }
       if (stop !== null) {
         // D3 (E17): the resume session alone must have launched an agent; the whole-attempt total can come from the first session.
+        if (sessions.length <= resumeFrom) {
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: resumeRunValidity(undefined).reason });
+          continue;
+        }
         const resumeFile = join(priv, `attempts-${k}-resume.json`);
         const resumeDir = join(metricsDir, 'resume');
-        writeFileSync(resumeFile, JSON.stringify({ attempts: [{ n: k, sessions: sessions.slice(1) }] }, null, 2) + '\n');
+        writeFileSync(resumeFile, JSON.stringify({ attempts: [{ n: k, sessions: sessions.slice(resumeFrom) }] }, null, 2) + '\n');
         const rex = await exec(
           process.execPath,
-          [EXTRACTOR, '--root', join(opts.configDir, 'projects'), '--out', resumeDir, '--sessions', sessions.slice(1).join(','), '--runs', resumeFile],
+          [EXTRACTOR, '--root', join(opts.configDir, 'projects'), '--out', resumeDir, '--sessions', sessions.slice(resumeFrom).join(','), '--runs', resumeFile],
           { cwd: here },
         );
         if (rex.code !== 0) {
-          attempts.push({ n: k, status: 'invalid', reason: 'extrator-falhou' });
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'extrator-falhou' });
           continue;
         }
-        const rrv = resumeRunValidity(sessions.length > 1 ? JSON.parse(readFileSync(join(resumeDir, 'metrics.json'), 'utf8')).runs[0] : undefined);
+        const rrv = resumeRunValidity(sessions.length > resumeFrom ? JSON.parse(readFileSync(join(resumeDir, 'metrics.json'), 'utf8')).runs[0] : undefined);
         if (!rrv.valid) {
-          attempts.push({ n: k, status: 'invalid', reason: rrv.reason });
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: rrv.reason });
           continue;
         }
       }
@@ -899,7 +909,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const reachable = settleSandbox(scenario.dir, scenario.seededCommit);
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
-    const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
+    const attempt = { n: k, ...extra(), status: 'valid', counters: toAttemptCounters(run), outcomes };
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath, { deliverable: EXPECTED_PANEL[variant].deliverable });
     attempts.push(attempt);
