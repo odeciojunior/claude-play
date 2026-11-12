@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | E20 passou para na-branch | `4cbf12881845aadf0289c4634b7b5f7f039957b4`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` |
 | 2026-11-12 | E20 | Critério 4 aceito por delegação em bf4712d (DEC-456): F4-1 a F4-3, F4-4 (a)-(e) e check final passam em claude -p (US$ 2,2). N5-1 e N5-2 (DEC-457) viram pendências com portão na publicação de plan-writer (DEC-458). | `docs/reports/2026-11-12-E20-autor-plano-comportamental.md` |
 | 2026-11-12 | E20 | BLQ-7 resolvido: Critério 4 refeito em bf4712d e aceito por delegação (DEC-456); critérios 1 e 2 aceitos (DEC-453); E20 volta a executando para a revisão final da branch. | `bf4712d, 5a4161a` |
 | 2026-11-12 | E20 | DEC-456, DEC-457, DEC-458 (E20, critério 4) decididas pelo dono por delegação (Fable) | `decisions.md` |

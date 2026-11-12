@@ -34,7 +34,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E17 | na-branch | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba` | E17: seguir o fluxo do release após na-branch |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | na-branch | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb` | E19: seguir o fluxo do release após na-branch |
-| E20 | executando | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md` | E20: seguir o fluxo do release após executando |
+| E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
 | E21 | nao-iniciado | - | Aguardar E9 |
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
@@ -136,6 +136,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E20: rodar a suíte de gatilho do critério 5.
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025)
 - (dono) Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458)
+- (dono) T12:quality: [importante/ambiente] Criterion 4 (adoption) has not been re-run after the fix in 30ff73f. The new SKILL.md/plan-author.md text for F4-1..F4-4 (APPROVAL QUESTION fallback, [...] texto completo em docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md
+- (dono) E20: critério AC1 sem evidência automática (human)
+- (dono) E20: critério AC2 sem evidência automática (human)
+- (dono) E20: critério AC4 sem evidência automática (human)
+- (dono) E20: critério AC5 sem evidência automática (human)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -143,5 +148,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E20 | viva | E20 em execução pelo release |
 <!-- /roadmap:inflight -->
