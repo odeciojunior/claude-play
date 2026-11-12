@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, execFileSync } from 'node:child_process';
-import { makeScenario, artifactOf, seedSourceOf, E5_PATHS } from './make-scenario.mjs';
+import { makeScenario, artifactOf, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
@@ -525,12 +525,11 @@ function harnessPrompts(h, scenario) {
   };
 }
 
-function excludeFromGit(dir, name) {
-  const p = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: dir, encoding: 'utf8' }).trim();
-  const file = resolve(dir, p);
-  mkdirSync(dirname(file), { recursive: true });
-  const old = existsSync(file) ? readFileSync(file, 'utf8') : '';
-  if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
+// A release run that launched no subagent at all stopped before doing anything (e.g. at preflight).
+export function releaseRunValidity(variant, run) {
+  if (variant !== 'completo' && variant !== 'parada-retomada') return { valid: true, reason: 'ok' };
+  const calls = run?.total?.calls ?? {};
+  return sumCalls(calls) === 0 ? { valid: false, reason: 'sem-agentes' } : { valid: true, reason: 'ok' };
 }
 
 // Validity of a review-stage attempt: the journal must carry the stage review with its fields.
@@ -677,6 +676,13 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       continue;
     }
     const run = JSON.parse(readFileSync(join(metricsDir, 'metrics.json'), 'utf8')).runs[0];
+    if (!h) {
+      const rv = releaseRunValidity(variant, run);
+      if (!rv.valid) {
+        attempts.push({ n: k, status: 'invalid', reason: rv.reason });
+        continue;
+      }
+    }
     validRuns.push(run);
     let outcomes = [];
     if (journal) {
@@ -685,7 +691,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const reachable = settleSandbox(scenario.dir, scenario.seededCommit);
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
-    attempts.push({ n: k, status: 'valid', counters: toAttemptCounters(run), outcomes });
+    const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
+    if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = gitOk(scenario.dir, 'cat-file', '-e', `release/sandbox:${E5_PATHS.plan}`);
+    attempts.push(attempt);
   }
 
   const status = (s) => attempts.filter((a) => a.status === s).length;

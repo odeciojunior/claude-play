@@ -6,7 +6,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { makeScenario, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
+import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -326,5 +326,26 @@ test('seedSourceOf fails like the scenario when the plan is missing', async () =
     });
   } finally {
     t.done();
+  }
+});
+
+test('release run variants carry the permission rules in an excluded settings.local.json', async () => {
+  for (const variant of ['completo', 'parada-retomada', 'plan-only', 'coordinator']) {
+    const t = tmp('sb');
+    try {
+      await makeScenario(t.dir, variant);
+      const file = join(t.dir, '.claude', 'settings.local.json');
+      if (variant === 'completo' || variant === 'parada-retomada') {
+        assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
+        assert.deepEqual(SANDBOX_RELEASE_RULES, ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
+        assert.ok(git(t.dir, 'check-ignore', '.claude/settings.local.json').length > 0);
+        assert.equal(git(t.dir, 'ls-files', '.claude/settings.local.json'), '');
+      } else {
+        assert.equal(existsSync(file), false, variant);
+      }
+      assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    } finally {
+      t.done();
+    }
   }
 });
