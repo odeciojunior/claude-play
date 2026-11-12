@@ -146,7 +146,8 @@ export function nextAction(state) {
   }
 
   const owed = steps.filter((s) => s.status === 'review-owed').sort(psByN);
-  if (owed.length) return { action: 'review', step: owed[0].n, reviewTier: owed[0].reviewTier };
+  if (owed.length) // DEC-206: passo com portão tem revisor opus, qualquer que seja o reviewTier do roteamento.
+  return { action: 'review', step: owed[0].n, reviewTier: 'opus' };
 
   if (run.waveGateOwed !== null && run.waveGateOwed !== undefined) {
     return { action: 'wave-gate', wave: run.waveGateOwed };
@@ -181,9 +182,9 @@ export function nextAction(state) {
   }
 
   if (pendingAll.length === 0) {
-    if (state.finalGate.status === 'pending') return { action: 'final-gate' };
     const open = state.manual.filter((m) => m.open);
     if (open.length) return { action: 'ask', manual: open };
+    if (state.finalGate.status === 'pending') return { action: 'final-gate' };
     return { action: 'done' };
   }
 
@@ -249,6 +250,12 @@ function psHoldStep(state, step, kind, text) {
   step.status = 'skip-manual';
   state.manual.push({ kind, step: step.n, text, open: true });
   psMarkDependentsWaiting(state, step.n);
+}
+
+// Passo que volta a pending numa onda anterior à corrente: a onda recua para ele, senão
+// launch recusa wave-order e nada mais move run.wave.
+function psReopen(state, step) {
+  if (step.wave < state.run.wave) state.run.wave = step.wave;
 }
 
 // Falha de um passo não externo: repete até 3 tentativas, depois retém. // linha 10
@@ -454,6 +461,7 @@ const psHandlers = {
       return psRefuse('wrong-status', 'passo ' + s.n + ' não está retido nem esperando');
     }
     s.status = 'pending';
+    psReopen(state, s);
     return null;
   },
 
@@ -564,6 +572,7 @@ const psHandlers = {
       s.authorized = now;
       s.status = 'pending';
       psCloseManual(state, s.n);
+      psReopen(state, s);
     } else {
       return psRefuse('wrong-status', 'passo ' + s.n + ' não está pronto para autorização');
     }
@@ -645,6 +654,7 @@ const psHandlers = {
         s.note = ev.text ?? null;
         s.status = 'pending';
         psCloseManual(state, s.n);
+        psReopen(state, s);
         if (s.external) {
           s.preLaunchReview = null;
           s.authorized = null;

@@ -141,7 +141,7 @@ test('nextAction order', () => {
   assert.deepEqual(nextAction(launched), { action: 'await', steps: [1], agentIds: ['a1'] });
 
   const review = withSteps(approved(s0), { 1: { status: 'review-owed' } });
-  assert.deepEqual(nextAction(review), { action: 'review', step: 1, reviewTier: step(review, 1).reviewTier });
+  assert.deepEqual(nextAction(review), { action: 'review', step: 1, reviewTier: 'opus' });
 
   const gate = withSteps(approved(s0), { 1: { status: 'pass' } });
   gate.run.waveGateOwed = 1;
@@ -608,6 +608,69 @@ test('answer value writes the note and returns to pending', () => {
   const no = ok(held, { type: 'answer', step: 5, value: 'no' });
   assert.equal(step(no, 5).status, 'skip-manual');
   assert.equal(no.manual[0].kind, 'refused');
+});
+
+// Final-fix E7: DEC-206, run presa em onda anterior, entradas manuais antes do portão final.
+test('review action names opus for a gated step whatever the routing reviewTier', () => {
+  const c = withSteps(approved(stateFor()), { 1: { status: 'review-owed', gate: true, reviewTier: 'sonnet' } });
+  assert.deepEqual(nextAction(c), { action: 'review', step: 1, reviewTier: 'opus' });
+});
+
+// Percorre as ondas deixando T3 e T5 retidos e avança até a última onda.
+function pastHeld() {
+  let s = run(
+    started(),
+    { type: 'launch', steps: [1] },
+    { type: 'report', step: 1, value: 'pass' },
+    { type: 'wave-gate', value: 'pass' },
+    { type: 'advance' },
+    { type: 'hold', step: 3 },
+    { type: 'launch', steps: [2] },
+    { type: 'report', step: 2, value: 'pass' },
+    { type: 'prelaunch-review', step: 5, value: 'pass' },
+    { type: 'refuse', step: 5, value: 'not-named' },
+  );
+  while (nextAction(s).action === 'wave-gate' || nextAction(s).action === 'advance') {
+    s = ok(s, nextAction(s).action === 'advance' ? { type: 'advance' } : { type: 'wave-gate', value: 'pass' });
+  }
+  return s;
+}
+
+test('a held step released after the wave advanced can run again', () => {
+  const s0 = pastHeld();
+  assert.ok(s0.run.wave > step(s0, 3).wave, 'the wave advanced past T3');
+  const v = ok(s0, { type: 'answer', step: 3, value: 'value', text: 'x' });
+  assert.equal(v.run.wave, step(v, 3).wave);
+  assert.equal(nextAction(v).action, 'launch');
+  assert.equal(step(ok(v, { type: 'launch', steps: [3] }), 3).status, 'launched');
+  const r = ok(s0, { type: 'release', step: 3 });
+  assert.equal(r.run.wave, step(r, 3).wave);
+  assert.equal(step(ok(r, { type: 'launch', steps: [3] }), 3).status, 'launched');
+  const a = ok(ok(s0, { type: 'authorize', step: 5 }), { type: 'prelaunch-review', step: 5, value: 'pass' }, T1);
+  assert.equal(a.run.wave, step(a, 5).wave);
+});
+
+test('open manual entries are asked before the final gate', () => {
+  let s = pastHeld();
+  for (let i = 0; i < 20 && nextAction(s).action !== 'ask'; i++) {
+    const n = nextAction(s);
+    if (n.action === 'launch') {
+      for (const l of n.steps) {
+        s = ok(s, { type: 'launch', steps: [l.n] });
+        s = ok(s, { type: 'report', step: l.n, value: 'pass' });
+        if (step(s, l.n).status === 'review-owed') s = ok(s, { type: 'review-result', step: l.n, value: 'pass' });
+      }
+    } else if (n.action === 'wave-gate') s = ok(s, { type: 'wave-gate', value: 'pass' });
+    else if (n.action === 'advance') s = ok(s, { type: 'advance' });
+    else break;
+  }
+  assert.equal(s.steps.some((x) => x.status === 'pending'), false);
+  const open = s.manual.filter((m) => m.open);
+  assert.deepEqual(open.map((m) => m.step), [3, 5]);
+  assert.deepEqual(nextAction(s), { action: 'ask', manual: open });
+  s = ok(s, { type: 'answer', step: 3, value: 'no' });
+  s = ok(s, { type: 'answer', step: 5, value: 'no' });
+  assert.deepEqual(nextAction(s), { action: 'final-gate' });
 });
 
 // ---------------------------------------------------------------------------
