@@ -380,12 +380,72 @@ function reviewTruth(r, minCommits, label, marks = 0) {
   return iss
 }
 // The plan's tier drives the implementer; the reviewer is sonnet unless the plan marks blast radius 2, the task is opus or external.
+// E8: the route of the plan/1 emit drives the models; a task without route keeps the transcribed tier/reviewTier until T6 removes that branch.
+const hasRoute = task => !!(task && task.route && typeof task.route === 'object')
 function implModel(task) {
+  if (hasRoute(task)) return ['haiku', 'sonnet', 'opus'].includes(task.route.tier) ? task.route.tier : 'sonnet'
   return ['haiku', 'sonnet', 'opus'].includes(task && task.tier) ? task.tier : 'sonnet'
 }
-// Opus review for blast radius 2 (reviewTier), for an opus implementer and for any external-effect task.
+function implEffort(task) {
+  if (hasRoute(task) && ['low', 'medium', 'high'].includes(task.route.effort)) return task.route.effort
+  return effortFor(implModel(task))
+}
+// Opus review for the route's reviewTier, for an opus implementer and for any external-effect task.
 function reviewModelFor(task) {
+  if (hasRoute(task)) return task.route.reviewTier === 'opus' || task.route.tier === 'opus' || task.external === true ? 'opus' : 'sonnet'
   return task && (task.reviewTier === 'opus' || task.tier === 'opus' || task.external === true) ? 'opus' : 'sonnet'
+}
+// ---- plan/1 adapter (E8): the plan-tool emit is parsed and checked here; nothing is trusted from an agent's transcription.
+function loadPlanEmit(stdout, { E, RM } = {}) {
+  let o
+  try { o = JSON.parse(String(stdout)) } catch (e) { return { ok: false, why: `plan-tool emit output is not JSON (${e.message})` } }
+  if (!o || typeof o !== 'object') return { ok: false, why: 'plan-tool emit output is not an object' }
+  if (o.tool !== 'plan-tool') return { ok: false, why: `tool is ${JSON.stringify(o.tool)}, expected "plan-tool"` }
+  if (o.schema !== 'plan/1') return { ok: false, why: `schema is ${JSON.stringify(o.schema)}, expected "plan/1"` }
+  const plan = o.plan
+  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.tasks)) return { ok: false, why: 'the emit has no plan with a task list' }
+  if (plan.id !== E) return { ok: false, why: `plan id is ${JSON.stringify(plan.id)}, expected ${E}` }
+  if (plan.roadmap !== RM) return { ok: false, why: `plan roadmap is ${JSON.stringify(plan.roadmap)}, expected ${RM}` }
+  if (typeof o.digest !== 'string' || planDigest({ plan, source: o.source }) !== o.digest) return { ok: false, why: 'the emit digest does not match the plan and source' }
+  for (const t of plan.tasks) {
+    const hasDependents = plan.tasks.some(x => Array.isArray(x.deps) && x.deps.includes(t.n))
+    let want
+    try { want = route(t, { hasDependents }) } catch (e) { return { ok: false, why: `task ${t.n}: route could not be recalculated (${e.message})` } }
+    if (JSON.stringify(canon(want)) !== JSON.stringify(canon(t.route))) return { ok: false, why: `task ${t.n}: emitted route differs from the recalculated one` }
+  }
+  return { ok: true, plan, digest: o.digest }
+}
+function tasksFromPlan(plan) {
+  return ((plan && plan.tasks) || []).map(t => {
+    const f = t.files || {}
+    return {
+      n: t.n,
+      title: t.title,
+      files: [...new Set([...(f.create || []), ...(f.modify || []), ...(f.test || [])])],
+      needsLock: t.locks || [],
+      external: t.external,
+      externalDedupe: t.externalDedupe,
+      noCommit: t.noCommit,
+      route: t.route,
+      deps: t.deps || [],
+    }
+  })
+}
+function evidenceFromPlan(plan) {
+  return ((plan && plan.evidence) || []).map(e => ({ ac: e.ac, kind: e.kind, command: e.command, testRef: e.testRef === undefined ? null : e.testRef, blq: e.blq, external: e.external, externalDedupe: e.externalDedupe }))
+}
+// Differences on tasks already committed between two plans (canonical JSON, route included); a committed task missing from the next plan is a difference.
+function frozenTaskDiffs(prevPlan, nextPlan, committed) {
+  const find = (p, n) => ((p && p.tasks) || []).find(t => t.n === n)
+  const out = []
+  for (const n of committed || []) {
+    const a = find(prevPlan, n)
+    if (!a) continue
+    const b = find(nextPlan, n)
+    if (!b) out.push(`task ${n} is committed but missing from the new plan`)
+    else if (JSON.stringify(canon(a)) !== JSON.stringify(canon(b))) out.push(`task ${n} is committed but changed in the new plan`)
+  }
+  return out
 }
 const MODEL_RANK = { haiku: 0, sonnet: 1, opus: 2 }
 function maxModel(a, b) {

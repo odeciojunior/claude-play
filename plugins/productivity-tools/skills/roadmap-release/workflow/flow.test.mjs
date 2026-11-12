@@ -3513,3 +3513,106 @@ test('heldBy holds transitive dependents and never the owner', () => {
   assert.equal(pure.heldBy({ ...base, selected: ['E1', 'E4'] }).size, 0);
   assert.equal(pure.holdReason({ decision: 'DEC-9', owner: 'E1' }), 'held by DEC-9 (E1, contract, pending ratification)');
 });
+
+// ---- E8 T3: plan/1 adapter, plan load and routing
+const PLAN_TOOL = join(PLAN_TOOL_FIX, '..', '..', 'plan-tool.mjs');
+const emitFixture = () => execFileSync('node', [PLAN_TOOL, 'emit', join(PLAN_TOOL_FIX, 'plan.md'), '--json'], { encoding: 'utf8' });
+const fixtureEmit = () => JSON.parse(emitFixture());
+
+// Builds the JSON of `plan-tool emit` with route and digest computed by the lib copies.
+function planEmitOf({ id, roadmap, tasks, evidence = [] }) {
+  const plan = { schema: 'plan/1', id, roadmap, tasks: [], evidence };
+  plan.tasks = tasks.map((t) => ({ locks: [], external: false, externalDedupe: null, noCommit: false, deps: [], ...t }));
+  plan.tasks = plan.tasks.map((t) => ({ ...t, route: libRoute(t, { hasDependents: plan.tasks.some((x) => x.deps.includes(t.n)) }) }));
+  const source = { path: 'plan.md', textDigest: 'abcd1234' };
+  return { tool: 'plan-tool', schema: 'plan/1', path: 'plan.md', source, plan, digest: libPlanDigest({ plan, source }) };
+}
+
+test('loadPlanEmit accepts a faithful emit', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  const r = pure.loadPlanEmit(JSON.stringify(e), { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' });
+  assert.equal(r.ok, true);
+  assert.equal(r.digest, e.digest);
+  assert.equal(r.plan.tasks.length, 6);
+  const mine = planEmitOf({
+    id: 'E9', roadmap: 'docs/plans/r/',
+    tasks: [
+      { n: 1, files: { create: ['a'], modify: [], test: [] }, score: { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 } },
+      { n: 2, deps: [1], files: { create: ['b'], modify: [], test: [] }, score: { ambiguity: 1, reasoning: 1, blast: 1, verifiability: 1 } },
+    ],
+  });
+  assert.equal(pure.loadPlanEmit(JSON.stringify(mine), { E: 'E9', RM: 'docs/plans/r/' }).ok, true);
+});
+
+test('loadPlanEmit rejects a wrong digest, id, roadmap, tool or schema', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  const args = { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' };
+  const bad = (mut, re) => {
+    const c = JSON.parse(JSON.stringify(e));
+    mut(c);
+    const r = pure.loadPlanEmit(JSON.stringify(c), args);
+    assert.equal(r.ok, false);
+    assert.match(r.why, re);
+  };
+  bad((c) => { c.digest = '00000000'; }, /digest/);
+  bad((c) => { c.plan.id = 'E2'; c.digest = libPlanDigest({ plan: c.plan, source: c.source }); }, /plan id/);
+  bad((c) => { c.plan.roadmap = 'other/'; c.digest = libPlanDigest({ plan: c.plan, source: c.source }); }, /roadmap/);
+  bad((c) => { c.tool = 'spec-tool'; }, /tool/);
+  bad((c) => { c.schema = 'plan/2'; }, /schema/);
+  assert.equal(pure.loadPlanEmit('not json', args).ok, false);
+});
+
+test('loadPlanEmit rejects a route that differs from the recalculated one', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  e.plan.tasks[1].route = { ...e.plan.tasks[1].route, tier: 'opus', reviewTier: 'opus' };
+  e.digest = libPlanDigest({ plan: e.plan, source: e.source });
+  const r = pure.loadPlanEmit(JSON.stringify(e), { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' });
+  assert.equal(r.ok, false);
+  assert.match(r.why, /task 2.*route/);
+});
+
+test('tasksFromPlan merges files and copies locks and external', () => {
+  const pure = loadPure();
+  const { plan } = fixtureEmit();
+  const ts = pure.tasksFromPlan(plan);
+  assert.equal(ts.length, plan.tasks.length);
+  assert.deepEqual(ts[0].files, ['src/store.mjs', 'tests/store.test.mjs']);
+  assert.deepEqual(Object.keys(ts[0]).sort(), ['deps', 'external', 'externalDedupe', 'files', 'n', 'needsLock', 'noCommit', 'route', 'title']);
+  assert.deepEqual(ts.find((t) => t.n === 3).needsLock, ['fixture-db']);
+  const ext = ts.find((t) => t.external === true);
+  assert.ok(ext && ext.externalDedupe);
+  assert.deepEqual(ts[1].deps, [1]);
+  assert.deepEqual(ts[1].route, plan.tasks[1].route);
+  const dup = pure.tasksFromPlan({ tasks: [{ n: 1, title: 't', files: { create: ['a'], modify: ['a', 'b'], test: ['b'] }, locks: [], external: false, externalDedupe: null, noCommit: false, route: {}, deps: [] }] });
+  assert.deepEqual(dup[0].files, ['a', 'b']);
+});
+
+test('evidenceFromPlan keeps the row fields', () => {
+  const pure = loadPure();
+  const { plan } = fixtureEmit();
+  const rows = pure.evidenceFromPlan(plan);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0], { ac: 'AC1', kind: 'test', command: 'node --test tests/e1.test.mjs', testRef: null, blq: null, external: false, externalDedupe: null });
+  assert.deepEqual(rows[1], { ac: 'AC2', kind: 'blocked', command: null, testRef: null, blq: 'BLQ-1', external: false, externalDedupe: null });
+});
+
+test('frozenTaskDiffs flags a changed or missing committed task and ignores the others', () => {
+  const pure = loadPure();
+  const prev = fixtureEmit().plan;
+  const next = JSON.parse(JSON.stringify(prev));
+  assert.deepEqual(pure.frozenTaskDiffs(prev, next, [1, 2]), []);
+  next.tasks[2].title = 'changed';
+  assert.deepEqual(pure.frozenTaskDiffs(prev, next, [1, 2]), []);
+  assert.equal(pure.frozenTaskDiffs(prev, next, [1, 3]).length, 1);
+  next.tasks[0].route = { ...next.tasks[0].route, effort: 'high' };
+  assert.equal(pure.frozenTaskDiffs(prev, next, [1]).length, 1);
+  next.tasks = next.tasks.filter((t) => t.n !== 2);
+  const d = pure.frozenTaskDiffs(prev, next, [2]);
+  assert.equal(d.length, 1);
+  assert.match(d[0], /task 2/);
+  const reordered = { ...prev, tasks: prev.tasks.map((t) => ({ ...t, files: { modify: t.files.modify, test: t.files.test, create: t.files.create } })) };
+  assert.deepEqual(pure.frozenTaskDiffs(prev, reordered, [1, 2, 3]), []);
+});
