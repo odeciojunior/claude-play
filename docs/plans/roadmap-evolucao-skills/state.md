@@ -33,7 +33,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
 | E17 | na-branch | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba` | E17: seguir o fluxo do release após na-branch |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
-| E19 | bloqueado (BLQ-6) | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` | E19: seguir o fluxo do release após executando |
+| E19 | executando | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md` | E19: seguir o fluxo do release após executando |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
 | E21 | nao-iniciado | - | Aguardar E9 |
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
@@ -49,7 +49,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-6 | E19 bloqueado: automatic execution stopped (conteudo): task 6 BLOCKED: Task 6 was not run. It needs a subagent tool to dispatch the spec-author agent, and this session has [...] texto completo em docs/superpowers/reviews/2026-11-12-E19-autor-spec-skill-interativa-reviews.md | E19 | 2026-11-12 | quando o bloqueio de E19 for resolvido; restaura E19 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -115,9 +114,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E17: critério AC4 sem evidência automática (human)
 - (dono) E17: critério AC5 sem evidência automática (human)
 - (dono) E17: critério AC6 sem evidência automática (human)
-- (dono) Conferência do dono dos resultados das execuções comportamentais (critérios 1 e 2, verify: human) registrados em docs/reports/2026-11-12-E19-autor-spec-comportamental.md; nenhum aceite fictício é registrado.
 - (dono) Ratificação das decisões de alcance contrato (1, 2, 3, 8 e 9) antes de E8 e E20 começarem (DEC-030).
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real.
+- (executor) Na execução comportamental de E20, carregar o plugin da worktree e despachar spec-author uma vez pela forma do plugin (subagent_type), conferindo modelo e ferramentas do frontmatter; E19 só exerceu a forma de reserva.
+- (executor) E8: alinhar o contrato em spec-author.md: output absoluto; intake e ownerNote multilinha, como último campo até o fim do prompt. Não editado em E19 para manter o corpo testado no critério 1.
+- (executor) E20: spec-tool summary imprime títulos em português (Decisões, Pessoas, Efeitos externos) mesmo com language English; dar idioma ao summary de spec-tool e de plan-tool juntos.
+- (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
 <!-- /roadmap:pending -->
 
 ## Em andamento
