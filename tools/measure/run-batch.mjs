@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { makeScenario, artifactOf, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
@@ -97,11 +97,11 @@ export function toAttemptCounters(run) {
 const stamp = (d) => d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
 
 export function readPlugin(configDir) {
-  const unknown = { version: 'unknown', commit: 'unknown' };
+  const unknown = { version: 'unknown', commit: 'unknown', installPath: 'unknown' };
   const file = join(configDir, 'plugins', 'installed_plugins.json');
   try {
     const entry = JSON.parse(readFileSync(file, 'utf8')).plugins?.[PLUGIN_KEY]?.[0];
-    if (entry?.version) return { version: entry.version, commit: entry.gitCommitSha ?? 'unknown' };
+    if (entry?.version) return { version: entry.version, commit: entry.gitCommitSha ?? 'unknown', installPath: entry.installPath ?? 'unknown' };
   } catch {
     /* fall through */
   }
@@ -567,6 +567,63 @@ export function e5Integrated(sandbox) {
   }
 }
 
+// Registry panel of the release variants, read with the measured plugin's own CLI (E17). Vocabulary of the sandbox folder:
+// the target release/sandbox is not the integrationBranch, so the workflow records on-branch after the merge and plan in plan-only.
+export const PANEL_VARIANTS = ['plan-only', 'completo', 'parada-retomada'];
+export const EXPECTED_PANEL = {
+  'plan-only': { status: 'plan', mergeEvidence: false },
+  completo: { status: 'on-branch', mergeEvidence: true },
+  'parada-retomada': { status: 'on-branch', mergeEvidence: true },
+};
+
+// Never throws: any failure (missing CLI, non-JSON output, exit other than 0/1) is { error }.
+export function readPanel(sandbox, installPath, { exec = spawnSync } = {}) {
+  try {
+    if (!gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/release/sandbox')) return { error: 'release/sandbox missing' };
+    gitOut(sandbox, 'checkout', '-q', 'release/sandbox');
+    const scripts = join(installPath, 'skills', 'roadmap-tracker', 'scripts');
+    const run = (script, args) => {
+      const r = exec(process.execPath, [join(scripts, script), ...args], { cwd: sandbox, encoding: 'utf8' });
+      if (!r || (r.status !== 0 && r.status !== 1)) throw new Error(`${script} exited ${r?.status ?? 'without status'}`);
+      try {
+        return JSON.parse(r.stdout ?? '');
+      } catch {
+        throw new Error(`${script} printed no JSON`);
+      }
+    };
+    const status = run('roadmap.mjs', ['status', 'docs/plans/roadmap-sandbox', '--json']);
+    const row = (status.result?.panel ?? []).find((p) => p.id === 'E5');
+    if (!row) throw new Error('no E5 row in the panel');
+    const checker = run('check-roadmap.mjs', ['docs/plans/roadmap-sandbox', '--json']);
+    const merge = gitOut(sandbox, 'log', '--first-parent', '--format=%H%x09%s', 'release/sandbox')
+      .split(/\r?\n/)
+      .map((l) => l.split('\t'))
+      .find(([, s]) => s?.startsWith('merge: E5 in release/sandbox'));
+    return {
+      e5Status: row.segments?.[0]?.word ?? '',
+      e5Evidence: row.evidence ?? '',
+      mergeCommit: merge ? merge[0] : null,
+      checkerErrors: checker.summary?.errors ?? (checker.errors ?? []).length,
+    };
+  } catch (e) {
+    return { error: String(e?.message ?? e) };
+  }
+}
+
+export function panelMatches(variant, panel) {
+  const want = EXPECTED_PANEL[variant];
+  const reasons = [];
+  if (!want) return { ok: false, reasons: [`no expected panel for variant ${variant}`] };
+  if (!panel || panel.error) return { ok: false, reasons: [`panel unreadable: ${panel?.error ?? 'missing'}`] };
+  if (panel.e5Status !== want.status) reasons.push(`E5 status is "${panel.e5Status}", expected "${want.status}"`);
+  if (panel.checkerErrors !== 0) reasons.push(`checker reports ${panel.checkerErrors} errors`);
+  if (want.mergeEvidence) {
+    if (!panel.mergeCommit) reasons.push('no merge commit of E5 in release/sandbox');
+    else if (!String(panel.e5Evidence ?? '').includes(panel.mergeCommit.slice(0, 7))) reasons.push('E5 evidence does not cite the merge commit');
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
 // A release run that launched no subagent at all stopped before doing anything (e.g. at preflight).
 export function releaseRunValidity(variant, run) {
   if (variant !== 'completo' && variant !== 'parada-retomada') return { valid: true, reason: 'ok' };
@@ -735,6 +792,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const attempt = { n: k, status: 'valid', counters: toAttemptCounters(run), outcomes };
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
+    if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath);
     attempts.push(attempt);
   }
 

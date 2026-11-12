@@ -329,3 +329,13 @@ test('mergeVariant: o modo de permissão vem só dos agregados com execuções v
   assert.equal(merged.permissionMode, 'bypassPermissions');
   assert.equal(mergeVariant([{ ...base, valid: 0, denied: 1, permissionMode: 'default' }]).permissionMode, 'default');
 });
+
+test('E17: panel survives the merge of partial aggregates', () => {
+  const panel = (n) => ({ e5Status: 'on-branch', e5Evidence: `merge ${n}`, mergeCommit: `abc123${n}`, checkerErrors: 0 });
+  const att = (n) => ({ n, status: 'valid', counters: { cost: n, structural: { weighted: 1 } }, outcomes: [], panel: panel(n) });
+  const agg = (attempts) => ({ variant: 'completo', requested: attempts.length, valid: attempts.length, invalid: 0, denied: 0, attempts, roles: {}, invalidReasons: {} });
+  const m = mergeVariant([agg([att(1)]), agg([att(1)])]);
+  assert.deepEqual(m.attempts.map((a) => a.n), [1, 2]);
+  assert.deepEqual(m.attempts[0].panel, panel(1));
+  assert.deepEqual(m.attempts[1].panel, panel(1));
+});
