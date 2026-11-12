@@ -77,3 +77,73 @@ test('E20: plan-author adopt mode keeps every old step in an Adoção section', 
 test('E20: shipped E20 texts never mention bypassPermissions', () => {
   assert.doesNotMatch(read(AGENT), /bypassPermissions/);
 });
+
+const PLAN_WRITER = 'skills/plan-writer/SKILL.md';
+
+test('E20: plan-writer frontmatter keeps name, description and argument-hint only', () => {
+  const { keys, fields } = frontmatter(read(PLAN_WRITER));
+  assert.deepEqual([...keys].sort(), ['argument-hint', 'description', 'name']);
+  assert.equal(fields.name, 'plan-writer');
+  for (const w of ['spec-writer', 'roadmap-planner', 'plan-coordinator']) {
+    assert.ok(fields.description.includes(w), `descrição sem ${w}`);
+  }
+  assert.match(fields.description, /adopt/i);
+});
+
+test('E20: plan-writer dispatches plan-author in interactive and adopt mode', () => {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  for (const w of ['subagent_type', 'productivity-tools:plan-author', 'mode: interactive', 'mode: adopt',
+    '${CLAUDE_SKILL_DIR}/../../scripts/plan-tool.mjs', '.adopted.md', '## Adoção']) {
+    assert.ok(body.includes(w), `falta "${w}"`);
+  }
+  assert.match(body, /node "[^"]*plan-tool[^"]*" (check|summary)|node "<planTool>" (check|summary)/);
+  assert.match(body, /summary[^\n]*--lang/);
+});
+
+test('E20: plan-writer resolves the roadmap folder from its three sources (pointer)', () => {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  for (const w of ['--roadmap', '**Roadmap:**', 'roadmap.config.json']) {
+    assert.ok(body.includes(w), `falta "${w}"`);
+  }
+  assert.match(body, /null/);
+});
+
+test('E20: plan-writer adoption asks one approval and never overwrites before it', () => {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  assert.ok(body.includes('AskUserQuestion'));
+  assert.match(body, /one approval/i);
+  assert.match(body, /original[^\n]*(intact|unchanged)/i);
+  assert.match(body, /does not commit|never commits/i);
+});
+
+test('E20: plan-writer refusals show the exact rules and reload', () => {
+  const { body } = frontmatter(read(PLAN_WRITER));
+  assert.ok(body.includes('Bash(node *plan-tool.mjs" *)'));
+  assert.ok(body.includes('Bash(node *spec-tool.mjs" *)'));
+  assert.ok(body.includes('/reload-plugins'));
+});
+
+test('E20: progress refusal and plan-writer adoption stay in step (REQ-020)', () => {
+  const progress = read('skills/plan-coordinator/scripts/progress.mjs');
+  const line = progress.split('\n').find((l) => l.startsWith('const NO_DATA_BLOCK ='));
+  assert.ok(line, 'sem NO_DATA_BLOCK');
+  assert.ok(line.includes('plan-writer'));
+  assert.match(line, /modo de adoção/);
+  const text = read(PLAN_WRITER);
+  assert.equal(frontmatter(text).fields.name, 'plan-writer');
+  assert.match(text, /adoption mode/i);
+});
+
+test('E20: spec-writer points to plan-writer and passes --lang to summary', () => {
+  const text = read('skills/spec-writer/SKILL.md');
+  assert.ok(!text.includes('once it exists'));
+  assert.match(text, /summary[^\n]*--lang/);
+});
+
+test('E20: shipped E20 texts never mention bypassPermissions in plan-writer', () => {
+  assert.doesNotMatch(read(PLAN_WRITER), /bypassPermissions/);
+});
+
+test('E20: plan-writer stays under 500 lines', () => {
+  assert.ok(read(PLAN_WRITER).split('\n').length < 500);
+});

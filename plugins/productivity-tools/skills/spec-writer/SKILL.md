@@ -19,8 +19,8 @@ Turn one request into a checked `spec/1` spec in a single guided pass: one round
    - `topic: <topic>`
    - `language`: the language of the request
    - `intake`: the note, always the last field; it may span several lines, and everything after `intake:` is the note
-4. If the author's last message is a `check` with errors instead of the `emit` JSON, show the errors and stop without asking for approval. Otherwise run `node "<specTool>" summary "<repository root>/docs/plans/<topic>/spec.md"` (the same absolute path) and show the decisions and the items only a person can settle. Ask for one approval with a single `AskUserQuestion` call (approve / request a change / refuse); it does not count as a question round. If the person asks for a change, dispatch the agent again with the correction in the intake note, run `node "<specTool>" check "<repository root>/docs/plans/<topic>/spec.md"`, and report the result with no second approval. If the person refuses without saying what to change, stop with the written spec and the summary, and ask nothing more.
-5. Report the spec path and that the implementation plan comes from `plan-writer` once it exists.
+4. If the author's last message is a `check` with errors instead of the `emit` JSON, show the errors and stop without asking for approval. Otherwise run `node "<specTool>" summary "<repository root>/docs/plans/<topic>/spec.md" --lang <pt|en>` (the same absolute path; `pt` if the person writes in Portuguese, otherwise `en`) and show the decisions and the items only a person can settle. Ask for one approval with a single `AskUserQuestion` call (approve / request a change / refuse); it does not count as a question round. If the person asks for a change, dispatch the agent again with the correction in the intake note, run `node "<specTool>" check "<repository root>/docs/plans/<topic>/spec.md"`, and report the result with no second approval. If the person refuses without saying what to change, stop with the written spec and the summary, and ask nothing more.
+5. Report the spec path and that the implementation plan comes from `plan-writer`.
 
 ## Data block
 
