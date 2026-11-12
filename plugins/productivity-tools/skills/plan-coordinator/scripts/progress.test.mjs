@@ -609,3 +609,254 @@ test('answer value writes the note and returns to pending', () => {
   assert.equal(step(no, 5).status, 'skip-manual');
   assert.equal(no.manual[0].kind, 'refused');
 });
+
+// ---------------------------------------------------------------------------
+// Task 4: CLI progress.mjs
+// ---------------------------------------------------------------------------
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { main as progressMain, readState, writeState } from './progress.mjs';
+
+const PROGRESS = path.join(here, 'progress.mjs');
+const FIXTURES = path.join(here, '..', '..', '..', 'scripts', 'fixtures');
+const GIT = ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false'];
+
+function sh(cwd, cmd, args) {
+  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' });
+  assert.equal(r.status, 0, cmd + ' ' + args.join(' ') + ': ' + r.stderr);
+  return r.stdout.trim();
+}
+
+function sandbox() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'progress-'));
+  fs.mkdirSync(path.join(dir, 'plan-tool'));
+  fs.mkdirSync(path.join(dir, 'spec-tool'));
+  fs.copyFileSync(path.join(FIXTURES, 'plan-tool', 'plan.md'), path.join(dir, 'plan-tool', 'plan.md'));
+  fs.copyFileSync(path.join(FIXTURES, 'spec-tool', 'spec.md'), path.join(dir, 'spec-tool', 'spec.md'));
+  sh(dir, 'git', ['init', '-q', '-b', 'main']);
+  sh(dir, 'git', [...GIT, 'add', '-A']);
+  sh(dir, 'git', [...GIT, 'commit', '-q', '-m', 'init']);
+  return {
+    dir,
+    plan: path.join(dir, 'plan-tool', 'plan.md'),
+    state: path.join(dir, 'plan-tool', 'progress.json'),
+    done: () => fs.rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+function cli(args) {
+  const r = spawnSync(process.execPath, [PROGRESS, ...args], { encoding: 'utf8' });
+  return { code: r.status, out: r.stdout, err: r.stderr };
+}
+
+const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+const writeJson = (f, o) => fs.writeFileSync(f, JSON.stringify(o, null, 2) + '\n');
+
+function withSandbox(fn) {
+  const sb = sandbox();
+  try {
+    return fn(sb);
+  } finally {
+    sb.done();
+  }
+}
+
+test('AC7: plan without data block is refused pointing to adoption', () => withSandbox((sb) => {
+  fs.writeFileSync(sb.plan, '# Plano\n\nSó prosa, sem bloco de dados.\n');
+  const r = cli(['init', sb.plan, '--json']);
+  assert.equal(r.code, 1);
+  const j = JSON.parse(r.out);
+  assert.equal(j.code, 'plan-no-data-block');
+  assert.equal(j.ok, false);
+  assert.ok(j.errors[0].message.includes('plan-writer') && j.errors[0].message.includes('adoção'));
+  assert.equal(fs.existsSync(sb.state), false);
+  assert.equal(fs.existsSync(path.join(path.dirname(sb.plan), 'briefs')), false);
+}));
+
+for (const width of [null, 2]) {
+  test('AC3: init through the CLI matches plan-tool map' + (width ? ' (max-width 2)' : ''), () => withSandbox((sb) => {
+    const args = ['init', sb.plan];
+    if (width) args.push('--max-width', String(width));
+    const r = cli(args);
+    assert.equal(r.code, 0, r.err);
+    const state = readJson(sb.state);
+    const text = fs.readFileSync(sb.plan, 'utf8');
+    const c = checkPlan(text, { planPath: sb.plan });
+    const m = buildMap(c.data, c.levels, { maxWidth: width ?? 4 });
+    assert.deepEqual(state.waves, m.waves.map((w) => ({ n: w.n, tasks: w.tasks.map((t) => t.n) })));
+    for (const w of m.waves) {
+      for (const t of w.tasks) {
+        const s = state.steps.find((x) => x.n === t.n);
+        assert.equal(s.tier, t.tier);
+        assert.equal(s.effort, t.effort);
+        assert.equal(s.reviewTier, t.reviewTier);
+        assert.equal(s.gate, t.gate);
+        assert.equal(s.external, t.external);
+        assert.equal(s.wave, w.n);
+      }
+    }
+    assert.equal(state.plan.maxWidth, width ?? 4);
+    for (let n = 1; n <= 6; n++) assert.ok(fs.existsSync(path.join(path.dirname(sb.plan), 'briefs', 'T' + n + '.md')));
+    assert.ok(!fs.readFileSync(path.join(path.dirname(sb.plan), 'briefs', 'T1.md'), 'utf8').includes('\r'));
+  }));
+}
+
+test('init refuses plan-invalid and state-exists; --restart recreates', () => withSandbox((sb) => {
+  const good = fs.readFileSync(sb.plan, 'utf8');
+  fs.writeFileSync(sb.plan, good.replace('"deps": []', '"deps": [99]'));
+  const bad = cli(['init', sb.plan, '--json']);
+  assert.equal(bad.code, 1);
+  assert.equal(JSON.parse(bad.out).code, 'plan-invalid');
+  assert.equal(fs.existsSync(sb.state), false);
+  fs.writeFileSync(sb.plan, good);
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const again = cli(['init', sb.plan, '--json']);
+  assert.equal(again.code, 1);
+  assert.equal(JSON.parse(again.out).code, 'state-exists');
+  assert.equal(cli(['apply', sb.state, 'approve-map']).code, 0);
+  assert.equal(readJson(sb.state).run.status, 'in-progress');
+  assert.equal(cli(['init', sb.plan, '--restart']).code, 0);
+  assert.equal(readJson(sb.state).run.status, 'map-ready');
+}));
+
+test('init records the default base', () => withSandbox((sb) => {
+  const head = sh(sb.dir, 'git', ['rev-parse', 'HEAD']);
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  let state = readJson(sb.state);
+  assert.equal(state.run.base, head);
+  assert.ok(state.history.some((h) => h.event === 'default' && h.what === 'base' && h.value === head));
+
+  sh(sb.dir, 'git', ['checkout', '-q', '-b', 'feat']);
+  fs.writeFileSync(path.join(sb.dir, 'extra.txt'), 'x\n');
+  sh(sb.dir, 'git', [...GIT, 'add', 'extra.txt']);
+  sh(sb.dir, 'git', [...GIT, 'commit', '-q', '-m', 'more']);
+  assert.equal(cli(['init', sb.plan, '--restart']).code, 0);
+  state = readJson(sb.state);
+  assert.equal(state.run.base, head);
+  assert.notEqual(sh(sb.dir, 'git', ['rev-parse', 'HEAD']), head);
+}));
+
+test('AC2: next in a fresh process returns the next action from the file alone', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const state = readJson(sb.state);
+  state.run.status = 'in-progress';
+  state.run.wave = 2;
+  const st = (n) => state.steps.find((s) => s.n === n);
+  st(1).status = 'pass';
+  st(2).status = 'launched';
+  st(2).agentId = 'a2';
+  st(5).status = 'review-owed';
+  writeJson(sb.state, state);
+  let r = cli(['next', sb.state, '--json']);
+  assert.equal(r.code, 0, r.err);
+  let j = JSON.parse(r.out);
+  assert.equal(j.tool, 'progress');
+  assert.equal(j.command, 'next');
+  assert.deepEqual(j.action, { action: 'await', steps: [2], agentIds: ['a2'] });
+  st(2).status = 'pass';
+  writeJson(sb.state, state);
+  r = cli(['next', sb.state, '--json']);
+  j = JSON.parse(r.out);
+  assert.deepEqual(j.action, { action: 'review', step: 5, reviewTier: 'opus' });
+}));
+
+test('AC1: apply refused leaves the file byte-identical', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const state = readJson(sb.state);
+  state.run.status = 'in-progress';
+  state.run.wave = 2;
+  writeJson(sb.state, state);
+  const before = fs.readFileSync(sb.state);
+  const r = cli(['apply', sb.state, 'launch', '--steps', '2']);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /dependency-not-passed/);
+  assert.ok(fs.readFileSync(sb.state).equals(before));
+}));
+
+test('apply accepted writes LF and appends history', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const r = cli(['apply', sb.state, 'approve-map', '--json']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(JSON.parse(r.out).ok, true);
+  const bytes = fs.readFileSync(sb.state, 'utf8');
+  assert.ok(!bytes.includes('\r') && bytes.endsWith('}\n') && bytes.charCodeAt(0) !== 0xfeff);
+  const state = JSON.parse(bytes);
+  assert.equal(state.run.status, 'in-progress');
+  assert.equal(state.history.at(-1).event, 'approve-map');
+}));
+
+test('state file in CRLF with BOM is read and rewritten in LF', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const text = fs.readFileSync(sb.state, 'utf8').replace(/\n/g, '\r\n');
+  fs.writeFileSync(sb.state, '﻿' + text);
+  assert.equal(cli(['next', sb.state]).code, 0);
+  assert.equal(cli(['apply', sb.state, 'approve-map']).code, 0);
+  const raw = fs.readFileSync(sb.state);
+  assert.notEqual(raw[0], 0xef);
+  assert.ok(!raw.toString('utf8').includes('\r'));
+  assert.equal(JSON.parse(raw.toString('utf8')).run.status, 'in-progress');
+}));
+
+test('next returns plan-changed after the plan text changes', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  assert.equal(cli(['apply', sb.state, 'approve-map']).code, 0);
+  fs.appendFileSync(sb.plan, '\nNota nova no fim.\n');
+  const before = fs.readFileSync(sb.state);
+  const r = cli(['next', sb.state, '--json']);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(JSON.parse(r.out).action, { action: 'plan-changed' });
+  assert.ok(fs.readFileSync(sb.state).equals(before));
+}));
+
+test('next and apply refuse state-schema', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const state = readJson(sb.state);
+  state.schema = 'progress/2';
+  writeJson(sb.state, state);
+  const before = fs.readFileSync(sb.state);
+  for (const args of [['next', sb.state, '--json'], ['apply', sb.state, 'approve-map', '--json']]) {
+    const r = cli(args);
+    assert.equal(r.code, 1);
+    assert.equal(JSON.parse(r.out).code, 'state-schema');
+  }
+  assert.ok(fs.readFileSync(sb.state).equals(before));
+}));
+
+test('writeState refuses concurrent-change', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const { state, bytes } = readState(sb.state);
+  fs.writeFileSync(sb.state, 'alheio\n');
+  assert.throws(() => writeState(sb.state, bytes, state), (e) => e.code === 'concurrent-change');
+  assert.equal(fs.readFileSync(sb.state, 'utf8'), 'alheio\n');
+  assert.deepEqual(fs.readdirSync(path.dirname(sb.state)).filter((f) => f.endsWith('.tmp')), []);
+}));
+
+test('usage errors exit 2', () => withSandbox((sb) => {
+  assert.equal(cli([]).code, 2);
+  assert.equal(cli(['nope']).code, 2);
+  assert.equal(cli(['init', sb.plan, '--max-width', 'x']).code, 2);
+  assert.equal(cli(['init', sb.plan, '--max-width', '0']).code, 2);
+  assert.equal(cli(['init', sb.plan, '--bogus']).code, 2);
+  assert.equal(cli(['init', path.join(sb.dir, 'missing.md')]).code, 2);
+  assert.equal(cli(['next', path.join(sb.dir, 'missing.json')]).code, 2);
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  assert.equal(cli(['apply', sb.state, 'launch', '--steps', '1,x']).code, 2);
+  assert.equal(cli(['apply', sb.state, 'no-such-event']).code, 2);
+  assert.equal(cli(['apply', sb.state]).code, 2);
+  fs.writeFileSync(sb.state, '{ não é json');
+  assert.equal(cli(['show', sb.state]).code, 2);
+}));
+
+test('show prints one row per step', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const r = cli(['show', sb.state]);
+  assert.equal(r.code, 0);
+  const rows = r.out.split('\n').filter((l) => /^\d+ \| /.test(l));
+  assert.equal(rows.length, 6);
+  assert.match(r.out, /map-ready/);
+}));
+
+test('main is exported and returns the exit code', () => {
+  const io = { stdout: { write() {} }, stderr: { write() {} } };
+  assert.equal(progressMain([], io), 2);
+});
