@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E18 | Teste comportamental da tarefa 7 (DEC-230) rodado pela sessão principal em dry-run até o passo 4, sem Workflow; revisão adversarial aprovada com ressalvas; resumo no log de revisões | `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md` |
 | 2026-11-11 | E4 | DEC-255: W2 e W4 entram sem prosa contada (decisão delegada pelo dono ao Fable) | `decisions.md` |
 | 2026-11-11 | E4 | Critério 4 de E4 aceito por delegação do dono ao Fable | `docs/reports/2026-11-11-E4-revisor-planner-comportamental.md` |
 | 2026-11-11 | E22 | Critérios 2 e 3 de E22 aceitos por delegação do dono ao Fable | `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` |

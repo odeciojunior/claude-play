@@ -132,3 +132,85 @@ O relatório desta execução não traz uma lista de gates com resultado. Os ún
    - BLQ: não informado no relatório.
    - Bloqueante: não.
    - Contorno: Registradas como decisões do executor pendentes; não impedem a entrega de E18.
+
+## Tarefa 7: teste comportamental (orquestrador da sessão principal, DEC-204, DEC-230), 2026-11-12
+
+Executor: subagent sonnet seguindo `roadmap-release/SKILL.md` literalmente, em `dry-run` de E17 sobre `docs/plans/roadmap-evolucao-skills/`, até o passo 2 e a montagem dos argumentos do passo 4, sem chamar o Workflow, no checkout da `release/roadmap-skills-v2` (E18 já integrado; o worktree E18 não existe mais). Checkout sem mudança (`git status --porcelain` vazio).
+
+### Saída literal do preflight (exit 0)
+
+```json
+{
+  "configPath": "D:\\projects\\claude-play-wt\\_integracao\\docs\\plans\\roadmap-evolucao-skills\\release.config.json",
+  "generated": true,
+  "errors": [],
+  "missingRules": [
+    "Bash(node:*)",
+    "Bash(claude:*)",
+    "Bash(node *roadmap.mjs\" *)",
+    "Bash(git:*)"
+  ],
+  "warnings": [],
+  "config": {
+    "generated": true,
+    "projectContext": "Project rules: CLAUDE.md at the repository root (already in your context; if not, read it).",
+    "install": "",
+    "locks": [],
+    "conflictRules": "",
+    "gates": [
+      {
+        "name": "G1",
+        "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+        "kind": "tests"
+      },
+      {
+        "name": "G2",
+        "cmd": "claude plugin validate .",
+        "kind": "exit"
+      },
+      {
+        "name": "G3",
+        "cmd": "claude plugin validate plugins/productivity-tools",
+        "kind": "exit"
+      },
+      {
+        "name": "G4",
+        "cmd": "node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid",
+        "kind": "exit"
+      },
+      {
+        "name": "G5",
+        "cmd": "node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools",
+        "kind": "exit"
+      }
+    ]
+  },
+  "runToken": "2026-11-12T06:06:49.647Z-9e937d5f4a5a",
+  "trackerCli": "D:/projects/claude-play-wt/_integracao/plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs",
+  "pendingDecisions": []
+}
+
+```
+
+### Mensagem de parada composta
+
+# Preflight report (mode: dry-run, target release/roadmap-skills-v2)
+
+Per SKILL.md step 2, in `dry-run` the skill does NOT stop on `missingRules` or pending decisions; it reports them after the run. Conclusion: continue (to step 4); no question to the person.
+
+- errors: none (exit code 0)
+- warnings: none
+- pendingDecisions: none (no `contract`, no `local`)
+- missingRules (4), one per line, for the person to add to their permissions (no settings file was edited):
+  Bash(node:*)
+  Bash(claude:*)
+  Bash(node *roadmap.mjs" *)
+  Bash(git:*)
+- generated: true (the committed release.config.json on the target still carries `generated: true`, so a real run would use maxParallel 1).
+
+### Revisão adversarial (sonnet, só leitura): aprovada com ressalvas
+
+- Peça 4 conferida: `missingRules` traz a regra da CLI do tracker (`Bash(node *roadmap.mjs" *)`), `trackerCli` absoluto com `/`, `pendingDecisions` presente e vazio, confirmado por `roadmap.mjs pending-decisions --json` (0). `Bash(claude:*)` vem dos gates G2 e G3. Em `dry-run` não para e relata (SKILL.md passo 2). Argumentos do passo 4 completos (as seis chaves, `scriptPath` absoluto).
+- Média: SKILL.md passo 1 (fórmula de `wtRoot`, `<dirname(repo)>/<basename(repo)>-wt`) contradiz o passo 3 (`<wtRoot>/_integracao` como checkout da pessoa) quando `repo` já é o worktree `_integracao`. Vira pendente do executor.
+- Baixas: o passo 2 não diz que `releaseBranch` ausente no `release.config.json` cai para `roadmap.config.json`; o passo 3 é um parágrafo emaranhado; o teste não exercitou `pendingDecisions` não vazio nem regra vinda de `{verify}` (os testes de unidade cobrem) e não carregou a skill pela ferramenta Skill.
+- Ambiguidade "cinco contra seis chaves": leitura errada do testador; a SKILL.md lista seis de forma consistente (a tarefa 7 do plano está desatualizada).

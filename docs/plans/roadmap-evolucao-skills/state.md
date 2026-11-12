@@ -78,8 +78,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (executor) Ressalvas baixas da revisão final de E22 (achados 5 a 7): Volatile values só em formats.md § 4; sectionsCited lê só a 1a seção de 'formats.md § 6 and § 7'; migração ainda apontada em events.md (formats.md:63, rule do checker).
 - (executor) Branch fix/E4-w2-w4 (DEC-255): avisos do scaffold em modo completo para objective em texto e card sem pieces, dod ou risks, antes da preparação de E17.
-- (executor) Rodar o teste comportamental de E18 (tarefa 7, DEC-230, DEC-204) pela sessão principal e gravar o resumo no log de revisões de E18, antes da preparação de E17.
 - (executor) Correção de DEC-226 (emenda): pendente de critério nomeia o entregável e usa as frases de DEC-225, sem fusão entre entregáveis; antes da preparação de E17.
+- (executor) Corrigir roadmap-release/SKILL.md: a fórmula de wtRoot do passo 1 contradiz o passo 3 quando repo já é o worktree _integracao (revisão da tarefa 7 de E18); junto, o fallback de releaseBranch do passo 2 e o passo 3 em itens.
 <!-- /roadmap:pending -->
 
 ## Em andamento
