@@ -1,13 +1,13 @@
 # Estado
 
-Estratégia v1.3 -- 2026-11-11
+Estratégia v1.4 -- 2026-11-12
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 ## Agora
 
 <!-- roadmap:now -->
-1. Linha de base (E15): o dono opera as execuções pagas com `run-baseline.mjs`. Executa: dono. Aprova: dono. Depende de: DEC-011, DEC-043.
+1. Preparação de E17: comparação com a linha de base de E15 em bypassPermissions, bump 1.7.0 nos dois lugares e na linha 1 do checker, branch de retorno (DEC-036), roteiros A e B de E25 pelo dono. Executa: executor e dono. Depende de: E15, E18.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -54,26 +54,14 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Pendentes
 
 <!-- roadmap:pending -->
-- (dono) Operar os pontos de medição E15, E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
+- (dono) Operar os pontos de medição E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (dono) Os scripts em `docs/reports/2026-11-10-session-metrics/` foram limpos de dados pessoais e ficam como evidência; ainda têm os erros de preço e de agrupamento que E1 corrige.
 - (executor) Incerto, medir em E15: a fidelidade do plano com schema teve uma fixture por tamanho e dez tentativas por célula; sonnet com plano de 30 tarefas não rodou (DEC-059).
 - (executor) Incerto, rever no spec de E1: a causa de a revisão do plano semeado acusar árvore suja logo após um commit limpo, que impede atribuir o conserto só ao revisor (SRC-14).
-- (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043).
-- (executor) Incerto, medir em E15: a taxa de reescrita de um plano semeado e a taxa de detecção, que uma execução não mede; outros tipos de defeito e vários defeitos no mesmo plano (DEC-051).
+- (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043). E15: fora do bypass o planner foi negado (achados-1.6.0.md).
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
-- (dono) Primeira execução real (paga) do lançador de E1 contra `claude -p`, operada na primeira tentativa de E15, conferindo a saída e o formato real do `journal.jsonl` (DP-4). Os critérios de E1 usaram executor simulado (DEC-011, DEC-043, DEC-082).
-- (dono) Execuções pagas da linha de base, operadas pelo dono com run-baseline.mjs no ambiente dele (plugin 1.6.0 instalado, regras de permissão da execução sem interface).
-- (dono) Escolha, pelo dono, da execução aprovada (tentativa de completo com E5 integrado em release/sandbox) cuja árvore vai em --from-run, antes das tentativas de detecção (pendente do dono em state.md).
-- (dono) Conferência do dono das linhas da linha de base e de detecção (critérios 1 a 3).
-- (dono) Aprovação do dono da revisão da estratégia com a tabela de metas (critério 4, DEC-034), depois das execuções pagas.
-- (dono) E15: critério AC1 sem evidência automática (human)
-- (dono) E15: critério AC2 sem evidência automática (human)
-- (dono) E15: critério AC3 sem evidência automática (human)
-- (dono) E15: critério AC4 sem evidência automática (human)
-- (dono) Registro da meta derivada de prosa do planner (43.335 bytes LF) na tabela de metas derivadas da estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
-- (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
 - (dono) E25: roteiro B (cache): conferir nome e concessão com o plugin instalado do cache num CLAUDE_CONFIG_DIR descartável, antes da publicação de E17; responde aos gatilhos de DEC-061 e DEC-049.
 - (dono) E25: critério AC4 sem evidência automática (human)
 - (dono) E25: critério AC6 sem evidência automática (human)

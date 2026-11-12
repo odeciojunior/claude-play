@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.3 2026-11-11 -->
-# Evolução das skills de roadmap -- Estratégia v1.3
+<!-- roadmap:version 1.4 2026-11-12 -->
+# Evolução das skills de roadmap -- Estratégia v1.4
 
 ## Registro de mudanças
 
+- v1.4 (2026-11-12): linha de base de E15 registrada e conferida. Entra a tabela de metas derivadas em "Métricas e metas" (critério 4 de E15; DEC-034, DEC-098), com as metas de prosa do planner (E4) e do tracker (E22). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.3 (2026-11-11): E1 integrado na branch de release. A tabela de gates é atualizada: G1 ganha o padrão `tools/**/*.test.mjs` com a linha de base medida de novo (DEC-032), e a célula Quando de G4 é reescrita para o release reconhecê-lo como local. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.2 (2026-11-10): absorve as emendas do dono ao ratificar as decisões do spec de E1 (DEC-081 a DEC-084). Muda a regra do portão na peça 6 de E1: detecção inconclusiva bloqueia até o dono liberar. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.1 (2026-11-10): absorve as decisões das sondas de E14, ratificadas pelo dono (DEC-057 a DEC-061, SRC-15). Mudam E2 (o gerador de cópias embutidas é necessário), E8 (carga do plano com schema, resumo em JavaScript puro, duas novas tentativas), E18, E21 e E23 (regra de permissão pelo nome do script), E19 (autor como agente do plugin) e E25 (cache não legível para o caminho). Nenhum entregável, dependência ou critério de aceite muda.
@@ -934,7 +935,22 @@ As metas são derivadas, não fornecidas (DEC-034): o spec de cada entregável q
 
 O portão de publicação (DEC-017, DEC-033) compara totais por variante: contadores estruturais por mediana, com 3% de tolerância nos bytes de prompt; contadores que dependem de escolhas do modelo só acusam piora quando todas as execuções novas ficam acima de todas as antigas; a detecção bloqueia quando as capturas caem seis ou mais em 40 tentativas por classe. Um aumento de bytes de prompt acima da tolerância pode ser liberado pelo dono com decisão registrada.
 
-Metas derivadas: a tabela entra por revisão da estratégia depois de E15 (critério 4 de E15).
+### Metas derivadas
+
+Linha de base: `docs/reports/2026-11-11-e15-linha-de-base/linha-de-base.md` (tag `productivity-tools--v1.6.0`, commit 3fbb59b, modo `bypassPermissions` em todas as variantes; os pontos de medição usam o mesmo modo). Meta = linha de base menos o que a mudança remove por construção (DEC-034). Pesos do ponderado: haiku 1, sonnet 20, opus 40.
+
+| Entregável | Contador | Variante | Linha de base | Cálculo | Meta | Conferida em |
+|---|---|---|---|---|---|---|
+| E4 | prosa carregável do planner, bytes LF | estático | 74.602 (SRC-02 §1; DEC-167) | 74.602 − 31.267 | ≤ 43.335 | E17 |
+| E22 | prosa do tracker por evento, bytes LF | estático | 90.874 (SRC-02 §1; DEC-235) | 90.874 − 61.778 | ≤ 29.096 | E17 |
+| E23 | chamadas opus | parada-retomada | 9 | 9 − 2: revisão de spec e de plano não repetidas na retomada | 7 | E13 |
+| E23 | ponderado | parada-retomada | 669 | 669 − 2 × 40 | 589 | E13 |
+| E12 | chamadas (principal) | coordinator | 4 | 4 − 4: o despacho passa ao workflow | 0 | E13 |
+| E10 | total de chamadas (haiku + sonnet + opus) | completo | 23 | 23 − 1: mínimo do critério 3 do card | ≤ 22, provisória | E13 |
+
+Sem meta numérica: E3 (o tracker não lança subagente; turnos não têm meta); E18 (o registro segue numa chamada de agente, que passa a rodar a CLI); E8, E19, E20, E9 e E7 (trocam autor ou conferência sem eliminar papel); E21 e E24 (modos desligados, DEC-021); bytes de E23 (a linha de base não isola a chamada da retomada); prosa de E12 (derivada no spec de E12 e registrada por nova revisão). Para esses vale só a regra de não piorar do portão.
+
+As metas de E23 valem se a retomada do cenário mantiver spec e plano aprovados; o spec de E23 confirma. A meta de E10 é substituída pelo valor que o spec de E10 declarar.
 
 ## Riscos transversais
 
@@ -979,6 +995,7 @@ Nenhuma.
 | 1.1 | 2026-11-10 | Absorve as decisões das sondas de E14 (DEC-057 a DEC-061) |
 | 1.2 | 2026-11-10 | Absorve as emendas do dono às decisões do spec de E1 (DEC-081 a DEC-084) |
 | 1.3 | 2026-11-11 | Tabela de gates atualizada após a integração de E1: G1 com `tools/**`, G4 reconhecido como local |
+| 1.4 | 2026-11-12 | Tabela de metas derivadas após a linha de base de E15 (DEC-034) |
 
 ## Fontes
 
