@@ -337,7 +337,7 @@ test('release run variants carry the permission rules in an excluded settings.lo
       const file = join(t.dir, '.claude', 'settings.local.json');
       if (variant === 'completo' || variant === 'parada-retomada') {
         assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
-        assert.deepEqual(SANDBOX_RELEASE_RULES, ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
+        assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
         assert.ok(git(t.dir, 'check-ignore', '.claude/settings.local.json').length > 0);
         assert.equal(git(t.dir, 'ls-files', '.claude/settings.local.json'), '');
       } else {
@@ -460,4 +460,50 @@ test('the synthetic plan is seeded byte-identically to the sentinels of before',
       t.done();
     }
   }
+});
+
+// E17 T1: the 1.7.0 preflight must leave the sandbox with no missing permission rule.
+import { makeSandbox } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
+import { runPreflight } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs';
+import { mkdtempSync as e17Mk, rmSync as e17Rm, mkdirSync as e17Mkdir, writeFileSync as e17Write, copyFileSync as e17Copy } from 'node:fs';
+
+const E17_TMPS = [];
+const e17Tmp = () => { const d = e17Mk(join(tmpdir(), 'e17-t1-')); E17_TMPS.push(d); return d; };
+test.after(() => { for (const d of E17_TMPS) e17Rm(d, { recursive: true, force: true }); });
+
+test('E17: sandbox settings leave the 1.7.0 preflight with no missing rule', () => {
+  const base = e17Tmp();
+  const sb = join(base, 'sb');
+  makeSandbox(sb);
+  e17Mkdir(join(sb, '.claude'), { recursive: true });
+  e17Write(join(sb, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
+  const home = join(base, 'home');
+  const configDir = join(base, 'cfg');
+  e17Mkdir(home); e17Mkdir(configDir);
+  const r = runPreflight(join(sb, 'docs/plans/roadmap-sandbox'), { home, configDir });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.missingRules, []);
+  assert.ok(!r.warnings.some((w) => w.startsWith('release workflow:')), JSON.stringify(r.warnings));
+});
+
+test('E17: SANDBOX_RELEASE_RULES keeps the 1.6.0 rules first', () => {
+  assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
+});
+
+test('E17: a tree mounted from the archived E15 seed passes the --from-run pre-check', () => {
+  const arch = resolve(here, '..', '..', 'docs/reports/2026-11-11-e15-linha-de-base/semeadura-completo-1');
+  const seed = join(e17Tmp(), 'seed');
+  e17Mkdir(join(seed, 'docs/superpowers/specs'), { recursive: true });
+  e17Mkdir(join(seed, 'docs/superpowers/plans'), { recursive: true });
+  e17Copy(join(arch, '2026-11-12-E5-text-utilities-design.md'), join(seed, 'docs/superpowers/specs/2026-11-12-E5-text-utilities-design.md'));
+  e17Copy(join(arch, '2026-11-12-E5-text-utilities.md'), join(seed, 'docs/superpowers/plans/2026-11-12-E5-text-utilities.md'));
+  const r = seedSourceOf(seed);
+  assert.equal(r.kind, 'execucao-aprovada');
+  assert.equal(r.specSha256, '7b9cc1394b2fb863ad04bf35af6c44cb8288c8a7f2e13f15fca1311601c36f93');
+  assert.equal(r.planSha256, 'ea14b7abf7197115e0bf2c6e20f3220e1aaaf11bc9cf40a4e552a0cdc4a74912');
+});
+
+test('E17: SANDBOX_RELEASE_RULES names the release workflow and the tracker script rules', () => {
+  assert.ok(SANDBOX_RELEASE_RULES.includes('Workflow(productivity-tools:release-workflow)'));
+  assert.ok(SANDBOX_RELEASE_RULES.includes('Bash(node *roadmap.mjs" *)'));
 });
