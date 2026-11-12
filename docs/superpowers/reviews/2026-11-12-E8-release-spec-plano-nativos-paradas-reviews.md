@@ -520,3 +520,81 @@ Um item por entrada de recordCuts. Origem (source) de todas: docs/superpowers/re
 
 1. Origem: docs/superpowers/reviews/2026-11-12-E8-release-spec-plano-nativos-paradas-reviews.md. Entrou em: add-decision --decision. Texto completo:
    Retenção em código: só decisões de contrato de recordVerdict(...).holdIds (novas, ou existentes ainda pendentes na releitura; ratificadas regravadas não retêm; lista ilegível retém) pulam dependentes selecionados; pendentes no alvo lidas por pending-decisions --json retêm dependentes não iniciados; vale em run e plan-only (correção fcc045d incorporada).
+
+## Execução 5 (2026-11-12, falha após o portão final)
+
+Execução com resultado FALHOU: o portão final passou na rodada 1 sem item crítico ou importante (6 menores), mas a integração na release não ocorreu. As tarefas 1 a 12 foram RESUMED (já revisadas em execução anterior, sem nova revisão) e só a tarefa 13 rodou nesta execução.
+
+### Revisões por estágio
+
+Cada rodada traz o número, o modelo do revisor e o tier da correção que a precedeu (nenhuma na rodada 1).
+
+| Estágio | Rodada | Modelo do revisor | Tier da correção anterior | Bloqueantes | Menores | Não resolvidos |
+|---|---|---|---|---|---|---|
+| spec | 1 | opus | nenhuma | 0 | 1 | 0 |
+| plan | 1 | opus | nenhuma | 0 | 2 | 0 |
+| T13:spec | 1 | sonnet | nenhuma | 0 | 1 | 0 |
+| T13:quality | 1 | sonnet | nenhuma | 0 | 1 | 0 |
+| final | 1 | opus | nenhuma | 0 | 6 | 0 |
+
+### Portão final: problemas críticos e importantes
+
+Nenhum. Total de menores no portão final: 6.
+
+### Itens não resolvidos
+
+Nenhum.
+
+### Riscos aceitos
+
+Nenhum.
+
+### Falha registrada
+
+not merged: post-merge fix rejected: 1. [important/defeito] plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs The fix raises MAX_WORKFLOW_CHARS from 240000 to 250000, which relaxes the assertion, and the reason it gives is wrong. The 241801 figure counts the CRLF working copy. The file is committed as LF (git ls-files --eol shows i/lf w/crlf), and the copy measured has 2831 CR characters. Measured from the commits, roadmap-release.js has 238970 characters at b0a8c4c, at feat/E8 and at HEAD, which is under 240000. roadmap-release.js did not change between b0a8c4c and HEAD, so the merge and final fixes did not grow it past the cap. Only the line endings of the core.autocrlf checkout broke the test. Spec item 23 and the 'Se a medição não rodar' rule (the provisional cap is the feat/E8 tip size rounded up to the next 10,000) give ceil(238970) = 240000, and the test comment itself says growth above the cap needs a new measurement or a decision, not a silent increase. The right fix is to measure what is committed, for example by stripping  before taking .length, or by counting the git blob. Raising the cap is not. The comment and the commit message also record a false measurement (241801 'na integração de E8').
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | cópias embutidas, artifactPaths e pluginRootOf | RESUMED (already reviewed) | |
+| 2 | funções puras de parada, decisões e retenção | RESUMED (already reviewed) | |
+| 3 | adaptador de plan/1, carga do plano e roteamento | RESUMED (already reviewed) | |
+| 4 | guarda da versão anterior e medições do setup | RESUMED (already reviewed) | |
+| 5 | estágio de spec nativo, paradas e registro das decisões | RESUMED (already reviewed) | |
+| 6 | estágio de plano nativo, carga com resumo e despacho pelo route | RESUMED (already reviewed) | |
+| 7 | caminhos de artefato, sem superpowers nos estágios e comandos simples | RESUMED (already reviewed) | |
+| 8 | retenção dos dependentes por decisão de contrato | RESUMED (already reviewed) | |
+| 9 | campo status do docs-measure (DEC-444) | RESUMED (already reviewed) | |
+| 10 | preflight com permissões declaradas e novo aviso da regra (DEC-313, DEC-283) | RESUMED (already reviewed) | |
+| 11 | SKILL.md e operator.md (receita sem interface, ações novas, passo 2) | RESUMED (already reviewed) | |
+| 12 | agents/spec-author.md alinhado (DEC-421, DEC-422, DEC-477) | RESUMED (already reviewed) | |
+| 13 | teto de tamanho do script de workflow | DONE | 7 |
+
+### Concerns
+
+1. the "executing" roadmap record failed (command 2 ran with a different text than the one assembled; command 3 ran with a different text than the one assembled; command 4 ran with a different text than the one assembled; command 5 ran with a different text than the one assembled; command 6 ran with a different text than the one assembled; command 7 ran with a different text than the one assembled; command 8 ran with a different text than the one assembled; command 9 ran with a different text than the one assembled; command 10 ran with a different text than the one assembled; command 11 ran with a different text than the one assembled; command 12 ran with a different text than the one assembled; command 13 ran with a different text than the one assembled; command 14 ran with a different text than the one assembled; command 15 ran with a different text than the one assembled; command 16 ran with a different text than the one assembled; command 17 ran with a different text than the one assembled; command 18 ran with a different text than the one assembled; command 19 ran with a different text than the one assembled; command 20 ran with a different text than the one assembled; command 21 ran with a different text than the one assembled; command 22 ran with a different text than the one assembled; command 23 ran with a different text than the one assembled; command 24 ran with a different text than the one assembled; command 25 ran with a different text than the one assembled; command 26 ran with a different text than the one assembled; command 27 ran with a different text than the one assembled; command 28 ran with a different text than the one assembled; command 29 ran with a different text than the one assembled; command 30 ran with a different text than the one assembled; command 31 ran with a different text than the one assembled; command 32 ran with a different text than the one assembled; command 33 ran with a different text than the one assembled; command 34 ran with a different text than the one assembled; 2 command(s) ran beyond the assembled list; command 35 () exit 1; command 35 () stdout is not JSON of the CLI (tool "roadmap"); command 36 () stdout is not JSON of the CLI (tool "roadmap")); decisions and the in-flight entry are not recorded yet
+
+### Gates
+
+1. G1: exit 0, total 1635, skipped 0, failing [] (baseline: exit 0, total 1581, skipped 0, failing [])
+2. G2: exit 0 (baseline: exit 0)
+3. G3: exit 0 (baseline: exit 0)
+4. G4: exit 0 (baseline: exit 0)
+5. G5: exit 0 (baseline: exit 0)
+
+### Entradas humanas
+
+1. O quê: Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030). Bloqueia (blq): não. Contorno: Ficam pendentes com origem executor; E8 segue e os dependentes são retidos em código.
+2. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442 (exceção à parada de DEC-218 na retomada do próprio dono). Bloqueia (blq): não. Contorno: Comportamento da decisão 15 é aplicado e relatado; DEC-218 vale nos demais casos.
+3. O quê: Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob delegação do dono. Bloqueia (blq): não. Contorno: Sem a sonda, o relatório registra 'não rodada' e o gatilho de DEC-312 fica em aberto.
+4. O quê: Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030). Bloqueia (blq): não. Contorno: Ficam pendentes com origem executor e E8 segue.
+5. O quê: Avaliação pelo dono do gatilho de revisão de DEC-442: E8 deixa de parar a retomada do próprio entregável dono da decisão de contrato, única exceção à parada de DEC-218. Bloqueia (blq): não. Contorno: O comportamento novo é o da decisão 15, relatado; DEC-218 vale para todos os outros casos.
+6. O quê: Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob a delegação do dono. Bloqueia (blq): não. Contorno: Sem a sonda, o relatório registra 'não rodada' e o gatilho de DEC-312 fica em aberto.
+
+### Textos cortados no registro
+
+Um item por entrada de recordCuts. Origem (source) de todas: docs/superpowers/reviews/2026-11-12-E8-release-spec-plano-nativos-paradas-reviews.md.
+
+1. Origem: docs/superpowers/reviews/2026-11-12-E8-release-spec-plano-nativos-paradas-reviews.md. Entrou em: add-decision --decision. Texto completo:
+   Retenção em código: só decisões de contrato de recordVerdict(...).holdIds (novas, ou existentes ainda pendentes na releitura; ratificadas regravadas não retêm; lista ilegível retém) pulam dependentes selecionados; pendentes no alvo lidas por pending-decisions --json retêm dependentes não iniciados; vale em run e plan-only (correção fcc045d incorporada).
