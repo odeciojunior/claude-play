@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | BLQ-5 aberto: E17 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [critical/defeito] dirty working tree (uncommitted files); branch feat/E17 kept at D:/projects/claude-play-wt/E17 | `branch feat/E17` |
 | 2026-11-12 | - | Problemas de permissão analisados por delegação (Fable): bypass só na operação (DEC-311), produto sem bypass como padrão (DEC-312, DEC-313); seis pendências para E8 e o arnês. | `scratchpad/permissoes-fable-pendente.md` |
 | 2026-11-12 | E17 | Braço de plano: decisão delegada (Fable) DEC-310; armMatches corrigido em feat/E17, linha de base da classe plano mantida. | `c7efe09` |
 | 2026-11-12 | E8 | DEC-313 ratificada pelo dono | `decisions.md` |
