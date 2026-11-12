@@ -63,6 +63,51 @@ Um item por corte do registro do roadmap (origem = source, destino = where, text
 - Destino: ratify --amend (DEC-299)
 - Texto completo: A branch de volta volta/productivity-tools-1.7.1 parte de M e é a Tarefa 7 externa do plano, autorizada pelo dono em pessoa; nunca enviada; devolve só plugins/productivity-tools à tag e mantém marketplace-tools 1.2.0; repo-only acoplado ao plugin volta ao estado da tag.
 
+### Corte 6 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 1. A versão medida carrega do cache instalado numa CLAUDE_CONFIG_DIR descartável, com a loja como fonte git local fixada na SHA de M (ou na tag local leve e17-medicao em M, nunca enviada, se a CLI não aceitar SHA), nunca no nome da branch feat/E17, e --tag é essa SHA, e não de uma loja por pasta nem por --plugin-dir; sem gitCommitSha gravado, o dono para e registra. Base: E15 mediu do cache e run-baseline.mjs confere o commit; custo se errada: refazer a preparação da pasta de configuração; reversível. Ratificada com emenda do dono (DEC-298): medição pelo cache instalado numa CLAUDE_CONFIG_DIR descartável, loja git local fixada na SHA de M; o dono entra na conta ali uma vez (serve também ao roteiro B de E25); a pasta recebe cópia do CLAUDE.md e settings.json reais, sem credencial; diferença de plugins registrada.
+
+### Corte 7 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 2. O commit medido M é o commit de versão da peça 2, fixado pela SHA; commits posteriores de relatório em feat/E17 não o mudam, e a validade para a branch de release é dada pela igualdade da árvore plugins/productivity-tools; outra árvore na ponta exige medir de novo. Base: regra de que nenhuma tarefa depende do merge; custo se errada: medição sem valor para a publicação; reversível.
+
+### Corte 8 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 3. tools/measure/checkpoint.mjs é a ferramenta do ponto de medição (um laço sobre compare() de E1, sem limiar novo), reutilizada por E11, E16 e E13, com saída comparacao.json e comparacao.md. Base: o card pede a comparação pela saída do comparador de E1; custo se errada: reescrever a ferramenta antes de E11; reversível.
+
+### Corte 9 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 5. O painel esperado (critério 1) é conferido por campo novo panel por tentativa e tabela de valores esperados em código, e um painel diferente bloqueia a publicação no checkpoint.mjs. Base: o critério exige que o painel seja o esperado; custo se errada: falso bloqueio ou falsa aprovação do registro; reversível.
+
+### Corte 10 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 6. A classe plano continua no braço atual copiado de 3fbb59b quando seu texto aparece byte a byte no workflow de M (salvo o fim de linha final do braço e a barra de escape antes de |, DEC-310); caso contrário, a classe sai inconclusiva e o dono decide. Base: DEC-279; custo se errada: detecção de plano medida com prompt diferente do publicado; reversível.
+
+### Corte 11 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 7. Metas conferidas em E17 são só as de E4 e E22 (entregáveis integrados com Conferida em E17), medidas por tools/measure/prose-goals.mjs com as definições dos testes de orçamento, sem importar arquivos de teste. Base: tabela de metas v1.4 (DEC-281) e DEC-034; custo se errada: meta marcada com valor de outra definição; reversível.
+
+### Corte 12 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 9. A ratificação das decisões anteriores a E17 está satisfeita (nenhuma pendente); as de E17 são ratificadas pelo dono antes da publicação, a partir de ratificacao.md gerado pela CLI sobre uma cópia somente leitura da ponta de release/roadmap-skills-v2 (pasta do roadmap e arquivo de estratégia no mesmo caminho relativo, extraídos por git archive), nunca sobre a pasta de feat/E17. Base: DEC-030 e REQ-044; custo se errada: publicação retida até a passada; reversível.
+
+### Corte 13 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 10. A branch de volta volta/productivity-tools-1.7.1 parte de M, nunca é enviada, devolve só plugins/productivity-tools à tag e mantém marketplace-tools em 1.2.0; arquivos repo-only acoplados ao plugin novo voltam ao estado da tag. Base: DEC-036, DEC-028, DEC-042; custo se errada: volta que não publica limpo, descoberta antes de ser necessária; reversível. Ratificada com emenda do dono (DEC-299): é a Tarefa 7 externa do plano, autorizada pelo dono em pessoa.
+
+### Corte 14 (execução seguinte)
+- Origem: `docs/superpowers/reviews/2026-11-12-E17-ponto-medicao-primeira-publicacao-reviews.md`
+- Destino: add-decision --decision
+- Texto completo: 12. As execuções pagas são tarefas do orquestrador ou do dono, fora do workflow. Base: DEC-204, DEC-088, DEC-011; custo se errada: relatório entrando por outro caminho; reversível. Ratificada com emenda do dono (DEC-297): depois do merge de feat/E17, os resultados (comparacao.*, medicao-1.7.0.json) entram por commit só de docs/reports em feat/E17 e novo merge na release, antes da publicação.
+
 ## Ratificação delegada (Fable) e correções pré-execução, 2026-11-12
 
 Decisões DEC-285 a DEC-296 ratificadas por delegação do dono (Fable), na branch de release: 2 a 9 e 11 como estão; 1, 10 e 12 com emenda, registradas como DEC-298 (a DEC-285), DEC-299 (a DEC-294) e DEC-297 (a DEC-296). As emendas 1 e 10 passam de 300 caracteres com o prefixo da CLI e ficam cortadas na célula, com o texto completo nos cortes 4 e 5 acima.
@@ -159,3 +204,65 @@ Transcritas como recebidas; várias aparecem duas vezes, em redações ligeirame
 ### Falha da execução
 
 external task 7 awaits authorization (E17:T7@3cd7b4c7)
+
+## Execução de 2026-11-12 (nova passada do estágio mecânico, falhou)
+
+Registro transcrito dos dados do orquestrador, sem resumir. Estado final: falha, `external task 7 awaits authorization (E17:T7@41d16895)`. Os cortes desta passada estão em "Textos cortados no registro" (Cortes 6 a 14).
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | regras do sandbox para o preflight 1.7.0 e árvore da semeadura arquivada | RESUMED (already reviewed) | - |
+| 2 | painel do registro por CLI por tentativa | RESUMED (already reviewed) | - |
+| 3 | metas de prosa de E4 e E22 | RESUMED (already reviewed) | - |
+| 4 | ferramenta do ponto de medição checkpoint.mjs | RESUMED (already reviewed) | - |
+| 5 | commit de versão M | RESUMED (already reviewed) | - |
+| 6 | saída dos gates em M | DONE | 8 |
+
+### Rodadas de revisão por estágio ou tarefa
+
+Colunas: rodada, modelo do revisor, tier da correção que precedeu a rodada (`-` quando não houve correção antes). Nenhum estágio teve problema crítico ou importante (listas de bloqueantes vazias); menores: 0 em todos; pendências: nenhuma em todos.
+
+| Estágio | Rodadas (n: revisor, correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1: opus, -; 2: opus, correção opus; 3: opus, correção opus | nenhum | 0 | nenhuma |
+| plan | 1: opus, -; 2: opus, correção sonnet | nenhum | 0 | nenhuma |
+| T6:spec | 1: sonnet, - | nenhum | 0 | nenhuma |
+| T6:quality | 1: sonnet, - | nenhum | 0 | nenhuma |
+
+### Riscos aceitos
+
+- T4:quality, important, pelo-plano, `tools/measure/checkpoint.test.mjs`: Open owner decision (DEC-279): armMatches is false for plan-fix-atual.md at HEAD (arm lacks the backslash in 'table-escaped \| written as |'). The plan said stop and return to the orchestrator; the implementer instead committed with the test flagged todo (disclosed). Consequence: with the real arms, any run with the plano-semeado class always yields 'inconclusivo (braço defasado)' and blocks (exit 1), until the owner decides how to fix the arm or the matcher. The todo must be removed when decided.
+
+### Concerns
+
+1. the "executing" roadmap record failed (command 1 ran with a different text than the one assembled; command 2 ran with a different text than the one assembled; command 3 ran with a different text than the one assembled; command 4 ran with a different text than the one assembled; command 5 ran with a different text than the one assembled; command 6 ran with a different text than the one assembled; command 7 ran with a different text than the one assembled; command 8 ran with a different text than the one assembled; command 9 ran with a different text than the one assembled; command 10 ran with a different text than the one assembled; command 11 ran with a different text than the one assembled; command 12 ran with a different text than the one assembled; command 13 ran with a different text than the one assembled; command 14 ran with a different text than the one assembled; command 15 ran with a different text than the one assembled; command 16 ran with a different text than the one assembled; command 17 ran with a different text than the one assembled; command 18 ran with a different text than the one assembled; command 19 ran with a different text than the one assembled); decisions and the in-flight entry are not recorded yet
+
+### Gates
+
+Nenhum dado de gate fornecido nesta passada.
+
+### Entradas humanas
+
+Transcritas como recebidas; várias aparecem duas vezes, em redações ligeiramente diferentes, e foram mantidas.
+
+| O quê | Bloqueante (blq) | Workaround |
+|---|---|---|
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas. | não | Arnês, versão, branch de volta, roteiro e lista de ratificação são entregues sem elas; relatórios de comparação marcados como pendentes. |
+| Ratificação em lote das decisões do executor de E17 (critério 3). | não | ratificacao.md entregue com respostas recomendadas, gerado da ponta de release/roadmap-skills-v2. |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits. | não | Passos ficam no roteiro do dono. |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md. | não | nenhum |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir. | não | Não bloqueia a preparação; é pré-condição da publicação. |
+| Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081). | não | Condicional; não bloqueia a preparação. |
+| Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro); critérios 1 e 6 e o portão do critério 2 dependem delas | não | Arnês, versão, branch de volta, roteiro e lista de ratificação entregues sem elas; relatórios de comparação marcados como pendentes (DEC-297). |
+| Ratificação em lote das decisões do executor de E17 (critério 3) | não | ratificacao.md entregue com respostas recomendadas, gerado pela CLI pending-decisions. |
+| Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits | não | Passos completos no roteiro; nenhuma tarefa do plano os executa. |
+| Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md | não | Branch de volta e volta.md preparados; a Tarefa 7 (externa) fica retida até o dono autorizar em pessoa. |
+| Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir | não | Pré-condição só da publicação; a preparação segue. |
+| Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081) | não | Condicional; não bloqueia a preparação. |
+| Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\|', workflow has '\\\\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint. | não | Test marked todo with a comment; checkpoint.mjs reports 'inconclusivo (braço defasado)' for the plan class and exits 1; arms were not edited. |
+
+### Falha da execução
+
+external task 7 awaits authorization (E17:T7@41d16895)
