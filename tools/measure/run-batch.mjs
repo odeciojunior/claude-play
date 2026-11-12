@@ -579,7 +579,7 @@ export const EXPECTED_PANEL = {
 };
 
 // An error text can carry a temporary or install path; the aggregate never holds personal paths.
-export const redactPaths = (s) => s.replace(/[A-Za-z]:[\/][^\s'"]*|(?:\/[^\s'"\/]+){2,}/g, '<path>');
+export const redactPaths = (s) => s.replace(/[A-Za-z]:[\\/][^\s'"]*|(?:\/[^\s'"\/]+){2,}/g, '<path>');
 
 // Never throws: any failure (missing CLI, non-JSON output, exit other than 0/1) is { error }.
 // The committed state of release/sandbox is read in a detached temporary worktree: a checkout in the sandbox root is refused
