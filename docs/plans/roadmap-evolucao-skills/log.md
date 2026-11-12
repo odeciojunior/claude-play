@@ -3,6 +3,24 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | - | Problemas de permissão analisados por delegação (Fable): bypass só na operação (DEC-311), produto sem bypass como padrão (DEC-312, DEC-313); seis pendências para E8 e o arnês. | `scratchpad/permissoes-fable-pendente.md` |
+| 2026-11-12 | E17 | Braço de plano: decisão delegada (Fable) DEC-310; armMatches corrigido em feat/E17, linha de base da classe plano mantida. | `c7efe09` |
+| 2026-11-12 | E8 | DEC-313 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E8 | DEC-312 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | - | DEC-311 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | DEC-310 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | E17 passou para executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
+| 2026-11-12 | E17 | Decisões DEC-285 a DEC-296 de E17 ratificadas pelo dono por delegação (Fable); emendas às decisões 1, 10 e 12 como DEC-298 (a DEC-285), DEC-299 (a DEC-294) e DEC-297 (a DEC-296). Nenhuma decisão do executor pendente. | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 10 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 1 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisão 12 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E17 | Decisões 2 a 9 e 11 de E17 ratificadas pelo dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E25 | Critério 4 conferido por agente opus delegado no commit 0b5c1d3 (anterior à concessão), modo padrão: sem regra, negado, e o preflight mostrou Workflow(productivity-tools:release-workflow); com essa regra em .claude/settings.local.json, o lançamento seguinte começou sem diálogo. | `e25-dono/c4-regra/run1-sem-regra.jsonl, run2-com-regra.jsonl` |
+| 2026-11-12 | E17 | E17 passou para plano | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
+| 2026-11-12 | E25 | Roteiro B parado: instalação a partir da worktree criou o cache 1.6.0 com a concessão e a chave workflows, mas a pasta descartável não tem conta (loggedIn false); nenhuma credencial copiada. settings.json do usuário inalterado; skipWorkflowUsageWarning não apareceu. | `e25-dono/cfg, e25-dono/hash-before.txt` |
+| 2026-11-12 | E25 | Critério 4, roteiro A, sessão interativa no commit anterior à concessão: o diálogo diz que o script de 213.337 caracteres não pode ser mostrado e oferece só "No". Critério emendado (DEC-282, estratégia v1.5); falta rodar o lançamento com a regra exata. | `e25-dono/c4-A-s1.snap06-workflow-dialog.txt` |
+| 2026-11-12 | E25 | Critério 6 conferido por agente delegado (roteiro A, modo padrão, sem regra): workflow lançado pelo nome, permission_denials vazio, journal criado, nenhuma regra gravada; controle sem concessão negado. Sem interface o preflight precisa de Bash(git:*) e Bash(node:*). | `e25-dono/c6-A-com2.json, e25-dono/c6-A-ctl.json` |
+| 2026-11-12 | E25 | DEC-282 a DEC-284 ratificadas pelo dono | `decisions.md` |
 | 2026-11-12 | E15 | Estratégia v1.4: tabela de metas derivadas após a linha de base de E15 (DEC-034), aprovada por delegação do dono; medições de E15 registradas em measurements.md | `docs/reports/2026-11-11-e15-linha-de-base/linha-de-base.md` |
 | 2026-11-12 | E15 | Aceite de E15 e tabela de metas por delegação do dono | `decisions.md` |
 | 2026-11-12 | E15 | DEC-279 ratificada pelo dono | `decisions.md` |

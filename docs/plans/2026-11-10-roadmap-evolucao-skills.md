@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.4 2026-11-12 -->
-# Evolução das skills de roadmap -- Estratégia v1.4
+<!-- roadmap:version 1.5 2026-11-12 -->
+# Evolução das skills de roadmap -- Estratégia v1.5
 
 ## Registro de mudanças
 
+- v1.5 (2026-11-12): critério 4 de E25 emendado por delegação do dono (DEC-282): o diálogo do Workflow não aprova script de 213.337 caracteres, então o critério passa a conferir a recusa sem regra e o lançamento com a regra exata. Nenhum entregável ou dependência muda.
 - v1.4 (2026-11-12): linha de base de E15 registrada e conferida. Entra a tabela de metas derivadas em "Métricas e metas" (critério 4 de E15; DEC-034, DEC-098), com as metas de prosa do planner (E4) e do tracker (E22). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.3 (2026-11-11): E1 integrado na branch de release. A tabela de gates é atualizada: G1 ganha o padrão `tools/**/*.test.mjs` com a linha de base medida de novo (DEC-032), e a célula Quando de G4 é reescrita para o release reconhecê-lo como local. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.2 (2026-11-10): absorve as emendas do dono ao ratificar as decisões do spec de E1 (DEC-081 a DEC-084). Muda a regra do portão na peça 6 de E1: detecção inconclusiva bloqueia até o dono liberar. Nenhum entregável, dependência ou critério de aceite muda.
@@ -327,7 +328,7 @@ Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release
 1. Dadas configurações sem regra que cubra o workflow do release, quando o preflight roda, então a regra aparece nos avisos com o texto exato a acrescentar, e não entre as regras ausentes que bloqueiam; com a regra presente, o aviso não aparece. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs}
 2. Dado o workflow do release lançado sem configuração ou sem o token de execução, quando ele inicia, então devolve erro antes de qualquer chamada de agente. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs}
 3. Dado o manifesto do plugin, quando o teste o lê, então ele registra o arquivo do workflow do release, o nome do workflow não é o de nenhuma skill do plugin, e a skill manda lançar por esse nome. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs}
-4. Dada uma sessão no modo padrão, sem regra e sem hook, quando o dono lança o release pela skill e escolhe não perguntar de novo, então o lançamento seguinte no mesmo projeto começa sem diálogo. {verify: human; evidence: o dono confere em duas sessões seguidas e registra o modo de permissão}
+4. Dada uma sessão no modo padrão, sem concessão, sem regra e sem hook, quando o release é lançado pela skill, então o lançamento não é aprovado (o diálogo não oferece aprovação para o script no tamanho atual; sem interface é negado) e o aviso do preflight mostra a regra exata; com essa regra em `.claude/settings.local.json`, o lançamento seguinte no mesmo projeto começa sem diálogo. {verify: human; evidence: conferido no commit anterior à concessão, com e sem a regra, registrando o modo de permissão}
 5. Dado o SKILL.md do release, quando o lint do plugin roda, então `compatibility` declara a versão mínima e, se `allowed-tools` estiver presente, ele lista só o workflow do próprio plugin; qualquer outra entrada em `allowed-tools` é acusada. {verify: test; evidence: node --test plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs}
 6. Dada a concessão por `allowed-tools`, quando o dono lança o release pela skill numa sessão no modo padrão, sem regra de permissão, então o lançamento começa sem diálogo. {verify: human; evidence: o dono confere numa sessão nova e registra o modo de permissão}
 <!-- /roadmap:acceptance -->
@@ -338,7 +339,7 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 - O lançamento pelo nome ou a regra de permissão não se comportam como a documentação indica -> o nome e a regra foram vistos com o plugin carregado do caminho local; com o plugin instalado só o critério 4 confere. Se o lançamento pelo nome falhar ali, o card se reduz à peça 1 e a skill continua lançando por caminho.
 - A trava mexe na checagem do token de execução, que hoje só barra a execução com tarefa externa autorizada, e a maior parte dos testes do fluxo roda sem token -> a trava só acrescenta uma recusa anterior, nenhuma condição existente é removida, e o padrão do arnês de teste muda num commit próprio, com a suíte atual passando (G1).
 - No modo padrão o lançamento por caminho é recusado, não perguntado, quando a pasta do script não está no conjunto legível, e a regra do Workflow sem conteúdo não muda isso (SRC-14); a pasta do cache do plugin não é legível (SRC-15) -> o lançamento pelo nome é o caminho principal; a reserva da peça 4 serve só a quem roda sem prompts de permissão ou libera a pasta, e a skill diz isso quando cai nela (DEC-061).
-- O critério 4 só pode ser conferido com o workflow nomeado carregado -> o dono confere com o plugin carregado do caminho local do repositório, como na sonda de E14.
+- O diálogo de lançamento não oferece aprovação quando o script é grande (213.337 caracteres; limite não medido), então "não perguntar de novo" não existe para o release -> no modo padrão só a concessão (critério 6) ou a regra informada pelo preflight lançam; o limite é medido no spec de E8 (DEC-282).
 - A concessão por `allowed-tools` tira o diálogo de lançamento de todo usuário do plugin, o que DEC-035 evitava -> ela é restrita ao workflow do próprio plugin pelo nome, a trava da peça 3 barra o lançamento sem preflight, e a mudança passa por revisão de raio de impacto alto (DEC-049).
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
@@ -996,6 +997,7 @@ Nenhuma.
 | 1.2 | 2026-11-10 | Absorve as emendas do dono às decisões do spec de E1 (DEC-081 a DEC-084) |
 | 1.3 | 2026-11-11 | Tabela de gates atualizada após a integração de E1: G1 com `tools/**`, G4 reconhecido como local |
 | 1.4 | 2026-11-12 | Tabela de metas derivadas após a linha de base de E15 (DEC-034) |
+| 1.5 | 2026-11-12 | Critério 4 de E25 emendado após a conferência delegada (DEC-282) |
 
 ## Fontes
 

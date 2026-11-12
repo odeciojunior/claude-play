@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.4 -- 2026-11-12
+Estratégia v1.5 -- 2026-11-12
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -31,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E14 | na-branch | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md` | - |
 | E15 | na-branch | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release; o dono opera as execuções pagas com `run-baseline.mjs` |
 | E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
-| E17 | nao-iniciado | - | Aguardar E15 e E18 |
+| E17 | executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` | E17: seguir o fluxo do release após executando |
 | E18 | na-branch | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md`; G1 a G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E19 | nao-iniciado | - | Aguardar E5 e E17 |
 | E20 | nao-iniciado | - | Aguardar E6 e E19 |
@@ -62,11 +62,37 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
-- (dono) E25: roteiro B (cache): conferir nome e concessão com o plugin instalado do cache num CLAUDE_CONFIG_DIR descartável, antes da publicação de E17; responde aos gatilhos de DEC-061 e DEC-049.
-- (dono) E25: critério AC4 sem evidência automática (human)
-- (dono) E25: critério AC6 sem evidência automática (human)
+- (dono) E25: roteiro B antes da publicação de E17 (DEC-284): entrar na conta uma vez no CLAUDE_CONFIG_DIR descartável; o agente delegado roda concessão e regra a partir do cache e apaga a pasta. Responde aos gatilhos de DEC-061, DEC-049 e DEC-275.
+- (executor) Rever no spec de E8: o diálogo do Workflow não aprova script grande (213.337 caracteres; limite não medido). Medir o limite, conferir que concessão e regra lançam acima dele e decidir um teste de tamanho; E9, E21, E23, E24 e E10 também aumentam o arquivo.
+- (executor) E25, baixo, corrigir em E8: os passos do dono no spec não dizem que sem interface o preflight precisa de --allowedTools "Bash(git:*)" "Bash(node:*)".
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
 - (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
+- (dono) Execuções pagas do ponto de medição (gasto em dinheiro); critérios 1 e 6 e o portão do critério 2 dependem delas
+- (dono) Ratificação em lote das decisões do executor (critério 3)
+- (dono) Publicação (critérios 2 e 5): envio da tag productivity-tools--v1.6.0, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md
+- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md)
+- (dono) Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
+- (dono) Execuções pagas do ponto de medição (gasto em dinheiro; dono ou orquestrador com autorização), das quais dependem os critérios 1 e 6 e o portão do critério 2
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3)
+- (dono) Publicação pelo dono: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
+- (dono) Aceite da branch de volta pelo dono (critério 4): conferir diff contra a tag e saída dos gates em volta.md
+- (dono) Roteiros A e B de E25 rodados pelo dono antes da publicação
+- (executor) Rever no spec de E8: o modo run nunca completou fora do bypass. Os prompts dos agentes pedem comandos simples (sem heredoc nem laço; arquivo por Write, commit com -F). Rodar uma sonda completo em acceptEdits com regras e --stop-on-denial e listar as negações.
+- (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
+- (executor) Rever no spec de E8: o preflight não vê --allowedTools nem o modo de permissão, e sem interface o run para no passo 2. Aceitar um argumento digitado pela pessoa que declara as permissões concedidas por outro meio; o relatório registra isso.
+- (executor) Corrigir em E8: operator.md ganha a receita sem interface: --allowedTools "Bash(git:*)" "Bash(node:*)", CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 acima de 10 minutos e as regras em .claude/settings.local.json. Não recomendar bypass como padrão.
+- (executor) Corrigir em E8, depois do roteiro B: o aviso do preflight diz que claude -p é negado sem a regra, e a concessão lança o comando digitado (DEC-283). Novo texto: a regra só é precisa para lançamento fora da skill.
+- (executor) tools/measure: SANDBOX_RELEASE_RULES cita Workflow(productivity-tools:roadmap-release), nome antigo e inerte; trocar por Workflow(productivity-tools:release-workflow) quando alguém mexer no arnês. Workflow sem conteúdo já cobre.
+- (executor) Fora de E17: spec-review-atual.md não casa com o workflow em HEAD sob nenhuma normalização; checkpoint.mjs não o confere. Resolver antes de medir a classe spec.
+- (dono) Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas.
+- (dono) Ratificação em lote das decisões do executor de E17 (critério 3).
+- (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits.
+- (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md.
+- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir.
+- (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081).
+- (dono) Execuções pagas do ponto de medição (gasto em dinheiro), das quais dependem os critérios 1 e 6 e o portão do critério 2
+- (dono) Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -74,4 +100,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E17 | viva | E17 em execução pelo release |
 <!-- /roadmap:inflight -->
