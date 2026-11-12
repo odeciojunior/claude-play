@@ -631,3 +631,11 @@ test('E20: the legacy plan has no data block and names the sandbox roadmap', asy
     t.done();
   }
 });
+
+test('E20: plan-writer adopt script is marked synthetic and approves', () => {
+  const text = readFileSync(join(here, 'scenario/plan-writer-adopt.md'), 'utf8');
+  assert.ok(text.startsWith('<!-- synthetic input:'));
+  assert.ok(/^## Request$/m.test(text) && text.includes('docs/superpowers/plans/2026-01-01-e5-text-utilities.md'));
+  assert.match(text, /^## Approval\s*\n+approve\s*$/m);
+  assert.ok(!/(sk-|ghp_|xox[bp]-|AKIA)[A-Za-z0-9]/.test(text));
+});
