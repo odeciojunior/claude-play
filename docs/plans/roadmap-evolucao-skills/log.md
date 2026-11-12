@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E15 | DEC-279 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E15 | Etapa 2 da linha de base completa (bypassPermissions): planner 1, tracker 1, plan-only 5, coordinator 3, completo 3 com E5 integrado, parada-retomada 3. Arnês corrigido no caminho (preflight, teto de 10 min, integrated, DEC-278, journal real). | `tools/measure/out` |
 | 2026-11-12 | E15 | DEC-051, dado: nas 2 tentativas de plano-semeado-A pelo pipeline completo o agente de plano devolveu reused=false e corrigiu os defeitos semeados antes da revisão (2 de 2 inválidas por plano-reescrito); tentativas guardadas em _dados-dec051-plano-pipeline, fora da classe | `tools/measure/out/_dados-dec051-plano-pipeline` |
 | 2026-11-12 | E25 | Correção de DEC-275 e DEC-276 integrada: disable-model-invocation no SKILL.md do release, exigido pelo lint com a concessão; F2 e F4; CONTRIBUTING.md e README do plugin; portão opus high aprovado com ressalvas, aplicadas | `df10773` |
 | 2026-11-12 | E15 | DEC-278 ratificada pelo dono | `decisions.md` |
