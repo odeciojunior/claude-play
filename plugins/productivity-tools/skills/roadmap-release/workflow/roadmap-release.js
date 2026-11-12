@@ -962,15 +962,18 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   const failures = []
   const decisionIds = []
   const res = results || {}
-  const runs = Array.isArray(res.runs) ? res.runs : []
+  const exp = expected || []
+  const inN = r => r.n >= 1 && r.n <= exp.length
+  // The git add/commit asked after the list are not runs of it; a run names its command by n (a model abbreviates long echoes), by its text only without n.
+  const runs = (Array.isArray(res.runs) ? res.runs : []).filter(r => !(r && /^git /.test(r.command) && !inN(r) && !exp.includes(r.command)))
+  const is = (r, i) => !!r && (Number.isInteger(r.n) ? r.n === i + 1 : r.command === exp[i])
   const rd = read || {}
   if (res.error) failures.push(`record agent returned error "${res.error}"`)
   if (!runs.length) failures.push('the record agent ran no command')
-  const exp = expected || []
   exp.forEach((c, i) => {
     const r = runs[i]
-    if (r && r.command === c) return
-    if (runs.some(x => x && x.command === c)) failures.push(`command ${i + 1} (${cliVerb(c)}) ran out of order`)
+    if (is(r, i)) return
+    if (runs.some(x => is(x, i))) failures.push(`command ${i + 1} (${cliVerb(c)}) ran out of order`)
     else if (!r) failures.push(`command ${i + 1} (${cliVerb(c)}) is missing from the runs`)
     else failures.push(`command ${i + 1} ran with a different text than the one assembled`)
   })
@@ -978,7 +981,7 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   let blq = ''
   runs.forEach((r, i) => {
     if (!r) return
-    const verb = cliVerb(r.command)
+    const verb = cliVerb(inN(r) ? exp[r.n - 1] : r.command)
     if (r.exit !== 0) failures.push(`command ${i + 1} (${verb}) exit ${r.exit}`)
     const o = parseCli(r.stdout)
     if (!o) { failures.push(`command ${i + 1} (${verb}) stdout is not JSON of the CLI (tool "roadmap")`); return }
@@ -1378,7 +1381,7 @@ const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done:
 const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
-const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
+const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { n: INT, exit: INT, stdout: STR }, required: ['n', 'exit', 'stdout'] } } }, required: ['runs'] }
 const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
@@ -1670,7 +1673,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
 RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
 ${numbered(rc.commands)}
 ${BASH_ONLY}
-Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then, in the same worktree: git -C "${INTWT}" add -- "${RM}"; only if git -C "${INTWT}" diff --cached --quiet exits 1, commit with: git -C "${INTWT}" commit -m ${shq(msg)} -m ${shq(TRAILER)} and return the commit hash in commit. The commands are the whole job: do not edit any file by hand. Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.`,
+Return in runs, for each listed command you ran: n (its number above, not its text), exit and stdout (the whole output); the git commands below go not in runs. Then, in the same worktree: git -C "${INTWT}" add -- "${RM}"; only if git -C "${INTWT}" diff --cached --quiet exits 1, commit with: git -C "${INTWT}" commit -m ${shq(msg)} -m ${shq(TRAILER)} and return the commit hash in commit. The commands are the whole job: do not edit any file by hand. Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.`,
     { label: `${E}:status-${status}`, phase: 'Plan', schema: S_RECORD, model: 'haiku', effort: 'low' }) : { runs: [] }
   const read = await agent(`${COMMON_SLIM()}
 

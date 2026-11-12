@@ -2895,6 +2895,18 @@ test('recordVerdict: reprova comando faltando, fora de ordem e com texto diferen
   bad((v) => { v.results.runs[1].command = v.results.runs[1].command.replace('--what', '--what x'); }, /differ|text/i);
 });
 
+test('recordVerdict: a run names its command by n, so an abbreviated echo and the git commit steps do not fail it (E8 record)', () => {
+  const v = VX();
+  v.results.runs = v.results.runs.map((r, i) => ({ n: i + 1, command: i ? 'node "...roadmap.mjs" ' + PU.cliVerb(r.command) + ' ... --json' : r.command, exit: r.exit, stdout: r.stdout }));
+  v.results.runs.push({ command: 'git -C "D:/wt/_integracao" add -- "docs/plans/roadmap-x/" ; git diff --cached --quiet (check)', exit: 1, stdout: 'warning: LF will be replaced by CRLF' });
+  v.results.runs.push({ command: "git -C \"D:/wt/_integracao\" commit -m 'docs(roadmap): E1 em plano'", exit: 0, stdout: '[release 30c0cb1] docs(roadmap): E1 em plano' });
+  const r = PU.recordVerdict(v);
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'], holdIds: ['DEC-300'] });
+  bad((x) => { x.results.runs = x.results.runs.map((r, i) => ({ ...r, n: [2, 1, 3][i] })); }, /order/i);
+  bad((x) => { x.results.runs = x.results.runs.map((r, i) => ({ ...r, n: i ? i + 1 : 4 })); }, /command 1 ran with a different/);
+  bad((x) => { x.results.runs.push({ n: 4, command: x.expected[1], exit: 0, stdout: okOut('log') }); }, /beyond/i);
+});
+
 test('recordVerdict: reprova exit, stdout fora do contrato da CLI e erros no JSON', () => {
   bad((v) => { v.results.runs[0].exit = 1; }, /exit/);
   bad((v) => { v.results.runs[0].stdout = 'roadmap set-status: changed 1 file'; }, /JSON/);
