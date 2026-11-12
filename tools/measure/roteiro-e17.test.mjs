@@ -36,7 +36,8 @@ test('E17 roteiro: measures in bypassPermissions pinned to M, never to the branc
 test('E17 roteiro: allows every sandbox rule', () => {
   assert.ok(SANDBOX_RELEASE_RULES.length >= 6);
   for (const rule of SANDBOX_RELEASE_RULES) {
-    assert.ok(roteiro.includes(`--allow "${rule}"`), `missing --allow "${rule}"`);
+    const quote = rule.includes('"') ? "'" : '"'; // a rule with a double quote needs single quotes in Git Bash
+    assert.ok(roteiro.includes(`--allow ${quote}${rule}${quote}`), `missing --allow ${quote}${rule}${quote}`);
   }
 });
 
