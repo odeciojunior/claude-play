@@ -30,7 +30,7 @@
   - G4: `node plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-tracker/scripts/fixtures/valid`
   - G5: `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools`
 
-Abreviações: `WF` = `plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`; `FT` = `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`; `PT` = `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`.
+Abreviações: `WF` = `plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`; `FT` = `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`; `PT` = `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` (para filtrar, a flag `--test-name-pattern` vai ANTES do arquivo; depois dele o Node a ignora).
 
 ## Foco de revisão
 
@@ -62,9 +62,9 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `embedded route and planDigest equal the lib ones`: para as tarefas de `scripts/fixtures/plan-tool/routing-table.json` e o `emit` de `scripts/fixtures/plan-tool/plan.md`, `loadPure().route` e `loadPure().planDigest` dão `deepEqual` aos de `lib/routing.mjs` e `lib/plan-digest.mjs`.
   - `artifactPaths follows DEC-026`: `artifactPaths('evolucao-skills', 'E8')` → `{ dir: 'docs/plans/evolucao-skills-E8/', spec: 'docs/plans/evolucao-skills-E8/spec.md', plan: 'docs/plans/evolucao-skills-E8/plan.md', reviews: 'docs/plans/evolucao-skills-E8/reviews.md' }`; `reportPathFor('2026-11-12', 'E8')` → `'docs/reports/2026-11-12-E8-run.md'`.
   - `pluginRootOf strips the tracker suffix or returns null`: `'/p/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs'` → `'/p/productivity-tools'`; `'C:\\p\\pt\\skills\\roadmap-tracker\\scripts\\roadmap.mjs'` → `'C:/p/pt'`; `'/t/roadmap.mjs'` → `null`.
-- [ ] **Passo 2:** `PT --test-name-pattern "embedded|artifactPaths|pluginRootOf"` → FALHA (marcadores ausentes, funções indefinidas).
+- [ ] **Passo 2:** `node --test --test-name-pattern "embedded|artifactPaths|pluginRootOf" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA (marcadores ausentes, funções indefinidas).
 - [ ] **Passo 3: implementar.** Dentro de `// <pure>`, os marcadores `// <embed src="../../../lib/routing.mjs" exports="strip">` / `// </embed>` e o mesmo para `../../../lib/plan-digest.mjs`, no formato de `scripts/fixtures/plan-tool/workflow-copy.js`; gere com `node plugins/productivity-tools/scripts/embed.mjs plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`. Nomes da cópia que colidirem com nomes de WF: renomeie do lado de WF, nunca na cópia. Escreva as três funções novas.
-- [ ] **Passo 4:** `PT --test-name-pattern "embedded|artifactPaths|pluginRootOf"` → PASSA; `node --test plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.test.mjs` → PASSA; G1 → exit 0, 0 falhas.
+- [ ] **Passo 4:** `node --test --test-name-pattern "embedded|artifactPaths|pluginRootOf" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → PASSA; `node --test plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.test.mjs` → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T1: cópias embutidas de routing e plan-digest, artifactPaths e pluginRootOf` com WF e FT.
 
 ### Tarefa 2: funções puras de parada, decisões e retenção
@@ -91,7 +91,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `rulingDecisions maps scope and alternative`: `scope: 'contract'` → `'contrato'`, `'local'` → `'local'`, `discarded` = `alternative`.
   - `specCardMismatch compares ids, text and verify`: igual → `[]`; id do entregável diferente, critério a mais, texto diferente ou `verify` diferente → lista não vazia.
   - `heldBy holds transitive dependents and never the owner`: cards E1←E2←E3 e E4 independente, decisão de E1; selecionados E1..E4 → E2 e E3 retidos com a decisão de E1, E1 e E4 não; `started: ['E2']` → E2 fora do mapa.
-- [ ] **Passo 2:** `PT --test-name-pattern "stopOrCarry|rulingDecisions|specCardMismatch|heldBy"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "stopOrCarry|rulingDecisions|specCardMismatch|heldBy" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar** as funções em `// <pure>` de WF.
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T2: regras de parada, decisões e retenção como funções puras` com WF e FT.
@@ -119,7 +119,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `tasksFromPlan merges files and copies locks and external`; `evidenceFromPlan keeps the row fields`, sobre o `emit` de `scripts/fixtures/plan-tool/plan.md`.
   - `frozenTaskDiffs flags a changed or missing committed task and ignores the others`.
   - Em `prompts.test.mjs`, as asserções de `implModel` (linhas 51-54) passam a usar `{ route: { tier: 'haiku', effort: 'low', reviewTier: 'sonnet' } }` etc., mais `implEffort` e `reviewModelFor` com `route`.
-- [ ] **Passo 2:** `PT --test-name-pattern "loadPlanEmit|tasksFromPlan|evidenceFromPlan|frozenTaskDiffs"` e `node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs` → FALHAM.
+- [ ] **Passo 2:** `node --test --test-name-pattern "loadPlanEmit|tasksFromPlan|evidenceFromPlan|frozenTaskDiffs" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` e `node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs` → FALHAM.
 - [ ] **Passo 3: implementar** em `// <pure>`. Os chamadores de `implModel`/`reviewModelFor` em WF ainda recebem tarefas transcritas até T6: mantenha o comportamento antigo quando `route` falta (lê `tier`/`reviewTier`), e T6 remove esse ramo.
 - [ ] **Passo 4:** os dois comandos → PASSAM; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T3: adaptador de plan/1, carga com resumo e modelo pelo route` com WF, FT e prompts.test.mjs.
@@ -141,7 +141,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `AC2: a branch with task commits and no native spec stops with previous-version and writes no spec`: setup com `taskCommits: 2, committedTasks: [1, 2], nativeSpec: false` → resultado do entregável `failKind === 'conteudo'`, uma `operatorActions` com `kind: 'previous-version'` e `deliverable: 'E1'` cujo `doNow` cita terminar na versão anterior ou descartar a branch e a worktree; nenhuma chamada com rótulo `E1:spec`, `E1:spec-load1` ou `E1:plan`.
   - `a branch with an old superpowers spec and no task commit is not stopped`: `taskCommits: 0` → a chamada `E1:spec` acontece.
   - `the setup schema requires the new measurements`: `required` de `S_SETUP` contém os quatro campos, e o prompt do setup cita `${TARGET}..HEAD` e o caminho `docs/plans/x-E1/spec.md`.
-- [ ] **Passo 2:** `PT --test-name-pattern "AC2|old superpowers spec|setup schema requires"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC2|old superpowers spec|setup schema requires" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar** a medição no prompt do setup, os campos no schema e a parada logo depois do setup, antes do estágio de spec (`op('previous-version', E, ...)` e `fail('conteudo', ...)`), com o texto do spec (planos já escritos entram pela adoção do `plan-writer`, DEC-018). Registre o tipo de ação em `references/operator.md` só na T11.
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T4: guarda da versão anterior medida no setup` com WF e FT.
@@ -167,7 +167,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `a spec load that keeps diverging from the card fails as infra after three tries`: os três `:spec-load` com critério divergente → rótulos `E1:spec-load1..3`, modelos haiku, haiku, sonnet, `failKind 'infra'`.
   - `a reused native spec without owner note calls no author and records no duplicate`: `nativeSpec: true` → nenhuma chamada `E1:spec`; rodando duas vezes o registro do mesmo `emit` (journal), o segundo `add-decision` devolve `existing: true` no mock e nenhuma decisão nova entra em `decisionIds`.
   - `the spec fixer keeps its text and adds the block sentence`: o prompt de `E1:spec-fix1` contém o texto atual inteiro do corretor e depois a frase sobre o bloco `spec/1` e `spec-tool check --roadmap`.
-- [ ] **Passo 2:** `PT --test-name-pattern "AC5|AC6|AC7|spec author|trackerCli outside|spec load|reused native spec|spec fixer"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC5|AC6|AC7|spec author|trackerCli outside|spec load|reused native spec|spec fixer" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar** o estágio do spec conforme "Estágio de spec" do spec: autor (prompt `key: value` + `ownerNote` multilinha com nota do dono, regras fixas e `NO_ASK`), reutilização com `nativeSpec`, carga com `S_TOOLOUT` (os dois comandos `node "<specTool>" check|emit "<abs spec>" --roadmap "<abs roadmap>"`), commit mecânico (`Write` da mensagem em `<wtRoot>/_tmp/`, `git -C "<wt>" add <rel>`, `git -C "<wt>" commit -F <arquivo>`, apagar), laço de revisão mantido com a carga repetida depois de cada correção, e `stopOrCarry` aplicado depois da revisão e antes do plano. `check` com saída diferente de 0 vira problema crítico da revisão, não carga falha. O que o corretor devolve em `decisions`/`humanInputs` deixa de ser lido.
 - [ ] **Passo 4:** mesmo comando → PASSA; `node --test tools/measure/run-batch.test.mjs tools/measure/checkpoint.test.mjs` → PASSA (texto do corretor e linhas Blocks intactos); G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T5: estágio de spec pelo spec-author, carga conferida e paradas em código` com WF e FT.
@@ -193,7 +193,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `frozen tasks: an owner note that rewrites a committed task restores the plan and stops`: `nativePlan: true`, `committedTasks: [1, 2]`, nota do dono, segunda carga com T2 diferente nas duas chamadas do autor → duas chamadas `E1:plan`, o prompt do commit pede `git -C "/wt/E1" checkout -- docs/plans/x-E1/plan.md`, ação `plan-frozen-tasks`, `failKind 'conteudo'`, nenhum `:t\d+:impl`.
   - `a native plan reused without owner note calls no author and makes no commit`: `nativePlan: true` sem nota → nenhum `E1:plan`, nenhum `E1:plan-commit`, a carga roda e T1 commitada não é reimplementada.
   - `the plan fixer keeps its text and adds the block sentence`.
-- [ ] **Passo 2:** `PT --test-name-pattern "AC3|AC4|plan author|frozen tasks|native plan reused|plan fixer"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC3|AC4|plan author|frozen tasks|native plan reused|plan fixer" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar** conforme "Estágio de plano" do spec: autor, carga (`node "<planTool>" emit "<abs plan>" --spec "<abs spec>"` e `git -C "<wt>" rev-parse "HEAD:<rel plan>"`, um por chamada), `fail('infra', 'plan load: integrity digest ...')` antes do registro "executando", adaptador, despacho com `model: implModel(t)`/`effort: implEffort(t)` e revisor por `reviewModelFor(t)`, lista "THE TASKS THE CODE ACTS ON" vinda do `emit`, saída de `evidenceRows`/`evidenceRowGaps`/`roadmapHeader`, `planBlobGaps` mantido, congelamento das tarefas commitadas. Remova o ramo de compatibilidade de T3 (tarefa sem `route`). `planFingerprint(tasks, planBlob)` recebe as tarefas do adaptador e o `planBlob` medido; os testes de autorização existentes continuam passando sem mudar suas asserções.
 - [ ] **Passo 4:** mesmo comando → PASSA; `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs tools/measure/run-batch.test.mjs tools/measure/checkpoint.test.mjs` → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T6: estágio de plano pelo plan-author, carga por resumo e despacho pelo route` com WF, FT e review.test.mjs.
@@ -215,7 +215,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `a finish-merge resume of a previous-version deliverable reports review log not read`: `readPersistedLog` procura só `docs/plans/x-E1/`; com `found: false` vira a preocupação existente.
   - `the fixed rules ask for simple commands`: o texto de `C()` (prompt de `E1:t1:impl`) cita um comando por chamada, sem heredoc, laço, `&&` ou `;`, Write para arquivos e `git commit -F`.
   - Atualize as asserções existentes que citam `docs/superpowers/...` (há duas em FT) para os caminhos novos.
-- [ ] **Passo 2:** `PT --test-name-pattern "AC1|previous-version deliverable reports|simple commands"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC1|previous-version deliverable reports|simple commands" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar.** As menções a `superpowers:test-driven-development` (implementador) e `superpowers:systematic-debugging` (corretores de merge e de gates) ficam (E9); o teste do AC1 só olha os estágios de spec e plano e os caminhos.
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T7: artefatos em docs/plans/<slug>-<E>/, estágios sem superpowers e comandos simples` com WF e FT.
@@ -237,7 +237,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `a transitive dependent is held citing the origin decision`: E3 com `deps: ['E2']` e E2 com `deps: ['E1']`.
   - `a pending contract decision read in discovery holds unstarted dependents and not its owner`: `pendingDecisionsStdout` com `{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }` → E1 roda, E2 retido citando DEC-7; em `plan-only` igual; em `dry-run` nenhum agente de entregável e a retenção aparece em `selection`.
   - `discovery requires pendingDecisionsStdout`: o `required` de `S_DISC` contém o campo; JSON inválido nele para o run como os outros campos obrigatórios.
-- [ ] **Passo 2:** `PT --test-name-pattern "AC8|transitive dependent|pending contract decision read|requires pendingDecisionsStdout"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC8|transitive dependent|pending contract decision read|requires pendingDecisionsStdout" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar** a leitura na descoberta e a checagem antes de iniciar cada entregável (na mesma execução e por decisões pendentes), em `run` e `plan-only`.
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T8: dependentes retidos por decisão de contrato pendente` com WF e FT.
@@ -254,7 +254,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
 - Produz: `S_DOCMEAS = { statusStdout, briefStdout, clean, head, measureOk, measureDetails }`, obrigatórios `statusStdout`, `briefStdout`, `clean`; o prompt nomeia `statusStdout` e `briefStdout`; o JavaScript mapeia para `recordVerdict`.
 
 - [ ] **Passo 1: testes que falham** em FT: mock de `:docs-measure` passa a devolver `statusStdout`/`briefStdout`; `docs-measure schema has no status field` (`'status' in S_DOCMEAS.properties === false`); `a docs-measure answer with statusStdout passes without the missing-panel alarm` (nenhuma preocupação contendo `reread status --json is missing or has no panel`).
-- [ ] **Passo 2:** `PT --test-name-pattern "docs-measure"` → FALHA.
+- [ ] **Passo 2:** `node --test --test-name-pattern "docs-measure" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
 - [ ] **Passo 3: implementar.**
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T9: docs-measure devolve statusStdout e briefStdout` com WF e FT.
