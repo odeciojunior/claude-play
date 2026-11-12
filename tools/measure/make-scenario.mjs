@@ -16,7 +16,7 @@ const DEFECTS = join(here, 'defects');
 export const VARIANTS = [
   'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
-  'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author',
+  'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
 ];
 
 export const E5_PATHS = {
@@ -255,6 +255,17 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
       addRow(road + '/state.md', '<!-- /roadmap:panel -->', '| E6 | not-started | - | Run the release skill |');
       git(sandbox, 'add', strategyPath, road + '/requirements.md', road + '/state.md');
       git(sandbox, 'commit', '-q', '-m', 'docs(roadmap): add E6 card');
+      break;
+    }
+    case 'plan-author': {
+      const files = {
+        'docs/plans/roadmap-sandbox-E5/spec.md': 'plan-author-spec.md',
+        'docs/plans/word-count/spec.md': 'plan-writer-spec.md',
+        'docs/superpowers/plans/2026-01-01-e5-text-utilities.md': join('e5', 'plan.md'),
+      };
+      for (const [rel, src] of Object.entries(files)) writeIn(sandbox, rel, readText(join(SCEN, src)));
+      git(sandbox, 'add', ...Object.keys(files));
+      git(sandbox, 'commit', '-q', '-m', 'docs: E5 spec, word-count spec and legacy E5 plan');
       break;
     }
     case 'tracker':

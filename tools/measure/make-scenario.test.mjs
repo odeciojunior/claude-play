@@ -22,10 +22,10 @@ test('lists every variant of the spec table', () => {
   assert.deepEqual([...VARIANTS].sort(), [
     'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
-    'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author',
+    'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
   ].sort());
-  assert.equal(VARIANTS.length, 14);
-  assert.equal(VARIANTS[VARIANTS.length - 1], 'spec-author');
+  assert.equal(VARIANTS.length, 15);
+  assert.equal(VARIANTS[VARIANTS.length - 1], 'plan-author');
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
@@ -564,6 +564,69 @@ test('E19: spec-author card passes spec-tool against the sandbox roadmap', async
     writeFileSync(spec, '# Spec E6\n\n```json data\n' + JSON.stringify(data, null, 2) + '\n```\n');
     const r = spawnSync(process.execPath, [E19_SPEC_TOOL, 'check', spec, '--roadmap', join(t.dir, 'docs/plans/roadmap-sandbox'), '--json'], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally {
+    t.done();
+  }
+});
+
+const E20_PLUGIN = resolve(here, '..', '..', 'plugins/productivity-tools');
+const E20_SPEC_TOOL = join(E20_PLUGIN, 'scripts/spec-tool.mjs');
+const E20_PATHS = {
+  e5: 'docs/plans/roadmap-sandbox-E5/spec.md',
+  wc: 'docs/plans/word-count/spec.md',
+  plan: 'docs/superpowers/plans/2026-01-01-e5-text-utilities.md',
+};
+
+test('E20: plan-author variant writes the E5 spec, the word-count spec and the legacy plan', async () => {
+  const t = tmp('sb');
+  try {
+    const s = await makeScenario(t.dir, 'plan-author');
+    for (const rel of Object.values(E20_PATHS)) {
+      assert.ok(existsSync(join(t.dir, rel)), rel);
+      assert.ok(!readFileSync(join(t.dir, rel), 'utf8').includes('\r'), rel);
+    }
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    assert.equal(git(t.dir, 'log', '-1', '--format=%s'), 'docs: E5 spec, word-count spec and legacy E5 plan');
+    assert.deepEqual(s.prompts, []);
+    assert.equal(s.stopResume, null);
+    assert.deepEqual(s.seeded, []);
+    assert.ok(!existsSync(join(t.dir, '.claude/settings.local.json')));
+  } finally {
+    t.done();
+  }
+});
+
+test('E20: the E5 spec passes spec-tool against the sandbox roadmap', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'plan-author');
+    const r = spawnSync(process.execPath, [E20_SPEC_TOOL, 'check', join(t.dir, E20_PATHS.e5), '--roadmap', join(t.dir, 'docs/plans/roadmap-sandbox'), '--json'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally {
+    t.done();
+  }
+});
+
+test('E20: the word-count spec passes spec-tool outside a roadmap', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'plan-author');
+    const r = spawnSync(process.execPath, [E20_SPEC_TOOL, 'check', join(t.dir, E20_PATHS.wc), '--json'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!/-E\d+$/.test(dirname(E20_PATHS.wc)));
+  } finally {
+    t.done();
+  }
+});
+
+test('E20: the legacy plan has no data block and names the sandbox roadmap', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'plan-author');
+    const { readDataBlock } = await import(pathToFileURL(join(E20_PLUGIN, 'lib/data-block.mjs')).href);
+    const text = readFileSync(join(t.dir, E20_PATHS.plan), 'utf8');
+    assert.equal(readDataBlock(text).error.code, 'data-block-missing');
+    assert.ok(text.includes('**Roadmap:** docs/plans/roadmap-sandbox/'));
   } finally {
     t.done();
   }
