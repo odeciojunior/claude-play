@@ -19,6 +19,10 @@ export const VARIANTS = [
   'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
 ];
 
+// KNOWN GAP (E8, for E11 criterion 1): the roadmap-release workflow now reads and writes the native spec and plan at
+// docs/plans/roadmap-sandbox-E5/{spec,plan}.md and ignores these superpowers paths. The seeded release variants
+// (plano-semeado-*, codigo-semeado-*) therefore do not reach the planted defects through the workflow until native
+// spec/plan seeds exist; the direct spec-author, plan-author and reviewer variants are unaffected.
 export const E5_PATHS = {
   spec: 'docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md',
   plan: 'docs/superpowers/plans/2026-11-10-E5-text-utilities.md',

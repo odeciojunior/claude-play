@@ -3586,8 +3586,12 @@ test('frozenTaskDiffs flags a changed or missing committed task and ignores the 
   next.tasks[2].title = 'changed';
   assert.deepEqual(pure.frozenTaskDiffs(prev, next, [1, 2]), []);
   assert.equal(pure.frozenTaskDiffs(prev, next, [1, 3]).length, 1);
-  next.tasks[0].route = { ...next.tasks[0].route, effort: 'high' };
+  next.tasks[0].score = { ...(next.tasks[0].score || {}), blast: 9 };
   assert.equal(pure.frozenTaskDiffs(prev, next, [1]).length, 1);
+  // derived by plan-tool from the whole plan: new tasks shift wave, fileCount and the route gate of committed ones
+  const derived = JSON.parse(JSON.stringify(prev));
+  derived.tasks.forEach((t) => { t.wave = (t.wave || 1) + 2; t.fileCount = (t.fileCount || 0) + 1; t.route = { ...t.route, gate: 'changed' }; });
+  assert.deepEqual(pure.frozenTaskDiffs(prev, derived, [1, 2, 3]), []);
   next.tasks = next.tasks.filter((t) => t.n !== 2);
   const d = pure.frozenTaskDiffs(prev, next, [2]);
   assert.equal(d.length, 1);
@@ -3863,6 +3867,16 @@ test('frozen tasks: a note that touches only the tasks not yet committed is comm
   assert.equal(labels.filter((l) => l === 'E1:plan').length, 1);
   assert.match(calls.find((c) => c.label === 'E1:plan-commit').prompt, /commit -F/);
 });
+
+test('frozen tasks: the previous plan is loaded without --spec, the new plan with it', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false)] };
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'add an edge case' } },
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(P0, 'E1') : undefined)) });
+  const loads = calls.filter((c) => c.label === 'E1:plan-load1')
+  assert.ok(loads.length >= 2)
+  assert.doesNotMatch(loads[0].prompt, /--spec/)
+  assert.match(loads[1].prompt, /emit "[^"]*" --spec/)
+})
 
 test('a native plan reused without owner note calls no author and makes no commit', async () => {
   const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],

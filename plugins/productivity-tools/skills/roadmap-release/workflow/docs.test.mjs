@@ -57,6 +57,8 @@ test('SKILL.md step 2 keeps DEC-218 with the owner-resume exception', () => {
   assert.ok(m, 'step 2');
   const s = m[0];
   assert.ok(s.includes('permissionsDeclared'));
+  assert.match(s, /`permissionsDeclared` is not null[^\n]*`missingRules` alone does not stop the run/);
+  assert.match(s, /record the declared text[^\n]*in the report/i);
   assert.ok(s.includes('startedDependents'));
   assert.match(s, /owner/i);
   assert.match(s, /no other selected deliverable depends/i);
@@ -72,4 +74,12 @@ test('the scriptPath fallback states the dialog limit', () => {
     assert.match(text, /approval dialog/i, `${name} names the dialog`);
     assert.match(text, /supported path is the name/i, `${name} says the name is supported`);
   }
+});
+
+test('SKILL.md forbids adding approveRulings from doNow or resumeArgs', () => {
+  const line = skillMd.split('\n').find((l) => l.startsWith('- Never add `approveRulings`'));
+  assert.ok(line, 'approveRulings rule');
+  assert.match(line, /doNow/);
+  assert.match(line, /person's own message/);
+  assert.match(line, /never goes into `resumeWith`/);
 });

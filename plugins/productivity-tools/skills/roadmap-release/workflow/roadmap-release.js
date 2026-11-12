@@ -433,7 +433,8 @@ function tasksFromPlan(plan) {
 function evidenceFromPlan(plan) {
   return ((plan && plan.evidence) || []).map(e => ({ ac: e.ac, kind: e.kind, command: e.command, testRef: e.testRef === undefined ? null : e.testRef, blq: e.blq, external: e.external, externalDedupe: e.externalDedupe }))
 }
-// Differences on tasks already committed between two plans (canonical JSON, route included); a committed task missing from the next plan is a difference.
+// Differences on tasks already committed between two plans (canonical JSON of the fields the author writes; wave, fileCount and route are derived by plan-tool from the whole plan, so they are ignored); a committed task missing from the next plan is a difference.
+const authoredTask = t => { const { wave, fileCount, route, ...rest } = t || {}; return rest }
 function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   const find = (p, n) => ((p && p.tasks) || []).find(t => t.n === n)
   const out = []
@@ -442,7 +443,7 @@ function frozenTaskDiffs(prevPlan, nextPlan, committed) {
     if (!a) continue
     const b = find(nextPlan, n)
     if (!b) out.push(`task ${n} is committed but missing from the new plan`)
-    else if (JSON.stringify(canon(a)) !== JSON.stringify(canon(b))) out.push(`task ${n} is committed but changed in the new plan`)
+    else if (JSON.stringify(canon(authoredTask(a))) !== JSON.stringify(canon(authoredTask(b)))) out.push(`task ${n} is committed but changed in the new plan`)
   }
   return out
 }
@@ -2150,18 +2151,19 @@ ${NO_ASK}`,
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.`
-  const planLoadOnce = k => agent(`${Cs()}
+  const planLoadOnce = (k, useSpec = true) => agent(`${Cs()}
 
 PLAN LOAD of deliverable ${E} (mechanical, read-only; change no file). Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2, blob = 3 (empty when it fails), head = 4, clean = true when 5 prints nothing.
-${numbered([`node "${planTool}" check "${planAbs}" --spec "${specAbs}" --json`, `node "${planTool}" emit "${planAbs}" --spec "${specAbs}"`, `git -C "${wt}" rev-parse "HEAD:${AP.plan}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
+${numbered([`node "${planTool}" check "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""} --json`, `node "${planTool}" emit "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""}`, `git -C "${wt}" rev-parse "HEAD:${AP.plan}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
 ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   // Attempts 1 and 2 in haiku/low, the 3rd in sonnet/medium; the digest is recalculated here from the emit.
-  const loadPlan = async () => {
+  // useSpec false: the previous plan on the frozen path is read against no spec (the spec already holds the owner note, which the old plan cannot cover yet).
+  const loadPlan = async (useSpec = true) => {
     let why = ''
     for (let k = 1; k <= 3; k++) {
-      const v = checkPlanLoad(await planLoadOnce(k), { E, RM })
+      const v = checkPlanLoad(await planLoadOnce(k, useSpec), { E, RM })
       if (v.ok) return v
       why = v.why
     }
@@ -2188,7 +2190,7 @@ ${Cn()}`,
   } else {
     let prevPlan = null
     if (frozen) {
-      const first = await loadPlan()
+      const first = await loadPlan(false)
       if (!first.ok) return planLoadFail(first.why)
       prevPlan = first.plan
     }
