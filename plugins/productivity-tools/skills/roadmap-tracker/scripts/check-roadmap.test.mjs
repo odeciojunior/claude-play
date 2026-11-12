@@ -150,9 +150,9 @@ function keepOneLogRow(files) {
 
 test('script header and constants', () => {
   const first = fs.readFileSync(SCRIPT, 'utf8').split(/\r?\n/)[0];
-  assert.equal(first, '// check-roadmap 1.5.0 format 1');
+  assert.equal(first, '// check-roadmap 1.7.0 format 1');
   assert.equal(FORMAT_VERSION, 1);
-  assert.equal(CHECKER_VERSION, '1.5.0');
+  assert.equal(CHECKER_VERSION, '1.7.0');
 });
 
 test('script imports only node: modules', () => {
@@ -418,7 +418,7 @@ test('git: neither local nor origin branch gives one warning, no false error', (
 test('cli --version', () => {
   const r = cli(['--version']);
   assert.equal(r.status, 0);
-  assert.equal(r.stdout.trim(), '1.5.0 format 1');
+  assert.equal(r.stdout.trim(), '1.7.0 format 1');
 });
 
 test('cli exit 0 on the valid fixture, with summary', () => {
@@ -528,7 +528,7 @@ test('fix2: CRLF fixture and CRLF script run through the CLI; CRLF header is rea
   const r = spawnScript(path.join(dir, 'check-roadmap.mjs'), os.tmpdir());
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /check-roadmap: 0 error\(s\)/);
-  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.5.0 format 1');
+  assert.equal(spawnSync(process.execPath, [path.join(dir, 'check-roadmap.mjs'), '--version'], { encoding: 'utf8' }).stdout.trim(), '1.7.0 format 1');
   const cache = tmp('roadmap-cache-');
   const scripts = path.join(cache, 'mkt', 'productivity-tools', '1.3.0', 'skills', 'roadmap-tracker', 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
@@ -1722,7 +1722,7 @@ test('AC3: --json matches text mode counts and exit code', async (t) => {
     const r = cli([VALID, '--json']);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const o = JSON.parse(r.stdout);
-    assert.equal(o.checker, '1.5.0');
+    assert.equal(o.checker, '1.7.0');
     assert.equal(o.format, 1);
     assert.deepEqual(o.summary, { errors: 0, warnings: 0, exitCode: 0 });
   });
@@ -1780,7 +1780,7 @@ test('AC3: --json matches text mode counts and exit code', async (t) => {
   await t.test('--version --json stays text', () => {
     const r = cli(['--version', '--json']);
     assert.equal(r.status, 0);
-    assert.equal(r.stdout.trim(), '1.5.0 format 1');
+    assert.equal(r.stdout.trim(), '1.7.0 format 1');
   });
 });
 

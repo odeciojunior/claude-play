@@ -3291,7 +3291,7 @@ test('E25 AC3: plugin.json registers the release workflow file', () => {
   assert.ok(Array.isArray(p.workflows));
   assert.ok(p.workflows.includes('./skills/roadmap-release/workflow/roadmap-release.js'));
   assert.ok(existsSync(join(PLUGIN_ROOT3, 'skills/roadmap-release/workflow/roadmap-release.js')));
-  assert.equal(p.version, '1.6.0');
+  assert.equal(p.version, '1.7.0');
 });
 
 test('E25 AC3: the workflow name is release-workflow and is no skill\'s name', async () => {
