@@ -2,7 +2,6 @@
 
 ## Contents
 
-- Step lifecycle
 - Wave loop
 - Context layers
 - Fork vs fresh vs continue
@@ -12,145 +11,73 @@
 - Recovery after compaction or restart
 - Completion
 
-The main conversation is the orchestrator. It launches waves, checks results, writes handoffs into the progress file and moves on. It does not implement non-inline steps itself, and it does not read executor transcripts.
-
-## Step lifecycle
-
-This section is the only statement of step states and transitions; every other file refers to it.
-
-**Where state lives.** A step's state is its `Status` cell in the `## Steps` table of the progress file, the `Final gate` row included. The run's state is the header `**Status**`. What a state waits on is in `## Manual Actions Required` and, for an external step, the card lines `Pre-launch review:` and `Authorized:`. `## Recovery State` holds `Wave gate owed`, `In-Flight Agents`, `Final gate rounds` and `Next Action`. The Execution Map holds structure only (waves, groups, routes). **Every read, at the start of a wave and on resume, starts with `**Status**`, `## Recovery State`, `## Steps` and `## Manual Actions Required`, then the map.** Each write below reaches the file before the action it guards, so a compaction loses nothing.
-
-| # | State | Written by, when | Event | Next |
-|---|-------|------------------|-------|------|
-| 1 | `Pending` | Step 7; or a row below, before what it allows | Wave loop item 4 selects its group; every dependency outside its group is `PASS`, or a `Skip` with outputs | `Launched` |
-| 2 | `Pending` | same | Inline group, same dependencies: item 10 runs it | Done-means passes: `PASS`. Fails: `Pending`, re-routed off Inline per routing.md §5 step 3 |
-| 3 | `Pending` | same | A manual action opens on it, pre-flight lacks its upstream parameter, or a dependency is a `Skip` with no outputs | `Skip (manual)`, by Hold |
-| 4 | `Pending` | same | A dependency is held, stopped or waiting; or its wave is not after the wave of a dependency outside its group | `Waiting (manual)`, by Hold; or its group moves to the wave after that dependency's, still `Pending` |
-| 5 | `Pending`, external, no `Pre-launch review:` line | same | Review (Step 8 item 4) | PASS: line written. Defects after 2 rounds since its last entry closed: `Skip (manual)`, `Pre-launch review failed:`, no question for this step |
-| 6 | `Pending`, external, reviewed, no `Authorized:` line | same | The request or an earlier answer names it; otherwise stop and ask, no entry, still `Pending` | Named: line written, row 1. Refused: `Skip (manual)`, `Refused:`. Another listed step named or refused, this one not: `Skip (manual)`, `Not named:` |
-| 7 | `Pending`, external, with either line | same | A card line other than `Handoff`, `Pre-launch review:` or `Authorized:` changes | `Pre-launch review:` removed, `Authorized:` too if the effect changed; row 5 |
-| 8 | `Launched` | Wave loop item 4, **before** the `Agent` call | Agent still running | `Launched`: wait for its notification; after a compaction, ask it once for its report |
-| 9 | `Launched` | same | Verified PASS report | No review gate: `PASS`. Review gate: `Review owed`, the report's EVIDENCE line in the Note |
-| 10 | `Launched`, non-external | same | FAIL or BLOCKED (routing.md §5) | Retry: `Launched`, attempts + 1. §5 step 4: `Skip (manual)`, `Open question:` |
-| 11 | `Launched`, non-external | same | No report and no live agent (§ Recovery) | Done-means passes on the card's Files: a report, through § Verification and § Writing back (row 9). Otherwise relaunched, `Launched` |
-| 12 | `Launched`, external | same | FAIL, BLOCKED, or no report (no agent, no answer, `launching` with no ID); files never close it | `Stopped`, `Open question:` that says the result was not checked; stop and ask |
-| 13 | `Review owed` | § Writing back, after verification and before the reviewer launches | Reviewer PASS; or reviewer lost | `PASS`; or launch the read-only review again, from the Note and the card's Files |
-| 14 | `Review owed` | same | Defects | Non-external: `Launched`, fix-up round in the Note, per routing.md §4; rounds exhausted: row 10. External: `Stopped`, `Open question:`; stop and ask |
-| 15 | `Stopped` (external, launched once, result failed, unknown or rejected) | Rows 12, 14, 25, before the question | `it is done` | `PASS`, the user's word in Issues & Decisions; the effect is named to the final gate as accepted |
-| 16 | `Stopped` | same | `no`, `skip`, `leave it` | `Stopped`, entry becomes `Refused:`; reported, and named to the final gate, as launched once, outcome unconfirmed, not a defect |
-| 17 | `Stopped` | same | `run it again` | `Stopped`, entry becomes `Refused:`, Note `replaced by Step Nr`, reported as row 16. Nr is a new effect: new `## Steps` row, card and map row, its own group in the replaced step's wave, same dependencies; dependents depend on it instead, and the `Final gate` row too. `Pending`, external, no card lines. Rows 5-6 apply: it needs its own yes, the question says the effect may already be partly done, and the yes covers only the reviewed card |
-| 18 | `Skip (manual)`, open entry | Hold, before any question | Manual action finished, or `Pre-launch review failed:` closed (authorizes nothing) | `Pending` |
-| 19 | `Skip (manual)`, `Open question:` on a missing parameter | same | The answer supplies the value | Value written to the card; `Pending`. External: `Pre-launch review:` removed, `Authorized:` too if the effect changed; row 5 |
-| 20 | `Skip (manual)`, open entry | same | It is named, or a non-external step's own question gets a yes (not a `Pre-launch review failed:` entry) | `Pending`, with `Authorized:` if external |
-| 21 | `Skip (manual)`, open entry | same | `it is done` | `PASS`, the user's word in Issues & Decisions |
-| 22 | `Skip (manual)`, open entry | same | `no` or `skip` | Entry becomes `Refused:`; row 23 |
-| 23 | `Skip (manual)`, `Refused:` | Rows 6, 22 | It is named, before `Status: Completed`; or Completion | Named: as row 20. Completion: stays, not run, does not hold the final gate |
-| 24 | `Waiting (manual)` | Hold | Release: no dependency is held, stopped or waiting; or Completion, behind `Refused:` entries only | `Pending`; Completion: stays, not run |
-| 25 | `PASS` | § Writing back, after verification, review gate, Handoff and commit | Wave gate attributes a failure to its group; or the final gate finds a defect in its external effect, not one accepted in row 15 | Wave gate, non-external: row 10. Otherwise `Stopped`, `Open question:`; stop and ask. With neither: terminal. A final-gate defect in its files only: stays `PASS` (Completion item 4) |
-| 26 | `Skip` | Step 1 | None | Terminal; counts as done for dependents only if its outputs exist |
-| 27 | `Final gate` row `Pending` | Step 7 | Completion | `PASS` after the final gate's PASS; `Skip` when no step ran (a `Stopped` step ran) |
-| 28 | `Status: Map ready` | Step 7, before self-approval | Step 8 item 6 (self-approval; the map is never put to the user), or a stop in Step 8 | `In Progress`, or `Blocked` |
-| 29 | `Status: In Progress` | Step 8 item 6, or an answer | Stop and ask; or Completion closes | `Blocked`; or `Completed` |
-| 30 | `Status: Blocked` | Stop and ask, before the question | An answer or message | Apply it. Every question the stop asked answered (`Not named:` counts): `In Progress`, continue at `Next Action`. Otherwise stays `Blocked` and re-asks what is left |
-| 31 | `Status: Completed` | After the final gate's PASS or `Skip` | None (Step 0 asks before re-running) | Terminal |
-
-**Hold.** Write `Skip (manual)` and the entry under Manual Actions (template forms), from the moment the entry opens. Mark every step depending on a held or stopped step, directly or transitively, `Waiting (manual)`, and split any group holding both held and other steps so the others can run.
-
-**Stop and ask.** Write the state and the entry its row names, if any, record it in Issues & Decisions, write `Status: Blocked` and into `Next Action` the exact question, what each answer does and where to continue (default: "then re-run SKILL.md Step 8"), all on one line, with no blank line and no line starting with `**` (the next field would cut it), then ask in that same turn and stop. A second stop while one is open joins that question.
-
-**When to ask.** An external step's question is asked at once (row 3 included). A non-external hold leaves `Status` as it is while independent groups can run; Completion asks when nothing else can.
-
-**While `Status` is `Blocked`, nothing starts:** no launch, retry, fix-up, review gate, wave gate, Advance or external action, a read of production and `SendMessage` included, except asking an in-flight agent for its report. Step 8's read-only reviews are self-approval and are not barred. Groups in flight finish and are recorded: a failure is noted in `## Steps` and joins the question, a passed report follows row 9, its review gate waiting.
-
-**Applying an answer.** A step is **named** by an answer to the authorization question about it (row 6, or Completion item 1 for a `Not named:` entry) that authorizes it by number or title, or by a bare yes, which names every step that question listed; or by an explicit request to run it that identifies it by number or title. A mention, a refusal, a report that it is done or a yes to any other question does not name it and grants no authorization. A bare no refuses every step the authorization question listed. A value answers the question that asked for it (row 19). An answer or message that fits no row's event (`run it again` on a step not `Stopped`) authorizes nothing, changes no state and leaves its entries open, and the reply gives the step's state; silence is never an answer. Record an authorization as in SKILL.md Step 8 item 4. Then release (row 24) and follow row 30.
-
-**What the table guarantees.**
-
-- No row returns a launched external step to `Pending`: an effect launches at most once per yes, a repeat is a new effect with its own yes (row 17), and after launch only its result is reviewed. A non-external step may be relaunched (rows 10, 11, 14).
-- Step 8 item 4 works only on `Pending` steps, so a `Launched`, `Review owed` or `Stopped` step is never treated as unauthorized.
-- With no step `Pending`, `Launched` or `Review owed`, every step is terminal or held with an entry; Completion asks (an open entry not `Refused:`) or closes the run.
-
-**Older progress files** are brought into this table before anything else (SKILL.md Step 0):
-
-- Read the step status from `## Steps`: a legacy `In Progress` or similar is `Launched`. A map `Status` column is no longer read, and the `Final gate` row is added to `## Steps` as `Pending`. `Last DELEGATED Wave` above `Last COMPLETED Wave` becomes `Wave gate owed: <that wave>`, otherwise `none`.
-- With no `External:` line, classify the unfinished steps (SKILL.md Step 1) and write the line (`External: none` if there are none) and the cards' `External: yes` lines. Then re-apply routing.md §3 to each newly external step, rewrite its card `Route` and map row, and make it its own group (SKILL.md Step 5).
-- Every step of a group recorded as in flight enters at `Launched`, and in a mixed group all of them follow the external rows, so a retry cannot repeat the effect. An external step held by an `Open question:` entry, or by a `Refused:` entry after a recorded launch, enters at `Stopped`, and so does a `Skip` with Note `replaced by`, with a `Refused:` entry; any other keeps its state.
-- Process in-flight groups (§ Recovery), then by status at that point: `Map ready` or legacy `Awaiting approval` runs all of Step 8; `In Progress` runs Step 8 items 3 to 6; `Blocked` keeps its `Status` and `Next Action`, asks that question first, and appends "then run Step 8 items 3 to 6 before any launch".
+The main conversation is the orchestrator. It launches waves, checks results, records events and moves on. It does not implement non-inline steps itself and does not read executor transcripts. Every transition is an `apply` event (`references/state.md`); `next --json` says what is due, and a refused event changes nothing. Nothing starts while the run is `blocked`, except asking an in-flight agent for its report.
 
 ## Wave loop
 
-Waves are **barriers**: a wave's writing groups launch only after the previous wave's gate passed. (Read-only groups — research, review — may launch as soon as their own dependencies are done.) Nothing starts while `Status` is `Blocked` (§ Step lifecycle).
+Waves are barriers: a wave's groups launch only after the previous wave's gate passed. The loop is `next`, act, `apply`:
 
-1. **Read state** as § Step lifecycle says.
-2. **Pre-flight the wave:** re-apply calibration (routing.md §6); confirm no two groups in the wave that still have to run share a write set, counting implicit writes (SKILL.md Step 5). A `Pending` external step launches only with both card lines and its authorization in Issues & Decisions; otherwise return to SKILL.md Step 8 item 4. A parameter the card names as coming from upstream is first written into the card from the handoff, unless the card already states it (a card change: row 7); if no handoff supplies it, hold the step (row 3) with `Open question: Step N: <missing parameter and what each answer does>`.
-3. **Allow the checks:** before launching a background wave, propose allow rules for the validation commands (the Shared Brief's build/test/lint commands) to the user in the map report (SKILL.md Step 8) so permission prompts don't stall it, without waiting for an answer; never write settings yourself.
-4. **Select and mark delegated:** select the groups with a `Pending` step that row 1 admits and none `Launched` or `Review owed`, leaving out the `Final gate` row, groups with `Mode: Inline` and held groups. With no group selected, skip to item 9. Otherwise write to the file **before** launching: each selected step `Launched`, `Wave gate owed: <this wave>`, and the groups in `In-Flight Agents`.
-5. **Launch the whole wave in one message:** one `Agent` call per selected group with `subagent_type`, `model: <routed tier>` and `effort` per routing.md §2-§3, a short `description`, and the prompt from the template below.
-6. **Record agent IDs** in `In-Flight Agents` right after the launch returns.
-7. **Wait for notifications.** Agents run in the background and notify on completion — don't poll or sleep.
-8. **Verify each report** (§ Verification), then follow § Step lifecycle: write the state, launch the review gate if there is one (its agent ID in `In-Flight Agents`), write the handoff.
-9. **Wave gate:** with `Wave gate owed: none` the wave advances without one. When every launched group in the wave is done (review gates included) and nothing is in flight, run the project's full check once (the build/test command from the Shared Brief). A held or stopped group counts as finished for this gate; a failure in its files is added to its Manual Actions entry and does not stop the wave. Compare the result against Baseline (SKILL.md Step 2): only a failure outside Baseline counts. If the gate fails outside Baseline, attribute it before escalating: run each group's targeted check again and diff the failing paths against each group's FILES; the owning group gets a FAIL with the gate output as evidence (row 25). If no group owns it, record it in Issues & Decisions, stop and ask.
-10. **Inline steps:** in every wave, after item 3 and before item 4, with nothing in flight, run the wave's inline steps that row 2 admits, wave 1 included; a held inline step does not run. Then run their Done-means checks.
-11. **Advance:** set `Wave gate owed: none`, clear `In-Flight Agents`, set `Next Action`, append a row to the Wave Execution Log; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event `"wave N closed (steps …); no questions, return pending items"`; the tracker never blocks the run. Write each pending item it returns into Issues & Decisions as an entry whose text begins literally with `Tracker pending:` (after the list marker). The prefix is fixed and in English, even when the rest of the line is in another language (never "pendência do usuário: …" or any translation); Completion reads these lines by that prefix, so a line without it is lost. With `Commits: per step`, then run `git add -- <roadmap folder> <progress file>` and `git commit -m "roadmap: wave N closed" -- <roadmap folder> <progress file>` (omit the folder when `**Roadmap**` is `none`); if those paths hold changes that are not this run's, warn and leave them out. With `none`, they stay uncommitted and the final report lists them as such. Then start the lowest wave with a `Pending` step (the `Final gate` row aside), or go to Completion when none is left.
+1. **`launch`** lists the steps ready, each with `mode`, tier, effort, agent and brief. Allow the plan's validation commands first: name them in the map report so permission prompts do not stall a background wave; never write settings yourself. Run `inline` steps first, one at a time, with nothing in flight: `inline-start`, do the work from the brief, check its Done-means, `inline-result --value pass|fail`. For the delegated steps, run `launch --steps n,m` **before** the `Agent` calls, then send one `Agent` call per step in a single message with `subagent_type`, `model` = the tier and `effort` as listed, and the prompt template below. A repeat after a failure goes up with `launch --steps n --tier <tier>`; `tier-down` is refused.
+2. **`await`**: wait for the notifications; do not poll or sleep.
+3. **Verify each report** (Verification), then `report --step n --value pass|fail|blocked --text <evidence line>`.
+4. **`review`**: the step is gated. Launch a read-only reviewer at the listed `reviewTier` (effort medium) with the step's brief, the report and the changed paths; then `review-result --value pass|defects|lost`. Defects return the step to the same executor through `SendMessage` (a fresh agent for read-only agent types); the CLI allows 2 fix-up rounds.
+5. **`wave-gate`**: with nothing in flight, run the plan's full check once and compare with `baseline.md`; only a failure outside it counts. `wave-gate --value pass`. On a failure, run each group's targeted check, diff the failing paths against each step's files, and `wave-gate --value fail --step n` for the owner; with no owner, record it and `block`.
+6. **`advance`** moves to the next wave. With `commits: per-step`, commit each passing step (`git add -- <its files>`, then `git commit -- <its files>`) and record `apply commit --step n --sha <sha>`. If `plan.roadmap` names a folder, invoke the `roadmap-tracker` skill with the event "wave N closed (steps ...); no questions, return pending items" and keep each pending item it returns for the final report; the tracker never blocks the run.
+7. **`hold`**, **`prelaunch-review`**, **`authorize`** and **`ask`** are the stops, below.
+
+Held and external steps follow the CLI. `hold` lists steps waiting on a held dependency: `apply hold --step n` for each, with the reason; `release --step n` returns one to `pending` once its entry is closed. For an external step, `prelaunch-review` is a read-only opus review of its brief (it never causes the effect), recorded with `prelaunch-review --value pass|defects`; `authorize` follows (SKILL.md, Phase 2). An external effect launches at most once per authorization: after a failure or a lost agent the step is `stopped`, the question says the result was not checked, and the answer is an `answer` event (`done`, `no` or `rerun`, which needs its own review and authorization).
 
 ## Context layers
 
-Subagents start with a clean context. Give each one exactly three layers, in this order:
+Subagents start with a clean context. Each gets the step's brief, `briefs/T<n>.md`, which holds the plan's constraints, the step's files, checks, consumed interfaces and text, plus the lines of the prompt template.
 
-| Layer | Source | Same for every agent? | Size |
-|-------|--------|----------------------|------|
-| 1. Shared Brief | progress file `## Shared Brief` | Yes | ≤60 lines |
-| 2. Upstream handoffs | `Handoff` lines of the steps this one depends on | No | ≤5 lines each |
-| 3. Step Card | progress file `### Step N` card | No | ≤40 lines |
-
-- **Brief first, verbatim, identical across agents.** Every agent works from the same conventions and commands. As a side benefit, agents of the same type and model share a prompt prefix that prompt caching may reuse — don't rely on it for the budget.
-- **Pass references, not content.** File paths, exported symbols, signatures, commands. Agents read files themselves; pasting file bodies bloats every prompt and goes stale.
-- **Handoffs, not transcripts.** Downstream steps get the upstream step's handoff lines (what exists now and how to use it), never its report or diff.
-- **Don't repeat CLAUDE.md.** Subagents load it, plus a git status snapshot. `Explore` and `Plan` don't, so put the conventions they need into the card.
-- **No plan file.** Executors never read the plan; if they'd need it, the card is incomplete — fix the card.
+- **Pass references, not content.** Paths, exported symbols, signatures, commands. Agents read files themselves.
+- **Handoffs, not transcripts.** A dependent step needs the interface its brief consumes; if an upstream HANDOFF line says more (a name that differs from the plan), pass that line, never the report or the diff.
+- **Don't repeat CLAUDE.md.** Subagents load it. `Explore` and `Plan` don't, so put the conventions they need into the prompt.
+- **No plan file.** Executors never read the plan; if they would need it, the brief is incomplete.
 
 ## Fork vs fresh vs continue
 
 | Situation | Use |
 |-----------|-----|
-| Normal step, everything needed is in brief + card | **Fresh** agent of the routed type and tier |
-| Needs decisions or discoveries that only exist in this conversation, and writing them down would be longer than the step | **`fork`** (inherits the full conversation and the orchestrator's model, so it cannot be down-tiered — expensive; prefer writing the missing facts into the Shared Brief) |
-| Review fix-ups, a clarification, or a same-tier retry of the same step | **`SendMessage`** to the same agent — finished agents can be continued; they keep their context. If `SendMessage` to a stopped agent is refused, relaunch the step fresh. `Explore` and `Plan` are one-shot: for them a fix-up or retry is always a fresh agent |
-| Retry after escalation to a higher tier | **Fresh** agent at the new tier, with the failed report attached |
+| Normal step | **Fresh** agent of the listed type and tier |
+| Needs facts that exist only in this conversation | **`fork`** (inherits the orchestrator's model, so it cannot be down-tiered; prefer a fresh agent with the facts in the prompt) |
+| Review fix-up or a same-tier retry | **`SendMessage`** to the same agent; if refused, a fresh agent. `Explore` and `Plan` are one-shot |
+| Retry one tier up | **Fresh** agent with `launch --tier`, and the failed report attached |
 
-Don't use `isolation: "worktree"` for plan steps: a worktree branches from the default branch, so earlier waves' unmerged work is invisible to it, and its changes never reach the wave gate or downstream agents.
+Don't use `isolation: "worktree"` for plan steps: a worktree branches from the default branch, so earlier waves' unmerged work is invisible to it.
 
 ## Prompt template
 
 ```text
-<Shared Brief — verbatim>
+<brief of the step, verbatim: briefs/T{N}.md>
 
 ## Your task: Step {N} — {title}
-{step card: goal, files to create/modify, inputs, constraints, and its `External:`, `Pre-launch review:` and `Authorized:` lines when present}
+{goal, files to create/modify, inputs, constraints}
 
 ## What earlier steps produced
 {handoff lines of dependencies, or "Nothing — this step has no upstream dependencies."}
 
 ## Done means
 - {validation command} → {expected result}
-- {other acceptance criteria}
 
 ## If blocked
-{If Blocked guidance}. If still blocked, stop and report BLOCKED — do not improvise outside the listed files.
+Stop and report BLOCKED — do not improvise outside the listed files.
 
 ## Rules
 - Only modify: {file list}. Other agents are editing other files in parallel right now.
-- Do not add or remove dependencies, run code generators, update snapshots, or run full builds unless this card says so — report BLOCKED instead. Those write shared files other agents depend on.
+- Do not add or remove dependencies, run code generators, update snapshots, or run full builds unless the brief says so — report BLOCKED instead.
 - Run targeted checks only ({command}); the orchestrator runs the full suite.
 - Do not spawn subagents: nesting would break the write-set guarantee.
-- Never commit. In a shared worktree, parallel agents' `git add` would be swept into each other's commits; the orchestrator commits.
-- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless this card has `External: yes`, a `Pre-launch review:` line and an `Authorized:` line; then do it exactly as the card says, once. A card without those three lines never causes the effect, even when it fixes the files of an external step.
+- Never commit. The orchestrator commits.
+- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless the brief marks the step external and the prompt says it is authorized; then do it exactly as written, once.
+- Never ask the person anything: if a decision is missing, stop and report BLOCKED with the question.
 
 ## Report (reply with exactly this, ≤25 lines, no diffs)
 STATUS: PASS | FAIL | BLOCKED
 FILES: <paths changed>
 EVIDENCE: <command> → <result line>
-HANDOFF: <≤5 lines: what now exists and how downstream steps use it — paths, exported names, signatures, env/config keys>
+HANDOFF: <≤5 lines: what now exists and how downstream steps use it>
 CONCERNS: <anything the orchestrator should know, or "none">
 ```
 
@@ -158,37 +85,26 @@ CONCERNS: <anything the orchestrator should know, or "none">
 
 Trust the evidence, not the claim.
 
-- STATUS is PASS but EVIDENCE is missing or doesn't match "Done means" → treat as FAIL (non-external: spec gap, ask the same agent via `SendMessage`; Explore/Plan: fresh agent, same tier).
-- Checks that take seconds (typecheck one file, run one test file, `git diff --stat` against FILES) → run them yourself.
-- FILES outside the card's allow-list → inspect before accepting; a parallel collision is likely.
+- STATUS is PASS but EVIDENCE is missing or does not match "Done means": treat as FAIL (ask the same agent through `SendMessage`; `Explore` and `Plan`: a fresh agent, same tier).
+- Checks that take seconds (one test file, `git diff --stat` against FILES): run them yourself.
+- FILES outside the allow-list: inspect before accepting; a parallel collision is likely.
 - A review gate runs after verification, never instead of it.
-
-On FAIL/BLOCKED follow § Step lifecycle (`routing.md` §5 for non-external steps).
 
 ## Writing back
 
-After each verified (and, if gated, reviewed) step, update the progress file:
-
-- Steps table: status, `tier · attempts`, one-line note. Record the model that actually ran: it can differ from the routed tier when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set or `model` wasn't passed.
-- Commit: when the Shared Brief's commit policy is `per step`, after the project's pre-commit checks (e.g. a validate command from the Brief), the orchestrator runs `git add -- <card files>` then `git commit -- <card files>` for each verified step and records the SHA in the step's Note. When it is `none`, the changes stay in the working tree.
-- Step card: set `- **Handoff**: …` from the HANDOFF lines. Rewrite it after any review fix-up. This is what downstream prompts will use.
-- Issues & Decisions: CONCERNS worth keeping, escalations, user decisions.
-
-Keep it terse — the progress file is re-read after every compaction.
+Each verified step is written by its event (`report`, `review-result`, `commit`); put the evidence line in `--text`. Keep concerns worth reporting for the final report. The model that actually ran can differ from the listed tier when `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set.
 
 ## Recovery after compaction or restart
 
-1. Read state as § Step lifecycle says.
-2. For each step `Launched` or `Review owed` (`In-Flight Agents` lists its group): if its notification already arrived in this conversation, process it. Otherwise, with an agent ID recorded, ask that agent once for its report via `SendMessage`. With no ID, no answer, or `SendMessage` refused (stopped agent), apply the no-report rows of § Step lifecycle.
-3. Continue at `Next Action`, under the `Blocked` rule.
+1. `next --json` is the whole recovery: it names the action, the steps in flight and the question when blocked.
+2. For `await`: if a notification already arrived in this conversation, process it. Otherwise ask the agent once through `SendMessage`. With no known agent (the state keeps an agent ID only when `launch` received `--agent-id`), no answer or a refused message, apply `no-report --step n`; a non-external step is then launched again.
+3. Continue at the action `next` returns.
 
 ## Completion
 
-Completion starts when no step is `Pending`, `Launched` or `Review owed` (the `Final gate` row aside).
+`next` returns `final-gate` when every step is terminal or held.
 
-1. **Open entries first.** If an open Manual Actions entry is not `Refused:`, stop and ask one question covering every such entry (`Open question:` entries supply their text; `Not named:` entries ask for that step's authorization), with "then re-run SKILL.md Step 8" after the manual actions.
-2. **Nothing ran.** If no step ran (row 27), there is no change to review: mark the `Final gate` row `Skip` and go to item 5, without the check or the review.
-3. **Full check**, compared against Baseline as in Wave loop item 9.
-4. **Final gate**, a read-only reviewer at opus with `effort: high`. It gets the plan's goal and acceptance criteria, the Shared Brief, every Handoff, `git diff <Base> -- ':!<progress file>'` and the untracked files from `git ls-files --others --exclude-standard` (with no git, the card files), and looks for what per-step reviews miss: broken contracts between steps, regressions outside the changed files, and acceptance criteria with no test. Refused steps and their dependents are named to the reviewer as not run, and their acceptance criteria are not defects; a `Stopped` step is named as launched once with its outcome unconfirmed.
-   Defects go to a fresh executor at the owning step's tier, on a card without `External:`, `Pre-launch review:` and `Authorized:` when the owner is any launched external step, `Stopped` with `Refused:` included, followed by a commit under the Shared Brief's policy, the full check and a new final review, at most 2 rounds; a third round runs on opus. A defect in an external step's effect goes to no executor (row 25). Record each round in `**Final gate rounds:** <n done> (last verdict: <PASS | defects: ...>)` in Recovery State, updated after every round. A round is one fix, commit, full check and re-review; `n` counts completed rounds; the first review with no fix is round 0. Read this field before launching a fix, and after each round write the intended next step into `Next Action`. If defects remain after that, stop and ask, with "then re-run the final gate".
-5. **Close out**, only after the final gate's PASS (or that `Skip`): mark the `Final gate` row PASS unless it is `Skip`, and set `Status: Completed`; if the progress file's `**Roadmap**` names a folder (not `none`), invoke the `roadmap-tracker` skill with the event `"plan completed; no questions, return pending items"` and write each pending item it returns into Issues & Decisions with the `Tracker pending:` prefix, as Wave loop item 11 does; add a tier summary (planned vs actual tier, retries, escalations) to Issues & Decisions, save non-obvious lessons to memory if available (SKILL.md Rule 8), and report to the user, including each external step with what happened to it (effect performed and review gate result, `refused`, `pre-launch review failed`, `launched once, outcome unconfirmed`) and the `Tracker pending:` items from Issues & Decisions. After the tier summary is written, apply the same commit rule as Wave loop item 11 (`roadmap: plan completed`). Do not push unless asked, except an authorized external step; per-step commits follow § Writing back.
+1. **Open entries first.** `next` returns `ask` with the open `manual` entries: one question covering all of them (`block`, then the answer events).
+2. **Full check** against `baseline.md`, then a read-only opus reviewer at `effort: high` for the whole change: `git diff <run.base>` and `git ls-files --others --exclude-standard`, looking for broken contracts between steps, regressions outside the changed files and acceptance criteria with no test. Refused steps and their dependents are named as not run; a `stopped` step as launched once with the outcome unconfirmed.
+3. `final-gate --value pass`, or `defects --step n` for the owning step, which the CLI sends back as a failure; fix with a fresh executor at its tier (never on an external step's effect), commit, run the check and the review again. A third round runs on opus; after that, `block` and ask.
+4. `skip` only when no step ran. After `completed`, if `plan.roadmap` names a folder, invoke `roadmap-tracker` with the event "plan completed; no questions, return pending items". Report to the user: tiers planned versus actual, retries, each external step and what happened to it, and the tracker's pending items. Do not push unless asked, except an authorized external step.

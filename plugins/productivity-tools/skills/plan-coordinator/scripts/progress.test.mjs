@@ -946,3 +946,60 @@ test('select skips node_modules and .git and exits 0 even for a question', () =>
   const r = selectCli(root);
   assert.deepEqual([...r.candidates].sort(), ['docs/plans/w/plan.md', 'docs/plans/z/plan.md']);
 }));
+
+// --- Task 7: prosa do coordinator (critério 6) ---------------------------------------------
+
+const skillDir = path.join(here, '..');
+const walkFiles = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (
+  e.isDirectory() ? walkFiles(path.join(dir, e.name)) : [path.join(dir, e.name)]
+));
+const skillFiles = () => walkFiles(skillDir);
+const skillProse = () => skillFiles().filter((f) => f.endsWith('.md'));
+
+test('AC6: no published file of the coordinator skill mentions the word', () => {
+  const files = skillFiles();
+  assert.ok(files.length > 0);
+  for (const f of files) {
+    const texto = fs.readFileSync(f, 'utf8');
+    assert.ok(!texto.toLowerCase().includes('super' + 'powers'), f);
+  }
+});
+
+test('AC6: executor prompt forbids asking the person', () => {
+  const doc = fs.readFileSync(path.join(skillDir, 'references', 'delegation-protocol.md'), 'utf8').replace(/\r\n/g, '\n');
+  const from = doc.indexOf('## Prompt template');
+  const to = doc.indexOf('## Verification');
+  assert.ok(from >= 0 && to > from, 'template block not found');
+  const block = doc.slice(from, to);
+  const r = block.indexOf('## Rules');
+  assert.ok(r >= 0, 'Rules section not found in the template');
+  const rules = block.slice(r);
+  assert.ok(
+    rules.split('\n').includes('- Never ask the person anything: if a decision is missing, stop and report BLOCKED with the question.'),
+    'literal Global Constraints line missing',
+  );
+});
+
+test('skill files link only to existing references', () => {
+  for (const f of skillProse()) {
+    const texto = fs.readFileSync(f, 'utf8');
+    assert.ok(!texto.includes('progress-template'), f + ' cites progress-template.md');
+    for (const m of texto.matchAll(/references\/([A-Za-z0-9_.-]+\.md)/g)) {
+      assert.ok(fs.existsSync(path.join(skillDir, 'references', m[1])), f + ' links to missing ' + m[1]);
+    }
+  }
+  const skill = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+  assert.ok(skill.includes('references/state.md'));
+  assert.ok(!skill.includes('Step lifecycle'));
+  assert.ok(!fs.readFileSync(path.join(skillDir, 'references', 'delegation-protocol.md'), 'utf8').includes('Step lifecycle'));
+});
+
+test('no shipped coordinator file recommends bypassPermissions as default', () => {
+  for (const f of skillProse()) {
+    for (const linha of fs.readFileSync(f, 'utf8').split(/\r?\n/)) {
+      if (/bypassPermissions/i.test(linha)) {
+        assert.ok(!/default|recommend/i.test(linha), f + ': ' + linha);
+      }
+    }
+  }
+});
