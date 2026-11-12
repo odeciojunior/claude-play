@@ -1247,7 +1247,7 @@ const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
 const asList = v => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v])
 const CFG = A.config
 const OPS = []  // operator actions (strictly necessary ones)
-const op = (kind, deliverable, what, doNow, resumeWith, extra) => OPS.push({ kind, deliverable, what, doNow, resumeWith, ...(extra || {}) })
+const op = (kind, deliverable, what, doNow, resumeWith, extra) => OPS.push({ kind, deliverable, what, doNow, resumeWith: withoutApprove(resumeWith), ...(extra || {}) })
 const MODE = A.mode || 'run'
 const AUTH = parseAuthorizeExternal(A.authorizeExternal)
 if (AUTH.error) return { status: 'error', error: AUTH.error }
