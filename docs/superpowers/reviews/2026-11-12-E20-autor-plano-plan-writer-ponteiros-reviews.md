@@ -229,3 +229,54 @@ Os dados desta execução não trazem resultado de gates além do que consta nas
 | Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458) | não | Pendência rastreada; não bloqueia o merge de E20 |
 | Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 ({verify: human}) em docs/reports/2026-11-12-E20-autor-plano-comportamental.md | não | As execuções e o relatório são produzidos pelo entregável; nenhum aceite fictício é registrado. (Spec: respondida; critérios 1 e 2 aceitos, DEC-453; critério 4 aceito por delegação em bf4712d, DEC-456; não bloqueia mais.) |
 | Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025) | não | A suíte, o executor com --dry-run e os testes são entregues; a rodada fica com o dono. |
+
+## Execução de 2026-11-12 (ressincronização)
+
+Esta execução é acrescentada ao registro; tudo o que as execuções anteriores gravaram acima fica como está. Resultado: sem falha (failure: null); revisão final aprovada na rodada 3, sem bloqueios abertos. Diferença em relação à seção anterior: esta traz o resultado dos gates.
+
+### Revisões por estágio (ressincronização)
+
+Legenda: rodada (número, modelo do revisor, tier da correção que a precedeu). "Menores" é a contagem de achados menores.
+
+| Estágio | Rodadas | Críticos/importantes | Menores | Não resolvidos |
+|---|---|---|---|---|
+| spec | 1 (opus, sem correção) | nenhum | 0 | nenhum |
+| plan | 1 (opus, sem correção) | nenhum | 0 | nenhum |
+| T12:spec | 1 (sonnet, sem correção) | nenhum | 0 | nenhum |
+| T12:quality | 1 (sonnet, sem correção) | nenhum | 0 | nenhum |
+| final | 1 (opus, sem correção); 2 (opus, correção sonnet); 3 (opus, correção sonnet) | nenhum (lista de bloqueios vazia) | 2 | nenhum |
+
+### Tarefas (ressincronização)
+
+As tarefas 1 a 11 constam como RESUMED (already reviewed). Tarefa 12 (execuções comportamentais e relatório; critérios 1, 2 e 4; REQ-037; pendência de E19): DONE, 11 commits.
+
+### Riscos aceitos (ressincronização)
+
+- T12:quality, importante, categoria ambiente, arquivo plugins/productivity-tools/skills/plan-writer/SKILL.md: Criterion 4 (adoption) has not been re-run after the fix in 30ff73f. The new SKILL.md/plan-author.md text for F4-1..F4-4 (APPROVAL QUESTION fallback, missing-spec rule, fixed .adopted.md name, per-step Adoção table, foreground dispatch) is plausible on reading but unverified behaviorally; it needs the main-session orchestrator because the Agent tool is required (DEC-204).
+
+### Concerns (ressincronização)
+
+- O registro "executing" do roadmap falhou: os comandos 1 a 21 rodaram com texto diferente do montado; 2 comando(s) rodaram além da lista montada; o comando 22 saiu com exit 1 e sua saída não é JSON da CLI (ferramenta "roadmap"); o comando 23 também não devolveu JSON da CLI. As decisões e a entrada em andamento ainda não estão registradas.
+- final fix1: 1. Finding 2 is only partly fixed. The planner still gives the topic `<roadmap slug>-E<n>`, which the approved spec requires (DEC-026), so I did not touch the spec, plan or planner text. Instead, spec-writer and spec-author now use id E<n> when the topic ends in -E<n>. This also reverses the earlier spec-writer line that said the id is "not E<n>". It stays within E20's chain, but it is a behavior change in E19's skill.
+  2. spec-writer in interactive mode still runs `spec-tool check` without --roadmap, so the spec's acceptance criteria are not compared with the card at spec time. The only check against the card is plan-writer's pointer resolution, which runs `spec-tool check --roadmap`. Comparing the criteria at spec time would need a roadmap argument on spec-writer, which the approved spec does not provide.
+  3. I added no end-to-end test of the whole planner-to-coordinator chain. The new test only checks the id rule in the skill and agent text.
+  4. I did not bump the plugin version, following the owner's instruction.
+- final fix2: The full G1 suite was not rerun, only independence.test.mjs, which is the only test file touched. Only the mechanical caller-side fix is in; the topic-to-id contract in spec-author.md is unchanged, so E8 may still want to formalize it. This is an autonomous decision, recorded as pending for the owner.
+
+### Gates (ressincronização)
+
+- G1: exit 0, total 1568, skipped 0, falhas [] (linha de base: exit 0, total 1514, skipped 0, falhas [])
+- G2: exit 0 (linha de base: exit 0)
+- G3: exit 0 (linha de base: exit 0)
+- G4: exit 0 (linha de base: exit 0)
+- G5: exit 0 (linha de base: exit 0)
+
+### Entradas humanas (ressincronização)
+
+| O quê | Bloqueia | Alternativa |
+|---|---|---|
+| Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025) | não | A suíte, o executor com --dry-run e os testes estão entregues; a rodada paga fica com o dono |
+| Ratificação das decisões de alcance contrato (1, 2, 4, 7 e 16) antes de E8 (DEC-030) | não | Ficam como pendentes com origem executor |
+| Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458) | não | Pendência rastreada; não bloqueia o merge de E20 |
+| Conferência do dono dos resultados das execuções comportamentais dos critérios 1, 2 e 4 ({verify: human}) em docs/reports/2026-11-12-E20-autor-plano-comportamental.md | não | As execuções e o relatório são produzidos pelo entregável; nenhum aceite fictício é registrado. (Spec: respondida; critérios 1 e 2 aceitos, DEC-453; critério 4 aceito por delegação em bf4712d, DEC-456; não bloqueia mais.) |
+| Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025) | não | A suíte, o executor com --dry-run e os testes são entregues; a rodada fica com o dono. |
