@@ -1005,13 +1005,15 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   else if (!checker || typeof checker.errors !== 'number') failures.push('reread brief --json has no numeric result.checker.errors')
   else if (checker.errors > 0) failures.push(`checker reports ${checker.errors} error(s)`)
   const changedIds = decisionIds.filter(d => d.changed).map(d => d.id)
+  const pend = parseCli(rd.pendingDecisions)
+  const list = pend && pend.result && Array.isArray(pend.result.decisions) ? pend.result.decisions.map(d => d && d.id) : null
   if (changedIds.length) {
-    const pend = parseCli(rd.pendingDecisions)
-    const list = pend && pend.result && Array.isArray(pend.result.decisions) ? pend.result.decisions.map(d => d.id) : null
     if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
     else for (const id of changedIds) if (!list.includes(id)) failures.push(`${id} written by add-decision is not in pending-decisions`)
   }
-  return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id) }
+  // holdIds: decisions that can hold dependents. An existing: true answer (the CLI dedupes regardless of status) holds only while the reread still lists it as pending; without a readable list it holds (fail safe).
+  const holdIds = decisionIds.filter(d => d.changed || !list || list.includes(d.id)).map(d => d.id)
+  return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id), holdIds }
 }
 // Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence, or a trailing "(local)" / "(contract)" / "(scope: local)" parenthetical, sets the scope and leaves the text; anything else is contrato.
 function parseDecision(text) {
@@ -1682,7 +1684,7 @@ ${BASH_ONLY}`,
   const ok = failures.length === 0
   if (ok) {
     const rds = rulingDecisions(x.rulings)
-    v.decisionIds.forEach((id, i) => { if (rds[i] && rds[i].scope === 'contrato' && !dynContract.some(d => d.id === id)) dynContract.push({ id, deliverable: E }) })
+    v.decisionIds.forEach((id, i) => { if (rds[i] && rds[i].scope === 'contrato' && v.holdIds.includes(id) && !dynContract.some(d => d.id === id)) dynContract.push({ id, deliverable: E }) })
     lastWord.set(E, status)
     if (read.head) lastGood = read.head  // a record-only commit does not invalidate what was already validated
   }

@@ -92,6 +92,8 @@ const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfW
 const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
 // What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
 const seenDecisions = new Map();
+// Decisions the owner ratified between runs: pending-decisions no longer lists them, add-decision still answers existing: true.
+const ratifiedDecisions = new Set();
 // Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
 const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], warnings: [], changed: [], result: {}, ...over });
 const promptCommands = (prompt) => [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]);
@@ -128,7 +130,7 @@ function makeRecordMock(cardsOf) {
       return {
         status: cliJson({ result: { panel: [{ id: E, segments: [{ label: x.label, word: x.word, note: x.note }] }] } }),
         brief: cliJson({ result: { checker: { errors: 0, warnings: 0, stale: false } } }),
-        pendingDecisions: cliJson({ result: { decisions: x.decisionIds.map((id) => ({ id })) } }),
+        pendingDecisions: cliJson({ result: { decisions: [...new Set([...x.decisionIds, ...seenDecisions.values()])].filter((id) => !ratifiedDecisions.has(id)).map((id) => ({ id })) } }),
         head: 'abc1234',
         porcelain: '',
       };
@@ -2866,7 +2868,25 @@ const failJson = (exitCode, errors) => JSON.stringify({ tool: 'roadmap', summary
 
 test('recordVerdict: aprovado, com o id da decisão', () => {
   const r = PU.recordVerdict(VX());
-  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'] });
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'], holdIds: ['DEC-300'] });
+});
+
+test('recordVerdict: holdIds keeps a decision add-decision found existing only while pending-decisions still lists it', () => {
+  const existing = (pending) => {
+    const v = VX();
+    v.results.runs[2].stdout = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { id: 'DEC-300', existing: true } });
+    v.read.pendingDecisions = pendOut(pending);
+    return PU.recordVerdict(v);
+  };
+  const ratified = existing([]);
+  assert.equal(ratified.ok, true, ratified.failures.join('\n'));
+  assert.deepEqual(ratified.decisionIds, ['DEC-300']);
+  assert.deepEqual(ratified.holdIds, []);
+  assert.deepEqual(existing(['DEC-300']).holdIds, ['DEC-300']);
+  const missing = VX();
+  missing.results.runs[2].stdout = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { id: 'DEC-300', existing: true } });
+  missing.read.pendingDecisions = '';
+  assert.deepEqual(PU.recordVerdict(missing).holdIds, ['DEC-300'], 'without a readable pending list an existing decision still holds (fail safe)');
 });
 
 test('recordVerdict: reprova comando faltando, fora de ordem e com texto diferente', () => {
@@ -3994,6 +4014,45 @@ test('a transitive dependent is held citing the origin decision', async () => {
   assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
   assert.equal(m.E3.error, 'held by DEC-900 (E1, contract, pending ratification)');
   assert.ok(!labels.some((l) => /^E[23]:/.test(l)));
+});
+
+// A contract ruling recorded by a plan-only run comes back from add-decision as existing: true when the full run records it again.
+async function rerecorded({ ratify }) {
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  const over = (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined);
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over });
+  assert.equal(po.r.results[0].planOnly, true);
+  assert.equal(seenDecisions.size, 1);
+  const id = [...seenDecisions.values()][0];
+  if (ratify) ratifiedDecisions.add(id);
+  const full = await exec({ cards: [card('E1'), card('E2', { deps: ['E1'] })], deliverables: ['E1', 'E2'], over });
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  return { id, m: runsOf(full.r), labels: full.labels };
+}
+test('a re-recorded contract decision the owner already ratified holds no dependent (existing: true, not pending)', async () => {
+  const { m, labels } = await rerecorded({ ratify: true });
+  assert.equal(m.E1.merged, true);
+  assert.notEqual(m.E2.skipped, true, m.E2.error);
+  assert.equal(m.E2.merged, true);
+  assert.ok(labels.includes('E2:merge'));
+});
+test('a re-recorded contract decision still pending ratification holds the dependent (existing: true, pending)', async () => {
+  const { id, m, labels } = await rerecorded({ ratify: false });
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, `held by ${id} (E1, contract, pending ratification)`);
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+});
+test('a newly written contract decision (existing: false) holds the dependent', async () => {
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  const { r } = await exec({ cards: chain(), deliverables: ['E1', 'E2'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  seenDecisions.clear();
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
 });
 
 test('a pending contract decision read in discovery holds unstarted dependents and not its owner', async () => {
