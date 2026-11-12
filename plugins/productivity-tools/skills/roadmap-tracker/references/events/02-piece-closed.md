@@ -6,7 +6,7 @@
 2. `now`: remove the finished item, add the next one in the shape "<action>. Runs: <who>. Approves: <who>. Depends on: <ids>." (no command covers `now`; edit by hand).
 3. `node "${CLAUDE_SKILL_DIR}/scripts/roadmap.mjs" log "<folder>" --deliverable E<n> --what "E<n> piece <k> closed (<status>)" --evidence <SHA or path>`.
 4. Last piece of the deliverable, or last deliverable of a phase → § 9. **Phase exit:** when the last piece of a phase integrates, check the phase's exit criteria first. A criterion with no evidence (no SHA, path or measurement) → add a `now` item "confirm <criterion>" instead of proposing the revision; propose it once every criterion has evidence.
-5. Refresh `critical-path.md` (next milestone per track) and the header line (Common), by hand.
+5. Refresh `critical-path.md` (next milestone per track) and the header line (Common), by hand; counts, totals and versions there follow the volatile-values rule (`formats.md § 4`).
 6. A piece dropped or moved (not closed) is a decision: § 1, including its coverage re-check.
 
 Checker: `bad-status` (word not in vocab), `integrated-no-sha`, `sha-missing`, `now-limit`, `cell-limit`.

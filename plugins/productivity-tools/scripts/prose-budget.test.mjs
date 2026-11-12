@@ -141,7 +141,9 @@ export function formatsSections(formatsMd) {
 
 export function sectionsCited(text) {
   const out = new Set();
-  for (const m of norm(text).matchAll(/formats\.md`?\s*§\s*(\d+)/g)) out.add(Number(m[1]));
+  for (const m of norm(text).matchAll(/formats\.md`?\s*§\s*(\d+(?:\s*(?:,|and|e)\s*§?\s*\d+)*)/g)) {
+    for (const n of m[1].matchAll(/\d+/g)) out.add(Number(n[0]));
+  }
   return out;
 }
 
@@ -185,6 +187,7 @@ test('budget constants follow the spec arithmetic', () => {
 
 test('sectionsCited and unsectionedMentions handle the mention forms', () => {
   assert.deepEqual(sectionsCited('see `formats.md` § 6 and formats.md §7, formats.md § 4.'), new Set([6, 7, 4]));
+  assert.deepEqual(sectionsCited('formats.md § 6 and § 7, § 9 e § 11; formats.md § 2, § 3'), new Set([6, 7, 9, 11, 2, 3]));
   assert.equal(unsectionedMentions('read formats.md first').length, 1);
   assert.deepEqual(unsectionedMentions('| Format contract | `formats.md` |', { allowFormatContractRow: true }), []);
   assert.equal(unsectionedMentions('| Format contract | `formats.md` |').length, 1);
