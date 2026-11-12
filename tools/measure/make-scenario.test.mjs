@@ -22,9 +22,10 @@ test('lists every variant of the spec table', () => {
   assert.deepEqual([...VARIANTS].sort(), [
     'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
-    'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo',
+    'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author',
   ].sort());
-  assert.equal(VARIANTS.length, 13);
+  assert.equal(VARIANTS.length, 14);
+  assert.equal(VARIANTS[VARIANTS.length - 1], 'spec-author');
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
@@ -506,4 +507,64 @@ test('E17: a tree mounted from the archived E15 seed passes the --from-run pre-c
 test('E17: SANDBOX_RELEASE_RULES names the release workflow and the tracker script rules', () => {
   assert.ok(SANDBOX_RELEASE_RULES.includes('Workflow(productivity-tools:release-workflow)'));
   assert.ok(SANDBOX_RELEASE_RULES.includes('Bash(node *roadmap.mjs" *)'));
+});
+
+const E19_CARD = join(here, 'scenario', 'spec-author-card.md');
+const E19_REQUEST = join(here, 'scenario', 'spec-writer-request.md');
+const E19_SPEC_TOOL = resolve(here, '..', '..', 'plugins/productivity-tools/scripts/spec-tool.mjs');
+
+test('E19: spec-author variant adds the E6 card with the token only by name', async () => {
+  const t = tmp('sb');
+  try {
+    const s = await makeScenario(t.dir, 'spec-author');
+    assert.deepEqual(s.prompts, []);
+    assert.equal(s.stopResume, null);
+    assert.deepEqual(s.seeded, []);
+    const strategy = readFileSync(join(t.dir, 'docs/plans/roadmap-sandbox/strategy.md'), 'utf8');
+    assert.ok(strategy.includes('<!-- roadmap:card id=E6'));
+    assert.ok(strategy.includes('REPORT_STORE_TOKEN'));
+    assert.ok(!strategy.includes('\r'));
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    assert.equal(git(t.dir, 'log', '-1', '--format=%s'), 'docs(roadmap): add E6 card');
+    const r = spawnSync(process.execPath, ['docs/plans/roadmap-sandbox/check-roadmap.mjs'], { cwd: t.dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(join(t.dir, '.claude/settings.local.json')));
+  } finally {
+    t.done();
+  }
+});
+
+test('E19: spec-author card and request carry no credential value', () => {
+  for (const f of [E19_CARD, E19_REQUEST]) {
+    const text = readText(f);
+    assert.ok(!/REPORT_STORE_TOKEN\s*[=:]\s*\S/.test(text), f);
+    assert.ok(!/(sk-|ghp_|xox[bp]-|AKIA)[A-Za-z0-9]/.test(text), f);
+  }
+  assert.ok(readText(E19_REQUEST).startsWith('<!-- synthetic input:'));
+});
+
+test('E19: spec-author card passes spec-tool against the sandbox roadmap', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'spec-author');
+    const strategy = readFileSync(join(t.dir, 'docs/plans/roadmap-sandbox/strategy.md'), 'utf8').replace(/\r\n/g, '\n');
+    const e6 = strategy.slice(strategy.indexOf('<!-- roadmap:card id=E6'));
+    const block = e6.match(/<!-- roadmap:acceptance -->\n([\s\S]*?)\n<!-- \/roadmap:acceptance -->/)[1];
+    const lines = block.split('\n').filter((l) => /^\d+\. /.test(l)).map((l) => l.replace(/^\d+\. /, ''));
+    assert.equal(lines.length, 2);
+    const data = {
+      schema: 'spec/1', id: 'E6', title: 'Publish report to remote storage', mode: 'unattended',
+      acceptance: lines.map((text, i) => ({ id: 'AC' + (i + 1), text })),
+      rulings: [],
+      needsPerson: [{ id: 'H1', kind: 'credential', what: 'Access token in environment variable REPORT_STORE_TOKEN.', why: 'Criterion 2 needs the real token.', blocking: true, workaround: '' }],
+      externalEffects: [],
+      edgeCases: [],
+    };
+    const spec = join(t.base, 'spec.md');
+    writeFileSync(spec, '# Spec E6\n\n```json data\n' + JSON.stringify(data, null, 2) + '\n```\n');
+    const r = spawnSync(process.execPath, [E19_SPEC_TOOL, 'check', spec, '--roadmap', join(t.dir, 'docs/plans/roadmap-sandbox'), '--json'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  } finally {
+    t.done();
+  }
 });

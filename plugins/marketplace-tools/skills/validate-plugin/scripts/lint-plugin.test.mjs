@@ -809,3 +809,52 @@ license: MIT
 license: Apache-2.0`);
   assert.ok(has(lint(dir), 'FAIL', 'frontmatter key "license" is repeated'));
 });
+
+// ---------- E19 / DEC-057: a registered workflow script must not use subagent_type ----------
+function freshWorkflow(text, file = './workflow/w.js') {
+  const dir = fresh();
+  mutatePluginJson(dir, (j) => {
+    j.workflows = [file];
+  });
+  if (text !== null) write(dir, file.replace(/^\.\//, ''), text);
+  return dir;
+}
+const agentOption = (results) => results.filter((r) => r.check.includes('agent option'));
+
+test('E19: registered workflow using subagent_type -> FAIL naming agentType', () => {
+  const dir = freshWorkflow("export const meta = { name: 'w' }\nagent(p, { subagent_type: 'x:y' })\n");
+  const r = agentOption(lint(dir)).find((x) => x.level === 'FAIL');
+  assert.ok(r, 'expected a FAIL agent option result');
+  assert.ok(r.check.includes('workflow/w.js'));
+  assert.match(r.detail, /agentType/);
+  assert.match(r.detail, /DEC-057/);
+});
+
+test('E19: registered workflow using agentType -> OK', () => {
+  const dir = freshWorkflow("export const meta = { name: 'w' }\nagent(p, { agentType: 'x:y' })\n");
+  const results = lint(dir);
+  assert.ok(!agentOption(results).some((x) => x.level === 'FAIL'));
+  assert.ok(agentOption(results).some((x) => x.level === 'OK'));
+});
+
+test('E19: subagent_type only in a comment of a registered workflow -> FAIL', () => {
+  const dir = freshWorkflow("export const meta = { name: 'w' }\n// never subagent_type\n");
+  assert.ok(agentOption(lint(dir)).some((x) => x.level === 'FAIL'));
+});
+
+test('E19: registered workflow without meta.name using subagent_type -> FAIL', () => {
+  const dir = freshWorkflow("agent(p, { subagent_type: 'x:y' })\n");
+  assert.ok(agentOption(lint(dir)).some((x) => x.level === 'FAIL'));
+});
+
+test('E19: SKILL.md and agent citing subagent_type are not flagged', () => {
+  const dir = freshWorkflow("export const meta = { name: 'w' }\nagent(p, { agentType: 'x:y' })\n");
+  write(dir, 'skills/s/SKILL.md', SKILL('name: s\ndescription: Use when testing.', 'subagent_type: "x:y"\n'));
+  write(dir, 'agents/a.md', '---\nname: a\ndescription: x\n---\nsubagent_type: "x:y"\n');
+  assert.ok(!agentOption(lint(dir)).some((x) => x.level === 'FAIL'));
+});
+
+test('E19: registered workflow path that does not exist -> no agent option result', () => {
+  const dir = freshWorkflow(null, './workflow/missing.js');
+  assert.deepEqual(agentOption(lint(dir)), []);
+});

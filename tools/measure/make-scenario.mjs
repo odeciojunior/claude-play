@@ -16,7 +16,7 @@ const DEFECTS = join(here, 'defects');
 export const VARIANTS = [
   'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
-  'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo',
+  'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author',
 ];
 
 export const E5_PATHS = {
@@ -240,6 +240,23 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'planner':
       scenario.prompts = ['/productivity-tools:roadmap-planner ' + readText(join(SCEN, 'planner-theme.md'))];
       break;
+    case 'spec-author': {
+      const road = 'docs/plans/roadmap-sandbox';
+      const strategyPath = road + '/strategy.md';
+      const text = (rel) => readText(join(sandbox, rel));
+      const strategy = text(strategyPath);
+      writeIn(sandbox, strategyPath, strategy + (strategy.endsWith('\n') ? '' : '\n') + '\n' + readText(join(SCEN, 'spec-author-card.md')));
+      const addRow = (rel, closing, row) => {
+        const t = text(rel);
+        if (!t.includes(closing)) throw new Error(`${rel}: block end not found: ${closing}`);
+        writeIn(sandbox, rel, t.replace(closing, row + '\n' + closing));
+      };
+      addRow(road + '/requirements.md', '<!-- /roadmap:requirements -->', '| REQ-006 | A report can be published to remote storage with an access token | functional | SRC-01 | E6 | covered |');
+      addRow(road + '/state.md', '<!-- /roadmap:panel -->', '| E6 | not-started | - | Run the release skill |');
+      git(sandbox, 'add', strategyPath, road + '/requirements.md', road + '/state.md');
+      git(sandbox, 'commit', '-q', '-m', 'docs(roadmap): add E6 card');
+      break;
+    }
     case 'tracker':
       scenario.prompts = ['/productivity-tools:roadmap-tracker ' + readText(join(SCEN, 'tracker-event.md'))];
       break;

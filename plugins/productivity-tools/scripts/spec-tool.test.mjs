@@ -417,3 +417,99 @@ test('emit/summary: invalid usage -> exit 2', () => {
   assert.equal(runCli(['emit', FIXTURE_SPEC, '--roadmap']).status, 2);
   assert.equal(runCli(['summary', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]).status, 2);
 });
+
+const AGENT_FILE = path.join(HERE, '..', 'agents', 'spec-author.md');
+const readAgent = () => fs.readFileSync(AGENT_FILE, 'utf8').replace(/\r\n/g, '\n');
+function splitAgent() {
+  const m = readAgent().match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  assert.ok(m, 'agent has frontmatter');
+  return { fm: m[1], body: m[2] };
+}
+
+test('E19: spec-author frontmatter pins opus, medium effort and tools without asking', () => {
+  const { fm } = splitAgent();
+  assert.match(fm, /^name: spec-author$/m);
+  assert.match(fm, /^model: opus$/m);
+  assert.match(fm, /^effort: medium$/m);
+  const tools = fm.match(/^tools: (.*)$/m)[1].split(',').map((s) => s.trim());
+  assert.deepEqual(tools, ['Read', 'Grep', 'Glob', 'Bash', 'Write', 'Edit']);
+  assert.ok(!tools.includes('AskUserQuestion'));
+  assert.ok(!tools.includes('Agent'));
+});
+
+test('E19: spec-author body names the call contract', () => {
+  const { body } = splitAgent();
+  for (const w of ['mode', 'output', 'specTool', 'language', 'roadmap', 'card', 'ownerNote', 'topic', 'intake', 'unattended', 'interactive']) {
+    assert.ok(body.includes(w), `body names ${w}`);
+  }
+});
+
+test('E19: spec-author closes with a quoted spec-tool check and returns emit', () => {
+  const { body } = splitAgent();
+  assert.match(body, /node "<specTool>" check "<output>"/);
+  assert.ok(body.includes('--json'));
+  assert.ok(body.includes('emit'));
+  assert.match(body, /three|3/);
+});
+
+test('E19: spec-author records a credential as needsPerson by variable name', () => {
+  const { body } = splitAgent();
+  for (const w of ['needsPerson', 'credential', 'environment variable']) assert.ok(body.includes(w), `body has ${w}`);
+  assert.match(body, /never ask/i);
+  assert.match(body, /never commit/i);
+});
+
+test('E19: shipped spec texts never mention bypassPermissions', () => {
+  assert.ok(!readAgent().includes('bypassPermissions'));
+});
+
+const WRITER_FILE = path.join(HERE, '..', 'skills', 'spec-writer', 'SKILL.md');
+const readWriter = () => fs.readFileSync(WRITER_FILE, 'utf8').replace(/\r\n/g, '\n');
+function splitWriter() {
+  const m = readWriter().match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  assert.ok(m, 'skill has frontmatter');
+  return { fm: m[1], body: m[2] };
+}
+
+test('E19: spec-writer frontmatter keeps name, description and argument-hint only', () => {
+  const { fm } = splitWriter();
+  const keys = fm.split('\n').filter((l) => /^[A-Za-z-]+:/.test(l)).map((l) => l.split(':')[0]);
+  assert.deepEqual(keys, ['name', 'description', 'argument-hint']);
+  assert.match(fm, /^name: spec-writer$/m);
+  assert.ok(!fm.includes('allowed-tools'));
+  const desc = fm.match(/^description: (.*)$/m)[1];
+  for (const w of ['roadmap', 'plan-writer', 'one round']) assert.ok(desc.includes(w), `description has ${w}`);
+});
+
+test('E19: spec-writer dispatches spec-author with the call fields', () => {
+  const { body } = splitWriter();
+  for (const w of ['subagent_type', 'productivity-tools:spec-author', 'mode: interactive', 'docs/plans/<topic>/spec.md', '${CLAUDE_SKILL_DIR}/../../scripts/spec-tool.mjs', 'topic', 'language']) {
+    assert.ok(body.includes(w), `body has ${w}`);
+  }
+});
+
+test('E19: spec-writer asks one round of at most five questions and one approval', () => {
+  const { body } = splitWriter();
+  assert.ok(body.includes('AskUserQuestion'));
+  assert.match(body, /(five|5) questions/i);
+  assert.match(body, /one approval/i);
+  assert.match(body, /recommended/i);
+  assert.match(body, /does not commit|never commits/i);
+  const withoutRule = body.replace(/does not commit|never commits/gi, '');
+  assert.ok(!/commit/i.test(withoutRule), 'commit appears only in the no-commit rule');
+});
+
+test('E19: spec-writer refusals show the exact rule and reload', () => {
+  const { body } = splitWriter();
+  assert.ok(body.includes('Bash(node *spec-tool.mjs" *)'));
+  assert.ok(body.includes('/reload-plugins'));
+  assert.match(body, /node "(<specTool>|[^"]*spec-tool[^"]*)" (summary|check)/);
+});
+
+test('E19: shipped spec texts never mention bypassPermissions (skill)', () => {
+  assert.ok(!readWriter().includes('bypassPermissions'));
+});
+
+test('E19: spec-writer stays under 500 lines', () => {
+  assert.ok(readWriter().split('\n').length < 500);
+});

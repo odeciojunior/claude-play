@@ -255,6 +255,21 @@ export function lintPlugin(dir, { marketplace } = {}) {
     else ok('plugin.json required fields');
   }
 
+  // ---- DEC-057: a registered workflow script ignores subagent_type silently ----
+  if (pj && Array.isArray(pj.workflows)) {
+    for (const file of pj.workflows) {
+      if (typeof file !== 'string') continue;
+      const p = path.join(dir, ...file.split('/'));
+      if (!isFile(p)) continue;
+      const check = `${file} agent option`;
+      if (readText(p).includes('subagent_type')) {
+        add('FAIL', check, 'uses subagent_type, which a workflow script ignores silently; write agentType (DEC-057)');
+      } else {
+        ok(check);
+      }
+    }
+  }
+
   // ---- Check 3 + 4: skills ----
   const skillsDir = path.join(dir, 'skills');
   const skillFiles = listDir(skillsDir)
