@@ -106,7 +106,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     const E = (/^(E\d+):/.exec(l) || [])[1];
     if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
-    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
+    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
@@ -3615,4 +3615,28 @@ test('frozenTaskDiffs flags a changed or missing committed task and ignores the 
   assert.match(d[0], /task 2/);
   const reordered = { ...prev, tasks: prev.tasks.map((t) => ({ ...t, files: { modify: t.files.modify, test: t.files.test, create: t.files.create } })) };
   assert.deepEqual(pure.frozenTaskDiffs(prev, reordered, [1, 2, 3]), []);
+});
+
+test('AC2: a branch with task commits and no native spec stops with previous-version and writes no spec', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 2, committedTasks: [1, 2], nativeSpec: false, nativePlan: false } : undefined) });
+  assert.equal(r.results.find((x) => x.id === 'E1').failKind, 'conteudo');
+  const o = r.operatorActions.filter((x) => x.kind === 'previous-version' && x.deliverable === 'E1');
+  assert.equal(o.length, 1);
+  assert.match(o[0].doNow, /previous version/);
+  assert.match(o[0].doNow, /discard the branch and the worktree/);
+  for (const l of ['E1:spec', 'E1:spec-load1', 'E1:plan']) assert.ok(!labels.includes(l), l);
+});
+
+test('a branch with an old superpowers spec and no task commit is not stopped', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false } : undefined) });
+  assert.ok(labels.includes('E1:spec'));
+  assert.ok(!r.operatorActions.some((x) => x.kind === 'previous-version'));
+});
+
+test('the setup schema requires the new measurements', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const c = calls.find((x) => x.label === 'E1:setup');
+  for (const f of ['taskCommits', 'committedTasks', 'nativeSpec', 'nativePlan']) assert.ok(c.opts.schema.required.includes(f), f);
+  assert.match(c.prompt, /\.\.HEAD/);
+  assert.ok(c.prompt.includes('docs/plans/x-E1/spec.md'));
 });

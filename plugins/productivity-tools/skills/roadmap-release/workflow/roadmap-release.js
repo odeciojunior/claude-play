@@ -1345,7 +1345,7 @@ const S_PRE = { type: 'object', properties: {
   ok: BOOL, errorKind: { type: 'string', enum: ['dirty', 'setup', 'target', 'other'] }, error: STR,
   integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE,
 }, required: ['ok'] }
-const S_SETUP = { type: 'object', properties: { ok: BOOL, error: STR, worktree: STR, branch: STR, baseCommit: STR, head: STR, reused: BOOL, clean: BOOL }, required: ['ok'] }
+const S_SETUP = { type: 'object', properties: { ok: BOOL, error: STR, worktree: STR, branch: STR, baseCommit: STR, head: STR, reused: BOOL, clean: BOOL, taskCommits: INT, committedTasks: { type: 'array', items: INT }, nativeSpec: BOOL, nativePlan: BOOL }, required: ['ok', 'taskCommits', 'committedTasks', 'nativeSpec', 'nativePlan'] }
 const HUMAN = { type: 'array', items: { type: 'object', properties: { blq: STR, what: STR, workaround: STR, blocking: BOOL }, required: ['what'] } }
 const ISSUES = { type: 'array', items: { type: 'object', properties: {
   severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
@@ -1961,12 +1961,21 @@ SETUP of deliverable ${E} (mechanical; do not change tracked files).
 1. If ${wt} is already a registered worktree, reuse it (reused=true). Otherwise, if the branch ${br} exists: git -C "${REPO}" worktree add "${wt}" ${br}; else: git -C "${REPO}" worktree add "${wt}" -b ${br} ${lastGood}.
 2. Install${INSTALL ? `: ${INSTALL}` : ': nothing to install'}.
 3. baseCommit = git -C "${wt}" merge-base ${br} ${TARGET}; head = git -C "${wt}" rev-parse HEAD; clean = git -C "${wt}" status --porcelain empty (do not clean anything here).
-Return ok (true only if baseCommit and head are not empty), worktree, branch, baseCommit, head, reused, clean.`,
+4. Measure the previous version's work on the branch, read-only: git -C "${wt}" log --format=%s ${TARGET}..HEAD; taskCommits = the number of those subjects that match ^${E} T(\\d+): ; committedTasks = the distinct task numbers (the digits) of those subjects, ascending; nativeSpec = the file ${artifactPaths(disc.roadmapSlug, E).spec} exists in ${wt} on this branch; nativePlan = the file ${artifactPaths(disc.roadmapSlug, E).plan} exists in ${wt} on this branch.
+Return ok (true only if baseCommit and head are not empty), worktree, branch, baseCommit, head, reused, clean, taskCommits, committedTasks, nativeSpec, nativePlan.`,
     { label: `${E}:setup`, phase: 'Setup', schema: S_SETUP, model: 'haiku', effort: 'low' }))
   if (!setup || !setup.ok || !setup.baseCommit) return fail('infra', `setup failed: ${setup ? setup.error : 'null agent'}`)
   setupOk = true
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
+
+  // Task commits of the previous version (spec and plan of the superpowers skills) without a native spec: the new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
+  if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
+    const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
+    op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${artifactPaths(disc.roadmapSlug, E).spec}`,
+      `Either finish ${E} on the previous version of the release, or discard the branch and the worktree (git -C "${REPO}" worktree remove --force "${wt}", then git -C "${REPO}" branch -D ${br}) and run again with deliverables:["${E}"] (the deliverable restarts from scratch with the native spec)`, { ...A, deliverables: [E] })
+    return fail('conteudo', `the branch ${br} has ${setup.taskCommits} task commit(s) of the previous version and no native spec; the workflow writes no spec over committed work`)
+  }
 
   // ---------- Spec
   spec = await agent(`${C()}
