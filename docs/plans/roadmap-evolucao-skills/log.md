@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | - | Pendentes do executor fechados: ressalvas baixas de E22 (achados 5 a 7) e wtRoot do SKILL.md do release (revisão da tarefa 7 de E18); gates G1 a G5 e embed verdes (1314 testes, 0 falhas) | `01e5807` |
 | 2026-11-12 | E4 | fix/E4-w2-w4 integrado (DEC-255): avisos do scaffold em modo completo | `69ab037` |
 | 2026-11-12 | - | Pendente do executor fechado: correção de DEC-254 (pendente de critério nomeia o entregável e usa a tabela de frases) e avisos W2/W4 do scaffold (DEC-255) integrados; os quatro pendentes de critério fundidos, todos de E15, renomeados para a forma nova | `645519e` |
 | 2026-11-12 | E18 | Teste comportamental da tarefa 7 (DEC-230) rodado pela sessão principal em dry-run até o passo 4, sem Workflow; revisão adversarial aprovada com ressalvas; resumo no log de revisões | `docs/superpowers/reviews/2026-11-11-E18-registro-release-cli-preflight-reviews.md` |

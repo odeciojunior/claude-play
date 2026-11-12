@@ -76,8 +76,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) Registro da meta derivada de prosa do tracker (29.096 bytes LF) na estratégia, por revisão proposta pelo tracker depois de E15 e aprovada pelo dono (DEC-034, DEC-098).
-- (executor) Ressalvas baixas da revisão final de E22 (achados 5 a 7): Volatile values só em formats.md § 4; sectionsCited lê só a 1a seção de 'formats.md § 6 and § 7'; migração ainda apontada em events.md (formats.md:63, rule do checker).
-- (executor) Corrigir roadmap-release/SKILL.md: a fórmula de wtRoot do passo 1 contradiz o passo 3 quando repo já é o worktree _integracao (revisão da tarefa 7 de E18); junto, o fallback de releaseBranch do passo 2 e o passo 3 em itens.
 <!-- /roadmap:pending -->
 
 ## Em andamento
