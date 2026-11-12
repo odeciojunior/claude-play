@@ -72,13 +72,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Ratificação em lote das decisões do executor (critério 3)
 - (dono) Publicação (critérios 2 e 5): envio da tag productivity-tools--v1.6.0, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
 - (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e os gates em volta.md
-- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md)
 - (dono) Liberação de aumento de bytes acima de 3% ou de classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro; dono ou orquestrador com autorização), das quais dependem os critérios 1 e 6 e o portão do critério 2
 - (dono) Ratificação em lote das decisões do executor de E17 (critério 3)
 - (dono) Publicação pelo dono: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Aceite da branch de volta pelo dono (critério 4): conferir diff contra a tag e saída dos gates em volta.md
-- (dono) Roteiros A e B de E25 rodados pelo dono antes da publicação
 - (executor) Rever no spec de E8: o modo run nunca completou fora do bypass. Os prompts dos agentes pedem comandos simples (sem heredoc nem laço; arquivo por Write, commit com -F). Rodar uma sonda completo em acceptEdits com regras e --stop-on-denial e listar as negações.
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
 - (executor) Rever no spec de E8: o preflight não vê --allowedTools nem o modo de permissão, e sem interface o run para no passo 2. Aceitar um argumento digitado pela pessoa que declara as permissões concedidas por outro meio; o relatório registra isso.
@@ -90,12 +88,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Ratificação em lote das decisões do executor de E17 (critério 3).
 - (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits.
 - (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md.
-- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir.
 - (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081).
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro), das quais dependem os critérios 1 e 6 e o portão do critério 2
 - (dono) Publicação: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Publicação: avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
-- (dono) Roteiros A e B de E25 antes da publicação
 - (dono) Execuções pagas do ponto de medição (critérios 1 e 6 e portão do critério 2), pelo dono ou orquestrador com autorização do dono
 - (dono) Ratificação em lote das decisões do executor de E17 (critério 3), incluindo a decisão 13
 - (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
@@ -106,7 +102,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas
 - (dono) Publicação (critérios 2 e 5): conferência da tag productivity-tools--v1.6.0 no remoto (já enviada), avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
 - (dono) Aceite da branch de volta (critério 4): o dono confere o diff contra a tag e a saída dos gates em volta.md, e ratifica ou reverte o ajuste do teste acoplado de marketplace-tools (decisão 13, commit a951ed5)
-- (dono) Roteiros A e B de E25 antes da publicação (pendentes do dono em state.md); o roteiro B pode usar a mesma config-dir
 - (dono) Liberação de um aumento de bytes acima de 3% ou de uma classe inconclusiva, se checkpoint.mjs acusar (DEC-033, DEC-081)
 - (dono) Owner decision on the arm plan-fix-atual.md versus the workflow at HEAD (the table-escaped pipe: arm has '\|', workflow has '\\|'). Edit the arm file, or relax armMatches? Until then the plan class is inconclusive in the checkpoint.
 - (dono) E17: critério AC1 sem evidência automática (human)
@@ -140,6 +135,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030).
 - (dono) Avaliação pelo dono do gatilho de revisão de DEC-442: E8 deixa de parar a retomada do próprio entregável dono da decisão de contrato, única exceção à parada de DEC-218.
 - (dono) Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob a delegação do dono.
+- (executor) E11, preparação: na config descartável, fixar o superpowers e desligar a atualização automática das lojas antes da 1ª execução; conferir o commit do superpowers antes de cada lote e parar se mudou. Decidir a versão de referência (E15 em 7.0.0, E17 misto).
+- (executor) baseline.mjs: a divergência de superpowers vira erro global e saída 1 mesmo com decisão do dono; avaliar registrar a versão por variante e aceitar a divergência citando a decisão, com teste.
+- (executor) Rever depois de E8: a retomada repete setup, progress e status-record (4 haiku a mais por execução em duas sessões); avaliar pular o registro já feito na 1ª sessão.
+- (dono) Publicar o 1.7.0 a partir da ponta de feat/E17-medicao (73cd476, árvore 214fb3b, DEC-445): G1 a G5 e X1/X2 ali, git fetch . feat/E17-medicao:main, push, update de loja e plugins, conferir cache.
+- (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
 <!-- /roadmap:pending -->
 
 ## Em andamento

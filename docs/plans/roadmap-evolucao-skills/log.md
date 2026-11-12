@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E17 | Ponto de medição do 1.7.0 concluído e liberado por delegação (DEC-507, DEC-508, DEC-509): detecção sem queda, contadores dentro de DEC-448, haiku +5 de parada-retomada liberado, deriva do superpowers aceita, metas de E4 e E22 atingidas. Gasto cerca de US$ 87,4. Relatórios em 73cd476, merge 4c4027e. | `docs/reports/2026-11-12-e17-ponto-de-medicao/comparacao.md, achados-1.7.0.md` |
+| 2026-11-12 | E17 | DEC-507, DEC-508, DEC-509 (fechamento da medição de E17) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E8 | BLQ-8 aberto: E8 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [important/defeito] [...] texto completo em docs/superpowers/reviews/2026-11-12-E8-release-spec-plano-nativos-paradas-reviews.md | `branch feat/E8` |
 | 2026-11-12 | E8 | E8 passou para executando | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E20 | Decisões de E20 ratificadas por delegação (Fable): DEC-425 a DEC-440, DEC-459 a DEC-474 como repetição, DEC-475 rejeitada (nota). DEC-477 aceita o id E<n> no spec-writer, DEC-478 delega o critério 5, DEC-479 libera E8 antes da publicação do 1.7.0. | `decisions.md` |
