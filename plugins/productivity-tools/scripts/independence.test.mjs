@@ -204,39 +204,58 @@ test('E20: plan-writer adoption checks the provisional before approval and befor
   const text = adoptionText();
   const check = text.indexOf('node "<planTool>" check "<output>"');
   assert.ok(check >= 0, 'sem check do provisorio');
-  assert.ok(check < text.indexOf('AskUserQuestion'), 'check depois da aprovacao');
+  const ask = text.indexOf('AskUserQuestion');
+  assert.ok(check < ask, 'check depois da aprovacao');
   assert.ok(check < text.indexOf('move the provisional'), 'check depois do move');
+  const before = text.slice(check, ask);
+  assert.ok(before.includes('delete the provisional file'), 'check falho sem apagar o provisorio');
+  assert.ok(before.includes('do not ask for approval'), 'check falho sem parar a aprovacao');
 });
 
 test('E20: plan-writer adoption deletes nothing after the move and drops the spec adjustment', () => {
   const text = adoptionText();
   assert.match(text, /nothing is deleted after the move/i);
   assert.ok(!text.includes('adjust the `spec` field'));
-  const step4 = text.split('\n').find((l) => /^\s*4\. /.test(l)) || '';
-  assert.ok(step4, 'sem passo 4');
-  assert.doesNotMatch(step4.slice(step4.indexOf('move the provisional')), /failed check: delete/i);
+  const from = text.indexOf('move the provisional');
+  const to = text.indexOf('Refuse', from);
+  assert.ok(from >= 0 && to > from, 'sem o trecho entre o move e a recusa');
+  const afterMove = text.slice(from, to).replace(/nothing is deleted/gi, '');
+  assert.doesNotMatch(afterMove, /delet/i);
 });
 
 test('E20: plan-writer adoption shows the mechanical diff as the full record', () => {
   const text = adoptionText();
   assert.ok(text.includes('git diff --no-index -- "<original>" "<provisional>"'));
   assert.match(text, /--stat/);
+  assert.match(text, /over 200 lines/);
+  assert.match(text, /exit 1 only means the files differ/);
   assert.match(text, /full record/i);
 });
 
-test('E20: plan-writer adoption looks up the card spec before dispatching spec-author', () => {
+test('E20: plan-writer adoption looks up the spec in order, card spec before spec-author', () => {
   const text = adoptionText();
-  const card = text.indexOf('docs/plans/<name>-E<n>/spec.md');
-  assert.ok(card >= 0, 'sem o spec do card');
-  assert.ok(card < text.indexOf('productivity-tools:spec-author'), 'spec do card depois do spec-author');
-  assert.match(text, /named by the person/i);
+  const order = ['named by the person', 'cited in the plan', 'beside the plan',
+    'docs/plans/<name>-E<n>/spec.md', 'productivity-tools:spec-author'];
+  const at = order.map((w) => text.indexOf(w));
+  order.forEach((w, i) => assert.ok(at[i] >= 0, `falta "${w}"`));
+  for (let i = 1; i < at.length; i++) {
+    assert.ok(at[i - 1] < at[i], `"${order[i - 1]}" depois de "${order[i]}"`);
+  }
+  assert.ok(text.includes('docs/plans/<x>-E<n>/spec.md'), 'sem o spec do card em roadmap-<x>');
+  assert.ok(text.includes('docs/plans/roadmap-<x>/'));
+});
+
+test('E20: plan-writer adoption stops when the provisional output already exists', () => {
+  assert.ok(adoptionText().includes('If `output` already exists, stop and report it; dispatch nothing.'));
 });
 
 test('E20: plan-writer adoption stops on a missing row or false origin over the whole table', () => {
   const text = adoptionText();
   assert.match(text, /re-dispatch[^.]*once/i);
+  assert.match(text, /repeat this step without re-dispatching/);
   assert.match(text, /false origin/i);
   assert.match(text, /`constraints` item/);
+  assert.match(text, /structured-field difference \(files, deps, checks, tier, locks, external, commit\)/);
 });
 
 test('E20: plan-author adopt accounts one row per old step, task, constraints item and field', () => {
