@@ -42,7 +42,7 @@ Abreviações: `WF` = `plugins/productivity-tools/skills/roadmap-release/workflo
 
 ## Fora do plano (orquestrador da sessão principal, DEC-204)
 
-Não são tarefas deste plano, porque precisam da ferramenta Workflow ou de subagent: a sonda `acceptEdits` (`tools/measure/run-batch.mjs --permission-mode acceptEdits --stop-on-denial --max-budget-usd 10`), o teste comportamental `plan-only` da skill e a medição de `MAX_WORKFLOW_CHARS` pelo nome. Os relatórios vão para `docs/reports/` pelo orquestrador. A tarefa 13 grava o teto provisório previsto no spec para o caso "a medição não rodar"; o orquestrador troca o número pelo medido, se medir.
+Não são tarefas deste plano, porque precisam da ferramenta Workflow ou de subagent: a sonda `acceptEdits` (`tools/measure/run-batch.mjs --permission-mode acceptEdits --stop-on-denial --max-budget-usd 10`), o teste comportamental `plan-only` da skill e a medição de `MAX_WORKFLOW_CHARS` pelo nome. Os relatórios vão para `docs/reports/` pelo orquestrador. A tarefa 13 grava o teto fixo de 240.000 caracteres LF (instrução do dono, `644854a`): o orquestrador nunca troca esse número, nem pelo medido; a medição só documenta o limite em `docs/reports/`.
 
 ---
 
@@ -229,7 +229,7 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
 - Testar: `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`
 
 **Interfaces:**
-- Consome: `heldBy`, `holdReason` (T2); `recordVerdict(...).decisionIds`.
+- Consome: `heldBy`, `holdReason` (T2); `recordVerdict(...).holdIds` (as retenções vêm só dele; `decisionIds` continua listando todas as decisões gravadas).
 - Produz: `S_DISC` com o campo obrigatório `pendingDecisionsStdout: STR` (stdout bruto de `node "<trackerCli>" pending-decisions "<abs roadmap na worktree de integração>" --json`); entregável retido com resultado `skipped` e motivo `holdReason(...)`; em `dry-run`, só relatado em `selection`.
 
 - [ ] **Passo 1: testes que falham** em FT (mock padrão de discovery com `pendingDecisionsStdout: cliJson({ result: { decisions: [] } })`):
@@ -237,8 +237,12 @@ tier: sonnet · reviewTier: sonnet · external: false · needsLock: nenhuma · n
   - `a transitive dependent is held citing the origin decision`: E3 com `deps: ['E2']` e E2 com `deps: ['E1']`.
   - `a pending contract decision read in discovery holds unstarted dependents and not its owner`: `pendingDecisionsStdout` com `{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }` → E1 roda, E2 retido citando DEC-7; em `plan-only` igual; em `dry-run` nenhum agente de entregável e a retenção aparece em `selection`.
   - `discovery requires pendingDecisionsStdout`: o `required` de `S_DISC` contém o campo; JSON inválido nele para o run como os outros campos obrigatórios.
-- [ ] **Passo 2:** `node --test --test-name-pattern "AC8|transitive dependent|pending contract decision read|requires pendingDecisionsStdout" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
-- [ ] **Passo 3: implementar** a leitura na descoberta e a checagem antes de iniciar cada entregável (na mesma execução e por decisões pendentes), em `run` e `plan-only`.
+  - `recordVerdict holdIds`: testes de unidade do retorno `holdIds` nos quatro casos: decisão nova (retém); existente (`existing: true`) ainda pendente na releitura de `pending-decisions` (retém); existente já ratificada e regravada na retomada (não retém, mas continua em `decisionIds`); lista de pendentes ilegível (a existente retém, falha segura).
+  - `a re-recorded ratified contract decision does not hold the dependent`: teste de fluxo em que o `add-decision` devolve `existing: true`, a releitura não lista a decisão como pendente e o dependente roda (rótulo `E2:spec` presente, sem motivo `held by`).
+  - `record runs carry the command number`: `S_RECORD` tem `n` por execução e `recordVerdict` casa por `n` (verbo tirado do comando montado), com casamento por texto só sem `n` (estágio de docs).
+  - `a record with abbreviated commands and extra git steps passes`: teste de fluxo em que o agente devolve ecos abreviados com `n` correto e passos `git` além da lista; os passos fora da lista são descartados e o registro passa; ordem, falta, excesso e saída continuam conferidos (um caso de falta e um de saída errada ainda falham).
+- [ ] **Passo 2:** `node --test --test-name-pattern "AC8|transitive dependent|pending contract decision read|requires pendingDecisionsStdout|holdIds|re-recorded ratified|carry the command number|abbreviated commands" plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` → FALHA.
+- [ ] **Passo 3: implementar** a leitura na descoberta e a checagem antes de iniciar cada entregável (na mesma execução e por decisões pendentes), em `run` e `plan-only`; `recordVerdict` devolve `holdIds` (novas, ou existentes ainda pendentes na releitura; lista ilegível retém); `S_RECORD` leva `n` por execução e `recordVerdict` casa por `n`, descartando passos `git` fora da lista.
 - [ ] **Passo 4:** mesmo comando → PASSA; G1 → exit 0, 0 falhas.
 - [ ] **Passo 5: commit** `E8 T8: dependentes retidos por decisão de contrato pendente` com WF e FT.
 
@@ -323,12 +327,12 @@ Depois de T1 a T12 (mede o script na ponta de `feat/E8`).
 **Arquivos:**
 - Criar: `plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs`
 
-**Interfaces:** `MAX_WORKFLOW_CHARS` exportado do teste como constante.
+**Interfaces:** `MAX_WORKFLOW_CHARS` = 240000 exportado do teste como constante, `workflowChars(text)` (conta o texto com `\r\n` normalizado para `\n`). O teto nunca é aumentado (nem por correção, merge ou medição); crescimento acima dele se resolve reduzindo o script ou por nova decisão do dono.
 
-- [ ] **Passo 1: medir** `node -e "const fs=require('fs');console.log(fs.readFileSync('plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js','utf8').length)"` → N; teto = `Math.ceil(N / 10000) * 10000`.
-- [ ] **Passo 2: escrever** `size.test.mjs` com o teste `the release workflow stays within the size launched by name` (`readFileSync(WF, 'utf8').length <= MAX_WORKFLOW_CHARS`), com comentário: valor provisório (N na ponta de `feat/E8` arredondado para cima ao múltiplo de 10.000), o lançamento pelo nome com a concessão ainda não medido; crescimento acima disso pede nova medição ou decisão.
-- [ ] **Passo 3:** `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` → PASSA; G1 → exit 0, 0 falhas; G2, G3, G4 e G5 → exit 0.
-- [ ] **Passo 4: commit** `E8 T13: teto provisório de tamanho do workflow com teste` com o arquivo.
+- [ ] **Passo 1: medir** `node -e "const fs=require('fs');console.log(fs.readFileSync('plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js','utf8').replace(/\r\n/g,'\n').length)"` → N (caracteres do texto LF); confirmar `N <= 240000`. Se N passar de 240000, não aumentar o teto: reduzir o script ou parar e relatar ao dono.
+- [ ] **Passo 2: escrever** `size.test.mjs` com dois testes: `the release workflow stays within the size launched by name` (`workflowChars(readFileSync(WF, 'utf8')) <= MAX_WORKFLOW_CHARS`) e `a CRLF working copy measures the same as the committed LF text` (uma cópia CRLF mede o mesmo que o texto LF). Comentário: teto de 240000 fixo, medida do conteúdo commitado em LF (com `core.autocrlf=true` a cópia de trabalho ganha um `\r` por linha, que não conta), lançamento pelo nome com a concessão ainda não medido; crescimento acima disso pede nova decisão, nunca aumento silencioso.
+- [ ] **Passo 3:** `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` → PASSA (os dois testes); G1 → exit 0, 0 falhas; G2, G3, G4 e G5 → exit 0.
+- [ ] **Passo 4: commit** `E8 T13: teto de 240000 caracteres LF do workflow com testes` com o arquivo.
 
 ## Acceptance criteria evidence
 
