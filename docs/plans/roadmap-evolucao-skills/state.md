@@ -64,7 +64,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) E25: roteiro B antes da publicação de E17 (DEC-284): entrar na conta uma vez no CLAUDE_CONFIG_DIR descartável; o agente delegado roda concessão e regra a partir do cache e apaga a pasta. Responde aos gatilhos de DEC-061, DEC-049 e DEC-275.
 - (executor) Rever no spec de E8: o diálogo do Workflow não aprova script grande (213.337 caracteres; limite não medido). Medir o limite, conferir que concessão e regra lançam acima dele e decidir um teste de tamanho; E9, E21, E23, E24 e E10 também aumentam o arquivo.
-- (executor) E25, baixo, corrigir em E8: os passos do dono no spec não dizem que sem interface o preflight precisa de --allowedTools "Bash(git:*)" "Bash(node:*)"; conferir se o aviso do preflight ainda diz que claude -p é negado sem regra, o que a concessão desmente.
+- (executor) E25, baixo, corrigir em E8: os passos do dono no spec não dizem que sem interface o preflight precisa de --allowedTools "Bash(git:*)" "Bash(node:*)".
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
 - (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro); critérios 1 e 6 e o portão do critério 2 dependem delas
@@ -78,6 +78,13 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Publicação pelo dono: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Aceite da branch de volta pelo dono (critério 4): conferir diff contra a tag e saída dos gates em volta.md
 - (dono) Roteiros A e B de E25 rodados pelo dono antes da publicação
+- (executor) Rever no spec de E8: o modo run nunca completou fora do bypass. Os prompts dos agentes pedem comandos simples (sem heredoc nem laço; arquivo por Write, commit com -F). Rodar uma sonda completo em acceptEdits com regras e --stop-on-denial e listar as negações.
+- (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
+- (executor) Rever no spec de E8: o preflight não vê --allowedTools nem o modo de permissão, e sem interface o run para no passo 2. Aceitar um argumento digitado pela pessoa que declara as permissões concedidas por outro meio; o relatório registra isso.
+- (executor) Corrigir em E8: operator.md ganha a receita sem interface: --allowedTools "Bash(git:*)" "Bash(node:*)", CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 acima de 10 minutos e as regras em .claude/settings.local.json. Não recomendar bypass como padrão.
+- (executor) Corrigir em E8, depois do roteiro B: o aviso do preflight diz que claude -p é negado sem a regra, e a concessão lança o comando digitado (DEC-283). Novo texto: a regra só é precisa para lançamento fora da skill.
+- (executor) tools/measure: SANDBOX_RELEASE_RULES cita Workflow(productivity-tools:roadmap-release), nome antigo e inerte; trocar por Workflow(productivity-tools:release-workflow) quando alguém mexer no arnês. Workflow sem conteúdo já cobre.
+- (executor) Fora de E17: spec-review-atual.md não casa com o workflow em HEAD sob nenhuma normalização; checkpoint.mjs não o confere. Resolver antes de medir a classe spec.
 <!-- /roadmap:pending -->
 
 ## Em andamento

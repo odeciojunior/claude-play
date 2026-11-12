@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | - | Problemas de permissão analisados por delegação (Fable): bypass só na operação (DEC-311), produto sem bypass como padrão (DEC-312, DEC-313); seis pendências para E8 e o arnês. | `scratchpad/permissoes-fable-pendente.md` |
+| 2026-11-12 | E17 | Braço de plano: decisão delegada (Fable) DEC-310; armMatches corrigido em feat/E17, linha de base da classe plano mantida. | `c7efe09` |
+| 2026-11-12 | E8 | DEC-313 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E8 | DEC-312 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | - | DEC-311 ratificada pelo dono | `decisions.md` |
+| 2026-11-12 | E17 | DEC-310 ratificada pelo dono | `decisions.md` |
 | 2026-11-12 | E17 | E17 passou para executando | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md` |
 | 2026-11-12 | E17 | Decisões DEC-285 a DEC-296 de E17 ratificadas pelo dono por delegação (Fable); emendas às decisões 1, 10 e 12 como DEC-298 (a DEC-285), DEC-299 (a DEC-294) e DEC-297 (a DEC-296). Nenhuma decisão do executor pendente. | `decisions.md` |
 | 2026-11-12 | E17 | Decisão 10 de E17 ratificada com emenda do dono por delegação (Fable) | `decisions.md` |
