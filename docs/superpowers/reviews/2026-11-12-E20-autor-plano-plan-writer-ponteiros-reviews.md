@@ -159,3 +159,13 @@ Uma entrada por item de recordCuts. Origem: docs/superpowers/reviews/2026-11-12-
 - Origem: docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md
 - Entrou em: add-decision --decision
 - Texto completo: 16. plan-writer resolve a pasta do roadmap antes de despachar, sem perguntar, nesta ordem: --roadmap <pasta> da chamada, a linha **Roadmap:** do plano antigo (adoção), a pasta do spec <nome>-E<n> (docs/plans/<nome>/ ou docs/plans/roadmap-<nome>/, com roadmap.config.json, id igual a E<n> e spec-tool check --roadmap em 0), senão null; um ponteiro achado e recusado vira null com o motivo no relato e na aprovação da adoção; o planner passa --roadmap explícito. Opção descartada: aceitar roadmap só no modo autônomo. Base: DEC-026, DEC-018, delegation-protocol.md do coordinator (plan.roadmap). Custo se errada: médio. Reversível.
+
+### Corte 7 (bloqueio aberto, registro blocked-record)
+
+- Origem: docs/superpowers/reviews/2026-11-12-E20-autor-plano-plan-writer-ponteiros-reviews.md
+- Entrou em: block-open --what
+- Texto completo: E20 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: I changed nothing and made no commit. Items 1 to 4 (two pairs of duplicates) need new behavioral runs of criteria 1, 2 and 4 on HEAD, followed by an adversarial review. The owner instruction (DEC-204) sends behavioral runs that need a subagent tool back to the main-session orchestrator, and this subagent has no Agent/Task tool, so it cannot dispatch plan-writer, spec-author or ; branch feat/E20 kept at D:/projects/claude-play-wt/E20
+
+## Execução do estágio blocked-record
+
+Nesta execução o registro foi refeito com os mesmos dados de revisões, tarefas, concerns, riscos aceitos e entradas humanas já transcritos acima, que permanecem inalterados. O que esta execução acrescenta: o Corte 7 (texto cortado ao abrir o bloqueio de E20) e o resultado final "falhou", com a branch feat/E20 mantida em D:/projects/claude-play-wt/E20.
