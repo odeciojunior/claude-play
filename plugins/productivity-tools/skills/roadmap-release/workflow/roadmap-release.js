@@ -44,6 +44,8 @@ export const meta = {
 //   authorizeExternal: ["gate:G3", "E18:T4", "E18:T4@<fp>", "E18:AC1", "E18:AC1@<fp>", "checkout:<target>"]: external effects the owner authorizes (only a person sets it; silence is never authorization).
 //     A bare E18:T4 or E18:AC1 binds to the plan fingerprint on first use; any redone plan invalidates the binding
 //   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
+//   approveRulings: { "E8": ["R2:<key>"] }: releases a costly irreversible spec ruling; the key is shown in the approve-ruling operator action and ties
+//     the approval to the exact text of the decision. Only a person sets it; it is never returned in resumeArgs or resumeWith
 //   trailer, branchPrefix ("feat/")
 //
 // RETURN: { status: done|partial|needs-operator|error, operatorActions[], resumeArgs, selection,
@@ -662,6 +664,12 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
   return out
 }
 // Resume args as shown to the report agent: the config is long and already known to the caller.
+// approveRulings is typed by the person (it names the exact text of each costly ruling): it never goes back in resume args.
+function withoutApprove(args) {
+  if (!args || typeof args !== 'object') return args
+  const { approveRulings, ...rest } = args
+  return rest
+}
 function withoutConfig(resumeWith) {
   if (!resumeWith) return resumeWith
   const { config, notes, trackerCli, ...rest } = resumeWith
@@ -941,7 +949,8 @@ function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, stat
     const phrase = `${isPt(lang) ? 'Alcance' : 'Scope'}: ${local ? 'local' : isPt(lang) ? 'contrato' : 'contract'}.`
     // One more character: the CLI adds a final period when the text has none.
     const text = fit('add-decision --decision', d.text, max - phrase.length - 2)
-    cmds.push(cliCmd(cli, 'add-decision', folder, ['--deliverable ' + shq(E), '--decision ' + shq(text), '--scope ' + shq(local ? 'local' : 'contrato')]))
+    const discarded = collapseWs(d.discarded)
+    cmds.push(cliCmd(cli, 'add-decision', folder, ['--deliverable ' + shq(E), '--decision ' + shq(text), '--scope ' + shq(local ? 'local' : 'contrato'), ...(discarded ? ['--discarded ' + shq(fit('add-decision --discarded', discarded, max))] : [])]))
   }
   for (const p of pending || []) {
     const text = fit('add-pending --text', p, max - `(${P.owner}) `.length)
@@ -1101,6 +1110,23 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
+// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a failed check is not a failed load (it becomes a critical issue of the review),
+// an emit that is not the spec/1 envelope of this deliverable, or that differs from the card, is a failed load.
+function checkSpecLoad(t, E, card) {
+  if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
+  if (!Number.isInteger(t.checkExit) || !Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit codes of check and emit' }
+  if (t.checkExit !== 0) return { ok: true, checkFailed: true, why: `spec-tool check exited ${t.checkExit}: ${collapseWs(t.checkStdout).slice(0, 1500)}` }
+  if (t.emitExit !== 0) return { ok: false, why: `spec-tool emit exited ${t.emitExit} although check exited 0` }
+  let o
+  try { o = JSON.parse(String(t.emitStdout)) } catch (e) { return { ok: false, why: `spec-tool emit output is not JSON (${e.message})` } }
+  if (!o || typeof o !== 'object') return { ok: false, why: 'spec-tool emit output is not an object' }
+  if (o.tool !== 'spec-tool') return { ok: false, why: `tool is ${JSON.stringify(o.tool)}, expected "spec-tool"` }
+  if (o.schema !== 'spec/1') return { ok: false, why: `schema is ${JSON.stringify(o.schema)}, expected "spec/1"` }
+  if (!o.data || typeof o.data !== 'object') return { ok: false, why: 'the emit has no data' }
+  const diff = specCardMismatch(o.data, E, card)
+  if (diff.length) return { ok: false, why: `the emitted spec differs from the card: ${diff.join('; ')}` }
+  return { ok: true, data: o.data }
+}
 // Selected, not started dependents (direct or transitive, by card deps) of each pending contract decision; the owner is never held.
 function heldBy({ cards, selected, contractDecisions, started }) {
   const byId = Object.fromEntries((cards || []).map(c => [c.id, c]))
@@ -1228,7 +1254,7 @@ if (AUTH.error) return { status: 'error', error: AUTH.error }
 const authorized = item => isAuthorized(AUTH.items, item)
 const RESULTS = []
 const mkResult = (status, extra) => ({
-  status, mode: MODE, operatorActions: OPS, resumeArgs: { ...A }, selection: null, results: RESULTS,
+  status, mode: MODE, operatorActions: OPS, resumeArgs: withoutApprove(A), selection: null, results: RESULTS,
   ownerReview: { acceptedRisks: [], decisionsPending: [], criteriaOpen: [] }, truth: null, lastGood: null, reportPath: null, ...(extra || {}),
 })
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
@@ -1352,6 +1378,8 @@ const ISSUES = { type: 'array', items: { type: 'object', properties: {
   category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
   description: STR, file: STR, blq: STR }, required: ['severity', 'description'] } }
 const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
+const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: STR, emitExit: INT, emitStdout: STR, blob: STR, head: STR, clean: BOOL }, required: ['checkExit', 'emitExit', 'emitStdout'] }
+const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_PLAN = { type: 'object', properties: { planPath: STR, planBlob: STR, roadmapHeader: BOOL, reused: BOOL,
   ac: { type: 'array', items: { type: 'object', properties: { ac: { ...STR, description: 'the exact criterion id, e.g. AC1, nothing else' }, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, command: STR, testRef: STR, blq: STR, external: BOOL, externalDedupe: STR }, required: ['ac', 'kind'] } },
@@ -1454,7 +1482,7 @@ const selection = { target: TARGET, base: BASEBR, integrationBranch: INTEG, read
   deps: Object.fromEntries(order.map(id => [id, byId[id].deps.map(d => `${d}:${isDone(byId[d]) ? 'on target' : 'in this run'}`)])) }
 log(`selection: ${order.join(' -> ') || '(empty)'}${picked.skipped.length ? ` | skipped: ${picked.skipped.map(s => s.id).join(', ')}` : ''}`)
 if (MODE === 'run' && order.length && interrupted.length) {
-  const resumeWith = { ...A, deliverables: [...interrupted, ...order] }
+  const resumeWith = { ...withoutApprove(A), deliverables: [...interrupted, ...order] }
   for (const id of interrupted) op('unfinished-merge', id, `the merge of ${id} is on ${TARGET} without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target`, `Run again with ${id} in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge. That validation replaces the panel row with the post-merge status, so an open blocker note or per-piece status on that row is lost. If the merge was already validated, keep the row instead: write its Status cell as "code: ${STATUS_AFTER_MERGE}; <the existing segments>", which the workflow reads as finished, then run again`, resumeWith)
   return mkResult('needs-operator', { selection, resumeArgs: resumeWith })
 }
@@ -1607,6 +1635,8 @@ const gates = async (dir, label, ph, B = null, exp = null, range = `${TARGET}...
 // ---------------------------------------------------------------- roadmap record (serialized on the target)
 let integBroken = null
 const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a format migration, whatever the event triggers: the owner's pre-approval never covers them. Do not edit any file of ${RM} by hand: the commands above are the whole roadmap job.`
+// Fixed clause of the prompts of the native spec and plan stages (E8): no stage ever asks.
+const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 // Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const LANG = disc.language || ''
@@ -1622,7 +1652,7 @@ const lastWord = new Map(disc.cards.map(c => {
 const CHECKERS = {}  // E -> result.checker of the last brief --json read by the docs stage
 const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
 // Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
-// extra = { decisions?: string[], pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
+// extra = { rulings?: spec rulings (the only source of recorded decisions), pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
 const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   if (integBroken) return null
   const x = extra || {}
@@ -1634,7 +1664,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     const id = (/\bBLQ-\d+\b/.exec(c.cell || '') || [])[0]
     if (id) blockedBy = { id, affects: ((disc.blockers || []).find(bl => bl.id === id) || {}).affects || [E] }
   }
-  const rc = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: status, piece, blockedBy, evidence: refs, logWhat: x.reason, decisions: (x.decisions || []).map(parseDecision), pending: x.pending,
+  const rc = recordCommands({ cli: A.trackerCli, folder: absFolder, E, word: status, piece, blockedBy, evidence: refs, logWhat: x.reason, decisions: rulingDecisions(x.rulings), pending: x.pending,
     inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
   if (rc.error) return { ok: false, failures: [rc.error], head: null, cuts: [] }
   const msg = phrases(LANG).commit(E, status)
@@ -1977,54 +2007,133 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
     return fail('conteudo', `the branch ${br} has ${setup.taskCommits} task commit(s) of the previous version and no native spec; the workflow writes no spec over committed work`)
   }
 
-  // ---------- Spec
-  spec = await agent(`${C()}
-
-If this branch already has docs/superpowers/specs/*-${E}-*-design.md, ${noteE ? 'merge the OWNER INSTRUCTION OR ANSWER above into it and reassess humanInputs (an answered input stops being blocking). If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.' : 'reuse it (reused=true) without rewriting.'}
-Otherwise use the skill superpowers:brainstorming in AUTONOMOUS MODE: "Brainstorm deliverable ${E} of the roadmap at ${RM}; its ${cardRef}. Do not re-ask what the card settles; the spec must keep the card's acceptance criteria and cite ${E}."
-- You play the owner: for each question, read the card, the REQs in ${RM}requirements.md, ${RM}decisions.md and the decisions in the PROJECT block (or the file it points to), the relevant module docs and the real code; pick the recommended option and go on. Scope = the card's.
-- Parts that are human acts: produce the artifacts and leave the acceptance to the human.
+  // ---------- Spec (native author; the tool output is read by code)
+  const AP = artifactPaths(disc.roadmapSlug, E)
+  const pluginRoot = pluginRootOf(A.trackerCli)
+  if (!pluginRoot) return fail('infra', `args.trackerCli (${A.trackerCli}) does not end with skills/roadmap-tracker/scripts/roadmap.mjs, so the plugin root and the path of spec-tool cannot be derived`)
+  const specTool = `${pluginRoot}/scripts/spec-tool.mjs`
+  const specAbs = `${wt}/${AP.spec}`
+  const rmAbs = `${wt}/${RM.replace(/\/+$/, '')}`
+  const specRules = `Fixed rules of this run:
+- ${NO_ASK}
+- Parts that are human acts: produce the artifacts and leave the acceptance to the human; invent no human data.
 - Delivery: there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan (an external evidence row may check that effect, never replaces the task).
+- Record every external effect in externalEffects; never perform it.
 - Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there). The design never makes a task depend on the merge, the target or the integration worktree.
-- For each human input set blocking=true ONLY if no useful part of the card can be delivered without it (a placeholder does not count); otherwise blocking=false with the workaround.
-- Save to docs/superpowers/specs/${TODAY}-${E}-<slug>-design.md (short kebab-case slug, WITHOUT the ID), written in the language of the roadmap, with: the card's acceptance criteria (verbatim, including any {verify: ...} tag), the design, "Autonomous decisions (reviewable by the owner)" and "Depends on human input".
-- Commit only the spec. Do not write the plan. Stop after the commit.
-Return specPath, slug (without the ID), decisions (one line per autonomous decision), humanInputs, reused.
-${scopeEndingRule(LANG)} Use the same ending in the lines of "Autonomous decisions (reviewable by the owner)" in the spec.`,
-    { label: `${E}:spec`, phase: 'Spec', schema: S_SPEC, model: 'opus', effort: 'medium' })
-  if (!spec) return fail('infra', 'spec: null agent')
+- Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.`
+  const specLoadOnce = k => agent(`${Cs()}
+
+SPEC LOAD of deliverable ${E} (mechanical, read-only; change no file). Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2, head = 3, clean = true when 4 prints nothing.
+${numbered([`node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" --json`, `node "${specTool}" emit "${specAbs}" --roadmap "${rmAbs}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
+${BASH_ONLY}
+${NO_ASK}`,
+    { label: `${E}:spec-load${k}`, phase: 'Spec', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+  // Attempts 1 and 2 in haiku/low, the 3rd in sonnet/medium; a failed check is not a failed load.
+  const loadSpec = async () => {
+    let why = ''
+    for (let k = 1; k <= 3; k++) {
+      const v = checkSpecLoad(await specLoadOnce(k), E, card)
+      if (v.ok) return v
+      why = v.why
+    }
+    return { ok: false, why }
+  }
+  const reusedAsIs = setup.nativeSpec === true && !noteE
+  if (!reusedAsIs) {
+    const authored = await agent(`mode: unattended
+output: ${specAbs}
+specTool: ${specTool}
+language: ${LANG || 'the language of the roadmap'}
+roadmap: ${rmAbs}
+card: ${E}
+ownerNote:
+${noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''}${setup.nativeSpec === true ? `The file ${AP.spec} already exists on this branch: edit it to take the instruction into account. A ruling the instruction does not change keeps its id and its text.\n` : ''}${specRules}
+${Cn()}`,
+      { agentType: 'productivity-tools:spec-author', label: `${E}:spec`, phase: 'Spec' })
+    if (authored == null) return fail('infra', 'spec: null agent')
+  }
+  let specLoad = await loadSpec()
+  if (!specLoad.ok) return fail('infra', `spec load: ${specLoad.why}`)
+  let specReused = reusedAsIs
+  if (!reusedAsIs) {
+    const msgFile = `${WT}/_tmp/${E}-spec-commit.txt`
+    const cm = await agent(`${Cs()}
+
+COMMIT of the spec of deliverable ${E} (mechanical). Only the file ${AP.spec} may enter the commit. One command per call, in this order:
+1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: spec", an empty line, then the line ${TRAILER}
+2. git -C "${wt}" add -- ${AP.spec}
+3. git -C "${wt}" diff --cached --quiet -- ${AP.spec}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
+4. Otherwise git -C "${wt}" commit -F "${msgFile}"
+5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, and commit = the same hash when a commit was made (empty when none). ok is false, with error, when a command failed.
+${NO_ASK}`,
+      { label: `${E}:spec-commit`, phase: 'Spec', schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+    if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
+    specReused = !cm.commit
+  }
+  spec = { specPath: AP.spec, reused: specReused }
+  let loadErr = ''
+  const specLoadIssues = () => (specLoad.checkFailed ? [{ severity: 'critical', category: 'defeito', description: specLoad.why }] : [])
   const specLoop = await reviewLoop('spec',
     (round, prev) => agent(`${C()}
 
-Review (read-only) the spec ${wt}/${spec.specPath} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block (or the file it points to).
+Review (read-only) the spec ${wt}/${AP.spec} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block (or the file it points to).
 Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act) (defeito); a design or autonomous decision that has a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
+Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).
+${NO_ASK}`,
       { label: `${E}:spec-review${round}`, phase: 'Spec', schema: S_REVIEW, model: 'opus', effort: 'medium' }),
     async (iss, k, tier) => {
       const fx = await agent(`${C()}
 
-Fix the spec ${spec.specPath} according to the review below, in autonomous mode, and commit. Stop after the commit.
+Fix the spec ${AP.spec} according to the review below, in autonomous mode, and commit. Stop after the commit.
 ${fmt(iss)}
 Return specPath, slug (without the ID), decisions (full list), humanInputs (full list).
-${scopeEndingRule(LANG)}`,
+The spec ends with a json data block in the spec/1 schema, which must stay valid: run node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" before the commit, one simple command per call. Rulings are read from that block, never from your answer.
+${NO_ASK}`,
         { label: `${E}:spec-fix${k}`, phase: 'Spec', schema: S_SPEC, model: tier, effort: effortFor(tier) })
-      if (fx) spec = { ...spec, ...fx }
-      return fx ? { status: 'DONE' } : null
+      if (!fx) return null
+      const again = await loadSpec()
+      if (!again.ok) { loadErr = again.why; return null }
+      specLoad = again
+      return { status: 'DONE' }
     },
-    r => reviewTruth(r, spec.reused ? 0 : 1, `${TARGET}..HEAD`),
+    r => [...reviewTruth(r, specReused ? 0 : 1, `${TARGET}..HEAD`), ...specLoadIssues()],
     { tier: 'opus', reviewModel: 'opus' })
+  if (loadErr) return fail('infra', `spec load: ${loadErr}`)
   if (!specLoop.ok) return fail(specLoop.kind, specLoop.msg)
-  human.push(...(spec.humanInputs || []))
-  out.spec = spec.specPath
-  specRef = spec.specPath
-  out.decisions = spec.decisions
-  slug = cleanSlug(spec.slug || spec.specPath.split('/').pop().replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/-design\.md$/, ''), E)
-  const blockingHuman = (spec.humanInputs || []).filter(h => h.blocking)
-  if (blockingHuman.length) {
+  const specData = specLoad.data
+  const rulings = Array.isArray(specData.rulings) ? specData.rulings : []
+  const needs = Array.isArray(specData.needsPerson) ? specData.needsPerson : []
+  const specHuman = needs.map(h => ({ blq: h.blq || undefined, what: String(h.what || ''), workaround: h.workaround || undefined, blocking: h.blocking === true }))
+  human.push(...specHuman)
+  out.spec = AP.spec
+  specRef = AP.spec
+  const approved = A.approveRulings && Array.isArray(A.approveRulings[E]) ? A.approveRulings[E] : []
+  const stopped = stopOrCarry({ rulings, needsPerson: needs, approved })
+  const stopsOfKind = kind => stopped.stops.filter(x => x.kind === kind)
+  const rulingList = ids => rulings.filter(r => ids.includes(r.id)).map(r => `${r.id}: ${collapseWs(r.decision)}${r.contradicts ? ` (contradicts ${r.contradicts})` : ''}`).join('; ')
+  if (stopsOfKind('humano').length) {
+    const blockingHuman = specHuman.filter(h => h.blocking)
     op('human-input', E, blockingHuman.map(h => `${h.blq ? h.blq + ': ' : ''}${h.what}`).join('; '),
       'Provide the data (or the decision) and run again passing the answer in notes. Never put a secret in notes: set an environment variable and name it', { ...A, deliverables: [E], notes: { ...(A.notes || {}), [E]: '<owner answer>' } })
     return fail('humano', `blocking human input: ${blockingHuman.map(h => h.what).join('; ')}`)
   }
+  if (stopsOfKind('decisao').length) {
+    const list = rulingList(stopsOfKind('decisao').map(x => x.id))
+    out.doNow = `The spec ${AP.spec} of ${E} holds ruling(s) that go against a registered decision or a canonical gate (${list}). Decide (a new DEC or a revision of the existing one) and run again with the decision in notes`
+    return fail('decisao', `spec ruling(s) contradict a registered decision or gate: ${list}`)
+  }
+  if (stopsOfKind('approve-ruling').length) {
+    const list = rulingList(stopsOfKind('approve-ruling').map(x => x.id))
+    const keys = rulings.filter(r => r.costIfWrong === 'high' && r.reversible === false).map(approveKey)
+    op('approve-ruling', E, `the spec of ${E} (committed at ${AP.spec}) holds ruling(s) that are costly if wrong and cannot be undone, so the plan was not written: ${list}`,
+      `Read the ruling(s) in ${AP.spec} on the branch ${br}. To accept them, run again adding approveRulings:${JSON.stringify({ [E]: keys })} to the args, typed by you: each key ties the approval to the exact text of its decision, so a decision that changes asks again. To refuse, pass the decision in notes. The resume args leave approveRulings out on purpose`,
+      { ...A, deliverables: [E] })
+    return fail('externo', `waiting for the approval of costly irreversible ruling(s): ${list}`)
+  }
+  out.rulings = stopped.carry
+  out.decisions = stopped.carry.map(r => r.decision)
+  spec.humanInputs = specHuman
+  spec.decisions = out.decisions
 
   // ---------- Plan
   const planName = `docs/superpowers/plans/${TODAY}-${E}-${slug}.md`
@@ -2104,7 +2213,7 @@ Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured aft
   }
 
   const logSource = () => `docs/superpowers/reviews/${TODAY}-${E}-${slug}-reviews.md`
-  const recordExtra = () => ({ decisions: out.decisions || [], pending: human.filter(h => h.blocking !== true).map(h => h.what), source: logSource() })
+  const recordExtra = () => ({ rulings: out.rulings || [], pending: human.filter(h => h.blocking !== true).map(h => h.what), source: logSource() })
   const failedRecord = rec => `${rec ? rec.failures.join('; ') : 'null agent or integration worktree broken'}`
   if (MODE === 'plan-only') {
     const rec = await recordStatus(E, STATUSES.plan, [spec.specPath, plan.planPath], recordExtra())
@@ -2603,14 +2712,14 @@ const settleAuth = items => {
   return bound.filter(i => !done.some(id => i.startsWith(id + ':T') || i.startsWith(id + ':AC')))
 }
 const finalResume = () => {
-  const base = dropConsumedNotes(resumeArgs || { ...A }, NOTES_READ)
+  const base = withoutApprove(dropConsumedNotes(resumeArgs || { ...A }, NOTES_READ))
   if (!A.authorizeExternal) return base
   const settled = settleAuth(AUTH.items)
   return { ...base, authorizeExternal: resumeIds.length ? settled : settled.filter(i => !/^(gate|checkout):/.test(i)) }  // with nothing left to run they authorize nothing
 }
 // Every operator action resumes with the same settled authorizations: bound to the approved plan, none for a delivery already merged.
 for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
-for (const o of OPS) if (o.resumeWith) o.resumeWith = dropConsumedNotes(o.resumeWith, NOTES_READ)
+for (const o of OPS) if (o.resumeWith) o.resumeWith = withoutApprove(dropConsumedNotes(o.resumeWith, NOTES_READ))
 const resumeFinal = finalResume()
 const report = await safe(() => mergeLock(() => agent(`${COMMON_SLIM()}
 
