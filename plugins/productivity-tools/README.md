@@ -18,7 +18,9 @@ claude plugin install productivity-tools@claude-play
 | report-analyzer | a report that needs SWOT, gap analysis, risk assessment, or a phased strategic roadmap | SWOT, gap and risk analysis of an existing report, turned into a phased roadmap document. No extra dependencies |
 | roadmap-planner | "plan the roadmap for X", "break this initiative into deliverables", "we need a roadmap" | Builds a living roadmap: versioned strategy + tracking folder + vendored checker. Full mode for multi-week initiatives, light mode for small ones |
 | roadmap-tracker | an existing roadmap folder (`roadmap.config.json`) after an event: a decision (DEC), blocker (BLQ), closed piece or wave, status request | Keeps an existing roadmap folder current, refreshes its checker, proposes strategy revisions |
+| plan-writer | `docs/plans/<topic>/plan.md` (or the old plan's own path in adoption mode) |
 | spec-writer | a design spec for one change outside a roadmap: "write a spec for X", "spec this change" | Asks one round of at most five questions, takes one approval, and writes `docs/plans/<topic>/spec.md` through the `spec-author` agent. Not for a roadmap deliverable (use `roadmap-release`) or an implementation plan |
+| plan-writer | an implementation plan for a checked spec from `spec-writer`, or adopting an old plan that has no data block: "write the plan for this spec", "adopt this plan" | Dispatches the `plan-author` agent and writes `plan.md` next to the spec. Adoption mode rewrites the old plan in place after one approval. Not for specs, roadmaps or executing a plan (use `plan-coordinator`) |
 | roadmap-release | running several roadmap deliverables (E<n>) unattended into a release branch: "run E18", "execute the next deliverables", "release dry-run". The model does not start it; type `/productivity-tools:roadmap-release <args>` | Runs deliverables end to end with a bundled Workflow (spec, plan, reviewed tasks, gates against a baseline, serialized merge with rollback), then verifies the result with git. One plan with one deliverable stays with `plan-coordinator` |
 | mermaid-designer | a diagram in Markdown or a Mermaid code block (flowchart, sequence, ER, state, class, Gantt, C4) | Mermaid diagram generation for documentation |
 | excalidraw-designer | an `.excalidraw` file or a hand-drawn, sketch or whiteboard look (architecture, flowcharts, mind maps, wireframes) | Hand-drawn style diagrams (.excalidraw files), checked by the bundled Node validator `scripts/validate-excalidraw.mjs` |
@@ -27,6 +29,7 @@ claude plugin install productivity-tools@claude-play
 ## Agents
 
 - **spec-author** (`agents/spec-author.md`, `model: opus`, `effort: medium`): writes one `spec/1` design spec for a roadmap card or a standalone request, reads the card and the code first, and records its own decisions. It never asks the person anything. A workflow dispatches it with `agentType: 'productivity-tools:spec-author'`; a skill in the main session dispatches it with `subagent_type: "productivity-tools:spec-author"`.
+- **plan-author** (`agents/plan-author.md`, `model: opus`, `effort: medium`): writes one `plan/1` implementation plan for a checked spec, or rewrites an old plan that has no data block, reading the spec and the code first. It never asks the person anything. A skill in the main session dispatches it with `subagent_type: "productivity-tools:plan-author"`.
 
 ## Pipeline
 
