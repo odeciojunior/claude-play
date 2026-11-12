@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E25 | E25 passou para na-branch | `1524260022d7e955bb9c1406cf717b9f74189f30`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `docs/superpowers/reviews/2026-11-12-E25-release-lancado-pelo-nome-reviews.md` |
 | 2026-11-12 | E25 | E25 passou para executando | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md` |
 | 2026-11-12 | - | Pendentes do executor fechados: ressalvas baixas de E22 (achados 5 a 7) e wtRoot do SKILL.md do release (revisão da tarefa 7 de E18); gates G1 a G5 e embed verdes (1314 testes, 0 falhas) | `01e5807` |
 | 2026-11-12 | E4 | fix/E4-w2-w4 integrado (DEC-255): avisos do scaffold em modo completo | `69ab037` |

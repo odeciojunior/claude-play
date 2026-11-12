@@ -39,7 +39,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E22 | na-branch | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md` | release/roadmap-skills-v2 entra em main depois do portão do release; aceite dos critérios 2 e 3 pelo dono |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
-| E25 | executando | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md` | E25: seguir o fluxo do release após executando |
+| E25 | na-branch | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30` | E25: seguir o fluxo do release após na-branch |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
 <!-- /roadmap:panel -->
@@ -81,6 +81,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Script B (cache): the owner checks name and grant with the plugin installed from cache in a disposable CLAUDE_CONFIG_DIR; answers the DEC-061 and DEC-049 revisit triggers.
 - (dono) Any broader allowed-tools policy (other skills or future workflows such as coordinator-workflow) is the owner's decision; this card fixes the single exception.
 - (dono) Owner ratification of the autonomous decisions (DEC-030); contract-scope decisions 1 and 5 hold the start of E8.
+- (dono) E25: critério AC4 sem evidência automática (human)
+- (dono) E25: critério AC6 sem evidência automática (human)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -88,5 +90,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E25 | viva | E25 em execução pelo release |
 <!-- /roadmap:inflight -->
