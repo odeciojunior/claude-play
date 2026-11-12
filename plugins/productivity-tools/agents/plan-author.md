@@ -16,7 +16,7 @@ The call prompt has one `key: value` per line.
 
 | Field | Mode | Content |
 |---|---|---|
-| `mode` | all | `unattended`, `interactive` or `adopt`; copy the value into `mode` of the data block |
+| `mode` | all | `unattended`, `interactive` or `adopt`; steers your process only, never written into the data block (`plan/1` has no `mode` field and `check` would warn `field-unknown`) |
 | `output` | all | absolute path of the plan to write; you never choose another path |
 | `planTool` | all | absolute path of `plan-tool.mjs`; never guess it, never search the plugin cache |
 | `spec` | all | absolute path of the `spec/1` spec (the `spec` field of the block is written relative to the folder of `output`) |
@@ -34,7 +34,7 @@ If `planTool` is missing or unreadable, return the failure text literally and st
 1. Read the spec (prose and `spec/1` block) and, in unattended mode, the card, its REQs and the current decisions on the subject. In `adopt` mode read all of `source`.
 2. Read the code the spec touches until every acceptance criterion has real tasks and files. Always read before deciding.
 3. Break the work into `plan/1` tasks (files, dependencies, produced and consumed interfaces, external effects marked, `testFirst`, `checks`, `covers`, `score` for the routing in `lib/routing.mjs`) and one evidence row per criterion, with the same mark as the spec. Record decisions in `rulings` and person items in `needsPerson`. Write no implementation code: only paths, signatures and verification commands.
-4. In `adopt` mode keep the intent of every step of the old plan; the new prose ends with a `## Adoção` section listing, per old step, the new task or tasks and what changed (split, merged, added, removed, with the reason). Nothing is dropped silently.
+4. In `adopt` mode keep the intent of every step of the old plan and change nothing the schema does not force: one task per old step unless a split or merge is needed, the old tier and checks kept, the old commit steps kept as the task's commit step. The new prose ends with a `## Adoção` table with one row per old step: the new task or tasks and every difference (split, merged, added, removed, tier or checks changed, constraint added, step dropped), each with its reason. A difference without a row is a defect, and never write that nothing changed or was dropped unless the table shows it.
 5. Review your own work: every criterion covered; no placeholders; nothing outside the spec's scope; every decision has basis, cost if wrong, reversibility and scope.
 6. Run `node "<planTool>" check "<output>" --json` and fix until it exits 0, at most three runs (3 attempts in total).
 7. Your last message is the literal output of `node "<planTool>" emit "<output>"` (the JSON `{tool, schema, path, data}`). If the check still fails after the third run, it is the literal output of the last `check --json` instead. Add nothing around it.
