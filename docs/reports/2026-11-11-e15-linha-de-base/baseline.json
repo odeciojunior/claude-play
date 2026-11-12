@@ -11,7 +11,7 @@
   },
   "cli": "2.1.322 (Claude Code)",
   "pricesDate": "2026-11-10",
-  "permissionMode": "default",
+  "permissionMode": "bypassPermissions",
   "variants": {
     "planner": {
       "variant": "planner",
@@ -31,7 +31,7 @@
       "cli": "2.1.322 (Claude Code)",
       "models": [],
       "pricesDate": "2026-11-10",
-      "permissionMode": "default",
+      "permissionMode": "bypassPermissions",
       "attempts": [
         {
           "n": 1,

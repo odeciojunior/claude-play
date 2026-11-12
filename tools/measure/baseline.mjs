@@ -116,7 +116,8 @@ export function mergeVariant(aggs) {
     cli: first.cli,
     models: [...new Set(aggs.flatMap((a) => a.models ?? []))],
     pricesDate: first.pricesDate,
-    permissionMode: first.permissionMode,
+    // The mode of the runs that count: aggregates with valid runs only (a denied partial in another mode is not the measured mode).
+    permissionMode: [...new Set(aggs.filter((a) => (a.valid ?? 0) > 0).map((a) => a.permissionMode))].join(', ') || first.permissionMode,
     attempts,
     roles: sumRoles(aggs),
     cost: costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null },

@@ -318,3 +318,14 @@ test('a plan variant with only pipeline aggregates is incomplete and the class i
     assert.equal(r.exitCode, 1);
   });
 });
+
+test('mergeVariant: o modo de permissão vem só dos agregados com execuções válidas', () => {
+  const base = { variant: 'planner', requested: 1, invalid: 0, plugin: {}, superpowers: {}, cli: 'x', models: [], pricesDate: 'd', attempts: [] };
+  const merged = mergeVariant([
+    { ...base, valid: 0, denied: 1, permissionMode: 'default' },
+    { ...base, valid: 0, denied: 1, permissionMode: 'acceptEdits' },
+    { ...base, valid: 1, denied: 0, permissionMode: 'bypassPermissions' },
+  ]);
+  assert.equal(merged.permissionMode, 'bypassPermissions');
+  assert.equal(mergeVariant([{ ...base, valid: 0, denied: 1, permissionMode: 'default' }]).permissionMode, 'default');
+});

@@ -72,7 +72,7 @@ Nota: custo não é comparado nesta skill (DEC-016).
 
 | Variante | Válidas/pedidas | Custo mediano (faixa) | Plugin | Superpowers | Modelos | Preços | CLI | Permissão |
 |---|---|---|---|---|---|---|---|---|
-| planner | 1/1 | ver nota | 1.6.0 (3fbb59b2c85f) | 7.0.0 (bb92a7774141) |  | 2026-11-10 | 2.1.322 (Claude Code) | default |
+| planner | 1/1 | ver nota | 1.6.0 (3fbb59b2c85f) | 7.0.0 (bb92a7774141) |  | 2026-11-10 | 2.1.322 (Claude Code) | bypassPermissions |
 | tracker | 1/1 | ver nota | 1.6.0 (3fbb59b2c85f) | 7.0.0 (bb92a7774141) |  | 2026-11-10 | 2.1.322 (Claude Code) | bypassPermissions |
 
 | Variante | Papel | haiku | sonnet | opus | fable | other | Bytes de prompt |
