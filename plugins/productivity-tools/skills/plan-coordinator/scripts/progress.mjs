@@ -16,6 +16,7 @@ const USAGE = [
   '     node progress.mjs next <progress.json> [--json]',
   '     node progress.mjs apply <progress.json> <evento> [--step <n>] [--steps <n,...>] [--value <v>] [--text <t>] [--agent-id <id>] [--sha <sha>] [--tier <t>] [--json]',
   '     node progress.mjs show <progress.json>',
+  '     node progress.mjs select [--query <texto>] [--root <pasta>] [--json]',
 ].join('\n');
 
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -106,6 +107,104 @@ function planChanged(state, stateFile) {
   return e.out === null || e.out.digest !== state.plan.digest;
 }
 
+const NO_PLAN_QUESTION = 'não há plano em docs/plans/ que corresponda; quer escrever o plano agora com a skill plan-writer?';
+
+// Sufixo de pasta só conta como ID quando o texto tem forma de ID (letras e número, como E7).
+const ID_SHAPE = /^[a-z]+[0-9]+$/;
+
+function findPlans(dir, out = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) {
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      findPlans(path.join(dir, e.name), out);
+    } else if (e.isFile() && e.name === 'plan.md') out.push(path.join(dir, e.name));
+  }
+  return out;
+}
+
+// Escolhe o plano sem perguntar quando há um candidato forte; senão devolve a pergunta (nunca escolhe no empate).
+export function selectPlan({ root, query = null }) {
+  const plansDir = path.join(root, 'docs', 'plans');
+  const items = findPlans(plansDir).map((abs) => {
+    let id = null;
+    try {
+      const d = readDataBlock(fs.readFileSync(abs, 'utf8')).data;
+      if (d && typeof d.id === 'string') id = d.id;
+    } catch {
+      // plano ilegível: candidato sem id
+    }
+    const stateFile = path.join(path.dirname(abs), 'progress.json');
+    let hasState = false;
+    let status = null;
+    if (fs.existsSync(stateFile)) {
+      hasState = true;
+      try {
+        status = JSON.parse(fs.readFileSync(stateFile, 'utf8').replace(/^﻿/, ''))?.run?.status ?? null;
+      } catch {
+        // estado ilegível: não é candidato forte
+      }
+    }
+    return { rel: slash(path.relative(root, abs)), folder: path.basename(path.dirname(abs)), id, hasState, status };
+  }).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+
+  const ask = (list, text) => ({ question: text, candidates: list.map((i) => i.rel) });
+  const names = (list) => list.map((i) => i.rel).join(', ');
+
+  if (query !== null && String(query).trim() !== '') {
+    const q = String(query).trim().toLowerCase();
+    const strong = items.filter((i) => {
+      const folder = i.folder.toLowerCase();
+      return folder === q || (ID_SHAPE.test(q) && folder.endsWith('-' + q)) || (i.id !== null && i.id.toLowerCase() === q);
+    });
+    if (strong.length === 1) return { choice: strong[0].rel };
+    if (strong.length > 1) return ask(strong, 'mais de um plano corresponde a "' + query + '": ' + names(strong) + '. Qual deles?');
+    const weak = items.filter((i) => i.rel.toLowerCase().includes(q));
+    if (weak.length) return ask(weak, 'nenhum plano corresponde exatamente a "' + query + '"; parecidos: ' + names(weak) + '. Qual deles?');
+    return ask([], NO_PLAN_QUESTION);
+  }
+
+  if (items.length === 0) return ask([], NO_PLAN_QUESTION);
+  const running = items.filter((i) => i.hasState && i.status !== null && i.status !== 'completed');
+  if (running.length === 1) return { choice: running[0].rel };
+  if (running.length === 0) {
+    const fresh = items.filter((i) => !i.hasState);
+    if (fresh.length === 1 && items.length === 1) return { choice: fresh[0].rel };
+    if (fresh.length === 1 && items.every((i) => i.hasState === false || i.status === 'completed')) return { choice: fresh[0].rel };
+  }
+  const list = running.length > 1 ? running : items;
+  return ask(list, 'qual plano executar? ' + names(list));
+}
+
+function runSelect(rest, io) {
+  let parsed;
+  try {
+    parsed = parseArgs(rest, ['--query', '--root'], ['--json']);
+  } catch (e) {
+    io.stderr.write(e.message + '\n' + USAGE + '\n');
+    return 2;
+  }
+  if (parsed.pos.length) {
+    io.stderr.write('argumento extra: ' + parsed.pos[0] + '\n' + USAGE + '\n');
+    return 2;
+  }
+  const g = parsed.opts.root ? null : git(process.cwd(), ['rev-parse', '--show-toplevel']);
+  const root = path.resolve(parsed.opts.root ?? g ?? process.cwd());
+  const r = selectPlan({ root, query: parsed.opts.query ?? null });
+  if (parsed.opts.json) io.stdout.write(JSON.stringify({ tool: 'progress', command: 'select', ok: true, ...r, errors: [], warnings: [] }, null, 2) + '\n');
+  else if (r.choice) io.stdout.write(r.choice + '\n');
+  else {
+    io.stdout.write(r.question + '\n');
+    for (const c of r.candidates) io.stdout.write('  ' + c + '\n');
+  }
+  return 0;
+}
+
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
   const err = (s) => io.stderr.write(s + '\n');
@@ -115,7 +214,8 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (!['init', 'next', 'apply', 'show'].includes(cmd)) return bad('comando desconhecido: ' + cmd + '\n' + USAGE);
+  if (!['init', 'next', 'apply', 'show', 'select'].includes(cmd)) return bad('comando desconhecido: ' + cmd + '\n' + USAGE);
+  if (cmd === 'select') return runSelect(rest, io);
 
   let parsed;
   try {

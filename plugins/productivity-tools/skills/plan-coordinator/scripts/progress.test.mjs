@@ -860,3 +860,89 @@ test('main is exported and returns the exit code', () => {
   const io = { stdout: { write() {} }, stderr: { write() {} } };
   assert.equal(progressMain([], io), 2);
 });
+
+// ---------------------------------------------------------------------------
+// Task 5: select
+// ---------------------------------------------------------------------------
+import { selectPlan } from './progress.mjs';
+
+function plansRoot(plans) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'progress-sel-'));
+  for (const [dir, spec] of Object.entries(plans)) {
+    const d = path.join(root, 'docs', 'plans', dir);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'plan.md'), '# Plano\n\n```json data\n' + JSON.stringify({ schema: 'plan/1', id: spec.id }) + '\n```\n');
+    if (spec.status) fs.writeFileSync(path.join(d, 'progress.json'), JSON.stringify({ schema: 'progress/1', run: { status: spec.status } }));
+  }
+  return { root, done: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+
+function withPlans(plans, fn) {
+  const p = plansRoot(plans);
+  try {
+    return fn(p.root);
+  } finally {
+    p.done();
+  }
+}
+
+const selectCli = (root, ...args) => {
+  const r = cli(['select', '--root', root, '--json', ...args]);
+  assert.equal(r.code, 0, r.err);
+  return JSON.parse(r.out);
+};
+
+test('AC4: one strong match is chosen', () => withPlans({ 'roadmap-x-E7': { id: 'E7' }, 'outra-E8': { id: 'E8' } }, (root) => {
+  const j = selectCli(root, '--query', 'e7');
+  assert.equal(j.choice, 'docs/plans/roadmap-x-E7/plan.md');
+  assert.equal(j.question, undefined);
+  assert.deepEqual(selectPlan({ root, query: 'e7' }), { choice: 'docs/plans/roadmap-x-E7/plan.md' });
+}));
+
+test('AC4: two tied candidates return a question', () => withPlans({ 'a-E7': { id: 'E7' }, 'b-E7': { id: 'E7' } }, (root) => {
+  const j = selectCli(root, '--query', 'E7');
+  assert.equal(j.choice, undefined);
+  assert.equal(typeof j.question, 'string');
+  assert.deepEqual([...j.candidates].sort(), ['docs/plans/a-E7/plan.md', 'docs/plans/b-E7/plan.md']);
+}));
+
+test('select without query resumes the only run in progress', () => withPlans({ a: { id: 'A', status: 'in-progress' }, b: { id: 'B', status: 'completed' }, c: { id: 'C' } }, (root) => {
+  assert.deepEqual(selectPlan({ root }), { choice: 'docs/plans/a/plan.md' });
+}));
+
+test('select without query and two runs in progress asks', () => withPlans({ a: { id: 'A', status: 'in-progress' }, b: { id: 'B', status: 'map-ready' } }, (root) => {
+  const r = selectPlan({ root });
+  assert.equal(r.choice, undefined);
+  assert.equal(r.candidates.length, 2);
+  assert.ok(r.question);
+}));
+
+test('select without query and a single plan without state chooses it', () => withPlans({ only: { id: 'O' } }, (root) => {
+  assert.deepEqual(selectPlan({ root }), { choice: 'docs/plans/only/plan.md' });
+}));
+
+test('select with no candidates offers to write the plan', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'progress-sel-'));
+  try {
+    const r = selectPlan({ root });
+    assert.deepEqual(r.candidates, []);
+    assert.match(r.question, /plan-writer/);
+    assert.equal(r.choice, undefined);
+    const q = selectPlan({ root, query: 'E7' });
+    assert.deepEqual(q.candidates, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('weak matches are offered, never chosen', () => withPlans({ 'coordinator-mapa': { id: 'X1' }, 'outro': { id: 'X2' } }, (root) => {
+  const r = selectPlan({ root, query: 'mapa' });
+  assert.equal(r.choice, undefined);
+  assert.deepEqual(r.candidates, ['docs/plans/coordinator-mapa/plan.md']);
+  assert.ok(r.question);
+}));
+
+test('select skips node_modules and .git and exits 0 even for a question', () => withPlans({ 'node_modules/x': { id: 'N' }, '.git/y': { id: 'G' }, z: { id: 'Z' }, w: { id: 'W' } }, (root) => {
+  const r = selectCli(root);
+  assert.deepEqual([...r.candidates].sort(), ['docs/plans/w/plan.md', 'docs/plans/z/plan.md']);
+}));
