@@ -1,7 +1,7 @@
 export const meta = {
   name: 'coordinator-workflow',
   description: 'Runs the waves of an approved plan/1: dispatches each wave in parallel, reviews each step, commits in series after the wave, runs the wave gate against the baseline and records every transition in the signed progress state',
-  whenToUse: 'Execute a written plan with plan-coordinator without a main-session loop. Example args: {"plan":"<abs path to plan.md>","state":"<abs path to progress.json>","runToken":"<token from progress.mjs token>","authorizeExternal":["plan:T3@<8 hex>"],"test":"<test command>"}',
+  whenToUse: 'Execute a written plan with plan-coordinator without a main-session loop. Example args: {"plan":"<abs path to plan.md>","state":"<abs path to progress.json>","runToken":"<token from progress.mjs token>","progress":"<abs path to scripts/progress.mjs>","authorizeExternal":["plan:T3@<8 hex>"],"test":"<test command>"}',
   phases: [
     { title: 'Read', detail: 'signed read of the progress state and plan check' },
     { title: 'Wave', detail: 'parallel implementers of the open steps whose dependencies passed' },
@@ -18,11 +18,15 @@ export const meta = {
 //   plan (required): absolute path of the plan.md
 //   state (required): absolute path of the progress.json written by progress.mjs init
 //   runToken (required): fresh token from `progress.mjs token`, new for each call
+//   progress (required): absolute path of scripts/progress.mjs of the plan-coordinator skill; every read and write of the state goes through it
 //   authorizeExternal: ["plan:T3@<8 hex>"]: external steps the owner authorizes; the digest is part of the item
 //   answers: [{ type: answer|unblock|release|hold|refuse, ... }]: events the person answered, applied before the run
-//   test: the test command of the wave gate
+//   test: the test command of the wave gate ("none" or absent: no baseline and no wave gate run)
 //
-// RETURN: { status: done|partial|needs-operator|error, error?, ... }
+// RETURN: { status: 'done', run, wave, map, steps, finalGate, open }
+//       | { status: 'stopped', stop: { kind: ask|plan-changed|state-divergence, ... }, resumeArgs }
+//       | { status: 'error', error }
+// Every transition is written to the progress state before the call returns.
 
 // <pure>
 // <embed src="../../../lib/progress-state.mjs" exports="strip">
@@ -893,10 +897,490 @@ function validateArgs(args) {
   if (args.test !== undefined && args.test !== null && typeof args.test !== 'string') return fail('args.test must be a string')
   return { error: null, authorizeExternal: auth.items }
 }
+
+function slash(p) { return String(p).replace(/\\/g, '/') }
+
+// One word for a POSIX shell.
+function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+
+// The JSON of a signed or script output; tolerates text around the object. null when there is none.
+function parseJson(text) {
+  const t = String(text == null ? '' : text).trim()
+  try { return JSON.parse(t) } catch (e) { /* look for the object inside the text */ }
+  const a = t.indexOf('{'), b = t.lastIndexOf('}')
+  if (a === -1 || b <= a) return null
+  try { return JSON.parse(t.slice(a, b + 1)) } catch (e) { return null }
+}
+
+function tailOf(text, n = 1500) {
+  const t = String(text == null ? '' : text)
+  return t.length > n ? t.slice(t.length - n) : t
+}
+
+// What progress.mjs read, apply --events and the local copy compare: the state without its history.
+function stateDigest(state) { return fnv1a(JSON.stringify(canon({ ...state, history: [] }))) }
+
+// The state belongs to the plan of the launch: same file, slashes normalized, compared by the relative suffix.
+function samePlan(statePath, planArg) {
+  const a = slash(statePath).replace(/^\.\//, '')
+  const b = slash(planArg)
+  return a !== '' && (b === a || b.endsWith('/' + a))
+}
+
+// The --events argument of progress.mjs apply: encodeURIComponent of { expect, events, digest }.
+function eventsPayload(expect, events) {
+  const rest = { expect, events }
+  return encodeURIComponent(JSON.stringify({ ...rest, digest: fnv1a(JSON.stringify(canon(rest))) })).replace(/'/g, '%27')
+}
+
+// The briefs sit in the folder of the plan; the state keeps the plan path relative to the git root.
+function briefPath(root, planPath, brief) {
+  return slash(root).replace(/\/+$/, '') + '/' + slash(planPath).replace(/[^/]*$/, '') + brief
+}
+
+function commitSubject(planId, step) { return `${planId} T${step.n}: ${step.title}` }
+
+// git log --grep reads a basic regular expression: the characters that mean something in it are escaped.
+function commitGrep(planId, n) { return '^' + `${planId} T${n}:`.replace(/[.*[\\^$]/g, '\\$&') }
+
+// The SHA in the first line "<sha> <subject>" of git log, only when the subject is the one of the step.
+function parseLogLine(stdout, planId, n) {
+  const line = String(stdout == null ? '' : stdout).split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || ''
+  const m = /^([0-9a-f]{40,64}) (.*)$/.exec(line)
+  return m && m[2].startsWith(`${planId} T${n}:`) ? m[1] : null
+}
+
+// Passed steps that still need their commit: no sha yet, or passed again after a fix and already committed once.
+function stepsToCommit(state, again) {
+  return state.steps.filter((s) => s.status === 'pass' && s.noCommit !== true && (!s.sha || again.has(s.n))).sort((a, b) => a.n - b.n)
+}
+
+// The event of an implementer return: DONE and DONE_WITH_CONCERNS pass, BLOCKED and NEEDS_HUMAN block, no return is no-report.
+function reportEvent(n, out, at) {
+  if (!out || typeof out !== 'object' || typeof out.status !== 'string') return { type: 'no-report', step: n, at }
+  const summary = String(out.summary || '').trim()
+  if (out.status === 'DONE' || out.status === 'DONE_WITH_CONCERNS') {
+    return { type: 'report', step: n, value: 'pass', text: summary.slice(0, 400), handoff: summary.split(/\r?\n/).filter(Boolean).slice(0, 5).join(' ').slice(0, 500), at }
+  }
+  const asks = (Array.isArray(out.humanInputs) ? out.humanInputs : []).map((h) => h && h.what).filter(Boolean)
+  return { type: 'report', step: n, value: 'blocked', text: [`${out.status}: ${summary}`, String(out.concerns || ''), ...asks].filter(Boolean).join(' | ').slice(0, 600), at }
+}
+
+function issuesText(issues) {
+  return issues.map((i) => `${i.id ? i.id + ' ' : ''}[${i.severity}${i.category ? '/' + i.category : ''}]${i.file ? ' ' + i.file : ''} ${i.description}`).join('\n')
+}
+
+// Findings that block: not minor, and not an environment limit, a pre-existing problem or something the plan foresaw.
+function blockingIssues(review) {
+  const out = []
+  for (const i of (review && Array.isArray(review.issues)) ? review.issues : []) {
+    if (!i || i.severity === 'minor' || ['fora-do-escopo', 'pelo-plano', 'ambiente'].includes(i.category)) continue
+    out.push(i)
+  }
+  return out
+}
+
+// pass, defects with the text for the fix round, or lost when the reviewer returned nothing.
+function reviewVerdict(out) {
+  if (!out || typeof out !== 'object') return { verdict: 'lost', text: '' }
+  const blocking = blockingIssues(out)
+  if (blocking.length === 0 && out.spec !== 'fail' && out.quality !== 'fail') return { verdict: 'pass', text: '' }
+  return { verdict: 'defects', text: blocking.length ? issuesText(blocking) : 'the review marked spec or quality as fail without a finding' }
+}
+
+// The lowest step whose files hold the file of a blocking finding; null when no finding names a file of a step.
+function owningStep(state, issues) {
+  const hits = []
+  for (const i of issues) {
+    if (!i.file) continue
+    const f = slash(i.file)
+    for (const s of state.steps) if ((s.files || []).some((x) => f === x || f.endsWith('/' + x))) hits.push(s.n)
+  }
+  return hits.length ? Math.min(...hits) : null
+}
 // </pure>
 
 const checkedArgs = validateArgs(args)
 if (checkedArgs.error) return { status: 'error', error: checkedArgs.error }
+if (typeof args.progress !== 'string' || args.progress.trim() === '') {
+  return { status: 'error', error: 'args.progress must be the absolute path of scripts/progress.mjs of the plan-coordinator skill (the skill passes <dir>/scripts/progress.mjs)' }
+}
 
-// The wave loop arrives in the next task; until then a valid launch stops without calling any agent.
-return { status: 'error', error: 'coordinator-workflow: the wave loop is not implemented yet' }
+const A = args
+const PROGRESS = slash(A.progress)
+const STATE_FILE = slash(A.state)
+// The run token stays only in the first read: every later nonce carries a hash of it, so a resume by the runtime re-runs everything live.
+const RUN_TAG = fnv1a(A.runToken)
+
+// ---------------------------------------------------------------- schemas (the same as the release workflow)
+const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boolean' }
+const HUMAN = { type: 'array', items: { type: 'object', properties: { blq: STR, what: STR, workaround: STR, blocking: BOOL }, required: ['what'] } }
+const ISSUES = { type: 'array', items: { type: 'object', properties: {
+  severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
+  category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
+  description: STR, file: STR, blq: STR, id: STR }, required: ['severity', 'description'] } }
+const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const PF = { type: 'string', enum: ['pass', 'fail'] }
+const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: PF, quality: PF } }
+const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
+const S_IMPL = { type: 'object', properties: { status: { type: 'string', enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_HUMAN'] }, summary: STR, concerns: STR, humanInputs: HUMAN, needsLock: STR, checks: S_CHECKS }, required: ['status', 'summary', 'checks'] }
+const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
+
+// ---------------------------------------------------------------- script-runner calls
+const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return exit=-1 with an empty stdout.'
+// The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
+const runPrompt = (cmd, writes) => `Run this command once and return its exit code and its full stdout, literal${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
+let seq = 0
+const nonceOf = () => `${RUN_TAG}-${++seq}`
+const runCmd = (cmd, label, o = {}) => agent(runPrompt(cmd, o.writes),
+  { agentType: 'productivity-tools:script-runner', label, phase: o.phase, schema: S_RUN, model: o.model || 'haiku', effort: o.effort || 'low' })
+
+// ---------------------------------------------------------------- returns
+const resumeArgs = () => {
+  // What only the person gives (authorizations, answers) and the run token never come back.
+  const { runToken, authorizeExternal, answers, ...rest } = A
+  return rest
+}
+const stopWith = (kind, extra) => ({ status: 'stopped', stop: { kind, ...extra }, resumeArgs: resumeArgs() })
+const failWith = (error, extra) => ({ status: 'error', error, ...extra })
+
+// ---------------------------------------------------------------- the signed state
+let S = null // the state with every queued event applied
+let DISK = null // the state as the last signed read or write left it on disk
+let NOW = null // the instant of the last signed output: the `at` of every event
+let ROOT = null
+const queued = []
+const again = new Set() // steps that passed again after a fix and were committed before
+const carry = new Map() // findings of the final review to hand to the next run of a step
+const reports = new Map() // last return of each step's implementer
+const lost = new Map() // reviews that returned nothing, by step
+let MAP = null
+
+const stepOf = (n) => S.steps.find((x) => x.n === n)
+const stateRefused = (ev, r) => Object.assign(new Error(`the progress state refused ${ev.type}: ${r.code}${r.message ? ` (${r.message})` : ''}`), { refused: true })
+// Applies one event to the local state and keeps it for the next write.
+const queue = (ev) => {
+  const e = { ...ev, at: NOW }
+  const r = applyEvents(S, [e], NOW)
+  if (!r.ok) throw stateRefused(e, r)
+  S = r.state
+  queued.push(e)
+}
+
+// A signed read of progress.mjs. A read only, so it repeats: attempts 1-2 haiku, 3 sonnet. The first read carries the run token.
+const readSigned = async (label, first) => {
+  let why = ''
+  for (let k = 1; k <= 3; k++) {
+    const nonce = first ? A.runToken : nonceOf()
+    const out = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(nonce)} --json`,
+      k === 1 ? label : `${label}-retry${k}`, { phase: 'Read', model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+    const data = parseJson(out && out.stdout)
+    const v = checkSigned(data, nonce, 'read')
+    if (!v.ok) { why = v.error; continue }
+    if (!data.state || data.state.schema !== 'progress/1' || !Array.isArray(data.state.steps) || typeof data.root !== 'string' || typeof data.now !== 'string') {
+      why = 'the signed read has no valid progress/1 state'
+      continue
+    }
+    return { data }
+  }
+  return { why }
+}
+
+const divergence = (message) => stopWith('state-divergence', { message })
+
+// Writes the queued events in ONE signed apply. Returns null when they are on disk, else the result to return.
+// A write is not repeated blindly: an output that does not check leads to a new read, and the batch is sent again
+// only when the state read still has the digest the batch started from.
+const flush = async (why) => {
+  if (queued.length === 0) return null
+  const expect = stateDigest(DISK)
+  const want = stateDigest(S)
+  const events = queued.slice()
+  const written = (now) => { DISK = S; queued.length = 0; if (now) NOW = now; return null }
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const nonce = nonceOf()
+    const out = await runCmd(`node ${shq(PROGRESS)} apply ${shq(STATE_FILE)} --events ${shq(eventsPayload(expect, events))} --nonce ${shq(nonce)} --json`,
+      `apply:${why}${attempt > 1 ? '-retry' : ''}`, { phase: 'Read', writes: true })
+    const data = parseJson(out && out.stdout)
+    if (checkSigned(data, nonce, 'apply').ok) {
+      if (data.ok !== true) {
+        if (data.code === 'concurrent-change') return divergence('progress.json changed while the run was writing (concurrent-change); nothing was written')
+        return failWith(`progress.mjs refused the events: ${data.code}${Number.isInteger(data.index) ? ` at event ${data.index} (${events[data.index] && events[data.index].type})` : ''}`)
+      }
+      if (data.stateDigest !== want) return divergence('the state written by progress.mjs differs from the state this run computed')
+      return written(data.now)
+    }
+    const rd = await readSigned(`reread:${why}`, false)
+    if (!rd.data) return failWith(`the output of apply did not check and the state could not be read again: ${rd.why}`)
+    const got = stateDigest(rd.data.state)
+    if (got === want) return written(rd.data.now)
+    if (got !== expect || attempt === 2) return divergence('the state on disk is neither the one before nor the one after this write')
+    NOW = rd.data.now
+  }
+  return failWith('the events could not be written')
+}
+// Writes what is queued, then returns the result, unless the write itself fails.
+const finish = async (result) => (await flush('return')) || result
+
+// ---------------------------------------------------------------- prompts
+const RULES = [
+  '- Only modify the files of this step. Other agents are editing other files in parallel right now.',
+  '- Do not add or remove dependencies, run code generators, update snapshots or run full builds unless the brief says so: report BLOCKED instead.',
+  '- Run targeted checks only; the orchestrator runs the full suite.',
+  '- Do not spawn subagents.',
+  '- Never commit. The orchestrator commits.',
+  "- Never push, deploy or cause any other external effect (production, e-mail or messages, shared data, someone's checkout) unless the brief marks the step external and this prompt says it is authorized; then do it exactly as written, once.",
+  '- Never ask the person anything: if a decision is missing, stop and report BLOCKED with the question.',
+].join('\n')
+const filesOf = (s) => (Array.isArray(s.files) ? s.files : [])
+const briefOf = (s) => briefPath(ROOT, S.plan.path, s.brief)
+const implPrompt = (s, defects) => {
+  const handoffs = s.deps.map(stepOf).filter((d) => d && d.handoff).map((d) => `HANDOFF T${d.n}: ${d.handoff}`)
+  const prev = !defects && s.attempts > 1 && s.note ? `The previous attempt of this step reported: ${s.note}` : ''
+  return [
+    defects
+      ? `Fix mode. Step T${s.n} of plan ${S.plan.id}: ${s.title}. A review found these problems; fix each one and change nothing else:\n${defects}`
+      : `Implement step T${s.n} of plan ${S.plan.id}: ${s.title}.`,
+    `Repository: ${ROOT}. Read the brief of the step first: ${briefOf(s)} (plan constraints, files, checks and the interfaces this step consumes). Never read the plan file.`,
+    `Files of this step: ${filesOf(s).length ? filesOf(s).join(', ') : 'none (this step writes no file)'}.`,
+    handoffs.length ? handoffs.join('\n') : 'HANDOFF: none (no dependency of this step left a handoff).',
+    prev,
+    'Rules:',
+    RULES,
+    'Return status (DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_HUMAN), summary (up to 5 lines: what now exists and how downstream steps use it), concerns, humanInputs and checks (the exact command, the real output and the exit code of every verification you ran).',
+  ].filter(Boolean).join('\n')
+}
+const reviewPrompt = (s, rep) => {
+  const paths = filesOf(s).map(shq).join(' ')
+  const checks = rep && Array.isArray(rep.checks) && rep.checks.length
+    ? rep.checks.map((c) => `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output, 600)}`).join('\n')
+    : '(no checks reported)'
+  return [
+    'Mode: review',
+    `Review step T${s.n} of plan ${S.plan.id}: ${s.title}, in ${ROOT}. Read-only: never edit, stage or commit.`,
+    `Brief of the step (what it must do): ${briefOf(s)}.`,
+    `Range: the step is not committed yet. Run git -C ${shq(ROOT)} status --porcelain -- ${paths} and git -C ${shq(ROOT)} diff HEAD -- ${paths}, then read each file of the step.`,
+    `Summary: ${rep && rep.summary ? rep.summary : '(no summary)'}`,
+    checks,
+    'Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty (false is expected while the step is uncommitted); commitsInRange = 0.',
+  ].join('\n')
+}
+const finalPrompt = () => {
+  const base = S.run.base || 'HEAD'
+  const steps = S.steps.map((s) => `- T${s.n} ${s.title} [${s.status}]${s.noCommit ? ' (no commit)' : ''}: ${filesOf(s).join(', ') || 'no files'}`).join('\n')
+  const bl = S.run.baseline
+  return [
+    'Mode: review, lens: all',
+    `Final review of the whole change of plan ${S.plan.id} (${ROOT}/${S.plan.path}), read-only, in ${ROOT}.`,
+    `Diff: git -C ${shq(ROOT)} diff ${base} and git -C ${shq(ROOT)} ls-files --others --exclude-standard (the steps are committed one by one: git -C ${shq(ROOT)} log -p ${base}..HEAD shows them).`,
+    `Steps:\n${steps}`,
+    bl ? `Baseline of the tests: exit ${bl.exit}${bl.failedNames && bl.failedNames.length ? `, already failing: ${bl.failedNames.join('; ')}` : ''}.` : 'Baseline of the tests: none recorded.',
+    'Look for broken contracts between steps, regressions outside the changed files and acceptance criteria with no test. Give each finding its file.',
+    `Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty; commitsInRange = git -C ${shq(ROOT)} rev-list --count ${base}..HEAD.`,
+  ].join('\n')
+}
+
+// ---------------------------------------------------------------- the pieces of the loop
+const implStep = async (s, defects) => {
+  const out = await agent(implPrompt(s, defects),
+    { agentType: 'productivity-tools:implementer', label: `T${s.n}:${defects ? `fix${s.rounds}` : `impl${s.attempts}`}`, phase: 'Wave', schema: S_IMPL, model: s.tier, effort: s.effort })
+  reports.set(s.n, out)
+  return { n: s.n, out }
+}
+const takeCarry = (n) => { const t = carry.get(n); carry.delete(n); return t || null }
+// Every return becomes a report event; a step with no return in 3 attempts is held for the person.
+const recordReports = (results) => {
+  for (const r of results.slice().sort((a, b) => a.n - b.n)) {
+    const ev = reportEvent(r.n, r.out, NOW)
+    queue(ev)
+    const s = stepOf(r.n)
+    if (ev.type === 'report' && ev.value === 'pass' && s.sha) again.add(r.n)
+    if (ev.type === 'no-report' && s.status === 'pending' && s.attempts >= 3) queue({ type: 'hold', step: r.n, text: `step T${r.n} returned no report in ${s.attempts} attempts` })
+  }
+}
+const testCmd = () => S.run.test || A.test || 'none'
+const runTest = (label) => runCmd(`cd ${shq(ROOT)} && ${testCmd()}`, label, { phase: 'Gate', writes: true })
+
+// The tests before the first launch, recorded once in run.baseline ("none" or no command records a green baseline without running).
+const ensureBaseline = async () => {
+  if (S.run.baseline !== null && S.run.baseline !== undefined) return null
+  const test = testCmd()
+  if (test === 'none') {
+    queue({ type: 'baseline', test: 'none', exit: 0, tail: null, failedNames: [] })
+    return null
+  }
+  const out = await runTest('baseline')
+  if (!out || !Number.isInteger(out.exit)) return failWith('the baseline test run returned nothing')
+  queue({ type: 'baseline', test, exit: out.exit, tail: tailOf(out.stdout), failedNames: failedTestNames(out.stdout) })
+  return null
+}
+
+// Per-step commits, one at a time in the order of n, after every return of the wave and its review. Returns { result } to stop or { did }.
+const commitSteps = async () => {
+  if (S.run.commits !== 'per-step') return { did: false }
+  const todo = stepsToCommit(S, again)
+  if (todo.length === 0) return { did: false }
+  phase('Commit')
+  const bare = todo.find((s) => filesOf(s).length === 0)
+  if (bare) return { result: failWith(`step T${bare.n} passed but the state has no files to commit for it (a state made before E12?): run progress.mjs init --restart to rebuild the state; nothing was committed`, { step: bare.n }) }
+  for (const s of todo) {
+    const paths = filesOf(s).map(shq).join(' ')
+    const g = `git -C ${shq(ROOT)}`
+    const add = await runCmd(`${g} add -- ${paths}`, `T${s.n}:git-add`, { phase: 'Commit', writes: true })
+    if (!add || add.exit !== 0) return { result: failWith(`git add failed for step T${s.n}: ${tailOf(add && add.stdout, 400)}`, { step: s.n }) }
+    const com = await runCmd(`${g} commit -m ${shq(commitSubject(S.plan.id, s))} -- ${paths}`, `T${s.n}:git-commit`, { phase: 'Commit', writes: true })
+    if (!com || com.exit !== 0) return { result: failWith(`git commit failed for step T${s.n}: ${tailOf(com && com.stdout, 400)}`, { step: s.n }) }
+    const log = await runCmd(`${g} log -1 --format=${shq('%H %s')} --grep ${shq(commitGrep(S.plan.id, s.n))}`, `T${s.n}:git-log`, { phase: 'Commit' })
+    const sha = parseLogLine(log && log.stdout, S.plan.id, s.n)
+    if (!sha) return { result: failWith(`the commit of step T${s.n} was not found by its subject "${S.plan.id} T${s.n}:"`, { step: s.n }) }
+    queue({ type: 'commit', step: s.n, sha })
+    again.delete(s.n)
+    const w = await flush(`commit-T${s.n}`)
+    if (w) return { result: w }
+  }
+  return { did: true }
+}
+
+const summaryOf = () => ({
+  run: S.run.status,
+  wave: S.run.wave,
+  map: MAP,
+  steps: S.steps.map((s) => ({ n: s.n, title: s.title, status: s.status, attempts: s.attempts, sha: s.sha })),
+  finalGate: S.finalGate,
+  open: S.manual.filter((m) => m.open),
+})
+
+// ---------------------------------------------------------------- run
+phase('Read')
+const first = await readSigned('read', true)
+if (!first.data) return failWith(`the progress state could not be read: ${first.why}`)
+S = DISK = first.data.state
+NOW = first.data.now
+ROOT = slash(first.data.root)
+if (!samePlan(S.plan.path, A.plan)) return failWith(`the state belongs to another plan: it records ${S.plan.path} and the launch names ${A.plan}`)
+if (first.data.planChanged === true) return stopWith('plan-changed', { message: 'the plan changed after progress.mjs init; the state is kept as it is. Recreate it with init --restart only if the person asks' })
+
+try {
+  for (let turn = 0; turn < 500; turn++) {
+    const act = nextAction(S)
+    // Every other action means the wave is settled: its passed steps are committed first.
+    if (!['launch', 'review', 'await', 'approve-map'].includes(act.action)) {
+      const c = await commitSteps()
+      if (c.result) return await finish(c.result)
+      if (c.did) continue
+    }
+    switch (act.action) {
+      case 'approve-map':
+        queue({ type: 'approve-map' })
+        MAP = S.waves.map((w) => ({ wave: w.n, steps: w.tasks }))
+        break
+      case 'launch': {
+        const bad = await ensureBaseline()
+        if (bad) return await finish(bad)
+        queue({ type: 'launch', steps: act.steps.map((x) => x.n) })
+        const w = await flush('launch')
+        if (w) return w
+        phase('Wave')
+        const results = await parallel(act.steps.map((x) => () => implStep(stepOf(x.n), takeCarry(x.n))))
+        recordReports(results)
+        const w2 = await flush('reports')
+        if (w2) return w2
+        break
+      }
+      case 'await': // steps launched by a run that died: no report came, the state decides what happens to each
+        for (const n of act.steps) queue({ type: 'no-report', step: n, text: 'the run that launched this step ended without its report' })
+        break
+      case 'review': {
+        phase('Review')
+        const s = stepOf(act.step)
+        const out = await agent(reviewPrompt(s, reports.get(s.n)),
+          { agentType: 'productivity-tools:task-reviewer', label: `T${s.n}:review${s.rounds + 1}`, phase: 'Review', schema: S_TASKREVIEW, model: 'opus', effort: 'medium' })
+        const v = reviewVerdict(out)
+        if (v.verdict === 'lost') {
+          lost.set(s.n, (lost.get(s.n) || 0) + 1)
+          queue({ type: 'review-result', step: s.n, value: 'lost' })
+          if (lost.get(s.n) >= 3) {
+            const question = `the reviewer of step T${s.n} returned nothing 3 times`
+            queue({ type: 'block', text: question })
+            return await finish(stopWith('ask', { question }))
+          }
+          break
+        }
+        if (v.verdict === 'pass') {
+          queue({ type: 'review-result', step: s.n, value: 'pass' })
+          break
+        }
+        queue({ type: 'review-result', step: s.n, value: 'defects', text: v.text.slice(0, 600) })
+        if (stepOf(s.n).status === 'launched') { // a fix round of the same step
+          const w = await flush('review')
+          if (w) return w
+          phase('Wave')
+          recordReports([await implStep(stepOf(s.n), v.text)])
+          const w2 = await flush('fix')
+          if (w2) return w2
+        }
+        break
+      }
+      case 'wave-gate': {
+        phase('Gate')
+        let gate = { exit: 0, failedNames: [] }
+        let excerpt = ''
+        if (testCmd() !== 'none') {
+          const out = await runTest(`wave-gate-${act.wave}`)
+          gate = out && Number.isInteger(out.exit) ? { exit: out.exit, failedNames: failedTestNames(out.stdout) } : { exit: -1, failedNames: [] }
+          excerpt = tailOf(out && out.stdout)
+        }
+        if (waveGatePasses(gate, S.run.baseline)) {
+          queue({ type: 'wave-gate', value: 'pass' })
+          break
+        }
+        const question = `the gate of wave ${act.wave} failed (exit ${gate.exit}${gate.failedNames.length ? `, failing: ${gate.failedNames.join('; ')}` : ', no failing test name recognized'}); the person decides`
+        queue({ type: 'wave-gate', value: 'fail', text: question })
+        queue({ type: 'block', text: question })
+        return await finish(stopWith('ask', { question, excerpt }))
+      }
+      case 'advance':
+        queue({ type: 'advance' })
+        break
+      case 'final-gate': {
+        phase('Gate')
+        let out = null
+        for (let k = 1; k <= 2 && !out; k++) {
+          out = await agent(finalPrompt(), { agentType: 'productivity-tools:final-reviewer', label: `final-review${k > 1 ? '-retry' : ''}`, phase: 'Gate', schema: S_REVIEW, model: 'opus', effort: 'high' })
+        }
+        if (!out) {
+          const question = 'the final reviewer returned nothing twice'
+          queue({ type: 'block', text: question })
+          return await finish(stopWith('ask', { question }))
+        }
+        const blocking = blockingIssues(out)
+        if (blocking.length === 0) {
+          queue({ type: 'final-gate', value: 'pass' })
+          break
+        }
+        const owner = owningStep(S, blocking)
+        if (owner !== null && S.finalGate.rounds < 3) { // the step that owns the finding goes back to be fixed, then the gate runs again
+          carry.set(owner, issuesText(blocking))
+          queue({ type: 'final-gate', value: 'defects', step: owner, text: issuesText(blocking).slice(0, 600) })
+          break
+        }
+        const question = 'the final review found problems that no step owns or that survived 3 rounds; the person decides'
+        queue({ type: 'block', text: question })
+        return await finish(stopWith('ask', { question, findings: issuesText(blocking) }))
+      }
+      case 'hold': // pending steps that wait on a held dependency
+        for (const n of act.steps) queue({ type: 'hold', step: n, text: `step T${n} waits on a step held for the person` })
+        break
+      case 'ask':
+        return await finish(stopWith('ask', { question: act.question || S.run.question || (act.manual || []).map((m) => `T${m.step}: ${m.text}`).join(' | '), manual: act.manual || [] }))
+      case 'done':
+        return await finish({ status: 'done', ...summaryOf() })
+      default: // prelaunch-review and authorize: external steps arrive with the next task of the plan
+        return await finish(failWith(`action ${act.action} is not handled by this version of coordinator-workflow yet`, { action: act }))
+    }
+  }
+  return await finish(failWith('coordinator-workflow: the loop did not settle in 500 turns'))
+} catch (e) {
+  if (!e || e.refused !== true) throw e
+  return await finish(failWith(e.message))
+}
