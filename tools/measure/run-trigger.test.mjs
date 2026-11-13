@@ -143,3 +143,16 @@ test('a failed launch or a transcript without init is an error, not a miss', () 
   assert.equal(scoreCase(c, ok, { code: 0, error: 'spawn claude ENOENT' }).error, true);
   assert.equal(scoreCase(c, parseTranscript(''), { code: 0 }).error, true);
 });
+
+test('exit 1 from reaching --max-turns is scored, not an error', () => {
+  const c = { id: 'x', category: 'plan', lang: 'pt', expect: PW };
+  const maxTurns = JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: true });
+  const p = parseTranscript(`${fx('hit-superpowers-on.jsonl')}\n${maxTurns}\n`);
+  assert.equal(p.result, 'error_max_turns');
+  const s = scoreCase(c, p, { code: 1 });
+  assert.equal(s.error, undefined);
+  assert.equal(s.got, PW);
+  assert.equal(s.hit, true);
+  const other = JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true });
+  assert.equal(scoreCase(c, parseTranscript(`${fx('hit-superpowers-on.jsonl')}\n${other}\n`), { code: 1 }).error, true);
+});
