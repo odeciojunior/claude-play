@@ -383,7 +383,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
       io.stderr.write(`Result: ${r.errors.length} errors, ${r.warnings.length} warnings\n`);
       return 1;
     }
-    out(JSON.stringify({ tool: 'spec-tool', schema: SCHEMA, path: file, data: r.data }, null, 2));
+    out(JSON.stringify({ tool: 'spec-tool', schema: SCHEMA, path: file, data: r.data })); // compact: the workflow load agent copies this stdout whole
     return 0;
   }
   const r = checkSpec(text, { roadmap });
