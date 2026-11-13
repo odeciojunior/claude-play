@@ -40,18 +40,25 @@ test('review prompt hands the implementer checks (command, exit, output) to the 
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'spec', { status: 'DONE', summary: 'x', checks: [] }), /no checks/i);
 });
 
-test('reviewer model: opus for reviewTier opus, an opus task or an external task; implementer model comes from the plan tier', () => {
-  assert.equal(P.reviewModelFor({ reviewTier: 'opus' }), 'opus');
-  assert.equal(P.reviewModelFor({ reviewTier: 'sonnet' }), 'sonnet');
+test('reviewer model: opus for route.reviewTier opus, an opus route or an external task; implementer model comes from the route', () => {
+  const r = (tier, effort, reviewTier) => ({ route: { tier, effort, reviewTier } });
+  assert.equal(P.reviewModelFor(r('sonnet', 'medium', 'opus')), 'opus');
+  assert.equal(P.reviewModelFor(r('sonnet', 'medium', 'sonnet')), 'sonnet');
   assert.equal(P.reviewModelFor({}), 'sonnet');
-  assert.equal(P.reviewModelFor({ tier: 'opus', reviewTier: 'sonnet' }), 'opus');
-  assert.equal(P.reviewModelFor({ tier: 'sonnet', external: true, reviewTier: 'sonnet' }), 'opus');
-  assert.equal(P.reviewModelFor({ tier: 'sonnet', external: false }), 'sonnet');
+  assert.equal(P.reviewModelFor(r('opus', 'medium', 'sonnet')), 'opus');
+  assert.equal(P.reviewModelFor({ ...r('sonnet', 'medium', 'sonnet'), external: true }), 'opus');
+  assert.equal(P.reviewModelFor({ ...r('sonnet', 'medium', 'sonnet'), external: false }), 'sonnet');
   assert.equal(P.reviewModelFor(null), 'sonnet');
-  assert.equal(P.implModel({ tier: 'haiku' }), 'haiku');
-  assert.equal(P.implModel({ tier: 'opus' }), 'opus');
-  assert.equal(P.implModel({ tier: 'fable' }), 'sonnet');
+  assert.equal(P.implModel(r('haiku', 'low', 'sonnet')), 'haiku');
+  assert.equal(P.implModel(r('opus', 'medium', 'opus')), 'opus');
+  assert.equal(P.implModel(r('fable', 'medium', 'sonnet')), 'sonnet');
   assert.equal(P.implModel({}), 'sonnet');
+  assert.equal(P.implEffort(r('haiku', 'low', 'sonnet')), 'low');
+  assert.equal(P.implEffort(r('sonnet', 'high', 'sonnet')), 'high');
+  assert.equal(P.implEffort({}), 'medium');
+  // E8 T6: a transcribed tier/reviewTier without route is no longer read
+  assert.equal(P.implModel({ tier: 'haiku' }), 'sonnet');
+  assert.equal(P.reviewModelFor({ tier: 'sonnet', reviewTier: 'opus' }), 'sonnet');
 });
 
 test('issue helpers: blocking, fmt, compact, reviewTruth', () => {

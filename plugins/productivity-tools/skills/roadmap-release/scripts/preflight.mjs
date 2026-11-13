@@ -350,7 +350,7 @@ function readRef(root, ref, relFile) {
   } catch { return null; }
 }
 
-export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE } = {}) {
+export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -409,7 +409,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     };
     const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
-    if (!workflowRuleCovered(settings)) warnings.push(`release workflow: no permission rule covers it, so a run without the interface (claude -p) or a launch outside this skill is denied; to allow it, add to permissions.allow in .claude/settings.local.json: ${releaseWorkflowRule()}`);
+    if (!workflowRuleCovered(settings)) warnings.push(`release workflow: no permission rule covers it; a run launched by this skill needs no rule, which is only needed to launch the workflow outside this skill (for example claude -p); to allow that, add to permissions.allow in .claude/settings.local.json: ${releaseWorkflowRule()}`);
     for (const g of config.gates.filter((x) => x.restricted === true)) {
       const extra = Object.keys(requiredCommands({ gates: [{ ...g, restricted: false }] })).filter((r) => !(r in cmds));
       const rulesTxt = `if authorized, add permission rule(s): ${extra.length ? extra.join(', ') : '(none beyond the required ones)'}`;
@@ -421,7 +421,7 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
   }
   // New on every call, never inside config: the workflow puts it in its discovery read (the first agent call) so a resume reads git again instead of a cached answer.
   const runToken = `${new Date().toISOString()}-${randomBytes(6).toString('hex')}`;
-  return { configPath, generated, errors, missingRules: missing, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending };
+  return { configPath, generated, errors, missingRules: missing, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending, permissionsDeclared: typeof declarePermissions === 'string' && declarePermissions.trim() !== '' ? declarePermissions : null };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -429,12 +429,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const ri = argv.indexOf('--ref');
   const ref = ri >= 0 ? argv[ri + 1] : null;
   if (ri >= 0) argv.splice(ri, 2);
+  const di = argv.indexOf('--declare-permissions');
+  const declarePermissions = di >= 0 ? (argv[di + 1] ?? '') : null;
+  if (di >= 0) argv.splice(di, 2);
   const folder = argv[0];
   if (!folder) {
-    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>]');
+    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>] [--declare-permissions "<text>"]');
     process.exit(2);
   }
-  const result = runPreflight(folder, { ref });
+  const result = runPreflight(folder, { ref, declarePermissions });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.errors.length ? 1 : 0);
 }

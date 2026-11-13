@@ -46,6 +46,54 @@ function makeJournal() {
   };
 }
 
+// The JSON of `spec-tool emit` for the card of E (acceptance copied from the card the way the tool derives it).
+const PURE_X = loadPure();
+const TOOL_PATH = '/p/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs';
+function specEmitOf(E, { acceptance, rulings = [], needsPerson = [] }) {
+  const items = acceptance.map((a) => {
+    const t = PURE_X.parseVerifyTag(a.text);
+    const at = String(a.text).lastIndexOf('{verify:');
+    const bare = at === -1 ? String(a.text).trim() : String(a.text).slice(0, at).trim();
+    return { id: a.id, text: a.text, verify: t && !t.invalid ? { kind: t.kind, blq: t.blq || null, evidence: t.evidence } : null, textWithoutTag: bare };
+  });
+  return JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', data: { id: E, title: 't', mode: 'unattended', acceptance: items, rulings, needsPerson, externalEffects: [], edgeCases: [] } });
+}
+// ---- E8 T6: an old transcribed plan ({ planBlob, ac, tasks: [{ n, title, tier, reviewTier, files, needsLock, external, externalDedupe, noCommit }] }) becomes the plan-tool emit the plan load returns.
+const OLD_DEFAULT_PLAN = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+// A score whose recalculated route has the old tier (and reviewTier) for the task's files, found by search over the lib route.
+function scoreFor(t) {
+  const files = { create: [], modify: t.files || [], test: [] };
+  const wantTier = ['haiku', 'sonnet', 'opus'].includes(t.tier) ? t.tier : 'sonnet';
+  const wantReview = t.reviewTier === 'opus' || wantTier === 'opus' ? 'opus' : 'sonnet';
+  const wantEffort = wantTier === 'haiku' ? 'low' : 'medium';
+  let fallback = null;
+  for (let a = 0; a < 3; a++) for (let r = 0; r < 3; r++) for (let b = 0; b < 3; b++) for (let v = 0; v < 3; v++) {
+    const score = { ambiguity: a, reasoning: r, blast: b, verifiability: v };
+    const got = libRoute({ score, files, external: t.external === true }, { hasDependents: false });
+    if (got.tier !== wantTier) continue;
+    if (got.reviewTier === wantReview && got.effort === wantEffort) return score;
+    if (!fallback && got.reviewTier === wantReview) fallback = score;
+  }
+  return fallback || { ambiguity: 1, reasoning: 1, blast: 1, verifiability: 0 };
+}
+function planLoadOf(old, E, over = {}) {
+  const tasks = old.tasks.map((t) => ({
+    n: t.n, title: t.title, files: { create: [], modify: t.files || [], test: [] }, locks: t.needsLock || [], external: t.external,
+    externalDedupe: t.externalDedupe === undefined ? null : t.externalDedupe, noCommit: t.noCommit === true, deps: [], score: scoreFor(t),
+  }));
+  const evidence = (old.ac || []).map((a) => ({ ac: a.ac, kind: a.kind, command: a.command === undefined ? null : a.command, testRef: a.testRef === undefined ? null : a.testRef, blq: a.blq === undefined ? null : a.blq, external: a.external, externalDedupe: a.externalDedupe === undefined ? null : a.externalDedupe }));
+  const emit = planEmitOf({ id: E, roadmap: 'docs/plans/roadmap-x/', tasks, evidence });
+  return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: old.planBlob, head: 'h1', clean: true, ...over };
+}
+
+const np = (o) => ({ id: 'P1', blocking: false, ...o });
+const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'h1' });
+const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
+const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
+// What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
+const seenDecisions = new Map();
+// Decisions the owner ratified between runs: pending-decisions no longer lists them, add-decision still answers existing: true.
+const ratifiedDecisions = new Set();
 // Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
 const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], warnings: [], changed: [], result: {}, ...over });
 const promptCommands = (prompt) => [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]);
@@ -68,7 +116,11 @@ function makeRecordMock(cardsOf) {
         let over = {};
         if (verb === 'set-status') x.word = /set-status '[^']*' '[^']*' '([^']*)'/.exec(command)[1];
         if (verb === 'block-open') { x.word = 'blocked'; x.note = 'BLQ-9'; over = { result: { id: 'BLQ-9' }, changed: ['state.md'] }; }
-        if (verb === 'add-decision') { const id = 'DEC-' + decN++; x.decisionIds.push(id); over = { result: { id }, changed: ['decisions.md'] }; }
+        if (verb === 'add-decision') {
+          const key = E + '|' + command;
+          if (seenDecisions.has(key)) over = { result: { id: seenDecisions.get(key), existing: true }, changed: [] };
+          else { const id = 'DEC-' + decN++; seenDecisions.set(key, id); x.decisionIds.push(id); over = { result: { id, existing: false }, changed: ['decisions.md'] }; }
+        }
         return { command, exit: 0, stdout: cliJson(over) };
       });
       return { runs };
@@ -78,7 +130,7 @@ function makeRecordMock(cardsOf) {
       return {
         status: cliJson({ result: { panel: [{ id: E, segments: [{ label: x.label, word: x.word, note: x.note }] }] } }),
         brief: cliJson({ result: { checker: { errors: 0, warnings: 0, stale: false } } }),
-        pendingDecisions: cliJson({ result: { decisions: x.decisionIds.map((id) => ({ id })) } }),
+        pendingDecisions: cliJson({ result: { decisions: [...new Set([...x.decisionIds, ...seenDecisions.values()])].filter((id) => !ratifiedDecisions.has(id)).map((id) => ({ id })) } }),
         head: 'abc1234',
         porcelain: '',
       };
@@ -89,26 +141,30 @@ function makeRecordMock(cardsOf) {
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
-  const lastAc = {};
+  const planOf = {};
   const recMock = makeRecordMock(() => (typeof cards === 'function' ? cards() : cards));
   const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
-  // By default the plan reviewer is faithful: it returns the rows of the plan, unless a test gives its own.
+  // E8 T6: a test still answers the plan author (and the plan fixer) with the old transcribed plan; the plan load then returns the plan-tool emit of that plan.
   const liveAgent = async (prompt, o) => {
     const v = await answerOf(prompt, o);
     const id = (/^(E\d+):/.exec(o.label) || [])[1];
-    if (/:plan(-fix\d+)?$/.test(o.label) && v && v.ac) lastAc[id] = v.ac;
-    return /plan-review/.test(o.label) && v && !('evidenceRows' in v) ? { ...v, evidenceRows: lastAc[id] || [] } : v;
+    if (/:plan(-fix\d+)?$/.test(o.label) && v && typeof v === 'object' && Array.isArray(v.tasks) && v.tasks.length) { planOf[id] = v; return 'plan written'; }
+    return v;
   };
   const answerOf = async (prompt, o) => {
     const l = o.label;
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, ...discOver };
+    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, pendingDecisionsStdout: cliJson({ result: { decisions: [] } }), ...discOver };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
-    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true };
-    if (/:spec$/.test(l)) return { specPath: 'docs/s.md', slug: 'x', decisions: ['d'], humanInputs: [] };
+    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
+    if (/:spec$/.test(l)) return 'spec written';
+    if (/:spec-load\d$/.test(l)) return specLoadOk(E, { acceptance: ((typeof cards === 'function' ? cards() : cards).find((c) => c.id === E) || {}).acceptance || [] });
+    if (/:spec-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
+    if (/:plan-load\d$/.test(l)) return planLoadOf(planOf[E] || OLD_DEFAULT_PLAN, E);
+    if (/:plan-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
     if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
@@ -127,7 +183,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
-    if (/:docs-measure/.test(l)) return { status: recMock.read(E).status, brief: recMock.read(E).brief, clean: true, head: 'm2' };
+    if (/:docs-measure/.test(l)) return { statusStdout: recMock.read(E).status, briefStdout: recMock.read(E).brief, clean: true, head: 'm2' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -145,7 +201,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     throw new Error('unmocked ' + l);
   };
   const parallel = (ts) => Promise.all(ts.map((t) => t().catch(() => null)));
-  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', trackerCli: '/t/roadmap.mjs', ...args },
+  const r = await run({ config: { gates: GATES, locks: ['db'], projectContext: '', install: 'npm ci', generated: true, ...config }, deliverables, targetBranch: 'integracao/x', today: '2026-11-09', runToken: 'pf-test', wtRoot: '/wt', trackerCli: TOOL_PATH, ...args },
     agent, parallel, () => {}, () => {}, budget);
   return { r, calls, labels: calls.map((c) => c.label) };
 }
@@ -623,8 +679,8 @@ test('m2: the docs are not ok when the panel does not show the status after the 
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
   assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --json/);
-  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('status'));
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { status: readWith('c').status, brief: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
+  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('statusStdout'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { statusStdout: readWith('c').status, briefStdout: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
   assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
 });
@@ -638,7 +694,8 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
   assert.ok(clean.includes('> "/w t/_tmp/E1-dirty/cleanup.patch"'));
 });
 
-const noHeader = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+// A plan the reviewer keeps rejecting: the deliverable stops with a content defect (it replaces the old plan without the **Roadmap:** header, which the code no longer reads).
+const noHeader = (l) => (/^E1:plan-review\d$/.test(l) ? { issues: [{ severity: 'critical', category: 'defeito', description: 'plan rejected' }], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix\d$/.test(l) ? 'plan fixed' : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -1037,7 +1094,7 @@ test('item 7: the merge-fix prompts carry no owner notes', async () => {
 });
 
 test('item 7: the human-input action forbids secrets in notes', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'key', blocking: true }] } : undefined) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ needsPerson: [np({ id: 'H1', what: 'key', blocking: true })] }) });
   const o = r.operatorActions.find((x) => x.kind === 'human-input');
   assert.match(o.doNow, /Never put a secret in notes/);
 });
@@ -1170,7 +1227,7 @@ test('I2: human and blocked rows need no flag and are never held', async () => {
 test('I2: the plan prompts ask each evidence row for external', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /each evidence row[^\n]*external/i);
-  assert.equal(calls.find((c) => c.label === 'E1:plan').opts.schema.properties.ac.items.properties.external.type, 'boolean');
+  assert.equal(calls.find((c) => c.label === 'E1:plan').opts.schema, undefined);
 });
 
 test('I2/I3: the plan review checks the flags against the JSON the code acts on', async () => {
@@ -1217,7 +1274,7 @@ test('I5: finish-merge reads the logged human inputs and the plan evidence rows'
   const { r, calls } = await exec({ cards: [unfinished()], deliverables: ['E1'],
     over: (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'real API key' }, { what: 'real API key' }], ac: [{ ac: 'AC1', kind: 'human' }] } : undefined) });
   const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
-  assert.match(p, /docs\/superpowers\/plans\/\*-E1-\*\.md/);
+  assert.match(p, /docs\/plans\/x-E1\/plan\.md/);
   assert.match(p, /Acceptance criteria evidence/);
   assert.match(p, /humanInputs[^.]*review log/);
   assert.ok(calls.find((c) => c.label === 'E1:resume-review-log').opts.schema.required.includes('ac'));
@@ -1429,53 +1486,6 @@ test('minor 4: gate and checkout items leave resumeArgs when no deliverable rema
 
 // ---- leva 2, bloco A
 const cmdRow = (command, over = {}) => ({ ac: 'AC1', kind: 'smoke', command, external: true, externalDedupe: 'd', ...over });
-const reviewRows = (rows) => (l) => (/plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1, evidenceRows: rows } : undefined);
-const authAc = () => ({ authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 0 });
-const mism = (plan, measured) => exec({ cards: [card('E1')], deliverables: ['E1'], args: authAc(), over: both(planRows(plan), reviewRows(measured)) });
-
-test('decision 1: a row in the plan JSON that the file does not have is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
-  assert.equal(r.results[0].failKind, 'conteudo');
-  assert.match(r.results[0].error, /cmd-B-not-shown/);
-});
-
-test('decision 1: a command changed in the transcription is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-C-changed')], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.match(r.results[0].error, /cmd-C-changed/);
-  assert.match(r.results[0].error, /cmd-A/);
-});
-
-test('decision 1: a row in the file that the JSON dropped is a defect', async () => {
-  const { r } = await mism([cmdRow('cmd-A')], [cmdRow('cmd-A'), cmdRow('cmd-in-file')]);
-  assert.equal(r.results[0].merged, false);
-  assert.match(r.results[0].error, /cmd-in-file/);
-});
-
-test('decision 1: an external flag that differs from the file is a defect', async () => {
-  const { r, labels } = await mism([cmdRow('cmd-A', { external: false, externalDedupe: undefined })], [cmdRow('cmd-A')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.match(r.results[0].error, /external/);
-});
-
-test('decision 1: a harmless retranscription (backticks) still runs under the authorization', async () => {
-  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)] },
-    over: both(planRows([cmdRow(deploy)]), reviewRows([cmdRow('`' + deploy + '`')]), evOk) });
-  assert.ok(labels.includes('E1:evidence1'));
-  assert.equal(r.results[0].merged, true);
-});
-
-test('decision 1: the reviewer reads the rows from git at the measured blob, and its schema requires them', async () => {
-  const rows = planRows([extRow]);
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: rows });
-  const c = calls.find((x) => x.label === 'E1:plan-review1');
-  assert.match(c.prompt, /evidenceRows/);
-  assert.ok(c.prompt.includes('git -C "/wt/E1" show <measuredPlanBlob>'));
-  assert.ok(['measuredPlanBlob', 'evidenceRows'].every((k) => c.opts.schema.required.includes(k)));
-  assert.ok(calls.find((x) => x.label === 'E1:spec-review1').opts.schema.required.every((k) => k !== 'measuredPlanBlob'));
-});
 
 const doneT1 = [{ n: 1, firstParent: 'h0', last: 'c1' }];
 const resumedRun = (over, args = {}) => exec({ cards: [card('E1')], deliverables: ['E1'], args,
@@ -1505,7 +1515,7 @@ test('important 2: a run with no committed task does not read the log', async ()
 
 test('important 2: restored items are not duplicated against this run, and a null read is a concern', async () => {
   const { r, calls } = await resumedRun((l) => {
-    if (l === 'E1:spec') return { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'SECRET-PLACEHOLDER' }] };
+    if (/^E1:spec-load\d$/.test(l)) return specLoadOk('E1', { acceptance: [{ id: 'AC1', text: 'works' }], needsPerson: [np({ id: 'H1', what: 'SECRET-PLACEHOLDER' })] });
     return loggedRun(l);
   });
   assert.equal(r.results[0].human.filter((h) => /SECRET-PLACEHOLDER/.test(h)).length, 1);
@@ -1573,7 +1583,7 @@ test('minor 7: consumed notes leave resumeWith; notes of other deliverables stay
 });
 
 test('minor 7: a template answer is kept, and notes the plan never read stay', async () => {
-  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined) });
   assert.equal(d.r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, '<owner instruction>');
   const s = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: (l) => (l === 'E1:setup' ? null : undefined) });
   assert.ok(s.r.operatorActions.some((o) => hasNotes(o) && o.resumeWith.notes.E1 === 'answer'));
@@ -1655,7 +1665,7 @@ test('ledger: plan-only with every deliverable skipped still explains the hold',
 
 test('ledger: the plan path is quoted in the blob measurement', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.ok(calls.find((c) => c.label === 'E1:plan-review1').prompt.includes('rev-parse "HEAD:docs/p.md"'));
+  assert.ok(calls.find((c) => c.label === 'E1:plan-review1').prompt.includes('rev-parse "HEAD:docs/plans/x-E1/plan.md"'));
 });
 
 test('ledger: resume-review-log says what counts as accepted', async () => {
@@ -1677,9 +1687,13 @@ test('ledger: the report does not attribute the origin of an effect without evid
   assert.match(calls.find((c) => c.label === 'report').prompt, /origin of an external effect[^.]*unknown/i);
 });
 
-test('ledger: a reused plan without the external declarations is not reusable as is', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.match(calls.find((c) => c.label === 'E1:plan').prompt, /A reused plan whose tasks or command evidence rows do not declare external is not reusable/);
+test('ledger: a reused native plan without the external declarations goes to the plan fixer', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true }
+      : l === 'E1:plan-load1' ? planLoadOf({ ...OLD_DEFAULT_PLAN, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] }, 'E1')
+      : l === 'E1:plan-fix1' ? planWith([tk(1, false)]) : undefined) });
+  assert.ok(!labels.includes('E1:plan'));
+  assert.ok(labels.includes('E1:plan-fix1'));
 });
 
 test('ledger: a finished code segment counts with mergeFound false', async () => {
@@ -1688,13 +1702,6 @@ test('ledger: a finished code segment counts with mergeFound false', async () =>
 });
 
 // ---- bloco A, fix round 1
-test('fix 1: a command with a line break does not match the same words on one line', async () => {
-  const { r, labels } = await mism([cmdRow('curl ok\nrm prod')], [cmdRow('curl ok rm prod')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
-  assert.match(r.results[0].error, /rm prod/);
-});
-
 test('fix 2: a fix on a committed external task is told not to perform the effect', async () => {
   const tasks = [tk(1, true), tk(2, false)];
   let n = 0;
@@ -1709,9 +1716,9 @@ test('fix 2: a fix on a committed external task is told not to perform the effec
   assert.doesNotMatch(p, /perform the effect at most once/);
 });
 
-test('minor 2: both agents return a table-escaped pipe as the pipe that must run', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  for (const l of ['E1:plan', 'E1:plan-review1']) assert.ok(calls.find((c) => c.label === l).prompt.includes(String.raw`table-escaped \| written as |`), l);
+test('minor 2: the plan fixer returns a table-escaped pipe as the pipe that must run', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
+  assert.ok(calls.find((c) => c.label === 'E1:plan-fix1').prompt.includes(String.raw`table-escaped \| written as |`));
 });
 
 test('minor 3: a reused worktree with no committed task also restores the log', async () => {
@@ -1721,16 +1728,9 @@ test('minor 3: a reused worktree with no committed task also restores the log', 
 });
 
 test('minor 4: a note stays for the resume when the plan review rejects the plan', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
   assert.equal(r.results[0].merged, false);
   assert.equal(r.resumeArgs.notes.E1, 'answer');
-});
-
-test('minor 5: the next plan review does not receive the transcribed command', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1@' + fpOf(safeTasks)], maxFixRounds: 1 },
-    over: both((l) => (l === 'E1:plan-fix1' ? { ...planWith(safeTasks), ac: [cmdRow('cmd-A')] } : undefined), planRows([cmdRow('cmd-A'), cmdRow('cmd-B-not-shown')]), reviewRows([cmdRow('cmd-A')])) });
-  assert.ok(calls.find((c) => c.label === 'E1:plan-fix1').prompt.includes('cmd-B-not-shown'));
-  assert.ok(!calls.find((c) => c.label === 'E1:plan-review2').prompt.includes('cmd-B-not-shown'));
 });
 
 test('minor 7: restored human inputs differing only in spacing are one item', async () => {
@@ -1742,22 +1742,16 @@ test('minor 7: restored human inputs differing only in spacing are one item', as
 const wrapped = '`echo echo PWNED`';
 
 test('fix round 2: a wrapped command is dispatched and shown unwrapped', async () => {
-  const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')])) });
+  const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)])) });
   assert.ok(!ext(held.r)[0].what.includes('`echo'));
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(wrapped)]), reviewRows([cmdRow('echo echo PWNED')]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(wrapped)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
   const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
   assert.match(p, /^AC1: echo echo PWNED$/m);
 });
 
-test('fix round 2: extra interior spaces are a defect and never run', async () => {
-  const { r, labels } = await mism([cmdRow('curl  ok')], [cmdRow('curl ok')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].failKind, 'conteudo');
-});
-
 test('fix round 2: the defect action keeps an answer no approved plan consumed', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...authAc(), notes: { E1: 'answer' } }, over: both(planRows([cmdRow('cmd-A')]), reviewRows([cmdRow('cmd-B')])) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'answer' } }, over: noHeader });
   assert.equal(r.operatorActions.find((o) => o.kind === 'defect').resumeWith.notes.E1, 'answer');
 });
 
@@ -1876,13 +1870,13 @@ test('a mark cleared with success raises no concern', async () => {
 test('resume: the range note names the spec and the plan of the resume', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both((l) => (l === 'E1:plan' ? planWith(ext1) : undefined), pendingProgress, rerunRange) });
   const review = x.calls.find((c) => c.label === 'E1:t1:spec1').prompt;
-  assert.match(review, /not extra scope[^\n]*docs\/s\.md[^\n]*docs\/p\.md[^\n]*not extra scope/);
+  assert.match(review, /not extra scope[^\n]*docs\/plans\/x-E1\/spec\.md[^\n]*docs\/plans\/x-E1\/plan\.md[^\n]*not extra scope/);
 });
 
 test('decision 3: a quoted command is dispatched with its quotes', async () => {
   const q = '"./my tool"';
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(q)]), reviewRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
   assert.equal(r.results[0].merged, true);
   assert.match(calls.find((c) => c.label === 'E1:evidence1').prompt, /^AC1: "\.\/my tool"$/m);
 });
@@ -1903,12 +1897,6 @@ test('resume after the mark was cleared: the review of an external task still ge
 test('resume of a task that is not external gets no bookkeeping note', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], clearedProgress) });
   assert.ok(!x.calls.find((c) => c.label === 'E1:t1:spec1').prompt.includes('awaiting person:'));
-});
-
-test('decision 3: a quoted command against its bare form is a defect and never runs', async () => {
-  const { r, labels } = await mism([cmdRow('"./my tool"')], [cmdRow('./my tool')]);
-  assert.ok(!labels.some((l) => /:evidence/.test(l)));
-  assert.equal(r.results[0].merged, false);
 });
 
 test('the docs stage explains the mark: a fulfilled request leaves pending, any other need stays', async () => {
@@ -2170,11 +2158,8 @@ test('R3/I-1: files [] without noCommit still needs its own commit and the imple
   assert.match(x.calls.find((c) => c.label === 'E1:t1:impl').prompt, /Commit "E1 T1: \.\.\."/);
 });
 
-test('R3/I-1: noCommit is required in the plan schema, asked of the plan agent and checked by the plan review', async () => {
+test('R3/I-1: the plan review checks the noCommit flags of the tasks the code reads from the emit', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const p = x.calls.find((c) => c.label === 'E1:plan');
-  assert.ok(p.opts.schema.properties.tasks.items.required.includes('noCommit'));
-  assert.match(p.prompt, /noCommit \(true only when the plan file says, in words, that the task changes no file and makes no commit, e\.g\. "Files: none"; false otherwise, and false when unsure\)/);
   const r = x.calls.find((c) => c.label === 'E1:plan-review1').prompt;
   assert.match(r, /these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect/);
   assert.match(r, /a task with noCommit true whose steps change or commit a file/);
@@ -2191,7 +2176,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
       if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
       return undefined;
     } });
-  const rule = /Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
+  const rule = /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
   for (const l of ['E1:gates-fix1', 'E1:final-fix1']) assert.match(x.calls.find((c) => c.label === l).prompt, rule, l);
   assert.match(x.calls.find((c) => c.label === 'E1:gates-fix1-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
   assert.match(x.calls.find((c) => c.label === 'E1:final-1-r2').prompt, /Blocks \(defeito\): an edit to the spec or the plan/);
@@ -2200,7 +2185,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
 test('R3/I-2: the post-merge fixer may not edit the spec or the plan, and its review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => (/^E1:merge-gates1/.test(l) ? gm('m1', { exit: 1, failedNames: ['new'] }) : l === 'E1:merge-fix' ? { status: 'DONE', summary: 'x', checks: [] } : undefined) });
-  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:merge-fix-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
 });
 
@@ -2254,7 +2239,7 @@ test('PF/I3 and M1, M5, M10, M11: the docs point to CLAUDE.md, agree on the fix 
 test('PF/M2: the late-sync fixer may not edit the spec or the plan, and its re-review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => (l === 'E1:delta-review1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h3', clean: true, commitsInRange: 0 } : l === 'E1:delta-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined) });
-  assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/s\.md or the plan docs\/p\.md to satisfy a finding/);
+  assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:delta-review2').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan made by a fix round/);
 });
 
@@ -2288,17 +2273,22 @@ test('PF/M7, M8, M9: report wording for unreviewed entries, one entry per task i
 // Fable final review (FF).
 const FF_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ffRead = (f) => readFileSync(join(FF_DIR, f), 'utf8');
-const KEEP_IF_SAME = 'If the answer changes nothing in the file, do not commit: reuse it (reused=true). Otherwise commit and return reused=false.';
+const KEEP_IF_SAME = 'if the instruction changes nothing, leave the file untouched.';
 test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fingerprint and the authorization', async () => {
   const run1 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? needsHuman : undefined)) });
   const hi = run1.r.operatorActions.find((o) => o.kind === 'human-input');
   assert.match(hi.doNow, /stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again \(pass the bare `E1:T1` in your own message to re-authorize together with the answer\)/);
   const { config, ...rw } = hi.resumeWith;
-  const reused = (l) => (l === 'E1:spec' ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [], reused: true }
-    : l === 'E1:plan' ? { ...planWith(ext1), reused: true }
+  const reused = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }
+    : l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: '' }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: '' }
+    : l === 'E1:plan-load1' ? planLoadOf(planWith(ext1), 'E1')
     : l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
   const run2 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...rw, notes: { E1: 'the key is in DEPLOY_KEY' }, runToken: 'pf-2' }, over: reused });
-  for (const l of ['E1:spec', 'E1:plan']) assert.ok(run2.calls.find((c) => c.label === l).prompt.includes(KEEP_IF_SAME), l);
+  assert.ok(run2.calls.find((c) => c.label === 'E1:plan').prompt.includes(KEEP_IF_SAME));
+  const author = run2.calls.find((c) => c.label === 'E1:spec').prompt;
+  assert.ok(author.includes('the key is in DEPLOY_KEY') && author.includes('A ruling the instruction does not change keeps its id and its text.'));
+  assert.ok(run2.labels.includes('E1:spec-commit'));
   assert.ok(!run2.r.operatorActions.some((o) => o.kind === 'authorize-external'));
   assert.ok(run2.labels.includes('E1:t1:launching') && run2.labels.includes('E1:t1:impl'));
   for (const f of ['SKILL.md', join('references', 'operator.md')]) assert.ok(ffRead(f).includes('An answer in `notes` that changes the spec or the plan is a replan: the bound item is dropped and the question comes back.'), f);
@@ -2398,8 +2388,8 @@ test('FF/M8: a local task that waited for a person closes with a neutral mark, w
 
 // Fable review 2 (F2).
 test('F2/I-A: a note that changed no file stays in resumeWith; a note written into the plan is consumed', async () => {
-  const reused = (v) => (l) => (l === 'E1:spec' ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [], reused: v }
-    : l === 'E1:plan' ? { ...planWith([tk(1, false)]), reused: v }
+  const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
     : l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'stop', checks: [] } : undefined);
   const kept = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(true) });
   assert.equal(kept.r.resumeArgs.notes && kept.r.resumeArgs.notes.E1, 'the key is in DEPLOY_KEY');
@@ -2878,13 +2868,43 @@ const failJson = (exitCode, errors) => JSON.stringify({ tool: 'roadmap', summary
 
 test('recordVerdict: aprovado, com o id da decisão', () => {
   const r = PU.recordVerdict(VX());
-  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'] });
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'], holdIds: ['DEC-300'] });
+});
+
+test('recordVerdict: holdIds keeps a decision add-decision found existing only while pending-decisions still lists it', () => {
+  const existing = (pending) => {
+    const v = VX();
+    v.results.runs[2].stdout = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { id: 'DEC-300', existing: true } });
+    v.read.pendingDecisions = pendOut(pending);
+    return PU.recordVerdict(v);
+  };
+  const ratified = existing([]);
+  assert.equal(ratified.ok, true, ratified.failures.join('\n'));
+  assert.deepEqual(ratified.decisionIds, ['DEC-300']);
+  assert.deepEqual(ratified.holdIds, []);
+  assert.deepEqual(existing(['DEC-300']).holdIds, ['DEC-300']);
+  const missing = VX();
+  missing.results.runs[2].stdout = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { id: 'DEC-300', existing: true } });
+  missing.read.pendingDecisions = '';
+  assert.deepEqual(PU.recordVerdict(missing).holdIds, ['DEC-300'], 'without a readable pending list an existing decision still holds (fail safe)');
 });
 
 test('recordVerdict: reprova comando faltando, fora de ordem e com texto diferente', () => {
   bad((v) => { v.results.runs.pop(); }, /missing/i);
   bad((v) => { v.results.runs.reverse(); }, /order/i);
   bad((v) => { v.results.runs[1].command = v.results.runs[1].command.replace('--what', '--what x'); }, /differ|text/i);
+});
+
+test('recordVerdict: a run names its command by n, so an abbreviated echo and the git commit steps do not fail it (E8 record)', () => {
+  const v = VX();
+  v.results.runs = v.results.runs.map((r, i) => ({ n: i + 1, command: i ? 'node "...roadmap.mjs" ' + PU.cliVerb(r.command) + ' ... --json' : r.command, exit: r.exit, stdout: r.stdout }));
+  v.results.runs.push({ command: 'git -C "D:/wt/_integracao" add -- "docs/plans/roadmap-x/" ; git diff --cached --quiet (check)', exit: 1, stdout: 'warning: LF will be replaced by CRLF' });
+  v.results.runs.push({ command: "git -C \"D:/wt/_integracao\" commit -m 'docs(roadmap): E1 em plano'", exit: 0, stdout: '[release 30c0cb1] docs(roadmap): E1 em plano' });
+  const r = PU.recordVerdict(v);
+  assert.deepEqual(r, { ok: true, failures: [], decisionIds: ['DEC-300'], holdIds: ['DEC-300'] });
+  bad((x) => { x.results.runs = x.results.runs.map((r, i) => ({ ...r, n: [2, 1, 3][i] })); }, /order/i);
+  bad((x) => { x.results.runs = x.results.runs.map((r, i) => ({ ...r, n: i ? i + 1 : 4 })); }, /command 1 ran with a different/);
+  bad((x) => { x.results.runs.push({ n: 4, command: x.expected[1], exit: 0, stdout: okOut('log') }); }, /beyond/i);
 });
 
 test('recordVerdict: reprova exit, stdout fora do contrato da CLI e erros no JSON', () => {
@@ -2976,17 +2996,17 @@ const readWith = (word, over = {}) => ({
   porcelain: '',
   ...over,
 });
-const badPlan = (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: false, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
+const badPlan = noHeader;
 
 test('AC2 registro de plano e executando pela CLI', async () => {
-  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: ['escolha A. Scope: local.', 'escolha B'], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const humanSpec = specWith({ rulings: [ruling({ id: 'R1', decision: 'escolha A.', scope: 'local' }), ruling({ id: 'R2', decision: 'escolha B', scope: 'contract' })], needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
   const full = await exec({ cards: [card('E1')], deliverables: ['E1'], over: humanSpec });
   const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: humanSpec });
   const plan = po.calls.find((c) => c.label === 'E1:status-c').prompt;
   const exe = full.calls.find((c) => c.label === 'E1:status-d').prompt;
   for (const p of [plan, exe]) {
-    assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' /);
-    assert.match(p, /node "\/t\/roadmap\.mjs" log /);
+    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' /);
+    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log /);
     assert.match(p, /--deliverable 'E1'/);
     assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha A\.' --scope 'local'/);
     assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha B' --scope 'contrato'/);
@@ -2994,7 +3014,7 @@ test('AC2 registro de plano e executando pela CLI', async () => {
   }
   assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
   assert.doesNotMatch(plan, /inflight-add/);
-  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(c.prompt, /roadmap-tracker/, c.label);
+  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(c.prompt, /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/, c.label);
   assert.equal(full.r.results[0].merged, true);
   assert.deepEqual(full.r.results[0].concerns, []);
 });
@@ -3017,7 +3037,7 @@ test('AC3 add-decision com erro da CLI reprova', async () => {
       : { command, exit: 0, stdout: cliJson() }));
     return { runs };
   };
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: bad });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: both(specWith({ rulings: [ruling({})] }), bad) });
   assert.equal(r.results[0].failKind, 'infra');
   assert.match(r.results[0].error, /add-decision/);
 });
@@ -3050,7 +3070,7 @@ test('o veredito ignora statusWritten e details do agente', async () => {
 
 test('textos longos não viram concern', async () => {
   const long = (w) => `${w} ${'palavra '.repeat(60)}`.trim();
-  const over = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [long('decisao')], humanInputs: [{ what: long('humano'), blocking: false }] } : undefined);
+  const over = specWith({ rulings: [ruling({ id: 'R1', decision: long('decisao') })], needsPerson: [np({ id: 'H1', what: long('humano') })] });
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   const p = calls.find((c) => c.label === 'E1:status-d').prompt;
   let seen = 0;
@@ -3067,7 +3087,7 @@ test('textos longos não viram concern', async () => {
 });
 
 test('retomada não repete log: a palavra já gravada tira set-status e log, e o veredito confere a palavra', async () => {
-  const { r, calls } = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'] });
+  const { r, calls } = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'], over: specWith({ rulings: [ruling({})] }) });
   const p = calls.find((c) => c.label === 'E1:status-d').prompt;
   assert.doesNotMatch(p, / set-status /);
   assert.doesNotMatch(p, /roadmap\.mjs" log /);
@@ -3108,7 +3128,7 @@ test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', asyn
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
   assert.ok(r.operatorActions.length > 0);
   const rep = calls.find((c) => c.label === 'report').prompt;
-  assert.doesNotMatch(rep, /\/t\/roadmap\.mjs/);
+  assert.doesNotMatch(rep, /\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs/);
 });
 
 test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
@@ -3130,7 +3150,7 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
   const blocked = calls.find((c) => c.label === 'E1:status-blocked');
   assert.ok(blocked);
   assert.doesNotMatch(blocked.prompt, /-\*-reviews\.md/);
-  assert.match(blocked.prompt, /docs\/superpowers\/reviews\/[^ ']*-E1-[^ *']*-reviews\.md/);
+  assert.match(blocked.prompt, /docs\/plans\/x-E1\/reviews\.md/);
   const logs = calls.filter((c) => /review-log-blocked-record$/.test(c.label));
   assert.equal(logs.length, 1);
   assert.match(logs[0].prompt, /Textos cortados no registro/);
@@ -3141,16 +3161,16 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
 const docsPrompts = (calls) => calls.filter((c) => /:docs(-measure)?\d$/.test(c.label));
 
 test('AC2 documentação pela CLI', async () => {
-  const humanSpec = (l) => (/:spec$/.test(l) ? { specPath: 'docs/s.md', slug: 'x', decisions: [], humanInputs: [{ what: 'precisa de credencial', blocking: false }] } : undefined);
+  const humanSpec = specWith({ needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(humanSpec, planRows([{ ac: 'AC1', kind: 'human' }])) });
   const p = calls.find((c) => c.label === 'E1:docs1').prompt;
-  assert.match(p, /node "\/t\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
-  assert.match(p, /node "\/t\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
   assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
   const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
   assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
   assert.ok(pend.some((c) => /E1: criterion AC1 has no automatic evidence \(human\)/.test(c)), 'critério sem evidência automática');
-  assert.doesNotMatch(p, /roadmap-tracker/);
+  assert.doesNotMatch(p, /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/);
   assert.match(p, /Do NOT propose, write or approve a strategy revision/);
   const order = promptCommands(p).map((c) => /^node "[^"]*" (\S+)/.exec(c)[1]);
   assert.deepEqual(order.slice(0, 2), ['set-status', 'log']);
@@ -3161,7 +3181,7 @@ test('AC2 documentação pela CLI', async () => {
 
 test('AC3 documentação: releitura falha leva à 2ª rodada só com o que faltou', async () => {
   const mk = (rounds) => (l) => {
-    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { status: readWith('zzz').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { statusStdout: readWith('zzz').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
     return undefined;
   };
   const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(1) });
@@ -3181,7 +3201,7 @@ test('AC3 documentação: releitura falha leva à 2ª rodada só com o que falto
 test('AC3 documentação: comando com erro da CLI repete só ele e o veredito não confia no agente', async () => {
   let n = 0;
   const bad = (l, prompt) => {
-    if (/^E1:docs-measure/.test(l)) return { status: readWith('e').status, brief: readWith('e').brief, clean: true, head: 'm2' };
+    if (/^E1:docs-measure/.test(l)) return { statusStdout: readWith('e').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
     if (!/:docs\d$/.test(l)) return undefined;
     n++;
     return { runs: promptCommands(prompt).map((command) => (n === 1 && / log /.test(command)
@@ -3218,7 +3238,7 @@ test('forma das chamadas de script: todo roadmap.mjs vem entre aspas, com argume
   for (const c of calls.filter((x) => x.label !== 'discovery')) {
     for (const m of c.prompt.matchAll(/roadmap\.mjs/g)) {
       seen++;
-      const around = c.prompt.slice(Math.max(0, m.index - 40), m.index + 40);
+      const around = c.prompt.slice(Math.max(0, m.index - 120), m.index + 40);
       assert.match(around, /node "[^"]*roadmap\.mjs" \S/, c.label + ': ' + around);
       assert.ok(WORKFLOW_SCRIPTS.includes('roadmap.mjs'));
     }
@@ -3356,10 +3376,751 @@ test('parseDecision: scope sentence, trailing parenthetical, default contrato', 
   assert.deepEqual(P('Usar X sem escopo'), { text: 'Usar X sem escopo', scope: 'contrato' });
 });
 
-test('spec prompt tells the agent how decisions end (pt and en)', async () => {
-  for (const [language, w, c] of [['pt-BR', 'Alcance', 'contrato'], ['en', 'Scope', 'contract']]) {
-    const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { language } });
-    const p = calls.find((x) => x.label === 'E1:spec').prompt;
-    assert.ok(p.includes(`"${w}: local." or "${w}: ${c}."`), language);
+// ---- E8 T1: embedded copies, artifact paths, plugin root
+import { embedFile } from '../../../scripts/embed.mjs';
+import { route as libRoute } from '../../../lib/routing.mjs';
+import { planDigest as libPlanDigest } from '../../../lib/plan-digest.mjs';
+
+const WF_PATH = join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js');
+const PLAN_TOOL_FIX = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'fixtures', 'plan-tool');
+
+test('embedded copies of routing and plan-digest are not stale', () => {
+  assert.equal(embedFile(WF_PATH, { check: true }).stale, false);
+});
+
+test('embedded route and planDigest equal the lib ones', () => {
+  const table = JSON.parse(readFileSync(join(PLAN_TOOL_FIX, 'routing-table.json'), 'utf8'));
+  const pure = loadPure();
+  for (const row of table.rows) {
+    const i = row.input;
+    const t = {
+      score: { ambiguity: i.ambiguity, reasoning: i.reasoning, blast: i.blast, verifiability: i.verifiability },
+      files: { create: Array.from({ length: i.fileCount }, (_, k) => `f${k + 1}`), modify: [], test: [] },
+      external: i.external,
+    };
+    assert.deepEqual(pure.route(t, { hasDependents: i.hasDependents }), libRoute(t, { hasDependents: i.hasDependents }), row.name);
   }
+  const text = readFileSync(join(PLAN_TOOL_FIX, 'plan.md'), 'utf8').replace(/\r\n/g, '\n');
+  const emitted = {
+    plan: { tasks: [{ n: 1, title: 'a', deps: [] }], b: 2, a: 1 },
+    source: { path: 'plan.md', textDigest: pure.fnv1a(text) },
+  };
+  assert.equal(pure.planDigest(emitted), libPlanDigest(emitted));
+  assert.deepEqual(pure.canon({ b: 1, a: [{ d: 1, c: 2 }] }), { a: [{ c: 2, d: 1 }], b: 1 });
+});
+
+test('artifactPaths follows DEC-026', () => {
+  const pure = loadPure();
+  assert.deepEqual(pure.artifactPaths('evolucao-skills', 'E8'), {
+    dir: 'docs/plans/evolucao-skills-E8/',
+    spec: 'docs/plans/evolucao-skills-E8/spec.md',
+    plan: 'docs/plans/evolucao-skills-E8/plan.md',
+    reviews: 'docs/plans/evolucao-skills-E8/reviews.md',
+  });
+  assert.equal(pure.reportPathFor('2026-11-12', 'E8'), 'docs/reports/2026-11-12-E8-run.md');
+});
+
+test('pluginRootOf strips the tracker suffix or returns null', () => {
+  const pure = loadPure();
+  assert.equal(pure.pluginRootOf('/p/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs'), '/p/productivity-tools');
+  assert.equal(pure.pluginRootOf('C:\\p\\pt\\skills\\roadmap-tracker\\scripts\\roadmap.mjs'), 'C:/p/pt');
+  assert.equal(pure.pluginRootOf('/t/roadmap.mjs'), null);
+});
+
+import { stopsOf } from '../../../scripts/spec-tool.mjs';
+
+const rl = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
+
+test('stopOrCarry stops equal spec-tool stopsOf', () => {
+  const pure = loadPure();
+  const table = [
+    { rulings: [rl({ id: 'R1' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', contradicts: 'DEC-12' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', contradicts: 'G1' })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', costIfWrong: 'high', reversible: false })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1', costIfWrong: 'high', reversible: true })], needsPerson: [] },
+    { rulings: [rl({ id: 'R1' })], needsPerson: [np({ id: 'P1', blocking: true })] },
+    { rulings: [rl({ id: 'R1' })], needsPerson: [np({ id: 'P1', blocking: false })] },
+    { rulings: [rl({ id: 'R1', contradicts: 'DEC-1' }), rl({ id: 'R2', costIfWrong: 'high', reversible: false }), rl({ id: 'R3' })], needsPerson: [np({ id: 'P2', blocking: true })] },
+  ];
+  for (const t of table) {
+    const got = pure.stopOrCarry({ ...t, approved: [] }).stops.map((s) => s.id).sort();
+    assert.deepEqual(got, stopsOf(t.rulings, t.needsPerson).sort(), JSON.stringify(t));
+  }
+  const r = pure.stopOrCarry({
+    rulings: [rl({ id: 'R1', contradicts: 'DEC-1' }), rl({ id: 'R2', costIfWrong: 'high', reversible: false }), rl({ id: 'R3' })],
+    needsPerson: [np({ id: 'P2', blocking: true })],
+    approved: [],
+  });
+  assert.deepEqual(r.stops.map((s) => [s.id, s.kind, s.action]), [
+    ['P2', 'humano', 'human-input'],
+    ['R1', 'decisao', 'decision'],
+    ['R2', 'approve-ruling', 'approve-ruling'],
+  ]);
+  assert.equal(r.stops[2].key, pure.approveKey(r.stops[2] && rl({ id: 'R2', costIfWrong: 'high', reversible: false })));
+  assert.deepEqual(r.carry.map((x) => x.id), ['R3']);
+});
+
+test('stopOrCarry releases an approved costly ruling only for the same text', () => {
+  const pure = loadPure();
+  const r = rl({ id: 'R2', decision: 'Drop  the\ntable.', costIfWrong: 'high', reversible: false });
+  assert.match(pure.approveKey(r), /^R2:[0-9a-f]+$/);
+  assert.equal(pure.approveKey(r), pure.approveKey({ ...r, decision: 'Drop the table.' }));
+  const ok = pure.stopOrCarry({ rulings: [r], needsPerson: [], approved: [pure.approveKey(r)] });
+  assert.deepEqual(ok.stops, []);
+  assert.deepEqual(ok.carry.map((x) => x.id), ['R2']);
+  const other = pure.stopOrCarry({ rulings: [r], needsPerson: [], approved: [pure.approveKey({ ...r, decision: 'Keep the table.' })] });
+  assert.deepEqual(other.stops.map((s) => s.id), ['R2']);
+  assert.equal(other.stops[0].key, pure.approveKey(r));
+  assert.deepEqual(other.carry, []);
+});
+
+test('rulingDecisions maps scope and alternative', () => {
+  const pure = loadPure();
+  assert.deepEqual(
+    pure.rulingDecisions([rl({ decision: 'A.', scope: 'contract', alternative: 'B' }), rl({ decision: 'C.', scope: 'local', alternative: 'D' })]),
+    [{ text: 'A.', scope: 'contrato', discarded: 'B' }, { text: 'C.', scope: 'local', discarded: 'D' }],
+  );
+});
+
+test('specCardMismatch ignores verify when the card criterion has no tag', () => {
+  const pure = loadPure();
+  const card = { id: 'E8', acceptance: [{ id: 'AC1', text: 'Plain criterion.' }] };
+  const item = verify => ({ id: 'AC1', text: 'Plain criterion.', textWithoutTag: 'Plain criterion.', verify });
+  assert.deepEqual(pure.specCardMismatch({ id: 'E8', acceptance: [item({ kind: 'test', blq: null, evidence: 'node x' })] }, 'E8', card), []);
+  assert.deepEqual(pure.specCardMismatch({ id: 'E8', acceptance: [item(null)] }, 'E8', card), []);
+});
+test('specCardMismatch compares ids, text and verify', () => {
+  const pure = loadPure();
+  const card = { id: 'E8', acceptance: [
+    { id: 'AC1', text: 'Does  a thing. {verify: test; evidence: node --test x}' },
+    { id: 'AC2', text: 'Human thing. {verify: human}' },
+  ] };
+  const item = (id, textWithoutTag, verify) => ({ id, text: textWithoutTag, textWithoutTag, verify });
+  const good = {
+    id: 'E8',
+    acceptance: [
+      item('AC1', 'Does a thing.', { kind: 'test', blq: null, evidence: 'node --test x' }),
+      item('AC2', 'Human thing.', { kind: 'human', blq: null, evidence: '' }),
+    ],
+  };
+  assert.deepEqual(pure.specCardMismatch(good, 'E8', card), []);
+  assert.notEqual(pure.specCardMismatch({ ...good, id: 'E9' }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [...good.acceptance, item('AC3', 'More.', null)] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Other text.', good.acceptance[0].verify), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Does a thing.', { kind: 'test', blq: null, evidence: 'node other' }), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC1', 'Does a thing.', null), good.acceptance[1]] }, 'E8', card).length, 0);
+  assert.notEqual(pure.specCardMismatch({ ...good, acceptance: [item('AC2', 'Does a thing.', good.acceptance[0].verify), good.acceptance[1]] }, 'E8', card).length, 0);
+});
+
+test('heldBy holds transitive dependents and never the owner', () => {
+  const pure = loadPure();
+  const cards = [
+    { id: 'E1', deps: [] },
+    { id: 'E2', deps: ['E1'] },
+    { id: 'E3', deps: ['E2'] },
+    { id: 'E4', deps: [] },
+  ];
+  const base = { cards, selected: ['E1', 'E2', 'E3', 'E4'], contractDecisions: [{ id: 'DEC-9', deliverable: 'E1' }], started: [] };
+  const m = pure.heldBy(base);
+  assert.deepEqual([...m.keys()].sort(), ['E2', 'E3']);
+  assert.deepEqual(m.get('E2'), { decision: 'DEC-9', owner: 'E1' });
+  assert.deepEqual(m.get('E3'), { decision: 'DEC-9', owner: 'E1' });
+  const s = pure.heldBy({ ...base, started: ['E2'] });
+  assert.deepEqual([...s.keys()], ['E3']);
+  assert.equal(pure.heldBy({ ...base, selected: ['E1', 'E4'] }).size, 0);
+  assert.equal(pure.holdReason({ decision: 'DEC-9', owner: 'E1' }), 'held by DEC-9 (E1, contract, pending ratification)');
+});
+
+// ---- E8 T3: plan/1 adapter, plan load and routing
+const PLAN_TOOL = join(PLAN_TOOL_FIX, '..', '..', 'plan-tool.mjs');
+const emitFixture = () => execFileSync('node', [PLAN_TOOL, 'emit', join(PLAN_TOOL_FIX, 'plan.md'), '--json'], { encoding: 'utf8' });
+const fixtureEmit = () => JSON.parse(emitFixture());
+
+// Builds the JSON of `plan-tool emit` with route and digest computed by the lib copies.
+function planEmitOf({ id, roadmap, tasks, evidence = [] }) {
+  const plan = { schema: 'plan/1', id, roadmap, tasks: [], evidence };
+  plan.tasks = tasks.map((t) => ({ locks: [], external: false, externalDedupe: null, noCommit: false, deps: [], ...t }));
+  plan.tasks = plan.tasks.map((t) => ({ ...t, route: libRoute(t, { hasDependents: plan.tasks.some((x) => x.deps.includes(t.n)) }) }));
+  const source = { path: 'plan.md', textDigest: 'abcd1234' };
+  return { tool: 'plan-tool', schema: 'plan/1', path: 'plan.md', source, plan, digest: libPlanDigest({ plan, source }) };
+}
+
+test('loadPlanEmit accepts a faithful emit', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  const r = pure.loadPlanEmit(JSON.stringify(e), { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' });
+  assert.equal(r.ok, true);
+  assert.equal(r.digest, e.digest);
+  assert.equal(r.plan.tasks.length, 6);
+  const mine = planEmitOf({
+    id: 'E9', roadmap: 'docs/plans/r/',
+    tasks: [
+      { n: 1, files: { create: ['a'], modify: [], test: [] }, score: { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 } },
+      { n: 2, deps: [1], files: { create: ['b'], modify: [], test: [] }, score: { ambiguity: 1, reasoning: 1, blast: 1, verifiability: 1 } },
+    ],
+  });
+  assert.equal(pure.loadPlanEmit(JSON.stringify(mine), { E: 'E9', RM: 'docs/plans/r/' }).ok, true);
+});
+
+test('loadPlanEmit rejects a wrong digest, id, roadmap, tool or schema', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  const args = { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' };
+  const bad = (mut, re) => {
+    const c = JSON.parse(JSON.stringify(e));
+    mut(c);
+    const r = pure.loadPlanEmit(JSON.stringify(c), args);
+    assert.equal(r.ok, false);
+    assert.match(r.why, re);
+  };
+  bad((c) => { c.digest = '00000000'; }, /digest/);
+  bad((c) => { c.plan.id = 'E2'; c.digest = libPlanDigest({ plan: c.plan, source: c.source }); }, /plan id/);
+  bad((c) => { c.plan.roadmap = 'other/'; c.digest = libPlanDigest({ plan: c.plan, source: c.source }); }, /roadmap/);
+  bad((c) => { c.tool = 'spec-tool'; }, /tool/);
+  bad((c) => { c.schema = 'plan/2'; }, /schema/);
+  assert.equal(pure.loadPlanEmit('not json', args).ok, false);
+});
+
+test('loadPlanEmit rejects a route that differs from the recalculated one', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  e.plan.tasks[1].route = { ...e.plan.tasks[1].route, tier: 'opus', reviewTier: 'opus' };
+  e.digest = libPlanDigest({ plan: e.plan, source: e.source });
+  const r = pure.loadPlanEmit(JSON.stringify(e), { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' });
+  assert.equal(r.ok, false);
+  assert.match(r.why, /task 2.*route/);
+});
+
+test('tasksFromPlan merges files and copies locks and external', () => {
+  const pure = loadPure();
+  const { plan } = fixtureEmit();
+  const ts = pure.tasksFromPlan(plan);
+  assert.equal(ts.length, plan.tasks.length);
+  assert.deepEqual(ts[0].files, ['src/store.mjs', 'tests/store.test.mjs']);
+  assert.deepEqual(Object.keys(ts[0]).sort(), ['deps', 'external', 'externalDedupe', 'files', 'n', 'needsLock', 'noCommit', 'route', 'title']);
+  assert.deepEqual(ts.find((t) => t.n === 3).needsLock, ['fixture-db']);
+  const ext = ts.find((t) => t.external === true);
+  assert.ok(ext && ext.externalDedupe);
+  assert.deepEqual(ts[1].deps, [1]);
+  assert.deepEqual(ts[1].route, plan.tasks[1].route);
+  const dup = pure.tasksFromPlan({ tasks: [{ n: 1, title: 't', files: { create: ['a'], modify: ['a', 'b'], test: ['b'] }, locks: [], external: false, externalDedupe: null, noCommit: false, route: {}, deps: [] }] });
+  assert.deepEqual(dup[0].files, ['a', 'b']);
+});
+
+test('evidenceFromPlan keeps the row fields', () => {
+  const pure = loadPure();
+  const { plan } = fixtureEmit();
+  const rows = pure.evidenceFromPlan(plan);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0], { ac: 'AC1', kind: 'test', command: 'node --test tests/e1.test.mjs', testRef: null, blq: null, external: false, externalDedupe: null });
+  assert.deepEqual(rows[1], { ac: 'AC2', kind: 'blocked', command: null, testRef: null, blq: 'BLQ-1', external: false, externalDedupe: null });
+});
+
+test('frozenTaskDiffs flags a changed or missing committed task and ignores the others', () => {
+  const pure = loadPure();
+  const prev = fixtureEmit().plan;
+  const next = JSON.parse(JSON.stringify(prev));
+  assert.deepEqual(pure.frozenTaskDiffs(prev, next, [1, 2]), []);
+  next.tasks[2].title = 'changed';
+  assert.deepEqual(pure.frozenTaskDiffs(prev, next, [1, 2]), []);
+  assert.equal(pure.frozenTaskDiffs(prev, next, [1, 3]).length, 1);
+  next.tasks[0].score = { ...(next.tasks[0].score || {}), blast: 9 };
+  assert.equal(pure.frozenTaskDiffs(prev, next, [1]).length, 1);
+  // derived by plan-tool from the whole plan: new tasks shift wave, fileCount and the route gate of committed ones
+  const derived = JSON.parse(JSON.stringify(prev));
+  derived.tasks.forEach((t) => { t.wave = (t.wave || 1) + 2; t.fileCount = (t.fileCount || 0) + 1; t.route = { ...t.route, gate: 'changed' }; });
+  assert.deepEqual(pure.frozenTaskDiffs(prev, derived, [1, 2, 3]), []);
+  next.tasks = next.tasks.filter((t) => t.n !== 2);
+  const d = pure.frozenTaskDiffs(prev, next, [2]);
+  assert.equal(d.length, 1);
+  assert.match(d[0], /task 2/);
+  const reordered = { ...prev, tasks: prev.tasks.map((t) => ({ ...t, files: { modify: t.files.modify, test: t.files.test, create: t.files.create } })) };
+  assert.deepEqual(pure.frozenTaskDiffs(prev, reordered, [1, 2, 3]), []);
+});
+
+test('AC2: a branch with task commits and no native spec stops with previous-version and writes no spec', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 2, committedTasks: [1, 2], nativeSpec: false, nativePlan: false } : undefined) });
+  assert.equal(r.results.find((x) => x.id === 'E1').failKind, 'conteudo');
+  const o = r.operatorActions.filter((x) => x.kind === 'previous-version' && x.deliverable === 'E1');
+  assert.equal(o.length, 1);
+  assert.match(o[0].doNow, /previous version/);
+  assert.match(o[0].doNow, /discard the branch and the worktree/);
+  for (const l of ['E1:spec', 'E1:spec-load1', 'E1:plan']) assert.ok(!labels.includes(l), l);
+});
+
+test('a branch with an old superpowers spec and no task commit is not stopped', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false } : undefined) });
+  assert.ok(labels.includes('E1:spec'));
+  assert.ok(!r.operatorActions.some((x) => x.kind === 'previous-version'));
+});
+
+test('the setup schema requires the new measurements', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const c = calls.find((x) => x.label === 'E1:setup');
+  for (const f of ['taskCommits', 'committedTasks', 'nativeSpec', 'nativePlan']) assert.ok(c.opts.schema.required.includes(f), f);
+  assert.match(c.prompt, /\.\.HEAD/);
+  assert.ok(c.prompt.includes('docs/plans/x-E1/spec.md'));
+});
+
+// ---- E8 T5: native spec stage, loaded and checked by code, stops and decision records
+const NO_ASK_TEXT = 'Never ask the person anything';
+
+test('AC5: a ruling that contradicts a registered decision stops the deliverable', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings: [ruling({ id: 'R1', decision: 'Drop the gate.', contradicts: 'DEC-12' })] }) });
+  const e = r.results.find((x) => x.id === 'E1');
+  assert.equal(e.failKind, 'decisao');
+  assert.match(e.error, /R1/);
+  assert.match(e.error, /DEC-12/);
+  assert.ok(r.operatorActions.some((o) => o.kind === 'decision' && o.deliverable === 'E1'));
+  assert.ok(labels.includes('E1:spec-commit'));
+  assert.ok(!labels.includes('E1:plan'));
+});
+
+test('AC6: a common ruling is recorded as pending ratification and the run goes on', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.', alternative: 'No cache', scope: 'local' })] }) });
+  assert.ok(labels.includes('E1:t1:impl'));
+  const rec = calls.find((c) => /^E1:status-/.test(c.label) && /add-decision/.test(c.prompt)).prompt;
+  assert.match(rec, /add-decision '[^']*' --deliverable 'E1' --decision 'Use the cache\.' --scope 'local' --discarded 'No cache'/);
+  assert.equal(r.results[0].decisions, 1);
+});
+
+test('AC7: a costly irreversible ruling stops after the spec commit without writing the plan', async () => {
+  const costly = ruling({ id: 'R2', decision: 'Drop the table.', costIfWrong: 'high', reversible: false });
+  const key = PURE_X.approveKey(costly);
+  const over = specWith({ rulings: [costly] });
+  const first = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(first.labels.includes('E1:spec-commit'));
+  assert.ok(!first.labels.includes('E1:plan'));
+  const act = first.r.operatorActions.find((o) => o.kind === 'approve-ruling' && o.deliverable === 'E1');
+  assert.ok(act);
+  assert.ok(act.doNow.includes(key));
+  assert.ok(!('approveRulings' in act.resumeWith));
+  assert.ok(!('approveRulings' in first.r.resumeArgs));
+  const ok = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { approveRulings: { E1: [key] } }, over });
+  assert.ok(ok.labels.includes('E1:plan'));
+  assert.ok(!ok.r.operatorActions.some((o) => o.kind === 'approve-ruling'));
+  assert.ok(ok.r.operatorActions.every((o) => !o.resumeWith || !('approveRulings' in o.resumeWith)));
+  assert.ok(!('approveRulings' in ok.r.resumeArgs));
+  const other = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { approveRulings: { E1: [PURE_X.approveKey({ ...costly, decision: 'Keep the table.' })] } }, over });
+  assert.ok(!other.labels.includes('E1:plan'));
+  assert.ok(other.r.operatorActions.some((o) => o.kind === 'approve-ruling' && o.doNow.includes(key)));
+});
+
+test('the spec author gets the native contract', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'prefer the small option\nand keep the table' } }, discOver: { language: 'pt-BR' } });
+  const c = calls.find((x) => x.label === 'E1:spec');
+  assert.equal(c.opts.agentType, 'productivity-tools:spec-author');
+  assert.equal(c.opts.model, undefined);
+  const lines = c.prompt.split('\n');
+  assert.equal(lines[0], 'mode: unattended');
+  assert.equal(lines[1], 'output: /wt/E1/docs/plans/x-E1/spec.md');
+  assert.equal(lines[2], 'specTool: /p/productivity-tools/scripts/spec-tool.mjs');
+  assert.equal(lines[3], 'language: pt-BR');
+  assert.equal(lines[4], 'roadmap: /wt/E1/docs/plans/roadmap-x');
+  assert.equal(lines[5], 'card: E1');
+  assert.equal(lines[6], 'ownerNote:');
+  assert.ok(lines.slice(7).every((l) => !/^(mode|output|specTool|language|roadmap|card):/.test(l)));
+  assert.ok(c.prompt.includes('prefer the small option\nand keep the table'));
+  assert.ok(c.prompt.includes(NO_ASK_TEXT));
+  assert.ok(c.prompt.includes('Do not commit'));
+});
+
+test('every prompt of the spec stage carries the no-question clause and none names superpowers', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const l of ['E1:spec', 'E1:spec-load1', 'E1:spec-commit', 'E1:spec-review1']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.ok(p.includes(NO_ASK_TEXT), l);
+    assert.ok(!/superpowers/.test(p), l);
+  }
+});
+
+test('a trackerCli outside the plugin layout fails as infra before the author', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { trackerCli: '/t/roadmap.mjs' } });
+  assert.equal(r.results[0].failKind, 'infra');
+  assert.match(r.results[0].error, /trackerCli/);
+  for (const l of ['E1:spec', 'E1:spec-load1', 'E1:spec-commit']) assert.ok(!labels.includes(l), l);
+});
+
+test('a spec load that keeps diverging from the card fails as infra after three tries', async () => {
+  const diverge = (l) => (/:spec-load\d$/.test(l) ? specLoadOk('E1', { acceptance: [{ id: 'AC1', text: 'something else' }] }) : undefined);
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: diverge });
+  assert.equal(r.results[0].failKind, 'infra');
+  assert.match(r.results[0].error, /spec load/);
+  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3']);
+  assert.deepEqual(['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3'].map((l) => [calls.find((c) => c.label === l).opts.model, calls.find((c) => c.label === l).opts.effort]), [['haiku', 'low'], ['haiku', 'low'], ['sonnet', 'medium']]);
+  assert.ok(!labels.includes('E1:spec-commit'));
+  assert.ok(!labels.includes('E1:plan'));
+});
+
+test('a spec load with output that is not the spec/1 envelope is retried, and a good third try goes on', async () => {
+  let n = 0;
+  const flaky = (l) => {
+    if (!/:spec-load\d$/.test(l)) return undefined;
+    n++;
+    if (n === 1) return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: 'not json' };
+    if (n === 2) return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify({ tool: 'plan-tool', schema: 'plan/1', data: {} }) };
+    return undefined;
+  };
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: flaky });
+  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3']);
+  assert.ok(labels.includes('E1:spec-commit'));
+  assert.ok(labels.includes('E1:plan'));
+});
+
+test('a failed spec check is a critical issue of the review, fixed by the corrector, and the load runs again', async () => {
+  let n = 0;
+  const bad = (l) => (/:spec-load\d$/.test(l) && n++ === 0 ? { checkExit: 1, checkStdout: '{"errors":[{"code":"schema"}]}', emitExit: 1, emitStdout: '' } : undefined);
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(bad, (l) => (l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined)) });
+  assert.ok(labels.includes('E1:spec-fix1'));
+  assert.ok(labels.indexOf('E1:spec-fix1') < labels.lastIndexOf('E1:spec-load1'));
+  assert.match(calls.find((c) => c.label === 'E1:spec-fix1').prompt, /spec-tool check exited 1/);
+  assert.equal(r.results[0].merged, true);
+});
+
+test('a reused native spec without owner note calls no author and records no duplicate decision', async () => {
+  seenDecisions.clear();
+  const nativeSetup = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: false } : undefined);
+  const over = both(nativeSetup, specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.' })] }));
+  const one = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over });
+  for (const l of ['E1:spec', 'E1:spec-commit']) assert.ok(!one.labels.includes(l), l);
+  assert.ok(one.labels.includes('E1:spec-load1'));
+  assert.equal(one.r.results[0].planOnly, true);
+  assert.equal(seenDecisions.size, 1);
+  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over });
+  assert.equal(two.r.results[0].planOnly, true);
+  assert.equal(seenDecisions.size, 1);
+  assert.ok(promptCommands(two.calls.find((c) => /^E1:status-c$/.test(c.label)).prompt).some((c) => /add-decision/.test(c)));
+});
+
+test('the spec fixer keeps its text and adds the block sentence', async () => {
+  const issue = { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 1 };
+  const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:spec-review1' ? issue : l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined) });
+  const p = calls.find((c) => c.label === 'E1:spec-fix1').prompt;
+  const keep = 'Fix the spec docs/plans/x-E1/spec.md according to the review below, in autonomous mode, and commit. Stop after the commit.';
+  const ret = 'Return specPath, slug (without the ID), decisions (full list), humanInputs (full list).';
+  assert.ok(p.includes(keep));
+  assert.ok(p.includes(ret));
+  assert.ok(p.indexOf(keep) < p.indexOf(ret));
+  const tail = p.slice(p.indexOf(ret) + ret.length);
+  assert.match(tail, /spec\/1/);
+  assert.match(tail, /spec-tool\.mjs" check "[^"]*spec\.md" --roadmap/);
+  assert.ok(labels.indexOf('E1:spec-fix1') < labels.lastIndexOf('E1:spec-review2'));
+});
+
+test('the commit agent writes the message with Write, commits with -F and only the spec', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const c = calls.find((x) => x.label === 'E1:spec-commit');
+  assert.equal(c.opts.model, 'haiku');
+  assert.match(c.prompt, /Write tool/);
+  assert.match(c.prompt, /git -C "\/wt\/E1" add -- docs\/plans\/x-E1\/spec\.md/);
+  assert.match(c.prompt, /git -C "\/wt\/E1" commit -F "\/wt\/_tmp\/E1-spec-commit\.txt"/);
+  assert.ok(!/ && | ; /.test(c.prompt));
+});
+
+test('checkSpecLoad separates a failed check from a failed load', () => {
+  const card1 = { id: 'E1', acceptance: [{ id: 'AC1', text: 'works' }] };
+  const good = { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf('E1', { acceptance: card1.acceptance }) };
+  assert.equal(PURE_X.checkSpecLoad(good, 'E1', card1).ok, true);
+  const failed = PURE_X.checkSpecLoad({ ...good, checkExit: 1, checkStdout: 'ERR schema' }, 'E1', card1);
+  assert.deepEqual([failed.ok, failed.checkFailed], [true, true]);
+  assert.match(failed.why, /ERR schema/);
+  for (const bad of [null, { ...good, emitExit: 1 }, { ...good, emitStdout: '{' }, { ...good, checkExit: undefined }, { ...good, emitStdout: specEmitOf('E2', { acceptance: card1.acceptance }) }]) assert.equal(PURE_X.checkSpecLoad(bad, 'E1', card1).ok, false, JSON.stringify(bad));
+});
+
+// ---- E8 T6: native plan stage, load with digest, dispatch by route
+const planSetup = (over = {}) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false, ...over } : undefined);
+const withDigestOff = (load) => ({ ...load, emitStdout: JSON.stringify({ ...JSON.parse(load.emitStdout), digest: '00000000' }) });
+const evRow1 = { ac: 'AC1', kind: 'test', command: 'npm test -- a', testRef: null, blq: null, external: false, externalDedupe: null };
+const zero = { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 };
+
+test('AC3: a plan whose digest does not match after the retries fails as infra without running a task', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^E1:plan-load\d$/.test(l) ? withDigestOff(planLoadOf(OLD_DEFAULT_PLAN, 'E1')) : undefined) });
+  const e = r.results[0];
+  assert.equal(e.failKind, 'infra');
+  assert.match(e.error, /plan load: integrity digest/);
+  assert.deepEqual(['E1:plan-load1', 'E1:plan-load2', 'E1:plan-load3'].map((l) => modelOf(calls, l).model), ['haiku', 'haiku', 'sonnet']);
+  assert.deepEqual(['E1:plan-load1', 'E1:plan-load3'].map((l) => modelOf(calls, l).effort), ['low', 'medium']);
+  assert.ok(!labels.some((l) => /:t\d+:/.test(l)));
+  assert.ok(!labels.some((l) => /^E1:status-/.test(l) && !/blocked|-read/.test(l)), 'no executing record');
+  assert.ok(!labels.includes('E1:plan-review1'));
+});
+
+test('AC4: the implementer and the task reviewer get model and effort from route', async () => {
+  const mk = (n, score) => ({ n, title: 't' + n, files: { create: [], modify: ['a' + n + '.js'], test: [] }, score });
+  const emit = planEmitOf({ id: 'E1', roadmap: 'docs/plans/roadmap-x/', tasks: [mk(1, zero), mk(2, { ambiguity: 1, reasoning: 2, blast: 2, verifiability: 1 })], evidence: [evRow1] });
+  assert.deepEqual(emit.plan.tasks.map((t) => [t.route.tier, t.route.effort, t.route.reviewTier]), [['haiku', 'low', 'sonnet'], ['sonnet', 'high', 'opus']]);
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^E1:plan-load\d$/.test(l) ? { checkExit: 0, emitExit: 0, emitStdout: JSON.stringify(emit), blob: B1 } : undefined) });
+  assert.deepEqual([modelOf(calls, 'E1:t1:impl').model, modelOf(calls, 'E1:t1:impl').effort], ['haiku', 'low']);
+  assert.deepEqual([modelOf(calls, 'E1:t2:impl').model, modelOf(calls, 'E1:t2:impl').effort], ['sonnet', 'high']);
+  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t2:spec1').model, 'opus');
+});
+
+test('the plan author gets the native contract and the plan rules', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'use a table' } } });
+  const c = calls.find((x) => x.label === 'E1:plan');
+  assert.equal(c.opts.agentType, 'productivity-tools:plan-author');
+  assert.equal(c.opts.model, undefined);
+  const p = c.prompt;
+  const lines = p.split('\n');
+  for (const k of ['mode: unattended', 'output: /wt/E1/docs/plans/x-E1/plan.md', 'planTool: /p/productivity-tools/scripts/plan-tool.mjs', 'spec: /wt/E1/docs/plans/x-E1/spec.md', 'roadmap: docs/plans/roadmap-x/', 'card: E1']) assert.ok(lines.includes(k), k);
+  assert.ok(lines.some((x) => /^language: /.test(x)));
+  const at = (k) => lines.findIndex((x) => x.startsWith(k));
+  assert.ok(['mode:', 'output:', 'planTool:', 'spec:', 'language:', 'roadmap:', 'card:'].every((k) => at(k) < at('ownerNote:')));
+  assert.equal(lines.filter((x) => /^[a-zA-Z]+: /.test(x) && ['mode', 'output', 'planTool', 'spec', 'language', 'roadmap', 'card', 'ownerNote'].includes(x.split(':')[0])).length, 7);
+  assert.ok(p.indexOf('ownerNote:') > p.indexOf('card: E1'));
+  assert.ok(p.indexOf('**Roadmap:** docs/plans/roadmap-x/') > p.indexOf('ownerNote:'));
+  assert.ok(lines.includes('**Roadmap:** docs/plans/roadmap-x/'));
+  assert.match(p, /use a table/);
+  assert.match(p, /externalDedupe/);
+  assert.match(p, /Task commits start with "E1 T<n>:"/);
+  assert.ok(p.includes(PURE_X.NO_ASK || 'Never ask the person anything'));
+  assert.doesNotMatch(p, /superpowers:writing-plans/);
+});
+
+test('frozen tasks: an owner note that rewrites a committed task restores the plan and stops', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false), tk(3, false)] };
+  const P1 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false, { title: 'changed by the note' }), tk(3, false)] };
+  let n = 0;
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'rewrite task 2' } },
+    over: both(planSetup({ taskCommits: 2, committedTasks: [1, 2], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(n++ === 0 ? P0 : P1, 'E1') : undefined)) });
+  const e = r.results[0];
+  assert.equal(labels.filter((l) => l === 'E1:plan').length, 2);
+  assert.match(calls.filter((c) => c.label === 'E1:plan')[1].prompt, /task 2 is committed but changed/);
+  assert.match(calls.filter((c) => c.label === 'E1:plan')[0].prompt, /Tasks already committed on this branch \(1, 2\) are frozen/);
+  const cm = calls.find((c) => c.label === 'E1:plan-commit');
+  assert.ok(cm.prompt.includes('git -C "/wt/E1" checkout -- docs/plans/x-E1/plan.md'));
+  assert.ok(r.operatorActions.some((o) => o.kind === 'plan-frozen-tasks' && o.deliverable === 'E1'));
+  assert.equal(e.failKind, 'conteudo');
+  assert.ok(!labels.some((l) => /:t\d+:impl/.test(l)));
+  assert.ok(!calls.some((c) => c.label === 'E1:plan-commit' && /-C "[^"]*" commit -F/.test(c.prompt)), 'nothing is committed');
+});
+
+test('frozen tasks: a note that touches only the tasks not yet committed is committed', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false)] };
+  const P1 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false, { title: 'changed by the note' })] };
+  let n = 0;
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'rewrite task 2' } },
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(n++ === 0 ? P0 : P1, 'E1') : undefined)) });
+  assert.equal(labels.filter((l) => l === 'E1:plan').length, 1);
+  assert.match(calls.find((c) => c.label === 'E1:plan-commit').prompt, /commit -F/);
+});
+
+test('frozen tasks: the previous plan is loaded without --spec, the new plan with it', async () => {
+  const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false)] };
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'add an edge case' } },
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(P0, 'E1') : undefined)) });
+  const loads = calls.filter((c) => c.label === 'E1:plan-load1')
+  assert.ok(loads.length >= 2)
+  assert.doesNotMatch(loads[0].prompt, /--spec/)
+  assert.match(loads[1].prompt, /emit "[^"]*" --spec/)
+})
+
+test('a native plan reused without owner note calls no author and makes no commit', async () => {
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:progress' ? { head: 'c1', clean: true, done: [{ n: 1, firstParent: 'h0', last: 'c1' }] } : undefined)) });
+  assert.ok(!labels.includes('E1:plan'));
+  assert.ok(!labels.includes('E1:plan-commit'));
+  assert.ok(labels.includes('E1:plan-load1'));
+  assert.ok(!labels.includes('E1:t1:impl'), 'the committed task is not implemented again');
+  assert.ok(calls.some((c) => c.label === 'E1:t1:spec1'));
+});
+
+test('the plan fixer keeps its text and adds the block sentence', async () => {
+  const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
+  const p = calls.find((c) => c.label === 'E1:plan-fix1').prompt;
+  const keep = 'Fix the plan docs/plans/x-E1/plan.md according to the review below and commit. Stop after the commit.';
+  const ret = String.raw`Return planPath, planBlob (output of git rev-parse HEAD:<planPath>, measured after the commit), roadmapHeader, ac (full list, each command copied verbatim from the file with a table-escaped \| written as |, with external and externalDedupe) and tasks (full list, with files copied from the plan, noCommit (same rule as the plan stage), tier, reviewTier, needsLock, external and externalDedupe).`;
+  assert.ok(p.includes(keep));
+  assert.ok(p.includes(ret));
+  assert.ok(p.indexOf(keep) < p.indexOf(ret));
+  const tail = p.slice(p.indexOf(ret) + ret.length);
+  assert.match(tail, /plan\/1/);
+  assert.match(tail, /plan-tool\.mjs" check "[^"]*plan\.md" --spec/);
+  assert.ok(labels.indexOf('E1:plan-fix1') < labels.lastIndexOf('E1:plan-review2'));
+  assert.ok(labels.indexOf('E1:plan-fix1') < labels.indexOf('E1:plan-load2') || labels.includes('E1:plan-load1'));
+  assert.equal(modelOf(calls, 'E1:plan-fix1').schema, undefined);
+});
+
+test('the plan review no longer asks for evidence rows and the plan stage no longer reads the transcribed header', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const rv = calls.find((c) => c.label === 'E1:plan-review1');
+  assert.doesNotMatch(rv.prompt, /evidenceRows/);
+  assert.deepEqual(rv.opts.schema.required.filter((k) => k === 'evidenceRows' || k === 'measuredPlanBlob'), ['measuredPlanBlob']);
+  assert.match(rv.prompt, /a missing "\*\*Roadmap:\*\* docs\/plans\/roadmap-x\/" line in the header/);
+});
+
+test('checkPlanLoad accepts a faithful emit and rejects exit, digest and blob problems', () => {
+  const good = planLoadOf(OLD_DEFAULT_PLAN, 'E1');
+  const args = { E: 'E1', RM: 'docs/plans/roadmap-x/' };
+  const ok = PURE_X.checkPlanLoad(good, args);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.blob, B1);
+  assert.equal(PURE_X.checkPlanLoad({ ...good, blob: 'nope' }, args).blob, '');
+  for (const bad of [null, { ...good, emitExit: undefined }, { ...good, emitExit: 1, checkStdout: 'ERR x' }, withDigestOff(good), { ...good, emitStdout: '{' }]) assert.equal(PURE_X.checkPlanLoad(bad, args).ok, false, JSON.stringify(bad).slice(0, 80));
+  assert.match(PURE_X.checkPlanLoad({ ...good, emitExit: 1, checkStdout: 'ERR x' }, args).why, /ERR x/);
+});
+
+// E8 T7: artifacts live in docs/plans/<roadmap slug>-<E>/, the spec and plan stages never name superpowers, and the fixed rules ask for simple commands.
+test('AC1: spec and plan stage prompts and artifact paths never cite superpowers and all forbid asking the person', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const stage = calls.filter((c) => ['Spec', 'Plan'].includes(c.opts.phase) && /:(spec|plan)(-load\d|-commit|-review\d|-fix\d)?$/.test(c.label));
+  assert.ok(stage.length >= 6, stage.map((c) => c.label).join(','));
+  for (const c of stage) {
+    assert.ok(c.prompt.includes(NO_ASK_TEXT), c.label);
+    assert.ok(!/superpowers/.test(c.prompt), c.label);
+  }
+  assert.ok(!/superpowers/.test(r.reportPath));
+  assert.match(r.reportPath, /^docs\/reports\/2026-11-09-E1-run\.md$/);
+  const log = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.match(log, /docs\/plans\/x-E1\/reviews\.md/);
+  assert.ok(!/superpowers/.test(log));
+  const rr = await resumedRun();
+  const rl = rr.calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.ok(!/superpowers/.test(rl));
+  assert.match(rl, /docs\/plans\/x-E1\/reviews\.md/);
+  assert.ok(!/docs\/superpowers/.test(readFileSync(new URL('./roadmap-release.js', import.meta.url), 'utf8')));
+});
+
+test('a finish-merge resume of a previous-version deliverable reports review log not read', async () => {
+  const { r, calls } = await exec({ cards: [unfinished()], deliverables: ['E1'], over: (l) => (l === 'E1:resume-review-log' ? { found: false, acceptedRisks: [], humanInputs: [] } : undefined) });
+  const p = calls.find((c) => c.label === 'E1:resume-review-log').prompt;
+  assert.ok(p.includes('docs/plans/x-E1/'));
+  assert.ok(!/docs\/superpowers/.test(p));
+  assert.ok(r.results[0].concerns.some((c) => /review log not read/.test(c)));
+});
+
+test('the fixed rules ask for simple commands', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:t1:impl').prompt;
+  assert.match(p, /One simple command per call/i);
+  assert.match(p, /no heredoc, no loop, no chaining with '&&' or ';'/);
+  assert.match(p, /Write tool/);
+  assert.match(p, /git commit -F/);
+  assert.ok(!/never an unquoted shell heredoc/.test(p));
+});
+
+// ---- E8 T8: dependents held by a pending contract decision
+const chain = () => [card('E1'), card('E2', { deps: ['E1'] }), card('E3')];
+const contractSpec = (E = 'E1') => specWith({ rulings: [ruling({ id: 'R1', decision: 'Hold contract wording ' + E + ' alpha.', scope: 'contract' })] }, E);
+const runsOf = (r) => Object.fromEntries(r.results.map((x) => [x.id, x]));
+test('AC8: a contract ruling holds a selected dependent citing the decision and an independent deliverable runs', async () => {
+  const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E3.merged, true);
+  assert.equal(m.E2.merged, false);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+  assert.ok(labels.includes('E3:merge'));
+  assert.ok(labels.includes('E1:merge'));
+});
+
+test('AC8 fail safe: a failed executing record of a contract ruling still holds the dependent', async () => {
+  const over = (l) => (/^E1:/.test(l) ? (l === 'E1:status-d' ? { error: 'boom', runs: [] } : contractSpec('E1')(l)) : undefined);
+  const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over });
+  const m = runsOf(r);
+  assert.equal(m.E2.merged, false);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, 'held by unconfirmed contract ruling of E1 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+  assert.equal(m.E3.merged, true);
+});
+
+test('a transitive dependent is held citing the origin decision', async () => {
+  const cards = [card('E1'), card('E2', { deps: ['E1'] }), card('E3', { deps: ['E2'] })];
+  const { r, labels } = await exec({ cards, deliverables: ['E1', 'E2', 'E3'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.equal(m.E3.error, 'held by DEC-900 (E1, contract, pending ratification)');
+  assert.ok(!labels.some((l) => /^E[23]:/.test(l)));
+});
+
+// A contract ruling recorded by a plan-only run comes back from add-decision as existing: true when the full run records it again.
+async function rerecorded({ ratify }) {
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  const over = (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined);
+  const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over });
+  assert.equal(po.r.results[0].planOnly, true);
+  assert.equal(seenDecisions.size, 1);
+  const id = [...seenDecisions.values()][0];
+  if (ratify) ratifiedDecisions.add(id);
+  const full = await exec({ cards: [card('E1'), card('E2', { deps: ['E1'] })], deliverables: ['E1', 'E2'], over });
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  return { id, m: runsOf(full.r), labels: full.labels };
+}
+test('a re-recorded contract decision the owner already ratified holds no dependent (existing: true, not pending)', async () => {
+  const { m, labels } = await rerecorded({ ratify: true });
+  assert.equal(m.E1.merged, true);
+  assert.notEqual(m.E2.skipped, true, m.E2.error);
+  assert.equal(m.E2.merged, true);
+  assert.ok(labels.includes('E2:merge'));
+});
+test('a re-recorded contract decision still pending ratification holds the dependent (existing: true, pending)', async () => {
+  const { id, m, labels } = await rerecorded({ ratify: false });
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.skipped, true);
+  assert.equal(m.E2.error, `held by ${id} (E1, contract, pending ratification)`);
+  assert.ok(!labels.some((l) => /^E2:/.test(l)));
+});
+test('a newly written contract decision (existing: false) holds the dependent', async () => {
+  seenDecisions.clear();
+  ratifiedDecisions.clear();
+  const { r } = await exec({ cards: chain(), deliverables: ['E1', 'E2'], over: (l) => (/^E1:/.test(l) ? contractSpec('E1')(l) : undefined) });
+  seenDecisions.clear();
+  const m = runsOf(r);
+  assert.equal(m.E1.merged, true);
+  assert.equal(m.E2.error, 'held by DEC-900 (E1, contract, pending ratification)');
+});
+
+test('a pending contract decision read in discovery holds unstarted dependents and not its owner', async () => {
+  const pend = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }] } });
+  const reason = 'held by DEC-7 (E1, contract, pending ratification)';
+  const live = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], discOver: { pendingDecisionsStdout: pend } });
+  assert.equal(runsOf(live.r).E1.merged, true);
+  assert.equal(runsOf(live.r).E2.error, reason);
+  assert.ok(!live.labels.some((l) => /^E2:/.test(l)));
+  const po = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'plan-only' }, discOver: { pendingDecisionsStdout: pend } });
+  assert.equal(runsOf(po.r).E1.planOnly, true);
+  assert.equal(runsOf(po.r).E2.error, reason);
+  assert.ok(!po.labels.some((l) => /^E2:/.test(l)));
+  const dry = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: pend } });
+  assert.ok(!dry.labels.some((l) => /^E\d:/.test(l)));
+  assert.deepEqual(dry.r.selection.held, [{ id: 'E2', reason }]);
+  const started = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: ['E2'] }] } });
+  const st = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: started } });
+  assert.deepEqual(st.r.selection.held, []);
+});
+
+test('discovery requires pendingDecisionsStdout', async () => {
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.ok(calls.find((c) => c.label === 'discovery').opts.schema.required.includes('pendingDecisionsStdout'));
+  const bad = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: 'not json' } });
+  assert.equal(bad.r.status, 'error');
+  assert.match(bad.r.error, /pendingDecisionsStdout/);
+  const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: '' } });
+  assert.match(missing.r.error, /pendingDecisionsStdout/);
+  assert.equal(r.results[0].merged, true);
+});
+
+test('docs-measure schema has no status field', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const s = calls.find((c) => c.label === 'E1:docs-measure1').opts.schema;
+  assert.equal('status' in s.properties, false);
+  assert.equal('brief' in s.properties, false);
+  assert.deepEqual(s.required, ['statusStdout', 'briefStdout', 'clean']);
+  const p = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
+  assert.match(p, /statusStdout = /);
+  assert.match(p, /briefStdout = /);
+});
+
+test('a docs-measure answer with statusStdout passes without the missing-panel alarm', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(r.results[0].merge.docsOk, true);
+  assert.ok(!JSON.stringify(r).includes('reread status --json is missing or has no panel'));
 });

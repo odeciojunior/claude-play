@@ -7,6 +7,7 @@ What to do with the actions a `roadmap-release` run returns.
 - Action kinds
 - Authorizing external effects
 - Resuming a run
+- Without the interface (claude -p)
 - Integrity alerts
 - Releasing parallelism on a generated config
 - Known limits
@@ -31,6 +32,9 @@ Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `
 | `integration` | The integration worktree is dirty or compromised. | Follow `doNow` (clean it, or reset it to the pre-merge SHA), then run again. |
 | `divergence` | The git truth disagrees with what agents claimed. | Check `git log` and `git status` of the target by hand. |
 | `authorize-external` | An item is held because it has an external effect (production, deploy, push, message, shared data, reset or rollback in the person's checkout). `item` is `E18:T4@<fingerprint>`, `E18:AC1@<fingerprint>`, `gate:<id>` or `checkout:<target>`. | Ask the person once (see Authorizing external effects). On a yes, run its `resumeWith`; nothing runs the item without that answer. |
+| `previous-version` | The branch already holds task commits made by the previous version of the release and has no native spec. Nothing was written. | Finish the deliverable on the previous version, or discard the branch and worktree as `doNow` shows and run again. |
+| `approve-ruling` | The spec holds a ruling that is costly if wrong and irreversible, so the plan was not written. | Read it in the spec. To accept, `approveRulings` (`{ "E8": ["R2:<key>"] }`) is typed by the person in their own message; it is outside `resumeWith` and never in the resume args, and a changed decision asks again. To refuse, answer in `notes`. |
+| `plan-frozen-tasks` | The owner instruction rewrote tasks already committed on the branch; the plan file was restored. No task ran. | Reword `notes` to touch only uncommitted tasks, or revert those task commits, then run again. |
 | `report` | The report agent returned nothing. | Rebuild the report from the result. |
 
 The internal failure class (`infra`, `conteudo`, `decisao`, `humano`, `externo`) shows up only in `results[].failKind` and in the "blocked" status the run records for a stopped deliverable (not for `externo`); `conteudo` becomes the `defect` action, `decisao` the `decision` action and `externo` (an item waiting for authorization) the `authorize-external` action.
@@ -53,6 +57,14 @@ The result carries `resumeArgs`, the args to pass back. Run the Workflow again w
 - `deliverables` narrows to the ones still open, and keeps a merge that failed validation. A merge already on the target without its post-merge status is finished as validate-and-document, not redone.
 - `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected. Never put a secret (credential, token, key) in `notes`: set an environment variable and name it in `notes`. The workflow does not copy `notes` into the roadmap record, the docs stage, the review log or the committed report, but the spec and plan agents merge the answer into the committed spec and plan, so anything in `notes` can end up in the repository. It tells every agent that receives it not to write or quote a secret.
 - `overrideDonot`, `acceptRisks` and `acceptRedBaseline` are decisions of the person. Add them only when the person asked for them.
+
+## Without the interface (claude -p)
+
+The default permission mode is the supported one; `bypassPermissions` is not the default and is never needed. Without an approval dialog, grant the launch by a rule in `.claude/settings.local.json` (`permissions.allow`: `Workflow(productivity-tools:release-workflow)`, shown by the preflight warning; the person adds it, never the skill) or on the command line:
+
+`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<request>" --allowedTools "Bash(git:*)" "Bash(node:*)"`
+
+`Bash(git:*)` and `Bash(node:*)` stay required. The variable keeps `-p` from ending while the workflow runs. The preflight cannot see how permissions are granted: pass `--declare-permissions "<how, in your words>"` to it, and it echoes the text in `permissionsDeclared`. The scriptPath fallback does not pass the approval dialog above 213.337 characters (value in `state.md`; "not measured" when unmeasured), so the supported path is the name.
 
 ## Integrity alerts
 
