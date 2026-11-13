@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E10 | E10 passou para executando | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` |
+| 2026-11-13 | E10 | BLQ-14 resolvido: desbloqueio de E10 pelo release | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` |
 | 2026-11-13 | E10 | r1 parou na spec após 2 correções (R15 com lista incompleta de asserções de flow.test.mjs); US$ 9,85. Fable: corte de escopo (sem verify-run read nem etapa docs), R15 como inventário por grep na 1ª tarefa, testes ficam no arquivo; retomar com notes. | `docs/reports/2026-11-13-E10-run.md` |
 | 2026-11-13 | E10 | BLQ-14 aberto: E10 bloqueado: automatic execution stopped (conteudo): spec has open issues after 2 fixes: 1. [important/defeito] docs/plans/evolucao-skills-E10/spec.md [I6] [I6] R15 fixes the assertions listed in round 1 [...] texto completo em docs/plans/evolucao-skills-E10/reviews.md | `branch feat/E10` |
 | 2026-11-13 | E24 | Estratégia v1.8 (dono via Fable): card E24 nomeia preflight.test.mjs e flow.test.mjs; DEC-556 e DEC-563 substituídas por DEC-647; commits de run.json de feat/E24 (a431419, 3a449f4, 64b8761) conferidos, sem revisão pulada. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
