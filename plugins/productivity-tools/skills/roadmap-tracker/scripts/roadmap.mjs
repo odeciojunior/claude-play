@@ -48,7 +48,7 @@ const HELP = `roadmap: deterministic events for the roadmap tracker
 Usage: node roadmap.mjs <command> <folder> [arguments] [--json]
 
 Read commands (write nothing):
-  status                      strategy version, state header, panel, blockers, now, pending, in flight
+  status [--deliverable E<n>] strategy version, state header, panel, blockers, now, pending, in flight (with the flag: strategy, header and that panel row only)
   brief                       cold-start summary of the folder
   next-id <DEC|BLQ|REQ|SRC|E> next unused identifier of that kind
   pending-decisions           executor decisions still pending, with scope and dependents
@@ -689,6 +689,14 @@ const COMMANDS = {
   status(ctx) {
     const { roadmap, parsed } = ctx;
     const b = parsed.blocks.state;
+    const only = ctx.opts.deliverable;
+    if (only !== undefined) {
+      if (!/^E\d+$/.test(only)) throw usage(`--deliverable must be E<n>, got "${only}"`);
+      const row = readPanel(roadmap, parsed).find((p) => p.id === only);
+      if (!row) throw new Refusal('deliverable-unknown', `${only} is not in the panel`);
+      ctx.result = { strategy: strategyVersion(parsed), stateHeader: stateHeader(roadmap), panel: [row] };
+      return;
+    }
     ctx.result = {
       strategy: strategyVersion(parsed),
       stateHeader: stateHeader(roadmap),

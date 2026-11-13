@@ -218,6 +218,54 @@ test('status lê o painel da fixture sem gravar', (t) => {
   assert.deepEqual(snapshot(f.dir), before);
 });
 
+test('status --deliverable E1 devolve só strategy, stateHeader e a linha do painel, sem gravar', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  const full = cli(f.dir, 'status');
+  const one = cli(f.dir, 'status', '--deliverable', 'E1');
+  assert.equal(one.exitCode, 0);
+  assert.deepEqual(Object.keys(one.output.result).sort(), ['panel', 'stateHeader', 'strategy']);
+  assert.equal(one.output.result.panel.length, 1);
+  assert.deepEqual(one.output.result.panel[0], full.output.result.panel.find((p) => p.id === 'E1'));
+  assert.deepEqual(one.output.changed, []);
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('status --deliverable de id fora do painel: deliverable-unknown, exit 1', (t) => {
+  const f = makeFolder(t);
+  const before = snapshot(f.dir);
+  const r = cli(f.dir, 'status', '--deliverable', 'E99');
+  assert.equal(r.exitCode, 1);
+  assert.equal(r.output.errors[0].code, 'deliverable-unknown');
+  assert.deepEqual(snapshot(f.dir), before);
+});
+
+test('status --deliverable malformado sai 2 (usage)', (t) => {
+  const f = makeFolder(t);
+  for (const bad of ['-', 'X1']) {
+    const r = cli(f.dir, 'status', '--deliverable', bad);
+    assert.equal(r.exitCode, 2, bad);
+    assert.equal(r.output.errors[0].code, 'usage', bad);
+  }
+});
+
+test('regressão: status completo passa de 30000 bytes e com --deliverable fica abaixo de 2000', (t) => {
+  const f = makeFolder(t, {
+    mutate: {
+      'state.md': (text) => text.replace(
+        '- (owner) Confirm the storage choice.\n',
+        '- (owner) Confirm the storage choice.\n' + Array.from({ length: 90 }, (_, i) => `- (owner) item ${i} ${'x'.repeat(330)}`).join('\n') + '\n',
+      ),
+    },
+  });
+  const full = spawnCli('status', f.dir, '--json');
+  assert.equal(full.status, 0, full.stderr);
+  assert.ok(Buffer.byteLength(full.stdout) > 30000, `full ${Buffer.byteLength(full.stdout)}`);
+  const one = spawnCli('status', f.dir, '--deliverable', 'E1', '--json');
+  assert.equal(one.status, 0, one.stderr);
+  assert.ok(Buffer.byteLength(one.stdout) < 2000, `one ${Buffer.byteLength(one.stdout)}`);
+});
+
 function maxIn(dir, strategy, re) {
   let max = 0;
   const files = Object.keys(snapshot(dir)).map((n) => path.join(dir, n));
