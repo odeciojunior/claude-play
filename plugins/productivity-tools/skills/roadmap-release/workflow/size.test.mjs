@@ -2,12 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// Valor provisório: tamanho de roadmap-release.js na ponta de feat/E8 (238036 caracteres em T13),
-// arredondado para cima ao múltiplo de 10.000. A medida é a do conteúdo commitado (LF): com
-// core.autocrlf=true a cópia de trabalho ganha um \r por linha, que não conta. A concessão de
-// lançamento pelo nome ainda não foi medida; crescimento acima deste teto pede nova medição ou
-// decisão, não aumento silencioso.
-export const MAX_WORKFLOW_CHARS = 240000;
+// Teto de 250.000 caracteres LF (DEC-641). A medida é a do conteúdo commitado (LF): com
+// core.autocrlf=true a cópia de trabalho ganha um \r por linha, que não conta. O lançamento pelo
+// nome foi medido em docs/reports/2026-11-13-E8-limite-lancamento-workflow.md: o limite é de
+// 524.288 bytes do arquivo (acima disso o workflow some e a chamada responde "not found"); mesmo
+// em CRLF, 250.000 caracteres ficam perto de 253 mil bytes. Crescimento acima deste teto pede
+// nova decisão, não aumento silencioso.
+export const MAX_WORKFLOW_CHARS = 250000;
 
 const WF = new URL('./roadmap-release.js', import.meta.url);
 
