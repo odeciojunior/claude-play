@@ -137,6 +137,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Achados menores do comportamental de E23 (fora do portão): sync lê "run after the merge" como argumento run do key; key imprime o prep inteiro em recorded e haiku o corrompe (tirar o prep); setup instala no diretório corrente e não no worktree; progresso sem a regra de comando simples.
 - (executor) Revisão de 76676df (menor): parada própria preflight:recorded-invalid para registro recusado, com saída para ignorar o registro; recorded só com espaços conta como presente (usar trim). Custa caracteres: E10.
 - (dono) Corrigir o card E24 por revisão da estratégia para nomear também plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs entre os arquivos de teste (validação de finalReview).
+- (dono) Depois do merge de E24: revisão da estratégia para o card E24 nomear plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs; ratificar DEC-626 a DEC-636 e as desta retomada num só registro, DEC-632 com emenda e os tamanhos medidos, tratando as repetições como em E8.
+- (executor) E10, 1ª tarefa que edita o script: TEST_INTEGRITY_DEFAULT (1.506 caracteres) vira script do plugin e resume-test-integrity despacha o agente test-integrity. E24 deve fechar perto de 239.904 (folga 96); E28 só começa com 450.
 <!-- /roadmap:pending -->
 
 ## Em andamento

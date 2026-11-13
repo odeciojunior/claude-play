@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E24 | r1 parou em defeito (T4: 239.950 contra limite 239.800; T1 a T3 ficam em a636183). US$ 11,39. Fable: T4 até 239.930 (referência 239.904, folga 96), guardas de veredicto único e reason não branco, prompt sem Diff com formato em final-reviewer.md; sem adiar nem mover para script. | `docs/reports/2026-11-13-E24-run.md` |
 | 2026-11-13 | E24 | BLQ-13 aberto: E24 bloqueado: automatic execution stopped (conteudo): task 4 BLOCKED: T4 (verificação adversarial) não coube no limite de 239800 caracteres de roadmap-release.js, então nada foi commitado. O déficit medido é [...] texto completo em docs/plans/evolucao-skills-E24/reviews.md | `branch feat/E24` |
 | 2026-11-13 | E24 | E24 passou para executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |
 | 2026-11-13 | E23 | Comportamental de E23 (DEC-204, DEC-625): P1 a P4 aprovados; P5 fase 2 inseguro (preflight caía na cópia do agente). Correção fix/pos-E23 (76676df, c7b4d01), revisão opus/high aprovou, fase 2 reexecutada aprovada; mesclado em 8d1f08f. US$ 0,79 + 0,15. E24 liberado. | `docs/reports/2026-11-13-E23-retomada-comportamental.md` |
