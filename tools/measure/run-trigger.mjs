@@ -45,11 +45,14 @@ export function parseTranscript(text) {
       break;
     }
   }
-  return { skill, superpowers, plugins, init: Boolean(init) };
+  const res = evs.filter((e) => e.type === 'result').pop();
+  return { skill, superpowers, plugins, init: Boolean(init), result: res?.subtype ?? null };
 }
 
+// claude -p sai com 1 ao bater --max-turns, o fim normal de um caso que chamou a skill.
 export function scoreCase(c, parsed, run = {}) {
-  const failed = (run.code !== undefined && run.code !== 0) || run.error !== undefined || parsed.init === false;
+  const badExit = run.code !== undefined && run.code !== 0 && parsed.result !== 'error_max_turns';
+  const failed = badExit || run.error !== undefined || parsed.init === false;
   if (failed) {
     return { id: c.id, category: c.category, lang: c.lang, expect: c.expect, got: 'ERROR', hit: false, error: true, superpowers: parsed.superpowers };
   }
