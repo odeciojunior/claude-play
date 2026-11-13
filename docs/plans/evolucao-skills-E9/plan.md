@@ -16,6 +16,10 @@
 
 Toda tarefa que edita `roadmap-release.js` roda `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` depois da edição. Se falhar (mais de 240.000 caracteres LF), a tarefa para com `BLOCKED`, diz quantos caracteres passou e pede ação do dono; nunca edita `size.test.mjs` nem `MAX_WORKFLOW_CHARS` (DEC-556, DEC-563, nota do dono). A ordem T2 -> T3 -> T4 põe o acréscimo antes da remoção; se T2 ou T3 sozinhas passarem do teto, a tarefa pode já remover, no mesmo commit, as frases que a spec manda tirar da chamada que ela toca (por exemplo a frase de TDD de `buildImplPrompt`), desde que o texto equivalente já esteja em `agents/implementer.md` (T1) e os testes da tarefa passem; o resto da remoção fica em T4.
 
+## Correção após a revisão final (d1f4fbf)
+
+A revisão final reprovou a mensagem de recuperação da falha de teste primeiro (BLQ-9, `reviews.md`): o rebase com `HEAD` deixava a branch com o commit da tarefa, e as marcas de efeito e de espera contavam como tarefa feita. O orquestrador corrigiu em `feat/E9` no commit d1f4fbf (terceira rodada, opus), fora das tarefas deste plano (R11 da spec): a mensagem nomeia `${br}` e, com marcas de efeito ou de espera, manda o operador ao dono em vez de um rebase; testes `AC1: the test-first failure names the start commit to reset to before a rerun` e `AC1: with effect or wait marks the test-first failure asks the owner instead of a rebase` em `review.test.mjs`. G1-G5 passam e o script mede 239.997 caracteres LF (3 de folga). A execução retoma a partir da revisão final; T1-T5 ficam como estão. Qualquer nova correção mantém o script sob 240.000 caracteres LF, sem editar `size.test.mjs` (DEC-556); se não couber, BLOCKED com ação do dono. T6 não edita `roadmap-release.js`. Sem bump de versão, sem push, sem tocar em `main`.
+
 ## Tarefas
 
 ### Tarefa 1: Agente implementer com modos de implementação e correção
@@ -82,7 +86,7 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
 
 | Critério | Tipo | Comando | Teste |
 |---|---|---|---|
-| AC1 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC1: testFirstGap fails a test-first task without red before green` e `AC1: the test-first check runs before the first task reviewer and fails without a reviewer` |
+| AC1 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC1: testFirstGap fails a test-first task without red before green`, `AC1: the test-first check runs before the first task reviewer and fails without a reviewer`, `AC1: the test-first failure names the start commit to reset to before a rerun` e `AC1: with effect or wait marks the test-first failure asks the owner instead of a rebase` |
 | AC2 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC2: testFirstGap passes resumed, unmarked, no-file and blocked tasks` |
 | AC3 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs` | `AC3: implementer and fixer prompts cite no superpowers and forbid asking` |
 
@@ -92,6 +96,7 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
 - R12: o teste de ordem do critério 1 lê o texto do script, sem copiar o arnês de `flow.test.mjs`.
 - R13: a mensagem de `testFirstGap` em inglês, como as demais mensagens de `fail` do script.
 - R14: T6 sem subagent devolve `NEEDS_HUMAN` e não cria relatório.
+- R16: a correção d1f4fbf fica fora das tarefas; T1-T5 não mudam e a execução retoma da revisão final.
 
 ## Bloco de dados
 
@@ -277,7 +282,7 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
       "ac": "AC1",
       "kind": "test",
       "command": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
-      "testRef": "AC1: testFirstGap fails a test-first task without red before green; AC1: the test-first check runs before the first task reviewer and fails without a reviewer",
+      "testRef": "AC1: testFirstGap fails a test-first task without red before green; AC1: the test-first check runs before the first task reviewer and fails without a reviewer; AC1: the test-first failure names the start commit to reset to before a rerun; AC1: with effect or wait marks the test-first failure asks the owner instead of a rebase",
       "external": false,
       "externalDedupe": null,
       "blq": null
@@ -352,6 +357,17 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
       "decision": "A tarefa pode adiantar, no mesmo commit, a remoção das frases da chamada que ela toca cujo equivalente já está no agente; se ainda assim não couber, BLOCKED com ação do dono, sem editar size.test.mjs.",
       "basis": "DEC-556, DEC-563 e a nota do dono fixam o teto; a folga é de 92 caracteres e T2/T3 só acrescentam.",
       "alternative": "Inverter a ordem e remover o texto antes de acrescentar a função.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R16",
+      "question": "Como o plano absorve a correção da mensagem de recuperação feita depois da revisão final?",
+      "decision": "Registrar d1f4fbf como correção do orquestrador fora das tarefas, sem nova tarefa nem mudança em T1-T5 (congeladas); a evidência de AC1 cita os dois testes novos de review.test.mjs; a execução retoma da revisão final; nova correção mantém roadmap-release.js sob 240000 caracteres LF sem editar size.test.mjs.",
+      "basis": "Nota do dono e R11 da spec: correção feita em feat/E9 em d1f4fbf, G1-G5 passam, 239997 caracteres LF; DEC-556 fixa o teto.",
+      "alternative": "Criar uma tarefa nova que refaça a correção.",
       "costIfWrong": "low",
       "reversible": true,
       "scope": "local",
