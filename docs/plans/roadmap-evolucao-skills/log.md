@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E20 | 2ª passada opus da suíte de gatilho (DEC-581): 22/24, 0 erros, 2 inconclusivos (spec-3 pt/en passa a spec-author sem Skill); plan-execution-1 vai a plan-coordinator nas 2 línguas; gatilho de DEC-579/580 não disparou. US$ 7,04. Portão de spec-writer/plan-writer cumprido. | `docs/reports/2026-11-13-E20-suite-gatilho-2.md` |
+| 2026-11-12 | E17 | productivity-tools 1.7.0 publicado pelo dono a partir de feat/E17-medicao (DEC-445): main 3fbb59b -> 73cd476 (árvore do plugin 214fb3b), push feito; G1 1434/0, G2-G5, X1, X2 verdes; cache 1.7.0 com gitCommitSha 73cd476. marketplace-tools não está instalado na config do dono. | `73cd476` |
 | 2026-11-12 | E9 | E9 passou para na-branch | `2d1c5e1ed83190e968ead9977c6f428779721e2b`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `docs/plans/evolucao-skills-E9/reviews.md` |
 | 2026-11-12 | E9 | E9 passou para executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
 | 2026-11-12 | E9 | BLQ-9 resolvido: desbloqueio de E9 pelo release | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
