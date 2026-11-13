@@ -4124,3 +4124,28 @@ test('a docs-measure answer with statusStdout passes without the missing-panel a
   assert.equal(r.results[0].merge.docsOk, true);
   assert.ok(!JSON.stringify(r).includes('reread status --json is missing or has no panel'));
 });
+
+// ---- E21 T4: restricted re-review is off by default ----
+const restrictedRun = (config) => {
+  let n = 0;
+  return exec({ cards: [card('E1')], deliverables: ['E1'], config, over: withPlan([tk(1, false)], (l) => {
+    if (l === 'E1:t1:spec1' && n++ === 0) return { issues: [{ severity: 'critical', category: 'defeito', id: 'F1', file: 'a.js', description: 'x' }], headSha: 'h7', clean: true, commitsInRange: 2 };
+    if (l === 'E1:t1:spec-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    return undefined;
+  }) });
+};
+
+test('AC2: the default configuration rereads the task range, taskReview.restricted adds the fix diff package', async () => {
+  const off = await restrictedRun({});
+  const offPrompt = off.calls.find((c) => c.label === 'E1:t1:spec2').prompt;
+  assert.match(offPrompt, /log -p \S+\.\.HEAD/);
+  assert.doesNotMatch(offPrompt, /review-package\.mjs/);
+  const on = await restrictedRun({ taskReview: { restricted: true } });
+  const onPrompt = on.calls.find((c) => c.label === 'E1:t1:spec2').prompt;
+  assert.match(onPrompt, /Mode: restricted/);
+  assert.match(onPrompt, /review-package\.mjs" "\/wt\/E1" h7 HEAD "\/wt\/_tmp\/E1-t1-spec2\.diff"/);
+  assert.doesNotMatch(onPrompt, /log -p \S+\.\.HEAD/);
+  assert.match(on.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /log -p \S+\.\.HEAD/);
+  const flag = await restrictedRun({ taskReview: { restricted: 'true' } });
+  assert.doesNotMatch(flag.calls.find((c) => c.label === 'E1:t1:spec2').prompt, /review-package\.mjs/);
+});

@@ -542,3 +542,68 @@ test('AC1: only the per-task reviewLoop of runDeliverable passes byId', () => {
     assert.doesNotMatch(body.slice(at, at + 3500).split('reviewLoop(')[1] || '', /byId/);
   }
 });
+
+// ---- E21 T4: restricted re-review, off by default ----
+const rTask = { n: 2, title: 'Parse', tier: 'sonnet' };
+const rImpl = { status: 'DONE', summary: 's', checks: [{ command: 'npm test', output: 'ok', exit: 0 }] };
+const F = (id, description = 'd') => ({ severity: 'critical', category: 'defeito', id, file: 'a.js', description });
+const rCtx = (over = {}) => ({
+  base: 'BASE', envFacts: 'x', baseline: 'y', E: 'E9', wt: '/wt/E9', planPath: 'p.md', specPath: 's.md', start: 'abc123', locks: [], round: 2,
+  prev: P2.fmt([F('F1', 'null deref')]), was: { iss: [F('F1', 'null deref')], head: 'h1' }, pluginRoot: '/plug', diffPath: '/wt/_tmp/E9-t2-spec2.diff', ...over,
+});
+
+test('AC2: by default a re-review rereads the whole task range', () => {
+  for (const taskReview of [undefined, { restricted: false }, { restricted: 'yes' }]) {
+    const p = P2.buildTaskReviewPrompt(rCtx({ taskReview }), rTask, 'spec', rImpl);
+    assert.match(p, /log -p abc123\.\.HEAD/);
+    assert.match(p, /\[F1\] null deref/);
+    assert.doesNotMatch(p, /review-package\.mjs/);
+    assert.doesNotMatch(p, /Mode: restricted/);
+  }
+});
+
+test('AC2: the restricted re-review gets only the open findings and the fix diff', () => {
+  const p = P2.buildTaskReviewPrompt(rCtx({ taskReview: { restricted: true } }), rTask, 'spec', rImpl);
+  assert.match(p, /Mode: restricted/);
+  assert.match(p, /\[F1\] null deref/);
+  assert.ok(p.includes('node "/plug/scripts/review-package.mjs" "/wt/E9" h1 HEAD "/wt/_tmp/E9-t2-spec2.diff"'));
+  assert.doesNotMatch(p, /log -p abc123\.\.HEAD/);
+  const noId = P2.buildTaskReviewPrompt(rCtx({ taskReview: { restricted: true }, was: { iss: [F('F1'), { severity: 'critical', category: 'defeito', description: 'no id' }], head: 'h1' } }), rTask, 'spec', rImpl);
+  assert.match(noId, /log -p abc123\.\.HEAD/);
+  assert.doesNotMatch(noId, /review-package\.mjs/);
+  const first = P2.buildTaskReviewPrompt(rCtx({ taskReview: { restricted: true }, prev: null, was: undefined }), rTask, 'spec', rImpl);
+  assert.match(first, /log -p abc123\.\.HEAD/);
+  assert.ok(!P2.restrictedRound(rCtx({ taskReview: { restricted: true }, was: { iss: [], head: 'h1' } })));
+});
+
+test('AC2: taskIssues keeps open and missing verdicts and drops closed ones', () => {
+  const on = (...prev) => rCtx({ taskReview: { restricted: true }, was: { iss: prev, head: 'h1' } });
+  const prev = [F('F1'), F('F2'), F('F3')];
+  const r = { issues: [F('F4', 'new')], verdicts: [{ id: 'F1', open: true }, { id: 'F2', open: false }] };
+  assert.deepEqual(P2.taskIssues(r, on(...prev)).map(i => i.id), ['F4', 'F1', 'F3']);
+  const again = { issues: [F('F1', 'reworded')], verdicts: [{ id: 'F1', open: true }] };
+  assert.deepEqual(P2.taskIssues(again, on(F('F1'))).map(i => i.description), ['reworded']);
+  assert.deepEqual(P2.taskIssues({ issues: [] }, on(F('F1'))).map(i => i.id), ['F1']);
+  assert.equal(P2.taskIssues(r, rCtx({ taskReview: { restricted: false } })), r.issues);
+  assert.equal(P2.taskIssues(r, rCtx({ taskReview: { restricted: true }, was: { iss: [F('F1'), { severity: 'critical', description: 'no id' }], head: 'h1' } })), r.issues);
+});
+
+test('AC2: the per-task loop turns the restricted mode on only when taskReview.restricted is true', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
+  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
+  assert.match(at, /taskReview: CFG\.taskReview/);
+  assert.match(at, /taskIssues\(r, /);
+  assert.match(SRC, /taskReview\.restricted === true/);
+  assert.doesNotMatch(SRC, /taskReview\.restricted\)/);
+});
+
+test('AC2: runReviewLoop hands the next review the previous findings and the measured head', async () => {
+  const seen = [];
+  let n = 0;
+  const env = { maxFix: 2, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+  await P2.runReviewLoop(env, 'T1:spec', async (round, prev, rm, was) => { seen.push(was); return { issues: n++ === 0 ? [F('F1')] : [], headSha: 'h' + n, clean: true, commitsInRange: 1 }; },
+    async () => ({ status: 'DONE' }), r => r.issues, { tier: 'sonnet', byId: true });
+  assert.equal(seen[0], undefined);
+  assert.deepEqual(seen[1], { iss: [F('F1')], head: 'h1' });
+});

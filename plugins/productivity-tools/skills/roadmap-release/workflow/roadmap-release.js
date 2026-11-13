@@ -370,6 +370,17 @@ function blocking(r) {
 function fmt(iss) {
   return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.id ? `[${i.id}] ` : ''}${i.description}`).join('\n')
 }
+// Restricted re-review: after a fix, every open finding has an id.
+function restrictedRound(c) {
+  const p = c.was && c.was.iss
+  return c.taskReview && c.taskReview.restricted === true && p && p.length && p.every(i => i.id)
+}
+// Restricted: new findings plus open ones no verdict closed.
+function taskIssues(r, c) {
+  if (!restrictedRound(c)) return r.issues
+  const now = r.issues || [], shut = (r.verdicts || []).filter(v => !v.open).map(v => v.id)
+  return [...now, ...c.was.iss.filter(p => !shut.includes(p.id) && !now.some(i => i.id === p.id))]
+}
 function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
 }
@@ -508,7 +519,7 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
     if (opt.haltOn && opt.haltOn(fx)) { record(r, iss); return { ok: false, halted: fx } }
     const fixTier = tier
     const reviewer = maxModel(rm, fixTier)  // a fix escalated to opus is re-reviewed at opus at least
-    r = await review(k + 1, fmt(iss), reviewer)
+    r = await review(k + 1, fmt(iss), reviewer, { iss: fixable, head: r.headSha })
     note(k + 1, fixTier, reviewer)
     if (!r) { record(r, iss); return { ok: false, kind: 'infra', msg: `${stage}: null re-review` } }
     iss = truth(r)
@@ -571,8 +582,8 @@ function fmtChecks(checks) {
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
   return `${briefing(ctx)}
 
-Mode: ${kind === 'spec' ? 'spec (SPEC COMPLIANCE)' : 'quality (CODE QUALITY)'}. Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
-Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.${ctx.rangeNote || ''}
+Mode: ${restrictedRound(ctx) ? 'restricted, ' : ''}${kind}. Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
+Range: ${restrictedRound(ctx) ? `node "${ctx.pluginRoot}/scripts/review-package.mjs" "${ctx.wt}" ${ctx.was.head} HEAD "${ctx.diffPath}"` : `git -C "${ctx.wt}" log -p ${ctx.start}..HEAD`}.${ctx.rangeNote || ''}
 Implementer summary: ${(impl && impl.summary) || '(none)'}
 IMPLEMENTER'S CHECKS:
 ${fmtChecks(impl && impl.checks)}${ctx.prev ? `
@@ -1377,7 +1388,8 @@ const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: S
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
-const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: { type: 'string', enum: ['pass', 'fail'] }, quality: { type: 'string', enum: ['pass', 'fail'] } } }
+const PF = { type: 'string', enum: ['pass', 'fail'] }
+const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: PF, quality: PF } }
 const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR }, required: [...S_REVIEW.required, 'measuredPlanBlob'] }
 const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, required: ['head'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
@@ -2486,8 +2498,9 @@ ${NO_ASK}`,
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {
+      let cx = null
       const loop = await reviewLoop(`T${t.n}:${kind}`,
-        (round, prev, rvModel) => revAgent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev, rangeNote }), t, kind, cur),
+        (round, prev, rvModel, was) => revAgent(buildTaskReviewPrompt(cx = ctxFor({ locks, start, round, prev, rangeNote, taskReview: CFG.taskReview, pluginRoot, was, diffPath: `${WT}/_tmp/${E}-t${t.n}-${kind}${round}.diff` }), t, kind, cur),
           { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', model: rvModel || reviewModelFor(t), effort: effortFor(rvModel || reviewModelFor(t)) }),
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await implAgent(`${C()}
@@ -2497,7 +2510,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
-        r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`, impl.status === 'NEEDS_HUMAN' ? 0 : completionInRange + startedInRange),
+        r => reviewTruth({ ...r, issues: taskIssues(r, cx) }, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`, impl.status === 'NEEDS_HUMAN' ? 0 : completionInRange + startedInRange),
         { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN', byId: true })
       if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)

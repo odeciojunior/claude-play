@@ -216,6 +216,13 @@ test('AC5: task review prompts cite no superpowers and forbid asking', () => {
     assert.ok(p.startsWith(ctx.base), `${kind} prompt opens with the briefing`);
     assert.doesNotMatch(p, /superpowers/i);
   }
+  const restricted = { ...ctx, taskReview: { restricted: true }, was: { iss: [{ severity: 'critical', category: 'defeito', id: 'F1', file: 'a.js', description: 'bug' }], head: 'h1' }, pluginRoot: '/plug', diffPath: '/wt/_tmp/x.diff' };
+  for (const c of [restricted, { ...restricted, taskReview: undefined }]) {
+    const p = P.buildTaskReviewPrompt(c, task, 'spec', impl);
+    assert.ok(p.startsWith(ctx.base), 'restricted prompt opens with the briefing');
+    assert.doesNotMatch(p, /superpowers/i);
+    assert.equal(/Mode: restricted/.test(p), !!c.taskReview);
+  }
 });
 
 test('effortFor: haiku low, sonnet and opus medium', () => {
