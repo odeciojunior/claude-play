@@ -37,7 +37,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E23 | executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` | E23: seguir o fluxo do release após executando |
+| E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
@@ -131,6 +131,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) Depois do merge de E23: ratificar DEC-609 a DEC-618 contra o código integrado (DEC-615 sai emendada pelos limites em escada) e revisão da estratégia v1.7 para o card E23 nomear plugins/productivity-tools/scripts/run-record.test.mjs.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -138,5 +139,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E23 | viva | E23 em execução pelo release |
 <!-- /roadmap:inflight -->

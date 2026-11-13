@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E23 | E23 passou para na-branch | `9f62a7e1b51fbae5ea883723346ed44a6e3bd365`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `docs/plans/evolucao-skills-E23/reviews.md` |
 | 2026-11-13 | E23 | E23 passou para executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
 | 2026-11-13 | E23 | BLQ-12 resolvido: desbloqueio de E23 pelo release | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
 | 2026-11-13 | E9 | implementer.md: regra de chamada simples também na seção Report, nos dois modos (1563d17, DEC-620); revisão opus/high aprovou; comportamental B4 aprovado (US$ 0,38), tabela de veredito do relatório de E9 corrigida (c0e6440); mesclado em 74746f6. | `docs/reports/2026-11-12-E9-implementador-comportamental.md` |
