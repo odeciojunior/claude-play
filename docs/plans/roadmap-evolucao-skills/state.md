@@ -37,7 +37,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E23 | executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` | E23: seguir o fluxo do release após executando |
+| E23 | bloqueado (BLQ-12) | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` | E23: seguir o fluxo do release após executando |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
@@ -50,6 +50,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
+| BLQ-12 | E23 bloqueado: automatic execution stopped (conteudo): task 3: test-first without a failing check then the same check passing (4 checks). A rerun takes the task as done and skips this check: first drop its [...] texto completo em docs/plans/evolucao-skills-E23/reviews.md | E23 | 2026-11-13 | quando o bloqueio de E23 for resolvido; restaura E23 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
