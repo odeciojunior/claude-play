@@ -51,7 +51,7 @@ Criar `skills/plan-coordinator/workflow/coordinator.js`: `export const meta = { 
 
 ### Tarefa 5: Laço de ondas, despacho em paralelo e commits em série
 
-Teste primeiro: `workflow/flow.test.mjs` (novo) carrega `coordinator.js` como o `flow.test.mjs` do release (`export const meta` trocado por `const meta`, `AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budget', SRC)`) e cria a fixture `workflow/fixtures/two-waves/plan.md` (`plan/1` sintético, com a linha `SYNTHETIC FIXTURE` no topo da prosa; T1 e T2 na onda 1; T3 dependente de T1, `external: true`, na onda 2; T4 na onda 2 com `noCommit: true` e `files` vazio; passa no `plan-tool check`). Cada caso copia a fixture para um repositório git em `os.tmpdir()`, roda o `progress.mjs init --commits per-step` real e usa um agente simulado que executa de verdade os comandos de `progress.mjs` e de `git` pedidos ao `script-runner`, faz o implementador escrever os arquivos do passo sem commitar e aprova as revisões. Casos (testRef do AC1 e do AC5):
+Teste primeiro: `workflow/flow.test.mjs` (novo) carrega `coordinator.js` como o `flow.test.mjs` do release (`export const meta` trocado por `const meta`, `AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budget', SRC)`) e cria a fixture `workflow/fixtures/two-waves/plan.md` (`plan/1` sintético, com a linha `SYNTHETIC FIXTURE` no topo da prosa; T1 e T2 na onda 1; T3 dependente de T1, comum (`external: false`), na onda 2; a tarefa externa fica só na fixture da T6, para a T5 não depender de `prelaunch-review` nem de `authorize`; T4 na onda 2 com `noCommit: true` e `files` vazio; passa no `plan-tool check`). Cada caso copia a fixture para um repositório git em `os.tmpdir()`, roda o `progress.mjs init --commits per-step` real e usa um agente simulado que executa de verdade os comandos de `progress.mjs` e de `git` pedidos ao `script-runner`, faz o implementador escrever os arquivos do passo sem commitar e aprova as revisões. Casos (testRef do AC1 e do AC5):
 
 - `AC1: a wave is dispatched in one parallel call and a step waits for its dependency`: T1 e T2 na mesma chamada de `parallel()`; T3 só depois do `report` `pass` de T1 gravado.
 - `AC1: a failed T1 keeps T3 undispatched`.
@@ -64,7 +64,7 @@ Rodar `node --test plugins/productivity-tools/skills/plan-coordinator/workflow/f
 
 ### Tarefa 6: Autorização presa ao resumo e retomada sem repetir efeito
 
-Teste primeiro em `workflow/flow.test.mjs`, com um diário de chamadas como o `makeJournal` do release:
+Teste primeiro em `workflow/flow.test.mjs`, com um diário de chamadas como o `makeJournal` do release. Criar a fixture `workflow/fixtures/external-step/plan.md`: cópia da `two-waves` (com `SYNTHETIC FIXTURE`) em que T3 tem `external: true` (T3 e T4 na onda 2); os casos de AC2 e o primeiro de AC3 usam essa fixture e o segundo de AC3 usa a `two-waves`.
 
 - `AC2: an external step stops before its implementer and returns the item to authorize`: sem `authorizeExternal`, a saída é `{ status: 'stopped', stop: { kind: 'authorize', items: [{ item: 'plan:T3@<plan.digest>', step: 3, title }] }, resumeArgs }`, o `prelaunch-review` de T3 rodou e o implementador de T3 nunca foi chamado; com o item certo, T3 é lançado uma vez; `resumeArgs` não traz `authorizeExternal`, `answers` nem `runToken`.
 - `AC2: an authorization bound to another plan digest does not count`: com `plan:T3@<resumo de outro plano>`, para igual e T3 não é despachado (C2).
@@ -268,7 +268,7 @@ Tarefa do orquestrador da sessão principal no worktree de E12, antes do merge (
       "title": "Autorização presa ao resumo e retomada sem repetir efeito",
       "deps": [5],
       "files": {
-        "create": [],
+        "create": ["plugins/productivity-tools/skills/plan-coordinator/workflow/fixtures/external-step/plan.md"],
         "modify": ["plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js"],
         "test": ["plugins/productivity-tools/skills/plan-coordinator/workflow/flow.test.mjs"]
       },
