@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E23 | E23 passou para executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
+| 2026-11-13 | E23 | BLQ-12 resolvido: desbloqueio de E23 pelo release | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
 | 2026-11-13 | E9 | implementer.md: regra de chamada simples também na seção Report, nos dois modos (1563d17, DEC-620); revisão opus/high aprovou; comportamental B4 aprovado (US$ 0,38), tabela de veredito do relatório de E9 corrigida (c0e6440); mesclado em 74746f6. | `docs/reports/2026-11-12-E9-implementador-comportamental.md` |
 | 2026-11-13 | E23 | r1 parou em defeito (T3 sem vermelho válido: saída por \| grep). US$ 7,47. Fable decidiu: rebase de T3, correção do implementer.md antes da retomada, limites de workflowChars em escada (T3 238800 a T6 239800). | `docs/reports/2026-11-13-E23-run.md` |
 | 2026-11-13 | E23 | BLQ-12 aberto: E23 bloqueado: automatic execution stopped (conteudo): task 3: test-first without a failing check then the same check passing (4 checks). A rerun takes the task as done and skips this check: first drop its [...] texto completo em docs/plans/evolucao-skills-E23/reviews.md | `branch feat/E23` |
