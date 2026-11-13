@@ -506,3 +506,17 @@ test('AC5: the skill launches coordinator-workflow by name', () => {
     assert.ok(l.includes('--add-dir'), `scriptPath line cites --add-dir: ${l}`);
   }
 });
+
+test('AC3: a kill after git commit and before its commit event resumes by finding the existing commit', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { runner: (rec) => { if (/T1:/.test(rec.cmd) && / commit -m /.test(rec.cmd)) throw new Error('killed after the commit'); return undefined } });
+  await assert.rejects(sim.go(launchArgs(sb)), /killed/);
+  const dead = readState(sb);
+  assert.equal(dead.steps[0].status, 'pass');
+  assert.ok(!dead.steps[0].sha, 'the event was never flushed');
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const end = readState(sb);
+  assert.equal(sh(sb.dir, 'git', ['log', '-1', '--format=%s', end.steps[0].sha]), 'FX T1: ' + end.steps[0].title);
+  assert.equal(sh(sb.dir, 'git', ['log', '--format=%s', '--grep', '^FX T1:']).split('\n').length, 1, 'T1 is committed once');
+}));

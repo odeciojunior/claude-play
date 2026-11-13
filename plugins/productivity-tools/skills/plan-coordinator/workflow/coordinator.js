@@ -20,7 +20,7 @@ export const meta = {
 //   runToken (required): fresh token from `progress.mjs token`, new for each call
 //   progress (required): absolute path of scripts/progress.mjs of the plan-coordinator skill; every read and write of the state goes through it
 //   authorizeExternal: ["plan:T3@<8 hex>"]: external steps the owner authorizes; the digest is part of the item
-//   answers: [{ type: answer|unblock|release|hold|refuse, ... }]: events the person answered, applied before the run
+//   answers: [{ event|type: answer|unblock|release|hold|refuse, step, value, text }]: events the person answered, applied before the run (`event` is the documented key, `type` is accepted)
 //   test: the test command of the wave gate ("none" or absent: no baseline and no wave gate run)
 //
 // RETURN: { status: 'done', run, wave, map, steps, finalGate, open }
@@ -684,7 +684,6 @@ const psHandlers = {
           replacedBy: null,
           note: null,
           outputs: null,
-          brief: 'briefs/T' + n2 + '.md',
         });
         for (const x of state.steps) {
           if (x.n !== n2) x.deps = x.deps.map((d) => (d === s.n ? n2 : d));
@@ -891,12 +890,16 @@ function validateArgs(args) {
     if (!Array.isArray(args.answers)) return fail('args.answers must be a list')
     const allowed = ['answer', 'unblock', 'release', 'hold', 'refuse']
     for (const a of args.answers) {
-      if (!a || typeof a !== 'object' || !allowed.includes(a.type)) return fail(`args.answers accepts only ${allowed.join(', ')}`)
+      if (!a || typeof a !== 'object' || !allowed.includes(answerKind(a))) return fail(`args.answers accepts only ${allowed.join(', ')}`)
     }
   }
   if (args.test !== undefined && args.test !== null && typeof args.test !== 'string') return fail('args.test must be a string')
   return { error: null, authorizeExternal: auth.items }
 }
+
+// An answer names its event with `event` (the documented key) or `type`.
+function answerKind(a) { return a.event !== undefined ? a.event : a.type }
+function normalizeAnswer(a) { const { event, ...rest } = a; return event !== undefined ? { ...rest, type: event } : rest }
 
 function slash(p) { return String(p).replace(/\\/g, '/') }
 
@@ -1050,6 +1053,7 @@ let DISK = null // the state as the last signed read or write left it on disk
 let NOW = null // the instant of the last signed output: the `at` of every event
 let ROOT = null
 const queued = []
+let swept = false
 const again = new Set() // steps that passed again after a fix and were committed before
 const carry = new Map() // findings of the final review to hand to the next run of a step
 const reports = new Map() // last return of each step's implementer
@@ -1226,6 +1230,14 @@ const ensureBaseline = async () => {
 // Per-step commits, one at a time in the order of n, after every return of the wave and its review. Returns { result } to stop or { did }.
 const commitSteps = async () => {
   if (S.run.commits !== 'per-step') return { did: false }
+  if (!swept) { // `again` is lost with a kill: once per run, a committed step whose files changed after a fix goes back to the list
+    swept = true
+    for (const s of S.steps) {
+      if (s.status !== 'pass' || s.noCommit === true || !s.sha || filesOf(s).length === 0) continue
+      const d = await runCmd(`git -C ${shq(ROOT)} status --porcelain -- ${filesOf(s).map(shq).join(' ')}`, `T${s.n}:git-status`, { phase: 'Commit' })
+      if (d && d.exit === 0 && String(d.stdout || '').trim() !== '') again.add(s.n)
+    }
+  }
   const todo = stepsToCommit(S, again)
   if (todo.length === 0) return { did: false }
   phase('Commit')
@@ -1234,12 +1246,23 @@ const commitSteps = async () => {
   for (const s of todo) {
     const paths = filesOf(s).map(shq).join(' ')
     const g = `git -C ${shq(ROOT)}`
-    const add = await runCmd(`${g} add -- ${paths}`, `T${s.n}:git-add`, { phase: 'Commit', writes: true })
-    if (!add || add.exit !== 0) return { result: failWith(`git add failed for step T${s.n}: ${tailOf(add && add.stdout, 400)}`, { step: s.n }) }
-    const com = await runCmd(`${g} commit -m ${shq(commitSubject(S.plan.id, s))} -- ${paths}`, `T${s.n}:git-commit`, { phase: 'Commit', writes: true })
-    if (!com || com.exit !== 0) return { result: failWith(`git commit failed for step T${s.n}: ${tailOf(com && com.stdout, 400)}`, { step: s.n }) }
+    // A clean pathspec means the files are already committed (a kill between the commit and its event, a fix that changed nothing).
+    const dirty = await runCmd(`${g} status --porcelain -- ${paths}`, `T${s.n}:git-status`, { phase: 'Commit' })
+    if (!dirty || dirty.exit !== 0) return { result: failWith(`git status failed for step T${s.n}: ${tailOf(dirty && dirty.stdout, 400)}`, { step: s.n }) }
+    const clean = String(dirty.stdout || '').trim() === ''
+    if (!clean) {
+      const add = await runCmd(`${g} add -- ${paths}`, `T${s.n}:git-add`, { phase: 'Commit', writes: true })
+      if (!add || add.exit !== 0) return { result: failWith(`git add failed for step T${s.n}: ${tailOf(add && add.stdout, 400)}`, { step: s.n }) }
+      const com = await runCmd(`${g} commit -m ${shq(commitSubject(S.plan.id, s))} -- ${paths}`, `T${s.n}:git-commit`, { phase: 'Commit', writes: true })
+      if (!com || com.exit !== 0) return { result: failWith(`git commit failed for step T${s.n}: ${tailOf(com && com.stdout, 400)}`, { step: s.n }) }
+    }
     const log = await runCmd(`${g} log -1 --format=${shq('%H %s')} --grep ${shq(commitGrep(S.plan.id, s.n))}`, `T${s.n}:git-log`, { phase: 'Commit' })
-    const sha = parseLogLine(log && log.stdout, S.plan.id, s.n)
+    let sha = parseLogLine(log && log.stdout, S.plan.id, s.n)
+    if (!sha && clean) { // the files matched an earlier commit: the step records the current head
+      const head = await runCmd(`${g} rev-parse HEAD`, `T${s.n}:git-head`, { phase: 'Commit' })
+      const h = String(head && head.stdout || '').trim()
+      if (head && head.exit === 0 && /^[0-9a-f]{40,64}$/.test(h)) sha = h
+    }
     if (!sha) return { result: failWith(`the commit of step T${s.n} was not found by its subject "${S.plan.id} T${s.n}:"`, { step: s.n }) }
     queue({ type: 'commit', step: s.n, sha })
     again.delete(s.n)
@@ -1275,7 +1298,7 @@ try {
     queue({ type: 'no-report', step: s.n, text: 'the run that launched this step ended without its report' })
   }
   // What the person answered is applied before the loop, then both are on disk before anything is dispatched.
-  for (const a of Array.isArray(A.answers) ? A.answers : []) queue(a)
+  for (const a of Array.isArray(A.answers) ? A.answers : []) queue(normalizeAnswer(a))
   const resumed = await flush('resume')
   if (resumed) return resumed
 

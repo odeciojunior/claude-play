@@ -651,7 +651,6 @@ const psHandlers = {
           replacedBy: null,
           note: null,
           outputs: null,
-          brief: 'briefs/T' + n2 + '.md',
         });
         for (const x of state.steps) {
           if (x.n !== n2) x.deps = x.deps.map((d) => (d === s.n ? n2 : d));

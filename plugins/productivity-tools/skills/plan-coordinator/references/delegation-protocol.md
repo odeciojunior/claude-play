@@ -25,7 +25,10 @@ A stopped return is `{ status: 'stopped', stop: { kind, ... }, resumeArgs }`. Sh
 After the person answers, call the workflow again with the `resumeArgs` it returned, the same `state`, a new `progress.mjs token` as `runToken`, and what the person gave:
 
 - `authorizeExternal`: the authorized items, copied exactly from the `authorize` stop.
-- `answers`: one event per answer (`answer`, `unblock`, `release`, `hold` or `refuse`) with the fields `references/state.md` lists for it.
+- `answers`: a list of objects `{ event, step, value, text }`, one per answer; `event` is `answer`, `unblock`, `release`, `hold` or `refuse` (`type` is accepted as a synonym), and `step`, `value` and `text` are the fields `references/state.md` lists for that event (the CLI flags `--step`, `--value`, `--text`). Example: `{ "event": "answer", "step": 3, "value": "done" }`.
+  - A stop that names a step (an open `manual` entry of an external step left `stopped`, held or skipped) is answered with `answer` and that `step`: `value` is `done`, `no`, `rerun` or `value` (with `text`). `rerun` creates a new step that reuses the brief of the step it replaces.
+  - A stop of the run itself (a failed wave gate, a lost reviewer, the final gate asking) has no step: answer it with `{ "event": "unblock" }` after the person decided; the run goes back to `in-progress` and the workflow continues.
+  - An `authorize` stop is answered by `authorizeExternal`, not by `answers`; `refuse` (`step`, `value` `refused` or `not-named`), `hold` and `release` (`step`) act on one step.
 
 `runToken`, `authorizeExternal` and `answers` are never reused from an earlier call.
 

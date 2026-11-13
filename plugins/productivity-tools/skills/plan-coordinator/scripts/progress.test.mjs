@@ -1173,6 +1173,16 @@ test('rerun keeps files and noCommit on the new step', () => {
   assert.equal(n7.noCommit, true);
 });
 
+test('rerun reuses the brief of the step it replaces, since no brief exists for the new number', () => {
+  const c = structuredClone(stateFor());
+  step(c, 5).status = 'stopped';
+  c.run.status = 'in-progress';
+  c.manual.push({ kind: 'open-question', step: 5, text: 't', open: true });
+  const r = ok(c, { type: 'answer', step: 5, value: 'rerun' });
+  assert.equal(step(r, 7).brief, step(r, 5).brief);
+  assert.equal(step(r, 7).brief, 'briefs/T5.md');
+});
+
 test('baseline event records run.baseline', () => {
   assert.ok(EVENT_TYPES.includes('baseline'));
   const s = started();

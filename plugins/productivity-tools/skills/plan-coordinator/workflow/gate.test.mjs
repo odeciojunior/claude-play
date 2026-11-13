@@ -86,5 +86,8 @@ test('validateArgs restricts answers and test', () => {
     assert.equal(P.validateArgs({ ...ok, answers: [{ type }] }).error, null, type);
   }
   assert.ok(P.validateArgs({ ...ok, answers: [{ type: 'launch' }] }).error);
+  assert.equal(P.validateArgs({ ...ok, answers: [{ event: 'answer', step: 3, value: 'done', text: 'x' }] }).error, null, 'the documented key is event');
+  assert.ok(P.validateArgs({ ...ok, answers: [{ event: 'launch' }] }).error);
+  assert.ok(P.validateArgs({ ...ok, answers: [{ step: 3 }] }).error);
   assert.ok(P.validateArgs({ ...ok, test: 5 }).error);
 });
