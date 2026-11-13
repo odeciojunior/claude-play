@@ -16,6 +16,8 @@
 
 ## Tamanho do script
 
+Retomada (BLQ-10, nota do dono): T1-T7 estão commitadas e congeladas. Na ponta `50a80d0` de `feat/E21` o script mede 240.425 caracteres LF (425 acima do teto), porque a T5 (`f8df406`) abriu espaço encurtando comentários de outros estágios e a correção final `66afa1d` os restaurou. O commit `3b5c950` (o arnês de revisão por tarefa mede o `task-reviewer` real) fica. A nova Tarefa 9 libera o espaço só no texto da revisão por tarefa e vem antes da Tarefa 8 (comportamental), que roda sobre a nova ponta. A revisão final da branch inteira (opus, high) é o estágio final do workflow e se repete sobre a ponta nova; não é tarefa deste plano. A decisão do dono (R13 e R14 da spec) é gravada em `decisions.md` pelo estágio de registro do workflow, na release; esta branch não edita a pasta do roadmap.
+
 Toda tarefa que edita `roadmap-release.js` mede depois de cada edição com `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` (que usa `workflowChars`). A T2 é a primeira que edita o script: move o texto genérico de `buildTaskReviewPrompt`, a chamada a `repeatRule()` desse prompt e o texto de verificações vazias de `fmtChecks` para `agents/task-reviewer.md`, e troca o despacho por `revAgent`, antes de acrescentar qualquer outro código; relata a folga obtida. T3, T4 e T5 acrescentam o mínimo: as instruções dos modos ficam no agente, o prompt leva só uma linha curta de modo e os dados. Se em qualquer tarefa o total passar de 240.000, a tarefa para com `BLOCKED`, diz quantos caracteres passou e pede ação do dono; nunca edita `size.test.mjs` nem `MAX_WORKFLOW_CHARS` (DEC-556, DEC-563, nota do dono, C5).
 
 ## Tarefas
@@ -91,9 +93,26 @@ Acrescentar na seção `## Agents` de `plugins/productivity-tools/README.md`, de
 
 ### Tarefa 8: Teste comportamental do task-reviewer pelo orquestrador
 
-Tarefa do orquestrador da sessão principal (DEC-204, R11 da spec), no worktree de E21 antes do merge. Três subagents sonnet seguem `agents/task-reviewer.md` literalmente sobre uma fixture sintética marcada (`SYNTHETIC FIXTURE` no topo de cada arquivo; repositório git com uma tarefa, um defeito plantado e uma correção) em `D:/projects/claude-play-wt/_tmp/E21-comportamental/`, um por modo: padrão (`spec` e `quality`), restrito (com o pacote gerado por `review-package.mjs` e dois achados abertos `F1` e `F2`, um corrigido) e único; cada um lista as ambiguidades do arquivo. Uma revisão adversarial opus, só de leitura, confere: nenhuma pergunta à pessoa; achado reaberto com o mesmo `id`; `verdicts` com um `{ id, open }` por achado aberto no modo restrito; `spec` e `quality` no modo único; nenhuma escrita na fixture. O relatório vai para `docs/reports/2026-11-12-E21-revisor-comportamental.md` com a saída literal, as ambiguidades e o veredito; a pasta temporária é apagada no fim. Ambiguidade real vira correção em `agents/task-reviewer.md` numa rodada de correção desta tarefa, sem reabrir a spec.
+Tarefa do orquestrador da sessão principal (DEC-204, R11 da spec), no worktree de E21 antes do merge, depois da Tarefa 9 e sobre a ponta que ela deixou (agente e prompt já com os rótulos movidos). Três subagents sonnet seguem `agents/task-reviewer.md` literalmente sobre uma fixture sintética marcada (`SYNTHETIC FIXTURE` no topo de cada arquivo; repositório git com uma tarefa, um defeito plantado e uma correção) em `D:/projects/claude-play-wt/_tmp/E21-comportamental/`, um por modo: padrão (`spec` e `quality`), restrito (com o pacote gerado por `review-package.mjs` e dois achados abertos `F1` e `F2`, um corrigido) e único; cada um lista as ambiguidades do arquivo. Uma revisão adversarial opus, só de leitura, confere: nenhuma pergunta à pessoa; achado reaberto com o mesmo `id`; `verdicts` com um `{ id, open }` por achado aberto no modo restrito; `spec` e `quality` no modo único; nenhuma escrita na fixture. O relatório vai para `docs/reports/2026-11-12-E21-revisor-comportamental.md` com a saída literal, as ambiguidades e o veredito; a pasta temporária é apagada no fim. Ambiguidade real vira correção em `agents/task-reviewer.md` numa rodada de correção desta tarefa, sem reabrir a spec.
 
 Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o implementador devolve `NEEDS_HUMAN` com `humanInputs` "execução comportamental do orquestrador da sessão principal (DEC-204)" e não escreve relatório fictício. Evidência aceitável quando a execução não pode ocorrer neste ambiente: esse `NEEDS_HUMAN` com o motivo; nunca um relatório inventado. Commit `E21 T8: relatório comportamental do task-reviewer`.
+
+### Tarefa 9: Liberar espaço no texto da revisão por tarefa (retomada de BLQ-10)
+
+Roda no worktree `D:/projects/claude-play-wt/E21`, em `feat/E21` a partir de `50a80d0`, sem navegador. Meta: `workflowChars(roadmap-release.js) <= 240000` (hoje 240.425; liberar pelo menos 425 caracteres). Só pode mexer, em `roadmap-release.js`, em `restrictedRound`, `taskIssues`, `buildTaskReviewPrompt`, no laço `for (const kind of ...)` de `runDeliverable` (linhas ~2504-2522) e nos comentários deles. É proibido tocar comentário ou texto de outro estágio, `fmt`, `fmtChecks`, `repeatRule`, `size.test.mjs` ou `MAX_WORKFLOW_CHARS` (DEC-556, DEC-563, DEC-592). Medir com `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` depois de cada edição do script e anotar o total no relato.
+
+Teste primeiro: em `workflow/prompts.test.mjs`, no teste `AC5: task review prompts cite no superpowers and forbid asking` (mesmo nome), acrescentar que `agents/task-reviewer.md` explica a linha `Range:` (comando do intervalo ou do pacote a rodar), a linha `Measure:` com `headSha`, `clean` e `commitsInRange`, o bloco das verificações do implementador e o dos achados da rodada anterior; e que o prompt de `P.buildTaskReviewPrompt` em `spec`, `quality`, restrito e `review` ainda traz os dados (o comando `log -p <start>..HEAD` ou o do pacote, a saída das verificações, os achados anteriores com `[F1]`, `rev-list --count <start>..HEAD`) e não traz mais o rótulo `IMPLEMENTER'S CHECKS` nem `Issues from the previous round`. Em `workflow/review.test.mjs`, ajustar o teste `AC2: the per-task loop turns the restricted mode on only when taskReview.restricted is true` (hoje `/taskReview: CFG\.taskReview/` e `/taskReview\.restricted === true/`, ~591-598) e o equivalente de T5 para conferir a normalização única (`CFG.taskReview` lido com `restricted === true` e `single === true` uma vez em `runDeliverable`, `ctxFor` recebendo o objeto normalizado, o laço usando o booleano pronto), sem perder o que conferem: padrão desligado e valor que não seja `true` não liga. Os casos que hoje passam valor não booleano direto às funções puras (`{ restricted: 'yes' }` ~556, `{ single: 'true' }` ~635) passam a ser conferidos pela normalização (texto do script e `flow.test.mjs` ~4149, que já roda `restricted: 'true'` ponta a ponta), porque as funções puras passam a receber booleanos prontos; o caso `undefined` e `{ restricted: false }` continua nas funções puras. Rodar `prompts.test.mjs` e `review.test.mjs` e relatar a falha.
+
+Implementar, nesta ordem, medindo depois de cada passo:
+
+1. `agents/task-reviewer.md`: parágrafo curto sobre o formato do prompt da chamada (`Mode:`, `Range:` = comando a rodar para ler o intervalo ou o pacote, verificações do implementador, achados da rodada anterior, `Measure:` = devolver `headSha`, `clean` e `commitsInRange` pelo comando dado).
+2. `buildTaskReviewPrompt`: tirar os rótulos e instruções genéricos (`IMPLEMENTER'S CHECKS:`, `Issues from the previous round:`, a lista `headSha, clean, commitsInRange` da linha `Measure:`), deixando só os dados com marcadores curtos; chamar `restrictedRound(ctx)` uma vez.
+3. Normalizar uma vez em `runDeliverable`: `const tr = CFG.taskReview || {}, TR = { restricted: tr.restricted === true, single: tr.single === true }`; o laço usa `TR.single`, `ctxFor` recebe `taskReview: TR`, e `restrictedRound`/`taskIssues` leem `restricted` e `single` já booleanos, sem repetir `=== true`, tolerando `taskReview` ausente (os testes puros o omitem).
+4. Encurtar a mensagem do achado crítico do modo único (manter `single review` e `spec`/`quality` no texto, que os testes de T5 conferem) e os comentários sobre `restrictedRound` e `taskIssues`.
+
+Rodar `prompts.test.mjs`, `review.test.mjs`, `flow.test.mjs` e o teste de tamanho. Conferir com `git -C D:/projects/claude-play-wt/E21 diff 50a80d0 -- plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js` que todo trecho alterado fica dentro das funções e do laço listados. Commit `E21 T9: libera espaço na revisão por tarefa`.
+
+Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda passar de 240.000, reverter só o código da T5 (`f8df406`) em `roadmap-release.js` e nos testes (`review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs`): o laço volta a `['spec', 'quality']` fixo, `taskIssues` perde a reprovação de veredicto do modo único, `buildTaskReviewPrompt` perde o modo `review`, e saem os testes `AC3` de T5 e a extensão do AC5 para o modo único. Ficam a revisão restrita, o agente (o texto do modo `review` no agente fica, sem uso), `S_TASKREVIEW`, o preflight e `config.md` (fora de "script e testes"). Medir de novo; commitar `E21 T9: reverte o modo único da T5 (AC3 adiado)` e devolver `BLOCKED` parcial com o total medido, o AC3 (parte do modo único) adiado para card novo e a pendência de `taskReview.single` aceito pelo preflight e documentado sem efeito, para o dono. Se nem assim couber, `BLOCKED` com o total, sem outra edição. Nunca editar `size.test.mjs`.
 
 ## Evidência dos critérios
 
@@ -111,6 +130,9 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
 - R14: os testes dos critérios 2 e 3 em `review.test.mjs` usam funções puras e o texto do script; o arnês de `flow.test.mjs` recebe testes complementares do despacho, sem copiar o arnês.
 - R15: o agente nasce na T2 com o texto de todos os modos; T3-T5 só ligam o código.
 - R16: T8 sem subagent devolve `NEEDS_HUMAN` e não cria relatório.
+- R18: retomada de BLQ-10 como Tarefa 9 depois da T7; a T8 passa a depender da T9.
+- R19: `taskReview` normalizado uma vez; a garantia de "só `true` liga" passa ao teste da normalização e ao `flow.test.mjs`.
+- R20: no caminho de reversão, `single` fica no preflight, em `config.md` e no agente; o BLOCKED parcial cita a pendência.
 
 ## Bloco de dados
 
@@ -131,7 +153,11 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
     "Sem bump de versão; sem push; nunca tocar em main nem no worktree D:/projects/claude-play.",
     "Execução comportamental que precisa de ferramenta de subagent é do orquestrador da sessão principal (DEC-204); sem relatório fictício.",
     "Um comando simples por chamada: sem heredoc, sem laço, sem && e sem ;. Temporários só em D:/projects/claude-play-wt/_tmp/E21-*/, apagados no fim.",
-    "Commits de tarefa começam com \"E21 T<n>:\" e terminam com a linha Co-Authored-By: Claude <noreply@anthropic.com>; nunca git add -A nem git stash."
+    "Commits de tarefa começam com \"E21 T<n>:\" e terminam com a linha Co-Authored-By: Claude <noreply@anthropic.com>; nunca git add -A nem git stash.",
+    "Retomada de BLQ-10 na ponta 50a80d0 de feat/E21, mantendo 3b5c950; T1-T7 commitadas e congeladas.",
+    "A T9 só edita restrictedRound, taskIssues, buildTaskReviewPrompt, o laço kind de runDeliverable e seus comentários em roadmap-release.js; nunca comentário ou texto de outro estágio (DEC-556, DEC-563, DEC-592).",
+    "Se a T9 não chegar a 240000 caracteres LF, reverter só o código da T5 (f8df406) no script e nos testes, manter a revisão restrita e o agente, AC3 adiado para card novo e BLOCKED parcial para o dono (R14 da spec).",
+    "A decisão do dono vai para decisions.md pelo estágio de registro do workflow, na release; a revisão final (opus, high) da branch inteira é o estágio final do workflow e se repete sobre a nova ponta."
   ],
   "tasks": [
     {
@@ -340,7 +366,7 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
     {
       "n": 8,
       "title": "Teste comportamental do task-reviewer pelo orquestrador",
-      "deps": [7],
+      "deps": [9],
       "files": {
         "create": ["docs/reports/2026-11-12-E21-revisor-comportamental.md"],
         "modify": [],
@@ -354,6 +380,48 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
       "testFirst": { "exempt": "execução comportamental do orquestrador (DEC-204), sem código" },
       "checks": [
         { "cmd": "node -e \"process.exit(require('fs').existsSync('docs/reports/2026-11-12-E21-revisor-comportamental.md') ? 0 : 1)\"", "expect": "exit 0 (relatório presente)" }
+      ],
+      "locks": [],
+      "external": false,
+      "externalDedupe": null,
+      "noCommit": false
+    },
+    {
+      "n": 9,
+      "title": "Liberar espaço no texto da revisão por tarefa (retomada de BLQ-10)",
+      "deps": [7],
+      "files": {
+        "create": [],
+        "modify": [
+          "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+          "plugins/productivity-tools/agents/task-reviewer.md",
+          "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+        ],
+        "test": [
+          "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs",
+          "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs"
+        ]
+      },
+      "writes": [],
+      "score": { "ambiguity": 1, "reasoning": 2, "blast": 1, "verifiability": 1 },
+      "produces": [
+        "roadmap-release.js com workflowChars <= 240000 (ou BLOCKED parcial com o modo único da T5 revertido)",
+        "TR = { restricted: tr.restricted === true, single: tr.single === true } normalizado uma vez em runDeliverable",
+        "agents/task-reviewer.md explica as linhas Mode, Range e Measure e os blocos de verificações e achados anteriores"
+      ],
+      "consumes": [
+        { "task": 4, "sig": "taskIssues(r, opt) -> issues" },
+        { "task": 5, "sig": "laço por tarefa com kinds ['review'] quando taskReview.single === true" }
+      ],
+      "covers": ["AC2", "AC3", "AC5", "C5"],
+      "testFirst": true,
+      "checks": [
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs", "expect": "exit 0 (até 240000 caracteres LF)" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"", "expect": "exit 0 (G1)" },
+        { "cmd": "node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools", "expect": "exit 0 (G5)" }
       ],
       "locks": [],
       "external": false,
@@ -460,6 +528,39 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
       "basis": "DEC-556, DEC-563 e a nota do dono fixam o teto e mandam BLOCKED com ação do dono; a T2 libera perto de 1.100 caracteres líquidos e T3-T5 acrescentam valor parecido.",
       "alternative": "Encurtar textos de outros estágios do workflow.",
       "costIfWrong": "medium",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R18",
+      "question": "Como a retomada de BLQ-10 entra no plano com T1-T7 congeladas?",
+      "decision": "Nova Tarefa 9 (liberar espaço no texto da revisão por tarefa, com o caminho de reversão da T5) logo depois da T7; a T8 (comportamental, ainda não commitada) passa a depender da T9 e roda sobre a nova ponta; a revisão final é o estágio do workflow, não tarefa. A T9 lista cinco arquivos (aviso task-too-wide aceito): flow.test.mjs só muda no caminho de reversão, que a nota do dono põe na mesma tarefa da medição.",
+      "basis": "Nota do dono (decisão delegada), R13 e R14 da spec; tarefa nova recebe número maior que o maior existente; o comportamental deve medir o agente e o prompt finais.",
+      "alternative": "Reescrever a T5 ou a T2.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R19",
+      "question": "Como os testes ficam com taskReview normalizado uma vez em runDeliverable?",
+      "decision": "As funções puras recebem booleanos prontos e toleram taskReview ausente; a garantia de que só true liga passa ao teste de texto da normalização em review.test.mjs e ao teste ponta a ponta de flow.test.mjs com restricted: 'true'.",
+      "basis": "R13 da spec manda normalizar uma vez e não repetir === true; manter o === true nas funções puras anularia a economia.",
+      "alternative": "Manter === true também nas funções puras.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R20",
+      "question": "No caminho de reversão, o que acontece com taskReview.single no preflight, em config.md e no agente?",
+      "decision": "Ficam como estão (a nota do dono limita a reversão ao script e aos testes); o BLOCKED parcial cita a pendência de single aceito e documentado sem efeito para o card novo decidir.",
+      "basis": "Nota do dono: reverter só o código da T5 no script e nos testes, manter restrita e agente.",
+      "alternative": "Tirar single também do preflight e de config.md.",
+      "costIfWrong": "low",
       "reversible": true,
       "scope": "local",
       "contradicts": null
