@@ -114,3 +114,28 @@ test('run-record baseline prints the matching prep or exits 1', () => {
     assert.ok(!existsSync(join(repo, 'nope')));
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
+
+test('run-record ignores a hand-committed run.json (key and baseline)', () => {
+  const repo = makeRepo();
+  try {
+    const branch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD');
+    const target = git(repo, 'rev-parse', 'HEAD');
+    const prep = { targetHead: target, gatesKey: 'k1', baseline: { G1: 'ok' } };
+    commitFile(repo, `${DIR}run.json`, `${JSON.stringify({ schema: 'run/1', prep, final: { spec: 'x', plan: 'y', tree: 'z', target } })}\n`);
+    assert.equal(JSON.parse(rr('key', repo, DIR)).recorded, null);
+    const r = spawnSync(process.execPath, [SCRIPT, 'baseline', repo, target, 'k1', `${branch}:${DIR}`], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    // a legitimate record followed by a hand edit is also refused
+    rr('approve', repo, DIR, 'E9', 'spec', '-', payload({ prep, trailer: TRAILER }));
+    assert.equal(JSON.parse(rr('key', repo, DIR)).recorded.schema, 'run/1');
+    commitFile(repo, `${DIR}run.json`, `${JSON.stringify({ schema: 'run/1', prep })}\n`);
+    assert.equal(JSON.parse(rr('key', repo, DIR)).recorded, null);
+    // a record-looking subject that also touches other files is refused
+    writeFileSync(join(repo, DIR, 'run.json'), `${JSON.stringify({ schema: 'run/1', prep })}\n`);
+    writeFileSync(join(repo, 'other.txt'), 'o\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'E9: run record (final)');
+    assert.equal(JSON.parse(rr('key', repo, DIR)).recorded, null);
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});

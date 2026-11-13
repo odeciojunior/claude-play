@@ -4310,6 +4310,8 @@ test('AC3: an unchanged target reuses the recorded gates baseline', async () => 
   const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify(prep)) });
   assert.ok(calls.find((c) => c.label === 'preflight').prompt.includes('run-record.mjs" baseline'));
+  const pp = calls.find((c) => c.label === 'preflight').prompt;
+  assert.ok(pp.includes('skip only the gate measurement') && pp.includes('Always, BEFORE any command: clean') && pp.includes('Install first') && !pp.includes('skip the rest of step 4'));
   assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
   assert.ok(calls.some((c) => c.label === 'E1:setup'));
   const prompt = calls.find((c) => c.label === 'E1:setup').prompt;

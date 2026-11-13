@@ -18,8 +18,19 @@ const gitOrNull = (wt, ...a) => { try { return git(wt, ...a).trim(); } catch { r
 const fail = (code, msg) => { if (msg) process.stderr.write(`${msg}\n`); process.exit(code); };
 const withSlash = (d) => (d.endsWith('/') ? d : `${d}/`);
 
-// Le <ref>:<dir>run.json; so aceita JSON valido com schema run/1.
+// Origem: o ultimo commit que tocou run.json tem assunto "<E>: run record (" e mudou so esse arquivo.
+function fromRecordCommit(wt, ref, dir) {
+  const file = `${dir}run.json`;
+  const sha = gitOrNull(wt, 'log', '-1', '--format=%H', ref, '--', file);
+  if (!sha) return false;
+  const subject = gitOrNull(wt, 'log', '-1', '--format=%s', sha);
+  const files = gitOrNull(wt, 'show', '--name-only', '--format=', sha);
+  return /^\S+: run record \(/.test(subject || '') && files === file;
+}
+
+// Le <ref>:<dir>run.json; so aceita JSON valido com schema run/1 vindo de um commit de run-record.
 function readRecorded(wt, ref, dir) {
+  if (!fromRecordCommit(wt, ref, dir)) return null;
   const txt = gitOrNull(wt, 'show', `${ref}:${dir}run.json`);
   if (txt === null) return null;
   try {
