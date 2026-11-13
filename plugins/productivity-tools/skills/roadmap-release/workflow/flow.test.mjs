@@ -3416,6 +3416,7 @@ test('artifactPaths follows DEC-026', () => {
     spec: 'docs/plans/evolucao-skills-E8/spec.md',
     plan: 'docs/plans/evolucao-skills-E8/plan.md',
     reviews: 'docs/plans/evolucao-skills-E8/reviews.md',
+    run: 'docs/plans/evolucao-skills-E8/run.json',
   });
   assert.equal(pure.reportPathFor('2026-11-12', 'E8'), 'docs/reports/2026-11-12-E8-run.md');
 });
@@ -4162,4 +4163,56 @@ test('AC3: default spec and quality reviews on the task-reviewer agent', async (
     assert.ok(o.model);
   }
   assert.equal(def.calls.find((c) => c.label === 'E1:t1:spec1').opts.model, def.calls.find((c) => c.label === 'E1:t1:quality1').opts.model);
+});
+
+test('E23: runKey and skipReview compare every recorded value', () => {
+  const pure = loadPure();
+  assert.equal(pure.runKey('not json'), null);
+  const cur = { recorded: { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' }, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'T1' } }, spec: 's1', plan: 'p1', tree: 't1' };
+  const k = pure.runKey(JSON.stringify(cur));
+  assert.deepEqual(k, cur);
+  assert.equal(pure.skipReview('spec', k, 'T1'), true);
+  assert.equal(pure.skipReview('plan', k, 'T1'), true);
+  assert.equal(pure.skipReview('final', k, 'T1'), true);
+  assert.equal(pure.skipReview('final', k, 'T2'), false);
+  assert.equal(pure.skipReview('final', k, ''), false);
+  assert.equal(pure.skipReview('spec', null, 'T1'), false);
+  assert.equal(pure.skipReview('spec', { ...k, spec: 's2' }, 'T1'), false);
+  assert.equal(pure.skipReview('plan', { ...k, plan: 'p2' }, 'T1'), false);
+  assert.equal(pure.skipReview('plan', { ...k, spec: null }, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...k, tree: 't2' }, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...k, tree: '' }, 'T1'), false);
+  const noFinal = { ...cur, recorded: { schema: 'run/1', spec: cur.recorded.spec } };
+  assert.equal(pure.skipReview('spec', noFinal, 'T1'), true);
+  assert.equal(pure.skipReview('plan', noFinal, 'T1'), false);
+  assert.equal(pure.skipReview('final', noFinal, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...cur, recorded: null }, 'T1'), false);
+});
+
+test('E23: recordCmd builds the approve command', () => {
+  const pure = loadPure();
+  const payload = { trailer: "it's", prep: { gatesKey: 'g' } };
+  const enc = encodeURIComponent(JSON.stringify(payload)).replace(/'/g, '%27');
+  assert.equal(
+    pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'spec,plan', null, payload),
+    `node "/p/rr/run-record.mjs" approve "/w/E1" docs/plans/x-E1/ E1 spec,plan - '${enc}'`,
+  );
+  const cmd = pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'final', 'abc123', { trailer: "a'b" });
+  assert.ok(cmd.includes(' final abc123 '));
+  assert.ok(cmd.includes('%27'));
+  assert.equal(cmd.slice(cmd.indexOf(" '") + 2, -1).includes("'"), false);
+});
+
+test('E23: recordedBaseline accepts only a matching valid measure', () => {
+  const pure = loadPure();
+  const defs = [{ name: 'g1', kind: 'exit' }];
+  const baseline = { clean: true, headSha: 'abc1234', gates: [{ name: 'g1', ran: true, exit: 0 }] };
+  const out = JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline });
+  assert.deepEqual(pure.recordedBaseline(out, 'abc1234', 'k', defs), baseline);
+  assert.equal(pure.recordedBaseline(out, 'def5678', 'k', defs), null);
+  assert.equal(pure.recordedBaseline(out, 'abc1234', 'other', defs), null);
+  assert.equal(pure.recordedBaseline(JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline: { ...baseline, clean: false } }), 'abc1234', 'k', defs), null);
+  assert.equal(pure.recordedBaseline(out, 'abc1234', 'k', [{ name: 'missing', kind: 'exit' }]), null);
+  assert.equal(pure.recordedBaseline('not json', 'abc1234', 'k', defs), null);
+  assert.equal(pure.recordedBaseline('', 'abc1234', 'k', defs), null);
 });

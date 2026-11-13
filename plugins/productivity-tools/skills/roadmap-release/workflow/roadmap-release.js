@@ -1060,7 +1060,22 @@ function commandsLeft(all, runs) {
 // Paths of the artifacts of one deliverable (DEC-026): docs/plans/<roadmap slug>-<E>/.
 function artifactPaths(roadmapSlug, E) {
   const dir = `docs/plans/${roadmapSlug}-${E}/`
-  return { dir, spec: `${dir}spec.md`, plan: `${dir}plan.md`, reviews: `${dir}reviews.md` }
+  return { dir, spec: `${dir}spec.md`, plan: `${dir}plan.md`, reviews: `${dir}reviews.md`, run: `${dir}run.json` }
+}
+function runKey(s) {
+  try { const k = JSON.parse(s); return k && typeof k === 'object' ? k : null } catch { return null }
+}
+function skipReview(stage, k, tip) {
+  const r = k && k.recorded && k.recorded[stage]
+  const ok = (a, b) => typeof a === 'string' && a !== '' && a === b
+  return !!r && ok(r.spec, k.spec) && (stage === 'spec' || ok(r.plan, k.plan)) && (stage !== 'final' || (ok(r.tree, k.tree) && ok(r.target, tip)))
+}
+function recordCmd(RR, wt, dir, E, stages, tip, payload) {
+  return `node "${RR}" approve "${wt}" ${dir} ${E} ${stages} ${tip || '-'} '${encodeURIComponent(JSON.stringify(payload)).replace(/'/g, '%27')}'`
+}
+function recordedBaseline(s, head, gatesKey, defs) {
+  const p = runKey(s)
+  return !!head && !!p && p.targetHead === head && p.gatesKey === gatesKey && validMeasure(p.baseline, head, defs) ? p.baseline : null
 }
 function reportPathFor(today, ids) {
   return `docs/reports/${today}-${ids}-run.md`
@@ -1753,11 +1768,11 @@ Never write or quote a credential, token or key from the owner instruction in an
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
   const persistReviews = async tag => {
     if (!setupOk || (!out.reviews.length && !out.externalRun.length && !out.recordCuts.length)) return
-    const cutsTxt = out.recordCuts.length ? ', plus a section "Textos cortados no registro" with one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the entries an earlier run wrote there' : ''
-    const ranTxt = out.externalRun.length ? ', plus a section "External effects run" with one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the lines an earlier run wrote there' : ''
+    const cutsTxt = out.recordCuts.length ? ', plus a section "Textos cortados no registro": one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the earlier entries' : ''
+    const ranTxt = out.externalRun.length ? ', plus a section "External effects run": one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the earlier lines' : ''
     const w = await agent(`${Cs()}
 
-Write ${AP.reviews} on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run to it; never remove or rewrite what an earlier run recorded): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
+Write ${AP.reviews} on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run; never remove or rewrite an earlier record): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
@@ -2020,7 +2035,7 @@ SETUP of deliverable ${E} (mechanical; do not change tracked files).
 1. If ${wt} is already a registered worktree, reuse it (reused=true). Otherwise, if the branch ${br} exists: git -C "${REPO}" worktree add "${wt}" ${br}; else: git -C "${REPO}" worktree add "${wt}" -b ${br} ${lastGood}.
 2. Install${INSTALL ? `: ${INSTALL}` : ': nothing to install'}.
 3. baseCommit = git -C "${wt}" merge-base ${br} ${TARGET}; head = git -C "${wt}" rev-parse HEAD; clean = git -C "${wt}" status --porcelain empty (do not clean anything here).
-4. Measure the previous version's work on the branch, read-only: git -C "${wt}" log --format=%s ${TARGET}..HEAD; taskCommits = the number of those subjects that match ^${E} T(\\d+): ; committedTasks = the distinct task numbers (the digits) of those subjects, ascending; nativeSpec = the file ${artifactPaths(disc.roadmapSlug, E).spec} exists in ${wt} on this branch; nativePlan = the file ${artifactPaths(disc.roadmapSlug, E).plan} exists in ${wt} on this branch.
+4. Measure the previous version's work on the branch, read-only: git -C "${wt}" log --format=%s ${TARGET}..HEAD; taskCommits = the number of those subjects that match ^${E} T(\\d+): ; committedTasks = the distinct task numbers (the digits) of those subjects, ascending; nativeSpec = the file ${AP.spec} exists in ${wt} on this branch; nativePlan = the file ${AP.plan} exists in ${wt} on this branch.
 Return ok (true only if baseCommit and head are not empty), worktree, branch, baseCommit, head, reused, clean, taskCommits, committedTasks, nativeSpec, nativePlan.`,
     { label: `${E}:setup`, phase: 'Setup', schema: S_SETUP, model: 'haiku', effort: 'low' }))
   if (!setup || !setup.ok || !setup.baseCommit) return fail('infra', `setup failed: ${setup ? setup.error : 'null agent'}`)
@@ -2028,10 +2043,10 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Task commits of the previous version (spec and plan of the previous skills) without a native spec: the new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
+  // Task commits of the previous version without a native spec: a new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
   if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
     const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
-    op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${artifactPaths(disc.roadmapSlug, E).spec}`,
+    op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${AP.spec}`,
       `Either finish ${E} on the previous version of the release, or discard the branch and the worktree (git -C "${REPO}" worktree remove --force "${wt}", then git -C "${REPO}" branch -D ${br}) and run again with deliverables:["${E}"] (the deliverable restarts from scratch with the native spec)`, { ...A, deliverables: [E] })
     return fail('conteudo', `the branch ${br} has ${setup.taskCommits} task commit(s) of the previous version and no native spec; the workflow writes no spec over committed work`)
   }
@@ -2042,30 +2057,49 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   const specTool = `${pluginRoot}/scripts/spec-tool.mjs`
   const specAbs = `${wt}/${AP.spec}`
   const rmAbs = `${wt}/${RM.replace(/\/+$/, '')}`
+  const R_WT = `Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or that worktree.`
+  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2,'
+  const R_COUNT = `commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD)`
+  const R_NOTE = noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''
+  const R_NOCOMMIT = 'Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.'
+  const commitAgent = (kind, file, phase, tail) => {
+    const msgFile = `${WT}/_tmp/${E}-${kind}-commit.txt`
+    return agent(`${Cs()}
+
+COMMIT of the ${kind} of deliverable ${E} (mechanical). Only the file ${file} may enter the commit. One command per call, in this order:
+1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: ${kind}", an empty line, then the line ${TRAILER}
+2. git -C "${wt}" add -- ${file}
+3. git -C "${wt}" diff --cached --quiet -- ${file}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
+4. Otherwise git -C "${wt}" commit -F "${msgFile}"
+5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none)${tail}. ok is false, with error, when a command failed.
+${NO_ASK}`,
+      { label: `${E}:${kind}-commit`, phase, schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+  }
   const specRules = `Fixed rules of this run:
 - ${NO_ASK}
 - Parts that are human acts: produce the artifacts and leave the acceptance to the human; invent no human data.
 - Delivery: there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan (an external evidence row may check that effect, never replaces the task).
 - Record every external effect in externalEffects; never perform it.
-- Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there). The design never makes a task depend on the merge, the target or the integration worktree.
-- Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.`
+- ${R_WT}
+- ${R_NOCOMMIT}`
   const specLoadOnce = k => agent(`${Cs()}
 
-SPEC LOAD of deliverable ${E} (mechanical, read-only; change no file). Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2, head = 3, clean = true when 4 prints nothing.
+SPEC LOAD of deliverable ${E} (mechanical, read-only; change no file). ${R_LOAD} head = 3, clean = true when 4 prints nothing.
 ${numbered([`node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" --json`, `node "${specTool}" emit "${specAbs}" --roadmap "${rmAbs}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
 ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:spec-load${k}`, phase: 'Spec', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-  // Attempts 1 and 2 in haiku/low, the 3rd in sonnet/medium; a failed check is not a failed load.
-  const loadSpec = async () => {
+  // Attempts 1-2 haiku/low, 3rd sonnet/medium; a failed check is not a failed load.
+  const load3 = async (once, check) => {
     let why = ''
     for (let k = 1; k <= 3; k++) {
-      const v = checkSpecLoad(await specLoadOnce(k), E, card)
+      const v = check(await once(k))
       if (v.ok) return v
       why = v.why
     }
     return { ok: false, why }
   }
+  const loadSpec = () => load3(specLoadOnce, t => checkSpecLoad(t, E, card))
   const reusedAsIs = setup.nativeSpec === true && !noteE
   if (!reusedAsIs) {
     const authored = await agent(`mode: unattended
@@ -2075,7 +2109,7 @@ language: ${LANG || 'the language of the roadmap'}
 roadmap: ${rmAbs}
 card: ${E}
 ownerNote:
-${noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''}${setup.nativeSpec === true ? `The file ${AP.spec} already exists on this branch: edit it to take the instruction into account. A ruling the instruction does not change keeps its id and its text.\n` : ''}${specRules}
+${R_NOTE}${setup.nativeSpec === true ? `The file ${AP.spec} already exists on this branch: edit it to take the instruction into account. A ruling the instruction does not change keeps its id and its text.\n` : ''}${specRules}
 ${Cn()}`,
       { agentType: 'productivity-tools:spec-author', label: `${E}:spec`, phase: 'Spec' })
     if (authored == null) return fail('infra', 'spec: null agent')
@@ -2084,17 +2118,7 @@ ${Cn()}`,
   if (!specLoad.ok) return fail('infra', `spec load: ${specLoad.why}`)
   let specReused = reusedAsIs
   if (!reusedAsIs) {
-    const msgFile = `${WT}/_tmp/${E}-spec-commit.txt`
-    const cm = await agent(`${Cs()}
-
-COMMIT of the spec of deliverable ${E} (mechanical). Only the file ${AP.spec} may enter the commit. One command per call, in this order:
-1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: spec", an empty line, then the line ${TRAILER}
-2. git -C "${wt}" add -- ${AP.spec}
-3. git -C "${wt}" diff --cached --quiet -- ${AP.spec}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
-4. Otherwise git -C "${wt}" commit -F "${msgFile}"
-5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, and commit = the same hash when a commit was made (empty when none). ok is false, with error, when a command failed.
-${NO_ASK}`,
-      { label: `${E}:spec-commit`, phase: 'Spec', schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+    const cm = await commitAgent('spec', AP.spec, 'Spec', '')
     if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
     specReused = !cm.commit
   }
@@ -2106,7 +2130,7 @@ ${NO_ASK}`,
 
 Review (read-only) the spec ${wt}/${AP.spec} of deliverable ${E} against the ${cardRef}, ${wt}/${RM}requirements.md, ${wt}/${RM}decisions.md and the decisions cited in the PROJECT block (or the file it points to).
 Blocks: an acceptance criterion of the card missing or altered (defeito); a REQ not met (defeito); an autonomous decision that contradicts a registered decision, or a canonical gate changed (decisao, critical); scope outside the card (defeito); a violation of the "do not" block (decisao, critical); invented human data (defeito); a human input marked blocking without need, or a blocking one handled as a placeholder (defeito); a design or autonomous decision that leaves an external effect the card requires to the workflow, the operator or a later stage instead of a task of the plan, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act) (defeito); a design or autonomous decision that has a task of the plan, or an external effect of the design, run after the merge, in the integration worktree or in the target (defeito); a design that is not viable in the current code (defeito; check the code).${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).
+Measure: headSha, clean (status --porcelain empty), ${R_COUNT}.
 ${NO_ASK}`,
       { label: `${E}:spec-review${round}`, phase: 'Spec', schema: S_REVIEW, model: 'opus', effort: 'medium' }),
     async (iss, k, tier) => {
@@ -2178,29 +2202,22 @@ ${NO_ASK}`,
 - Each task lists the locks it needs (locks: names from ${TASK_LOCKS.join(', ') || '(none configured)'}, only the ones the task really uses).
 - Evidence: for EACH criterion of the card, a row with kind test, smoke or integration and the exact command that exits 0 only if that criterion holds (plus testRef), or kind human (a human act listed in the rules), or kind blocked (with blq, a registered blocker id). A criterion with a {verify: ...} tag MANDATORILY keeps the tag's command: you may add evidence, never replace it, and you create the test that the command references. The ac of each evidence row is ONLY the criterion id (e.g. AC1).
 - Delivery: there is no other delivery stage, so an external effect the card or the spec requires is performed by an external task of the plan (an external evidence row may check that effect, never replaces the task).
-- Per task declare external (true when the task changes or sends anything outside the branch, or reads production: production, deploy, push, e-mail or message, writing shared data, someone's checkout; a command that only reads a local file outside the branch, such as counting the lines of ../outbox.log, is not external; when in doubt, true). An external task also declares externalDedupe: how running it twice avoids a duplicate effect (idempotency key or an existence check before acting). Every external effect the card or the spec requires is a task of the plan with \`external: true\`, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act); "not a task of this plan" does not apply to it. Order an external task after every task whose code it ships. Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or the integration worktree.
+- Per task declare external (true when the task changes or sends anything outside the branch, or reads production: production, deploy, push, e-mail or message, writing shared data, someone's checkout; a command that only reads a local file outside the branch, such as counting the lines of ../outbox.log, is not external; when in doubt, true). An external task also declares externalDedupe: how running it twice avoids a duplicate effect (idempotency key or an existence check before acting). Every external effect the card or the spec requires is a task of the plan with \`external: true\`, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act); "not a task of this plan" does not apply to it. Order an external task after every task whose code it ships.
+- ${R_WT}
 - For each evidence row with a command (kind test, smoke or integration) declare external the same way (the same rule: a command that only reads a local file outside the branch is not external; when in doubt, true). An external row also declares externalDedupe, because the command runs again after every gates fix and every late sync.
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
-- Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.`
+- ${R_NOCOMMIT}`
   const planLoadOnce = (k, useSpec = true) => agent(`${Cs()}
 
-PLAN LOAD of deliverable ${E} (mechanical, read-only; change no file). Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2, blob = 3 (empty when it fails), head = 4, clean = true when 5 prints nothing.
+PLAN LOAD of deliverable ${E} (mechanical, read-only; change no file). ${R_LOAD} blob = 3 (empty when it fails), head = 4, clean = true when 5 prints nothing.
 ${numbered([`node "${planTool}" check "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""} --json`, `node "${planTool}" emit "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""}`, `git -C "${wt}" rev-parse "HEAD:${AP.plan}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
 ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-  // Attempts 1 and 2 in haiku/low, the 3rd in sonnet/medium; the digest is recalculated here from the emit.
-  // useSpec false: the previous plan on the frozen path is read against no spec (the spec already holds the owner note, which the old plan cannot cover yet).
-  const loadPlan = async (useSpec = true) => {
-    let why = ''
-    for (let k = 1; k <= 3; k++) {
-      const v = checkPlanLoad(await planLoadOnce(k, useSpec), { E, RM })
-      if (v.ok) return v
-      why = v.why
-    }
-    return { ok: false, why }
-  }
+  // Attempts 1-2 haiku/low, 3rd sonnet/medium; the digest is recalculated here from the emit.
+  // useSpec false: the previous plan on the frozen path is read against no spec (it holds the owner note, which the old plan cannot cover yet).
+  const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => checkPlanLoad(t, { E, RM }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}
 planTool: ${planTool}
@@ -2209,7 +2226,7 @@ language: ${LANG || 'the language of the roadmap'}
 roadmap: ${RM}
 card: ${E}
 ownerNote:
-${noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''}${hasPlanFile ? `The file ${AP.plan} already exists on this branch: edit it to take the instruction into account; if the instruction changes nothing, leave the file untouched.\n` : ''}${frozen ? `Tasks already committed on this branch (${committedTasks.join(', ')}) are frozen: each keeps its number, its text and every field of its block. Only tasks not yet committed may change, and a new task gets a number greater than the largest existing one.\n` : ''}${diffs.length ? `The previous attempt changed frozen tasks: ${diffs.join('; ')}. Undo those changes.\n` : ''}${planRules}
+${R_NOTE}${hasPlanFile ? `The file ${AP.plan} already exists on this branch: edit it to take the instruction into account; if the instruction changes nothing, leave the file untouched.\n` : ''}${frozen ? `Tasks already committed on this branch (${committedTasks.join(', ')}) are frozen: each keeps its number, its text and every field of its block. Only tasks not yet committed may change, and a new task gets a number greater than the largest existing one.\n` : ''}${diffs.length ? `The previous attempt changed frozen tasks: ${diffs.join('; ')}. Undo those changes.\n` : ''}${planRules}
 ${Cn()}`,
     { agentType: 'productivity-tools:plan-author', label: `${E}:plan`, phase: 'Plan' })
   let planLoad = null
@@ -2248,17 +2265,7 @@ ${NO_ASK}`,
         { ...A, deliverables: [E] })
       return fail('conteudo', `the owner instruction rewrote committed task(s) of the plan: ${frozenList}`)
     }
-    const msgFile = `${WT}/_tmp/${E}-plan-commit.txt`
-    const cm = await agent(`${Cs()}
-
-COMMIT of the plan of deliverable ${E} (mechanical). Only the file ${AP.plan} may enter the commit. One command per call, in this order:
-1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: plan", an empty line, then the line ${TRAILER}
-2. git -C "${wt}" add -- ${AP.plan}
-3. git -C "${wt}" diff --cached --quiet -- ${AP.plan}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
-4. Otherwise git -C "${wt}" commit -F "${msgFile}"
-5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none), and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}". ok is false, with error, when a command failed.
-${NO_ASK}`,
-      { label: `${E}:plan-commit`, phase: 'Plan', schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+    const cm = await commitAgent('plan', AP.plan, 'Plan', `, and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}"`)
     if (!cm || !cm.ok) return fail('infra', `plan commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
     planCommitted = !!cm.commit
     planBlobNow = planCommitted ? String(cm.blob || '').trim() || planLoad.blob : planLoad.blob
@@ -2291,7 +2298,7 @@ ${NO_ASK}`,
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; a task with noCommit true whose steps change or commit a file; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; an external effect that the card or the spec requires (a delivery, a send, a deploy) and that no task declared external performs, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act) (defeito, critical); a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target (defeito, critical); a canonical gate changed (decisao, critical).
 THE TASKS THE CODE ACTS ON (read by the script from the plan-tool emit, whose integrity digest it checked; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD), measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan load.
+Measure: headSha, clean, ${R_COUNT}, measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan load.
 ${NO_ASK}`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus', effort: 'medium' }),
     async (iss, k, tier) => {
@@ -2354,8 +2361,9 @@ ${NO_ASK}`,
   const confirmedNotRun = n => `${E} T${n} awaiting person: confirmed not run`
   const mayHaveRunMark = n => `${E} T${n} awaiting person (effect may have run)`
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
-  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person:", "${E} T<n> awaiting person (effect may have run):", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n>: external effect completed". launchOpen = the n whose newest such commit starts "${E} T<n> launching", "${E} T<n> started", "${E} T<n> awaiting person (effect unknown):" or "${E} T<n> awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${E} T<n>: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${E} T<n> awaiting person (effect may have run):" or "${E} T<n> awaiting person: a fix round needs a person" (empty lists when none).` : ''
-  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${E} T<n>:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${E} T<n> awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${E} T<n>: external effect completed" or "${E} T<n>: resumed after awaiting person"; any other "${E} T<n>:" commit does not count (empty list when none).${marksTxt}`,
+  const TN = `${E} T<n>`
+  const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${TN} launching", "${TN} started", "${TN} awaiting person:", "${TN} awaiting person (effect may have run):", "${TN} awaiting person (effect unknown):" or "${TN}: external effect completed". launchOpen = the n whose newest such commit starts "${TN} launching", "${TN} started", "${TN} awaiting person (effect unknown):" or "${TN} awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${TN}: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${TN} awaiting person (effect may have run):" or "${TN} awaiting person: a fix round needs a person" (empty lists when none).` : ''
+  const prog = await agent(`Read-only. In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${TN}:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${TN} awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${TN}: external effect completed" or "${TN}: resumed after awaiting person"; any other "${TN}:" commit does not count (empty list when none).${marksTxt}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
@@ -2524,7 +2532,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
   }
   out.tasks = taskLog
   annotateHuman()
-  // Held here, before the final review and the gates: nothing past this point is worth spending without the authorization.
+  // Held here, before the final review and the gates: nothing past this point is spent without the authorization.
   const evHeld = heldEvidence()
   if (evHeld.length) {
     opEvidence(evHeld)
@@ -2539,7 +2547,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
 Bring the target state into the branch: headBefore = git -C "${wt}" rev-parse HEAD; git -C "${wt}" merge --no-ff ${ref} -m "${E}: sync with ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource. Nothing to merge: ok=true without a commit.
 Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in).`,
     { label, phase: 'Final review', schema: S_SYNC, model: 'sonnet', effort: 'medium' })
-  // Sync with the last VALIDATED tip: a merge of another deliverable still under validation does not come in here.
+  // Sync with the last VALIDATED tip: another deliverable's merge still under validation stays out.
   let syncAt = lastGood
   let myBase = snapshotBase()  // baseline matching syncAt (captured together, no await between them)
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
@@ -2564,7 +2572,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
 
 FINAL REVIEW OF THE WHOLE BRANCH (mandatory; read-only), lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD (branch already synced with the target).
 Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}\nBlocks (defeito): an edit to the spec or the plan made by a fix round.` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD).`,
+Measure: headSha, clean, ${R_COUNT}.`,
         { label: `${E}:final-${li + 1}-r${round}`, phase: 'Final review', schema: S_REVIEW, model: 'opus', effort: 'high' })))
       if (rs.some(x => !x)) return null
       return { issues: rs.flatMap(x => x.issues), headSha: rs[0].headSha, clean: rs.every(x => x.clean), commitsInRange: rs[0].commitsInRange }
