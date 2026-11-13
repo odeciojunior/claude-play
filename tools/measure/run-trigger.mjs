@@ -1,11 +1,12 @@
 // Suíte de gatilho: parser do stream-json, pontuação, tabela, executor e CLI.
 import { spawn as nodeSpawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CASES = join(here, 'trigger', 'cases.json');
+const SANDBOX_FIXTURES = join(here, 'trigger', 'fixtures', 'sandbox');
 
 function events(text) {
   const out = [];
@@ -82,8 +83,42 @@ export function renderTable(results) {
   return rows.join('\n') + '\n';
 }
 
+// Caminhos docs/... citados nos prompts dos casos (sem a pontuação final).
+export function citedPaths(cases) {
+  const found = new Set();
+  for (const c of cases) {
+    for (const text of Object.values(c.prompt ?? {})) {
+      for (const m of String(text).replace(/\\/g, '/').matchAll(/(?:\.\/)?(docs\/[A-Za-z0-9_./-]*[A-Za-z0-9_])/g)) found.add(m[1]);
+    }
+  }
+  return [...found].sort();
+}
+
+// Arquivos que o sandbox recebe: tudo sob trigger/fixtures/sandbox, caminho relativo com '/'.
+export async function sandboxFiles(root = SANDBOX_FIXTURES) {
+  const out = [];
+  const walk = async (dir, prefix) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) await walk(join(dir, e.name), rel);
+      else out.push(rel);
+    }
+  };
+  await walk(root, '');
+  return out.sort();
+}
+
+// Grava no sandbox só os arquivos pedidos (c.fixtures do caso); texto sempre em LF, mesmo num checkout CRLF.
+// Nunca semeie a saída da skill esperada: cada caso lista só o que cita ou o que um arquivo citado exige.
+export async function seedSandbox(sandbox, write, files = [], root = SANDBOX_FIXTURES) {
+  for (const rel of files) {
+    const text = (await readFile(join(root, rel), 'utf8')).replace(/\r\n/g, '\n');
+    await write(join(sandbox, ...rel.split('/')), text);
+  }
+}
+
 export function buildArgs(prompt, { pluginDir }) {
-  return ['-p', prompt, '--plugin-dir', pluginDir, '--output-format', 'stream-json', '--verbose', '--max-turns', '2'];
+  return ['-p', prompt, '--plugin-dir', pluginDir, '--output-format', 'stream-json', '--verbose', '--max-turns', '3'];
 }
 
 function quote(a) {
@@ -132,6 +167,7 @@ export async function runTrigger(opts, deps = {}) {
       const sandbox = await d.mkdtemp(join(work, `${c.id}-${l}-`));
       try {
         await d.spawn('git', ['init', '-q'], { cwd: sandbox });
+        await seedSandbox(sandbox, d.writeFile, c.fixtures ?? []);
         const r = await d.spawn('claude', args, { cwd: sandbox });
         results.push(scoreCase({ ...c, lang: l }, parseTranscript(r?.stdout ?? ''), { code: r?.code, error: r?.error }));
       } finally {
