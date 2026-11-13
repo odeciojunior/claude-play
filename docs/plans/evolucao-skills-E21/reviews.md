@@ -105,6 +105,14 @@ Resumo registrado nas concerns: T7 mediu G1 com 1678 testes (baseline 1657), wor
 7. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: block-open --what.
    Texto completo: E21 bloqueado: automatic execution stopped (conteudo): task 9 BLOCKED: Partial BLOCKED, as the plan's reversal path (R14/C5) and the owner instruction require. Text freed in the per-task review wording (restrictedRound, taskIssues, buildTaskReviewPrompt, kind loop, and their comments) got workflowChars only from 240425 to 240252, short of the 240000 cap. I measured that even deleting both comments would only reach about 240080. So I reverted only the ; branch feat/E21 kept at D:/projects/claude-play-wt/E21
 
+8. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: add-decision --decision. (execução de 2026-11-13, retomada após BLQ-10)
+   Texto completo: Tarefa 10, com teste primeiro: validateReleaseConfig recusa qualquer chave de taskReview além de restricted, single incluída, com um erro que nomeia a chave; preflight.test.mjs passa a recusar single e uma chave inventada; config.md documenta só restricted e diz que outra chave é recusada.
+
+9. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: add-decision --decision. (execução de 2026-11-13, retomada após BLQ-10)
+   Texto completo: Tarefa 11, só testes e sem teste primeiro (o código já existe): restaurar em review.test.mjs os asserts dos laços spec e quality, de revAgent com agentType productivity-tools:task-reviewer e do modelo de reviewModelFor, e em flow.test.mjs os rótulos spec1 e quality1 e o agentType task-reviewer, sem nenhum assert do modo único; roadmap-release.js e agents/task-reviewer.md não mudam.
+
+(Nesta execução os itens 1, 2, 3, 4 e 6 acima foram cortados de novo, com o mesmo texto e o mesmo destino; já constam acima.)
+
 ## Execução do registro de bloqueio (blocked-record)
 
 Esta execução reconfirmou os dados acima sem alterações nas rodadas, nos achados, nas concerns, nos gates e nas entradas humanas. Acrescentou apenas o item 5 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED até decisão do dono; branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
@@ -195,3 +203,54 @@ Concerns desta execução:
 Gates desta execução: nenhum rodado (a execução parou na carga do plano).
 
 Entradas humanas desta execução: nenhuma.
+
+## Execução de 2026-11-13 (retomada de BLQ-10: T9, T10, T11 e revisão final)
+
+Execução: concluída (sem falha).
+
+### Revisões desta execução
+
+| Estágio | Rodadas (número, modelo do revisor, tier da correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1 (opus, -) | nenhum | 0 | nenhuma |
+| plan | 1 (opus, -) | nenhum | 1 | nenhuma |
+| T9:spec | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| T9:quality | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| T10:spec | 1 (sonnet, -) | nenhum | 2 | nenhuma |
+| T10:quality | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| T11:spec | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| T11:quality | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| final | 1 (opus, -) | nenhum | 6 | nenhuma |
+
+Riscos aceitos: nenhum.
+
+### Tarefas desta execução
+
+| T | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Script do pacote de revisão com teste | RESUMED (already reviewed) | - |
+| 2 | Agente task-reviewer e despacho por revAgent liberando espaço | RESUMED (already reviewed) | - |
+| 3 | Identificadores nos achados e repetição por id no laço por tarefa | RESUMED (already reviewed) | - |
+| 4 | Modo de revisão restrita desligado por padrão | RESUMED (already reviewed) | - |
+| 5 | Modo de revisão única desligado por padrão | RESUMED (already reviewed) | - |
+| 6 | Preflight valida taskReview e regra do script do pacote | RESUMED (already reviewed) | - |
+| 7 | Linha do agente no README do plugin e gates | RESUMED (already reviewed) | - |
+| 8 | Teste comportamental do task-reviewer pelo orquestrador | RESUMED (already reviewed) | - |
+| 9 | Liberar espaço no texto da revisão por tarefa (retomada de BLQ-10) | DONE | 21 |
+| 10 | Preflight aceita só taskReview.restricted | DONE | 1 |
+| 11 | Testes da metade padrão do AC3 | DONE | 1 |
+
+### Concerns desta execução
+
+- T11: The G1 exit code was not captured directly, because the tool output showed the TAP summary only (tests 1679, pass 1679, fail 0, skipped 0). The exit code is treated as 0 on that basis. The G1 total (1679) differs from the baseline 1658 because Task 10 added tests, not because of this task. The exit codes for G2, G3 and G5 are likewise inferred from their "Validation passed" and "0 FAIL" results. G3 printed an ICON_MISSING warning and G5 printed one WARN about a link in plan-coordinator references. Both are pre-existing and outside this diff. The commit's Co-Authored-By line uses the "Claude <noreply@anthropic.com>" value required by the workflow prompt, not the Haiku attribution from the session reminder.
+
+### Gates desta execução
+
+Resumo registrado na concern de T11: G1 com 1679 testes, 1679 passam, 0 falham, 0 ignorados (baseline 1658; a diferença vem dos testes da Tarefa 10). G2, G3 e G5 passaram (validação aprovada e 0 FAIL; códigos de saída inferidos). G3 com aviso ICON_MISSING e G5 com 1 WARN, ambos preexistentes e fora do diff.
+
+### Entradas humanas desta execução
+
+1. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): despachar o agente task-reviewer com um pacote de revisão real e registrar o resultado em docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueio (blq): não. Contorno: Nenhum relatório criado e nenhum commit feito, para não registrar um aceite fictício (R16). O orquestrador executa e commita 'E21 T8: relatório comportamental do task-reviewer'.
+2. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): rodar o teste comportamental do task-reviewer com ferramenta de subagent e gravar docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueio (blq): sim. Contorno: Nenhum relatório fictício foi criado. O orquestrador da sessão principal executa a tarefa e commita 'E21 T8: relatório comportamental do task-reviewer'.
+
+Falha desta execução: nenhuma.
