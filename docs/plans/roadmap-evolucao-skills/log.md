@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
+| 2026-11-13 | E21 | BLQ-11 resolvido: desbloqueio de E21 pelo release | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
 | 2026-11-13 | E21 | Execução r2: BLOCKED parcial. Código da T5 revertido (0ee4677), script em 239866 caracteres LF, 134 sob o teto. Custo US$ 6,80 (r1: US$ 13,65). Metade da revisão única do AC3 vai para E28 (DEC-597, DEC-598, estratégia v1.6). | `docs/reports/2026-11-13-E21-run.md` |
 | 2026-11-13 | E21 | DEC-599 a DEC-601 (E21) ratificadas por delegação (Fable) | `decisions.md` |
 | 2026-11-13 | E21 | DEC-597 (E21) ratificada com emenda por delegação (Fable) | `decisions.md` |
