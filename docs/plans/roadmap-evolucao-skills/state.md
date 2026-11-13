@@ -35,7 +35,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E18 | publicado | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; G1 a G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E19 | na-branch | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb` | E19: seguir o fluxo do release após na-branch |
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
-| E21 | executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` | E21: seguir o fluxo do release após executando |
+| E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
@@ -123,6 +123,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E21: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (concern de T4); apertar a conferência ao editar prompts.test.mjs.
 - (executor) implementer.md: a regra de comando simples só está no modo de implementação; no modo de correção o agente rodou o vermelho por pipe (| tail) e relatou exit sem vê-lo. Levar a regra à seção Report. Atualizar a tabela de veredito no topo do relatório comportamental de E9.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204): despachar o agente task-reviewer com um pacote de revisão real e registrar o resultado em docs/reports/2026-11-12-E21-revisor-comportamental.md.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204): rodar o teste comportamental do task-reviewer com ferramenta de subagent e gravar docs/reports/2026-11-12-E21-revisor-comportamental.md.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -130,5 +132,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E21 | viva | E21 em execução pelo release |
 <!-- /roadmap:inflight -->
