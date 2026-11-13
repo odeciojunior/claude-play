@@ -37,7 +37,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E23 | nao-iniciado | - | Aguardar E8 e E21 |
+| E23 | bloqueado (BLQ-12) | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` | E23: seguir o fluxo do release após executando |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
@@ -50,6 +50,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
+| BLQ-12 | E23 bloqueado: automatic execution stopped (conteudo): task 3: test-first without a failing check then the same check passing (4 checks). A rerun takes the task as done and skips this check: first drop its [...] texto completo em docs/plans/evolucao-skills-E23/reviews.md | E23 | 2026-11-13 | quando o bloqueio de E23 for resolvido; restaura E23 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -122,12 +123,15 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E24 ou E28, o primeiro que editar prompts.test.mjs: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (linha 337); apertar a conferência. E21 editou o arquivo e não apertou.
-- (executor) implementer.md: a regra de comando simples só está no modo de implementação; no modo de correção o agente rodou o vermelho por pipe (| tail) e relatou exit sem vê-lo. Levar a regra à seção Report. Atualizar a tabela de veredito no topo do relatório comportamental de E9.
 - (executor) Antes de E23, branch fix/pos-E21, sem tocar roadmap-release.js: em task-reviewer.md o modo restrito lê o arquivo em path do JSON do pacote e só abre outro arquivo se o diff não decidir o achado; rodar de novo só b-restricted na fixture E21-T8 e anexar ao relatório comportamental de E21.
 - (executor) Na mesma fix/pos-E21: spec-tool emit em JSON compacto numa linha, com teste (como 25511ec); operator.md diz que falha de carga por emit acima de ~30 KB não é transitória (não repetir; medir o emit) e que BASH_MAX_OUTPUT_LENGTH não resolve. Não mesclar durante execução do release.
 - (executor) E28: em task-reviewer.md, verdicts só no modo restrito e spec/quality só no modo review (ponto 2 do relatório comportamental de E21). Hoje o script ignora esses campos fora do modo. Se E28 for descartado, a linha sai junto com o texto do modo review (DEC-600).
 - (executor) E10: a carga de spec e de plano deixa de copiar o stdout do emit (o Bash grava em arquivo a saída acima de ~30 KB; plano de E21: 27.212 bytes, 11 tarefas): ler de arquivo ou em partes, com teste. Antes de E10, emit de plano acima de 27 KB ou carga falha por tamanho vira correção própria.
 - (executor) Lançar em measurements.md o custo de E21 (DEC-567): r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; comportamental 1,34; total US$ 38,37, dos quais 8,85 em duas falhas de carga do plano. Conferir o teto de US$ 150 junto com E9 (maior execução sã: 13,65).
+- (dono) Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
+- (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
+- (executor) Depois do merge de E23: ratificar DEC-609 a DEC-618 contra o código integrado (DEC-615 sai emendada pelos limites em escada) e revisão da estratégia v1.7 para o card E23 nomear plugins/productivity-tools/scripts/run-record.test.mjs.
+- (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -135,4 +139,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E23 | viva | E23 em execução pelo release |
 <!-- /roadmap:inflight -->

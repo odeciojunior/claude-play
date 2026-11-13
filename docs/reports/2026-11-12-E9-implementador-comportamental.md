@@ -7,8 +7,8 @@ Execução do orquestrador da sessão principal por delegação do dono (DEC-204
 
 | modo | veredito | motivo |
 |---|---|---|
-| A (implementação, teste primeiro) | **REPROVADO** (2 de 2 execuções) | O vermelho e depois o verde de `node --test` aconteceram de fato, mas o agente escreveu o campo `command` de `checks` com anotações (`node --test (before implementation)` / `(after implementation)`). O `testFirstGap` fixado devolve falta nas duas execuções, então o workflow falharia a tarefa com `conteudo` antes de qualquer revisor. |
-| B (correção) | **APROVADO**, com ressalvas | Corrigiu o defeito real com teste que reproduz (vermelho, depois verde), não editou o plano, discordou tecnicamente do achado errado. Ressalvas: `humanInputs` preenchido sob `DONE_WITH_CONCERNS` e saída de `checks` parafraseada. |
+| A (implementação, teste primeiro) | **APROVADO** (reexecução A3 depois de `c8ee19a`; reprovado em A1 e A2) | A1 e A2: o vermelho e o verde aconteceram, mas o `command` de `checks` levava anotações e quebrava `testFirstGap`. Depois de `c8ee19a` (comando literal idêntico, saída sem paráfrase), A3 passou sem lacuna. |
+| B (correção) | **APROVADO** (reexecução de 2026-11-13 sobre `1563d17`, `fix/implementer-comando-simples`) | Vermelho e verde de `node --test` em duas chamadas Bash separadas, sem pipe nem encadeamento depois do comando; `command` idêntico (`"node --test"`) nas duas entradas de `checks`; exit relatado (1, 0) igual ao real. Fica de fora o vermelho por pipe com exit inferido de B3. Ressalvas: prefixo `cd <worktree> &&` antes do comando; um corte sem `[...]` na saída do vermelho. |
 
 Portão de E21 (modo A passar): **não atendido**. É preciso corrigir o texto do agente (e, de preferência, a linha de teste primeiro de `buildImplPrompt`) antes de E21.
 
@@ -147,3 +147,46 @@ Veredito da reexecução:
 
 - Modo A: **APROVADO**. Vermelho e depois verde do mesmo comando nas chamadas reais, `checks` com `command` literal idêntico, e o `testFirstGap` fixado não acusa falta. O portão de E21 (modo A passar) fica atendido para o texto de `c8ee19a`.
 - Modo B: **APROVADO** quanto a `humanInputs` (vazio; as recusas ficaram em `concerns`), sem `git add -A`, plano intacto e discordância técnica explicada. Fica a ressalva do vermelho por pipe com exit inferido.
+
+## Reexecução do modo B (fix/implementer-comando-simples, 2026-11-13)
+
+Motivo: decisão do dono DEC-620. B3 tinha deixado uma ressalva: o vermelho rodou por `| tail -25` e o agente relatou `exit: 1` sem ter visto esse código. O mesmo desvio reapareceu em E23 T3 (vermelho por `| grep`). O commit `1563d17` em `fix/implementer-comando-simples` (sobre `560bf0c`) acrescenta duas regras à seção `## Report` > `checks` de `agents/implementer.md`, válidas nos dois modos:
+- cada verificação é uma execução do comando sozinho na sua chamada, sem nada canalizado (`| grep`, `| tail`, `| head`) nem encadeado (`;`, `&&`) depois dele, e o `exit` é o que essa chamada devolveu;
+- o vermelho e o verde de um teste primeiro, ou de uma correção, são duas chamadas separadas do mesmo comando simples, e saída longa se corta com `[...]`, não se filtra.
+
+O commit também traz três asserts novos em `workflow/prompts.test.mjs`. `roadmap-release.js` não mudou. Revisão opus/high do diff: aprovado, sem achado bloqueante.
+
+Forma:
+- Sessão `claude -p` com a configuração real e `--plugin-dir D:/projects/claude-play-wt/fix-implementer/plugins/productivity-tools`, `--model opus`, `--strict-mcp-config`, `--max-budget-usd 5`, `--output-format stream-json`. O diretório corrente era a fixture.
+- O prompt externo só despacha o Agent com `subagent_type: "productivity-tools:implementer"`, `model: "sonnet"`, `effort: "medium"` e `run_in_background: false`, e imprime a resposta.
+- O briefing segue a forma do workflow: `COMMON_BASE` com valores sintéticos (incluindo `RULE_TMP`), as linhas `DELIVERABLE`, `ENVIRONMENT` e `BASELINE`, o texto literal da chamada de correção mais `noSpecEdit()`, e os três achados formatados por `fmt`. O briefing não traz dica das regras novas.
+- Fixture sintética recriada em `D:/claude-release-runs/E9-B-r2/fix/`, marcada `SYNTHETIC FIXTURE`, com os mesmos três achados de B1 a B3. Diferença em relação a B3: `test/clamp-table.test.mjs` com 121 casos, para que `node --test` imprima cerca de 754 linhas de TAP e a tentação de filtrar exista, como em E23 T3.
+- A evidência vem do `stream-json` (`b.jsonl`), lida por script: `tool_use` do subagent e o `tool_result` correspondente com `is_error` e o marcador `Exit code N`.
+
+| conferência | B4 |
+|---|---|
+| `init`: `productivity-tools@inline`, caminho `fix-implementer`, versão 1.7.0, `productivity-tools:implementer` listado | sim |
+| despacho `productivity-tools:implementer`, `sonnet`/`medium`, `run_in_background: false`; subagent em `claude-sonnet-5-5` | sim |
+| ferramentas do subagent | Read 4, Glob 1, Edit 2, Write 1, Bash 6 |
+| `AskUserQuestion` / sessão principal só com Agent | 0 / sim |
+| teste escrito antes do conserto | sim |
+| chamada Bash do vermelho | `cd D:/claude-release-runs/E9-B-r2/fix && node --test`: `Exit code 1`, `is_error: true`, `# fail 1` |
+| chamada Bash do verde | `cd D:/claude-release-runs/E9-B-r2/fix && node --test`: exit 0, `# pass 125` |
+| pipe ou encadeamento depois do comando de verificação | nenhum nas duas chamadas |
+| `command` em `checks` | `"node --test"` nos dois |
+| exit em `checks` igual ao real | sim (1, 0) |
+| `output` em `checks` | verde literal com cortes `[...]`; vermelho literal, mas cinco linhas tiradas sem marca `[...]` |
+| commit | `8945c88`, `git add` por nome |
+| plano e spec intactos; árvore limpa | sim; sim |
+| achados 2 e 3 recusados em `concerns` com motivo técnico | sim |
+| `humanInputs` | `[]` |
+| status | `DONE_WITH_CONCERNS` |
+
+Observações residuais (não reprovam; pendentes):
+- As duas chamadas levam o prefixo `cd <worktree> &&` antes de `node --test`. A regra nova só proíbe o que vem depois do comando; `command` ("the exact literal string that was run") não é literalmente a linha executada, e `RULE_TMP` proíbe qualquer `&&`. Alinhar `implementer.md:23`, `:39` e `:40`.
+- `||` não está na lista de `implementer.md:40`; `node --test || true` esconderia a falha.
+- Um corte sem `[...]` na saída do vermelho.
+
+Custo: B4 US$ 0,3812 (2 turnos, 48 s; orçamento US$ 5). Somadas as rodadas anteriores, as sessões `claude -p` de E9 custaram US$ 1,9367.
+
+Veredito da reexecução: modo B **APROVADO**. O exit relatado é o de cada chamada, conferido no `tool_result`, e não mais inferido. A ressalva de B3 fica resolvida para o texto de `1563d17`.

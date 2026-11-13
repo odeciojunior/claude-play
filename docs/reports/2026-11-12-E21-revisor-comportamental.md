@@ -155,3 +155,39 @@ Feita sobre os JSONL, não sobre o que as sessões disseram de si mesmas:
 6. **Isolamento parcial,** como em E9: configuração real do usuário (plugins, hooks, `CLAUDE.md` global); base sintética no lugar do `COMMON_BASE`; schema pedido em texto em vez de imposto pelo runtime.
 7. **Fixture com dois defeitos.** Foram plantados dois defeitos em vez de um, para que a correção deixasse um achado aberto e o reuso de `id` pudesse ser medido.
 8. **Pasta temporária.** A fixture e as evidências ficaram em `D:/claude-release-runs/E21-T8/` para conferência.
+
+## Reexecução do modo restrito (fix/pos-E21)
+
+Em 2026-11-13, na branch `fix/pos-E21`, a seção "Restricted mode" de `agents/task-reviewer.md` passou a dizer que o comando do pacote imprime JSON cujo `path` é o arquivo do pacote, que o revisor lê esse arquivo e julga os achados abertos por ele, e só abre outros arquivos quando o diff sozinho não decide um achado. Uma frase nova diz que `Measure:` conta o intervalo inteiro da tarefa enquanto o pacote tem só a correção, e que essa diferença é esperada. Os outros modos não mudaram.
+
+Resultado: **APROVADO**. A ressalva de (b) e o ponto em aberto 1 ficam fechados.
+
+Método: o mesmo de (b), reaproveitando a fixture (HEAD `29f846d`, árvore limpa), `session-head.txt` e os achados de `a-spec1`. Só mudaram três coisas:
+
+- O prompt foi remontado por `build-prompt-r2.mjs`, cópia de `build-prompt.mjs` com o worktree trocado para `fix-pos-E21` (o worktree de E21 não existe mais).
+- O pacote passou a ser gravado em `pkg/b-restricted-r2.diff`.
+- A sessão rodou por `run-r2.sh`, com `--plugin-dir` no worktree `fix-pos-E21` e orçamento de US$ 5.
+
+O `diff` contra `b-restricted.prompt.txt` mostra só a linha `Range:` alterada (worktree e nome do pacote). O schema é idêntico.
+
+Evidência, tirada do `b-restricted-r2.jsonl` por `analyze.mjs` e `subresults.mjs`:
+
+- Plugin carregado de `D:\projects\claude-play-wt\fix-pos-E21\plugins\productivity-tools`. A sessão principal usou só `Agent`, com `productivity-tools:task-reviewer`, sonnet, medium e `run_in_background: false`. O prompt é idêntico ao arquivo. O subagent rodou em `claude-sonnet-5-5`.
+- `tool_use` do subagent, em ordem:
+  1. Bash com o comando do pacote, `rev-parse`, `status` e `rev-list`. Imprimiu `{"ok":true,"path":"D:/claude-release-runs/E21-T8/pkg/b-restricted-r2.diff",...,"commits":1,"bytes":1231}`.
+  2. Read de `docs/spec.md`.
+  3. **Read de `D:/claude-release-runs/E21-T8/pkg/b-restricted-r2.diff`**, o `path` do JSON.
+  4. Read de `src/discount.mjs`.
+  5. Read de `test/discount.test.mjs`.
+- Nenhum Edit ou Write, nenhum `AskUserQuestion` e nenhum `node -e`.
+- Saída válida contra `S_TASKREVIEW`, sem erros de schema. Único campo extra: `ambiguities`, pedido pelo harness.
+- `verdicts`: `F1` aberto, `F2` fechado, `F3` aberto. Em `issues` voltaram `F1` e `F3`, com o mesmo `id` e o mesmo `file`.
+- `headSha` = `29f846d6…` e `clean` = true. `commitsInRange` = 2, que bate com `git rev-list --count 11aa44c..HEAD`.
+- Depois da sessão, a fixture continuava com `git status --porcelain` vazio e HEAD `29f846d`. O stderr ficou vazio.
+
+Observações:
+
+- Depois do pacote, o subagent ainda leu `src/discount.mjs` e `test/discount.test.mjs` inteiros. Isso cabe na exceção do texto: `F1` (falta o arredondamento) e `F3` (falta o teste de 19.99) tratam de algo ausente no código, e o diff da correção não mostra o que ficou fora dele.
+- O agente ainda listou a diferença de `Measure:` em `ambiguities`, mas desta vez citou que o prompt a declara esperada.
+
+Custo: US$ 0,2994 (sessão principal + subagent, `total_cost_usd` do evento `result`, 2 turnos). Em (b), o custo tinha sido US$ 0,2700.
