@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E10 | BLQ-14 aberto: E10 bloqueado: automatic execution stopped (conteudo): spec has open issues after 2 fixes: 1. [important/defeito] docs/plans/evolucao-skills-E10/spec.md [I6] [I6] R15 fixes the assertions listed in round 1 [...] texto completo em docs/plans/evolucao-skills-E10/reviews.md | `branch feat/E10` |
 | 2026-11-13 | E24 | Estratégia v1.8 (dono via Fable): card E24 nomeia preflight.test.mjs e flow.test.mjs; DEC-556 e DEC-563 substituídas por DEC-647; commits de run.json de feat/E24 (a431419, 3a449f4, 64b8761) conferidos, sem revisão pulada. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
 | 2026-11-13 | E24 | DEC-643 ratificada pelo dono | `decisions.md` |
 | 2026-11-13 | E8 | DEC-641 ratificada pelo dono | `decisions.md` |
