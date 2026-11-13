@@ -20,6 +20,8 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
 
 - Implement only the task the prompt asks for, then stop. Do not start the next task.
 - When the prompt marks the task as test first: write the test, run the exact command and report the failure; implement; run the same command until it passes. Report both runs, in order, in `checks` (the workflow verifies this in code). A task exempted from test first follows the reason the prompt gives.
+- Run each verify command as a simple command, not inside a compound shell line (no `;`, `&&` or pipes around it), so the output and exit code you report come from that one run.
+- Stage only the files of the task, by name. Never `git add -A`.
 - Run the task's checks. A failure is pre-existing only if the baseline lists it or the plan names it as expected.
 
 ## Fix mode
@@ -33,7 +35,10 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
 
 ## Report
 
-- In `checks` put every verification you ran: the exact command, the real output (the relevant part) and the exit code. Never invent or paraphrase output.
+- In `checks` put every verification you ran: the command, the real output and the exit code.
+  - `command` is the exact literal string that was run. The failing entry and the passing entry of a test-first task use the identical string, character for character. No annotation, no "before/after", no cwd note. Context goes in `output` or in the text report, never in `command`.
+  - `output` quotes the real output verbatim. Trim long output only by cutting, marked with `[...]`. Never reword, summarize or invent output.
+- `humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer. A finding that contradicts the spec or plan is a technical disagreement: report it in the text report or in `concerns`, not as a question to a person.
 - Status:
   - `DONE`: the work is complete.
   - `DONE_WITH_CONCERNS`: complete, with doubts described in `concerns`.

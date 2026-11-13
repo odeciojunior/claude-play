@@ -294,3 +294,18 @@ test('AC3: implementer and fixer prompts cite no superpowers and forbid asking',
   const plain = P.buildImplPrompt(ctx, task);
   assert.doesNotMatch(plain, /test-first|exempt/i);
 });
+
+test('implementer.md carries the checks contract: identical command, verbatim output, humanInputs limit', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const agent = readFileSync(join(here, '..', '..', '..', 'agents', 'implementer.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(agent, /`command` is the exact literal string that was run/);
+  assert.match(agent, /identical string, character for character/);
+  assert.match(agent, /No annotation, no "before\/after", no cwd note/);
+  assert.match(agent, /never in `command`/);
+  assert.match(agent, /`output` quotes the real output verbatim/);
+  assert.match(agent, /marked with `\[\.\.\.\]`/);
+  assert.match(agent, /Never reword/);
+  assert.match(agent, /`humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer/);
+  assert.match(agent, /technical disagreement/);
+  assert.match(agent, /Never `git add -A`/);
+});

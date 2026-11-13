@@ -490,3 +490,12 @@ test('AC1: with effect or wait marks the test-first failure asks the owner inste
   assert.match(m[3], /rebase --onto/);
   assert.match(body, /if \(authorizedExt \|\| awaitingPerson\.includes\(t\.n\)\) \{\s*const closed = await closeEffect/);
 });
+
+test('testFirstGap: plain identical command string, red then green, is no gap (contract the implementer follows)', () => {
+  const checks = [ck('node --test', 1), ck('node --test', 0)];
+  for (const status of ['DONE', 'DONE_WITH_CONCERNS']) {
+    assert.equal(testFirstGap(tfTask, { status, checks }, false), '');
+  }
+  const annotated = [ck('node --test (before implementation)', 1), ck('node --test (after implementation)', 0)];
+  assert.ok(testFirstGap(tfTask, { status: 'DONE', checks: annotated }, false), 'annotated commands do not match');
+});
