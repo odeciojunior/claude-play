@@ -107,3 +107,29 @@ E24 bloqueado: automatic execution stopped (conteudo): task 4 BLOCKED: T4 (verif
 ## Registro do estágio blocked-record
 
 Esta execução (estágio blocked-record) repete os dados acima sem alteração: nenhum item crítico ou importante em nenhuma revisão, menores somados conforme a tabela, nenhum item não resolvido, nenhum risco aceito, tarefas 1 a 3 concluídas e tarefa 4 BLOCKED. O corte 6 acima foi acrescentado nesta execução; os cortes 1 a 5 foram mantidos.
+
+## Registro da execução com falha de integridade do plano
+
+Esta execução falhou antes das tarefas: plan load: integrity digest not confirmed (the emit digest does not match the plan and source).
+
+| Estágio | Rodada | Modelo do revisor | Tier da correção anterior | Críticos/importantes | Menores |
+|---|---|---|---|---|---|
+| spec | 1 | opus | nenhum | nenhum | 2 |
+
+Itens não resolvidos: nenhum.
+
+Riscos aceitos: nenhum.
+
+Concerns: nenhum.
+
+Gates: nenhum gate foi executado, pois a execução falhou no carregamento do plano.
+
+### Entradas humanas desta execução
+
+| O quê | BLQ | Workaround | Bloqueante |
+|---|---|---|---|
+| Corrigir o card E24 por revisão da estratégia para nomear também plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs entre os arquivos de teste (validação de finalReview). | não informado | O spec nomeia o arquivo e o teste roda no G1. | não |
+
+### Falha
+
+plan load: integrity digest not confirmed (the emit digest does not match the plan and source)
