@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E24 | E24 passou para executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |
 | 2026-11-13 | E23 | Comportamental de E23 (DEC-204, DEC-625): P1 a P4 aprovados; P5 fase 2 inseguro (preflight caía na cópia do agente). Correção fix/pos-E23 (76676df, c7b4d01), revisão opus/high aprovou, fase 2 reexecutada aprovada; mesclado em 8d1f08f. US$ 0,79 + 0,15. E24 liberado. | `docs/reports/2026-11-13-E23-retomada-comportamental.md` |
 | 2026-11-13 | E23 | Estratégia v1.7 por delegação (Fable): o card E23 nomeia o teste do script do registro, plugins/productivity-tools/scripts/run-record.test.mjs, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
 | 2026-11-13 | E23 | E23 integrada (9f62a7e) e ratificada por delegação (Fable): 12 decisões, 3 de contrato; 7 como estão, 5 com emenda (DEC-609, 611, 613, 615, 617). Script em 239.927 LF (folga 73). Custo US$ 19,33 mais r2 (r1 7,47; r2 sem valor: sessão morta 04:29 sem result, host; r3 11,48; B4 0,38). | `decisions.md` |

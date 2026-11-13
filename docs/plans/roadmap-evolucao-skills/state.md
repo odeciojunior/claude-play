@@ -38,7 +38,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
-| E24 | nao-iniciado | - | Aguardar E21 e E23 |
+| E24 | executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` | E24: seguir o fluxo do release após executando |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
@@ -135,6 +135,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) roadmap-release.js mede 239.994 caracteres LF na ponta da release (8d1f08f): folga de 6 sob o teto de 240.000 (DEC-556, DEC-563). E24 e E10 editam o arquivo, em série; cada um libera espaço no próprio estágio antes de somar código. E28 só começa com 450 de folga.
 - (executor) Achados menores do comportamental de E23 (fora do portão): sync lê "run after the merge" como argumento run do key; key imprime o prep inteiro em recorded e haiku o corrompe (tirar o prep); setup instala no diretório corrente e não no worktree; progresso sem a regra de comando simples.
 - (executor) Revisão de 76676df (menor): parada própria preflight:recorded-invalid para registro recusado, com saída para ignorar o registro; recorded só com espaços conta como presente (usar trim). Custa caracteres: E10.
+- (dono) Corrigir o card E24 por revisão da estratégia para nomear também plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs entre os arquivos de teste (validação de finalReview).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -142,4 +143,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E24 | viva | E24 em execução pelo release |
 <!-- /roadmap:inflight -->
