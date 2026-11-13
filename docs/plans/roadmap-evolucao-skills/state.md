@@ -118,10 +118,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E20/gatilho: spec-3 (pt/en) passa direto a spec-author sem chamar Skill; a config descartável tem CLAUDE.md de usuário com regras de roteamento. Na próxima medição (E11), rodar spec-3 numa config sem CLAUDE.md de usuário ou contar o despacho a spec-author como rota do plugin.
 - (executor) Lançar em measurements.md a 2ª passada opus da suíte de gatilho de E20: 26 execuções, US$ 7,04 (sonda 0,62), saldo de DEC-478 restante US$ 6,92.
 - (executor) roadmap-release.js mede 239.997 caracteres LF na ponta da release (1e1425d): folga de 3 sob o teto de 240.000 (DEC-556, DEC-563). E21, E23, E24 e E10 editam o arquivo; cada spec precisa caber reduzindo o script. Subir o teto pede decisão do dono com a medição pelo nome em mãos.
-- (executor) E9 comportamental (DEC-204, DEC-576): antes de E21, 2 sessões claude -p com --plugin-dir despacham productivity-tools:implementer pelo nome, uma por modo; revisão opus só leitura; relatório docs/reports/2026-11-12-E9-implementador-comportamental.md. Portão: publicação com E9.
 - (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E21: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (concern de T4); apertar a conferência ao editar prompts.test.mjs.
+- (executor) implementer.md: a regra de comando simples só está no modo de implementação; no modo de correção o agente rodou o vermelho por pipe (| tail) e relatou exit sem vê-lo. Levar a regra à seção Report. Atualizar a tabela de veredito no topo do relatório comportamental de E9.
 <!-- /roadmap:pending -->
 
 ## Em andamento
