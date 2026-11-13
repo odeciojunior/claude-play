@@ -91,7 +91,7 @@ test('cases.json covers four categories with at least three cases each', () => {
 test('buildArgs keeps the prompt as one argument', () => {
   const prompt = 'faça o "plano" de  tarefas';
   const a = buildArgs(prompt, { pluginDir: 'plugins/productivity-tools' });
-  assert.deepEqual(a, ['-p', prompt, '--plugin-dir', 'plugins/productivity-tools', '--output-format', 'stream-json', '--verbose', '--max-turns', '2']);
+  assert.deepEqual(a, ['-p', prompt, '--plugin-dir', 'plugins/productivity-tools', '--output-format', 'stream-json', '--verbose', '--max-turns', '3']);
   assert.equal(a.filter((x) => x === prompt).length, 1);
 });
 
@@ -107,7 +107,7 @@ test('dry-run lists one command per case and language without spawning', async (
   for (const l of lines) {
     assert.match(l, /--plugin-dir/);
     assert.match(l, /stream-json/);
-    assert.match(l, /--max-turns 2/);
+    assert.match(l, /--max-turns 3/);
   }
 });
 
@@ -155,4 +155,67 @@ test('exit 1 from reaching --max-turns is scored, not an error', () => {
   assert.equal(s.hit, true);
   const other = JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true });
   assert.equal(scoreCase(c, parseTranscript(`${fx('hit-superpowers-on.jsonl')}\n${other}\n`), { code: 1 }).error, true);
+});
+
+// ---- E20: casos com caminhos válidos e sandbox com os arquivos citados ----
+import { existsSync, readFileSync as rfs2 } from 'node:fs';
+import { citedPaths, sandboxFiles, seedSandbox } from './run-trigger.mjs';
+import { writeFile as wf, mkdir as mk } from 'node:fs/promises';
+import { dirname as dn } from 'node:path';
+
+test('the sandbox contains every path cited by a case', async () => {
+  const { cases } = JSON.parse(rf(CASES_FILE, 'utf8'));
+  const cited = citedPaths(cases);
+  assert.ok(cited.includes('docs/plans/word-count/spec.md'));
+  assert.ok(cited.includes('docs/plans/text-utilities/plan.md'));
+  assert.ok(cited.includes('docs/superpowers/plans/2026-01-01-e5-text-utilities.md'));
+  const tmp = mkdtempSync(join(tmpdir(), 'trigger-seed-'));
+  try {
+    await seedSandbox(tmp, async (p, data) => { await mk(dn(p), { recursive: true }); await wf(p, data); });
+    for (const p of cited) assert.ok(existsSync(join(tmp, ...p.split('/'))), `missing ${p}`);
+    // E3 card, roadmap strategy and state file
+    for (const p of ['docs/plans/roadmap-text-utilities/strategy.md', 'docs/plans/roadmap-text-utilities/roadmap.config.json', 'docs/plans/text-utilities/progress.json']) {
+      assert.ok(existsSync(join(tmp, ...p.split('/'))), `missing ${p}`);
+    }
+    assert.match(rfs2(join(tmp, 'docs/plans/text-utilities/plan.md'), 'utf8'), /```json data\n/);
+    assert.match(rfs2(join(tmp, 'docs/plans/roadmap-text-utilities/strategy.md'), 'utf8'), /roadmap:card id=E3 /);
+    assert.doesNotMatch(rfs2(join(tmp, 'docs/plans/text-utilities/plan.md'), 'utf8'), /\r/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  assert.ok((await sandboxFiles()).length >= 7);
+});
+
+test('run seeds the sandbox before launching claude', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'trigger-run-'));
+  try {
+    let seen = null;
+    await runTrigger(
+      { casesFile: CASES_FILE, pluginDir: 'p', work: join(tmp, 'work'), out: join(tmp, 'o.md'), lang: 'pt', only: ['plan-execution-1'] },
+      {
+        spawn: async (cmd, _a, { cwd }) => {
+          if (cmd === 'claude') seen = existsSync(join(cwd, 'docs', 'plans', 'text-utilities', 'plan.md'));
+          return { stdout: fx('no-skill.jsonl'), code: 0 };
+        },
+        log: () => {},
+      },
+    );
+    assert.equal(seen, true);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('--max-turns is 3', () => {
+  const a = buildArgs('x', { pluginDir: 'p' });
+  assert.equal(a[a.indexOf('--max-turns') + 1], '3');
+});
+
+test('plan-execution-1 cites docs/plans/text-utilities/plan.md in both languages', () => {
+  const { cases } = JSON.parse(rf(CASES_FILE, 'utf8'));
+  const c = cases.find((x) => x.id === 'plan-execution-1');
+  for (const l of ['pt', 'en']) {
+    assert.match(c.prompt[l], /docs\/plans\/text-utilities\/plan\.md/);
+    assert.doesNotMatch(c.prompt[l], /docs\/superpowers/);
+  }
 });

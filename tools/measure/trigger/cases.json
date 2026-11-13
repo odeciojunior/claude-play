@@ -19,7 +19,7 @@
     { "id": "roadmap-3", "category": "roadmap", "expect": "productivity-tools:roadmap-planner",
       "prompt": { "pt": "Divida esta iniciativa grande em entregáveis com critérios de aceite e um grafo de dependências.", "en": "Break this large initiative into deliverables with acceptance criteria and a dependency graph." } },
     { "id": "plan-execution-1", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator", "pairOf": "plan-2",
-      "prompt": { "pt": "Execute o plano docs/superpowers/plans/2026-01-01-e5-text-utilities.md com subagentes, roteando o modelo por tarefa.", "en": "Execute the plan docs/superpowers/plans/2026-01-01-e5-text-utilities.md with subagents, routing the model per task." } },
+      "prompt": { "pt": "Execute o plano docs/plans/text-utilities/plan.md com subagentes, roteando o modelo por tarefa.", "en": "Execute the plan docs/plans/text-utilities/plan.md with subagents, routing the model per task." } },
     { "id": "plan-execution-2", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator",
       "prompt": { "pt": "Retome a execução do plano a partir do arquivo de progresso; rode as ondas pendentes em paralelo.", "en": "Resume the plan execution from its progress file; run the pending waves in parallel." } },
     { "id": "plan-execution-3", "category": "plan-execution", "expect": "productivity-tools:plan-coordinator",

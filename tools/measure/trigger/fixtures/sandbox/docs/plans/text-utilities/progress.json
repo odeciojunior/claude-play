@@ -1,0 +1,138 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/text-utilities/plan.md",
+    "id": "E3",
+    "digest": "86867873",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-text-utilities/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "map-ready",
+    "wave": 1,
+    "worktree": null,
+    "branch": null,
+    "base": null,
+    "test": null,
+    "baseline": null,
+    "commits": "none",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-13T00:27:38.093Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "countWords",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T1.md"
+    },
+    {
+      "n": 2,
+      "title": "reverseWords",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T2.md"
+    },
+    {
+      "n": 3,
+      "title": "Documentar as funções",
+      "wave": 2,
+      "deps": [
+        1,
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T3.md"
+    }
+  ],
+  "finalGate": {
+    "status": "pending",
+    "rounds": 0,
+    "lastVerdict": null
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-13T00:27:38.093Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "45ac74d3aa30cf223bb323a10698645a52421a55",
+      "at": "2026-11-13T00:27:38.093Z"
+    }
+  ]
+}
