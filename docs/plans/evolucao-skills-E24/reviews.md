@@ -133,3 +133,95 @@ Gates: nenhum gate foi executado, pois a execução falhou no carregamento do pl
 ### Falha
 
 plan load: integrity digest not confirmed (the emit digest does not match the plan and source)
+
+## Registro da execução final (tarefas 1 a 6)
+
+Os registros anteriores acima foram mantidos sem alteração. Nesta execução as tarefas 1 e 2 foram retomadas (já revisadas), a 3 e a 4 foram concluídas, a 5 terminou com concerns e a 6 devolveu NEEDS_HUMAN. Nenhuma falha de execução.
+
+### Revisões por estágio
+
+| Estágio | Rodada | Modelo do revisor | Tier da correção anterior | Críticos/importantes | Menores |
+|---|---|---|---|---|---|
+| spec | 1 | opus | nenhum | nenhum | 1 |
+| plan | 1 | opus | nenhum | nenhum | 0 |
+| T3:spec | 1 | sonnet | nenhum | nenhum | 0 |
+| T3:quality | 1 | sonnet | nenhum | nenhum | 0 |
+| T4:spec | 1 | sonnet | nenhum | nenhum | 0 |
+| T4:quality | 1 | sonnet | nenhum | nenhum | 0 |
+| T5:spec | 1 | sonnet | nenhum | nenhum | 0 |
+| T5:quality | 1 | sonnet | nenhum | nenhum | 0 |
+| T6:spec | 1 | sonnet | nenhum | nenhum | 0 |
+| T6:quality | 1 | sonnet | nenhum | nenhum | 0 |
+| final | 1 | opus | nenhum | nenhum | 1 |
+
+Itens não resolvidos: nenhum em todos os estágios.
+
+Riscos aceitos: nenhum.
+
+### Tarefas
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Validação de finalReview no preflight | RESUMED (already reviewed) | |
+| 2 | Agentes da revisão final e espaço no teto | RESUMED (already reviewed) | |
+| 3 | Onda única da correção final | DONE | 7 |
+| 4 | Verificação adversarial | DONE | 1 |
+| 5 | Teste dos prompts, README e gates | DONE_WITH_CONCERNS | 1 |
+| 6 | Teste comportamental pelo orquestrador | NEEDS_HUMAN | 0 |
+
+### Concerns
+
+- the "executing" roadmap record failed (the integration worktree is not clean after the record (git status --porcelain is not empty): the record agent did not commit; reread status --json is missing or has no panel; reread brief --json is missing or is not JSON of the CLI; reread pending-decisions --json is missing or is not JSON of the CLI); decisions and the in-flight entry are not recorded yet
+- T4: The WARN from G5 (plan-coordinator delegation-protocol links) is pre-existing and unrelated to T4. The 32-character margin left in the final review block is small for later fixes (239898 against 239930, with a hard ceiling of 240000). Two commands that were not among the plan's T4 checks gave only exploratory output: node --test on integrity.test.mjs (never run) and a measurement piped to head, run to see the size after each edit. Neither is reported as a check. The flow.test.mjs check was run as a plain call, but the tool truncated its output, so the full pass count comes from an earlier run redirected to a file.
+- T5: 1) Trailer: the call prompt requires "Co-Authored-By: Claude <noreply@anthropic.com>" and the commit uses it; the Claude Code attribution reminder asks for a Haiku 5.5 trailer. I followed the call prompt. 2) The cwd for the gate commands is set with "env -C <worktree>", because the agent shell's cwd resets and the primary directory is the main checkout, which must not be used. The command strings are the literal ones run. 3) The tool printed no explicit exit code for the successful calls; the "exit 0" entries mean the call returned without error and the output shows no failures. 4) Pre-existing, outside this diff: G3 has an ICON_MISSING plugin-directory warning, and G5 has a WARN on plan-coordinator's delegation-protocol.md links. G4 is not in the plan's list for T5 and was not run. 5) The G1 total is 1709, not the baseline 1704, because the E24 branch adds the T1-T4 tests.
+
+### Gates
+
+Linha de base (alvo ab86d2559c3b6d17f09a1ca432d1051b64b0e084, chave 936533eb, árvore limpa): G1 rodou, exit 0, 1704 testes, 0 ignorados, nenhum falhou; G2, G3, G4 e G5 rodaram, exit 0. Na branch, o T5 reportou G1 com 1709 testes (os testes de T1 a T4 somam 5); G4 não rodou no T5.
+
+### Entradas humanas desta execução
+
+| O quê | BLQ | Workaround | Bloqueante |
+|---|---|---|---|
+| Corrigir o card E24 por revisão da estratégia para nomear também plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs entre os arquivos de teste (validação de finalReview). | não informado | O spec nomeia o arquivo e o teste roda no G1. | não |
+| execução comportamental do orquestrador da sessão principal (DEC-204) | não informado | Nenhum relatório foi escrito. O orquestrador deve rodar sessões `claude -p --plugin-dir D:/projects/claude-play-wt/E24`, despachando productivity-tools:final-reviewer nos modos review e verify. A fixture sintética marcada SYNTHETIC FIXTURE fica em D:/projects/claude-play-wt/_tmp/E24-comportamental/ e tem um defeito plantado real e um achado falso. O relatório vai para docs/reports/2026-11-13-E24-revisao-final-comportamental.md. Commit: 'E24 T6: relatório comportamental'. Apagar a pasta temporária no fim. | não |
+
+### Textos cortados no registro (execução final)
+
+Entradas 1 a 6 acima foram mantidas. As entradas abaixo são desta execução.
+
+#### 7. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+Só o achado de índice k com exatamente um veredicto n === k + 1, refuted === true e reason com algum caractere não branco; sem veredicto, veredicto repetido, número que não confere, reason vazio ou só de espaços, ou chamada nula: segue para a correção. r.issues fica com os menores mais os mantidos. O refutado fica em out.reviews como { stage: 'final-verify', round, refuted }, sem guarda de tamanho, e vai ao log de revisões.
+
+#### 8. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+Num agente do plugin, productivity-tools:final-reviewer (agents/final-reviewer.md), com os modos review e verify, só leitura, NO_ASK literal no corpo; as chamadas da revisão final e da verificação o despacham por agentType, com o modelo e o esforço de hoje, por um objeto de opções FRA do bloco; o prompt guarda só os dados, e as lentes viram chaves curtas definidas no corpo.
+
+#### 9. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+Medir workflowChars depois de cada edição; liberar espaço antes de somar código, só no bloco da revisão final (do agente de integridade dos testes ao fim de finalLoop, 2.776 caracteres), pelas fontes da tabela do Desenho: texto genérico da revisão para final-reviewer.md (cerca de -570), lentes por chave (-224), retorno do callback compacto (-52), instrução do agente de integridade para test-integrity.md (-210), a frase do prompt de correção que repete o modo de correção de implementer.md (-52), menos FRA (+63): cerca de -1.090 na primeira tarefa; onda única cerca de +135 e verificação cerca de +790 depois; limites por tarefa 239.300 (primeira), 239.600 (meio), 239.930 (última, T4, partida em 239.022 depois de T1 a T3 em a636183, build de referência 239.904); na T4, S_VERIFY com required só no nível de cima e 34 caracteres liberados no bloco (const do caminho do programa de integridade, lentes inline no map); nenhuma correção acima de 240.000; tarefa fora do limite, mesmo com o recuo de R12, não faz commit e devolve BLOCKED com o déficit.
+
+#### 10. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+O orquestrador da sessão principal, no worktree de E24 antes do merge, com sessões claude -p e --plugin-dir que despacham final-reviewer pelo nome nos modos review e verify sobre fixture sintética marcada; relatório em docs/reports/; no workflow a tarefa devolve NEEDS_HUMAN, sem relatório fictício.
+
+#### 11. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+Para um agente próprio, productivity-tools:test-integrity (agents/test-integrity.md, tools Read, Write, Bash, NO_ASK literal); a chamada <E>:test-integrity o despacha por agentType com haiku e low, e o prompt guarda o caminho do programa, o comando exato e TEST_INTEGRITY; a medida, os campos e os alertas não mudam; resume-test-integrity, do estágio de merge, não muda.
+
+#### 12. add-decision --decision
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
+
+flow.test.mjs entra no escopo; a asserção da linha 2189 vira três no mesmo teste: E1:final-1-r2 despacha agentType productivity-tools:final-reviewer, seu prompt traz Mode: review e os achados anteriores, e agents/final-reviewer.md traz no modo review a frase Blocks (defeito): an edit to the spec or the plan made by a fix round.
