@@ -26,7 +26,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
 | E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
-| E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
+| E12 | na-branch | `55b2b842c15ad1b144de7fe603520cefd5c4c86f` | E12: seguir o fluxo do release após na-branch |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E15 | publicado | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
@@ -71,6 +71,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
+- (dono) T10:spec: [important/pelo-plano] Task 10 (behavioral test of the short entry by the orchestrator) has no deliverable. The executor has no subagent tool, so no report was written and no commit was made. Plan decision R20 and [...] texto completo em docs/plans/evolucao-skills-E12/reviews.md
+- (dono) Registrar na estratégia, por nova revisão, a meta de prosa de E12 declarada em R9 (≤ 6.000 bytes LF, linha de base 56.508, removido 50.508) na tabela de Metas derivadas.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
 <!-- /roadmap:pending -->
 
 ## Em andamento
