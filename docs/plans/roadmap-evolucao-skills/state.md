@@ -23,7 +23,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
 | E8 | na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
-| E9 | nao-iniciado | - | Aguardar E8 |
+| E9 | executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` | E9: seguir o fluxo do release após executando |
 | E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
@@ -105,7 +105,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real (nenhuma credencial real é necessária).
 - (executor) E12: escolhas do executor de E7 fora do registro: portão de onda devido só sem passo aberto na onda; baseline.md ao lado do estado (run.baseline sem uso); sem evento para agentId pós-launch nem handoff; code no --json de recusa.
-- (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025)
 - (dono) A ponta da release tem E7 e E19 com plugin.json ainda em 1.7.0. A publicação seguinte sobe a versão (DEC-382) e mede sobre a árvore nova; até lá ninguém instala a partir da branch de release.
 - (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
 - (dono) Rodar G1 a G5 sobre a ponta de feat/E17-medicao antes de avançar main e conferir que a árvore do plugin é 214fb3b; a branch de volta segue partindo de M.
@@ -113,10 +112,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E20/N5-1: no passo 3 da adoção do plan-writer, a mensagem de aprovação deve colar literais a seção ## Adoção, o --stat do diff (acima de 200 linhas) e a saída de summary, sem resumir. Conferir com 1 execução claude -p até APPROVAL QUESTION. Portão: DEC-458.
 - (executor) E20/N5-2: no passo 4 do plan-author, valor que o plano antigo não declara (deps, score, effort, título encurtado) entra como acrescentado ou derivado, nunca mantido; coluna sem campo no bloco (Test reference) ganha linha. Junto com N5-1.
 - (executor) E20/cobertura: a adoção não exerceu a recusa (apaga o provisório, original intacto), o caminho com AskUserQuestion, as fontes 2 a 4 da busca do spec nem spec-author. Exercer ao menos a recusa e o spec do card na conferência de N5-1.
-- (dono) E20: rodar a suíte de gatilho do critério 5.
-- (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025)
 - (dono) Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458)
-- (dono) E20: critério AC5 sem evidência automática (human)
 - (executor) E20/cadeia: antes de publicar plan-writer, 1 execução claude -p de spec-writer e plan-writer com tópico <slug>-E<n>: id E<n>, check --roadmap em 0 e roadmap gravado no plano. spec-writer não compara critérios com o card. Portão: DEC-458.
 - (executor) E11, preparação: na config descartável, fixar o superpowers e desligar a atualização automática das lojas antes da 1ª execução; conferir o commit do superpowers antes de cada lote e parar se mudou. Decidir a versão de referência (E15 em 7.0.0, E17 misto).
 - (executor) baseline.mjs: a divergência de superpowers vira erro global e saída 1 mesmo com decisão do dono; avaliar registrar a versão por variante e aceitar a divergência citando a decisão, com teste.
@@ -128,6 +124,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) roadmap-release.js mede 239.908 caracteres LF na ponta da release: folga de 92 sob o teto de 240.000 (DEC-556). E9, E21, E23, E24 e E10 editam o arquivo; cada spec precisa caber reduzindo o script. Aumentar o teto pede decisão do dono com a medição pelo nome em mãos.
 - (executor) E11, preparação: tools/measure ainda espera os artefatos de E5 em docs/superpowers (make-scenario.mjs, E5_PATHS) e ratifica decisões entre as sessões de parada-retomada (DEC-442); adaptar aos caminhos de DEC-537 e à exceção de retomada antes de medir o release nativo.
 - (executor) Até a publicação de E11 o release instalado é o 1.7.0, sem E8: cada retomada ainda regrava as decisões do spec com outro texto e pode gravar nota como decisão. Ao fechar E9, E21, E23 e E24, ratificar um registro e tratar as repetições como em E8.
+- (executor) E20/gatilho: em fix/E20-gatilho-casos (base 4732427), plan-execution-1 cita docs/plans/text-utilities/plan.md; o sandbox recebe os arquivos que os casos citam; --max-turns 3; teste cobre. Só tools/measure. Integra depois da execução de E9 e do merge de chore/E20-c5-gatilho.
+- (executor) E20/gatilho: nova passada opus dos 24 casos pelo orquestrador, com sonda de 2 casos e teto de US$ 10, resultado em docs/reports/. Portão: não publicar spec-writer e plan-writer sem ela (junto de DEC-458).
+- (executor) E12: se a description do plan-coordinator mudar, rodar de novo os 3 casos plan-execution (pt e en) em opus antes de integrar e registrar em docs/reports/.
+- (executor) Lançar em measurements.md a suíte de gatilho de E20: 50 execuções, US$ 6,04 (haiku 0,16; opus 5,87), fora do teto de E17 (DEC-478).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -135,4 +135,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E9 | viva | E9 em execução pelo release |
 <!-- /roadmap:inflight -->

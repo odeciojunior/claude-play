@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "language": "en",
+  "strategy": "strategy.md",
+  "integrationBranch": "main",
+  "releaseBranch": "release/sample",
+  "files": {
+    "readme": null,
+    "state": "state.md",
+    "decisions": null,
+    "log": null,
+    "criticalPath": null,
+    "measurements": null,
+    "sources": null,
+    "requirements": null
+  },
+  "vocab": {
+    "deliverableStatuses": ["not-started", "spec", "plan", "executing", "on-branch", "integrated", "released", "measured", "blocked", "discarded"],
+    "integratedStatuses": ["integrated", "released", "measured"],
+    "decisionInForce": "in-force",
+    "decisionPending": "pending",
+    "decisionSupersededBy": "superseded by",
+    "coverageCovered": "covered",
+    "coverageOutOfScope": "out-of-scope",
+    "coverageNeedsClarification": "needs-clarification",
+    "branchLive": "live",
+    "branchDeleted": "deleted",
+    "markers": ["ASSUMPTION", "UNSOURCED"],
+    "bannedPhrases": ["this commit"]
+  },
+  "tracks": ["engineering", "decisions", "external", "release", "measurement"],
+  "limits": { "nowItems": 5, "cellChars": 300, "pendingItems": 20 }
+}
