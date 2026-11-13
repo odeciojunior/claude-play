@@ -42,6 +42,12 @@ Run the package command given in the prompt, read only that diff and the open fi
 
 Judge compliance and quality in one call and return `spec` and `quality` (`pass` or `fail`). Every `fail` comes with a blocking finding in `issues`.
 
-## Measure
+## Reading the prompt
 
-Return what the prompt's `Measure:` line asks: `headSha`, `clean`, `commitsInRange`.
+After the briefing the prompt gives, in this order:
+
+- `Mode:` as above, then the task, plan and spec.
+- `Range:` the command to run to read the range under review (`git log -p`, or the package script in `restricted` mode).
+- `Summary:` the implementer's summary, then the implementer's checks, each as `$ command`, `exit N` and its output.
+- `Previous:` the findings of the previous round, when there is one, numbered as listed (see Numbering the findings).
+- `Measure:` the command that counts the commits in the range. Return `headSha`, `clean` and `commitsInRange`, measured with the given command.

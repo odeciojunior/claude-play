@@ -370,20 +370,20 @@ function blocking(r) {
 function fmt(iss) {
   return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.id ? `[${i.id}] ` : ''}${i.description}`).join('\n')
 }
-// Restricted re-review: after a fix, every open finding has an id.
+// Restricted: every open finding has an id.
 function restrictedRound(c) {
-  const p = c.was && c.was.iss
-  return c.taskReview && c.taskReview.restricted === true && p && p.length && p.every(i => i.id)
+  const p = c.was && c.was.iss, t = c.taskReview
+  return t && t.restricted && p && p.length && p.every(i => i.id)
 }
-// Restricted: new findings plus open ones no verdict closed. Single: both verdicts pass, or a blocking finding says why.
+// Restricted: new findings and open ones no verdict closed. Single: both verdicts pass.
 function taskIssues(r, c) {
   let a = r.issues
   if (restrictedRound(c)) {
-    const shut = (r.verdicts || []).filter(v => !v.open).map(v => v.id), now = a || []
-    a = [...now, ...c.was.iss.filter(p => !shut.includes(p.id) && !now.some(i => i.id === p.id))]
+    const now = a || [], gone = [...(r.verdicts || []).filter(v => !v.open), ...now]
+    a = [...now, ...c.was.iss.filter(p => !gone.some(i => i.id === p.id))]
   }
-  const bad = c.taskReview && c.taskReview.single === true && (r.spec !== 'pass' || r.quality !== 'pass') && !blocking({ issues: a }).length
-  return bad ? [...(a || []), { severity: 'critical', category: 'defeito', description: 'single review: spec and quality must pass, a fail needs a blocking finding' }] : a
+  const bad = c.taskReview && c.taskReview.single && (r.spec !== 'pass' || r.quality !== 'pass') && !blocking({ issues: a }).length
+  return bad ? [...(a || []), { severity: 'critical', category: 'defeito', description: 'single review: spec and quality must pass, else a blocking finding' }] : a
 }
 function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
@@ -584,16 +584,16 @@ function fmtChecks(checks) {
   return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`).join('\n---\n')
 }
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
+  const rr = restrictedRound(ctx), w = ctx.wt
   return `${briefing(ctx)}
 
-Mode: ${restrictedRound(ctx) ? 'restricted, ' : ''}${kind}. Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
-Range: ${restrictedRound(ctx) ? `node "${ctx.pluginRoot}/scripts/review-package.mjs" "${ctx.wt}" ${ctx.was.head} HEAD "${ctx.diffPath}"` : `git -C "${ctx.wt}" log -p ${ctx.start}..HEAD`}.${ctx.rangeNote || ''}
-Implementer summary: ${(impl && impl.summary) || '(none)'}
-IMPLEMENTER'S CHECKS:
+Mode: ${rr ? 'restricted, ' : ''}${kind}. Task ${task.n} ("${task.title}"), plan ${w}/${ctx.planPath}, spec ${w}/${ctx.specPath}.
+Range: ${rr ? `node "${ctx.pluginRoot}/scripts/review-package.mjs" "${w}" ${ctx.was.head} HEAD "${ctx.diffPath}"` : `git -C "${w}" log -p ${ctx.start}..HEAD`}.${ctx.rangeNote || ''}
+Summary: ${impl && impl.summary || '(none)'}
 ${fmtChecks(impl && impl.checks)}${ctx.prev ? `
-Issues from the previous round:
+Previous:
 ${ctx.prev}` : ''}
-Measure: headSha, clean, commitsInRange (git -C "${ctx.wt}" rev-list --count ${ctx.start}..HEAD).`
+Measure: git -C "${w}" rev-list --count ${ctx.start}..HEAD`
 }
 // ---- merge stage helpers
 // Delta of the target brought in by a late sync: only docs or roadmap files need no review. An empty delta needs none.
@@ -2501,10 +2501,11 @@ ${NO_ASK}`,
     if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
-    for (const kind of CFG.taskReview && CFG.taskReview.single === true ? ['review'] : ['spec', 'quality']) {
-      let cx = null
+    const tr = CFG.taskReview || {}, TR = { restricted: tr.restricted === true, single: tr.single === true }
+    for (const kind of TR.single ? ['review'] : ['spec', 'quality']) {
+      let cx
       const loop = await reviewLoop(`T${t.n}:${kind}`,
-        (round, prev, rvModel, was) => revAgent(buildTaskReviewPrompt(cx = ctxFor({ locks, start, round, prev, rangeNote, taskReview: CFG.taskReview, pluginRoot, was, diffPath: `${WT}/_tmp/${E}-t${t.n}-${kind}${round}.diff` }), t, kind, cur),
+        (round, prev, rvModel, was) => revAgent(buildTaskReviewPrompt(cx = ctxFor({ locks, start, round, prev, rangeNote, taskReview: TR, pluginRoot, was, diffPath: `${WT}/_tmp/${E}-t${t.n}-${kind}${round}.diff` }), t, kind, cur),
           { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', model: rvModel || reviewModelFor(t), effort: effortFor(rvModel || reviewModelFor(t)) }),
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await implAgent(`${C()}

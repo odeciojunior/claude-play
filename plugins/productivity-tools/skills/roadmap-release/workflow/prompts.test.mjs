@@ -227,6 +227,29 @@ test('AC5: task review prompts cite no superpowers and forbid asking', () => {
   assert.ok(single.startsWith(ctx.base), 'single review prompt opens with the briefing');
   assert.match(single, /Mode: review/);
   assert.doesNotMatch(single, /superpowers/i);
+  // E21 T9: the generic labels live in the agent; the prompt keeps only the data.
+  const how = (agentText.match(/## Reading the prompt\n([\s\S]*?)(?=\n## |$)/) || [])[1] || '';
+  assert.match(how, /`Mode:`/);
+  assert.match(how, /`Range:`[^\n]*(command|package)/i);
+  assert.match(how, /`Measure:`[^\n]*`headSha`[^\n]*`clean`[^\n]*`commitsInRange`/);
+  assert.match(how, /implementer's checks/i);
+  assert.match(how, /previous round/i);
+  const withPrev = { ...ctx, prev: '1. [critical/defeito] a.js [F1] bug' };
+  const rw = { ...restricted, prev: withPrev.prev };
+  const shown = [
+    [P.buildTaskReviewPrompt(withPrev, task, 'spec', impl), /log -p abc123\.\.HEAD/],
+    [P.buildTaskReviewPrompt(withPrev, task, 'quality', impl), /log -p abc123\.\.HEAD/],
+    [P.buildTaskReviewPrompt({ ...withPrev, taskReview: { single: true } }, task, 'review', impl), /Mode: review/],
+    [P.buildTaskReviewPrompt(rw, task, 'spec', impl), /node "\/plug\/scripts\/review-package\.mjs" "\/wt\/E7" h1 HEAD "\/wt\/_tmp\/x\.diff"/],
+  ];
+  for (const [p, range] of shown) {
+    assert.match(p, range);
+    assert.match(p, /12 passing/);
+    assert.match(p, /\[F1\] bug/);
+    assert.match(p, /rev-list --count abc123\.\.HEAD/);
+    assert.doesNotMatch(p, /IMPLEMENTER'S CHECKS/);
+    assert.doesNotMatch(p, /Issues from the previous round/);
+  }
 });
 
 test('effortFor: haiku low, sonnet and opus medium', () => {
