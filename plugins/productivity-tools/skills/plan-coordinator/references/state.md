@@ -12,7 +12,11 @@ Exit codes: 0 done, 1 refused with no change (code on stderr, or in `errors` wit
 | `piece` | optional label of the piece being run |
 | `run` | `status`, `wave`, `worktree`, `branch`, `base`, `test`, `baseline`, `commits` (`per-step`/`none`), `waveGateOwed`, `question`, `updated` |
 | `waves` | `{n, tasks[]}` per wave |
-| `steps[]` | `n`, `title`, `wave`, `deps`, `tier`, `effort`, `reviewTier`, `gate`, `external`, `mode` (`delegated`/`inline`), `agent`, `status`, `attempts`, `rounds`, `agentId`, `preLaunchReview`, `authorized`, `handoff`, `sha`, `replacedBy`, `note`, `outputs`, `brief` |
+| `steps[]` | `n`, `title`, `wave`, `deps`, `tier`, `effort`, `reviewTier`, `gate`, `external`, `mode` (`delegated`/`inline`), `agent`, `status`, `attempts`, `rounds`, `agentId`, `preLaunchReview`, `authorized`, `handoff`, `sha`, `replacedBy`, `note`, `outputs`, `brief`, `files`, `noCommit`, `gated` |
+| `steps[].files` | paths the step may change (create, modify and test); what a per-step commit stages |
+| `steps[].noCommit` | the plan marks the step as one that is never committed on its own |
+| `steps[].gated` | set when a wave gate ran with the step `pass`; a wave gate is due only when the wave has no open step and a `pass` step is not yet `gated` |
+| `run.baseline` | `{ test, exit, tail, failedNames }` recorded by the `baseline` event; a failing test counts only if its name is not in `failedNames` |
 | `finalGate` | `status`, `rounds`, `lastVerdict` |
 | `manual[]` | open or closed holds: `kind`, `step`, `text`, `open` |
 | `history[]` | one line per event, with its time |
@@ -33,7 +37,8 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 | `block --text q` / `unblock` | `blocked` with the question / back to `in-progress` |
 | `launch --steps n,.. [--tier t] [--agent-id id]` | steps `launched`, attempts + 1; `--tier` raises the level on a repeat |
 | `inline-start --step n` / `inline-result --step n --value pass\|fail` | inline run (haiku, not external, no gate): `launched`, then `pass`, or `pending` as delegated sonnet |
-| `report --step n --value pass\|fail\|blocked [--text t]` | `pass`: `pass`, or `review-owed` when gated. Otherwise `pending` up to 3 attempts, then held with the text; an external step becomes `stopped` |
+| `baseline` (batch only) `exit`, `failedNames`, `test`, `tail` | records the test baseline in `run.baseline`; `exit` is an integer and `failedNames` a list of texts |
+| `report --step n --value pass\|fail\|blocked [--text t]` | `pass`: `pass` (in a batch the event may carry `handoff`, stored on the step), or `review-owed` when gated. Otherwise `pending` up to 3 attempts, then held with the text; an external step becomes `stopped` |
 | `no-report --step n` | agent lost: `pending`; an external step becomes `stopped` |
 | `review-result --step n --value pass\|defects\|lost` | `pass`; `defects`: fix-up round (`launched`, 2 rounds, then as a failure; external: `stopped`); `lost`: review again |
 | `commit --step n --sha s` | records the commit of a `pass` step |
@@ -45,6 +50,13 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 | `card-changed --step n` | external step: review and authorization are void |
 | `hold --step n [--text t]` / `release --step n` | holds a `pending` step (or marks it `waiting-manual`) / returns it to `pending` |
 | `answer --step n --value done\|no\|rerun\|value [--text t]` | answers a `stopped` or held step: `done` is `pass`, `no` keeps the refusal, `rerun` (external) adds a new step for the effect, `value` stores the text and returns it to `pending` |
+
+## Signed commands
+
+- `token` prints a fresh random token (the workflow's `runToken`).
+- `read <progress.json> --nonce <n> [--json]` prints the state (history emptied), the repository root and `planChanged`, signed with a `digest` and echoing the nonce.
+- `apply <progress.json> --events <payload> --nonce <n>` applies a list of events in one write. The payload is URL-encoded JSON `{ expect, events, digest }`: `expect` is the `stateDigest` from the last read, `digest` signs the rest. A bad digest changes nothing and exits 2; a stale `expect` is refused as `concurrent-change`; an event refused midway changes nothing and the reply carries its `index` and `code`.
+- The reply is signed output: `tool`, `command`, `nonce`, `now`, `ok`, `code`, `action` (the next action), `stateDigest` and `digest`. Trust it only when the nonce matches and the digest verifies.
 
 ## Next action (`next`)
 

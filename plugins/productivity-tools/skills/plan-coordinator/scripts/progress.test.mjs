@@ -1030,17 +1030,10 @@ test('AC6: no published file of the coordinator skill mentions the word', () => 
 });
 
 test('AC6: executor prompt forbids asking the person', () => {
-  const doc = fs.readFileSync(path.join(skillDir, 'references', 'delegation-protocol.md'), 'utf8').replace(/\r\n/g, '\n');
-  const from = doc.indexOf('## Prompt template');
-  const to = doc.indexOf('## Verification');
-  assert.ok(from >= 0 && to > from, 'template block not found');
-  const block = doc.slice(from, to);
-  const r = block.indexOf('## Rules');
-  assert.ok(r >= 0, 'Rules section not found in the template');
-  const rules = block.slice(r);
+  const js = fs.readFileSync(path.join(skillDir, 'workflow', 'coordinator.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(
-    rules.split('\n').includes('- Never ask the person anything: if a decision is missing, stop and report BLOCKED with the question.'),
-    'literal Global Constraints line missing',
+    js.includes("'- Never ask the person anything: if a decision is missing, stop and report BLOCKED with the question.'"),
+    'literal Global Constraints line missing from the implementer prompt',
   );
 });
 
