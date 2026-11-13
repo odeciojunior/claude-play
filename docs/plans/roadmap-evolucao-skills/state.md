@@ -60,13 +60,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Incerto, rever no spec de E1: a causa de a revisão do plano semeado acusar árvore suja logo após um commit limpo, que impede atribuir o conserto só ao revisor (SRC-14).
 - (executor) Incerto, rever no spec de E1: o lançador sem interface só foi visto em plan-only e sem prompts de permissão; falta o modo normal, em que o preflight para por regras ausentes, e o modo padrão com as regras por parâmetro (DEC-043). E15: planner negado fora do bypass.
 - (executor) Incerto, rever na preparação de E17 e na nota de E11: a receita de fixar a loja numa tag foi vista com fonte git local; repetir com a loja do GitHub na primeira tag publicada, e ver como uma sessão aberta reage enquanto a loja fica ignorada (DEC-056).
-- (executor) Até E8 implementar a retenção (DEC-031), rodar `roadmap.mjs pending-decisions --json` antes de iniciar cada entregável e parar se uma dependência tiver decisão de contrato pendente (desvio de DEC-030 em 2026-11-11).
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
 - (dono) E25: roteiro B antes da publicação de E17 (DEC-284): entrar na conta uma vez no CLAUDE_CONFIG_DIR descartável; o agente delegado roda concessão e regra a partir do cache e apaga a pasta. Responde aos gatilhos de DEC-061, DEC-049 e DEC-275.
-- (executor) Rever no spec de E8: o diálogo do Workflow não aprova script grande (213.337 caracteres; limite não medido). Medir o limite, conferir que concessão e regra lançam acima dele e decidir um teste de tamanho; E9, E21, E23, E24 e E10 também aumentam o arquivo.
-- (executor) E25, baixo, corrigir em E8: os passos do dono no spec não dizem que sem interface o preflight precisa de --allowedTools "Bash(git:*)" "Bash(node:*)".
 - (executor) E25 F3: o lint não confere allowed-tools em commands/*.md nem em caminhos customizados do plugin.json; rever quando um plugin ganhar um dos dois ou no spec de E12.
-- (executor) Rever no spec de E8: o registro do release gravou alcance contrato em decisões que o autor marcou local, e uma nota de execução como decisão (DEC-277); a correção do parser e do prompt está na branch fix/release-escopo-decisao.
 - (dono) Execuções pagas do ponto de medição (gasto em dinheiro); critérios 1 e 6 e o portão do critério 2 dependem delas
 - (dono) Ratificação em lote das decisões do executor (critério 3)
 - (dono) Publicação (critérios 2 e 5): envio da tag productivity-tools--v1.6.0, avanço e push de main, atualização da loja e do plugin, conferência do cache e registro dos commits
@@ -76,11 +72,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Ratificação em lote das decisões do executor de E17 (critério 3)
 - (dono) Publicação pelo dono: conferência da tag productivity-tools--v1.6.0 no remoto, avanço e push de main, atualização da loja e do plugin, conferência do cache (critérios 2 e 5)
 - (dono) Aceite da branch de volta pelo dono (critério 4): conferir diff contra a tag e saída dos gates em volta.md
-- (executor) Rever no spec de E8: o modo run nunca completou fora do bypass. Os prompts dos agentes pedem comandos simples (sem heredoc nem laço; arquivo por Write, commit com -F). Rodar uma sonda completo em acceptEdits com regras e --stop-on-denial e listar as negações.
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
-- (executor) Rever no spec de E8: o preflight não vê --allowedTools nem o modo de permissão, e sem interface o run para no passo 2. Aceitar um argumento digitado pela pessoa que declara as permissões concedidas por outro meio; o relatório registra isso.
-- (executor) Corrigir em E8: operator.md ganha a receita sem interface: --allowedTools "Bash(git:*)" "Bash(node:*)", CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 acima de 10 minutos e as regras em .claude/settings.local.json. Não recomendar bypass como padrão.
-- (executor) Corrigir em E8, depois do roteiro B: o aviso do preflight diz que claude -p é negado sem a regra, e a concessão lança o comando digitado (DEC-283). Novo texto: a regra só é precisa para lançamento fora da skill.
 - (executor) tools/measure: SANDBOX_RELEASE_RULES cita Workflow(productivity-tools:roadmap-release), nome antigo e inerte; trocar por Workflow(productivity-tools:release-workflow) quando alguém mexer no arnês. Workflow sem conteúdo já cobre.
 - (executor) Fora de E17: spec-review-atual.md não casa com o workflow em HEAD sob nenhuma normalização; checkpoint.mjs não o confere. Resolver antes de medir a classe spec.
 - (dono) Execuções pagas do ponto de medição (dono ou orquestrador com autorização do dono; gasto em dinheiro): critérios 1 e 6 e o portão do critério 2 dependem delas.
@@ -110,15 +102,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) E17: critério AC5 sem evidência automática (human)
 - (dono) E17: critério AC6 sem evidência automática (human)
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real.
-- (executor) E8: alinhar o contrato em spec-author.md: output absoluto; intake e ownerNote multilinha, como último campo até o fim do prompt. Não editado em E19 para manter o corpo testado no critério 1.
 - (executor) E11: medir se specs do autor trazem critério que contradiz ruling ou caso de borda (AC6 do critério 2 de E19) ou critério ampliado por ruling sem citá-lo (AC3/R3); se repetir, acrescentar ao passo 6 de spec-author.md.
 - (dono) Respostas da rodada de perguntas e aprovação do critério 2 vêm de um roteiro sintético marcado (tools/measure/scenario/spec-writer-request.md), não de uma pessoa; a credencial do critério 1 é só o nome REPORT_STORE_TOKEN, sem valor real (nenhuma credencial real é necessária).
 - (executor) E12: escolhas do executor de E7 fora do registro: portão de onda devido só sem passo aberto na onda; baseline.md ao lado do estado (run.baseline sem uso); sem evento para agentId pós-launch nem handoff; code no --json de recusa.
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado registrado em docs/reports/ (critério 5, DEC-025)
-- (executor) Corrigir na release antes do próximo run real: o schema de docs-measure do release-workflow confunde o campo status (JSON de status --json) com situação; renomear os campos de saída bruta e testar. Entra na próxima publicação, com versão nova.
 - (dono) A ponta da release tem E7 e E19 com plugin.json ainda em 1.7.0. A publicação seguinte sobe a versão (DEC-382) e mede sobre a árvore nova; até lá ninguém instala a partir da branch de release.
 - (executor) Antes de E11: explicar por que coordinator variou com a skill idêntica (sonnet 2 para 3, bytes da sessão principal 1423 para 5378, turnos 17 para 26) e propor tolerância ou mais execuções; E7 muda essa skill.
-- (executor) E8: avaliar se resume do próprio entregável deve parar por decisão de contrato dele mesmo sem dependente iniciado (DEC-030 só exige antes de um dependente); em 2 de 3 retomadas do sandbox a parada pediu resposta humana.
 - (dono) Rodar G1 a G5 sobre a ponta de feat/E17-medicao antes de avançar main e conferir que a árvore do plugin é 214fb3b; a branch de volta segue partindo de M.
 - (dono) Não bloqueia: o caminho com AskUserQuestion da adoção nunca foi exercido em sessão interativa; observar na primeira adoção real e registrar o resultado.
 - (executor) E20/N5-1: no passo 3 da adoção do plan-writer, a mensagem de aprovação deve colar literais a seção ## Adoção, o --stat do diff (acima de 200 linhas) e a saída de summary, sem resumir. Conferir com 1 execução claude -p até APPROVAL QUESTION. Portão: DEC-458.
@@ -128,22 +117,17 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Execução paga da suíte de gatilho pelo dono e conferência do resultado em docs/reports/ (critério 5, DEC-025)
 - (dono) Correção pós-merge de N5-1 e N5-2 conferida antes de publicar plan-writer (DEC-458)
 - (dono) E20: critério AC5 sem evidência automática (human)
-- (executor) E8: escrever em spec-author.md a regra tópico-id (topic E<n> quando o tópico termina em -E<n>; hoje só o chamador spec-writer a aplica, DEC-477), junto com o alinhamento do contrato (DEC-421, DEC-422).
 - (executor) E20/cadeia: antes de publicar plan-writer, 1 execução claude -p de spec-writer e plan-writer com tópico <slug>-E<n>: id E<n>, check --roadmap em 0 e roadmap gravado no plano. spec-writer não compara critérios com o card. Portão: DEC-458.
-- (executor) E8: a execução retomada do release regrava as decisões do spec como pendentes novas (DEC-459 a DEC-474 repetem DEC-425 a DEC-440) e grava nota de execução como decisão (DEC-475). Corrigir junto com o defeito de DEC-277.
-- (dono) Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030).
-- (dono) Avaliação pelo dono do gatilho de revisão de DEC-442: E8 deixa de parar a retomada do próprio entregável dono da decisão de contrato, única exceção à parada de DEC-218.
-- (dono) Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob a delegação do dono.
 - (executor) E11, preparação: na config descartável, fixar o superpowers e desligar a atualização automática das lojas antes da 1ª execução; conferir o commit do superpowers antes de cada lote e parar se mudou. Decidir a versão de referência (E15 em 7.0.0, E17 misto).
 - (executor) baseline.mjs: a divergência de superpowers vira erro global e saída 1 mesmo com decisão do dono; avaliar registrar a versão por variante e aceitar a divergência citando a decisão, com teste.
 - (executor) Rever depois de E8: a retomada repete setup, progress e status-record (4 haiku a mais por execução em duas sessões); avaliar pular o registro já feito na 1ª sessão.
 - (dono) Publicar o 1.7.0 a partir da ponta de feat/E17-medicao (73cd476, árvore 214fb3b, DEC-445): G1 a G5 e X1/X2 ali, git fetch . feat/E17-medicao:main, push, update de loja e plugins, conferir cache.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
-- (dono) Ratificação pelo dono das decisões de alcance contrato (1, 6, 9, 12, 13, 14, 15 e 17) antes de um dependente de E8 começar (DEC-030)
-- (dono) Avaliação pelo dono do gatilho de revisão de DEC-442 (exceção à parada de DEC-218 na retomada do próprio dono)
-- (dono) Gasto da sonda acceptEdits (até US$ 10) pelo orquestrador sob delegação do dono
-- (dono) Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato).
-- (dono) Avaliação pelo dono do gatilho de revisão de DEC-442 (E8 deixa de parar a retomada do entregável dono da decisão de contrato, única exceção à parada de DEC-218).
+- (executor) E8, fora do plano (DEC-204): rodar no sandbox, com o plugin da ponta da release, o teste comportamental plan-only (definição de pronto do card) e a medição do limite de lançamento pelo nome; relatórios em docs/reports/. Sem a medição, o teto de 240.000 segue provisório (DEC-556).
+- (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
+- (executor) roadmap-release.js mede 239.908 caracteres LF na ponta da release: folga de 92 sob o teto de 240.000 (DEC-556). E9, E21, E23, E24 e E10 editam o arquivo; cada spec precisa caber reduzindo o script. Aumentar o teto pede decisão do dono com a medição pelo nome em mãos.
+- (executor) E11, preparação: tools/measure ainda espera os artefatos de E5 em docs/superpowers (make-scenario.mjs, E5_PATHS) e ratifica decisões entre as sessões de parada-retomada (DEC-442); adaptar aos caminhos de DEC-537 e à exceção de retomada antes de medir o release nativo.
+- (executor) Até a publicação de E11 o release instalado é o 1.7.0, sem E8: cada retomada ainda regrava as decisões do spec com outro texto e pode gravar nota como decisão. Ao fechar E9, E21, E23 e E24, ratificar um registro e tratar as repetições como em E8.
 <!-- /roadmap:pending -->
 
 ## Em andamento

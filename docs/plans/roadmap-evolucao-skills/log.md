@@ -3,6 +3,14 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E8 | E8 fechado por delegação (Fable): 28 decisões da rodada integrada ratificadas (8 de contrato; DEC-548 com emenda), 47 repetições ratificadas e DEC-493, DEC-502 e DEC-532 rejeitadas; gatilho de DEC-442 aceito; sonda acceptEdits autorizada. E9, E11 e E26 liberados (DEC-030). | `decisions.md` |
+| 2026-11-12 | E8 | DEC-565 (gatilho de DEC-442, E8) decidida pelo dono por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E8 | DEC-480 a DEC-506 e DEC-510 a DEC-536 de E8 ratificadas como repetição das rodadas 1 e 2 do mesmo spec (precedente: DEC-459 a DEC-474), salvo DEC-493, DEC-502 e DEC-532, rejeitadas, e as quatro da rodada integrada. O texto de referência é o de DEC-537 a DEC-560. | `decisions.md` |
+| 2026-11-12 | E8 | DEC-532 rejeitada pelo dono; DEC-564 a substitui | `decisions.md` |
+| 2026-11-12 | E8 | DEC-502 rejeitada pelo dono; DEC-563 a substitui | `decisions.md` |
+| 2026-11-12 | E8 | DEC-493 rejeitada pelo dono; DEC-562 a substitui | `decisions.md` |
+| 2026-11-12 | E8 | DEC-548 (E8, contrato) ratificada com emenda por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E8 | Decisões de E8 ratificadas por delegação (Fable): registro da rodada integrada (3723436), DEC-537 a DEC-560 mais DEC-517, DEC-518, DEC-531 e DEC-534 (itens 8, 9, 22 e 25 do spec, não regravados). Contrato: 518, 537, 542, 546, 547, 548, 549 e 551; libera os dependentes de E8 (DEC-030). | `decisions.md` |
 | 2026-11-12 | E8 | E8 passou para na-branch | `37234367718719ba7e155d07efee76356e734627`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E8 | E8 passou para executando | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E8 | BLQ-8 resolvido: desbloqueio de E8 pelo release | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
