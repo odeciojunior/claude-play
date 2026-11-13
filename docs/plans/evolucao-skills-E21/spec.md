@@ -45,6 +45,8 @@ O que não fazer:
 
 **Tamanho do script.** `roadmap-release.js` mede 239.997 caracteres LF, 3 sob o teto (nota do dono). `buildTaskReviewPrompt` tem cerca de 1.850 caracteres, dos quais perto de 1.300 são texto genérico, mais os cerca de 190 do texto de verificações vazias de `fmtChecks`. A primeira tarefa que edita o script move esse texto para o agente e troca o despacho por `revAgent` antes de acrescentar qualquer outro código; cada tarefa seguinte mede com `workflowChars` de `size.test.mjs` depois de cada edição; se o total passar de 240.000, a tarefa para com BLOCKED e uma ação do dono, sem editar `size.test.mjs` (R9).
 
+**Retomada sob o teto (nota do dono).** A execução parou em BLQ-10: na ponta `50a80d0` de `feat/E21` o script mede 240.425 caracteres LF, porque a T5 (`f8df406`) abriu espaço encurtando comentários de outros estágios e a correção final `66afa1d` os restaurou. E21 retoma nessa ponta, mantendo `3b5c950` (o arnês de revisão por tarefa mede o `task-reviewer` real). A primeira tarefa da retomada libera pelo menos 425 caracteres só no texto da própria revisão por tarefa em `roadmap-release.js`: `restrictedRound`, `taskIssues`, `buildTaskReviewPrompt`, o laço `for (const kind of ...)` de `runDeliverable` e os comentários deles (R13). Os rótulos e as instruções genéricas do prompt (a explicação das linhas `Range:` e `Measure:` com os campos `headSha`, `clean` e `commitsInRange`, o rótulo das verificações do implementador e o dos achados da rodada anterior) passam para `agents/task-reviewer.md`, e o prompt guarda só os dados (o comando do intervalo, as verificações, os achados, o comando de `rev-list`). `CFG.taskReview` é normalizado uma vez em `runDeliverable` (por exemplo `const TR = { restricted: tr.restricted === true, single: tr.single === true }`), e `restrictedRound`, `taskIssues` e o laço leem os booleanos já prontos, sem repetir `c.taskReview && ... === true`; a mensagem do achado crítico do modo único e o comentário sobre `taskIssues` ficam curtos. Os asserts de `prompts.test.mjs` e `review.test.mjs` sobre o texto movido passam a conferir o agente, sem perder o que conferem. É proibido tocar comentário ou texto de outro estágio, `size.test.mjs` ou o teto (DEC-556, DEC-563, DEC-592). A tarefa mede `workflowChars` depois de cada edição. Se, esgotado esse texto, o total não chegar a 240.000 ou menos, a tarefa reverte só o código da T5 (`f8df406`) no script e nos testes (o modo único, a reprovação de veredicto no `taskIssues` e seus testes), mantém a revisão restrita e o agente, registra o AC3 como adiado para um card novo e para com BLOCKED parcial para o dono (R14). A decisão do dono é registrada em `decisions.md` pelo estágio de registro do workflow a partir de R13 e R14; a branch de entrega não edita a pasta do roadmap.
+
 **Teste comportamental (definição de pronto, SRC-03).** Tarefa do orquestrador da sessão principal (DEC-204), no worktree de E21 antes do merge: no workflow ela devolve NEEDS_HUMAN, sem relatório fictício. O orquestrador despacha subagents que seguem `agents/task-reviewer.md` literalmente sobre uma fixture sintética marcada numa pasta temporária, um por modo (padrão, restrito e único), cada um listando as ambiguidades, com uma revisão adversarial só de leitura, e grava `docs/reports/2026-11-12-E21-revisor-comportamental.md` (R11).
 
 **README.** A seção Agents de `plugins/productivity-tools/README.md` ganha a linha do `task-reviewer`; sem bump (R12).
@@ -55,6 +57,7 @@ O que não fazer:
 - O texto exato de `agents/task-reviewer.md`, da linha de modo e dos achados de `taskIssues`, respeitando R1, R5, R6 e R10.
 - Como os testes dos critérios 2 e 3 localizam o despacho no laço (texto do script ou arnês de `flow.test.mjs` copiado para `review.test.mjs`).
 - A medição de tamanho depois de cada edição do script; os gates G1, G2, G3 e G5 antes do fim; nenhum efeito externo.
+- Na retomada (nota do dono): primeiro a tarefa de liberar espaço na revisão por tarefa (R13), com o caminho de reversão de R14; depois o teste comportamental do orquestrador (R11, DEC-204), que grava `docs/reports/2026-11-12-E21-revisor-comportamental.md`; a revisão final da branch inteira (opus, high) é o estágio final do workflow e se repete sobre a nova ponta. Sem push, sem tocar em `main`, sem bump.
 
 ```json data
 {
@@ -216,6 +219,28 @@ O que não fazer:
       "reversible": true,
       "scope": "local",
       "contradicts": null
+    },
+    {
+      "id": "R13",
+      "question": "De onde sai o espaço para E21 voltar a 240.000 caracteres ou menos depois de BLQ-10?",
+      "decision": "Retomar na ponta 50a80d0 de feat/E21, mantendo 3b5c950, e liberar pelo menos 425 caracteres só no texto da revisão por tarefa (restrictedRound, taskIssues, buildTaskReviewPrompt, o laço kind e seus comentários): mover para agents/task-reviewer.md os rótulos e instruções genéricas do prompt (explicação das linhas Range e Measure, rótulos das verificações e da rodada anterior), normalizar taskReview uma vez, encurtar a mensagem e o comentário do modo único; medir workflowChars após cada edição; nunca tocar comentário ou texto de outro estágio, size.test.mjs ou o teto.",
+      "basis": "Nota do dono (decisão delegada); DEC-556, DEC-563 e DEC-592 fixam o teto e descartam encurtar outros estágios; BLQ-10 registra 240.425 caracteres após 66afa1d.",
+      "alternative": "Encurtar de novo comentários de outros estágios, como fez a T5.",
+      "costIfWrong": "medium",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R14",
+      "question": "O que fazer se o texto da revisão por tarefa não liberar espaço suficiente?",
+      "decision": "Reverter só o código da T5 (f8df406) no script e nos testes, manter a revisão restrita e o agente, registrar o AC3 como adiado para um card novo e parar com BLOCKED parcial para o dono, sem editar size.test.mjs nem o teto.",
+      "basis": "Nota do dono (decisão delegada); DEC-556 e DEC-563 proíbem subir o teto; o modo único é o código mais recente e o único que o AC3 exige além do padrão.",
+      "alternative": "Parar com BLOCKED total, sem entregar nada de E21.",
+      "costIfWrong": "medium",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
     }
   ],
   "needsPerson": [],
@@ -244,7 +269,7 @@ O que não fazer:
     {
       "id": "C5",
       "input": "Depois de uma edição, roadmap-release.js passa de 240.000 caracteres LF.",
-      "expected": "A tarefa para com BLOCKED e ação do dono; size.test.mjs não é editado."
+      "expected": "A tarefa para com BLOCKED e ação do dono; size.test.mjs não é editado. Na retomada, se isso persiste depois de movido todo o texto genérico da revisão por tarefa, o código da T5 (f8df406) é revertido no script e nos testes, a revisão restrita e o agente ficam, o AC3 é registrado como adiado para card novo e a tarefa para com BLOCKED parcial; nenhum texto de outro estágio é tocado."
     }
   ]
 }
