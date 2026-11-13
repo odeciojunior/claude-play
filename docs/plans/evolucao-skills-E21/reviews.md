@@ -99,6 +99,50 @@ Resumo registrado nas concerns: T7 mediu G1 com 1678 testes (baseline 1657), wor
 5. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: block-open --what.
    Texto completo: E21 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: Item 2 foi corrigido, com teste, no commit 3b5c950. No item 1 os comentários dos outros estágios voltaram ao texto original (commit 66afa1d). Com isso roadmap-release.js passa a ter 240.425 caracteres LF, 425 acima do teto de 240.000, e size.test.mjs falha de propósito. Por isso E21 está BLOCKED até o dono decidir. Os testes de tools/measure/run-batch.test.mjs passam (65). Não ; branch feat/E21 kept at D:/projects/claude-play-wt/E21
 
+6. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: add-decision --decision.
+   Texto completo: Retomar na ponta 50a80d0 de feat/E21, mantendo 3b5c950, e liberar pelo menos 425 caracteres só no texto da revisão por tarefa (restrictedRound, taskIssues, buildTaskReviewPrompt, o laço kind e seus comentários): mover para agents/task-reviewer.md os rótulos e instruções genéricas do prompt (explicação das linhas Range e Measure, rótulos das verificações e da rodada anterior), normalizar taskReview uma vez, encurtar a mensagem e o comentário do modo único; medir workflowChars após cada edição; nunca tocar comentário ou texto de outro estágio, size.test.mjs ou o teto.
+
 ## Execução do registro de bloqueio (blocked-record)
 
 Esta execução reconfirmou os dados acima sem alterações nas rodadas, nos achados, nas concerns, nos gates e nas entradas humanas. Acrescentou apenas o item 5 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED até decisão do dono; branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
+
+## Execução de retomada (T9, falhou)
+
+Execução: falhou (task 9 BLOCKED).
+
+Motivo da falha: task 9 BLOCKED: Partial BLOCKED, as the plan's reversal path (R14/C5) and the owner instruction require. Text freed in the per-task review wording (restrictedRound, taskIssues, buildTaskReviewPrompt, kind loop, and their comments) got workflowChars only from 240425 to 240252, short of the 240000 cap. I measured that even deleting both comments would only reach about 240080. So I reverted only the T5 code (f8df406). The kind loop is back to ['spec','quality'], taskIssues lost the single-mode verdict failure, and the AC3 tests of T5 and the single-mode extension of AC5 are gone. The restricted review, the agent (its `review` mode text stays, unused), S_TASKREVIEW, the preflight and config.md stay. Final workflowChars is 239866, 134 under the cap, and size.test.mjs passes untouched. Two commits on feat/E21, working tree clean, nothing pushed, main untouched, no version bump. (1) a2cfea8 "E21 T9: libera espaço na revisão por tarefa". It moved the generic labels (Range/Measure, implementer checks, previous-round findings) into a new "Reading the prompt" section of agents/task-reviewer.md, normalized taskReview once in runDeliverable, and shortened the single-mode message and the comments. At this commit size.test.mjs still fails (240252). (2) 0ee4677 "E21 T9: reverte o modo único da T5 (AC3 adiado)". Pending for the owner: (a) AC3 (the single-review part) postponed to a new card; (b) taskReview.single stays accepted by the preflight and documented, with no effect; (c) record the decision in docs/plans/roadmap-evolucao-skills/decisions.md. I did not do (c) because delivery branches may not edit the roadmap folder, so the record stage must. T8 (behavioral task-reviewer test, DEC-204), the final opus review and the "keep 3b5c950" check were not started: this task stops at T9.
+
+### Revisões desta execução
+
+| Estágio | Rodadas (número, modelo do revisor, tier da correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1 (opus, -) | nenhum | 2 | nenhuma |
+| plan | 1 (opus, -) | nenhum | 3 | nenhuma |
+| T7:spec | 1 (sonnet, -) | nenhum | 0 | nenhuma |
+| T7:quality | 1 (sonnet, -) | nenhum | 1 | nenhuma |
+| T8:spec | 1 (sonnet, -) | nenhum | 1 | nenhuma |
+| T8:quality | 1 (sonnet, -) | nenhum | 1 | nenhuma |
+
+Riscos aceitos: nenhum.
+
+### Tarefas desta execução
+
+| T | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Script do pacote de revisão com teste | RESUMED (already reviewed) | - |
+| 2 | Agente task-reviewer e despacho por revAgent liberando espaço | RESUMED (already reviewed) | - |
+| 3 | Identificadores nos achados e repetição por id no laço por tarefa | RESUMED (already reviewed) | - |
+| 4 | Modo de revisão restrita desligado por padrão | RESUMED (already reviewed) | - |
+| 5 | Modo de revisão única desligado por padrão | RESUMED (already reviewed) | - |
+| 6 | Preflight valida taskReview e regra do script do pacote | RESUMED (already reviewed) | - |
+| 7 | Linha do agente no README do plugin e gates | DONE | 9 |
+| 8 | Teste comportamental do task-reviewer pelo orquestrador | NEEDS_HUMAN | 0 |
+
+### Concerns desta execução
+
+- T9: 1) The script diff stays inside restrictedRound, taskIssues, buildTaskReviewPrompt and the kind loop. I put the TR normalization line just before the `for (const kind ...)` loop, so it is adjacent to the loop rather than inside it. The plan's literal wording is 'once in runDeliverable'; flag this if a reviewer reads the region rule strictly. 2) taskReview is normalized to `{ restricted: <=== true> }` only. After the reversal the `single` field is no longer read, so `restricted: 'yes'` or `'true'` can no longer turn the mode on (covered by the new normalization test in review.test.mjs and by flow.test.mjs). 3) The intermediate commit a2cfea8 has the size test red, with the cap exceeded by 252, and 0ee4677 turns it green. I split the work so the squeeze and the reversal stay distinguishable in history. 4) The prompt now uses short labels ('Summary:', 'Previous:', no label before the checks, `Measure:` with only the command). The agent's 'Reading the prompt' section explains them. 5) The agent still describes the `review` mode (the plan keeps it, unused), and config.md and the README mention taskReview.single without effect. The owner needs to know that. 6) The decisions.md entry and the roadmap-folder record are not written here, since delivery branches do not edit docs/plans/roadmap-evolucao-skills/. 7) The Bash tool resets cwd between calls, so G1-G3 and G5 ran with absolute paths; the canonical relative commands from the worktree root should give the same result.
+
+### Entradas humanas desta execução
+
+1. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): despachar o agente task-reviewer com um pacote de revisão real e registrar o resultado em docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueante: não. Contorno: Nenhum relatório criado e nenhum commit feito, para não registrar um aceite fictício (R16). O orquestrador executa e commita 'E21 T8: relatório comportamental do task-reviewer'.
+2. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): rodar o teste comportamental do task-reviewer com ferramenta de subagent e gravar docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueante: sim. Contorno: Nenhum relatório fictício foi criado. O orquestrador da sessão principal executa a tarefa e commita 'E21 T8: relatório comportamental do task-reviewer'.
