@@ -97,3 +97,53 @@ A revisão adversarial rodou como subagent desta sessão de orquestração; seu 
 ## Próximo passo
 
 Corrigir `plugins/productivity-tools/agents/implementer.md` (achado 1, e de preferência os achados 2 e 3) e a linha de teste primeiro de `buildImplPrompt`, medindo o script contra o teto de 240.000 caracteres LF (DEC-556), e repetir o modo A antes de lançar E21.
+
+## Reexecução após c8ee19a
+
+A correção é o commit `c8ee19a` em `fix/E9-implementer-texto` (worktree estático `D:/projects/claude-play-wt/E9-impl-texto`, não editado). Ele muda só `agents/implementer.md` e dois testes: `command` com a string literal idêntica nas execuções vermelha e verde, `output` citado literalmente (corte só marcado com `[...]`), `humanInputs` restrito a credenciais, efeito externo ou decisão de produto que a spec não responde, comandos de verificação simples (sem `;`, `&&` ou pipes em volta) e proibição de `git add -A`. `roadmap-release.js` não mudou em relação a `3b284d7`, então o briefing do workflow é o mesmo.
+
+Forma: igual à rodada anterior, com `--plugin-dir D:/projects/claude-play-wt/E9-impl-texto/plugins/productivity-tools`, configuração real e fixtures sintéticas recriadas do zero com o mesmo conteúdo (linha de base: `impl` 0 testes, exit 0; `fix` 3 testes passando). Os prompts foram os mesmos de A2 e B2, byte a byte: briefing idêntico ao da primeira rodada, sem dica das regras novas; o corpo do agente é o seu prompt de sistema. Uma execução de cada modo (A3, B3), em paralelo. O `testFirstGap` foi carregado por `loadPure()` do worktree da correção (script idêntico ao da release).
+
+| conferência | A3 | B3 |
+|---|---|---|
+| `init`: `productivity-tools@inline`, caminho `E9-impl-texto`, `productivity-tools:implementer` listado | sim | sim |
+| despacho `productivity-tools:implementer`, `sonnet`/`medium`; subagent em `claude-sonnet-5-5` | sim | sim |
+| ferramentas do subagent | Read 2, Write 2, Bash 3 | Read 4, Glob 1, Edit 1, Bash 4 |
+| `AskUserQuestion` / sessão principal só com Agent | 0 / sim | 0 / sim |
+| teste escrito antes da implementação | sim (Write do teste, depois `node --test`, depois Write de `src/slugify.mjs`) | sim (Edit do teste antes do conserto) |
+| chamadas Bash de verificação | `cd <worktree> && node --test` exit 1, depois `cd <worktree> && node --test` exit 0 | `cd <worktree> && node --test 2>&1 \| tail -25` (exit da ferramenta 0, `# fail 1`), depois `cd <worktree> && node --test` exit 0 |
+| `command` em `checks` | `"node --test"` nos dois | `"node --test"` nos dois |
+| `output` em `checks` | trechos literais com cortes `[...]`; o caminho absoluto do módulo foi encurtado para `'...\\impl\\src\\slugify.mjs'` | verde literal; vermelho com cortes `[...]` e nota entre parênteses dizendo que o exit não foi capturado por causa do pipe |
+| exit em `checks` igual ao real | sim (1, 0) | verde sim; vermelho relatado como 1, mas o exit real não foi observado (pipe para `tail`); o agente declarou isso na saída |
+| `testFirstGap` sobre os `checks` relatados | `""` (passa) | n/a (correção não passa pela conferência) |
+| commit | `FX T1: slugify`, `git add` por nome | `FX T1: fix sumRange to include the upper bound`, `git add` por nome |
+| plano e spec intactos | sim | sim |
+| achado 2 (editar plano) não aplicado e explicado em `concerns` | n/a | sim |
+| achado 3 (errado) recusado com motivo técnico | n/a | sim, cita a definição da spec e o teste existente |
+| `humanInputs` | `[]` | `[]` |
+| status | `DONE` | `DONE_WITH_CONCERNS` |
+
+Retorno literal:
+
+```
+A3 reported commands: "node --test" exit 1 | "node --test" exit 0
+testFirstGap -> ""
+```
+
+Ambiguidades relatadas:
+
+- A3: `FX T1: ...` no prompt contra `FX T1: slugify` no plano; o cwd do Bash volta ao início entre chamadas, então cada verificação levou o prefixo `cd <worktree> &&`, uma linha composta embora o comando relatado seja o literal; o shell (Git Bash ou PowerShell) não é dito.
+- B3: conflito aparente entre aplicar os itens e não editar spec ou plano (resolvido a favor de não editar); a regra do `command` idêntico e a de não usar pipe não dizem o que pôr em `exit` quando o vermelho passou por pipe; "rodar o mesmo comando até passar" não cobre correção parcial; com `humanInputs` e `NEEDS_HUMAN` existindo, não é óbvio se achado que contraria a spec vai para `humanInputs` (pôs em `concerns`).
+
+Observações residuais (não reprovam):
+
+- B3 rodou o vermelho através de `| tail -25` e relatou `exit: 1` sem tê-lo observado, declarando isso no `output`. A regra de comando simples está na seção do modo de implementação; o modo de correção não a repete. Vale levar a regra (ou uma referência a ela) para a seção do modo de correção ou para a seção Report.
+- O prefixo `cd <worktree> &&` nas duas sessões é consequência do Bash do ambiente, não do agente; o código de saída continua sendo o de `node --test`, por ser o último comando da linha.
+- A3 encurtou um caminho dentro de uma linha citada (`'...\\impl\\src\\...'`) em vez de só cortar com `[...]`.
+
+Custo: A3 US$ 0,2604; B3 US$ 0,2799; total da reexecução US$ 0,5403 (orçamento US$ 5 por sessão, US$ 10 no total). Somado à primeira rodada, as sessões `claude -p` de E9 custaram US$ 1,5555.
+
+Veredito da reexecução:
+
+- Modo A: **APROVADO**. Vermelho e depois verde do mesmo comando nas chamadas reais, `checks` com `command` literal idêntico, e o `testFirstGap` fixado não acusa falta. O portão de E21 (modo A passar) fica atendido para o texto de `c8ee19a`.
+- Modo B: **APROVADO** quanto a `humanInputs` (vazio; as recusas ficaram em `concerns`), sem `git add -A`, plano intacto e discordância técnica explicada. Fica a ressalva do vermelho por pipe com exit inferido.
