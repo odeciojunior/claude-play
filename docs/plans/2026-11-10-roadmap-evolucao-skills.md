@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.5 2026-11-12 -->
-# Evolução das skills de roadmap -- Estratégia v1.5
+<!-- roadmap:version 1.6 2026-11-13 -->
+# Evolução das skills de roadmap -- Estratégia v1.6
 
 ## Registro de mudanças
 
+- v1.6 (2026-11-13): critério 3 de E21 emendado por delegação do dono (DEC-597, DEC-598): só a metade padrão fica em E21, e a revisão única por tarefa passa ao card novo E28, porque a T5 levou roadmap-release.js a 240.252 caracteres contra o teto de 240.000 e foi revertida (0ee4677). Muda a peça 3 de E21; E27 peça 2 passa a valer só se E28 estiver integrado. E28 entra em ponta-a-ponta, depende de E21 e não é dependência de E13.
 - v1.5 (2026-11-12): critério 4 de E25 emendado por delegação do dono (DEC-282): o diálogo do Workflow não aprova script de 213.337 caracteres, então o critério passa a conferir a recusa sem regra e o lançamento com a regra exata. Nenhum entregável ou dependência muda.
 - v1.4 (2026-11-12): linha de base de E15 registrada e conferida. Entra a tabela de metas derivadas em "Métricas e metas" (critério 4 de E15; DEC-034, DEC-098), com as metas de prosa do planner (E4) e do tracker (E22). Nenhum entregável, dependência ou critério de aceite muda.
 - v1.3 (2026-11-11): E1 integrado na branch de release. A tabela de gates é atualizada: G1 ganha o padrão `tools/**/*.test.mjs` com a linha de base medida de novo (DEC-032), e a célula Quando de G4 é reescrita para o release reconhecê-lo como local. Nenhum entregável, dependência ou critério de aceite muda.
@@ -113,6 +114,7 @@ Reversão de uma publicação (DEC-036):
 | E24 | Revisão final com verificação adversarial | ponta-a-ponta | E21, E23 |
 | E16 | Ponto de medição e publicação da execução nativa | ponta-a-ponta | E11, E15, E21 |
 | E27 | Medição de política: revisão por tarefa | ponta-a-ponta | E15, E21 |
+| E28 | Revisão única por tarefa com dois veredictos (metade adiada do critério 3 de E21) | ponta-a-ponta | E21 |
 | E10 | Release mecânico por código | ponta-a-ponta | E2, E18, E24 |
 | E12 | Coordinator como workflow do plugin | coordinator-workflow | E7, E9, E21 |
 | E13 | Fechamento: independência completa e medição final | publicacao | E2, E3, E7, E9, E11, E12, E16, E17, E18, E21, E23, E25, E26, E27 |
@@ -124,7 +126,7 @@ Reversão de uma publicação (DEC-036):
 | Sabemos o que é viável, quanto o release e o coordinator custam hoje, e o formato do roadmap é verificado por código | Roadmap revisado pelo dono; branch de release criada | Sondas respondidas com decisão; linha de base registrada; checker cobre as regras hoje só escritas em prosa | E14, E1, E15, E2 |
 | Acompanhar um roadmap não gasta LLM no que é mecânico | Sondas respondidas e parser único disponível | Eventos do tracker e registro do release rodam por CLI; comparação registrada; primeira versão publicada pelo dono | E3, E18, E25, E22, E4, E17 |
 | Spec e plano saem de skills do plugin, e o plano é lido por código | Sondas respondidas; primeira versão publicada, para o que depende dela | Um spec e um plano nativos passam nas checagens sem pessoa; o coordinator monta o mapa por script | E5, E19, E6, E20, E7 |
-| Um entregável roda de ponta a ponta sem superpowers, e a política de revisão tem evidência | Spec e plano nativos integrados | O release executa o cenário fixo com estágios nativos; a versão de quebra está publicada; as medições de política têm decisão ratificada | E8, E11, E26, E9, E21, E23, E24, E16, E27, E10 |
+| Um entregável roda de ponta a ponta sem superpowers, e a política de revisão tem evidência | Spec e plano nativos integrados | O release executa o cenário fixo com estágios nativos; a versão de quebra está publicada; as medições de política têm decisão ratificada | E8, E11, E26, E9, E21, E23, E24, E16, E27, E28, E10 |
 | O coordinator executa ondas num workflow do plugin | Execução e revisão nativas integradas; estado do coordinator em código | O plano de exemplo roda como workflow, com parada e retomada | E12 |
 | A versão final está publicada e o ganho está medido | Todos os Must anteriores integrados na branch de release | Versão conferida no cache do plugin; comparação final com a linha de base registrada | E13 |
 
@@ -694,14 +696,14 @@ Peças:
 
 - Peça 1: achados com identificador devolvido pelo revisor, e repetição reconhecida pelo identificador. É o padrão: substitui a comparação de texto sem reduzir revisão.
 - Peça 2: nova revisão restrita aos achados abertos e ao diff da correção, com um veredicto por identificador, como modo desligado por padrão; pacote de revisão gravado por script.
-- Peça 3: revisor do plugin para a revisão por tarefa. A revisão em dois laços, como hoje, continua o padrão, no modelo que o release usa hoje; a revisão única com dois veredictos existe como modo.
+- Peça 3: revisor do plugin para a revisão por tarefa. A revisão em dois laços, como hoje, continua o padrão, no modelo que o release usa hoje. A revisão única com dois veredictos como modo saiu daqui para E28 (v1.6).
 
 Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs`, `plugins/productivity-tools/scripts/review-package.test.mjs`.
 
 <!-- roadmap:acceptance -->
 1. Dado um achado reaberto com outra redação e o mesmo identificador, quando o workflow compara as rodadas, então o reconhece como repetição. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
 2. Dada a configuração padrão, quando o workflow despacha uma nova revisão após uma correção, então o revisor relê o intervalo inteiro da tarefa, como hoje; com o modo de revisão restrita ligado, recebe só os achados abertos e o diff da correção e devolve um veredicto por identificador. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
-3. Dada a configuração padrão, quando o workflow revisa uma tarefa, então usa o modo e o modelo de revisão que o release usa hoje; com o modo de revisão única ligado, faz uma chamada que devolve os dois veredictos. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
+3. Dada a configuração padrão, quando o workflow revisa uma tarefa, então usa o modo e o modelo de revisão que o release usa hoje. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
 4. Dadas a base e a ponta do intervalo de uma tarefa, quando o script do pacote de revisão roda, então grava um único arquivo com o diff do intervalo e recusa um intervalo inválido. {verify: test; evidence: node --test plugins/productivity-tools/scripts/review-package.test.mjs}
 5. Dados os prompts de revisão por tarefa, em todos os modos, quando inspecionados, então nenhum cita o superpowers e todos proíbem perguntar à pessoa. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs}
 <!-- /roadmap:acceptance -->
@@ -713,6 +715,34 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 - Um modo de revisão reduzida vira padrão sem medição -> os critérios 2 e 3 fixam o padrão atual; só E27 o muda, com decisão ratificada.
 - O laço de revisão é compartilhado com as revisões de spec, de plano, final e de sincronização -> identificador e modos são ligados por estágio, só na revisão por tarefa, e os testes atuais do laço continuam passando (G1).
 - O script do pacote de revisão roda por caminho do cache e pode pedir permissão -> o script continua no plugin e a regra casa pelo nome do arquivo (DEC-060); o preflight de E18 lista a regra.
+<!-- /roadmap:risks -->
+<!-- /roadmap:card -->
+
+<!-- roadmap:card id=E28 phase=ponta-a-ponta track=engineering priority=Should size="não estimado" depends=E21 reqs=REQ-014 critical=false -->
+### E28 -- Revisão única por tarefa com dois veredictos (metade adiada do critério 3 de E21)
+
+Por quê: REQ-014. A execução de E21 (DEC-597, DEC-598) mostrou que a revisão única não cabe no teto de `roadmap-release.js` com a folga de hoje: a T5 levou o script a 240.252 caracteres contra o teto de 240.000, e foi revertida em 0ee4677. Só a metade padrão do critério 3 ficou em E21; esta é a outra metade, como modo desligado por padrão, com o modo e o modelo de hoje mantidos (DEC-021). O texto do modo `review` já está em `agents/task-reviewer.md`, sem uso, e a chave `taskReview.single` volta aqui.
+
+Peças:
+
+- Peça 1: modo de revisão única por tarefa, ligado por `taskReview.single` em `release.config.json` (ausente vale falso), com laço `kind` `review`, uma chamada por rodada e os dois veredictos, spec e quality (DEC-589).
+- Peça 2: preflight e `config.md` voltam a aceitar e documentar `taskReview.single`; o texto do modo `review` do agente passa a ser usado.
+
+Começa só com pelo menos 450 caracteres de folga medida em `roadmap-release.js`, sem tocar o texto de outros estágios nem `size.test.mjs`; E10 provavelmente abre essa folga. Não é dependência de E13.
+
+Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs`.
+
+<!-- roadmap:acceptance -->
+1. Dado o modo de revisão única ligado, quando o workflow revisa uma tarefa, então faz uma chamada que devolve os dois veredictos, spec e quality, e um veredicto ausente ou reprovado sem achado bloqueante vira achado crítico de defeito. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
+2. Dados os prompts de revisão por tarefa com o modo de revisão única ligado, quando inspecionados, então nenhum cita o superpowers e todos proíbem perguntar à pessoa. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs}
+3. Dada a configuração padrão, quando o workflow revisa uma tarefa, então segue em dois laços e não lê `taskReview.single`; o teste de tamanho do script continua passando sem mudar o teto. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs}
+<!-- /roadmap:acceptance -->
+
+Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes; teste comportamental da skill feito conforme as regras de SRC-03.
+
+<!-- roadmap:risks -->
+- A folga de 450 caracteres não existe quando o card começa -> o card não inicia antes de a folga ser medida; sem ela, fica nao-iniciado.
+- O modo vira padrão sem medição -> o critério 3 fixa o padrão atual; só E27 o muda, com decisão ratificada.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
@@ -807,7 +837,7 @@ Por quê: REQ-039. O release revisa cada tarefa em sonnet por padrão e o coordi
 Peças:
 
 - Peça 1: revisor por tarefa em dois modelos.
-- Peça 2: dois laços por tarefa contra a revisão única com dois veredictos.
+- Peça 2: só se E28 estiver integrado: dois laços por tarefa contra a revisão única com dois veredictos.
 - Peça 3: nova revisão completa contra a restrita aos achados e ao diff.
 - Peça 4: só se E24 estiver integrado: verificação adversarial ligada contra desligada, rodadas de correção final como hoje contra a onda única, e, no teto de rodadas, parar contra decidir e seguir.
 
@@ -998,6 +1028,7 @@ Nenhuma.
 | 1.3 | 2026-11-11 | Tabela de gates atualizada após a integração de E1: G1 com `tools/**`, G4 reconhecido como local |
 | 1.4 | 2026-11-12 | Tabela de metas derivadas após a linha de base de E15 (DEC-034) |
 | 1.5 | 2026-11-12 | Critério 4 de E25 emendado após a conferência delegada (DEC-282) |
+| 1.6 | 2026-11-13 | Critério 3 de E21 emendado: a revisão única passa ao card novo E28 (DEC-597, DEC-598) |
 
 ## Fontes
 

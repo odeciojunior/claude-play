@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.5 -- 2026-11-12
+Estratégia v1.6 -- 2026-11-13
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -42,6 +42,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
+| E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
 
 ## Bloqueios
