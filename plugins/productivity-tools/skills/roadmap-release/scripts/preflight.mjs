@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Preflight for the roadmap-release skill: validates (or derives) release.config.json
 // and checks permission rules. Read-only: it never writes any file or setting.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, isAbsolute, relative, sep, dirname, posix } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { pendingDecisions } from '../../roadmap-tracker/scripts/roadmap.mjs';
-import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS } from '../../../lib/roadmap-format.mjs';
+import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS, idsIn, shasIn } from '../../../lib/roadmap-format.mjs';
+import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
 const KINDS = ['exit', 'tests'];
 
@@ -200,7 +201,7 @@ export function subcommands(cmd) {
 const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 
 // Scripts of the plugin that the workflow runs through Bash with an exact path (DEC-060): the rule is narrower than Bash(node:*).
-export const WORKFLOW_SCRIPTS = ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs'];
+export const WORKFLOW_SCRIPTS = ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs', 'preflight.mjs', 'verify-run.mjs'];
 
 // The release workflow is launched by name; its permission rule is only warned about (never required), because the skill's own
 // allowed-tools or the dialog grants the launch and only a run without the interface needs the rule.
@@ -217,6 +218,14 @@ export function workflowRuleCovered(settingsList) {
     const allow = s?.permissions?.allow;
     return Array.isArray(allow) && allow.some((r) => { const t = String(r).trim(); return t === rule || t === 'Workflow'; });
   });
+}
+
+// Absolute path (with /) of a workflow script, derived from the tracker CLI path (<plugin root>/skills/roadmap-tracker/scripts/roadmap.mjs).
+const SKILL_SCRIPTS = ['preflight.mjs', 'verify-run.mjs'];
+function scriptPath(name, trackerPath) {
+  if (name === 'roadmap.mjs') return trackerPath;
+  const pluginRoot = dirname(dirname(dirname(dirname(trackerPath))));
+  return SKILL_SCRIPTS.includes(name) ? `${pluginRoot}/skills/roadmap-release/scripts/${name}` : `${pluginRoot}/scripts/${name}`;
 }
 
 export function scriptRule(name) {
@@ -333,7 +342,9 @@ function readRoadmapTexts(root, dir, ref, warnings) {
   const onRef = ref ? readRef(root, ref, at('roadmap.config.json')) : null;
   if (onRef !== null) text = (name) => { const t = readRef(root, ref, at(name)); return t === null ? null : norm(t); };
   else warnings.push(ref ? `roadmap cards read from the working tree (${ref} has no ${rel || '.'})` : 'roadmap cards read from the working tree (no --ref given)');
-  const config = JSON.parse(text('roadmap.config.json'));
+  const configText = text('roadmap.config.json');
+  if (configText === null) throw new Error(`roadmap.config.json not readable in ${rel || '.'}`);
+  const config = JSON.parse(configText);
   const strategy = text(config.strategy);
   if (strategy === null) throw new Error(`strategy not readable: ${config.strategy}`);
   const files = {};
@@ -364,7 +375,125 @@ function readRef(root, ref, relFile) {
   } catch { return null; }
 }
 
-export function runPreflight(folder, { home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null } = {}) {
+function gitTry(root, args) {
+  try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; }
+}
+const refExists = (root, ref) => Boolean(ref) && gitTry(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) !== null;
+const isAncestor = (root, a, b) => gitTry(root, ['merge-base', '--is-ancestor', a, b]) !== null;
+
+// The status word of the code piece of a Status cell: the segment labeled "code", or the only segment without a label.
+// A cell with several other pieces (piece 1, piece 2) or no segment has none.
+function codeWord(cell) {
+  const segs = parseStatusSegments(cell);
+  const code = segs.find((s) => s.label === 'code');
+  if (code) return code.word;
+  return segs.length === 1 && segs[0].label === '' ? segs[0].word : null;
+}
+
+const localDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Merge commit of a card on `ref`: `merge: <id> ` first-parent commit with no later `Revert "merge: <id> ` commit.
+function mergeOf(root, ref, id) {
+  const log = ref ? gitTry(root, ['log', '--first-parent', '--format=%H%x09%s', ref]) : null;
+  const lines = (log || '').split('\n').filter(Boolean).map((l) => { const t = l.indexOf('\t'); return { sha: l.slice(0, t), subject: l.slice(t + 1) }; });
+  const at = lines.findIndex((l) => l.subject.startsWith(`merge: ${id} `));
+  if (at < 0) return { found: false, reverted: false, sha: '' };
+  if (lines.slice(0, at).some((l) => l.subject.startsWith(`Revert "merge: ${id} `))) return { found: false, reverted: true, sha: '' };
+  const sha = (gitTry(root, ['rev-parse', lines[at].sha]) || '').trim();
+  return { found: /^[0-9a-f]{40}$/.test(sha), reverted: false, sha };
+}
+
+// Read-only discovery of the roadmap for the release workflow: the same parser as the checker, the git rules in code.
+// Throws an Error when the folder or the strategy is not readable.
+export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}) {
+  void prefix; // the delivery branch <prefix><id> is born from the target and never counts as evidence
+  const root = repoRoot(resolve(repo || '.')).split(sep).join('/');
+  let dir;
+  if (roadmap) dir = resolve(root, String(roadmap).replace(/\\/g, '/'));
+  else {
+    const plans = join(root, 'docs', 'plans');
+    const found = existsSync(plans) ? readdirSync(plans).filter((n) => existsSync(join(plans, n, 'roadmap.config.json'))).sort() : [];
+    if (found.length !== 1) throw new Error(found.length ? `several roadmap folders under docs/plans/: ${found.join(', ')}` : 'no roadmap folder with roadmap.config.json under docs/plans/');
+    dir = join(plans, found[0]);
+  }
+  const rel = relative(root, dir).split(sep).join('/');
+  const warnings = [];
+  let texts = null;
+  let firstError = null;
+  for (const r of [null, ref, base]) {
+    if (r === undefined) continue;
+    try { texts = readRoadmapTexts(root, dir, r, warnings); break; } catch (e) { firstError ||= e; }
+  }
+  if (!texts) throw firstError;
+  const cfg = texts.config;
+  const vocab = cfg.vocab || {};
+  const slug = (dir.split(/[\\/]/).filter(Boolean).pop() || '').replace(/^roadmap-/, '');
+  const target = ref || cfg.releaseBranch || `integracao/${slug}`;
+  const integrationBranch = cfg.integrationBranch || '';
+  const baseBranch = base || integrationBranch;
+  const targetExists = refExists(root, target);
+  // Texts: from the target when it has the folder, else from the base branch, else from the working tree.
+  for (const r of [target, baseBranch]) {
+    if (!refExists(root, r)) continue;
+    try {
+      const t = readRoadmapTexts(root, dir, r, warnings);
+      if (t.from === r) { texts = t; break; }
+    } catch { /* try the next source */ }
+  }
+  const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
+  const dirPath = `${rel}/`;
+  const gitRef = targetExists ? target : refExists(root, baseBranch) ? baseBranch : null;
+  const integrated = vocab.integratedStatuses || [];
+  const discarded = vocab.discardedStatus || 'discarded';
+  const panel = new Map(parsed.blocks.state.panel.rows.map((r) => [(String(r[0] || '').match(/\bE\d+\b/) || [String(r[0] || '').trim()])[0], r]));
+  const cards = parsed.cards.map((c) => {
+    const row = panel.get(c.id);
+    const status = row ? row[1] || '' : '';
+    const mergeCommit = row ? shasIn(row[2])[0] || '' : '';
+    const word = codeWord(status);
+    const merge = mergeOf(root, gitRef, c.id);
+    let onTarget = false;
+    let why;
+    if (merge.found) { onTarget = true; why = `merge commit ${merge.sha} on ${gitRef}`; }
+    else if (merge.reverted) why = `merge: ${c.id} was reverted on ${gitRef}`;
+    else if (!gitRef) why = 'no target or base branch to check';
+    else if (word === null) why = `status "${status}" has no single code segment`;
+    else if (integrated.includes(word) && integrationBranch && isAncestor(root, integrationBranch, gitRef)) { onTarget = true; why = `code segment ${word} and ${integrationBranch} is an ancestor of ${gitRef}`; }
+    else if ((integrated.includes(word) || word === (vocab.deliverableStatuses || [])[4]) && mergeCommit && refExists(root, mergeCommit) && isAncestor(root, mergeCommit, gitRef)) { onTarget = true; why = `code segment ${word} and ${mergeCommit} is an ancestor of ${gitRef}`; }
+    else why = `no merge commit and no finished code segment with an ancestor on ${gitRef}`;
+    const omitted = word !== null && (integrated.includes(word) || word === discarded);
+    const title = (c.body.match(/^###\s+(.*)$/m) || ['', ''])[1].replace(/^\S+\s+--\s+/, '').trim();
+    return {
+      id: c.id, title, phase: c.attrs.phase || '', track: c.attrs.track || '', priority: c.attrs.priority || '',
+      deps: c.depends, reqs: c.reqs, critical: c.critical, criticalMissing: c.attrs.critical === undefined,
+      status, mergeCommit, mergeFound: merge.found, mergeSha: merge.sha, onTarget, onTargetEvidence: why,
+      acceptance: omitted ? [] : c.acceptance.map((a, i) => ({
+        id: `AC${i + 1}`,
+        text: a.tag ? `${a.text} {verify: ${a.tag.kind}${a.tag.blq ? ` ${a.tag.blq}` : ''}${a.tag.evidence ? `; evidence: ${a.tag.evidence}` : ''}}` : a.text,
+      })),
+      acceptanceOmitted: omitted,
+    };
+  });
+  const data = {
+    repo: root, today: today || localDate(), roadmapDir: dirPath, roadmapSlug: slug,
+    strategy: posix.normalize(`${rel}/${cfg.strategy}`), checker: `${dirPath}check-roadmap.mjs`,
+    checkerExists: existsSync(join(dir, 'check-roadmap.mjs')) || (refExists(root, gitRef) && readRef(root, gitRef, `${dirPath}check-roadmap.mjs`) !== null),
+    integrationBranch, releaseBranch: cfg.releaseBranch || '', target, targetExists, readFrom: texts.from,
+    deliverableStatuses: vocab.deliverableStatuses || [], integratedStatuses: integrated, discardedStatus: discarded, blockedStatus: vocab.blockedStatus || 'blocked',
+    language: cfg.language || '',
+    ...(typeof cfg.limits?.cellChars === 'number' ? { cellChars: cfg.limits.cellChars } : {}),
+    cards,
+    blockers: parsed.blocks.state.blockers.rows.map((r) => ({ id: r[0] || '', text: r[1] || '', affects: idsIn(r[2], /\bE\d+\b/g) })),
+    donot: parsed.blocks.state.donot.items,
+    pendingDecisions: readPendingDecisions(texts, warnings),
+  };
+  return data;
+}
+
+export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -419,9 +548,9 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     pending = readPendingDecisions(texts, warnings);
     const extras = {
       cards,
-      // roadmap.mjs lives in the tracker skill; review-package.mjs and run-record.mjs in <plugin root>/scripts; review-package.mjs is required only with taskReview.restricted.
+      // roadmap.mjs lives in the tracker skill; review-package.mjs and run-record.mjs in <plugin root>/scripts; preflight.mjs and verify-run.mjs in <plugin root>/skills/roadmap-release/scripts; review-package.mjs is required only with taskReview.restricted.
       scripts: WORKFLOW_SCRIPTS.filter((name) => name !== 'review-package.mjs' || config.taskReview?.restricted === true)
-        .map((name) => ({ name, path: name === 'roadmap.mjs' ? tracker.path : `${dirname(dirname(dirname(dirname(tracker.path))))}/scripts/${name}` })),
+        .map((name) => ({ name, path: scriptPath(name, tracker.path) })),
     };
     const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
@@ -440,7 +569,24 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
   return { configPath, generated, errors, missingRules: missing, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending, permissionsDeclared: typeof declarePermissions === 'string' && declarePermissions.trim() !== '' ? declarePermissions : null };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n>
+function discoverCli(argv) {
+  // No process.exit: a large JSON on a pipe must be flushed before the process ends.
+  const out = (obj, code) => { process.exitCode = code; process.stdout.write(`${JSON.stringify(obj)}\n`); };
+  const usage = 'usage: node preflight.mjs discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n>';
+  const opts = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    if (!/^--(repo|roadmap|ref|base|today|prefix|nonce)$/.test(argv[i] || '') || argv[i + 1] === undefined) return out({ tool: 'release-discovery', error: `${usage} (bad argument: ${argv[i]})` }, 2);
+    opts[argv[i].slice(2)] = argv[i + 1];
+  }
+  if (!opts.repo || opts.prefix === undefined || !opts.nonce) return out({ tool: 'release-discovery', error: `${usage} (--repo, --prefix and --nonce are required)` }, 2);
+  let data;
+  try { data = discoverRoadmap(opts); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+  return out({ tool: 'release-discovery', nonce: opts.nonce, digest: fnv1a(JSON.stringify(canon({ nonce: opts.nonce, data }))), data }, 0);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === 'discover') discoverCli(process.argv.slice(3));
+else if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2);
   const ri = argv.indexOf('--ref');
   const ref = ri >= 0 ? argv[ri + 1] : null;

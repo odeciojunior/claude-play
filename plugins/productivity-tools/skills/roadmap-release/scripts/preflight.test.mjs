@@ -8,13 +8,14 @@ import {
   validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
   WORKFLOW_SCRIPTS, scriptRule, openCardCommands, trackerCliPath,
-  RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered,
+  RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered, discoverRoadmap,
 } from './preflight.mjs';
 import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
+import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
 const good = () => ({
   projectContext: 'ctx',
@@ -519,7 +520,7 @@ test('AC1: card aberto com verify e script do plugin sem regra aparecem em missi
   assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(node:*)', 'Bash(npx:*)', 'Bash(git:*)'] } }], cmds), []);
   assert.deepEqual(cmds['Bash(node *roadmap.mjs" *)'], ['node "/p/roadmap.mjs" status']);
   assert.equal(scriptRule('roadmap.mjs'), 'Bash(node *roadmap.mjs" *)');
-  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs']);
+  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs', 'preflight.mjs', 'verify-run.mjs']);
 });
 
 function rmRepo(statusCell) {
@@ -829,4 +830,163 @@ test('E23: the run-record.mjs rule is always required, from the plugin root', ()
   const cmds = requiredCommands({ gates: [], install: '' }, { scripts: [{ name: 'run-record.mjs', path: pluginRoot + '/scripts/run-record.mjs' }] });
   assert.deepEqual(cmds[rule], ['node "' + pluginRoot + '/scripts/run-record.mjs" status']);
   assert.ok(existsSync(pluginRoot + '/scripts/run-record.mjs'));
+});
+
+// ---- E10 T2: discover ----
+const DISC_FILES = ['roadmap.config.json', 'strategy.md', 'state.md', 'decisions.md', 'README.md', 'log.md', 'critical-path.md', 'sources.md', 'requirements.md'];
+const DISC_ROADMAP = 'docs/plans/roadmap-x';
+const PREFLIGHT = join(dirname(fileURLToPath(import.meta.url)), 'preflight.mjs');
+
+// Repo with the valid fixture as the roadmap folder, committed on main; `edit(name, text)` may rewrite a file before the commit.
+function discRepo(edit = (name, text) => text) {
+  const root = mkdtempSync(join(tmpdir(), 'pfdisc-'));
+  git(root, 'init', '-q', '-b', 'main');
+  const dir = join(root, 'docs', 'plans', 'roadmap-x');
+  mkdirSync(dir, { recursive: true });
+  for (const f of DISC_FILES) writeFileSync(join(dir, f), edit(f, readFileSync(join(FIXTURE_VALID, f), 'utf8').replace(/\r\n/g, '\n')));
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'base');
+  return { root, dir };
+}
+const disc = (root, extra = {}) => discoverRoadmap({ repo: root, roadmap: DISC_ROADMAP, prefix: 'pf-', today: '2026-01-05', ...extra });
+const panelEdit = (rows) => (name, text) => (name === 'state.md' ? text.replace(/^\| E1 \|.*\n\| E2 \|.*\n\| E3 \|.*$/m, rows.join('\n')) : text);
+const discCli = (...args) => spawnSync(process.execPath, [PREFLIGHT, 'discover', ...args], { encoding: 'utf8' });
+
+test('E10 AC1: discoverRoadmap over the valid fixture matches the checker', () => {
+  const { root } = discRepo();
+  const data = disc(root);
+  const checker = parseRoadmap(loadRoadmap(FIXTURE_VALID));
+  assert.deepEqual(data.cards.map((c) => c.id), checker.cards.map((c) => c.id));
+  assert.deepEqual(data.cards.map((c) => c.deps), checker.cards.map((c) => c.depends));
+  assert.deepEqual(data.cards.map((c) => c.status), checker.blocks.state.panel.rows.map((r) => r[1]));
+  assert.deepEqual(data.blockers.map((b) => [b.id, b.text]), checker.blocks.state.blockers.rows.map((r) => [r[0], r[1]]));
+  assert.equal(data.cards[0].phase, 'skeleton');
+  assert.equal(data.cards[1].title, checker.cards[1].body.match(/^###\s+\S+\s+--\s+(.*)$/m)[1].trim());
+  assert.equal(data.roadmapDir, 'docs/plans/roadmap-x/');
+  assert.equal(data.strategy, 'docs/plans/roadmap-x/strategy.md');
+  assert.equal(data.checker, 'docs/plans/roadmap-x/check-roadmap.mjs');
+  assert.equal(data.checkerExists, false);
+  assert.equal(data.roadmapSlug, 'x');
+  assert.equal(data.integrationBranch, 'main');
+  assert.equal(data.releaseBranch, 'release/sample');
+  assert.deepEqual(data.integratedStatuses, ['integrated', 'released', 'measured']);
+  assert.equal(data.deliverableStatuses.length, 10);
+  assert.equal(data.language, 'en');
+  assert.equal(data.cellChars, 300);
+});
+
+test('E10 AC1: today is --today when given and the local date otherwise (C5)', () => {
+  const { root } = discRepo();
+  assert.equal(disc(root, { today: '2030-02-03' }).today, '2030-02-03');
+  const d = new Date();
+  const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  assert.equal(disc(root, { today: undefined }).today, local);
+});
+
+test('E10 AC1: without --ref the target is the releaseBranch, or integracao/<slug> when it is empty', () => {
+  const { root } = discRepo();
+  const withRel = disc(root);
+  assert.equal(withRel.target, 'release/sample');
+  assert.equal(withRel.targetExists, false);
+  const bare = discRepo((n, t) => (n === 'roadmap.config.json' ? t.replace('"releaseBranch": "release/sample",', '"releaseBranch": "",') : t));
+  const d = disc(bare.root);
+  assert.equal(d.target, 'integracao/x');
+  assert.equal(d.releaseBranch, '');
+  assert.equal(disc(bare.root, { ref: 'custom' }).target, 'custom');
+});
+
+test('E10 AC1: mergeFound, mergeSha of 40 characters and a reverted merge', () => {
+  const { root } = discRepo();
+  git(root, 'checkout', '-q', '-b', 'rel');
+  git(root, 'commit', '-q', '--allow-empty', '-m', 'merge: E1 integrate it');
+  let d = disc(root, { ref: 'rel' });
+  const e1 = d.cards.find((c) => c.id === 'E1');
+  assert.equal(e1.mergeFound, true);
+  assert.equal(e1.onTarget, true);
+  assert.match(e1.mergeSha, /^[0-9a-f]{40}$/);
+  assert.equal(e1.mergeSha, git(root, 'rev-parse', 'HEAD').trim());
+  assert.equal(d.cards.find((c) => c.id === 'E2').mergeFound, false);
+  git(root, 'commit', '-q', '--allow-empty', '-m', 'Revert "merge: E1 integrate it"');
+  d = disc(root, { ref: 'rel' });
+  const r1 = d.cards.find((c) => c.id === 'E1');
+  assert.equal(r1.mergeFound, false);
+  assert.equal(r1.onTarget, false);
+  assert.equal(d.targetExists, true);
+  assert.equal(d.readFrom, 'rel');
+});
+
+test('E10 AC1: onTarget by the integrated code segment, never by the delivery branch or several pieces', () => {
+  const rows = ['| E1 | integrated | - | - |', '| E2 | piece 1: integrated; piece 2: plan | - | - |', '| E3 | executing | - | - |'];
+  const { root } = discRepo(panelEdit(rows));
+  git(root, 'branch', 'pf-E3');
+  git(root, 'branch', 'rel');
+  const d = disc(root, { ref: 'rel' });
+  const by = Object.fromEntries(d.cards.map((c) => [c.id, c]));
+  assert.equal(by.E1.onTarget, true);
+  assert.equal(by.E1.mergeFound, false);
+  assert.ok(by.E1.onTargetEvidence);
+  assert.equal(by.E2.onTarget, false);
+  assert.equal(by.E3.onTarget, false);
+  git(root, 'merge-base', '--is-ancestor', 'pf-E3', 'rel');
+  const noTarget = disc(root, { ref: 'does-not-exist' });
+  assert.equal(noTarget.targetExists, false);
+  assert.equal(noTarget.cards.find((c) => c.id === 'E1').onTarget, true);
+});
+
+test('E10 AC1: data has no wtRoot, pendingDecisions is a list, and the always-present fields are there', () => {
+  const { root } = pendingRepo();
+  const d = disc(root, { ref: 'alvo' });
+  assert.ok(!('wtRoot' in d));
+  assert.ok(Array.isArray(d.pendingDecisions));
+  assert.deepEqual(d.pendingDecisions.map((p) => p.id), ['DEC-002']);
+  for (const f of ['repo', 'today', 'roadmapDir', 'roadmapSlug', 'strategy', 'checker', 'checkerExists', 'integrationBranch', 'releaseBranch', 'target', 'targetExists', 'readFrom', 'deliverableStatuses', 'integratedStatuses', 'discardedStatus', 'blockedStatus', 'language', 'cards', 'blockers', 'donot', 'pendingDecisions']) assert.ok(f in d, f);
+  for (const c of d.cards) for (const f of ['id', 'title', 'phase', 'track', 'priority', 'deps', 'reqs', 'critical', 'criticalMissing', 'status', 'mergeCommit', 'mergeFound', 'mergeSha', 'onTarget', 'onTargetEvidence', 'acceptance', 'acceptanceOmitted']) assert.ok(f in c, `${c.id}.${f}`);
+  assert.equal(d.readFrom, 'alvo');
+  assert.deepEqual(disc(root).pendingDecisions, []);
+});
+
+test('E10 R12: acceptance is empty with acceptanceOmitted for an integrated or discarded card only', () => {
+  const rows = ['| E1 | integrated | - | - |', '| E2 | discarded | - | - |', '| E3 | executing | - | - |'];
+  const { root } = discRepo(panelEdit(rows));
+  const by = Object.fromEntries(disc(root).cards.map((c) => [c.id, c]));
+  for (const id of ['E1', 'E2']) { assert.deepEqual(by[id].acceptance, []); assert.equal(by[id].acceptanceOmitted, true); }
+  assert.equal(by.E3.acceptanceOmitted, false);
+  assert.ok(by.E3.acceptance.length > 0);
+  assert.equal(by.E3.acceptance[0].id, 'AC1');
+});
+
+test('E10 AC1: the discover command prints { tool, nonce, digest, data } with a digest from canon and fnv1a', () => {
+  const { root } = discRepo();
+  const run = discCli('--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', 'n-1');
+  assert.equal(run.status, 0, run.stderr);
+  const out = JSON.parse(run.stdout);
+  assert.equal(out.tool, 'release-discovery');
+  assert.equal(out.nonce, 'n-1');
+  assert.equal(out.digest, fnv1a(JSON.stringify(canon({ nonce: out.nonce, data: out.data }))));
+  assert.equal(out.data.cards.length, 3);
+  const auto = discCli('--repo', root, '--prefix', 'pf-', '--nonce', 'n-2');
+  assert.equal(auto.status, 0, auto.stderr);
+  assert.equal(JSON.parse(auto.stdout).data.roadmapDir, 'docs/plans/roadmap-x/');
+});
+
+test('E10 AC1: discover exits 1 with { tool, error } without a roadmap folder, a readable strategy, or with several folders', () => {
+  const empty = mkdtempSync(join(tmpdir(), 'pfdisc-'));
+  git(empty, 'init', '-q', '-b', 'main');
+  const none = discCli('--repo', empty, '--prefix', 'pf-', '--nonce', 'n');
+  assert.equal(none.status, 1);
+  const o = JSON.parse(none.stdout);
+  assert.equal(o.tool, 'release-discovery');
+  assert.ok(o.error);
+  const { root } = discRepo();
+  rmSync(join(root, 'docs', 'plans', 'roadmap-x', 'strategy.md'));
+  const noStrat = discCli('--repo', root, '--prefix', 'pf-', '--nonce', 'n');
+  assert.equal(noStrat.status, 1);
+  assert.match(JSON.parse(noStrat.stdout).error, /strategy/);
+  const two = discRepo();
+  mkdirSync(join(two.root, 'docs', 'plans', 'roadmap-y'), { recursive: true });
+  writeFileSync(join(two.root, 'docs', 'plans', 'roadmap-y', 'roadmap.config.json'), '{}');
+  const many = discCli('--repo', two.root, '--prefix', 'pf-', '--nonce', 'n');
+  assert.equal(many.status, 1);
+  assert.match(JSON.parse(many.stdout).error, /roadmap-x/);
+  assert.match(JSON.parse(many.stdout).error, /roadmap-y/);
 });
