@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E9 | E9 passou para executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
+| 2026-11-12 | E9 | BLQ-9 resolvido: desbloqueio de E9 pelo release | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
 | 2026-11-12 | E20 | Critério 5 aceito com condição por delegação (Fable): suíte de gatilho em 2 passadas (haiku 15/24, opus 19/24, US$ 6,04), sem confusão entre skills do plugin; plan-execution-1 é caso inválido e será corrigido; nova passada opus é portão da publicação de spec-writer e plan-writer. | `docs/reports/2026-11-13-E20-suite-gatilho.md` |
 | 2026-11-12 | E20 | DEC-579, DEC-580, DEC-581 (E20, critério 5) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E9 | BLQ-9 aberto: E9 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [important/defeito] plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js The new test-first [...] texto completo em docs/plans/evolucao-skills-E9/reviews.md | `branch feat/E9` |
