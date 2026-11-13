@@ -1440,13 +1440,37 @@ const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/sc
 const discCmd = [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(RUN_TOKEN)}`].filter(Boolean).join(' ')
 let disc = null
 let discWhy = ''
-// A read only, so it repeats: attempts 1-2 haiku, 3-5 sonnet (as load3).
-for (let k = 1; k <= 5 && !disc; k++) {
-  const out = await agent(runPrompt(discCmd),
-    { agentType: 'productivity-tools:script-runner', label: k === 1 ? 'discovery' : `discovery-retry${k}`, phase: 'Discovery', schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-  const v = checkRun(out && out.stdout, 'release-discovery', RUN_TOKEN)
-  if (v.ok) disc = v.data
-  else discWhy = v.why
+// One signed page of the discovery. A read only, so it repeats: attempts 1-2 haiku, 3-5 sonnet (as load3). Page 0 has no --page and keeps the first label.
+const readDisc = async (page) => {
+  let why = ''
+  for (let k = 1; k <= 5; k++) {
+    const base = page === 0 ? 'discovery' : `discovery-page${page}`
+    const out = await agent(runPrompt(page === 0 ? discCmd : `${discCmd} --page ${page}`),
+      { agentType: 'productivity-tools:script-runner', label: k === 1 ? base : `${base}-retry${k}`, phase: 'Discovery', schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+    const v = checkRun(out && out.stdout, 'release-discovery', RUN_TOKEN)
+    if (v.ok) return { data: v.data }
+    why = v.why
+  }
+  return { why }
+}
+{
+  const r0 = await readDisc(0)
+  disc = r0.data || null
+  discWhy = r0.why || ''
+  // A big roadmap comes in signed pages (a Bash output over ~30 KB never reaches the agent whole): page 0 has the fields and the count, pages 1..n the cards.
+  if (disc && disc.pages !== undefined) {
+    const n = disc.pages
+    if (!Number.isInteger(n) || n < 1 || !Number.isInteger(disc.cardCount)) { disc = null; discWhy = 'the pages count of the discovery is not valid' }
+    const cards = []
+    for (let p = 1; disc && p <= n; p++) {
+      const rp = await readDisc(p)
+      if (!rp.data) { disc = null; discWhy = `page ${p}: ${rp.why}`; break }
+      if (rp.data.page !== p || rp.data.pages !== n || !Array.isArray(rp.data.cards)) { disc = null; discWhy = `page ${p} is not the page asked for`; break }
+      cards.push(...rp.data.cards)
+    }
+    if (disc && (cards.length !== disc.cardCount || new Set(cards.map(c => c.id)).size !== cards.length)) { disc = null; discWhy = 'the cards of the pages do not add up to the count of page 0' }
+    if (disc) disc.cards = cards
+  }
 }
 if (!disc) return { status: 'error', error: `discovery failed: ${discWhy}` }
 if (!disc.cards || !disc.cards.length) return { status: 'error', error: 'discovery failed: no cards' }

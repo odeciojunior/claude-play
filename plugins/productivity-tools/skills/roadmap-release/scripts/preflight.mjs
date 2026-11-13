@@ -569,19 +569,43 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   return { configPath, generated, errors, missingRules: missing, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending, permissionsDeclared: typeof declarePermissions === 'string' && declarePermissions.trim() !== '' ? declarePermissions : null };
 }
 
-// discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n>
+// An agent copies the stdout of discover, and a Bash output over ~30 KB reaches it only as a preview. So the output is kept small:
+// the whole data in ONE page when it fits, else page 0 = everything but the cards (+ pages, cardCount) and pages 1..n = chunks of cards ({ page, pages, cards }).
+// Each page is signed alone by the same { nonce, data } digest.
+export const DISCOVERY_PAGE_CHARS = 8000;
+export function discoveryPages(data, budget = DISCOVERY_PAGE_CHARS) {
+  if (JSON.stringify(data).length <= budget) return [data];
+  const { cards, ...rest } = data;
+  const chunks = [];
+  let cur = [];
+  let size = 0;
+  for (const c of cards) {
+    const n = JSON.stringify(c).length + 1;
+    if (cur.length && size + n > budget) { chunks.push(cur); cur = []; size = 0; }
+    cur.push(c);
+    size += n;
+  }
+  if (cur.length) chunks.push(cur);
+  return [{ ...rest, pages: chunks.length, cardCount: cards.length }, ...chunks.map((cs, i) => ({ page: i + 1, pages: chunks.length, cards: cs }))];
+}
+
+// discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k>]
 function discoverCli(argv) {
   // No process.exit: a large JSON on a pipe must be flushed before the process ends.
   const out = (obj, code) => { process.exitCode = code; process.stdout.write(`${JSON.stringify(obj)}\n`); };
-  const usage = 'usage: node preflight.mjs discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n>';
+  const usage = 'usage: node preflight.mjs discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k>]';
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
-    if (!/^--(repo|roadmap|ref|base|today|prefix|nonce)$/.test(argv[i] || '') || argv[i + 1] === undefined) return out({ tool: 'release-discovery', error: `${usage} (bad argument: ${argv[i]})` }, 2);
+    if (!/^--(repo|roadmap|ref|base|today|prefix|nonce|page)$/.test(argv[i] || '') || argv[i + 1] === undefined) return out({ tool: 'release-discovery', error: `${usage} (bad argument: ${argv[i]})` }, 2);
     opts[argv[i].slice(2)] = argv[i + 1];
   }
   if (!opts.repo || opts.prefix === undefined || !opts.nonce) return out({ tool: 'release-discovery', error: `${usage} (--repo, --prefix and --nonce are required)` }, 2);
-  let data;
-  try { data = discoverRoadmap(opts); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+  const page = opts.page === undefined ? 0 : Number(opts.page);
+  if (!Number.isInteger(page) || page < 0) return out({ tool: 'release-discovery', error: `${usage} (--page must be a whole number from 0)` }, 2);
+  let pages;
+  try { pages = discoveryPages(discoverRoadmap(opts)); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+  if (page >= pages.length) return out({ tool: 'release-discovery', error: `page ${page} does not exist: the discovery has ${pages.length} page(s), numbered from 0` }, 1);
+  const data = pages[page];
   return out({ tool: 'release-discovery', nonce: opts.nonce, digest: fnv1a(JSON.stringify(canon({ nonce: opts.nonce, data }))), data }, 0);
 }
 

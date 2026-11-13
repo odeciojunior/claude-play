@@ -761,6 +761,41 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
   assert.ok(y.calls.every((c) => nonceOf(c.prompt) === undefined || nonceOf(c.prompt) === 'pf-test'));
 });
 
+
+// E10 final-fix: a big roadmap is read in signed pages (page 0 = fields and count, pages 1..n = cards), each by its own call.
+const PAGED_META = { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', pendingDecisions: [] };
+const pagedOver = (cardList, { meta = {}, pageData = (p, cs) => ({ page: p, pages: cardList.length, cards: cs }) } = {}) => (l, p) => {
+  const m = /^discovery-page(\d+)(-retry\d)?$/.exec(l);
+  if (m) return { exit: 0, stdout: discStdout(nonceOf(p), pageData(Number(m[1]), [cardList[Number(m[1]) - 1]])) };
+  if (l === 'discovery') return { exit: 0, stdout: discStdout(nonceOf(p), { ...PAGED_META, pages: cardList.length, cardCount: cardList.length, ...meta }) };
+  return undefined;
+};
+
+test('E10 final-fix: discovery in signed pages is read page by page and the cards are joined', async () => {
+  const cs = [card('E1'), card('E2')];
+  const x = await exec({ cards: cs, deliverables: ['E1', 'E2'], args: { mode: 'dry-run' }, over: pagedOver(cs) });
+  assert.equal(x.r.status, 'done');
+  assert.deepEqual(x.labels.slice(0, 3), ['discovery', 'discovery-page1', 'discovery-page2']);
+  const pg = x.calls.find((c) => c.label === 'discovery-page2');
+  assert.match(pg.prompt, /preflight\.mjs" discover .* --page 2\n/);
+  assert.doesNotMatch(x.calls.find((c) => c.label === 'discovery').prompt, /--page/);
+});
+
+test('E10 final-fix: a page that is not the one asked for, or a count that does not add up, stops with discovery failed', async () => {
+  const cs = [card('E1'), card('E2')];
+  const wrong = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { pageData: (p, c) => ({ page: 1, pages: 2, cards: c }) }) });
+  assert.match(wrong.r.error, /^discovery failed: page 2 is not the page asked for/);
+  const count = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { meta: { cardCount: 3 } }) });
+  assert.match(count.r.error, /^discovery failed: the cards of the pages do not add up/);
+  const bad = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { meta: { pages: 0 } }) });
+  assert.match(bad.r.error, /^discovery failed: the pages count/);
+  // a page that never matches its digest is tried 5 times, then the run stops
+  const tamper = pagedOver(cs);
+  const x = await exec({ cards: cs, deliverables: ['E1'], over: (l, p) => { const v = tamper(l, p); return /^discovery-page1/.test(l) ? { exit: 0, stdout: v.stdout.replace('E1', 'E9') } : v; } });
+  assert.match(x.r.error, /^discovery failed: page 1: .*digest/);
+  assert.equal(x.calls.filter((c) => /^discovery-page1/.test(c.label)).length, 5);
+});
+
 test('discovery-donot only with donot items', async () => {
   const none = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
   assert.ok(!none.labels.includes('discovery-donot'));

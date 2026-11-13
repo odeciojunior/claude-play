@@ -8,7 +8,7 @@ import {
   validateReleaseConfig, deriveConfig, classifyGate,
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
   WORKFLOW_SCRIPTS, scriptRule, openCardCommands, trackerCliPath,
-  RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered, discoverRoadmap,
+  RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered, discoverRoadmap, discoveryPages, DISCOVERY_PAGE_CHARS,
 } from './preflight.mjs';
 import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -989,4 +989,52 @@ test('E10 AC1: discover exits 1 with { tool, error } without a roadmap folder, a
   assert.equal(many.status, 1);
   assert.match(JSON.parse(many.stdout).error, /roadmap-x/);
   assert.match(JSON.parse(many.stdout).error, /roadmap-y/);
+});
+
+// The agent that copies the stdout of discover sees a Bash output over ~30 KB only as a preview: no page may come near that.
+const BASH_INLINE_SAFE = 16000;
+test('E10 final-fix: discoveryPages keeps the whole data in one page when it fits, else splits the cards', () => {
+  const small = { repo: '/r', cards: [{ id: 'E1' }] };
+  assert.deepEqual(discoveryPages(small), [small]);
+  const cards = Array.from({ length: 40 }, (_, i) => ({ id: `E${i + 1}`, acceptance: [{ id: 'AC1', text: 'x'.repeat(900) }] }));
+  const pages = discoveryPages({ repo: '/r', today: 't', cards, pendingDecisions: [] });
+  const n = pages.length - 1;
+  assert.ok(n > 1);
+  assert.equal(pages[0].pages, n);
+  assert.equal(pages[0].cardCount, 40);
+  assert.equal(pages[0].cards, undefined);
+  assert.deepEqual(pages.slice(1).flatMap((p) => p.cards), cards);
+  pages.slice(1).forEach((p, i) => { assert.equal(p.page, i + 1); assert.equal(p.pages, n); });
+  assert.ok(pages.every((p) => JSON.stringify(p).length <= DISCOVERY_PAGE_CHARS));
+  // a card bigger than the budget still gets its own page
+  const big = discoveryPages({ cards: [{ id: 'E1', t: 'y'.repeat(9000) }, { id: 'E2' }] });
+  assert.deepEqual(big.slice(1).map((p) => p.cards.map((c) => c.id)), [['E1'], ['E2']]);
+});
+
+test('E10 final-fix: discover --page prints each signed page of the project roadmap under a size cap', () => {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
+  const road = 'docs/plans/roadmap-evolucao-skills';
+  if (!existsSync(join(repo, road, 'roadmap.config.json'))) return;
+  const run = (page) => discCli('--repo', repo, '--roadmap', road, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', 'n-p', ...(page === undefined ? [] : ['--page', String(page)]));
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  assert.ok(first.stdout.length <= BASH_INLINE_SAFE, `page 0 has ${first.stdout.length} chars`);
+  const p0 = JSON.parse(first.stdout);
+  assert.equal(p0.digest, fnv1a(JSON.stringify(canon({ nonce: 'n-p', data: p0.data }))));
+  const n = p0.data.pages ?? 0;
+  const ids = p0.data.cards ? p0.data.cards.map((c) => c.id) : [];
+  for (let p = 1; p <= n; p++) {
+    const r = run(p);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.stdout.length <= BASH_INLINE_SAFE, `page ${p} has ${r.stdout.length} chars`);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.digest, fnv1a(JSON.stringify(canon({ nonce: 'n-p', data: o.data }))));
+    assert.equal(o.data.page, p);
+    ids.push(...o.data.cards.map((c) => c.id));
+  }
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.length, p0.data.cardCount ?? ids.length);
+  const beyond = run(n + 1);
+  assert.equal(beyond.status, 1);
+  assert.match(JSON.parse(beyond.stdout).error, /page/);
 });
