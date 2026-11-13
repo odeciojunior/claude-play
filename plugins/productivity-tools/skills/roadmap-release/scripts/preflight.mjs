@@ -29,6 +29,13 @@ export function validateReleaseConfig(cfg) {
       if (cfg.taskReview.restricted != null && typeof cfg.taskReview.restricted !== 'boolean') errors.push('taskReview.restricted must be a boolean');
     }
   }
+  if (cfg.finalReview != null) {
+    if (typeof cfg.finalReview !== 'object' || Array.isArray(cfg.finalReview)) errors.push('finalReview must be an object');
+    else {
+      for (const k of Object.keys(cfg.finalReview)) if (k !== 'adversarial' && k !== 'singleWave') errors.push(`finalReview.${k} is not a supported key (only finalReview.adversarial and finalReview.singleWave)`);
+      for (const k of ['adversarial', 'singleWave']) if (cfg.finalReview[k] != null && typeof cfg.finalReview[k] !== 'boolean') errors.push(`finalReview.${k} must be a boolean`);
+    }
+  }
   const locks = Array.isArray(cfg.locks) ? cfg.locks : [];
   if (cfg.locks != null && !Array.isArray(cfg.locks)) errors.push('locks must be a list of names');
   if (locks.includes('merge')) errors.push('locks cites the reserved lock name: merge (the workflow always owns it)');
