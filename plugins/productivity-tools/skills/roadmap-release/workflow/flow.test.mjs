@@ -4389,3 +4389,73 @@ test('E24 AC3: the default final review calls no final-verify; singleWave makes 
   assert.ok(!one.labels.some((l) => /:final-verify/.test(l)));
   assert.notEqual(one.r.results[0].merged, true);
 });
+
+// ---- E24 T4: adversarial verification of the final review
+const finalAdv = { finalReview: { adversarial: true } };
+const finalIssue = (description, severity = 'important') => ({ severity, category: 'defeito', description });
+const finalRev = (issues) => ({ issues, headSha: 'h1', clean: true, commitsInRange: 2 });
+const loggedReviews = (x) => JSON.parse(/Data: (\{.*\})\r?\nCommit only that file/.exec(x.calls.find((c) => c.label === 'E1:review-log').prompt)[1]).reviews;
+const verdictsOf = (...v) => ({ verdicts: v.map(([n, refuted, reason]) => ({ n, refuted, reason })) });
+
+test('E24 AC1: a refuted final finding calls no final-fix and is in reviews as refuted', async () => {
+  const over = (l) => {
+    if (l === 'E1:final-1-r1') return finalRev([finalIssue('d1')]);
+    if (l === 'E1:final-verify-r1') return verdictsOf([1, true, 'a.js:3 already guards it']);
+    if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    return undefined;
+  };
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over, config: finalAdv });
+  assert.ok(x.labels.includes('E1:final-verify-r1'));
+  assert.ok(!x.labels.some((l) => /^E1:final-fix/.test(l)));
+  assert.equal(x.labels.filter((l) => /^E1:final-1-r/.test(l)).join(), 'E1:final-1-r1');
+  const rec = loggedReviews(x).find((v) => v.stage === 'final-verify');
+  assert.equal(rec.round, 1);
+  assert.deepEqual(rec.refuted, [{ ...finalIssue('d1'), reason: 'a.js:3 already guards it' }]);
+  assert.equal(x.r.results[0].merged, true);
+  const call = x.calls.find((c) => c.label === 'E1:final-verify-r1');
+  assert.equal(call.opts.agentType, 'productivity-tools:final-reviewer');
+  assert.match(call.prompt, /\nMode: verify\.\n1\. \[important\/defeito\]/);
+  assert.doesNotMatch(call.prompt, /Diff/);
+  const d = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(!d.labels.includes('E1:final-verify-r1'));
+  assert.ok(d.labels.includes('E1:final-fix1'));
+});
+
+test('E24 AC2: a confirmed finding or a null verification reaches final-fix1', async () => {
+  for (const verify of [verdictsOf([1, false, 'it holds']), null]) {
+    const over = (l) => {
+      if (l === 'E1:final-1-r1') return finalRev([finalIssue('real defect')]);
+      if (l === 'E1:final-verify-r1') return verify;
+      if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+      return undefined;
+    };
+    const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over, config: finalAdv });
+    assert.ok(x.labels.includes('E1:final-fix1'));
+    assert.match(x.calls.find((c) => c.label === 'E1:final-fix1').prompt, /real defect/);
+    assert.equal(loggedReviews(x).find((v) => v.stage === 'final-verify').refuted.length, 0);
+    assert.equal(x.r.results[0].merged, true);
+  }
+  const minor = await exec({ cards: [card('E1')], deliverables: ['E1'], config: finalAdv,
+    over: (l) => (l === 'E1:final-1-r1' ? finalRev([finalIssue('nit', 'minor')]) : undefined) });
+  assert.ok(!minor.labels.some((l) => /:final-verify/.test(l)));
+  assert.ok(!minor.labels.some((l) => /^E1:final-fix/.test(l)));
+});
+
+test('E24 C4: a refuted finding reported again after another fix is verified again', async () => {
+  const over = (l) => {
+    if (l === 'E1:final-1-r1') return finalRev([finalIssue('refuted one'), finalIssue('real one')]);
+    if (l === 'E1:final-verify-r1') return verdictsOf([1, true, 'x.js:1 guards it'], [2, false, 'holds']);
+    if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    if (l === 'E1:final-1-r2') return finalRev([finalIssue('refuted one')]);
+    if (l === 'E1:final-verify-r2') return verdictsOf([1, true, 'x.js:1 still guards it']);
+    return undefined;
+  };
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over, config: finalAdv });
+  assert.ok(x.labels.includes('E1:final-verify-r2'));
+  assert.equal(x.labels.filter((l) => /^E1:final-fix/.test(l)).join(), 'E1:final-fix1');
+  const fixPrompt = x.calls.find((c) => c.label === 'E1:final-fix1').prompt;
+  assert.match(fixPrompt, /real one/);
+  assert.doesNotMatch(fixPrompt, /refuted one/);
+  assert.deepEqual(loggedReviews(x).filter((v) => v.stage === 'final-verify').map((v) => v.round), [1, 2]);
+  assert.equal(x.r.results[0].merged, true);
+});

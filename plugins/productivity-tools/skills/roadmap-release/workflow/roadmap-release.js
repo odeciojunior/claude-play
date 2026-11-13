@@ -367,6 +367,14 @@ const SEV = s => s === 'critical' || s === 'important'
 function blocking(r) {
   return r && Array.isArray(r.issues) ? r.issues.filter(i => SEV(i.severity)) : []
 }
+function splitRefuted(iss, v) {
+  const keep = [], refuted = []
+  iss.forEach((i, k) => {
+    const m = ((v && v.verdicts) || []).filter(x => x.n === k + 1)
+    m.length === 1 && m[0].refuted === true && /\S/.test(m[0].reason || '') ? refuted.push({ ...i, reason: m[0].reason }) : keep.push(i)
+  })
+  return { keep, refuted }
+}
 function fmt(iss) {
   return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.id ? `[${i.id}] ` : ''}${i.description}`).join('\n')
 }
@@ -1405,6 +1413,7 @@ const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: S
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_VERIFY = { type: 'object', properties: { verdicts: { type: 'array', items: { type: 'object', properties: { n: INT, refuted: BOOL, reason: STR } } } }, required: ['verdicts'] }
 const PF = { type: 'string', enum: ['pass', 'fail'] }
 const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: PF, quality: PF } }
 const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR }, required: [...S_REVIEW.required, 'measuredPlanBlob'] }
@@ -2570,23 +2579,31 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
     if (!rc.ok) return fail(rc.kind, rc.why)
   }
 
-  const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin
-  const integ = TI ? await agent(`Program: "${WT}/_tmp/${E}-integrity.cjs"\nCommand: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}"\n${TEST_INTEGRITY}\n`,
+  const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin, IP = `"${WT}/_tmp/${E}-integrity.cjs"`
+  const integ = TI ? await agent(`Program: ${IP}\nCommand: cd "${wt}" && node ${IP} "${TARGET}"\n${TEST_INTEGRITY}\n`,
     { agentType: 'productivity-tools:test-integrity', label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
   if (TI && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
 
-  const lenses = card.critical ? ['correctness', 'security'] : ['all']
   const FR = CFG.finalReview || {}, FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }
   const finalLoop = skipFin ? { ok: true } : await reviewLoop('final',
     async (round, prev) => {
-      const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
+      const rs = await parallel((card.critical ? ['correctness', 'security'] : ['all']).map((lens, li) => () => agent(`${C()}
 
 Mode: review, lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD
 Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAlerts: ${alerts.join('; ')}.` : ''}${prev ? `\nPrevious issues (${repeatRule()}):\n${prev}` : ''}`,
         { label: `${E}:final-${li + 1}-r${round}`, schema: S_REVIEW, ...FRA })))
       if (rs.some(x => !x)) return null
-      return { ...rs[0], issues: rs.flatMap(x => x.issues), clean: rs.every(x => x.clean) }
+      const r = { ...rs[0], issues: rs.flatMap(x => x.issues), clean: rs.every(x => x.clean) }, bl = blocking(r)
+      if (FR.adversarial === true && bl.length) {
+        const s = splitRefuted(bl, await agent(`${C()}
+
+Mode: verify.
+${fmt(bl)}`, { label: `${E}:final-verify-r${round}`, schema: S_VERIFY, ...FRA }))
+        r.issues = [...r.issues.filter(i => !bl.includes(i)), ...s.keep]
+        out.reviews.push({ stage: 'final-verify', round, refuted: s.refuted })
+      }
+      return r
     },
     (iss, k, tier) => withLocks(planLocks, () => implAgent(`${C()}
 

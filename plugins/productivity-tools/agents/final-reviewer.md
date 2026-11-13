@@ -45,7 +45,7 @@ Measure: return `headSha`, `clean` (`git status --porcelain` empty) and `commits
 
 ## Verify mode
 
-The prompt lists numbered findings (`1. [severity/category] file description`) from a final review. Your job is to refute them, not to repeat the review:
+The prompt is the briefing, the line `Mode: verify.` and the numbered list of the blocking findings (`1. [severity/category] file description`) from a final review. It has no `Diff:` line: the worktree and the target come from the briefing. Your job is to refute the findings, not to repeat the review:
 
 - For each finding, read the code it points to and run only commands that read, to check whether the finding is wrong.
 - Give `refuted: true` only with concrete evidence that shows the finding wrong: a file and line, or the output of a command. Put that evidence in `reason`.
