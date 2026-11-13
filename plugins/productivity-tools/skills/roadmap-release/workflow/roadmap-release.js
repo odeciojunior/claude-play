@@ -1264,6 +1264,22 @@ function planDigest({ plan, source }) {
   return fnv1a(JSON.stringify(canon({ plan, source })));
 }
 // </embed>
+// Output of a plugin script copied by an agent: tool, nonce and digest must match. release-discovery signs { nonce, data }; verify-run signs the whole output without its digest.
+function checkRun(stdout, tool, nonce) {
+  let o
+  try { o = JSON.parse(String(stdout == null ? '' : stdout)) } catch { return { ok: false, why: 'the output is not JSON' } }
+  if (!o || typeof o !== 'object' || o.tool !== tool) return { ok: false, why: `the output is not from ${tool}` }
+  if (o.error !== undefined) return { ok: false, why: `${tool} refused: ${o.error}` }
+  if (o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run' }
+  const { digest, ...rest } = o
+  const disco = tool === 'release-discovery'
+  if (digest !== fnv1a(JSON.stringify(canon(disco ? { nonce: o.nonce, data: o.data } : rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' }
+  return { ok: true, data: disco ? o.data : o }
+}
+// A payload for verify-run.mjs in ONE argument: the payload plus its digest as encodeURIComponent(JSON), with !'()* also in %XX (no shell metacharacter left).
+function encArg(obj) {
+  return encodeURIComponent(JSON.stringify({ ...obj, digest: fnv1a(JSON.stringify(canon(obj))) })).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+}
 // </pure>
 
 // ---------------------------------------------------------------- args and config
@@ -1384,18 +1400,6 @@ let blqIds = new Set()  // blockers registered on the roadmap (filled after disc
 // ---------------------------------------------------------------- schemas
 const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boolean' }
 const STRS = { type: 'array', items: STR }
-const S_DISC = { type: 'object', properties: {
-  error: STR, repo: STR, today: STR, wtRoot: STR, roadmapDir: STR, roadmapSlug: STR, strategy: STR, checker: STR,
-  integrationBranch: STR, releaseBranch: STR, target: STR, integratedStatuses: STRS, discardedStatus: STR, blockedStatus: STR, deliverableStatuses: STRS,
-  targetExists: BOOL, readFrom: STR, language: STR, cellChars: INT, checkerExists: BOOL,
-  cards: { type: 'array', items: { type: 'object', properties: {
-    id: STR, title: STR, phase: STR, track: STR, priority: STR, deps: STRS, reqs: STRS, critical: BOOL, criticalMissing: BOOL,
-    status: { ...STR, description: 'the Status cell of the panel row, verbatim, with every segment and note' }, mergeCommit: STR, onTarget: BOOL, mergeFound: BOOL, mergeSha: { ...STR, description: 'full 40-character output of git rev-parse for the merge commit' }, onTargetEvidence: STR, acceptance: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR }, required: ['id', 'text'] } } }, required: ['id', 'deps', 'reqs', 'status', 'onTarget', 'mergeFound', 'acceptance'] } },
-  blockers: { type: 'array', items: { type: 'object', properties: { id: STR, text: STR, affects: STRS }, required: ['id', 'text'] } },
-  donot: STRS,
-  donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } },
-  pendingDecisionsStdout: { ...STR, description: 'raw stdout of the tracker CLI pending-decisions --json, not summarized and not reformatted' },
-}, required: ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker', 'pendingDecisionsStdout'] }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
@@ -1443,21 +1447,23 @@ const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: B
 // ---------------------------------------------------------------- discovery
 phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
-// The run token is in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
-const disc = await agent(`DISCOVERY task (read-only; change nothing). Run token: ${RUN_TOKEN || 'none'} (only makes this read run again on every invocation; ignore it). Answer with measured data.
-1. Repository: ${A.repo || 'the git repository of the current directory'} (git rev-parse --show-toplevel). Today (YYYY-MM-DD): ${A.today || 'take it from the system'}.
-2. ALL of these fields are REQUIRED: repo, today, roadmapDir, strategy, checker, integrationBranch, integratedStatuses and deliverableStatuses (at least 5 items); never invent a default, return error if one is missing. integratedStatuses and deliverableStatuses come from the vocab of roadmap.config.json.
-3. Roadmap folder: ${A.roadmap || 'the only folder under docs/plans/ with a roadmap.config.json (if there are several, return error listing them)'}. From roadmap.config.json read: strategy (relative to the folder), integrationBranch, releaseBranch (empty when absent) and vocab (deliverableStatuses in order, integratedStatuses, discardedStatus, blockedStatus). roadmapDir and strategy are RELATIVE to the repo root, with "/", roadmapDir ending in "/". roadmapSlug = folder name without the "roadmap-" prefix. checker = <roadmapDir>check-roadmap.mjs; checkerExists.
-4. Target branch: ${PRE_TARGET ? `"${PRE_TARGET}"` : 'the roadmap releaseBranch if not empty, else "integracao/<roadmapSlug>"'}. Return it in target; targetExists = git rev-parse --verify. READ state.md and the strategy FROM THE TARGET (git show <target>:<path>) if it exists; otherwise from the branch "${A.baseBranch || '<integrationBranch>'}". readFrom = the branch read.
-5. Cards: in the strategy, each "<!-- roadmap:card id=... phase=... track=... priority=... depends=... reqs=... critical=... -->" and the title "### E<n> -- <title>" below it. depends "-" means []. When critical is missing, critical=false and criticalMissing=true. acceptance: each numbered item of the card's <!-- roadmap:acceptance --> block, verbatim, with id "AC1", "AC2"... in order.
-6. Status: the <!-- roadmap:panel --> block of the state.md read. status = the deliverable's Status cell verbatim, with every segment and note (for example "code: on-branch; acceptance: blocked (BLQ-2)"), never reduced to one word; empty when the card has no row. mergeCommit = first hash in backticks in the Evidence column, if any.
-7. Per card, always returning mergeFound as true or false (git truth; if the target does not exist use the branch read): mergeFound = git log --first-parent <target> --grep "^merge: <id> " finds a commit and there is no later commit whose subject is 'Revert "merge: <id> ' (a reverted merge means mergeFound=false and onTarget=false, ignore the other rules). mergeSha = the full 40-character output of git rev-parse for that commit. onTarget = true if mergeFound, or if mergeCommit is an ancestor of the target, or if the code segment of the Status cell (label "code", or the only status of a cell without labels) is in integratedStatuses and the integrationBranch is an ancestor of the target. The ancestor rules (mergeCommit or integrationBranch an ancestor of the target) count ONLY when the code segment is finished. A card with several pieces (labels other than "code", like "piece 1: integrated; piece 2: spec") or whose Status is not an integrated or on-branch word is NOT onTarget by those rules, whatever commit its Evidence cites. The branch ${PREFIX}<id> being an ancestor of the target does NOT count: it is born from the target. Explain in onTargetEvidence.
-8. blockers: rows of the <!-- roadmap:blockers --> table (id, text, affects = deliverables in the Affects column). donot: items of the <!-- roadmap:donot --> block, verbatim. donotHolds: for each donot item, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
-9. language = the "language" field of roadmap.config.json (empty when absent); cellChars = limits.cellChars of the same file (omit when absent).
-10. pendingDecisionsStdout = the raw stdout, not summarized and not reformatted, of: node "${A.trackerCli}" pending-decisions "<absolute path of the roadmap folder>" --json. Use the roadmap folder of the worktree that has ${PRE_TARGET || 'the target branch'} checked out (git worktree list), else "${String(A.wtRoot || '').replace(/\/+$/, '')}/_integracao/<roadmapDir>" if it exists, else the roadmap folder of the repository. Run it even when it prints an empty list.
-`,
-  { label: 'discovery', phase: 'Discovery', schema: S_DISC, model: 'sonnet', effort: 'medium' })
-if (!disc || disc.error || !disc.cards || !disc.cards.length) return { status: 'error', error: `discovery failed: ${disc ? disc.error || 'no cards' : 'null agent'}` }
+const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
+const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
+// The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, which checkRun confirms by tool, nonce and digest.
+// The run token is the nonce and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
+const discCmd = [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(RUN_TOKEN)}`].filter(Boolean).join(' ')
+let disc = null
+let discWhy = ''
+// A read only, so it repeats: attempts 1-2 haiku, 3-5 sonnet (as load3).
+for (let k = 1; k <= 5 && !disc; k++) {
+  const out = await agent(`Run this command once and return its exit code and its full stdout, literal (change no file):\n${discCmd}\n${BASH_ONLY}`,
+    { agentType: 'productivity-tools:script-runner', label: k === 1 ? 'discovery' : `discovery-retry${k}`, phase: 'Discovery', schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+  const v = checkRun(out && out.stdout, 'release-discovery', RUN_TOKEN)
+  if (v.ok) disc = v.data
+  else discWhy = v.why
+}
+if (!disc) return { status: 'error', error: `discovery failed: ${discWhy}` }
+if (!disc.cards || !disc.cards.length) return { status: 'error', error: 'discovery failed: no cards' }
 const noMergeFlag = disc.cards.filter(c => typeof c.mergeFound !== 'boolean').map(c => c.id)
 if (noMergeFlag.length) return { status: 'error', error: `discovery failed: mergeFound not reported for ${noMergeFlag.join(', ')}` }
 if (!(A.repo || disc.repo)) return { status: 'error', error: 'discovery failed: repo not reported' }
@@ -1465,11 +1471,22 @@ for (const f of ['integrationBranch', 'integratedStatuses', 'deliverableStatuses
   const v = disc[f]
   if (!v || (Array.isArray(v) && !v.length)) return { status: 'error', error: `discovery failed: ${f} not reported` }
 }
-const pendingParsed = parseCli(disc.pendingDecisionsStdout)
-if (!pendingParsed || !pendingParsed.result || !Array.isArray(pendingParsed.result.decisions)) return { status: 'error', error: 'discovery failed: pendingDecisionsStdout is not the JSON of the CLI pending-decisions (result.decisions missing)' }
+if (!Array.isArray(disc.pendingDecisions)) return { status: 'error', error: 'discovery failed: pendingDecisions is not a list' }
+if (typeof disc.language !== 'string') return { status: 'error', error: 'discovery failed: language not reported' }
 if ((disc.deliverableStatuses || []).length < 5) return { status: 'error', error: 'discovery failed: deliverableStatuses not reported (needs at least 5 items)' }
 if (!(A.today || disc.today)) return { status: 'error', error: 'discovery failed: today not reported' }
 disc.cards.forEach(c => { c.deps = c.deps || []; c.reqs = c.reqs || [] })
+// "Do not" items are a judgement, not code: one sonnet call, only when the roadmap has any.
+if ((disc.donot || []).length) {
+  const dn = await agent(`DO-NOT CHECK (read-only; change nothing). Return donotHolds: for each item below, { text: the item, affects: ids of the cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects the card that migrates X; when in doubt, do not list) }.
+Items:
+${disc.donot.map(d => `  * ${d}`).join('\n')}
+Cards:
+${disc.cards.map(c => `  * ${c.id}: ${c.title || ''}${(c.acceptance || []).length ? ' | criteria: ' + c.acceptance.map(a => a.text).join(' / ') : ''}`).join('\n')}`,
+    { label: 'discovery-donot', phase: 'Discovery', schema: { type: 'object', properties: { donotHolds: { type: 'array', items: { type: 'object', properties: { text: STR, affects: STRS }, required: ['text', 'affects'] } } }, required: ['donotHolds'] }, model: 'sonnet', effort: 'medium' })
+  if (!dn || !Array.isArray(dn.donotHolds)) return { status: 'error', error: 'discovery failed: the do-not check returned nothing' }
+  disc.donotHolds = dn.donotHolds
+}
 
 const TODAY = A.today || disc.today
 const REPO = A.repo || disc.repo
@@ -1511,8 +1528,8 @@ for (const id of interrupted) notes.push(`${id}: interrupted merge on the target
 if (A.force) for (const id of order) if (isUnfinished(byId[id], STATUSES)) notes.push(`${id}: force does not apply to an interrupted merge: it is validated and documented first`)
 // Contract decisions still pending ratification: dependents of their owner that did not start are held (the owner never is).
 const isContract = d => d && (d.scope === 'contract' || d.scope === 'contrato')
-const pendContract = pendingParsed.result.decisions.filter(d => isContract(d) && d.id && d.deliverable).map(d => ({ id: d.id, deliverable: d.deliverable }))
-const startedByPending = pendingParsed.result.decisions.flatMap(d => (isContract(d) && Array.isArray(d.startedDependents) ? d.startedDependents : []))
+const pendContract = disc.pendingDecisions.filter(d => isContract(d) && d.id && d.deliverable).map(d => ({ id: d.id, deliverable: d.deliverable }))
+const startedByPending = disc.pendingDecisions.flatMap(d => (isContract(d) && Array.isArray(d.startedDependents) ? d.startedDependents : []))
 const dynContract = []  // contract decisions recorded by this run
 const begun = new Set()  // deliverables whose run started in this invocation
 // A failed or unconfirmed record of a contract ruling still holds the dependents.
@@ -1693,7 +1710,6 @@ const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, 
 const implAgent = (p, o) => agent(p, { agentType: 'productivity-tools:implementer', schema: S_IMPL, ...o })
 const revAgent = (p, o) => agent(p, { agentType: 'productivity-tools:task-reviewer', schema: S_TASKREVIEW, ...o })
 // Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
-const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const LANG = disc.language || ''
 const CELL_CHARS = Number.isInteger(disc.cellChars) && disc.cellChars > 0 ? disc.cellChars : 300
 const absFolder = INTWT.replace(/\/+$/, '') + '/' + RM.replace(/\/+$/, '')

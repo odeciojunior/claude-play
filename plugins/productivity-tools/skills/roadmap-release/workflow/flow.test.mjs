@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
+import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -138,6 +139,10 @@ function makeRecordMock(cardsOf) {
   };
 }
 
+// E10 T5: the discovery is the stdout of `preflight.mjs discover`, signed the way the script signs it (canon/fnv1a of lib/plan-digest.mjs) over { nonce, data }.
+const discStdout = (nonce, data) => JSON.stringify({ tool: 'release-discovery', nonce, digest: fnv1a(JSON.stringify(canon({ nonce, data }))), data });
+const nonceOf = (prompt) => (/--nonce '([^']*)'/.exec(prompt) || [])[1];
+
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
@@ -156,7 +161,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery') return { repo: '/r', today: '2026-11-09', wtRoot: '/wt/', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], cards: typeof cards === 'function' ? cards() : cards, pendingDecisionsStdout: cliJson({ result: { decisions: [] } }), ...discOver };
+    if (l === 'discovery' || /^discovery-retry\d$/.test(l)) return { exit: 0, stdout: discStdout(nonceOf(prompt), { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
+    if (l === 'discovery-donot') return { donotHolds: [] };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return 'spec written';
@@ -524,8 +530,9 @@ test('hard integrity alerts: the operator action offers the acknowledgement with
   assert.deepEqual(o.resumeWith.deliverables, ['E1']);
   assert.equal(r.resumeArgs.acceptIntegrityAlerts, undefined);
   const disc = calls.find((c) => c.label === 'discovery');
-  assert.match(disc.prompt, /mergeSha = the full 40-character output of git rev-parse/);
-  assert.match(disc.opts.schema.properties.cards.items.properties.mergeSha.description, /40-character/);
+  // E10: the 40-character mergeSha is computed by the script (preflight.test.mjs, AC1); the workflow only dispatches it.
+  assert.match(disc.prompt, /preflight\.mjs" discover/);
+  assert.equal(disc.opts.agentType, 'productivity-tools:script-runner');
 });
 
 test('resume integrity: the temporary worktree is removed before the add and always after', async () => {
@@ -599,14 +606,20 @@ test('I2: discovery returns the raw cell; blocked, discarded and segmented rows 
   const cards = [card('E1', { status: 'blocked (BLQ-3)' }), card('E2', { status: 'discarded (DEC-007)' }), card('E3', { status: 'code: e; acceptance: blocked (BLQ-2)', onTarget: true, mergeFound: true, mergeSha: 'm' }), card('E4', { status: 'a' })];
   const { r, calls } = await exec({ cards, args: { mode: 'dry-run' }, deliverables: 'next' });
   assert.deepEqual(r.selection.order, ['E4']);
-  assert.match(calls[0].prompt, /Status cell verbatim/i);
+  // E10: the raw cell is what the script returns (preflight.test.mjs); calls[0] is now its command.
+  assert.match(calls[0].prompt, /preflight\.mjs" discover/);
 });
 
 test('I3: discovery requires the fields whose absence fails open', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
   const s = calls[0].opts.schema;
-  assert.ok(s.required.includes('repo'));  // wtRoot comes from the skill (FF/I4)
-  assert.ok(['mergeFound', 'acceptance'].every((k) => s.properties.cards.items.required.includes(k)));
+  assert.deepEqual(s.required, ['exit', 'stdout']);  // the schema is the script-runner's; the fields are checked on the signed data
+  for (const f of ['repo', 'mergeFound']) {  // wtRoot comes from the skill (FF/I4)
+    const d = f === 'mergeFound' ? { cards: [{ ...card('E1'), mergeFound: undefined }] } : { repo: undefined };
+    const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, discOver: d });
+    assert.equal(x.r.status, 'error', f);
+    assert.match(x.r.error, new RegExp(f), f);
+  }
 });
 
 test('I3: a card without mergeFound, a selected card without criteria or no repo stop the run', async () => {
@@ -648,10 +661,117 @@ test('item 5: each missing discovery field stops the run', async () => {
   }
 });
 
-test('item 5: the schema requires the fields', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const req = calls[0].opts.schema.required;
-  for (const f of ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker']) assert.ok(req.includes(f), f);
+test('E10 AC1: discovery dispatches the script-runner with preflight.mjs" discover', async () => {
+  const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
+  const d = calls[0];
+  assert.equal(labels[0], 'discovery');
+  assert.equal(d.opts.agentType, 'productivity-tools:script-runner');
+  assert.deepEqual(d.opts.schema.required, ['exit', 'stdout']);
+  assert.equal(d.opts.model, 'haiku');
+  assert.match(d.prompt, /node "\/p\/productivity-tools\/skills\/roadmap-release\/scripts\/preflight\.mjs" discover /);
+  assert.match(d.prompt, /--prefix 'feat\/'/);  // the plan wrote --prefix pf-test: the run token goes in --nonce, the prefix is the branch prefix
+  assert.match(d.prompt, /--nonce 'pf-test'/);
+  assert.match(d.prompt, /--ref 'integracao\/x'/);
+  assert.match(d.prompt, /--today '2026-11-09'/);
+  assert.doesNotMatch(d.prompt, /\/wt|_integracao/);
+  assert.ok(d.prompt.includes('SHELL: run each command exactly as written'));
+  const p = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run', branchPrefix: 'pf-test', targetBranch: undefined, today: undefined } });
+  assert.match(p.calls[0].prompt, /--prefix 'pf-test'/);
+  assert.doesNotMatch(p.calls[0].prompt, /--ref|--today/);  // --ref only with PRE_TARGET, --today only with args.today
+  const withCfg = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { releaseBranch: 'rel/x' }, args: { mode: 'dry-run', targetBranch: undefined } });
+  assert.match(withCfg.calls[0].prompt, /--ref 'rel\/x'/);
+});
+
+test('a wrong digest retries up to 5 times and stops with discovery failed', async () => {
+  const tampered = (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discStdout(nonceOf(p), { repo: '/r', today: '2026-11-09', cards: [card('E1')] }).replace('2026-11-09', '2026-11-08') } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: tampered });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /^discovery failed: .*digest/);
+  const ds = x.calls.filter((c) => /^discovery/.test(c.label));
+  assert.equal(ds.length, 5);
+  assert.deepEqual(ds.map((c) => c.opts.model), ['haiku', 'haiku', 'sonnet', 'sonnet', 'sonnet']);
+  assert.deepEqual(x.labels, ds.map((c) => c.label));
+  // another nonce, another tool and a script error are not confirmed either; the fourth attempt is the first that can be confirmed
+  let n = 0;
+  const flaky = (l, p) => {
+    if (l !== 'discovery' && !/^discovery-retry/.test(l)) return undefined;
+    n++;
+    if (n === 1) return { exit: 0, stdout: discStdout('other', { cards: [] }) };
+    if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no roadmap folder' }) };
+    if (n === 3) return { exit: 0, stdout: 'not json' };
+    return undefined;
+  };
+  const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, over: flaky });
+  assert.equal(y.r.status, 'done');
+  assert.equal(y.calls.filter((c) => /^discovery/.test(c.label)).length, 4);
+  assert.ok(y.calls.every((c) => nonceOf(c.prompt) === undefined || nonceOf(c.prompt) === 'pf-test'));
+});
+
+test('discovery-donot only with donot items', async () => {
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
+  assert.ok(!none.labels.includes('discovery-donot'));
+  const empty = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, discOver: { donot: [] } });
+  assert.ok(!empty.labels.includes('discovery-donot'));
+  const some = await exec({ cards: [card('E1', { title: 'Migrate X' }), card('E2', { title: 'Docs' })], deliverables: ['E1', 'E2'], args: { mode: 'dry-run' },
+    discOver: { donot: ['do not migrate X'] },
+    over: (l) => (l === 'discovery-donot' ? { donotHolds: [{ text: 'do not migrate X', affects: ['E1'] }] } : undefined) });
+  const call = some.calls.find((c) => c.label === 'discovery-donot');
+  assert.ok(call);
+  assert.equal(some.labels.indexOf('discovery-donot'), 1);
+  assert.equal(call.opts.model, 'sonnet');
+  assert.match(call.prompt, /do not migrate X/);
+  assert.match(call.prompt, /E1: Migrate X/);
+  assert.deepEqual(call.opts.schema.required, ['donotHolds']);
+  assert.ok(some.r.selection.notes.some((n) => /do not migrate X/.test(n)));
+  assert.deepEqual(some.r.selection.order, ['E2'], 'the card the do-not item forbids does not run');
+  assert.ok(some.r.selection.skippedUpfront.some((s) => s.id === 'E1'));
+  const nul = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, discOver: { donot: ['do not migrate X'] }, over: (l) => (l === 'discovery-donot' ? null : undefined) });
+  assert.equal(nul.r.status, 'error');
+  assert.match(nul.r.error, /^discovery failed: /);
+});
+
+test('E10 R12: the selection never reads acceptance of an integrated or discarded card', async () => {
+  const done = card('E1', { status: 'integrada', onTarget: true, mergeFound: true, mergeSha: 'a'.repeat(40), acceptance: [], acceptanceOmitted: true });
+  const gone = card('E2', { status: 'discarded (DEC-007)', acceptance: [], acceptanceOmitted: true });
+  const { r } = await exec({ cards: [done, gone, card('E3')], args: { mode: 'dry-run' }, deliverables: 'next' });
+  assert.notEqual(r.status, 'error');
+  assert.deepEqual(r.selection.order, ['E3']);
+  assert.ok(!r.selection.order.some((id) => id !== 'E3'));
+});
+
+test('E10: checkRun confirms tool, nonce and digest, and encArg signs a payload in one argument', () => {
+  const data = { cards: [{ id: 'E1' }], today: '2026-11-09' };
+  const ok = PURE_X.checkRun(discStdout('n1', data), 'release-discovery', 'n1');
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.data, data);
+  for (const [out, tool, nonce, why] of [
+    [discStdout('n1', data), 'release-discovery', 'n2', /nonce/],
+    [discStdout('n1', data), 'verify-run', 'n1', /verify-run/],
+    [discStdout('n1', data).replace('2026-11-09', '2026-11-08'), 'release-discovery', 'n1', /digest/],
+    ['not json', 'release-discovery', 'n1', /JSON/],
+    ['', 'release-discovery', 'n1', /JSON/],
+    [JSON.stringify({ tool: 'release-discovery', error: 'boom' }), 'release-discovery', 'n1', /boom/],
+  ]) {
+    const v = PURE_X.checkRun(out, tool, nonce);
+    assert.equal(v.ok, false);
+    assert.match(v.why, why);
+  }
+  const enc = PURE_X.encArg({ nonce: 'n', steps: ["a b", "it's (x)*!"] });
+  assert.match(enc, /^[A-Za-z0-9\-_.~%]+$/);
+  const { digest, ...rest } = JSON.parse(decodeURIComponent(enc));
+  assert.equal(digest, fnv1a(JSON.stringify(canon(rest))));
+  assert.deepEqual(rest, { nonce: 'n', steps: ['a b', "it's (x)*!"] });
+});
+
+// E10 (R15): the schema of the discovery is gone;the same fields are now checked on the signed data and each one stops the run naming it.
+test('discovery stops naming each missing field', async () => {
+  for (const f of ['cards', 'repo', 'integrationBranch', 'integratedStatuses', 'deliverableStatuses', 'today', 'roadmapDir', 'strategy', 'checker', 'language', 'pendingDecisions']) {
+    const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { today: undefined }, discOver: { [f]: undefined } });
+    assert.equal(r.status, 'error', f);
+    assert.match(r.error, /^discovery failed: /, f);
+    assert.match(r.error, f === 'cards' ? /no cards/ : new RegExp(f), f);
+    assert.deepEqual(labels, ['discovery'], f);
+  }
 });
 
 test('I3: args.repo wins over the discovered repo and stands in for it', async () => {
@@ -1056,8 +1176,9 @@ test('item 2: a finished code segment still counts', async () => {
 
 test('item 2: the discovery prompt restricts the ancestor rule', async () => {
   const { calls } = await exec({ cards: [card('E1')], args: { mode: 'dry-run' }, deliverables: 'next' });
-  assert.match(calls[0].prompt, /several pieces/);
-  assert.match(calls[0].prompt, /ONLY when the code segment is finished/);
+  // E10: the ancestor rule (only a finished code segment counts, the delivery branch never does) is code in preflight.mjs, tested in preflight.test.mjs; the prompt is the command.
+  assert.match(calls[0].prompt, /preflight\.mjs" discover/);
+  assert.match(calls[0].prompt, /--prefix 'feat\/'/);
 });
 
 test('item 14: a closed BLQ yields a decision action and no correction round', async () => {
@@ -2339,8 +2460,8 @@ test('FF/I4: wtRoot comes from the skill; without it the run stops before discov
   assert.match(none.r.error, /wtRoot/);
   assert.equal(none.labels.length, 0);
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' } });
-  assert.doesNotMatch(x.calls[0].prompt, /common parent directory/);
-  assert.ok(!x.calls[0].opts.schema.required.includes('wtRoot'));
+  assert.doesNotMatch(x.calls[0].prompt, /common parent directory|_integracao|\/wt/);  // E10: the discover command names no worktree folder
+  assert.ok(!('wtRoot' in x.r.selection) && !x.calls[0].opts.schema.required.includes('wtRoot'));
   const skill = ffRead('SKILL.md');
   assert.ok(skill.includes('Let `wtRoot` be `<dirname(repo)>/<basename(repo)>-wt`'));
   assert.ok(skill.includes('checked out somewhere other than `<wtRoot>/_integracao`'));
@@ -2494,7 +2615,7 @@ test('B4: the runToken never comes back in resume args, so a resume must take a 
   assert.equal(!!x.r.resumeArgs && 'runToken' in x.r.resumeArgs, false);
   for (const o of x.r.operatorActions) assert.equal(!!o.resumeWith && 'runToken' in o.resumeWith, false, o.kind);
   assert.equal(x.labels[0], 'discovery');
-  assert.match(x.calls[0].prompt, /pf-test/);
+  assert.match(x.calls[0].prompt, /--nonce 'pf-test'/);  // E10: the token is the nonce of the discover command
   assert.ok(x.calls.slice(1).every((c) => !c.prompt.includes('pf-test')), 'the token is only in the discovery read (the first agent call)');
 });
 
@@ -3132,8 +3253,9 @@ test('BASH_ONLY literal em todo prompt de registro e de releitura; a descoberta 
   for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
   const disc = calls.find((c) => c.label === 'discovery');
   assert.doesNotMatch(disc.prompt, /trackerAvailable/);
-  assert.match(disc.prompt, /language/);
-  assert.ok(!('trackerAvailable' in disc.opts.schema.properties));
+  assert.ok(disc.prompt.includes(clause));  // E10: the discovery is a script-runner call and carries the shell clause too
+  assert.equal(disc.opts.agentType, 'productivity-tools:script-runner');
+  assert.ok(!('trackerAvailable' in disc.opts.schema.properties));  // language is required in data: see 'discovery stops naming each missing field'
   const d = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { trackerAvailable: false } });
   assert.equal(d.r.results[0].merged, true);
 });
@@ -4111,32 +4233,34 @@ test('a newly written contract decision (existing: false) holds the dependent', 
 });
 
 test('a pending contract decision read in discovery holds unstarted dependents and not its owner', async () => {
-  const pend = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }] } });
+  const pend = [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: [] }];
   const reason = 'held by DEC-7 (E1, contract, pending ratification)';
-  const live = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], discOver: { pendingDecisionsStdout: pend } });
+  const live = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], discOver: { pendingDecisions: pend } });
   assert.equal(runsOf(live.r).E1.merged, true);
   assert.equal(runsOf(live.r).E2.error, reason);
   assert.ok(!live.labels.some((l) => /^E2:/.test(l)));
-  const po = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'plan-only' }, discOver: { pendingDecisionsStdout: pend } });
+  const po = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'plan-only' }, discOver: { pendingDecisions: pend } });
   assert.equal(runsOf(po.r).E1.planOnly, true);
   assert.equal(runsOf(po.r).E2.error, reason);
   assert.ok(!po.labels.some((l) => /^E2:/.test(l)));
-  const dry = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: pend } });
+  const dry = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisions: pend } });
   assert.ok(!dry.labels.some((l) => /^E\d:/.test(l)));
   assert.deepEqual(dry.r.selection.held, [{ id: 'E2', reason }]);
-  const started = cliJson({ result: { decisions: [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: ['E2'] }] } });
-  const st = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisionsStdout: started } });
+  const started = [{ id: 'DEC-7', deliverable: 'E1', scope: 'contract', startedDependents: ['E2'] }];
+  const st = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], args: { mode: 'dry-run' }, discOver: { pendingDecisions: started } });
   assert.deepEqual(st.r.selection.held, []);
 });
 
-test('discovery requires pendingDecisionsStdout', async () => {
-  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.ok(calls.find((c) => c.label === 'discovery').opts.schema.required.includes('pendingDecisionsStdout'));
-  const bad = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: 'not json' } });
+// E10 (R15): pendingDecisions arrives as a list in the signed data (the list itself is computed in preflight.test.mjs); a value that is not a list, or a wrong digest, stops the run.
+test('discovery requires pendingDecisions as a list', async () => {
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const bad = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisions: 'not a list' } });
   assert.equal(bad.r.status, 'error');
-  assert.match(bad.r.error, /pendingDecisionsStdout/);
-  const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisionsStdout: '' } });
-  assert.match(missing.r.error, /pendingDecisionsStdout/);
+  assert.match(bad.r.error, /pendingDecisions/);
+  const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisions: undefined } });
+  assert.match(missing.r.error, /pendingDecisions/);
+  const wrong = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discStdout(nonceOf(p), { pendingDecisions: [] }).replace('"digest":"', '"digest":"0') } : undefined) });
+  assert.match(wrong.r.error, /^discovery failed: /);
   assert.equal(r.results[0].merged, true);
 });
 
