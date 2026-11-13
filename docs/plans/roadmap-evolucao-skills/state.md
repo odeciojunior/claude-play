@@ -24,7 +24,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
 | E8 | na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
-| E10 | executando | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` | E10: seguir o fluxo do release após executando |
+| E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
@@ -138,6 +138,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) roadmap-release.js mede 239.898 caracteres LF na ponta da release (53a7781): folga de 10.102 sob o teto de 250.000 (DEC-647). E10 e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
 - (executor) Lançar em measurements.md o custo de E24 (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30; total US$ 22,56. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
 - (executor) Na 1ª execução do release com o plugin da ponta (E10): conferir a chamada <E>:test-integrity (campos medidos, sem o concern test integrity not measured, arquivo de _tmp apagado) e a revisão final pelo agente em opus/high; anotar no relatório.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -145,5 +146,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E10 | viva | E10 em execução pelo release |
 <!-- /roadmap:inflight -->

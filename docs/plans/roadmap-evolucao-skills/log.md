@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E10 | E10 passou para na-branch | `c1d6647796f8f49c788eeae07d11600ed03c76e0`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `docs/plans/evolucao-skills-E10/reviews.md` |
 | 2026-11-13 | E10 | E10 passou para executando | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` |
 | 2026-11-13 | E10 | BLQ-14 resolvido: desbloqueio de E10 pelo release | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` |
 | 2026-11-13 | E10 | r1 parou na spec após 2 correções (R15 com lista incompleta de asserções de flow.test.mjs); US$ 9,85. Fable: corte de escopo (sem verify-run read nem etapa docs), R15 como inventário por grep na 1ª tarefa, testes ficam no arquivo; retomar com notes. | `docs/reports/2026-11-13-E10-run.md` |
