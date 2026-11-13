@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.8 2026-11-13 -->
-# Evolução das skills de roadmap -- Estratégia v1.8
+<!-- roadmap:version 1.9 2026-11-13 -->
+# Evolução das skills de roadmap -- Estratégia v1.9
 
 ## Registro de mudanças
 
+- v1.9 (2026-11-13): meta derivada de E10 fixada por delegação do dono no valor que o spec declarou (DEC-658 e a sua emenda, DEC-668): ≤ 22 chamadas na variante completo, provisória, com a descoberta numa página. A coluna Cálculo passa a citar a chamada git-truth. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.8 (2026-11-13): card E24 corrigido por delegação do dono (H1 do spec de E24; DEC-636): passa a nomear também o teste da validação de `finalReview`, `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs`, e `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que ganhou os casos de ponta a ponta dos critérios 1 a 3. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.7 (2026-11-13): card E23 corrigido por delegação do dono (risco 4 do card; H1 do spec de E23): passa a nomear o teste do script do registro, `plugins/productivity-tools/scripts/run-record.test.mjs`, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.6 (2026-11-13): critério 3 de E21 emendado por delegação do dono (DEC-597, DEC-598): só a metade padrão fica em E21, e a revisão única por tarefa passa ao card novo E28, porque a T5 levou roadmap-release.js a 240.252 caracteres contra o teto de 240.000 e foi revertida (0ee4677). Muda a peça 3 de E21; E27 peça 2 passa a valer só se E28 estiver integrado. E28 entra em ponta-a-ponta, depende de E21 e não é dependência de E13.
@@ -979,11 +980,11 @@ Linha de base: `docs/reports/2026-11-11-e15-linha-de-base/linha-de-base.md` (tag
 | E23 | chamadas opus | parada-retomada | 9 | 9 − 2: revisão de spec e de plano não repetidas na retomada | 7 | E13 |
 | E23 | ponderado | parada-retomada | 669 | 669 − 2 × 40 | 589 | E13 |
 | E12 | chamadas (principal) | coordinator | 4 | 4 − 4: o despacho passa ao workflow | 0 | E13 |
-| E10 | total de chamadas (haiku + sonnet + opus) | completo | 23 | 23 − 1: mínimo do critério 3 do card | ≤ 22, provisória | E13 |
+| E10 | total de chamadas (haiku + sonnet + opus) | completo | 23 | 23 − 1: a chamada git-truth entra na chamada do relatório (DEC-658) | ≤ 22, provisória, com a descoberta numa página (até 8.000 caracteres; cada página de cards soma 1 chamada haiku) | E13 |
 
 Sem meta numérica: E3 (o tracker não lança subagente; turnos não têm meta); E18 (o registro segue numa chamada de agente, que passa a rodar a CLI); E8, E19, E20, E9 e E7 (trocam autor ou conferência sem eliminar papel); E21 e E24 (modos desligados, DEC-021); bytes de E23 (a linha de base não isola a chamada da retomada); prosa de E12 (derivada no spec de E12 e registrada por nova revisão). Para esses vale só a regra de não piorar do portão.
 
-As metas de E23 valem se a retomada do cenário mantiver spec e plano aprovados; o spec de E23 confirma. A meta de E10 é substituída pelo valor que o spec de E10 declarar.
+As metas de E23 valem se a retomada do cenário mantiver spec e plano aprovados; o spec de E23 confirma. A meta de E10 é a que o spec de E10 declarou (DEC-658, com a emenda do dono sobre a descoberta em páginas, DEC-668).
 
 ## Riscos transversais
 
@@ -1033,6 +1034,7 @@ Nenhuma.
 | 1.6 | 2026-11-13 | Critério 3 de E21 emendado: a revisão única passa ao card novo E28 (DEC-597, DEC-598) |
 | 1.7 | 2026-11-13 | Card E23 nomeia o teste do script do registro, `run-record.test.mjs` (risco 4) |
 | 1.8 | 2026-11-13 | Card E24 nomeia também `preflight.test.mjs` e `flow.test.mjs` entre os arquivos de teste (H1 do spec de E24) |
+| 1.9 | 2026-11-13 | Meta derivada de E10 fixada no valor do spec, com a condição da descoberta numa página (DEC-658, DEC-668) |
 
 ## Fontes
 

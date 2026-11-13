@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.8 -- 2026-11-13
+Estratégia v1.9 -- 2026-11-13
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -126,19 +126,17 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 - (executor) Lançar em measurements.md o custo de E23 (DEC-567): r1 7,47; r2 sem valor (sessão morta às 04:29 sem evento result, interrupção do host); r3 11,48; B4 0,38; total conhecido US$ 19,33. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
-- (executor) E10: o approve leva a medição dos gates num argumento codificado que um agente copia. Ao mover o registro para código, gravar a medição por script ou conferir um hash da carga em run-record.mjs. Até lá a fidelidade da cópia é a medida no comportamental de E23.
 - (executor) E11: a variante parada-retomada mede a meta de E23 de ponta a ponta (opus 9 para 7, ponderado 669 para 589) com o release nativo; o comportamental de E23 só confere os estágios, um a um.
 - (executor) Achados menores do comportamental de E23 (fora do portão): sync lê "run after the merge" como argumento run do key; key imprime o prep inteiro em recorded e haiku o corrompe (tirar o prep); setup instala no diretório corrente e não no worktree; progresso sem a regra de comando simples.
-- (executor) Revisão de 76676df (menor): parada própria preflight:recorded-invalid para registro recusado, com saída para ignorar o registro; recorded só com espaços conta como presente (usar trim). Custa caracteres: E10.
-- (executor) E10: TEST_INTEGRITY_DEFAULT (1.506 caracteres) deixa de ser obrigatório mover por espaço (teto 250.000); o spec de E10 decide se o programa vira script do plugin e resume-test-integrity despacha o agente test-integrity.
-- (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
 - (executor) fix/carga-plano: resumeFromRunId de execução anterior à mudança, mesmo caminho de plugin, pode comparar emit completo com enxuto e parar em plan-frozen-tasks falso; normalizar em authoredTask ou avisar em operator.md. plan-author.md:40 descreve o emit com data em vez de plan.
-- (executor) E10: recordVerdict da etapa docs acusou falso positivo em E24 r3 (texto de comando diferente, comando extra, painel relido sem segmento) com registro correto; medir se o relato do agente de registro deve vir de script em vez de cópia.
 - (executor) Preflight/skill: diagnosticar "not found" do lançamento pelo nome como script acima de 512 KiB (docs/reports/2026-11-13-E8-limite-lancamento-workflow.md).
-- (executor) roadmap-release.js mede 239.898 caracteres LF na ponta da release (53a7781): folga de 10.102 sob o teto de 250.000 (DEC-647). E10 e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
 - (executor) Lançar em measurements.md o custo de E24 (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30; total US$ 22,56. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
-- (executor) Na 1ª execução do release com o plugin da ponta (E10): conferir a chamada <E>:test-integrity (campos medidos, sem o concern test integrity not measured, arquivo de _tmp apagado) e a revisão final pelo agente em opus/high; anotar no relatório.
 - (executor) Defeito baixo (comportamental de E10): runPrompt (roadmap-release.js:1434) termina com BASH_ONLY, que pede lista vazia com error no-bash, incompatível com S_RUN {exit, stdout} e com script-runner.md:23; usar variante sem a frase da lista.
+- (executor) Na 1ª execução do release com E10 na ponta (E12): conferir a descoberta em páginas (6 chamadas), o grupo do registro confirmado pelo digest, truthStdout do relatório e o acerto por tentativa da cópia; anotar no relatório. Falha: correção antes da execução seguinte.
+- (executor) roadmap-release.js mede 238.471 caracteres LF na ponta da release (c1d6647): folga de 11.529 sob o teto de 250.000 (DEC-647). fix/status-releitura e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
+- (executor) Lançar em measurements.md o custo de E10 (DEC-567): r1 9,85 (defeito de spec); r2 19,82; comportamental 0,38; total US$ 30,05. Maior execução sã passa a 19,82 (E10 r2); teto de US$ 150 mantido.
+- (executor) Próxima edição de roadmap-release.js (E28 ou fix): erro determinístico do script de descoberta ({ tool, error }) repete 5 vezes; parar na 1ª resposta com error. Tratar junto o defeito do BASH_ONLY em runPrompt.
+- (executor) Antes de E12: fix/status-releitura: status --deliverable <E> na CLI do tracker, usado pela releitura do registro e por docs-measure; teste primeiro, revisão opus, sem bump; conferência com haiku da releitura real e de discover --page 2 antes do merge.
 <!-- /roadmap:pending -->
 
 ## Em andamento
