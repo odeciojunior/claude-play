@@ -565,21 +565,19 @@ function repeatRule() {
   return 'If an item of the previous round is still unresolved, report it again with the exact same file and description as listed (same wording), so the script can detect the repeat; do not reword it.'
 }
 function fmtChecks(checks) {
-  if (!checks || !checks.length) return '(no checks reported: unless the summary says the task was resumed from a previous run, a task that claims to be done without any check output is a defect)'
+  if (!checks || !checks.length) return '(no checks reported)'
   return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`).join('\n---\n')
 }
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
-  const spec = kind === 'spec'
   return `${briefing(ctx)}
 
-Review of ${spec ? 'SPEC COMPLIANCE' : 'CODE QUALITY'} (read-only; do not trust the implementer's report, read the code) of Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
+Mode: ${kind === 'spec' ? 'spec (SPEC COMPLIANCE)' : 'quality (CODE QUALITY)'}. Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, spec ${ctx.wt}/${ctx.specPath}.
 Range: git -C "${ctx.wt}" log -p ${ctx.start}..HEAD.${ctx.rangeNote || ''}
-${spec
-    ? 'Blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category defeito), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category decisao), an edit to the roadmap folder.'
-    : 'Blocks: a bug, a security problem, a violated project convention (see the PROJECT block, or the file it points to), a fragile test. Also confirm there is no regression against the spec.'}
-IMPLEMENTER'S CHECKS (command, exit code and output as reported; re-run the ones you doubt and treat a mismatch as a defect). You hold no lock: do not re-run a check that needs a resource protected by a shared lock; judge it from the reported output. Do not re-run a check with an external effect (production, deploy, push, e-mail or message, shared data, someone's checkout); judge it from the reported output too. Implementer summary: ${(impl && impl.summary) || '(none)'}
-${fmtChecks(impl && impl.checks)}
-Evidence that the MEASURED ENVIRONMENT cannot produce is category "ambiente", not defeito, if the plan foresaw the alternative evidence (cite in blq the registered blocker, if any).${ctx.prev ? `\nIssues from the previous round (verify them; ${repeatRule()}):\n${ctx.prev}` : ''}
+Implementer summary: ${(impl && impl.summary) || '(none)'}
+IMPLEMENTER'S CHECKS:
+${fmtChecks(impl && impl.checks)}${ctx.prev ? `
+Issues from the previous round:
+${ctx.prev}` : ''}
 Measure: headSha, clean, commitsInRange (git -C "${ctx.wt}" rev-list --count ${ctx.start}..HEAD).`
 }
 // ---- merge stage helpers
@@ -1379,6 +1377,7 @@ const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: S
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: { type: 'string', enum: ['pass', 'fail'] }, quality: { type: 'string', enum: ['pass', 'fail'] } } }
 const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR }, required: [...S_REVIEW.required, 'measuredPlanBlob'] }
 const S_LOGGED = { type: 'object', properties: { head: STR, commit: STR }, required: ['head'] }
 const S_CHECKS = { type: 'array', items: { type: 'object', properties: { command: STR, output: STR, exit: INT }, required: ['command', 'output', 'exit'] } }
@@ -1652,6 +1651,7 @@ const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a f
 // Fixed clause of the prompts of the native spec and plan stages (E8): no stage ever asks.
 const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 const implAgent = (p, o) => agent(p, { agentType: 'productivity-tools:implementer', schema: S_IMPL, ...o })
+const revAgent = (p, o) => agent(p, { agentType: 'productivity-tools:task-reviewer', schema: S_TASKREVIEW, ...o })
 // Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const LANG = disc.language || ''
@@ -2487,8 +2487,8 @@ ${NO_ASK}`,
     let lastR = null
     for (const kind of ['spec', 'quality']) {
       const loop = await reviewLoop(`T${t.n}:${kind}`,
-        (round, prev, rvModel) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev, rangeNote }), t, kind, cur),
-          { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', schema: S_REVIEW, model: rvModel || reviewModelFor(t), effort: effortFor(rvModel || reviewModelFor(t)) }),
+        (round, prev, rvModel) => revAgent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev, rangeNote }), t, kind, cur),
+          { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', model: rvModel || reviewModelFor(t), effort: effortFor(rvModel || reviewModelFor(t)) }),
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await implAgent(`${C()}
 

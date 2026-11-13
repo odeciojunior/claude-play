@@ -10,6 +10,8 @@ const ctx = {
   base: 'BASE RULES', envFacts: 'bash 5.2; node 22', baseline: 'unit: exit 0', E: 'E7', wt: '/wt/E7',
   planPath: 'docs/plan.md', specPath: 'docs/spec.md', start: 'abc123', locks: ['db'], round: 2, prev: '1. [critical/defeito] a.js bug',
 };
+const here = dirname(fileURLToPath(import.meta.url));
+const reviewerAgent = () => readFileSync(join(here, '..', '..', '..', 'agents', 'task-reviewer.md'), 'utf8').replace(/\r\n/g, '\n');
 const task = { n: 3, title: 'Add parser', files: ['src/p.js', 'src/p.test.js'], tier: 'haiku' };
 const impl = { status: 'DONE', summary: 'done', checks: [{ command: 'npm test', output: '12 passing', exit: 0 }, { command: 'npm run lint', output: 'boom', exit: 1 }] };
 
@@ -38,6 +40,9 @@ test('review prompt hands the implementer checks (command, exit, output) to the 
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'spec', impl), /SPEC/i);
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'quality', impl), /QUALITY/i);
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'spec', { status: 'DONE', summary: 'x', checks: [] }), /no checks/i);
+  assert.match(reviewerAgent(), /no checks/i);
+  assert.match(P.buildTaskReviewPrompt(ctx, task, 'spec', impl), /Mode: spec/);
+  assert.match(P.buildTaskReviewPrompt(ctx, task, 'quality', impl), /Mode: quality/);
 });
 
 test('reviewer model: opus for route.reviewTier opus, an opus route or an external task; implementer model comes from the route', () => {
@@ -119,8 +124,8 @@ test('fmtChecks keeps the tail of long output; review prompt tells reviewers abo
   const p = P.buildTaskReviewPrompt(ctx, task, 'quality', { status: 'DONE', summary: 's', checks: [{ command: 'c', output: out, exit: 1 }] });
   assert.match(p, /FAILURE-AT-THE-END/);
   assert.doesNotMatch(p, /HEAD\.\.\./);
-  assert.match(p, /shared lock/i);
-  assert.match(p, /exact same `?file`? and `?description`?/i);
+  assert.match(reviewerAgent(), /shared lock/i);
+  assert.match(reviewerAgent(), /exact same `?file`? and `?description`?/i);
   assert.match(P.repeatRule(), /exact same/);
 });
 
@@ -187,8 +192,30 @@ test('minor 1: externalNote says the person authorized it and that no humanInput
 });
 
 test('minor 3: the reviewer does not re-run a check with an external effect', () => {
-  const p = P.buildTaskReviewPrompt(ctx, task, 'spec', { summary: 's', checks: [] });
-  assert.match(p, /do not re-run a check with an external effect/i);
+  assert.match(reviewerAgent(), /do not re-run a check with an external effect/i);
+});
+
+test('AC5: task review prompts cite no superpowers and forbid asking', () => {
+  const agentText = reviewerAgent();
+  const script = readFileSync(join(here, 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
+  const noAsk = script.match(/const NO_ASK = '([^']*)'/)[1];
+  const fm = agentText.match(/^---\n([\s\S]*?)\n---\n/)[1];
+  assert.match(fm, /^name: task-reviewer$/m);
+  assert.match(fm, /^description: .*never asks the person.*\bread/im);
+  assert.match(fm, /^tools: Read, Grep, Glob, Bash$/m);
+  assert.doesNotMatch(fm, /^(model|effort):/m);
+  assert.doesNotMatch(agentText, /superpowers/i);
+  assert.ok(agentText.includes(noAsk), 'NO_ASK sentence is in the agent body');
+  assert.doesNotMatch(script, /superpowers/i);
+  const lines = script.split('\n').filter(l => l.includes('schema: S_TASKREVIEW'));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^const revAgent = /);
+  assert.match(lines[0], /agentType: 'productivity-tools:task-reviewer'/);
+  for (const kind of ['spec', 'quality']) {
+    const p = P.buildTaskReviewPrompt(ctx, task, kind, impl);
+    assert.ok(p.startsWith(ctx.base), `${kind} prompt opens with the briefing`);
+    assert.doesNotMatch(p, /superpowers/i);
+  }
 });
 
 test('effortFor: haiku low, sonnet and opus medium', () => {
