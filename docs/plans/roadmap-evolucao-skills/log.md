@@ -3,6 +3,13 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E21 | E21 integrada (07e625c) e ratificada por delegação (Fable): 17 decisões, 6 de contrato; 14 como estão e DEC-587, DEC-589 e DEC-594 com emenda. Script em 239.866 LF (folga 134). Custo US$ 38,37 (r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; T8 1,34). E23 liberado (DEC-030). | `decisions.md` |
+| 2026-11-13 | E21 | Item humano de E21 (DEC-204, comportamental do task-reviewer) fechado por delegação (Fable): relatório em c72dafc, padrão e restrita aprovados (portão de DEC-601), review informativo; US$ 1,34. Ressalva: no modo restrito o agente não leu o arquivo do pacote; correção em fix/pos-E21. | `docs/reports/2026-11-12-E21-revisor-comportamental.md` |
+| 2026-11-13 | E21 | DEC-594 (E21) ratificada com emenda por delegação (Fable): comportamental por claude -p com --plugin-dir, portão padrão e restrita | `decisions.md` |
+| 2026-11-13 | E21 | DEC-589 (E21) ratificada com emenda por delegação (Fable): a revisão única não vale em E21 e é o desenho de partida de E28 | `decisions.md` |
+| 2026-11-13 | E21 | DEC-587 (E21, contrato) ratificada com emenda por delegação (Fable): vale só restricted, no texto de DEC-602 | `decisions.md` |
+| 2026-11-13 | E21 | DEC-602 e DEC-604 (contrato), DEC-603 e DEC-605 de E21 ratificadas por delegação (Fable), conferidas em 07e625c. Repetições: DEC-602 é o texto de referência de DEC-587 e DEC-603 o de DEC-589; DEC-604 e DEC-605 executam DEC-599 e DEC-598, do dono. | `decisions.md` |
+| 2026-11-13 | E21 | DEC-584, DEC-586 e DEC-590 (contrato) e DEC-585, DEC-588, DEC-591, DEC-592, DEC-593, DEC-595 e DEC-596 de E21 ratificadas pelo dono por delegação (Fable), conferidas contra o código integrado em 07e625c; nenhuma repete outra. | `decisions.md` |
 | 2026-11-13 | E21 | E21 passou para na-branch | `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `docs/plans/evolucao-skills-E21/reviews.md` |
 | 2026-11-13 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
 | 2026-11-13 | E21 | BLQ-11 resolvido: desbloqueio de E21 pelo release | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
