@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E24 | E24 passou para na-branch | `4308baaa13175b1ab3549f9c15f075814ef87919`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `docs/plans/evolucao-skills-E24/reviews.md` |
 | 2026-11-13 | E24 | E24 passou para executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |
 | 2026-11-13 | E24 | BLQ-13 resolvido: desbloqueio de E24 pelo release | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |
 | 2026-11-13 | E10 | fix/carga-plano mesclado (DEC-640): emit enxuto (E24 5.499 contra 14.436 bytes) com hash authored por tarefa, emit --full, load3 com 5 tentativas; script sem mudança de tamanho (239.994); revisão opus aprovou; G1 1704/0. | `266ee2b` |

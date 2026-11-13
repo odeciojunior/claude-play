@@ -38,7 +38,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
-| E24 | executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` | E24: seguir o fluxo do release após executando |
+| E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
@@ -140,6 +140,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
 - (executor) Depois do merge de E24, antes de E10: commit próprio na release subindo MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), citando docs/reports/2026-11-13-E8-limite-lancamento-workflow.md no comentário de size.test.mjs. Preflight/skill: diagnosticar not found como script acima de 512 KiB.
 - (executor) fix/carga-plano: resumeFromRunId de execução anterior à mudança, mesmo caminho de plugin, pode comparar emit completo com enxuto e parar em plan-frozen-tasks falso; normalizar em authoredTask ou avisar em operator.md. plan-author.md:40 descreve o emit com data em vez de plan.
+- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -147,5 +148,4 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E24 | viva | E24 em execução pelo release |
 <!-- /roadmap:inflight -->
