@@ -38,7 +38,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
-| E24 | bloqueado (BLQ-13) | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` | E24: seguir o fluxo do release após executando |
+| E24 | executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` | E24: seguir o fluxo do release após executando |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
 | E27 | nao-iniciado | - | Aguardar E15 e E21 |
@@ -50,7 +50,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-13 | E24 bloqueado: automatic execution stopped (conteudo): task 4 BLOCKED: T4 (verificação adversarial) não coube no limite de 239800 caracteres de roadmap-release.js, então nada foi commitado. O déficit medido é [...] texto completo em docs/plans/evolucao-skills-E24/reviews.md | E24 | 2026-11-13 | quando o bloqueio de E24 for resolvido; restaura E24 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
