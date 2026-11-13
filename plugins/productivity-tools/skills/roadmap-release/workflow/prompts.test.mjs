@@ -253,3 +253,19 @@ test('SKILL.md: the authorization message names the git show; the resume takes t
   assert.match(skill, /When `reportPath` is null, leave that sentence out/);
   assert.doesNotMatch(skill, /ask again\. When|compaction\), ask again/);
 });
+
+test('AC3: implementer and fixer prompts cite no superpowers and forbid asking', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const agent = readFileSync(join(here, '..', '..', '..', 'agents', 'implementer.md'), 'utf8').replace(/\r\n/g, '\n');
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8');
+  const noAsk = src.match(/const NO_ASK = '([^']*)'/)[1];
+  const fm = agent.match(/^---\n([\s\S]*?)\n---\n/);
+  assert.ok(fm, 'frontmatter present');
+  const body = agent.slice(fm[0].length);
+  assert.match(fm[1], /^name: implementer$/m);
+  assert.match(fm[1], /^description: .*never asks the person/mi);
+  assert.match(fm[1], /^tools: Read, Grep, Glob, Bash, Write, Edit$/m);
+  assert.doesNotMatch(fm[1], /^(model|effort):/m);
+  assert.doesNotMatch(body, /superpowers/i);
+  assert.ok(body.includes(noAsk), 'body carries NO_ASK literally');
+});
