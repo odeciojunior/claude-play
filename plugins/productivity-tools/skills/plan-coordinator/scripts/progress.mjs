@@ -5,9 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import { emitPlan, buildBriefs, checkPlan } from '../../../scripts/plan-tool.mjs';
 import { readDataBlock } from '../../../lib/data-block.mjs';
-import { initState, applyEvent, nextAction, STATE_SCHEMA, EVENT_TYPES } from '../../../lib/progress-state.mjs';
+import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { initState, applyEvent, applyEvents, nextAction, STATE_SCHEMA, EVENT_TYPES } from '../../../lib/progress-state.mjs';
 
 const NO_DATA_BLOCK = 'plano sem bloco de dados: o coordinator não interpreta planos em prosa; adote-o com a skill plan-writer (modo de adoção), que o reescreve no formato plan/1 no mesmo caminho';
 
@@ -15,6 +17,9 @@ const USAGE = [
   'uso: node progress.mjs init <plan.md> [--spec <spec.md>] [--max-width <n>] [--piece <rótulo>] [--base <sha>] [--commits per-step|none] [--restart] [--json]',
   '     node progress.mjs next <progress.json> [--json]',
   '     node progress.mjs apply <progress.json> <evento> [--step <n>] [--steps <n,...>] [--value <v>] [--text <t>] [--agent-id <id>] [--sha <sha>] [--tier <t>] [--json]',
+  '     node progress.mjs apply <progress.json> --events <carga> --nonce <n> [--json]',
+  '     node progress.mjs read <progress.json> --nonce <n> [--json]',
+  '     node progress.mjs token',
   '     node progress.mjs show <progress.json>',
   '     node progress.mjs select [--query <texto>] [--root <pasta>] [--json]',
 ].join('\n');
@@ -22,6 +27,10 @@ const USAGE = [
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const toLF = (s) => s.replace(/\r\n?/g, '\n');
 const slash = (p) => String(p).replace(/\\/g, '/');
+
+// Resumo assinado do estado sem history: o que o chamador confere em expect e stateDigest.
+export const stateDigest = (state) => fnv1a(JSON.stringify(canon({ ...state, history: [] })));
+const signed = (obj) => ({ ...obj, digest: fnv1a(JSON.stringify(canon(obj))) });
 
 export function readState(file) {
   const bytes = fs.readFileSync(file);
@@ -214,13 +223,19 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   };
   const [cmd, ...rest] = argv;
   if (!cmd) return bad(USAGE);
-  if (!['init', 'next', 'apply', 'show', 'select'].includes(cmd)) return bad('comando desconhecido: ' + cmd + '\n' + USAGE);
+  if (!['init', 'next', 'apply', 'show', 'select', 'read', 'token'].includes(cmd)) return bad('comando desconhecido: ' + cmd + '\n' + USAGE);
   if (cmd === 'select') return runSelect(rest, io);
+  if (cmd === 'token') {
+    if (rest.length) return bad('argumento extra: ' + rest[0] + '\n' + USAGE);
+    out(crypto.randomBytes(16).toString('hex'));
+    return 0;
+  }
 
   let parsed;
   try {
     if (cmd === 'init') parsed = parseArgs(rest, ['--spec', '--max-width', '--piece', '--base', '--commits'], ['--restart', '--json']);
-    else if (cmd === 'apply') parsed = parseArgs(rest, ['--step', '--steps', '--value', '--text', '--agent-id', '--sha', '--tier'], ['--json']);
+    else if (cmd === 'apply') parsed = parseArgs(rest, ['--step', '--steps', '--value', '--text', '--agent-id', '--sha', '--tier', '--events', '--nonce'], ['--json']);
+    else if (cmd === 'read') parsed = parseArgs(rest, ['--nonce'], ['--json']);
     else if (cmd === 'next') parsed = parseArgs(rest, [], ['--json']);
     else parsed = parseArgs(rest, [], []);
   } catch (e) {
@@ -228,7 +243,8 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   }
   const { opts, pos } = parsed;
   const json = opts.json === true;
-  const want = cmd === 'apply' ? 2 : 1;
+  const batch = cmd === 'apply' && opts.events !== undefined;
+  const want = cmd === 'apply' && !batch ? 2 : 1;
   if (pos.length < want) return bad(USAGE);
   if (pos.length > want) return bad('argumento extra: ' + pos[want] + '\n' + USAGE);
   const file = pos[0];
@@ -338,6 +354,49 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     if (json) result(0, { action });
     else out('Próxima ação: ' + JSON.stringify(action));
     return 0;
+  }
+
+  if (cmd === 'read') {
+    if (opts.nonce === undefined) return bad('read exige --nonce\n' + USAGE);
+    let changed;
+    try {
+      changed = planChanged(state, file);
+    } catch (e) {
+      return bad('não foi possível conferir o plano: ' + e.message);
+    }
+    const base = path.dirname(path.resolve(file));
+    const g = git(base, ['rev-parse', '--show-toplevel']);
+    const body = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, state: { ...state, history: [] } };
+    out(JSON.stringify(signed(body), null, 2));
+    return 0;
+  }
+
+  if (batch) {
+    if (opts.nonce === undefined) return bad('apply --events exige --nonce\n' + USAGE);
+    let load;
+    try {
+      load = JSON.parse(decodeURIComponent(opts.events));
+    } catch (e) {
+      return bad('--events ilegível: ' + e.message);
+    }
+    if (!load || typeof load !== 'object' || Array.isArray(load)) return bad('--events exige um objeto { expect, events, digest }');
+    const { digest, ...rest } = load;
+    if (digest !== fnv1a(JSON.stringify(canon(rest)))) return bad('--events: digest da carga não confere; nada foi gravado');
+    const now = new Date().toISOString();
+    const reply = (ok, code, extra) => {
+      out(JSON.stringify(signed({ tool: 'progress', command: 'apply', nonce: opts.nonce, now, ok, code, ...extra, action: ok ? nextAction(extra.finalState) : null, stateDigest: stateDigest(extra.finalState), finalState: undefined }), null, 2));
+      return ok ? 0 : 1;
+    };
+    if (rest.expect !== stateDigest(state)) return reply(false, 'concurrent-change', { finalState: state });
+    const r = applyEvents(state, rest.events, now);
+    if (!r.ok) return reply(false, r.code, { index: r.index, finalState: state });
+    try {
+      writeState(file, bytes, r.state);
+    } catch (e) {
+      if (e.code === 'concurrent-change') return reply(false, 'concurrent-change', { finalState: state });
+      return bad('não foi possível gravar ' + file + ': ' + e.message);
+    }
+    return reply(true, null, { finalState: r.state });
   }
 
   // apply
