@@ -2482,7 +2482,7 @@ ${NO_ASK}`,
       }
     }
     const gap = testFirstGap(t, impl, resumed)
-    if (gap) return fail('conteudo', `${gap}. The task commit stays on ${br}: before running again, drop it with git -C "${wt}" reset --hard ${start}, or the next run takes the task as done and skips this check`)
+    if (gap) return fail('conteudo', `${gap}. The task commit stays on ${br}: before running again, drop only the task commits, not the review log or effect marks: git -C "${wt}" rebase --onto ${start} <last task commit> HEAD (a reset --hard loses them), or the next run takes the task as done and skips this check`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {

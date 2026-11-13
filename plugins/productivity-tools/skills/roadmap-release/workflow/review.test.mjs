@@ -469,7 +469,9 @@ test('AC1: the test-first failure names the start commit to reset to before a re
   const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
   const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
   assert.ok(line, 'fail message built from the gap');
-  assert.match(line, /reset --hard \$\{start\}/);
+  assert.match(line, /rebase --onto \$\{start\} <last task commit> HEAD/);
+  assert.match(line, /not the review log or effect marks/);
+  assert.doesNotMatch(line, /reset --hard \$\{start\}/);
   assert.match(line, /\$\{wt\}/);
   assert.ok(body.indexOf('let start =') > 0 && body.indexOf('let start =') < body.indexOf(line), 'start is defined before the failure');
 });
