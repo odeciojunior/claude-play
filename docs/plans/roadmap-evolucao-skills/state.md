@@ -37,7 +37,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
 | E21 | na-branch | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md`, `07e625c7dd022cd7aefef72e5ffbe7bb255b51c2` | E21: seguir o fluxo do release após na-branch |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E23 | nao-iniciado | - | Aguardar E8 e E21 |
+| E23 | executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` | E23: seguir o fluxo do release após executando |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
@@ -128,6 +128,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E28: em task-reviewer.md, verdicts só no modo restrito e spec/quality só no modo review (ponto 2 do relatório comportamental de E21). Hoje o script ignora esses campos fora do modo. Se E28 for descartado, a linha sai junto com o texto do modo review (DEC-600).
 - (executor) E10: a carga de spec e de plano deixa de copiar o stdout do emit (o Bash grava em arquivo a saída acima de ~30 KB; plano de E21: 27.212 bytes, 11 tarefas): ler de arquivo ou em partes, com teste. Antes de E10, emit de plano acima de 27 KB ou carga falha por tamanho vira correção própria.
 - (executor) Lançar em measurements.md o custo de E21 (DEC-567): r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; comportamental 1,34; total US$ 38,37, dos quais 8,85 em duas falhas de carga do plano. Conferir o teto de US$ 150 junto com E9 (maior execução sã: 13,65).
+- (dono) Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
 <!-- /roadmap:pending -->
 
 ## Em andamento
@@ -135,4 +136,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E23 | viva | E23 em execução pelo release |
 <!-- /roadmap:inflight -->
