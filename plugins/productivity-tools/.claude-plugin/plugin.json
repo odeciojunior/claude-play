@@ -8,5 +8,5 @@
   },
   "license": "MIT",
   "keywords": ["research", "analysis", "planning", "roadmap", "mermaid", "excalidraw", "diagrams", "health", "wsl", "monitoring"],
-  "workflows": ["./skills/roadmap-release/workflow/roadmap-release.js"]
+  "workflows": ["./skills/roadmap-release/workflow/roadmap-release.js", "./skills/plan-coordinator/workflow/coordinator.js"]
 }
