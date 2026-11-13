@@ -1899,6 +1899,13 @@ test('resume of a task that is not external gets no bookkeeping note', async () 
   assert.ok(!x.calls.find((c) => c.label === 'E1:t1:spec1').prompt.includes('awaiting person:'));
 });
 
+test('F1: the run record commit is bookkeeping for the review of a resumed task, external or not', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, clearedProgress) });
+  assert.match(a.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1: run record[^\n]*not extra scope/);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], clearedProgress) });
+  assert.match(b.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1: run record[^\n]*not extra scope/);
+});
+
 test('the docs stage explains the mark: a fulfilled request leaves pending, any other need stays', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), asksAuth, evOk) });
   const docs = calls.find((c) => c.label === 'E1:docs1').prompt;
@@ -3416,6 +3423,7 @@ test('artifactPaths follows DEC-026', () => {
     spec: 'docs/plans/evolucao-skills-E8/spec.md',
     plan: 'docs/plans/evolucao-skills-E8/plan.md',
     reviews: 'docs/plans/evolucao-skills-E8/reviews.md',
+    run: 'docs/plans/evolucao-skills-E8/run.json',
   });
   assert.equal(pure.reportPathFor('2026-11-12', 'E8'), 'docs/reports/2026-11-12-E8-run.md');
 });
@@ -4162,4 +4170,178 @@ test('AC3: default spec and quality reviews on the task-reviewer agent', async (
     assert.ok(o.model);
   }
   assert.equal(def.calls.find((c) => c.label === 'E1:t1:spec1').opts.model, def.calls.find((c) => c.label === 'E1:t1:quality1').opts.model);
+});
+
+test('E23: runKey and skipReview compare every recorded value', () => {
+  const pure = loadPure();
+  assert.equal(pure.runKey('not json'), null);
+  const cur = { recorded: { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' }, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'T1' } }, spec: 's1', plan: 'p1', tree: 't1' };
+  const k = pure.runKey(JSON.stringify(cur));
+  assert.deepEqual(k, cur);
+  assert.equal(pure.skipReview('spec', k, 'T1'), true);
+  assert.equal(pure.skipReview('plan', k, 'T1'), true);
+  assert.equal(pure.skipReview('final', k, 'T1'), true);
+  assert.equal(pure.skipReview('final', k, 'T2'), false);
+  assert.equal(pure.skipReview('final', k, ''), false);
+  assert.equal(pure.skipReview('spec', null, 'T1'), false);
+  assert.equal(pure.skipReview('spec', { ...k, spec: 's2' }, 'T1'), false);
+  assert.equal(pure.skipReview('plan', { ...k, plan: 'p2' }, 'T1'), false);
+  assert.equal(pure.skipReview('plan', { ...k, spec: null }, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...k, tree: 't2' }, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...k, tree: '' }, 'T1'), false);
+  const noFinal = { ...cur, recorded: { schema: 'run/1', spec: cur.recorded.spec } };
+  assert.equal(pure.skipReview('spec', noFinal, 'T1'), true);
+  assert.equal(pure.skipReview('plan', noFinal, 'T1'), false);
+  assert.equal(pure.skipReview('final', noFinal, 'T1'), false);
+  assert.equal(pure.skipReview('final', { ...cur, recorded: null }, 'T1'), false);
+});
+
+test('E23: recordCmd builds the approve command', () => {
+  const pure = loadPure();
+  const payload = { trailer: "it's", prep: { gatesKey: 'g' } };
+  const enc = encodeURIComponent(JSON.stringify(payload)).replace(/'/g, '%27');
+  assert.equal(
+    pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'spec,plan', null, payload),
+    `node "/p/rr/run-record.mjs" approve "/w/E1" docs/plans/x-E1/ E1 spec,plan - '${enc}'`,
+  );
+  const cmd = pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'final', 'abc123', { trailer: "a'b" });
+  assert.ok(cmd.includes(' final abc123 '));
+  assert.ok(cmd.includes('%27'));
+  assert.equal(cmd.slice(cmd.indexOf(" '") + 2, -1).includes("'"), false);
+});
+
+test('E23: recordedBaseline accepts only a matching valid measure', () => {
+  const pure = loadPure();
+  const defs = [{ name: 'g1', kind: 'exit' }];
+  const baseline = { clean: true, headSha: 'abc1234', gates: [{ name: 'g1', ran: true, exit: 0 }] };
+  const out = JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline });
+  assert.deepEqual(pure.recordedBaseline(out, 'abc1234', 'k', defs), baseline);
+  assert.equal(pure.recordedBaseline(out, 'def5678', 'k', defs), null);
+  assert.equal(pure.recordedBaseline(out, 'abc1234', 'other', defs), null);
+  assert.equal(pure.recordedBaseline(JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline: { ...baseline, clean: false } }), 'abc1234', 'k', defs), null);
+  assert.equal(pure.recordedBaseline(out, 'abc1234', 'k', [{ name: 'missing', kind: 'exit' }]), null);
+  assert.equal(pure.recordedBaseline('not json', 'abc1234', 'k', defs), null);
+  assert.equal(pure.recordedBaseline('', 'abc1234', 'k', defs), null);
+});
+
+// ---- E23 T4: setup reads the record; the spec and plan reviews are skipped; the approval is written by the progress and review-log agents.
+const RUN_REC = { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' } };
+const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);
+const RR_PATH = '/p/productivity-tools/scripts/run-record.mjs';
+const approvePrefix = (stages) => `node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 ${stages} - '`;
+const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.indexOf(" - '") + 4, prompt.indexOf("'", prompt.indexOf(" - '") + 4))));
+
+const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
+const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
+
+test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
+  assert.equal(r.results[0].merged, true);
+  for (const l of labels) assert.ok(!/:spec-review|:plan-review|^E1:spec$|^E1:plan$/.test(l), l);
+  assert.ok(labels.includes('E1:spec-load1'));
+  assert.ok(labels.includes('E1:plan-load1'));
+  assert.ok(r.results[0].concerns.some((c) => /spec review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(r.results[0].concerns.some((c) => /plan review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(calls.find((c) => c.label === 'E1:progress').prompt.startsWith('Read-only'));
+  const setup = calls.find((c) => c.label === 'E1:setup');
+  assert.ok(setup.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
+  assert.ok(setup.opts.schema.properties.record);
+  // a stale plan blob: the spec stays skipped, the plan review runs
+  const stale = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup({ ...RUN_REC, plan: { spec: 's1', plan: 'p0' } }) });
+  assert.ok(!stale.labels.includes('E1:spec-review1'));
+  assert.ok(stale.labels.includes('E1:plan-review1'));
+  // no record: both reviews run
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(null) });
+  assert.ok(none.labels.includes('E1:spec-review1'));
+  assert.ok(none.labels.includes('E1:plan-review1'));
+  // T5: the sync returns the same four values and the recorded target tip: no final review, no test-integrity, on to the gates
+  const fin = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSync(FINAL_REC, 'abc1234') });
+  assert.equal(fin.r.results[0].merged, true);
+  for (const l of fin.labels) assert.ok(!/:final-|:test-integrity/.test(l), l);
+  assert.ok(fin.labels.includes('E1:gates1-1'));
+  assert.ok(fin.r.results[0].concerns.some((c) => /final review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(!fin.calls.some((c) => /review-log/.test(c.label) && c.prompt.includes('run-record.mjs')));
+  const sync = fin.calls.find((c) => c.label === 'E1:sync');
+  assert.ok(sync.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
+  assert.ok(sync.opts.schema.properties.record);
+  // a different tree after the sync: the final review runs
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: 's1', plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
+  assert.ok(moved.labels.includes('E1:final-1-r1'));
+});
+
+test('AC2: the final review runs again when the target moved', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSync(FINAL_REC, 'def5678') });
+  assert.equal(r.results[0].merged, true);
+  assert.ok(labels.includes('E1:final-1-r1'));
+  assert.ok(!labels.includes('E1:spec-review1') && !labels.includes('E1:plan-review1'));
+  const p = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.ok(p.includes(`node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 final def5678 '`), p.slice(0, 300));
+  assert.ok(p.indexOf('run-record.mjs') < p.indexOf('Write docs/plans/x-E1/reviews.md'));
+});
+
+test('E23: progress records spec and plan only after a review ran', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.ok(p.startsWith(`Run first: ${approvePrefix('spec,plan')}`), p.slice(0, 200));
+  assert.ok(!p.startsWith('Read-only'));
+  const pay = payloadOf(p);
+  assert.equal(typeof pay.trailer, 'string');
+  assert.equal(pay.prep.targetHead, 'abc1234');
+  assert.equal(pay.prep.gatesKey, loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES))));
+  assert.equal(pay.prep.baseline.headSha, 'abc1234');
+  const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
+  assert.ok(skipped.calls.find((c) => c.label === 'E1:progress').prompt.startsWith('Read-only'));
+  assert.ok(!skipped.calls.find((c) => c.label === 'E1:progress').prompt.includes('run-record.mjs'));
+});
+
+test('E23: plan-only records spec and plan in the review log', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' } });
+  assert.equal(r.results[0].planOnly, true);
+  const p = calls.find((c) => c.label === 'E1:review-log-plan').prompt;
+  assert.ok(p.includes(approvePrefix('spec,plan')), p.slice(0, 300));
+  assert.ok(p.indexOf('run-record.mjs') < p.indexOf('Write docs/plans/x-E1/reviews.md'));
+  const pay = payloadOf(p);
+  assert.equal(typeof pay.trailer, 'string');
+  assert.equal('prep' in pay, false);
+  assert.ok(!labels.includes('E1:progress'));
+  // nothing reviewed and nothing cut: no review-log call at all
+  const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: recordedSetup(RUN_REC) });
+  assert.ok(!skipped.labels.some((l) => /review-log/.test(l)));
+});
+
+// ---- E23 T6: the preflight reuses the recorded gates baseline when the target did not move.
+const recordedPre = (rec) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: rec } : undefined);
+
+test('AC3: an unchanged target reuses the recorded gates baseline', async () => {
+  const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
+  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify(prep)) });
+  assert.ok(calls.find((c) => c.label === 'preflight').prompt.includes('run-record.mjs" baseline'));
+  const pp = calls.find((c) => c.label === 'preflight').prompt;
+  assert.ok(pp.includes('skip only the gate measurement') && pp.includes('Always, BEFORE any command: clean') && pp.includes('Install first') && !pp.includes('skip the rest of step 4'));
+  assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.ok(calls.some((c) => c.label === 'E1:setup'));
+  const prompt = calls.find((c) => c.label === 'E1:setup').prompt;
+  assert.ok(prompt.includes('unit: '), prompt.slice(0, 200));
+  // another gatesKey: stops in preflight as before
+  const other = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify({ ...prep, gatesKey: 'zzz' })) });
+  assert.ok(other.r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.ok(!other.calls.some((c) => c.label === 'E1:setup'));
+});
+
+test('AC3: a recorded baseline wins over a partial baseline returned by the preflight', async () => {
+  const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
+  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
+  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: JSON.stringify(prep), baseline: { headSha: 'abc1234', clean: true, gates: [] } } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)), JSON.stringify(r.operatorActions));
+  assert.ok(calls.some((c) => c.label === 'E1:setup'));
+});
+
+test('E23 final-fix F2: a spec fix round in this run forces the plan review even when the record matches', async () => {
+  let n = 0;
+  const bad = (l) => (/:spec-load\d$/.test(l) && n++ === 0 ? { checkExit: 1, checkStdout: '{"errors":[{"code":"schema"}]}', emitExit: 1, emitStdout: '' } : undefined);
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), both(bad, (l) => (l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined))) });
+  assert.ok(labels.includes('E1:spec-fix1'));
+  assert.ok(labels.includes('E1:plan-review1'));
 });

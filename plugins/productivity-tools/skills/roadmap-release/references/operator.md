@@ -60,6 +60,8 @@ The result carries `resumeArgs`, the args to pass back. Run the Workflow again w
 - `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected. Never put a secret (credential, token, key) in `notes`: set an environment variable and name it in `notes`. The workflow does not copy `notes` into the roadmap record, the docs stage, the review log or the committed report, but the spec and plan agents merge the answer into the committed spec and plan, so anything in `notes` can end up in the repository. It tells every agent that receives it not to write or quote a secret.
 - `overrideDonot`, `acceptRisks` and `acceptRedBaseline` are decisions of the person. Add them only when the person asked for them.
 
+A resume skips the spec, plan and final reviews whose values are those of `run.json`, and reuses the gate measurements when the target is unchanged.
+
 ## Without the interface (claude -p)
 
 The default permission mode is the supported one; `bypassPermissions` is not the default and is never needed. Without an approval dialog, grant the launch by a rule in `.claude/settings.local.json` (`permissions.allow`: `Workflow(productivity-tools:release-workflow)`, shown by the preflight warning; the person adds it, never the skill) or on the command line:
