@@ -4337,3 +4337,11 @@ test('AC3: a recorded baseline wins over a partial baseline returned by the pref
   assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)), JSON.stringify(r.operatorActions));
   assert.ok(calls.some((c) => c.label === 'E1:setup'));
 });
+
+test('E23 final-fix F2: a spec fix round in this run forces the plan review even when the record matches', async () => {
+  let n = 0;
+  const bad = (l) => (/:spec-load\d$/.test(l) && n++ === 0 ? { checkExit: 1, checkStdout: '{"errors":[{"code":"schema"}]}', emitExit: 1, emitStdout: '' } : undefined);
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), both(bad, (l) => (l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined))) });
+  assert.ok(labels.includes('E1:spec-fix1'));
+  assert.ok(labels.includes('E1:plan-review1'));
+});

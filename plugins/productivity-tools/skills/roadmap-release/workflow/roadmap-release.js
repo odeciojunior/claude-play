@@ -2300,7 +2300,7 @@ ${NO_ASK}`,
     if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse "HEAD:${plan.planPath}"); the plan load reported ${JSON.stringify(reported)}` }]
     return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan load (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); the plan file changed after the load` }]
   }
-  const planSkip = skipRev('plan', spec.reused && plan.reused && !planGaps().length)
+  const planSkip = skipRev('plan', specSkip && plan.reused && !planGaps().length)
   const planLoop = planSkip ? { ok: true } : await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 
