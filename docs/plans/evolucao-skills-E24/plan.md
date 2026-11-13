@@ -21,9 +21,9 @@ Toda tarefa que edita `roadmap-release.js` (T2, T3, T4) mede `workflowChars` de 
 |---|---|---|
 | T2 (primeira) | 239.300 | ~238.900 |
 | T3 (meio) | 239.600 | ~239.040 |
-| T4 (última) | 239.800 | ~239.790 |
+| T4 (última, partida 239.022) | 239.930 | build de referência 239.904 |
 
-Se a T4 passar do limite, usa a reserva da spec, nesta ordem: chave de lente mais curta para o card não crítico (-15), `S_VERIFY` com `required` só no nível de cima (-20), mensagem da onda única sem o número de correções (-30, só se a T3 já a escreveu; o teste da T3 se ajusta no mesmo commit). Nenhuma rodada de correção termina acima de 240.000. A tarefa que não alcança o limite não commita nada e devolve `BLOCKED` com o déficit medido (total menos limite).
+T1 a T3 estão commitadas (a636183). A T4 parte de 239.022, medido em `feat/E24` (c681d2e); desde fc4ccaa a release só mudou `load3` em `roadmap-release.js` (de 3 para 5 tentativas, mesmo tamanho), então a partida esperada depois da sincronização de `feat/E24` é a mesma; a T4 mede de novo antes da primeira edição e relata a partida real. O limite da T4 é 239.930 (DEC-637, DEC-638). O build de referência `D:/claude-release-runs/E24-r1/fable-reference-c-V1.js` (239.904) é só leitura e orientação: o teste vem primeiro e a medida é a do worktree. Se a T4 ou uma correção final não couber, vale o recuo de DEC-637 (R12 da spec): `S_VERIFY = { refuted: [{ n, reason }] }`, só os refutados, e `splitRefuted` lê essa lista com as mesmas regras; os testes da T4 se ajustam no mesmo commit. Nenhuma rodada de correção termina acima de 240.000. A tarefa que não alcança o limite, mesmo com o recuo, não commita nada e devolve `BLOCKED` com o déficit medido (total menos limite); nenhuma fonte fora do bloco da revisão final é usada.
 
 ## Como rodar os checks
 
@@ -47,7 +47,11 @@ Teste primeiro em `review.test.mjs`, caso `AC3: by default the final review has 
 
 ### Tarefa 4: Verificação adversarial
 
-Teste primeiro em `review.test.mjs`: `AC1: splitRefuted drops only an explicitly refuted finding and keeps its reason` (por `loadPure`); `AC1: with the adversarial mode a refuted finding gets no fix and is recorded as refuted` (`P2.runReviewLoop` com callback que aplica `splitRefuted`: nenhum `fix`; e, sobre `SRC`, o callback de `finalLoop` só chama `${E}:final-verify-r` com `FR.adversarial === true` e achado bloqueante, com `...FRA`, `Mode: verify` e `S_VERIFY`, e empurra `stage: 'final-verify'`); `AC2: a confirmed finding or a null verification goes to the fix` (`refuted: false`, sem veredicto, número fora da lista, `reason` vazio e verificação `null` ficam em `keep`; o `fix` recebe o achado) (C3). Em `flow.test.mjs`, por `exec` com `config.finalReview.adversarial`: `E24 AC1: a refuted final finding calls no final-fix and is in reviews as refuted` (C1), `E24 AC2: a confirmed finding or a null verification reaches final-fix1`, e um caso só com achado menor sem `:final-verify` (C2). Rodar `review.test.mjs` sozinho e relatar a falha. Implementar `S_VERIFY`, `splitRefuted(iss, verify) -> { keep, refuted }` no bloco `// <pure>` e, no callback, a chamada única por rodada, o filtro e `out.reviews.push({ stage: 'final-verify', round, refuted })`; o achado refutado que volta passa por nova verificação (C4). Medir depois de cada edição. Rodar de novo o mesmo comando, `flow.test.mjs`, o teste de tamanho e o check do limite (até 239.800; reserva na seção Tamanho). Commit `E24 T4: verificação adversarial`.
+Antes de editar, rodar o check do limite e relatar a partida real (esperada 239.022; seção Tamanho).
+
+Teste primeiro em `review.test.mjs`: `AC1: splitRefuted drops only an explicitly refuted finding and keeps its reason` (por `loadPure`: o achado de índice `k` só é refutado com exatamente um veredicto `n === k + 1`, `refuted === true` e `reason` com caractere não branco; o refutado leva o `reason`; `v` nulo mantém todos); `AC1: with the adversarial mode a refuted finding gets no fix and is recorded as refuted` (`P2.runReviewLoop` com callback que aplica `splitRefuted`: nenhum `fix`; e, sobre `SRC`: `S_VERIFY` com `required` só no nível de cima; o callback de `finalLoop` faz `bl = blocking(r)` e só com `FR.adversarial === true` e `bl.length` faz uma chamada `${E}:final-verify-r<rodada>` com `...FRA`, `S_VERIFY` e prompt `${C()}`, a linha `Mode: verify.` e `fmt(bl)`, sem linha `Diff`; `r.issues` fica com os menores mais `s.keep`; empurra `stage: 'final-verify'` sem guarda de tamanho); `AC2: a confirmed finding or a null verification goes to the fix` (`refuted: false`, sem veredicto, dois veredictos de mesmo `n`, número fora da lista, `reason` vazio ou só de espaços e verificação `null` ficam em `keep`; o `fix` recebe o achado) (C3). Em `flow.test.mjs`, por `exec` com `config.finalReview.adversarial`: `E24 AC1: a refuted final finding calls no final-fix and is in reviews as refuted` (C1), `E24 AC2: a confirmed finding or a null verification reaches final-fix1`, um caso só com achado menor sem `:final-verify` (C2) e `E24 C4: a refuted finding reported again after another fix is verified again` (`:final-verify-r2` chamado). Rodar `review.test.mjs` sozinho e relatar a falha.
+
+Implementar, medindo depois de cada edição: primeiro liberar 34 caracteres no bloco da revisão final, com uma `const` para o caminho do programa de integridade (`${WT}/_tmp/${E}-integrity.cjs`) usada no lugar das duas repetições e as lentes postas inline no `map`, sem a `const lenses`; depois `S_VERIFY = { verdicts: [{ n, refuted, reason }] }` ao lado de `S_REVIEW`, com `required` só no nível de cima; `splitRefuted(iss, v) -> { keep, refuted }` no bloco `// <pure>`, sem comentário e sem `Array.isArray`; no callback, a chamada única por rodada, o filtro e `out.reviews.push({ stage: 'final-verify', round, refuted })`; o achado refutado que volta passa por nova verificação (C4). Em `agents/final-reviewer.md`, o modo `verify` diz o formato do prompt (briefing, `Mode: verify.` e a lista numerada dos achados bloqueantes, sem linha `Diff`) e que o worktree e o alvo vêm do briefing; o resto do modo não muda. Rodar de novo o mesmo comando, `flow.test.mjs`, `prompts.test.mjs`, G5, o teste de tamanho e o check do limite (até 239.930; recuo e BLOCKED na seção Tamanho). Commit `E24 T4: verificação adversarial`.
 
 ### Tarefa 5: Teste dos prompts, README e gates
 
@@ -71,10 +75,10 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
 
 ## Decisões do plano
 
-- R12: seis tarefas; preflight primeiro; T2 libera espaço e cria os agentes; T3 e T4 somam código; T5 testa os prompts e roda os gates; T6 é do orquestrador.
-- R13: os critérios 1 a 3 têm casos em `review.test.mjs` (comando da tag, por `loadPure` e sobre `SRC`) e casos de ponta a ponta em `flow.test.mjs`, onde está o arnês `exec`.
-- R14: lentes por chave `correctness`, `security` e `all`; função `splitRefuted`; objeto `FRA`.
-- R15: T6 sem subagent devolve `NEEDS_HUMAN`.
+- R14: seis tarefas; preflight primeiro; T2 libera espaço e cria os agentes; T3 e T4 somam código; T5 testa os prompts e roda os gates; T6 é do orquestrador.
+- R15: os critérios 1 a 3 têm casos em `review.test.mjs` (comando da tag, por `loadPure` e sobre `SRC`) e casos de ponta a ponta em `flow.test.mjs`, onde está o arnês `exec`.
+- R16: lentes por chave `correctness`, `security` e `all`; função `splitRefuted`; objeto `FRA`.
+- R17: T6 sem subagent devolve `NEEDS_HUMAN`.
 
 ```json data
 {
@@ -86,7 +90,7 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
   "constraints": [
     "Não editar a pasta docs/plans/roadmap-evolucao-skills/ nem a estratégia.",
     "Medir roadmap-release.js com workflowChars depois de cada edição; liberar espaço só no bloco da revisão final (do agente test-integrity ao fim de finalLoop), só na T2, antes de somar código, sem tirar regra; nunca encurtar outro estágio, comentário ou helper compartilhado; nunca editar size.test.mjs nem MAX_WORKFLOW_CHARS (DEC-556, DEC-563).",
-    "Limites de workflowChars: T2 <= 239300, T3 <= 239600, T4 <= 239800; nenhuma rodada de correção termina acima de 240000; tarefa fora do limite não commita e devolve BLOCKED com o déficit medido.",
+    "Limites de workflowChars: T2 <= 239300, T3 <= 239600, T4 <= 239930 (DEC-637, DEC-638); nenhuma rodada de correção termina acima de 240000; se T4 ou uma correção final não couber, S_VERIFY = { refuted: [{ n, reason }] } (DEC-637); tarefa fora do limite mesmo com o recuo não commita e devolve BLOCKED com o déficit medido.",
     "Cada check roda sozinho na sua chamada, sem pipe nem encadeamento; vermelho e verde são duas chamadas do mesmo comando; saída longa cortada com [...], nunca filtrada.",
     "Modos desligados por padrão: sem finalReview nenhuma chamada nova e as rodadas de hoje; só o achado refutado explicitamente sai da correção.",
     "Sem bump de versão; sem push; nunca tocar em main nem em D:/projects/claude-play; não citar superpowers.",
@@ -161,18 +165,20 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
       "n": 4,
       "title": "Verificação adversarial",
       "deps": [3],
-      "files": { "create": [], "modify": ["plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js"], "test": ["plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"] },
+      "files": { "create": [], "modify": ["plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js", "plugins/productivity-tools/agents/final-reviewer.md"], "test": ["plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"] },
       "writes": [],
       "score": { "ambiguity": 1, "reasoning": 2, "blast": 1, "verifiability": 1 },
-      "produces": ["splitRefuted(iss, verify) -> { keep, refuted }", "S_VERIFY = { verdicts: [{ n, refuted, reason }] }"],
+      "produces": ["splitRefuted(iss, v) -> { keep, refuted }", "S_VERIFY = { verdicts: [{ n, refuted, reason }] }"],
       "consumes": [{ "task": 2, "sig": "FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }" }, { "task": 3, "sig": "FR = CFG.finalReview || {}" }],
       "covers": ["AC1", "AC2", "C1", "C2", "C3", "C4"],
       "testFirst": true,
       "checks": [
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "expect": "exit 0" },
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs", "expect": "exit 0" },
+        { "cmd": "node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools", "expect": "exit 0 (G5)" },
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs", "expect": "exit 0" },
-        { "cmd": "node --input-type=module -e \"import { workflowChars } from './plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs'; import { readFileSync } from 'node:fs'; const n = workflowChars(readFileSync('plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js', 'utf8')); console.log('workflowChars', n); process.exitCode = n <= 239800 ? 0 : 1\"", "expect": "exit 0 (até 239800; acima: reserva da spec e, se não bastar, BLOCKED com o déficit, sem commit)" }
+        { "cmd": "node --input-type=module -e \"import { workflowChars } from './plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs'; import { readFileSync } from 'node:fs'; const n = workflowChars(readFileSync('plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js', 'utf8')); console.log('workflowChars', n); process.exitCode = n <= 239930 ? 0 : 1\"", "expect": "exit 0 (até 239930; acima: recuo de DEC-637 e, se não bastar, BLOCKED com o déficit, sem commit)" }
       ],
       "locks": [],
       "external": false,
@@ -232,7 +238,7 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
   ],
   "rulings": [
     {
-      "id": "R12",
+      "id": "R14",
       "question": "Em que ordem e em quantas tarefas dividir o trabalho?",
       "decision": "Seis tarefas: preflight e config.md (T1); agentes e espaço no teto (T2, primeira a editar o script); onda única (T3); verificação adversarial (T4, última a editar o script); teste dos prompts, README e gates (T5); comportamental (T6).",
       "basis": "A spec deixa a ordem ao plano e manda a primeira tarefa que edita o script mover o texto para o agente; a nota do dono dá limites crescentes; cada tarefa fica com até quatro arquivos.",
@@ -243,7 +249,7 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
       "contradicts": null
     },
     {
-      "id": "R13",
+      "id": "R15",
       "question": "Onde testar os critérios 1 a 3, se review.test.mjs não tem arnês de execução do workflow?",
       "decision": "review.test.mjs, comando da tag, ganha os casos AC1-AC3 por loadPure (splitRefuted e runReviewLoop com o callback que filtra e com once) e conferências sobre SRC do callback de finalLoop; flow.test.mjs, onde está o arnês exec com AsyncFunction, ganha os casos E24 AC1-AC3 de ponta a ponta como evidência adicional.",
       "basis": "A spec pede o workflow rodado com agentes simulados, mas o arnês exec só existe em flow.test.mjs, que já está no escopo; copiar o arnês para review.test.mjs duplicaria centenas de linhas de simulação.",
@@ -254,7 +260,7 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
       "contradicts": null
     },
     {
-      "id": "R14",
+      "id": "R16",
       "question": "Quais nomes finais da função pura, do objeto de opções e das chaves das lentes?",
       "decision": "splitRefuted, FRA, FR e S_VERIFY; lentes correctness e security para card crítico e all para o não crítico, definidas no modo review de final-reviewer.md.",
       "basis": "A spec já usa esses nomes e deixa as chaves ao plano; chaves curtas cabem na estimativa de -224.",
@@ -265,7 +271,7 @@ Tarefa do orquestrador da sessão principal (DEC-204, R8 da spec), no worktree d
       "contradicts": null
     },
     {
-      "id": "R15",
+      "id": "R17",
       "question": "O que a tarefa comportamental faz num executor sem ferramenta de subagent?",
       "decision": "Devolve NEEDS_HUMAN com humanInputs citando a execução do orquestrador da sessão principal (DEC-204) e não escreve relatório.",
       "basis": "DEC-204, R8 da spec e a nota do dono.",
