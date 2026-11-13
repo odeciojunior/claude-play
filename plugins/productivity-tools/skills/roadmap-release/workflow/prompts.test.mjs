@@ -268,4 +268,29 @@ test('AC3: implementer and fixer prompts cite no superpowers and forbid asking',
   assert.doesNotMatch(fm[1], /^(model|effort):/m);
   assert.doesNotMatch(body, /superpowers/i);
   assert.ok(body.includes(noAsk), 'body carries NO_ASK literally');
+
+  // Second part: the six implementation and fix calls go through implAgent.
+  assert.doesNotMatch(src, /superpowers/i);
+  assert.equal(src.split('schema: S_IMPL').length - 1, 1, 'schema: S_IMPL appears once');
+  const defLine = src.split('\n').find((l) => l.includes('schema: S_IMPL'));
+  assert.match(defLine, /^const implAgent = /);
+  assert.ok(defLine.includes("agentType: 'productivity-tools:implementer'"));
+  const chunks = src.split('implAgent(').slice(1);
+  assert.equal(chunks.length, 6, 'six calls');
+  const labels = [/:impl/, /-fix/, /final-fix/, /gates-fix/, /merge-fix/, /delta-fix/];
+  const calls = chunks.map((c) => c.slice(0, 2000));
+  for (const re of labels) {
+    assert.ok(calls.some((c) => re.test(c)), `a call carries ${re}`);
+  }
+  assert.ok(calls.some((c) => c.startsWith('buildImplPrompt(')));
+  assert.equal(calls.filter((c) => c.startsWith('`${C()}')).length, 4);
+  assert.equal(calls.filter((c) => c.startsWith('`${Cn()}')).length, 1);
+  assert.ok(!P.buildImplPrompt(ctx, task).includes(noAsk), 'the implementer prompt leaves NO_ASK to the agent file');
+  const ti = P.buildImplPrompt(ctx, { ...task, testFirst: true });
+  assert.match(ti, /test-first task/);
+  const ex = P.buildImplPrompt(ctx, { ...task, testFirst: { exempt: 'only docs' } });
+  assert.match(ex, /exempt from test-first: only docs/);
+  assert.doesNotMatch(ex, /test-first task/);
+  const plain = P.buildImplPrompt(ctx, task);
+  assert.doesNotMatch(plain, /test-first|exempt/i);
 });

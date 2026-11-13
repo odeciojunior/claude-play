@@ -2148,7 +2148,7 @@ test('B5: the count finding says what was expected, marks included, and a task f
     over: withPlan(ext1, (l, p) => (/^E1:t1:spec1$/.test(l) ? rev(1) : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   fixIssue = x.calls.find((c) => c.label === 'E1:t1:spec-fix1').prompt;
   assert.match(fixIssue, /fewer commits than expected in the range \(L1\.\.HEAD: 1 < 3; the started and completion marks count; missing a started or completion mark\?\)/);
-  assert.match(fixIssue, /Never edit the spec or the plan to satisfy a finding/);
+  assert.match(fixIssue, /Never edit the spec .* or the plan .* to satisfy a finding/);
 });
 
 // Review 3, I-1: an empty files list alone may be a reading failure; only an explicit noCommit lowers the minimum.
