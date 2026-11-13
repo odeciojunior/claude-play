@@ -269,10 +269,10 @@ function nextTier(tier, sameFindingAgain) {
   if (tier === 'sonnet') return 'opus'
   return null
 }
-function sameFinding(prevIssues, issues, blqIds) {
+function sameFinding(prevIssues, issues, blqIds, byId) {
   const norm = s => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ')
   return (issues || []).filter(i => isHard(i, blqIds)).some(i =>
-    (prevIssues || []).some(p => (p.file || '') === (i.file || '') && norm(p.description) === norm(i.description)))
+    (prevIssues || []).some(p => byId && p.id && i.id ? p.id === i.id : (p.file || '') === (i.file || '') && norm(p.description) === norm(i.description)))
 }
 const VERIFY_EXEC = ['test', 'smoke', 'integration']
 // Reads the suffix tag from the last "{verify:" up to the item's final "}", so evidence may hold ";", "}" and quotes.
@@ -368,7 +368,7 @@ function blocking(r) {
   return r && Array.isArray(r.issues) ? r.issues.filter(i => SEV(i.severity)) : []
 }
 function fmt(iss) {
-  return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.description}`).join('\n')
+  return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.id ? `[${i.id}] ` : ''}${i.description}`).join('\n')
 }
 function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
@@ -512,7 +512,7 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
     note(k + 1, fixTier, reviewer)
     if (!r) { record(r, iss); return { ok: false, kind: 'infra', msg: `${stage}: null re-review` } }
     iss = truth(r)
-    if (sameFinding(fixable, iss, env.blqIds)) {
+    if (sameFinding(fixable, iss, env.blqIds, opt.byId)) {
       const up = nextTier(tier, true)
       if (!up) {
         record(r, iss)
@@ -1371,7 +1371,7 @@ const HUMAN = { type: 'array', items: { type: 'object', properties: { blq: STR, 
 const ISSUES = { type: 'array', items: { type: 'object', properties: {
   severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
   category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
-  description: STR, file: STR, blq: STR }, required: ['severity', 'description'] } }
+  description: STR, file: STR, blq: STR, id: STR }, required: ['severity', 'description'] } }
 const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: STR, emitExit: INT, emitStdout: STR, blob: STR, head: STR, clean: BOOL }, required: ['checkExit', 'emitExit', 'emitStdout'] }
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
@@ -2498,7 +2498,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
           return fx
         }),
         r => reviewTruth(r, impl.status === 'NEEDS_HUMAN' ? 0 : (noFiles(t) ? 0 : 1) + completionInRange + startedInRange, `${start}..HEAD`, impl.status === 'NEEDS_HUMAN' ? 0 : completionInRange + startedInRange),
-        { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN' })
+        { tier: implModel(t), reviewModel: reviewModelFor(t), haltOn: fx => authorizedExt && !resumed && fx.status === 'NEEDS_HUMAN', byId: true })
       if (loop.halted) return stopForPerson(t, loop.halted, true)
       if (!loop.ok) return fail(loop.kind, `task ${t.n}: ${loop.msg}`)
       lastR = loop.r

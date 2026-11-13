@@ -499,3 +499,46 @@ test('testFirstGap: plain identical command string, red then green, is no gap (c
   const annotated = [ck('node --test (before implementation)', 1), ck('node --test (after implementation)', 0)];
   assert.ok(testFirstGap(tfTask, { status: 'DONE', checks: annotated }, false), 'annotated commands do not match');
 });
+
+// ---- E21 T3: findings carry an id; the per-task loop repeats by id ----
+test('AC1: sameFinding with byId treats the same id with other wording as a repeat', () => {
+  const prev = [{ severity: 'critical', id: 'F1', file: 'a.js', description: 'null deref' }];
+  const again = [{ severity: 'critical', id: 'F1', file: 'a.js', description: 'foo may dereference null' }];
+  assert.equal(P2.sameFinding(prev, again, new Set(), true), true);
+  assert.equal(P2.sameFinding(prev, again, new Set()), false);
+  const noId = [{ severity: 'critical', file: 'a.js', description: 'null deref' }];
+  assert.equal(P2.sameFinding(noId, [{ severity: 'critical', file: 'a.js', description: ' Null  deref' }], new Set(), true), true);
+  assert.equal(P2.sameFinding(noId, [{ severity: 'critical', file: 'a.js', description: 'other' }], new Set(), true), false);
+  const other = [{ severity: 'critical', id: 'F2', file: 'a.js', description: 'foo may dereference null' }];
+  assert.equal(P2.sameFinding(prev, other, new Set(), true), false);
+});
+
+test('AC1: fmt writes the id before the description', () => {
+  assert.match(P2.fmt([{ severity: 'critical', category: 'defeito', id: 'F2', file: 'a.js', description: 'x' }]), /\[F2\] x/);
+  assert.equal(P2.fmt([{ severity: 'critical', category: 'defeito', file: 'a.js', description: 'x' }]), '1. [critical/defeito] a.js x');
+});
+
+test('AC1: runReviewLoop escalates the fixer when a finding returns with the same id and other wording', async () => {
+  const run = async byId => {
+    const tiers = [];
+    let n = 0;
+    const mk = d => ({ issues: [{ severity: 'critical', category: 'defeito', id: 'F1', file: 'a.js', description: d }], headSha: 'h', clean: true, commitsInRange: 1 });
+    const env = { maxFix: 2, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+    await P2.runReviewLoop(env, 'T1:spec', async () => mk(n++ === 0 ? 'null deref' : n === 2 ? 'foo may dereference null' : 'third wording'),
+      async (iss, k, tier) => { tiers.push(tier); return { status: 'DONE' }; }, r => r.issues, { tier: 'sonnet', reviewModel: 'sonnet', byId });
+    return tiers;
+  };
+  assert.equal((await run(true))[1], 'opus');
+  assert.equal((await run(false))[1], 'sonnet');
+});
+
+test('AC1: only the per-task reviewLoop of runDeliverable passes byId', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  const task = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
+  assert.match(task.slice(0, task.indexOf('if (loop.halted)')), /byId: true/);
+  for (const st of ['spec', 'plan', 'final', 'delta']) {
+    const at = body.indexOf(`reviewLoop('${st}'`);
+    assert.ok(at > -1, st);
+    assert.doesNotMatch(body.slice(at, at + 3500).split('reviewLoop(')[1] || '', /byId/);
+  }
+});
