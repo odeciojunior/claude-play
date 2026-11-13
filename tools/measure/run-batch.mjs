@@ -449,7 +449,8 @@ const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in va
 
 // The script review-only.js written at the sandbox root: one reviewer and, on a blocking issue, one fixer.
 // Same contract as roadmap-release.js: no imports and no Node API.
-export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt }) {
+// agentType (optional): the plugin agent the reviewer runs as; without it the reviewer is a general-purpose agent.
+export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentType = null }) {
   const st = STAGES[stage];
   if (!st) throw new UsageError(`unknown stage: ${stage}`);
   const props = {
@@ -482,7 +483,7 @@ export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt }) {
     `const SCHEMA = ${JSON.stringify(schema)}`,
     `const REVIEW_PROMPT = ${JSON.stringify(reviewPrompt)}`,
     `const FIX_PROMPT = ${JSON.stringify(fixPrompt)}`,
-    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', model: 'opus', schema: SCHEMA })`,
+    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', ${agentType ? `agentType: '${agentType}', ` : ''}model: 'opus', schema: SCHEMA })`,
     "const blocking = review && Array.isArray(review.issues) ? review.issues.filter(i => i.severity === 'critical' || i.severity === 'important') : []",
     'let fix = null',
     'if (blocking.length > 0) {',
@@ -548,7 +549,9 @@ function harnessPrompts(h, scenario) {
       wt: sb, planPath: E5_PATHS.plan, specPath: E5_PATHS.spec, locks: [], start: `${scenario.seededCommit}~1`, prev: null,
     };
     const impl = { summary: 'Task resumed from a previous run: implemented in the seeded commit.', checks: [] };
+    // E21 moved the generic review rules into agents/task-reviewer.md: measure the reviewer the workflow really dispatches.
     return {
+      agentType: 'productivity-tools:task-reviewer',
       reviewPrompt: loadPure().buildTaskReviewPrompt(ctx, { n: 3, title }, 'spec', impl),
       fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
     };

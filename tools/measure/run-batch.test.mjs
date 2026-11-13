@@ -552,6 +552,22 @@ test('review-only script is valid JavaScript and dispatches only reviewer and fi
   assert.ok(text.includes("name: 'review-only'"));
 });
 
+test('task-review atual dispatches the real task-reviewer agent; other stages and arms stay general-purpose', async () => {
+  const withType = buildReviewOnlyScript({ stage: 'task-review', reviewPrompt: 'Mode: spec.', fixPrompt: 'Fix', agentType: 'productivity-tools:task-reviewer' });
+  assert.ok(withType.includes("agentType: 'productivity-tools:task-reviewer'"));
+  assert.equal(withType.split('agentType').length - 1, 1);
+  assert.equal(buildReviewOnlyScript({ stage: 'plan-review', reviewPrompt: 'R', fixPrompt: 'F' }).includes('agentType'), false);
+  const s = setup();
+  try {
+    const code = makeFake(s.configDir, { journal: jl({ label: 'E5:task-review1', result: { issues: [] } }), afterRun: mergeE5 });
+    await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review' }), { exec: code.exec, now: NOW });
+    const sent = code.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.ok(readFileSync(join(sent.cwd, 'review-only.js'), 'utf8').includes("agentType: 'productivity-tools:task-reviewer'"));
+  } finally {
+    s.done();
+  }
+});
+
 test('harness launches with the sandbox root on feat/E5 and the seeded blob at HEAD', async () => {
   const s = setup();
   try {

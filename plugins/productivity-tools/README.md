@@ -30,6 +30,7 @@ claude plugin install productivity-tools@claude-play
 - **spec-author** (`agents/spec-author.md`, `model: opus`, `effort: medium`): writes one `spec/1` design spec for a roadmap card or a standalone request, reads the card and the code first, and records its own decisions. It never asks the person anything. A workflow dispatches it with `agentType: 'productivity-tools:spec-author'`; a skill in the main session dispatches it with `subagent_type: "productivity-tools:spec-author"`.
 - **plan-author** (`agents/plan-author.md`, `model: opus`, `effort: medium`): writes one `plan/1` implementation plan for a checked spec, or rewrites an old plan that has no data block, reading the spec and the code first. It never asks the person anything. A skill in the main session dispatches it with `subagent_type: "productivity-tools:plan-author"`.
 - **implementer** (`agents/implementer.md`, no fixed `model` or `effort`: each call passes the ones from its route): implements one task of an approved plan, or fixes a list of review findings, and never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:implementer'` in its six implementation and fix calls.
+- **task-reviewer** (`agents/task-reviewer.md`, no fixed `model` or `effort`: each call passes the ones from its route): reviews one task of an approved plan by reading only, returns findings with an identifier, and never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:task-reviewer'` in every per-task review.
 
 ## Pipeline
 

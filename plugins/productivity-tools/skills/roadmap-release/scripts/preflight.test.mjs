@@ -501,7 +501,7 @@ test('AC1: card aberto com verify e script do plugin sem regra aparecem em missi
   assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(node:*)', 'Bash(npx:*)', 'Bash(git:*)'] } }], cmds), []);
   assert.deepEqual(cmds['Bash(node *roadmap.mjs" *)'], ['node "/p/roadmap.mjs" status']);
   assert.equal(scriptRule('roadmap.mjs'), 'Bash(node *roadmap.mjs" *)');
-  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs']);
+  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs', 'review-package.mjs']);
 });
 
 function rmRepo(statusCell) {
@@ -760,4 +760,40 @@ test('the workflow rule warning says the skill launch needs no rule', () => {
   assert.match(w, /launched by this skill/i);
   assert.match(w, /outside (this|the) skill/i);
   assert.doesNotMatch(w, /claude -p[^.]*denied/);
+});
+
+test('E21: validateReleaseConfig accepts a missing taskReview and restricted only, refuses other shapes and keys', () => {
+  assert.deepEqual(validateReleaseConfig(good()), []);
+  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: true } }), []);
+  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: false } }), []);
+  for (const bad of [true, [], { restricted: 'yes' }]) {
+    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => /taskReview/.test(e)), JSON.stringify(bad));
+  }
+  for (const bad of [{ single: true }, { single: 1 }, { restricted: true, single: false }, { other: true }]) {
+    const key = Object.keys(bad).find((k) => k !== 'restricted');
+    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => e.includes(`taskReview.${key}`)), JSON.stringify(bad));
+  }
+});
+
+test('E21: the review-package.mjs rule is required only with taskReview.restricted === true, from the plugin root', () => {
+  const run = (taskReview) => {
+    const { dir } = rmRepo('spec');
+    writeFileSync(join(dir, 'release.config.json'), JSON.stringify({ ...good(), locks: [], gates: [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }], ...(taskReview === undefined ? {} : { taskReview }) }));
+    const home = mkdtempSync(join(tmpdir(), 'home-'));
+    const cfgDir = mkdtempSync(join(tmpdir(), 'cfg-'));
+    return runPreflight(dir, { home, configDir: cfgDir });
+  };
+  const rule = scriptRule('review-package.mjs');
+  const off = run(undefined);
+  assert.deepEqual(off.errors, []);
+  assert.ok(!off.missingRules.includes(rule), off.missingRules.join());
+  assert.ok(!run({ restricted: false }).missingRules.includes(rule));
+  const on = run({ restricted: true });
+  assert.deepEqual(on.errors, []);
+  assert.ok(on.missingRules.includes(rule), on.missingRules.join());
+  assert.ok(on.missingRules.includes('Bash(node *roadmap.mjs" *)'));
+  const pluginRoot = dirname(dirname(dirname(dirname(trackerCliPath().path))));
+  const cmds = requiredCommands({ gates: [], install: '' }, { scripts: [{ name: 'review-package.mjs', path: pluginRoot + '/scripts/review-package.mjs' }] });
+  assert.deepEqual(cmds[rule], ['node "' + pluginRoot + '/scripts/review-package.mjs" status']);
+  assert.ok(existsSync(pluginRoot + '/scripts/review-package.mjs'));
 });

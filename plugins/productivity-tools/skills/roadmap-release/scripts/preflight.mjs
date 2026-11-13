@@ -22,6 +22,13 @@ export function validateReleaseConfig(cfg) {
   for (const f of ['setup', 'beforeEvidence']) {
     if (cfg[f] != null && !asList(cfg[f]).every((c) => typeof c === 'string')) errors.push(`${f} must be a string or a list of strings`);
   }
+  if (cfg.taskReview != null) {
+    if (typeof cfg.taskReview !== 'object' || Array.isArray(cfg.taskReview)) errors.push('taskReview must be an object');
+    else {
+      for (const k of Object.keys(cfg.taskReview)) if (k !== 'restricted') errors.push(`taskReview.${k} is not a supported key (only taskReview.restricted)`);
+      if (cfg.taskReview.restricted != null && typeof cfg.taskReview.restricted !== 'boolean') errors.push('taskReview.restricted must be a boolean');
+    }
+  }
   const locks = Array.isArray(cfg.locks) ? cfg.locks : [];
   if (cfg.locks != null && !Array.isArray(cfg.locks)) errors.push('locks must be a list of names');
   if (locks.includes('merge')) errors.push('locks cites the reserved lock name: merge (the workflow always owns it)');
@@ -186,7 +193,7 @@ export function subcommands(cmd) {
 const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 
 // Scripts of the plugin that the workflow runs through Bash with an exact path (DEC-060): the rule is narrower than Bash(node:*).
-export const WORKFLOW_SCRIPTS = ['roadmap.mjs'];
+export const WORKFLOW_SCRIPTS = ['roadmap.mjs', 'review-package.mjs'];
 
 // The release workflow is launched by name; its permission rule is only warned about (never required), because the skill's own
 // allowed-tools or the dialog grants the launch and only a run without the interface needs the rule.
@@ -405,7 +412,9 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     pending = readPendingDecisions(texts, warnings);
     const extras = {
       cards,
-      scripts: WORKFLOW_SCRIPTS.map((name) => ({ name, path: tracker.path })),
+      // roadmap.mjs lives in the tracker skill; review-package.mjs in <plugin root>/scripts and is required only with taskReview.restricted.
+      scripts: WORKFLOW_SCRIPTS.filter((name) => name !== 'review-package.mjs' || config.taskReview?.restricted === true)
+        .map((name) => ({ name, path: name === 'review-package.mjs' ? `${dirname(dirname(dirname(dirname(tracker.path))))}/scripts/${name}` : tracker.path })),
     };
     const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
