@@ -671,23 +671,6 @@ function gateSummary(defs, m, base) {
 function mergeParentsOk(mg, preSha, validatedSha) {
   return !!mg && !!mg.mergeCommit && gateShaMatch(mg.firstParent, preSha) && gateShaMatch(mg.secondParent, validatedSha)
 }
-// What the agents claimed against git itself. slim = [{ id, merged, broken }], claims = [{ id, commit }].
-function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
-  if (!truth) return ['the git truth agent returned nothing: verify the target branch by hand']
-  const out = []
-  if (truth.clean === false && !integBroken) out.push('the target ' + target + ' has uncommitted files')
-  if (truth.lastGoodReachable !== true) out.push('the validated tip claimed by the run (' + lastGood + ') is not confirmed as an ancestor of ' + target)
-  const onTarget = truth.mergedIds || []
-  for (const r of slim) {
-    if (r.merged && !r.broken && !onTarget.includes(r.id)) out.push(r.id + ': the result says merged, but there is no "merge: ' + r.id + ' in ' + target + '" in the history')
-    if (!r.merged && !r.planOnly && onTarget.includes(r.id)) out.push(r.id + ': the result says not merged, but its merge commit is on ' + target)
-  }
-  for (const c of claims) {
-    const t = (truth.claims || []).find(x => x.id === c.id)
-    if (!t || t.reachable !== true) out.push(c.id + ': the claimed merge commit ' + c.commit + ' is not on ' + target)
-  }
-  return out
-}
 // Resume args as shown to the report agent: the config is long and already known to the caller.
 // approveRulings is typed by the person (it names the exact text of each costly ruling): it never goes back in resume args.
 function withoutApprove(args) {
@@ -1428,7 +1411,6 @@ const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done:
 const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
-const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { n: INT, exit: INT, stdout: STR }, required: ['n', 'exit', 'stdout'] } } }, required: ['runs'] }
 const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS, record: STR }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
@@ -1440,7 +1422,6 @@ const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, s
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
 const S_INTEG = { type: 'object', properties: { deletedTests: STRS, removedAsserts: INT, skipsAdded: INT, prodChanged: INT, assertsAdded: INT }, required: ['deletedTests', 'removedAsserts', 'skipsAdded', 'prodChanged', 'assertsAdded'] }
 const S_EVID = { type: 'object', properties: { headSha: STR, clean: BOOL, beforeOk: BOOL, results: { type: 'array', items: { type: 'object', properties: { ac: STR, command: STR, exit: INT, log: STR }, required: ['ac', 'command', 'exit'] } } }, required: ['headSha', 'clean', 'results'] }
-const S_TRUTH = { type: 'object', properties: { targetHead: STR, clean: BOOL, lastGoodReachable: BOOL, mergedIds: STRS, notMergedIds: STRS, claims: { type: 'array', items: { type: 'object', properties: { id: STR, commit: STR, reachable: BOOL }, required: ['id', 'commit', 'reachable'] } }, worktrees: STRS, strays: STRS }, required: ['targetHead', 'clean', 'lastGoodReachable', 'mergedIds', 'claims'] }
 const S_RESUMELOG = { type: 'object', properties: { found: BOOL, externalRun: { type: 'array', items: { type: 'object', properties: { item: STR, title: STR, command: STR, status: STR, exit: INT, reviewed: BOOL }, required: ['item'] } }, acceptedRisks: { type: 'array', items: { type: 'object', properties: { stage: STR, severity: STR, category: STR, description: STR, file: STR }, required: ['description'] } }, humanInputs: HUMAN, ac: { type: 'array', items: { type: 'object', properties: { ac: STR, kind: { type: 'string', enum: ['test', 'smoke', 'integration', 'human', 'blocked'] }, blq: STR }, required: ['ac', 'kind'] } } }, required: ['found', 'acceptedRisks', 'humanInputs', 'ac'] }
 const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: BOOL, leftovers: STRS }, required: ['ok', 'head', 'clean'] }
 
@@ -1449,6 +1430,11 @@ phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
+// The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
+const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file):\n${cmd}\n${extra}${BASH_ONLY}`
+// The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
+const RUN_TAG = fnv1a(RUN_TOKEN)
+const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, which checkRun confirms by tool, nonce and digest.
 // The run token is the nonce and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
 const discCmd = [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(RUN_TOKEN)}`].filter(Boolean).join(' ')
@@ -1456,7 +1442,7 @@ let disc = null
 let discWhy = ''
 // A read only, so it repeats: attempts 1-2 haiku, 3-5 sonnet (as load3).
 for (let k = 1; k <= 5 && !disc; k++) {
-  const out = await agent(`Run this command once and return its exit code and its full stdout, literal (change no file):\n${discCmd}\n${BASH_ONLY}`,
+  const out = await agent(runPrompt(discCmd),
     { agentType: 'productivity-tools:script-runner', label: k === 1 ? 'discovery' : `discovery-retry${k}`, phase: 'Discovery', schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   const v = checkRun(out && out.stdout, 'release-discovery', RUN_TOKEN)
   if (v.ok) disc = v.data
@@ -1739,13 +1725,25 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
   if (rc.error) { holdUnconfirmed(E, x, []); return { ok: false, failures: [rc.error], head: null, cuts: [] } }
   const msg = phrases(LANG).commit(E, status)
-  const results = rc.commands.length ? await agent(`${COMMON_SLIM()}
-
-RECORD STAGE in the integration worktree ${INTWT} (branch ${TARGET}). Run exactly these commands, in this order, and stop at the first one whose exit is not 0:
-${numbered(rc.commands)}
-${BASH_ONLY}
-Return in runs, for each listed command you ran: n (its number above, not its text), exit and stdout (the whole output); the git commands below go not in runs. Then, in the same worktree: git -C "${INTWT}" add -- "${RM}"; only if git -C "${INTWT}" diff --cached --quiet exits 1, commit with: git -C "${INTWT}" commit -m ${shq(msg)} -m ${shq(TRAILER)} and return the commit hash in commit. The commands are the whole job: do not edit any file by hand. Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.`,
-    { label: `${E}:status-${status}`, phase: 'Plan', schema: S_RECORD, model: 'haiku', effort: 'low' }) : { runs: [] }
+  // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written. The group writes, so it is never repeated.
+  // A payload over 28000 characters splits into consecutive chunks (no command is cut), each with its own finally; a failed chunk stops the next ones.
+  const grp = (k, steps) => ({ nonce: `${RUN_TAG}:${E}:${status}:${k}`, cwd: INTWT, steps, finally: { commit: { add: [RM], message: [msg, TRAILER] } } })
+  const chunks = []
+  for (const s of rc.commands) {
+    const k = chunks.length - 1
+    if (k >= 0 && encArg(grp(k, [...chunks[k], s])).length <= 28000) chunks[k].push(s)
+    else chunks.push([s])
+  }
+  let results = { runs: [] }
+  for (let k = 0; k < chunks.length && results; k++) {
+    const g = grp(k, chunks[k])
+    const out = await agent(runPrompt(`node "${VERIFY_RUN}" group ${encArg(g)}`, `Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
+      { agentType: 'productivity-tools:script-runner', label: `${E}:status-${status}${k ? `-part${k + 1}` : ''}`, phase: 'Plan', schema: S_RUN, model: 'haiku', effort: 'low' })
+    const v = checkRun(out && out.stdout, 'verify-run', g.nonce)
+    if (!v.ok || v.data.mode !== 'group' || !Array.isArray(v.data.steps)) { results = null; break }
+    for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })
+    if (v.data.stopped || v.data.steps.some(s => s.exit !== 0)) break
+  }
   const read = await agent(`${COMMON_SLIM()}
 
 READ-ONLY re-read in the integration worktree ${INTWT} after the record of ${E}. Run these commands exactly, one per call, change nothing, and return the raw stdout of each (not summarized, not reformatted): status = 1, brief = 2, pendingDecisions = 3, head = 4, porcelain = 5 (empty string when the output is empty).
@@ -2867,11 +2865,9 @@ for (const r of RESULTS) {
 }
 // Final deterministic check: what the agents claimed is compared with git itself.
 const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).map(r => ({ id: r.id, commit: r.merge.mergeCommit }))
-const truth = MODE === 'plan-only' ? null : await safe(() => agent(`GIT TRUTH (read-only). Target ${TARGET} in ${INTWT}.
-targetHead = git rev-parse HEAD; clean = git status --porcelain empty on the target; lastGoodReachable = git merge-base --is-ancestor ${lastGood} ${TARGET} (exit 0); mergedIds = deliverables among [${order.join(', ')}] with a commit "merge: <E> in ${TARGET}" in git log --first-parent ${TARGET}; notMergedIds = the others; claims = for each of ${JSON.stringify(claims)}: { id, commit, reachable = the commit is an ancestor of ${TARGET} }; worktrees = git -C "${REPO}" worktree list; strays = files and folders loose in ${WT}/ that are neither registered worktrees nor an empty _tmp.`,
-  { label: 'git-truth', phase: 'Report', schema: S_TRUTH, model: 'haiku', effort: 'low' }))
-const divergences = MODE === 'plan-only' ? [] : truthDivergences(truth, slim, claims, TARGET, lastGood, !!(integBroken || foreignHold))
-for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
+// verify-run.mjs check measures git and lists what the run claimed against it; the report agent runs it as its first step and copies the stdout, which checkRun confirms below.
+const CHECK_NONCE = `${RUN_TAG}:check`
+const checkCmd = MODE === 'plan-only' ? '' : `node "${VERIFY_RUN}" check ${encArg({ nonce: CHECK_NONCE, repo: REPO, intwt: INTWT, wtRoot: WT, target: TARGET, lastGood, order, claims, reported: slim.map(r => ({ id: r.id, merged: r.merged, broken: r.broken, planOnly: r.planOnly })), integBroken: !!(integBroken || foreignHold) })}`
 const ids = order.join('-').slice(0, 60)
 const reportPath = reportPathFor(TODAY, ids)
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
@@ -2897,20 +2893,29 @@ const finalResume = () => {
 for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
 for (const o of OPS) if (o.resumeWith) o.resumeWith = withoutApprove(dropConsumedNotes(o.resumeWith, NOTES_READ))
 const resumeFinal = finalResume()
-const report = await safe(() => mergeLock(() => agent(`${COMMON_SLIM()}
+const rep = await safe(() => mergeLock(() => agent(`${COMMON_SLIM()}
 
-${integBroken || foreignHold ? `The integration worktree is ${integBroken ? 'compromised' : "the person's checkout and was not authorized"}: do NOT write a file or commit, only build the execution report and return the text.` : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
+${checkCmd ? `FIRST STEP, before you write or commit any file: run this command once and return its stdout, literal, in truthStdout (change no file; if it cannot run, return an empty truthStdout):\n${checkCmd}\n${BASH_ONLY}\nBuild the report from its truth and divergences, and list one operator action per divergence, with the action "Check git log and git status of the target".\n\n` : ''}${integBroken || foreignHold ? `The integration worktree is ${integBroken ? 'compromised' : "the person's checkout and was not authorized"}: do NOT write a file or commit, only build the execution report and return the text.` : `Write the EXECUTION REPORT to ${INTWT}/${reportPath} and commit only it on ${TARGET}.`} Write it in the language of the roadmap.
 Selection: ${JSON.stringify(selection)}
 Results (summary per deliverable; details in the reviews.md log of each branch, under docs/plans/<roadmap slug>-<E>/): ${JSON.stringify(slim)}
 Operator actions: ${JSON.stringify(OPS.map(o => ({ ...o, resumeWith: withoutConfig(o.resumeWith) })))}
-Git truth: ${JSON.stringify(truth)} | divergences: ${JSON.stringify(divergences)}
 Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Authorizations given for this run: ${JSON.stringify(AUTH.items)}
 External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}${RESULTS.some(r => (r.externalRun || []).some(e => e.reviewed === false)) ? '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' : ''}
 Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured by the docs stage from brief --json (result.checker: errors, warnings, folder, stale): ${JSON.stringify(CHECKERS)}; do not run the checker file yourself; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
 Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[${RAN_MARK}: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
-  { label: 'report', phase: 'Report', model: 'sonnet', effort: 'medium' })))
+  { label: 'report', phase: 'Report', schema: { type: 'object', properties: { report: STR, truthStdout: STR }, required: checkCmd ? ['report', 'truthStdout'] : ['report'] }, model: 'sonnet', effort: 'medium' })))
+const report = rep && typeof rep === 'object' ? rep.report : rep
+// The confirmed check gives the truth and the divergences; anything else is the null git truth agent.
+let truth = null
+let divergences = []
+if (MODE !== 'plan-only') {
+  const v = checkRun(rep && rep.truthStdout, 'verify-run', CHECK_NONCE)
+  if (v.ok && v.data.mode === 'check' && v.data.truth && Array.isArray(v.data.divergences)) { truth = v.data.truth; divergences = v.data.divergences }
+  else divergences = ['the git truth agent returned nothing: verify the target branch by hand']
+}
+for (const d of divergences) op('divergence', null, d, 'Check git log and git status of the target', null)
 if (!report && MODE !== 'plan-only') op('report', null, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', null)
 
 const allOk = slim.every(r => r.merged || r.planOnly)

@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { truthDivergences } from '../scripts/verify-run.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -97,7 +98,28 @@ const seenDecisions = new Map();
 const ratifiedDecisions = new Set();
 // Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
 const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], warnings: [], changed: [], result: {}, ...over });
-const promptCommands = (prompt) => [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]);
+// E10 T6: the status write goes through `verify-run.mjs group <payload>` (a script-runner call) and the final check through `verify-run.mjs check <payload>`;
+// the payload is encodeURIComponent(JSON) in ONE argument. promptCommands reads the steps of the decoded group payload (the commands of docs and of the re-read stay numbered lines).
+const verifyArg = (prompt, mode) => { const m = new RegExp(`verify-run\\.mjs" ${mode} (\\S+)`).exec(prompt); return m ? JSON.parse(decodeURIComponent(m[1])) : null; };
+const promptCommands = (prompt) => { const g = verifyArg(prompt, 'group'); return g ? g.steps : [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]); };
+// The prompt with the group payload replaced by its decoded steps, numbered the way the old record prompt listed them.
+const plain = (prompt) => prompt.replace(/(verify-run\.mjs" group )(\S+)/, (_, a) => a + '\n' + promptCommands(prompt).map((c, i) => `${i + 1}. ${c}`).join('\n'));
+const signedOut = (o) => JSON.stringify({ ...o, digest: fnv1a(JSON.stringify(canon(o))) });
+// What verify-run.mjs group prints for the commands the agent ran ({ exit, stdout } each): it stops at the first exit other than 0.
+function groupStdout(prompt, results, nonce = verifyArg(prompt, 'group').nonce) {
+  const steps = [];
+  let stopped = null;
+  for (const r of results) { steps.push({ n: steps.length + 1, exit: r.exit, out: r.stdout }); if (r.exit !== 0) { stopped = { n: steps.length, exit: r.exit }; break; } }
+  return signedOut({ tool: 'verify-run', mode: 'group', nonce, steps, stopped, commit: true, head: 'abc1234' });
+}
+// What verify-run.mjs check prints: the divergences come from truthDivergences over the payload, as the script computes them.
+const TRUTH_OK = { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
+function checkStdout(prompt, truth = TRUTH_OK) {
+  const p = verifyArg(prompt, 'check');
+  const divergences = truthDivergences(truth, p.reported, p.claims, p.target, p.lastGood, p.integBroken);
+  return signedOut({ tool: 'verify-run', mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth });
+}
+const reportOf = (prompt, truth) => ({ report: 'REPORT', truthStdout: verifyArg(prompt, 'check') ? checkStdout(prompt, truth) : '' });
 function makeRecordMock(cardsOf) {
   const st = {};
   let decN = 900;
@@ -177,7 +199,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-.*-read$/.test(l)) return recMock.read(E);
-    if (/:status-/.test(l)) return recMock.run(prompt, E);
+    if (/:status-/.test(l)) return { exit: 0, stdout: groupStdout(prompt, recMock.run(prompt, E).runs) };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
     if (/:resync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
@@ -196,8 +218,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:merge-risks$/.test(l)) return { head: 'm1', commit: 'm1' };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
-    if (l === 'git-truth') return { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
-    if (l === 'report') return 'REPORT';
+    if (l === 'report') return reportOf(prompt);
     if (/:resume-review-log$/.test(l)) return { found: true, acceptedRisks: [], humanInputs: [] };
     if (/:awaiting-person$/.test(l)) return { ok: true };
     if (/:launching$/.test(l)) return { ok: true, head: 'L1' };
@@ -277,10 +298,38 @@ test('finish-merge: unvalidated merge on the target sets integBroken, is reporte
   assert.ok(r.operatorActions.some((o) => o.deliverable === 'E1'));
 });
 
-test('git truth requires lastGoodReachable', async () => {
+// I6 (a) of the assertion map: the check output the report agent copied, confirmed by tool, nonce and digest, with a validated-tip divergence becomes an operator action.
+test('E10 AC2: a confirmed check with a validated-tip divergence becomes a divergence operator action', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (l === 'git-truth' ? { targetHead: 'm2', clean: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] } : undefined) });
+    over: (l, prompt) => (l === 'report' ? reportOf(prompt, { targetHead: 'm2', clean: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] }) : undefined) });
   assert.ok(r.operatorActions.some((o) => o.kind === 'divergence' && /validated tip/.test(o.what)));
+  assert.equal(r.truth.targetHead, 'm2', 'the truth of the result is the one of the confirmed output');
+});
+
+test('E10 AC2: a check output that is null, unsigned or copied wrong is the null git truth agent', async () => {
+  const nullText = 'the git truth agent returned nothing: verify the target branch by hand';
+  const cases = {
+    'a null report': () => null,
+    'an empty truthStdout': () => ({ report: 'REPORT', truthStdout: '' }),
+    'a wrong digest': (prompt) => ({ report: 'REPORT', truthStdout: checkStdout(prompt).replace('"ok":true', '"ok":false') }),
+    'another nonce': (prompt) => ({ report: 'REPORT', truthStdout: checkStdout(prompt.replace(/(verify-run\.mjs" check )\S+/, (_, a) => a + encodeURIComponent(JSON.stringify({ ...verifyArg(prompt, 'check'), nonce: 'old' })))) }),
+  };
+  for (const [name, fn] of Object.entries(cases)) {
+    const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, prompt) => (l === 'report' ? fn(prompt) : undefined) });
+    const d = r.operatorActions.filter((o) => o.kind === 'divergence');
+    assert.equal(d.length, 1, name);
+    assert.equal(d[0].what, nullText, name);
+    assert.equal(r.truth, null, name);
+  }
+});
+
+test('E10 AC2: plan-only runs no verification and the report call carries no check', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' } });
+  const rep = calls.find((c) => c.label === 'report');
+  assert.doesNotMatch(rep.prompt, /verify-run\.mjs/);
+  assert.ok(!r.operatorActions.some((o) => o.kind === 'divergence'));
+  assert.equal(r.truth, null);
+  assert.equal(r.report, 'REPORT');
 });
 
 const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
@@ -369,9 +418,14 @@ test('cleanup creates the dirty folder and removes the worktree only after the p
   assert.match(p, /only after the patch/i);
 });
 
-test('git truth schema requires lastGoodReachable', async () => {
+// Line 366 of the assertion map: the git truth is measured by the check script (lastGoodReachable is checked in verify-run.test.mjs); the report schema carries its copied stdout.
+test('the report schema requires truthStdout and its prompt starts with the check command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  assert.ok(calls.find((c) => c.label === 'git-truth').opts.schema.required.includes('lastGoodReachable'));
+  const rep = calls.find((c) => c.label === 'report');
+  assert.ok(rep.opts.schema.required.includes('report') && rep.opts.schema.required.includes('truthStdout'));
+  assert.match(rep.prompt, /verify-run\.mjs" check /);
+  assert.ok(rep.prompt.indexOf('verify-run.mjs" check') < rep.prompt.indexOf('Write the EXECUTION REPORT'), 'the check runs before any file is written');
+  assert.ok(!calls.some((c) => c.label === 'git-truth'));
 });
 
 const probeWith = (commits, extra = {}) => (l) => (/:merge-fix-probe$/.test(l) ? { commits, rangeOk: true, ...extra } : undefined);
@@ -842,7 +896,7 @@ test('m7: reportPath is null when no report file was written', async () => {
 
 test('m8: the inflight row is added by the CLI inflight-add command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
   assert.match(p, /inflight-add '[^']*' 'feat\/E1' --note '/);
   assert.doesNotMatch(p, /type: deliverable/);
 });
@@ -2386,7 +2440,9 @@ test('PF/M3: the plan fix returns files and noCommit with the plan stage rule', 
 
 test('PF/M6: the common briefing drops the delivery-stage and integration-worktree sentences; spec, plan and implementer keep them', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  for (const c of x.calls.filter((k) => /^(git-truth|E1:cleanup|E1:gates1-1|E1:merge)$/.test(k.label))) {
+  const mech = x.calls.filter((k) => /^(E1:cleanup|E1:gates1-1|E1:merge)$/.test(k.label));
+  assert.deepEqual(mech.map((k) => k.label).sort(), ['E1:cleanup', 'E1:gates1-1', 'E1:merge'], 'the list matched the three remaining calls (git-truth is gone), so the loop below is not vacuous');
+  for (const c of mech) {
     assert.doesNotMatch(c.prompt, /there is no other delivery stage/, c.label);
     assert.doesNotMatch(c.prompt, /No task of the plan runs there/, c.label);
   }
@@ -3137,8 +3193,8 @@ test('AC2 registro de plano e executando pela CLI', async () => {
   const humanSpec = specWith({ rulings: [ruling({ id: 'R1', decision: 'escolha A.', scope: 'local' }), ruling({ id: 'R2', decision: 'escolha B', scope: 'contract' })], needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
   const full = await exec({ cards: [card('E1')], deliverables: ['E1'], over: humanSpec });
   const po = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: humanSpec });
-  const plan = po.calls.find((c) => c.label === 'E1:status-c').prompt;
-  const exe = full.calls.find((c) => c.label === 'E1:status-d').prompt;
+  const plan = plain(po.calls.find((c) => c.label === 'E1:status-c').prompt);
+  const exe = plain(full.calls.find((c) => c.label === 'E1:status-d').prompt);
   for (const p of [plan, exe]) {
     assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' /);
     assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log /);
@@ -3149,7 +3205,7 @@ test('AC2 registro de plano e executando pela CLI', async () => {
   }
   assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
   assert.doesNotMatch(plan, /inflight-add/);
-  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(c.prompt, /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/, c.label);
+  for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(plain(c.prompt), /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/, c.label);
   assert.equal(full.r.results[0].merged, true);
   assert.deepEqual(full.r.results[0].concerns, []);
 });
@@ -3170,7 +3226,7 @@ test('AC3 add-decision com erro da CLI reprova', async () => {
     const runs = promptCommands(prompt).map((command) => (/add-decision/.test(command)
       ? { command, exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) }
       : { command, exit: 0, stdout: cliJson() }));
-    return { runs };
+    return { exit: 0, stdout: groupStdout(prompt, runs) };
   };
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: both(specWith({ rulings: [ruling({})] }), bad) });
   assert.equal(r.results[0].failKind, 'infra');
@@ -3178,7 +3234,7 @@ test('AC3 add-decision com erro da CLI reprova', async () => {
 });
 
 test('AC3 stdout que não é JSON da CLI, ou comando omitido, reprova', async () => {
-  const mk = (alter) => (l, prompt) => (/:status-[a-z]+$/.test(l) ? { runs: alter(promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() }))) } : undefined);
+  const mk = (alter) => (l, prompt) => (/:status-[a-z]+$/.test(l) ? { exit: 0, stdout: groupStdout(prompt, alter(promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() })))) } : undefined);
   const notJson = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: mk((runs) => runs.map((x, i) => (i === 0 ? { ...x, stdout: 'OK done' } : x))) });
   assert.equal(notJson.r.results[0].failKind, 'infra');
   assert.match(notJson.r.results[0].error, /not JSON/);
@@ -3188,15 +3244,96 @@ test('AC3 stdout que não é JSON da CLI, ou comando omitido, reprova', async ()
 });
 
 test('AC3 no-bash reprova', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+$/.test(l) ? { error: 'no-bash', runs: [] } : undefined) });
+  // E10: the script-runner has no list to return empty, so a run without Bash is an output that no digest confirms: the null record agent.
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+$/.test(l) ? { exit: -1, stdout: '' } : undefined) });
   assert.ok(r.results[0].error);
-  assert.match(r.results[0].error, /no-bash/);
+  assert.match(r.results[0].error, /null record agent/);
+});
+
+// ANTES: the calls of this very script (one deliverable, one task, no failure, mode run) as measured in commit 3a1d3de, before E10: 39, the last two being git-truth and report
+// (docs/plans/evolucao-skills-E10/assertion-map.md, section ANTES, keeps the label list). E10 moves the git truth into the report call.
+const ANTES = 39;
+test('E10 AC3: the happy path of a one-task deliverable makes ANTES - 1 calls, no git-truth, status write before read', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(r.results[0].merged, true);
+  assert.equal(labels.length, ANTES - 1);
+  assert.ok(!labels.includes('git-truth'));
+  const w = labels.indexOf('E1:status-d');
+  const rd = labels.indexOf('E1:status-d-read');
+  assert.ok(w >= 0 && rd > w, 'the status write comes before its independent re-read');
+  assert.equal(calls[w].opts.agentType, 'productivity-tools:script-runner');
+  assert.equal(calls[w].opts.model, 'haiku');
+  assert.equal(calls[w].opts.effort, 'low');
+  assert.deepEqual(calls[w].opts.schema.required, ['exit', 'stdout']);
+  assert.match(calls[w].prompt, /verify-run\.mjs" group \S+/);
+  assert.notEqual(calls[rd].opts.agentType, 'productivity-tools:script-runner', 'the re-read stays with the agent of today');
+  assert.equal(labels[labels.length - 1], 'report');
+});
+
+test('E10 AC3: a group whose step 2 exits 1 is not repeated and command 2 fails the record', async () => {
+  let sent = null;
+  const over = both(specWith({ rulings: [ruling({})] }), (l, prompt) => {
+    if (l !== 'E1:status-d') return undefined;
+    const steps = promptCommands(prompt);
+    assert.ok(steps.length >= 3, 'the third command exists and must not run');
+    sent = JSON.parse(groupStdout(prompt, steps.map((c, i) => (i === 1 ? { exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) } : { exit: 0, stdout: cliJson() }))));
+    return { exit: 0, stdout: JSON.stringify(sent) };
+  });
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter((l) => l === 'E1:status-d').length, 1, 'the group writes, so it is never repeated');
+  assert.ok(labels.includes('E1:status-d-read'), 'the re-read of today still runs');
+  assert.deepEqual(sent.stopped, { n: 2, exit: 1 });
+  assert.equal(sent.steps.length, 2, 'the third command did not run');
+  assert.ok(r.results[0].concerns.some((x) => /command 2 \(log\) exit 1/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('E10 AC3: a group output with one changed character is a null record agent', async () => {
+  const over = (l, prompt) => (l === 'E1:status-d' ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() }))).replace('"head":"abc1234"', '"head":"abc1235"') } : undefined);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter((l) => l === 'E1:status-d').length, 1, 'no new run of the group');
+  assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('E10 AC3: a group output of another run (another nonce) is a null record agent', async () => {
+  const over = (l, prompt) => (l === 'E1:status-d' ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() })), 'old-run') } : undefined);
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)));
+});
+
+test('E10 AC3: a group payload over 28000 characters runs in chunks and renumbers runs', async () => {
+  const rulings = Array.from({ length: 70 }, (_, i) => ruling({ id: `R${i + 1}`, decision: `Option ${i + 1} ${'alpha beta gamma delta '.repeat(8)}`.trim(), scope: 'local' }));
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings }) });
+  const parts = calls.filter((c) => /^E1:status-d(-part\d+)?$/.test(c.label));
+  assert.ok(parts.length >= 2, `chunks: ${parts.length}`);
+  assert.equal(parts[0].label, 'E1:status-d');
+  assert.equal(parts[1].label, 'E1:status-d-part2');
+  const all = [];
+  for (const c of parts) {
+    const enc = /verify-run\.mjs" group (\S+)/.exec(c.prompt)[1];
+    assert.ok(enc.length <= 28000, `${c.label}: ${enc.length}`);
+    const g = verifyArg(c.prompt, 'group');
+    assert.ok(g.finally && g.finally.commit.add.length === 1, `${c.label} carries its own finally`);
+    all.push(...g.steps);
+  }
+  assert.equal(all.filter((c) => /add-decision/.test(c)).length, 70, 'no command was split or lost');
+  assert.match(all[all.length - 1], /inflight-add/);
+  assert.ok(labels.indexOf('E1:status-d-part2') < labels.indexOf('E1:status-d-read'), 'every chunk runs before the re-read');
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.results[0].concerns, [], 'the renumbered runs pass the verdict');
+});
+
+test('E10 AC3: a failed chunk stops the next ones', async () => {
+  const rulings = Array.from({ length: 70 }, (_, i) => ruling({ id: `R${i + 1}`, decision: `Option ${i + 1} ${'alpha beta gamma delta '.repeat(8)}`.trim(), scope: 'local' }));
+  const over = both(specWith({ rulings }), (l, prompt) => (l === 'E1:status-d' ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map((c, i) => (i === 3 ? { exit: 1, stdout: cliJson({ summary: { exitCode: 1 }, errors: [{ code: 'x' }] }) } : { exit: 0, stdout: cliJson() }))) } : undefined));
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(!labels.includes('E1:status-d-part2'), 'the chunk after a failed one does not run');
+  assert.ok(r.results[0].concerns.some((x) => /command 4 \(add-decision\) exit 1/.test(x)), r.results[0].concerns.join('\n'));
 });
 
 test('o veredito ignora statusWritten e details do agente', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' },
     over: (l, prompt) => {
-      if (/:status-[a-z]+$/.test(l)) return { runs: promptCommands(prompt).map((command) => ({ command, exit: 0, stdout: cliJson() })), statusWritten: 'ok', details: 'tudo certo' };
+      if (/:status-[a-z]+$/.test(l)) return { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() }))), statusWritten: 'ok', details: 'tudo certo' };
       if (/:status-.*-read$/.test(l)) return readWith('zzz');
       return undefined;
     } });
@@ -3207,7 +3344,7 @@ test('textos longos não viram concern', async () => {
   const long = (w) => `${w} ${'palavra '.repeat(60)}`.trim();
   const over = specWith({ rulings: [ruling({ id: 'R1', decision: long('decisao') })], needsPerson: [np({ id: 'H1', what: long('humano') })] });
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
-  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
   let seen = 0;
   for (const cmd of promptCommands(p)) {
     for (const m of cmd.matchAll(/--(?:decision|text|what|note|next) '((?:[^']|'\\'')*)'/g)) { seen++; assert.ok(m[1].length <= 300, `${cmd.slice(0, 60)} (${m[1].length})`); }
@@ -3223,7 +3360,7 @@ test('textos longos não viram concern', async () => {
 
 test('retomada não repete log: a palavra já gravada tira set-status e log, e o veredito confere a palavra', async () => {
   const { r, calls } = await exec({ cards: [card('E1', { status: 'd' })], deliverables: ['E1'], over: specWith({ rulings: [ruling({})] }) });
-  const p = calls.find((c) => c.label === 'E1:status-d').prompt;
+  const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
   assert.doesNotMatch(p, / set-status /);
   assert.doesNotMatch(p, /roadmap\.mjs" log /);
   assert.match(p, /add-decision/);
@@ -3235,7 +3372,7 @@ test('retomada não repete log: a palavra já gravada tira set-status e log, e o
 
 test('célula com rótulos usa --piece code', async () => {
   const { calls } = await exec({ cards: [card('E1', { status: 'code: c; acceptance: blocked (BLQ-2)' })], deliverables: ['E1'] });
-  assert.match(calls.find((c) => c.label === 'E1:status-d').prompt, /set-status '[^']*' 'E1' 'd' --piece 'code'/);
+  assert.match(plain(calls.find((c) => c.label === 'E1:status-d').prompt), /set-status '[^']*' 'E1' 'd' --piece 'code'/);
 });
 
 test('falta de trackerCli: erro antes de qualquer agente', async () => {
@@ -3269,7 +3406,7 @@ test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', asyn
 
 test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
   const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
-  const p = calls.find((c) => c.label === 'E1:status-blocked').prompt;
+  const p = plain(calls.find((c) => c.label === 'E1:status-blocked').prompt);
   assert.match(p, /block-open '[^']*' --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
   assert.match(p, /--affects 'E1'/);
   assert.doesNotMatch(p, / set-status /);
@@ -3285,8 +3422,8 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
   assert.equal(e1.failKind, 'conteudo');
   const blocked = calls.find((c) => c.label === 'E1:status-blocked');
   assert.ok(blocked);
-  assert.doesNotMatch(blocked.prompt, /-\*-reviews\.md/);
-  assert.match(blocked.prompt, /docs\/plans\/x-E1\/reviews\.md/);
+  assert.doesNotMatch(plain(blocked.prompt), /-\*-reviews\.md/);
+  assert.match(plain(blocked.prompt), /docs\/plans\/x-E1\/reviews\.md/);
   const logs = calls.filter((c) => /review-log-blocked-record$/.test(c.label));
   assert.equal(logs.length, 1);
   assert.match(logs[0].prompt, /Textos cortados no registro/);
@@ -3372,9 +3509,10 @@ test('forma das chamadas de script: todo roadmap.mjs vem entre aspas, com argume
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   let seen = 0;
   for (const c of calls.filter((x) => x.label !== 'discovery')) {
-    for (const m of c.prompt.matchAll(/roadmap\.mjs/g)) {
+    const text = plain(c.prompt);  // I6 (f): roadmap.mjs is counted in the decoded steps of the group payloads too
+    for (const m of text.matchAll(/roadmap\.mjs/g)) {
       seen++;
-      const around = c.prompt.slice(Math.max(0, m.index - 120), m.index + 40);
+      const around = text.slice(Math.max(0, m.index - 120), m.index + 40);
       assert.match(around, /node "[^"]*roadmap\.mjs" \S/, c.label + ': ' + around);
       assert.ok(WORKFLOW_SCRIPTS.includes('roadmap.mjs'));
     }
@@ -3832,7 +3970,7 @@ test('AC5: a ruling that contradicts a registered decision stops the deliverable
 test('AC6: a common ruling is recorded as pending ratification and the run goes on', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.', alternative: 'No cache', scope: 'local' })] }) });
   assert.ok(labels.includes('E1:t1:impl'));
-  const rec = calls.find((c) => /^E1:status-/.test(c.label) && /add-decision/.test(c.prompt)).prompt;
+  const rec = plain(calls.find((c) => /^E1:status-/.test(c.label) && /add-decision/.test(plain(c.prompt))).prompt);
   assert.match(rec, /add-decision '[^']*' --deliverable 'E1' --decision 'Use the cache\.' --scope 'local' --discarded 'No cache'/);
   assert.equal(r.results[0].decisions, 1);
 });
@@ -4173,7 +4311,7 @@ test('AC8: a contract ruling holds a selected dependent citing the decision and 
 });
 
 test('AC8 fail safe: a failed executing record of a contract ruling still holds the dependent', async () => {
-  const over = (l) => (/^E1:/.test(l) ? (l === 'E1:status-d' ? { error: 'boom', runs: [] } : contractSpec('E1')(l)) : undefined);
+  const over = (l) => (/^E1:/.test(l) ? (l === 'E1:status-d' ? { exit: 1, stdout: 'boom' } : contractSpec('E1')(l)) : undefined);
   const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over });
   const m = runsOf(r);
   assert.equal(m.E2.merged, false);
