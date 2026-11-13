@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E9 | BLQ-9 aberto: E9 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [important/defeito] plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js The new test-first [...] texto completo em docs/plans/evolucao-skills-E9/reviews.md | `branch feat/E9` |
 | 2026-11-12 | E9 | E9 passou para executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
 | 2026-11-12 | E9 | 1ª execução de E9 falhou por infraestrutura: o agente productivity-tools:spec-author não existe no 1.6.0 instalado. DEC-566, DEC-567, DEC-568: o release passa a rodar em claude -p com --plugin-dir na árvore de _integracao. | `docs/reports/2026-11-12-E9-run.md` |
 | 2026-11-12 | E9 | DEC-566, DEC-567, DEC-568 (execução do release sem interface com --plugin-dir) decididas pelo dono por delegação (Fable) | `decisions.md` |
