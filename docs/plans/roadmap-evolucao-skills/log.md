@@ -3,6 +3,13 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E21 | Execução r2: BLOCKED parcial. Código da T5 revertido (0ee4677), script em 239866 caracteres LF, 134 sob o teto. Custo US$ 6,80 (r1: US$ 13,65). Metade da revisão única do AC3 vai para E28 (DEC-597, DEC-598, estratégia v1.6). | `docs/reports/2026-11-13-E21-run.md` |
+| 2026-11-13 | E21 | DEC-599 a DEC-601 (E21) ratificadas por delegação (Fable) | `decisions.md` |
+| 2026-11-13 | E21 | DEC-597 (E21) ratificada com emenda por delegação (Fable) | `decisions.md` |
+| 2026-11-13 | E21 | BLQ-11 aberto: E21 bloqueado: automatic execution stopped (conteudo): task 9 BLOCKED: Partial BLOCKED, as the plan's reversal path (R14/C5) and the owner instruction require. Text freed in the per-task review wording [...] texto completo em docs/plans/evolucao-skills-E21/reviews.md | `branch feat/E21` |
+| 2026-11-13 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
+| 2026-11-13 | E21 | BLQ-10 resolvido: desbloqueio de E21 pelo release | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
+| 2026-11-13 | E21 | BLQ-10 aberto: E21 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: Item 2 foi corrigido, com teste, no commit 3b5c950. No item 1 os comentários dos outros estágios voltaram ao texto original (commit [...] texto completo em docs/plans/evolucao-skills-E21/reviews.md | `branch feat/E21` |
 | 2026-11-12 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
 | 2026-11-12 | E9 | Comportamental do implementer (DEC-576): modo A falhou 2x (comando anotado em checks quebra testFirstGap); texto do agente corrigido em c8ee19a (comando literal idêntico, saída sem paráfrase, humanInputs restrito); reexecução: A e B passam. US$ 1,56. E21 liberado. | `docs/reports/2026-11-12-E9-implementador-comportamental.md` |
 | 2026-11-12 | E9 | E9 integrada (2d1c5e1) e ratificada por delegação (Fable): DEC-569 (contrato), DEC-570 a DEC-578 e DEC-582, sem repetições; DEC-576 com emenda (comportamental após o merge, despacho pelo nome em claude -p). Script em 239.997 LF (folga 3). E21 liberado (DEC-030) depois do comportamental. | `decisions.md` |

@@ -16,7 +16,7 @@
 | REQ-011 | A retomada do release não repete a revisão de spec, de plano nem final quando o que foi aprovado não mudou. | non-functional | SRC-02, SRC-04, SRC-10 | E23 | coberto |
 | REQ-012 | Os passos mecânicos do release (descoberta, git, verificação pós-execução) rodam por código, com as chamadas agrupadas. | functional | SRC-02, SRC-04 | E10 | coberto |
 | REQ-013 | Os prompts de autor de spec, autor de plano, executor, implementador e revisor proíbem perguntar à pessoa. | functional | SRC-01, SRC-02, SRC-08 | E7, E8, E9, E19, E20, E21, E24 | coberto |
-| REQ-014 | O revisor por tarefa devolve achados com identificador, e a nova revisão restrita aos achados e ao diff da correção existe como modo. | functional | SRC-05, SRC-08, DEC-021 | E21 | coberto |
+| REQ-014 | O revisor por tarefa devolve achados com identificador, e a nova revisão restrita aos achados e ao diff da correção existe como modo. | functional | SRC-05, SRC-08, DEC-021 | E21, E28 | coberto |
 | REQ-015 | O laço de revisão de spec e plano e o modelo do autor de plano são definidos por evidência medida. | measurement | SRC-02, SRC-05, SRC-08, SRC-10, DEC-010, DEC-021 | E26 | a-esclarecer |
 | REQ-016 | O roteamento (nível, effort, portão de revisão) tem uma só definição, usada pelo release e pelo coordinator, com teste de igualdade entre as cópias embutidas. | functional | SRC-02, SRC-08, SRC-10 | E6, E7, E8 | coberto |
 | REQ-017 | A prosa carregável do tracker, do planner e do coordinator diminui em relação à medida em SRC-02. | non-functional | SRC-01, SRC-02 | E4, E12, E22 | coberto |
