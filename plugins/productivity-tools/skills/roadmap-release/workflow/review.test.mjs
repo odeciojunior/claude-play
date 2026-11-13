@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, closedBlockers, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps } = loadPure();
+const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, closedBlockers, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps, testFirstGap, tasksFromPlan } = loadPure();
 const statuses = { onBranch: 'na-branch', integrated: ['integrada', 'publicada'], blocked: 'bloqueada', discarded: 'descartada' };
 
 test('isHard: no category, defeito and decisao are hard; critical is hard unless a registered environment blocker', () => {
@@ -413,4 +413,42 @@ test('evidenceGaps: the card tag is compared with the value that is dispatched',
   const tagged = (evidence) => [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence } }];
   assert.equal(changed('a\\ ', tagged('a\\')), true);
   assert.equal(changed('cat <<E\nx\nE ', tagged('cat <<E\nx\nE')), true);
+});
+
+const ck = (command, exit) => ({ command, output: 'o', exit });
+const tfTask = { n: 2, testFirst: true, noCommit: false, files: ['a.js'] };
+const stub = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] };
+
+test('AC1: testFirstGap fails a test-first task without red before green', () => {
+  const bad = [
+    [ck('t', 0)],
+    [ck('t', 0), ck('t', 1)],
+    [ck('t1', 1), ck('t2', 0)],
+    [],
+  ];
+  for (const status of ['DONE', 'DONE_WITH_CONCERNS']) {
+    for (const checks of bad) {
+      const gap = testFirstGap(tfTask, { status, checks }, false);
+      assert.ok(gap && gap.includes('2') && gap.includes(`(${checks.length} checks)`), JSON.stringify(checks));
+    }
+  }
+});
+
+test('AC2: testFirstGap passes resumed, unmarked, no-file and blocked tasks', () => {
+  const good = { status: 'DONE', checks: [ck('t', 1), ck('t', 0)] };
+  assert.equal(testFirstGap(tfTask, stub, true), '');
+  assert.equal(testFirstGap({ ...tfTask, testFirst: { exempt: 'docs' } }, { status: 'DONE', checks: [] }, false), '');
+  assert.equal(testFirstGap({ n: 2, noCommit: false, files: ['a.js'] }, { status: 'DONE', checks: [] }, false), '');
+  assert.equal(testFirstGap({ ...tfTask, noCommit: true, files: [] }, { status: 'DONE', checks: [] }, false), '');
+  for (const status of ['BLOCKED', 'NEEDS_HUMAN']) assert.equal(testFirstGap(tfTask, { status, checks: [] }, false), '');
+  assert.equal(testFirstGap(tfTask, good, false), '');
+  assert.equal(testFirstGap(tfTask, { status: 'DONE_WITH_CONCERNS', checks: [ck(' node --test x ', 1), ck('node --test x', 0)] }, false), '');
+  assert.equal(testFirstGap(tfTask, { status: 'DONE', checks: [ck('a', 0), ck('t', 1), ck('b', 0), ck('`t`', 0)] }, false), '');
+});
+
+test('tasksFromPlan copies testFirst (true and exempt)', () => {
+  const ts = tasksFromPlan({ tasks: [{ n: 1, title: 'a', testFirst: true }, { n: 2, title: 'b', testFirst: { exempt: 'docs' } }, { n: 3, title: 'c' }] });
+  assert.equal(ts[0].testFirst, true);
+  assert.deepEqual(ts[1].testFirst, { exempt: 'docs' });
+  assert.equal(ts[2].testFirst, undefined);
 });

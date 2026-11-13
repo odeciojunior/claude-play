@@ -427,6 +427,7 @@ function tasksFromPlan(plan) {
       noCommit: t.noCommit,
       route: t.route,
       deps: t.deps || [],
+      testFirst: t.testFirst,
     }
   })
 }
@@ -553,9 +554,7 @@ function buildImplPrompt(ctx, task) {
 
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}, in the deliverable worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}
-Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
-Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
+Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}.`
 }
 // Failures show at the end of the output, so a long output keeps its tail.
 function tailOf(output) {
@@ -782,6 +781,13 @@ function commandKey(s) {
   if (v.length < 2 || v[0] !== '`' || v[v.length - 1] !== '`') return v
   const inner = v.slice(1, -1)
   return inner.includes('`') || oddSlashes(v, v.length - 1) ? v : inner
+}
+// A test-first task must report a failing check, then the same check passing.
+function testFirstGap(task, impl, resumed) {
+  if (resumed || !task || task.testFirst !== true || noFiles(task) || !impl || !/^DONE/.test(impl.status)) return ''
+  const c = impl.checks || []
+  if (c.some((a, i) => a.exit !== 0 && c.slice(i + 1).some(b => b.exit === 0 && commandKey(a.command) === commandKey(b.command)))) return ''
+  return `task ${task.n}: test-first without a failing check then the same check passing (${c.length} checks)`
 }
 // Nothing a shell could run: empty, only blanks, or quotes around only blanks.
 function blankCommand(s) {

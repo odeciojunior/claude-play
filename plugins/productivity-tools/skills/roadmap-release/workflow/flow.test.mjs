@@ -3598,7 +3598,7 @@ test('tasksFromPlan merges files and copies locks and external', () => {
   const ts = pure.tasksFromPlan(plan);
   assert.equal(ts.length, plan.tasks.length);
   assert.deepEqual(ts[0].files, ['src/store.mjs', 'tests/store.test.mjs']);
-  assert.deepEqual(Object.keys(ts[0]).sort(), ['deps', 'external', 'externalDedupe', 'files', 'n', 'needsLock', 'noCommit', 'route', 'title']);
+  assert.deepEqual(Object.keys(ts[0]).sort(), ['deps', 'external', 'externalDedupe', 'files', 'n', 'needsLock', 'noCommit', 'route', 'testFirst', 'title']);
   assert.deepEqual(ts.find((t) => t.n === 3).needsLock, ['fixture-db']);
   const ext = ts.find((t) => t.external === true);
   assert.ok(ext && ext.externalDedupe);
