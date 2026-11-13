@@ -1219,3 +1219,87 @@ test('applyEvents applies a batch atomically', () => {
   assert.equal(bad.state, undefined);
   assert.deepEqual(s, before);
 });
+
+// ---------------------------------------------------------------------------
+// E12 T3: token, read e apply --events assinados
+// ---------------------------------------------------------------------------
+import { fnv1a, canon } from '../../../lib/plan-digest.mjs';
+import { stateDigest } from './progress.mjs';
+
+const signDigest = (o) => fnv1a(JSON.stringify(canon(o)));
+const payloadOf = (expect, events, digestOverride) => {
+  const body = { expect, events };
+  return encodeURIComponent(JSON.stringify({ ...body, digest: digestOverride ?? signDigest(body) }));
+};
+function initSandbox(sb) {
+  const r = cli(['init', sb.plan]);
+  assert.equal(r.code, 0, r.err);
+}
+
+test('token prints a fresh random token', () => {
+  const a = cli(['token']);
+  const b = cli(['token']);
+  assert.equal(a.code, 0, a.err);
+  assert.match(a.out.trim(), /^[0-9a-f]{32}$/);
+  assert.match(b.out.trim(), /^[0-9a-f]{32}$/);
+  assert.notEqual(a.out.trim(), b.out.trim());
+});
+
+test('read prints the signed state', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const r = cli(['read', sb.state, '--nonce', 'N', '--json']);
+  assert.equal(r.code, 0, r.err);
+  const j = JSON.parse(r.out);
+  assert.equal(j.tool, 'progress');
+  assert.equal(j.command, 'read');
+  assert.equal(j.nonce, 'N');
+  assert.equal(typeof j.now, 'string');
+  assert.equal(path.resolve(j.root), path.resolve(sh(sb.dir, 'git', ['rev-parse', '--show-toplevel'])));
+  assert.equal(j.planChanged, false);
+  assert.deepEqual(j.state.history, []);
+  const { digest, ...rest } = j;
+  assert.equal(digest, signDigest(rest));
+  fs.appendFileSync(sb.plan, '\nmudou\n');
+  const j2 = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j2.planChanged, true);
+}));
+
+test('apply --events writes a batch and signs the result', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const before = readJson(sb.state);
+  const expect = stateDigest(before);
+  const events = [{ type: 'approve-map' }];
+  const r = cli(['apply', sb.state, '--events', payloadOf(expect, events), '--nonce', 'N9']);
+  assert.equal(r.code, 0, r.err);
+  const j = JSON.parse(r.out);
+  const after = readJson(sb.state);
+  assert.equal(after.history.length, before.history.length + 1);
+  assert.equal(j.tool, 'progress');
+  assert.equal(j.command, 'apply');
+  assert.equal(j.nonce, 'N9');
+  assert.equal(j.ok, true);
+  assert.equal(j.code, null);
+  assert.ok(j.action && typeof j.action === 'object');
+  assert.equal(j.stateDigest, signDigest({ ...after, history: [] }));
+  const { digest, ...rest } = j;
+  assert.equal(digest, signDigest(rest));
+}));
+
+test('apply --events refuses without writing', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const bytes = fs.readFileSync(sb.state);
+  const expect = stateDigest(readJson(sb.state));
+  const good = [{ type: 'approve-map' }];
+  const bad = cli(['apply', sb.state, '--events', payloadOf(expect, good, 'deadbeef'), '--nonce', 'N']);
+  assert.equal(bad.code, 2);
+  assert.ok(fs.readFileSync(sb.state).equals(bytes));
+  const conc = cli(['apply', sb.state, '--events', payloadOf('outro', good), '--nonce', 'N']);
+  assert.equal(JSON.parse(conc.out).code, 'concurrent-change');
+  assert.equal(JSON.parse(conc.out).ok, false);
+  assert.ok(fs.readFileSync(sb.state).equals(bytes));
+  const ref = cli(['apply', sb.state, '--events', payloadOf(expect, [{ type: 'approve-map' }, { type: 'report', step: 1, value: 'pass' }]), '--nonce', 'N']);
+  const jr = JSON.parse(ref.out);
+  assert.equal(jr.ok, false);
+  assert.ok(typeof jr.code === 'string' && jr.code !== 'concurrent-change');
+  assert.ok(fs.readFileSync(sb.state).equals(bytes));
+}));
