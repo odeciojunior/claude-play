@@ -80,3 +80,19 @@ Teto: US$ 6 no total e US$ 1 por sessão; 9 sessões e 3 repetições.
 6. **Linha composta no progresso.** O prompt do progresso não tem a regra de um comando simples por chamada.
 7. **Isolamento parcial,** como em E9 e E21: configuração real do usuário; schema pedido em texto; revisões, tarefas e gates intermediários simulados pelo arnês.
 8. **Pasta mantida** em `D:/claude-release-runs/E23-T8/` para conferência.
+
+## Correção e reexecução da fase 2 (fix/pos-E23)
+
+Commits `76676df` e `c7b4d01` em `fix/pos-E23`, a partir de `0f9e93a`.
+
+- **Código.** Com `pre.recorded` não vazio, `pre.baseline` passa a ser só `recordedBaseline(...)`, sem a queda para `|| pre.baseline`. Um registro recusado deixa o preflight sem baseline e o run para em `preflight:other` (incompleto). Com `recorded` vazio, vale a medição do agente, como antes.
+- **Prompt.** A linha `Return` cita `recorded` (o stdout bruto do 1º comando do passo 4, literal, como string, e então sem baseline). O passo 4 diz "Install first in both cases". O texto do PREFLIGHT foi reescrito sem perder regra para caber no teto. `c7b4d01` devolve `git rev-parse` ao texto de `targetHead` (achado menor da revisão: um SHA curto recusaria um registro válido).
+- **Tamanho.** `workflowChars` de 239.927 para 239.994 (teto 240.000, folga 6).
+- **Testes** (`flow.test.mjs`, AC3). Dois casos novos: `recorded` em prosa com `baseline` copiado para no preflight e nada de E1 roda (com `recorded` vazio a medição do agente segue valendo); o texto da linha `Return` e do passo 4. Os dois falham no código antigo e passam no novo; os casos com registro válido continuam verdes.
+- **Gates.** G1 com 1699 de 1699 aprovados, G2 e G3 aprovados, G4 com 0 erros, G5 com 53 OK, 1 WARN e 0 FAIL.
+- **Revisão** opus/high de `76676df`: aprovado. Nenhum caminho aceita medição não verificada; o único caso em que um run sadio para é o agente preencher `recorded` num run medido (direção segura).
+- **Reexecução** do `p2-preflight` (sonnet/medium, plugin do worktree `fix-pos-E23`), numa cópia da fixture no estado da fase 2 em `D:/claude-release-runs/E23-T8-fix/` (`release/fx` em `a877cd5`, `feat/E1` em `354ce08`; mesma gatesKey `e6afe2a5`). `recorded` saiu igual ao stdout do script e `recordedBaseline` o aceita, igual ao `prep` do `run.json`. A instalação rodou uma vez, no worktree de integração; nenhum gate rodou; nenhum commit. **P5 fase 2: APROVADO** na 1ª tentativa, por US$ 0,1471. Observação: o agente rodou a instalação numa linha composta (`cd … && node …`).
+
+Pendentes da revisão (não bloqueiam): tipo próprio de parada para registro recusado (`preflight:recorded-invalid`), com saída para ignorar o registro; `recorded` só com espaços conta como presente.
+
+Veredito após a correção: P1 a P5 aprovados; o portão de DEC-625 está cumprido e E24 pode começar.
