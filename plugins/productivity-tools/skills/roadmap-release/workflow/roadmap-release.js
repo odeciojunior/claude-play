@@ -367,6 +367,14 @@ const SEV = s => s === 'critical' || s === 'important'
 function blocking(r) {
   return r && Array.isArray(r.issues) ? r.issues.filter(i => SEV(i.severity)) : []
 }
+function splitRefuted(iss, v) {
+  const keep = [], refuted = []
+  iss.forEach((i, k) => {
+    const m = ((v && v.verdicts) || []).filter(x => x.n === k + 1)
+    m.length === 1 && m[0].refuted === true && /\S/.test(m[0].reason || '') ? refuted.push({ ...i, reason: m[0].reason }) : keep.push(i)
+  })
+  return { keep, refuted }
+}
 function fmt(iss) {
   return (iss || []).map((i, k) => `${k + 1}. [${i.severity}${i.category ? '/' + i.category : ''}] ${i.file || ''} ${i.id ? `[${i.id}] ` : ''}${i.description}`).join('\n')
 }
@@ -508,8 +516,9 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
   if (!r) { r = await review('1b', null); note('1b') }
   if (!r) { record(r); return { ok: false, kind: 'infra', msg: `${stage}: null review` } }
   let iss = truth(r)
+  const lim = opt.once ? Math.min(1, env.maxFix) : env.maxFix
   let bonus = false
-  for (let k = 1; iss.length && env.maxFix > 0 && k <= env.maxFix + (bonus ? 1 : 0); k++) {
+  for (let k = 1; iss.length && env.maxFix > 0 && k <= lim + (bonus ? 1 : 0); k++) {
     const fixable = iss.filter(i => isHard(i, env.blqIds))  // ambiente/fora-do-escopo/pelo-plano do not spend a fix
     if (!fixable.length) break
     const fx = await fix(fixable, k, tier)
@@ -531,13 +540,13 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
         return { ok: false, kind: kindOf(hard), msg: `${stage}: the same finding reappeared after a fix at opus:\n${fmt(hard)}` }
       }
       tier = up
-      bonus = true
+      bonus = !opt.once
     }
   }
   record(r, iss)
   if (!iss.length) return { ok: true, r }
   const hard = iss.filter(i => isHard(i, env.blqIds))
-  if (hard.length) return { ok: false, kind: kindOf(hard), msg: `${stage} has open issues after ${env.maxFix} fixes:\n${fmt(hard)}` }
+  if (hard.length) return { ok: false, kind: kindOf(hard), msg: `${stage} has open issues after ${lim} fixes:\n${fmt(hard)}` }
   env.acceptRisks(stage, iss)
   return { ok: true, r }
 }
@@ -1404,6 +1413,7 @@ const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: S
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
+const S_VERIFY = { type: 'object', properties: { verdicts: { type: 'array', items: { type: 'object', properties: { n: INT, refuted: BOOL, reason: STR } } } }, required: ['verdicts'] }
 const PF = { type: 'string', enum: ['pass', 'fail'] }
 const S_TASKREVIEW = { ...S_REVIEW, properties: { ...S_REVIEW.properties, verdicts: { type: 'array', items: { type: 'object', properties: { id: STR, open: BOOL }, required: ['id', 'open'] } }, spec: PF, quality: PF } }
 const S_PLANREVIEW = { type: 'object', properties: { ...S_REVIEW.properties, measuredPlanBlob: STR }, required: [...S_REVIEW.required, 'measuredPlanBlob'] }
@@ -2569,33 +2579,38 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
     if (!rc.ok) return fail(rc.kind, rc.why)
   }
 
-  const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin
-  const integ = TI ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
-    { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
+  const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin, IP = `"${WT}/_tmp/${E}-integrity.cjs"`
+  const integ = TI ? await agent(`Program: ${IP}\nCommand: cd "${wt}" && node ${IP} "${TARGET}"\n${TEST_INTEGRITY}\n`,
+    { agentType: 'productivity-tools:test-integrity', label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
   if (TI && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
-  const integTxt = alerts.length ? `\nALERTS MEASURED IN THE TESTS (check each one; weakening a test without justification is a critical defect): ${alerts.join('; ')}.` : ''
 
-  const lenses = card.critical
-    ? ['correctness across layers and the card acceptance criteria', 'security: authorization, secrets, sensitive data, injection and any security rule of the PROJECT block (or the file it points to)']
-    : ['correctness across layers, the card acceptance criteria and security']
+  const FR = CFG.finalReview || {}, FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }
   const finalLoop = skipFin ? { ok: true } : await reviewLoop('final',
     async (round, prev) => {
-      const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
+      const rs = await parallel((card.critical ? ['correctness', 'security'] : ['all']).map((lens, li) => () => agent(`${C()}
 
-FINAL REVIEW OF THE WHOLE BRANCH (mandatory; read-only), lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD (branch already synced with the target).
-Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}\nBlocks (defeito): an edit to the spec or the plan made by a fix round.` : ''}
-Measure: headSha, clean, ${R_COUNT}.`,
-        { label: `${E}:final-${li + 1}-r${round}`, phase: 'Final review', schema: S_REVIEW, model: 'opus', effort: 'high' })))
+Mode: review, lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD
+Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAlerts: ${alerts.join('; ')}.` : ''}${prev ? `\nPrevious issues (${repeatRule()}):\n${prev}` : ''}`,
+        { label: `${E}:final-${li + 1}-r${round}`, schema: S_REVIEW, ...FRA })))
       if (rs.some(x => !x)) return null
-      return { issues: rs.flatMap(x => x.issues), headSha: rs[0].headSha, clean: rs.every(x => x.clean), commitsInRange: rs[0].commitsInRange }
+      const r = { ...rs[0], issues: rs.flatMap(x => x.issues), clean: rs.every(x => x.clean) }, bl = blocking(r)
+      if (FR.adversarial === true && bl.length) {
+        const s = splitRefuted(bl, await agent(`${C()}
+
+Mode: verify.
+${fmt(bl)}`, { label: `${E}:final-verify-r${round}`, schema: S_VERIFY, ...FRA }))
+        r.issues = [...r.issues.filter(i => !bl.includes(i)), ...s.keep]
+        out.reviews.push({ stage: 'final-verify', round, refuted: s.refuted })
+      }
+      return r
     },
     (iss, k, tier) => withLocks(planLocks, () => implAgent(`${C()}
 
-Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
+Fix the final review problems below and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
 ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier, effort: effortFor(tier) })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
-    { tier: 'sonnet', reviewModel: 'opus' })
+    { tier: 'sonnet', reviewModel: 'opus', once: FR.singleWave === true })
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
 
   // ---------- Gates on the branch (+ reviewed fix); every criterion is proved by a command that ran.

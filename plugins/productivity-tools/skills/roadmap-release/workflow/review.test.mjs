@@ -636,3 +636,106 @@ test("AC3: by default each task gets the spec and quality reviews on today's mod
   assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
   assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
 });
+
+// ---- E24 T3: single wave of the final review ----
+test("AC3: by default the final review has no verification call and today's fix rounds; the single wave has one fix and one re-review", async () => {
+  const run = async (opt, maxFix = 2) => {
+    const fixes = [];
+    const reviews = [];
+    const env = { maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+    const res = await P2.runReviewLoop(env, 'final', async round => { reviews.push(round); return { issues: [F('F1', ['d1', 'd1', 'd2', 'd3', 'd4'][round - 1])], headSha: 'h', clean: true, commitsInRange: 1 }; },
+      async (iss, k, tier) => { fixes.push(k); return { status: 'DONE' }; }, r => r.issues, { tier: 'sonnet', reviewModel: 'opus', ...opt });
+    return { res, fixes, reviews };
+  };
+  const dflt = await run({});
+  assert.deepEqual(dflt.fixes, [1, 2, 3]);
+  assert.deepEqual(dflt.reviews, [1, 2, 3, 4]);
+  const once = await run({ once: true });
+  assert.deepEqual(once.fixes, [1]);
+  assert.deepEqual(once.reviews, [1, 2]);
+  assert.equal(once.res.ok, false);
+  assert.match(once.res.msg, /after 1 fixes/);
+  const none = await run({ once: true }, 0);
+  assert.deepEqual(none.fixes, []);
+  assert.deepEqual(none.reviews, [1]);
+  const body = SRC.slice(SRC.indexOf("const finalLoop = skipFin"));
+  const loop = body.slice(0, body.indexOf('if (!finalLoop.ok)'));
+  assert.match(SRC, /const FR = CFG\.finalReview \|\| \{\}/);
+  assert.match(loop, /once: FR\.singleWave === true/);
+});
+
+// ---- E24 T4: adversarial verification of the final review ----
+test('AC1: splitRefuted drops only an explicitly refuted finding and keeps its reason', () => {
+  const iss = [F('F1'), F('F2'), F('F3')];
+  const v = (...verdicts) => ({ verdicts });
+  const ok = { n: 2, refuted: true, reason: 'a.js:9 guards the call' };
+  const r = P2.splitRefuted(iss, v({ n: 1, refuted: false, reason: 'confirmed' }, ok));
+  assert.deepEqual(r.keep, [iss[0], iss[2]]);
+  assert.deepEqual(r.refuted, [{ ...iss[1], reason: 'a.js:9 guards the call' }]);
+  assert.deepEqual(P2.splitRefuted(iss, null).keep, iss);
+  assert.deepEqual(P2.splitRefuted(iss, null).refuted, []);
+  assert.deepEqual(P2.splitRefuted(iss, {}).keep, iss);
+  assert.deepEqual(P2.splitRefuted(iss, v({ n: 1, refuted: true, reason: 'x' })).refuted.map(i => i.id), ['F1']);
+  assert.deepEqual(P2.splitRefuted(iss, v({ n: 3, refuted: true, reason: 'x' })).refuted.map(i => i.id), ['F3']);
+  const fn = SRC.slice(SRC.indexOf('function splitRefuted'), SRC.indexOf('function fmt'));
+  assert.doesNotMatch(fn, /\/\/|\/\*|Array\.isArray/);
+});
+
+test('AC1: with the adversarial mode a refuted finding gets no fix and is recorded as refuted', async () => {
+  const fixes = [];
+  const env = { maxFix: 2, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+  const verdicts = [{ n: 1, refuted: true, reason: 'a.js:3 already guards it' }];
+  const res = await P2.runReviewLoop(env, 'final', async round => {
+    const r = { issues: [F('F1'), { severity: 'minor', description: 'm' }], headSha: 'h', clean: true, commitsInRange: 1 };
+    const bl = P2.blocking(r);
+    const s = P2.splitRefuted(bl, { verdicts });
+    r.issues = [...r.issues.filter(i => !bl.includes(i)), ...s.keep];
+    env.reviews.push({ stage: 'final-verify', round, refuted: s.refuted });
+    return r;
+  }, async (iss, k) => { fixes.push(k); return { status: 'DONE' }; }, r => P2.blocking(r), { tier: 'sonnet', reviewModel: 'opus' });
+  assert.deepEqual(fixes, []);
+  assert.equal(res.ok, true);
+  const rec = env.reviews.find(x => x.stage === 'final-verify');
+  assert.equal(rec.round, 1);
+  assert.deepEqual(rec.refuted, [{ ...F('F1'), reason: 'a.js:3 already guards it' }]);
+  assert.match(SRC, /const S_VERIFY = \{ type: 'object', properties: \{ verdicts: \{ type: 'array', items: \{ type: 'object', properties: \{ n: INT, refuted: BOOL, reason: STR \} \} \} \}, required: \['verdicts'\] \}/);
+  assert.equal(SRC.match(/^const S_VERIFY .*$/m)[0].split('required').length, 2);
+  const body = SRC.slice(SRC.indexOf('const finalLoop = skipFin'));
+  const loop = body.slice(0, body.indexOf('if (!finalLoop.ok)'));
+  assert.match(loop, /bl = blocking\(r\)/);
+  assert.match(loop, /if \(FR\.adversarial === true && bl\.length\) \{/);
+  assert.equal((loop.match(/\bagent\(/g) || []).length, 2);
+  const verify = loop.slice(loop.indexOf('splitRefuted(')).replace(/\r/g, '');
+  assert.match(verify, /splitRefuted\(bl, await agent\(`\$\{C\(\)\}\n\nMode: verify\.\n\$\{fmt\(bl\)\}`, \{ label: `\$\{E\}:final-verify-r\$\{round\}`, schema: S_VERIFY, \.\.\.FRA \}\)\)/);
+  assert.doesNotMatch(verify.slice(0, verify.indexOf('schema: S_VERIFY')), /Diff/);
+  assert.match(loop, /r\.issues = \[\.\.\.r\.issues\.filter\(i => !bl\.includes\(i\)\), \.\.\.s\.keep\]/);
+  assert.match(loop, /out\.reviews\.push\(\{ stage: 'final-verify', round, refuted: s\.refuted \}\)/);
+  assert.doesNotMatch(loop, /final-verify[^\n]*length|length[^\n]*final-verify/);
+});
+
+test('AC2: a confirmed finding or a null verification goes to the fix', async () => {
+  const iss = [F('F1'), F('F2')];
+  const v = (...verdicts) => ({ verdicts });
+  const keepIds = x => P2.splitRefuted(iss, x).keep.map(i => i.id).join();
+  assert.equal(keepIds(v({ n: 1, refuted: false, reason: 'confirmed' }, { n: 2, refuted: false, reason: 'confirmed' })), 'F1,F2');
+  assert.equal(keepIds(v()), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: true, reason: 'x' }, { n: 1, refuted: false, reason: 'y' })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: true, reason: 'x' }, { n: 1, refuted: true, reason: 'y' })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 3, refuted: true, reason: 'x' }, { n: 0, refuted: true, reason: 'x' })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: true, reason: '' })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: true, reason: '   \n\t' })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: true })), 'F1,F2');
+  assert.equal(keepIds(v({ n: 1, refuted: 'true', reason: 'x' })), 'F1,F2');
+  assert.equal(keepIds(null), 'F1,F2');
+  for (const verdicts of [v({ n: 1, refuted: false, reason: 'confirmed' }), null]) {
+    const fixed = [];
+    const env = { maxFix: 1, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+    let n = 0;
+    await P2.runReviewLoop(env, 'final', async () => {
+      const r = { issues: n++ === 0 ? [F('F1')] : [], headSha: 'h', clean: true, commitsInRange: 1 };
+      r.issues = P2.splitRefuted(P2.blocking(r), verdicts).keep;
+      return r;
+    }, async iss => { fixed.push(iss.map(i => i.id).join()); return { status: 'DONE' }; }, r => P2.blocking(r), { tier: 'sonnet', reviewModel: 'opus' });
+    assert.deepEqual(fixed, ['F1']);
+  }
+});

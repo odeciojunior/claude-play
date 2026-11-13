@@ -37,6 +37,24 @@ test('validateReleaseConfig rejects invalid kind, empty gates, undeclared lock',
   assert.ok(validateReleaseConfig(null).length > 0);
 });
 
+test('E24: validateReleaseConfig accepts a missing finalReview and the two booleans, refuses other shapes and keys', () => {
+  const ok = [
+    good(),
+    { ...good(), finalReview: {} },
+    { ...good(), finalReview: { adversarial: true } },
+    { ...good(), finalReview: { singleWave: false } },
+    { ...good(), finalReview: { adversarial: true, singleWave: false } },
+  ];
+  for (const c of ok) assert.deepEqual(validateReleaseConfig(c), [], JSON.stringify(c.finalReview));
+  const bad = [
+    [{ ...good(), finalReview: 'x' }, /finalReview/],
+    [{ ...good(), finalReview: [] }, /finalReview/],
+    [{ ...good(), finalReview: { adversarial: 'sim' } }, /finalReview\.adversarial/],
+    [{ ...good(), finalReview: { single: true } }, /finalReview\.single/],
+  ];
+  for (const [c, re] of bad) assert.ok(validateReleaseConfig(c).some((e) => re.test(e)), JSON.stringify(c.finalReview));
+});
+
 test('validateReleaseConfig checks optional fields and duplicate gate names', () => {
   const a = good(); a.gates.push({ name: 'lint', cmd: 'x', kind: 'exit' });
   assert.ok(validateReleaseConfig(a).some((e) => /duplicate/.test(e)));

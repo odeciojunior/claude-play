@@ -333,12 +333,14 @@ test('AC3: implementer and fixer prompts cite no superpowers and forbid asking',
   assert.ok(defLine.includes("agentType: 'productivity-tools:implementer'"));
   const chunks = src.split('implAgent(').slice(1);
   assert.equal(chunks.length, 6, 'six calls');
-  const labels = [/:impl/, /-fix/, /final-fix/, /gates-fix/, /merge-fix/, /delta-fix/];
+  const labels = [/-fix/, /final-fix/, /gates-fix/, /merge-fix/, /delta-fix/];
   const calls = chunks.map((c) => c.slice(0, 2000));
   for (const re of labels) {
     assert.ok(calls.some((c) => re.test(c)), `a call carries ${re}`);
   }
   assert.ok(calls.some((c) => c.startsWith('buildImplPrompt(')));
+  assert.match(src, /const runImpl = label => withLocks\(locks, \(\) => implAgent\(buildImplPrompt\(/);
+  assert.ok(src.includes("runImpl(`${E}:t${t.n}:impl`)"), 'the task implementation goes through runImpl with its label');
   assert.equal(calls.filter((c) => c.startsWith('`${C()}')).length, 4);
   assert.equal(calls.filter((c) => c.startsWith('`${Cn()}')).length, 1);
   assert.ok(!P.buildImplPrompt(ctx, task).includes(noAsk), 'the implementer prompt leaves NO_ASK to the agent file');
@@ -367,4 +369,42 @@ test('implementer.md carries the checks contract: identical command, verbatim ou
   assert.match(agent, /`humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer/);
   assert.match(agent, /technical disagreement/);
   assert.match(agent, /Never `git add -A`/);
+});
+
+test('AC4: the final review and verification prompts cite no superpowers and forbid asking', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const read = (name) => readFileSync(join(here, '..', '..', '..', 'agents', name), 'utf8').replace(/\r\n/g, '\n');
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
+  const noAsk = src.match(/const NO_ASK = '([^']*)'/)[1];
+  const front = (text) => text.match(/^---\n([\s\S]*?)\n---\n/)[1];
+
+  const fr = read('final-reviewer.md');
+  const frFm = front(fr);
+  assert.match(frFm, /^name: final-reviewer$/m);
+  assert.match(frFm, /^description: .*never asks the person.*only reads/im);
+  assert.match(frFm, /^tools: Read, Grep, Glob, Bash$/m);
+  assert.doesNotMatch(frFm, /^(model|effort):/m);
+  assert.ok(fr.includes(noAsk), 'final-reviewer body carries NO_ASK literally');
+  assert.match(fr, /^## Review mode$/m);
+  assert.match(fr, /^## Verify mode$/m);
+  assert.match(fr, /`Mode: review, lens: <key>`/);
+  assert.match(fr, /`Mode: verify\.`/);
+
+  const ti = read('test-integrity.md');
+  const tiFm = front(ti);
+  assert.match(tiFm, /^name: test-integrity$/m);
+  assert.match(tiFm, /^tools: Read, Write, Bash$/m);
+  assert.doesNotMatch(tiFm, /^(model|effort):/m);
+  assert.ok(ti.includes(noAsk), 'test-integrity body carries NO_ASK literally');
+
+  for (const text of [fr, ti, src]) assert.doesNotMatch(text, /superpowers/i);
+
+  assert.ok(src.includes("FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }"));
+  assert.match(src, /const COMMON_BASE = `[\s\S]*?Asking the user is FORBIDDEN/);
+  const finalCalls = src.split('agent(`').slice(1).map((c) => c.slice(0, 700)).filter((c) => /label: `\$\{E\}:final-/.test(c));
+  assert.equal(finalCalls.length, 2, 'one review call and one verify call');
+  for (const c of finalCalls) {
+    assert.ok(c.startsWith('${C()}'), 'the final call opens with the briefing');
+    assert.match(c, /\.\.\.FRA/);
+  }
 });
