@@ -24,7 +24,10 @@ export function validateReleaseConfig(cfg) {
   }
   if (cfg.taskReview != null) {
     if (typeof cfg.taskReview !== 'object' || Array.isArray(cfg.taskReview)) errors.push('taskReview must be an object');
-    else for (const f of ['restricted', 'single']) if (cfg.taskReview[f] != null && typeof cfg.taskReview[f] !== 'boolean') errors.push(`taskReview.${f} must be a boolean`);
+    else {
+      for (const k of Object.keys(cfg.taskReview)) if (k !== 'restricted') errors.push(`taskReview.${k} is not a supported key (only taskReview.restricted)`);
+      if (cfg.taskReview.restricted != null && typeof cfg.taskReview.restricted !== 'boolean') errors.push('taskReview.restricted must be a boolean');
+    }
   }
   const locks = Array.isArray(cfg.locks) ? cfg.locks : [];
   if (cfg.locks != null && !Array.isArray(cfg.locks)) errors.push('locks must be a list of names');

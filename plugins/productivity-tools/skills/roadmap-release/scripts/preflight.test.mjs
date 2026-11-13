@@ -762,11 +762,16 @@ test('the workflow rule warning says the skill launch needs no rule', () => {
   assert.doesNotMatch(w, /claude -p[^.]*denied/);
 });
 
-test('E21: validateReleaseConfig accepts a missing taskReview and valid flags, refuses other shapes', () => {
+test('E21: validateReleaseConfig accepts a missing taskReview and restricted only, refuses other shapes and keys', () => {
   assert.deepEqual(validateReleaseConfig(good()), []);
-  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: true, single: false } }), []);
-  for (const bad of [true, [], { restricted: 'yes' }, { single: 1 }]) {
+  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: true } }), []);
+  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: false } }), []);
+  for (const bad of [true, [], { restricted: 'yes' }]) {
     assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => /taskReview/.test(e)), JSON.stringify(bad));
+  }
+  for (const bad of [{ single: true }, { single: 1 }, { restricted: true, single: false }, { other: true }]) {
+    const key = Object.keys(bad).find((k) => k !== 'restricted');
+    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => e.includes(`taskReview.${key}`)), JSON.stringify(bad));
   }
 });
 
@@ -782,7 +787,7 @@ test('E21: the review-package.mjs rule is required only with taskReview.restrict
   const off = run(undefined);
   assert.deepEqual(off.errors, []);
   assert.ok(!off.missingRules.includes(rule), off.missingRules.join());
-  assert.ok(!run({ restricted: false, single: true }).missingRules.includes(rule));
+  assert.ok(!run({ restricted: false }).missingRules.includes(rule));
   const on = run({ restricted: true });
   assert.deepEqual(on.errors, []);
   assert.ok(on.missingRules.includes(rule), on.missingRules.join());
