@@ -696,22 +696,12 @@ function postMergeFixes(commits, E) {
   })
 }
 
-// External-effect authorization. Items: "gate:<name>", "<E>:T<n>" and "<E>:AC<k>" (bare, bind on first use), "<E>:T<n>@<fp>", "<E>:AC<k>@<fp>", "checkout:<target>".
-function parseAuthorizeExternal(v) {
-  if (v == null || v === '') return { items: [], error: null }
-  if (!Array.isArray(v)) return { items: [], error: 'authorizeExternal must be a list of items such as "gate:G3", "E18:T4", "E18:AC1" or "checkout:<target>"' }
-  const re = /^(gate:\S+|[A-Za-z][A-Za-z0-9-]*:(T|AC)[1-9]\d*(@[0-9a-f]{8})?|checkout:\S+)$/
-  const bad = v.findIndex(i => typeof i !== 'string' || !re.test(i))
-  if (bad !== -1) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(v[bad])}` }
-  return { items: [...new Set(v)], error: null }
-}
 // True only for <wtRoot>/_integracao: the integration worktree this workflow creates. Any other path is the person's checkout.
 function isOwnWorktree(path, wtRoot) {
   const norm = p => String(p == null ? '' : p).replace(/[\\]/g, '/').replace(/\/+$/, '')
   const a = norm(path), b = norm(wtRoot) + '/_integracao'
   return /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 }
-function isAuthorized(items, item) { return (items || []).includes(item) }
 // Deterministic 32-bit FNV-1a; 8 hex digits. With a planBlob that looks like a git object id (40-64 hex; the blob of the committed plan file) the hash depends only on it:
 // the agent retranscribes the task fields on each run, so they must not move it. Without a valid blob it falls back to the tasks (n, trimmed title,
 // sorted files, external, externalDedupe), so a missing blob still fails safe.
@@ -725,6 +715,18 @@ function planFingerprint(tasks, planBlob = '') {
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
   return h.toString(16).padStart(8, '0')
 }
+// <embed src="../../../lib/external-auth.mjs" exports="strip">
+// Gerado de ../../../lib/external-auth.mjs por plugins/productivity-tools/scripts/embed.mjs; não editar aqui.
+// External-effect authorization. Items: "gate:<name>", "<E>:T<n>" and "<E>:AC<k>" (bare, bind on first use), "<E>:T<n>@<fp>", "<E>:AC<k>@<fp>", "checkout:<target>".
+function parseAuthorizeExternal(v) {
+  if (v == null || v === '') return { items: [], error: null }
+  if (!Array.isArray(v)) return { items: [], error: 'authorizeExternal must be a list of items such as "gate:G3", "E18:T4", "E18:AC1" or "checkout:<target>"' }
+  const re = /^(gate:\S+|[A-Za-z][A-Za-z0-9-]*:(T|AC)[1-9]\d*(@[0-9a-f]{8})?|checkout:\S+)$/
+  const bad = v.findIndex(i => typeof i !== 'string' || !re.test(i))
+  if (bad !== -1) return { items: [], error: `authorizeExternal item not recognized: ${JSON.stringify(v[bad])}` }
+  return { items: [...new Set(v)], error: null }
+}
+function isAuthorized(items, item) { return (items || []).includes(item) }
 // The item to ask for when an external task is not authorized yet (null when it may run). A missing flag counts as external.
 function externalHold(task, E, items, fp) {
   if (task.external === false) return null
@@ -736,6 +738,7 @@ function bindAuthorizations(items, E, fp) {
   const re = /^[^:]+:(T|AC)[1-9]\d*$/
   return (items || []).map(i => (i.startsWith(E + ':') && re.test(i) && i.indexOf('@') < 0 ? `${i}@${fp}` : i))
 }
+// </embed>
 function externalGaps(tasks) {
   const gap = description => ({ severity: 'critical', category: 'defeito', description })
   return (tasks || []).flatMap(t => [
