@@ -526,6 +526,15 @@ test('AC2: workflow copy recomputes the same digest', () => {
   assert.equal(loadCopy().planDigest({ plan: out.plan, source: out.source }), out.digest);
 });
 
+// The workflow load agent copies emit's stdout; the Bash tool moves output above ~30 KB to a file,
+// so emit prints compact JSON on one line (an 11-task plan drops from ~37 KB to ~27 KB).
+test('emit CLI prints compact one-line JSON', () => {
+  const r = runCli(['emit', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim().split('\n').length, 1);
+  assert.equal(r.stdout.trim(), JSON.stringify(JSON.parse(r.stdout)));
+});
+
 test('emit adds route, wave and fileCount', () => {
   const { out } = emit(PLAN_TEXT);
   const [t1, , , , t5] = out.plan.tasks;

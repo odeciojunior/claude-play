@@ -770,7 +770,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
 `);
       return 1;
     }
-    out(JSON.stringify(e.out, null, 2));
+    out(JSON.stringify(e.out)); // compact: the workflow load agent copies this stdout whole
     return 0;
   }
   const r = checkPlan(text, { planPath: file, specPath });
