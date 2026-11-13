@@ -10,7 +10,7 @@ import { readDataBlock } from '../lib/data-block.mjs';
 import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
 import { checkSpec, checkRecords, SUMMARY_LANGS, mdTable, stopsOf, formatRecords } from './spec-tool.mjs';
 import { route } from '../lib/routing.mjs';
-import { fnv1a, planDigest } from '../lib/plan-digest.mjs';
+import { canon, fnv1a, planDigest } from '../lib/plan-digest.mjs';
 
 export const SCHEMA = 'plan/1';
 const TOP = ['schema', 'id', 'title', 'spec', 'roadmap', 'constraints', 'externalPatterns', 'tasks', 'evidence', 'rulings', 'needsPerson'];
@@ -635,6 +635,25 @@ export function emitPlan(text, { planPath, root = null, specText = null, specPat
   };
 }
 
+// DEC-640: the lean emit holds only what the workflow loader reads (id, roadmap, tasks and evidence rows; per task the
+// fields of tasksFromPlan and of the route recalculation). `authored` hashes the author fields left out (writes, produces,
+// consumes, covers, checks), so a change in a frozen task still shows. The digest covers exactly what is printed.
+export function leanEmit(full) {
+  const { plan, source } = full;
+  const lean = {
+    schema: plan.schema,
+    id: plan.id,
+    roadmap: plan.roadmap,
+    tasks: plan.tasks.map((t) => ({
+      n: t.n, title: t.title, deps: t.deps, files: t.files, score: t.score, testFirst: t.testFirst, locks: t.locks,
+      external: t.external, externalDedupe: t.externalDedupe, noCommit: t.noCommit, route: t.route,
+      authored: fnv1a(JSON.stringify(canon({ writes: t.writes, produces: t.produces, consumes: t.consumes, covers: t.covers, checks: t.checks }))),
+    })),
+    evidence: plan.evidence,
+  };
+  return { tool: full.tool, schema: full.schema, path: full.path, source, plan: lean, digest: planDigest({ plan: lean, source }) };
+}
+
 export function summarizePlan(data) {
   const tasks = data.tasks.map((t) => {
     const r = routeOf(data, t);
@@ -676,7 +695,7 @@ export function formatPlanSummary(s, { lang = 'pt' } = {}) {
   ].join('\n');
 }
 
-const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]\n     node plan-tool.mjs summary <plan.md> [--spec <spec.md>] [--lang pt|en] [--json]';
+const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--full] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]\n     node plan-tool.mjs summary <plan.md> [--spec <spec.md>] [--lang pt|en] [--json]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -694,9 +713,11 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   let outDir = null;
   let only = null;
   let lang = 'pt';
+  let full = false;
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json') json = true;
+    else if (a === '--full' && cmd === 'emit') full = true;
     else if (a === '--spec') {
       if (i + 1 >= rest.length) return bad(`--spec exige um caminho\n${USAGE}`);
       specPath = rest[++i];
@@ -770,7 +791,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
 `);
       return 1;
     }
-    out(JSON.stringify(e.out)); // compact: the workflow load agent copies this stdout whole
+    out(JSON.stringify(full ? e.out : leanEmit(e.out))); // compact and lean (DEC-640): the workflow load agent copies this stdout whole
     return 0;
   }
   const r = checkPlan(text, { planPath: file, specPath });
