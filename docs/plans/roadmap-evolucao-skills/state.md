@@ -35,7 +35,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E18 | publicado | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; G1 a G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E19 | na-branch | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb` | E19: seguir o fluxo do release após na-branch |
 | E20 | na-branch | `D:/projects/claude-play-wt/E20/docs/superpowers/specs/2026-11-12-E20-autor-plano-plan-writer-ponteiros-design.md`, `docs/superpowers/plans/2026-11-12-E20-autor-plano-plan-writer-ponteiros.md`, `4cbf12881845aadf0289c4634b7b5f7f039957b4` | E20: seguir o fluxo do release após na-branch |
-| E21 | bloqueado (BLQ-10) | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` | E21: seguir o fluxo do release após executando |
+| E21 | executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` | E21: seguir o fluxo do release após executando |
 | E22 | publicado | `8f53396d9d5bb47731d7d4a1fa027d5197922a99`; `feat/E22`, `docs/superpowers/specs/2026-11-11-E22-tracker-enxuto-rubricas-design.md`, `docs/superpowers/plans/2026-11-11-E22-tracker-enxuto-rubricas.md`, `53fe7d1`, `docs/reports/2026-11-11-E22-tracker-rubricas-comportamental.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E23 | nao-iniciado | - | Aguardar E8 e E21 |
 | E24 | nao-iniciado | - | Aguardar E21 e E23 |
@@ -49,7 +49,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-10 | E21 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: Item 2 foi corrigido, com teste, no commit 3b5c950. No item 1 os comentários dos outros estágios voltaram ao texto original (commit [...] texto completo em docs/plans/evolucao-skills-E21/reviews.md | E21 | 2026-11-13 | quando o bloqueio de E21 for resolvido; restaura E21 para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes

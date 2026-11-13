@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
+| 2026-11-13 | E21 | BLQ-10 resolvido: desbloqueio de E21 pelo release | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
 | 2026-11-13 | E21 | BLQ-10 aberto: E21 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: Item 2 foi corrigido, com teste, no commit 3b5c950. No item 1 os comentários dos outros estágios voltaram ao texto original (commit [...] texto completo em docs/plans/evolucao-skills-E21/reviews.md | `branch feat/E21` |
 | 2026-11-12 | E21 | E21 passou para executando | `docs/plans/evolucao-skills-E21/spec.md`, `docs/plans/evolucao-skills-E21/plan.md` |
 | 2026-11-12 | E9 | Comportamental do implementer (DEC-576): modo A falhou 2x (comando anotado em checks quebra testFirstGap); texto do agente corrigido em c8ee19a (comando literal idêntico, saída sem paráfrase, humanInputs restrito); reexecução: A e B passam. US$ 1,56. E21 liberado. | `docs/reports/2026-11-12-E9-implementador-comportamental.md` |
