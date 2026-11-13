@@ -4321,3 +4321,12 @@ test('AC3: an unchanged target reuses the recorded gates baseline', async () => 
   assert.ok(other.r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
   assert.ok(!other.calls.some((c) => c.label === 'E1:setup'));
 });
+
+test('AC3: a recorded baseline wins over a partial baseline returned by the preflight', async () => {
+  const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
+  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
+  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: JSON.stringify(prep), baseline: { headSha: 'abc1234', clean: true, gates: [] } } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)), JSON.stringify(r.operatorActions));
+  assert.ok(calls.some((c) => c.label === 'E1:setup'));
+});

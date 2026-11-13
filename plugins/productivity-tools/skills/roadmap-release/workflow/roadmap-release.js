@@ -1606,7 +1606,7 @@ PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only step
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (for example CRLF, scripts that require bash).
 Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : ', baseline { headSha, clean, gates } (none when step 2 stopped)'}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
-if (pre && MODE === 'run' && !pre.baseline) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES) || undefined
+if (pre && MODE === 'run') pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES) || pre.baseline
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
 // Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
