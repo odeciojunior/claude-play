@@ -139,7 +139,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Depois do merge de E24: revisão da estratégia para o card E24 nomear plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs; ratificar DEC-626 a DEC-636 e as desta retomada num só registro, DEC-632 com emenda e os tamanhos medidos, tratando as repetições como em E8.
 - (executor) E10, 1ª tarefa que edita o script: TEST_INTEGRITY_DEFAULT (1.506 caracteres) vira script do plugin e resume-test-integrity despacha o agente test-integrity. E24 deve fechar perto de 239.904 (folga 96); E28 só começa com 450.
 - (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
-- (executor) E8, limite pelo nome: orquestrador, via subagent opus em sessão claude -p, cópia do plugin da ponta com roadmap-release.js acolchoado por comentário (260k, 300k, 400k, 600k); registrar o maior que lança e o menor que falha em docs/reports/. Teto US$ 4. Antes do spec de E10.
+- (executor) Depois do merge de E24, antes de E10: commit próprio na release subindo MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), citando docs/reports/2026-11-13-E8-limite-lancamento-workflow.md no comentário de size.test.mjs. Preflight/skill: diagnosticar not found como script acima de 512 KiB.
 <!-- /roadmap:pending -->
 
 ## Em andamento

@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E8 | Limite de lançamento pelo nome medido (DEC-641): 524.288 bytes (512 KiB) lança, 524.289 não (o workflow some do registro, erro not found). US$ 0,90. MAX_WORKFLOW_CHARS sobe a 250.000 em commit próprio depois do merge de E24 e antes de E10. | `docs/reports/2026-11-13-E8-limite-lancamento-workflow.md` |
 | 2026-11-13 | E24 | r2 parou em infra na 1ª carga do plano (congelada, antes do plan-author): 3 cópias do emit de 14.341 caracteres alteradas (haiku 2x rulings a mais, sonnet 1 trecho de checks). Spec reescrito (0d3c118) e aprovado; plano segue 90a1506. US$ 2,92. Fable: fix/carga-plano e retomar com notes. | `docs/reports/2026-11-13-E24-run.md` |
 | 2026-11-13 | E24 | r1 parou em defeito (T4: 239.950 contra limite 239.800; T1 a T3 ficam em a636183). US$ 11,39. Fable: T4 até 239.930 (referência 239.904, folga 96), guardas de veredicto único e reason não branco, prompt sem Diff com formato em final-reviewer.md; sem adiar nem mover para script. | `docs/reports/2026-11-13-E24-run.md` |
 | 2026-11-13 | E24 | BLQ-13 aberto: E24 bloqueado: automatic execution stopped (conteudo): task 4 BLOCKED: T4 (verificação adversarial) não coube no limite de 239800 caracteres de roadmap-release.js, então nada foi commitado. O déficit medido é [...] texto completo em docs/plans/evolucao-skills-E24/reviews.md | `branch feat/E24` |
