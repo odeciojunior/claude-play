@@ -24,7 +24,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
 | E8 | na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
-| E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
+| E10 | bloqueado (BLQ-14) | - | Aguardar E2, E18 e E24 |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
@@ -50,6 +50,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
+| BLQ-14 | E10 bloqueado: automatic execution stopped (conteudo): spec has open issues after 2 fixes: 1. [important/defeito] docs/plans/evolucao-skills-E10/spec.md [I6] [I6] R15 fixes the assertions listed in round 1 [...] texto completo em docs/plans/evolucao-skills-E10/reviews.md | E10 | 2026-11-13 | quando o bloqueio de E10 for resolvido; restaura E10 para nao-iniciado |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
