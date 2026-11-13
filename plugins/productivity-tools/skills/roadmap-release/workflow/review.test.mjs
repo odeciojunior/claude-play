@@ -469,9 +469,24 @@ test('AC1: the test-first failure names the start commit to reset to before a re
   const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
   const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
   assert.ok(line, 'fail message built from the gap');
-  assert.match(line, /rebase --onto \$\{start\} <last task commit> HEAD/);
-  assert.match(line, /not the review log or effect marks/);
+  // HEAD as the <branch> argument rebases a detached HEAD and leaves the branch with the task commit.
+  assert.match(line, /rebase --onto \$\{start\} <last task commit> \$\{br\}/);
+  assert.doesNotMatch(line, /<last task commit> HEAD/);
+  assert.match(line, /keeping the review log/);
   assert.doesNotMatch(line, /reset --hard \$\{start\}/);
   assert.match(line, /\$\{wt\}/);
   assert.ok(body.indexOf('let start =') > 0 && body.indexOf('let start =') < body.indexOf(line), 'start is defined before the failure');
+});
+
+test('AC1: with effect or wait marks the test-first failure asks the owner instead of a rebase', () => {
+  // "T<n>: external effect completed" and "T<n>: resumed after awaiting person" match the done grep, and an earlier
+  // run's wait marks sit inside start..task, so no rebase of the task commits makes a rerun run the check.
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
+  const m = line.match(/\$\{(authorizedExt \|\| awaitingPerson\.includes\(t\.n\)) \? `([^`]*)` : `([^`]*)`\}/);
+  assert.ok(m, 'the marker cases (closeEffect runs for them) branch away from the rebase');
+  assert.match(m[2], /ask the owner/);
+  assert.doesNotMatch(m[2], /rebase/);
+  assert.match(m[3], /rebase --onto/);
+  assert.match(body, /if \(authorizedExt \|\| awaitingPerson\.includes\(t\.n\)\) \{\s*const closed = await closeEffect/);
 });
