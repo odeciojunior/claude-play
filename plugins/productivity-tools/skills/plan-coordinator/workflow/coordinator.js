@@ -1227,17 +1227,24 @@ const ensureBaseline = async () => {
   return null
 }
 
+// `again` is lost with a kill: once per run, before any launch (the worktree then only holds work from before the kill),
+// a committed step whose files changed after a fix goes back to the list.
+const sweepCommitted = async () => {
+  if (S.run.commits !== 'per-step' || swept) return
+  swept = true
+  // A file that an unfinished step also owns may hold that step's partial work: it is left to the step that commits it.
+  const open = new Set(S.steps.filter((x) => x.status !== 'pass').flatMap(filesOf))
+  for (const s of S.steps) {
+    if (s.status !== 'pass' || s.noCommit === true || !s.sha || filesOf(s).length === 0) continue
+    if (filesOf(s).some((f) => open.has(f))) continue
+    const d = await runCmd(`git -C ${shq(ROOT)} status --porcelain -- ${filesOf(s).map(shq).join(' ')}`, `T${s.n}:git-status`, { phase: 'Commit' })
+    if (d && d.exit === 0 && String(d.stdout || '').trim() !== '') again.add(s.n)
+  }
+}
+
 // Per-step commits, one at a time in the order of n, after every return of the wave and its review. Returns { result } to stop or { did }.
 const commitSteps = async () => {
   if (S.run.commits !== 'per-step') return { did: false }
-  if (!swept) { // `again` is lost with a kill: once per run, a committed step whose files changed after a fix goes back to the list
-    swept = true
-    for (const s of S.steps) {
-      if (s.status !== 'pass' || s.noCommit === true || !s.sha || filesOf(s).length === 0) continue
-      const d = await runCmd(`git -C ${shq(ROOT)} status --porcelain -- ${filesOf(s).map(shq).join(' ')}`, `T${s.n}:git-status`, { phase: 'Commit' })
-      if (d && d.exit === 0 && String(d.stdout || '').trim() !== '') again.add(s.n)
-    }
-  }
   const todo = stepsToCommit(S, again)
   if (todo.length === 0) return { did: false }
   phase('Commit')
@@ -1301,6 +1308,7 @@ try {
   for (const a of Array.isArray(A.answers) ? A.answers : []) queue(normalizeAnswer(a))
   const resumed = await flush('resume')
   if (resumed) return resumed
+  await sweepCommitted()
 
   for (let turn = 0; turn < 500; turn++) {
     const act = nextAction(S)

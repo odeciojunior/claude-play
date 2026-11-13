@@ -507,6 +507,22 @@ test('AC5: the skill launches coordinator-workflow by name', () => {
   }
 });
 
+test('AC3: a relaunch in wave 2 keeps a file shared with a committed wave-1 step under the step that owns the commit', () => withSandbox(async (sb) => {
+  // T3 also modifies src/a.mjs, which T1 committed in wave 1; the run dies inside T3 after it wrote its files
+  const sim = makeSim(sb, { impl: (n) => (n === 3 ? dieAfterWriting(sb, 3) : undefined) });
+  await assert.rejects(sim.go(launchArgs(sb)), /killed/);
+  const dead = readState(sb);
+  assert.ok(dead.steps[0].sha, 'T1 is committed before the kill');
+  assert.equal(dead.steps[2].status, 'launched');
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const end = readState(sb);
+  assert.equal(sh(sb.dir, 'git', ['log', '-1', '--format=%s', end.steps[0].sha]), 'FX T1: ' + end.steps[0].title);
+  assert.equal(sh(sb.dir, 'git', ['log', '-1', '--format=%s', end.steps[2].sha]), 'FX T3: ' + end.steps[2].title);
+  assert.equal(sh(sb.dir, 'git', ['log', '--format=%s', '--grep', '^FX T1:']).split('\n').length, 1, 'T1 is not recommitted');
+}, { plan: readFileSync(FIXTURE_PLAN, 'utf8').replace('"files": { "create": ["src/c.mjs"], "modify": [], "test": ["tests/c.test.mjs"] }', '"files": { "create": [], "modify": ["src/a.mjs"], "test": [] }') }));
+
 test('AC3: a kill after git commit and before its commit event resumes by finding the existing commit', () => withSandbox(async (sb) => {
   const sim = makeSim(sb, { runner: (rec) => { if (/T1:/.test(rec.cmd) && / commit -m /.test(rec.cmd)) throw new Error('killed after the commit'); return undefined } });
   await assert.rejects(sim.go(launchArgs(sb)), /killed/);
