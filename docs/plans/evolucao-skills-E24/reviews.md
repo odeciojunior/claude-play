@@ -97,3 +97,13 @@ Para um agente próprio, productivity-tools:test-integrity (agents/test-integrit
 Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --decision de add-decision.
 
 flow.test.mjs entra no escopo; a asserção da linha 2189 vira três no mesmo teste: E1:final-1-r2 despacha agentType productivity-tools:final-reviewer, seu prompt traz Mode: review e os achados anteriores, e agents/final-reviewer.md traz no modo review a frase Blocks (defeito): an edit to the spec or the plan made by a fix round.
+
+### 6. block-open --what
+
+Origem: docs/plans/evolucao-skills-E24/reviews.md (campo source do corte). Destino: argumento --what de block-open.
+
+E24 bloqueado: automatic execution stopped (conteudo): task 4 BLOCKED: T4 (verificação adversarial) não coube no limite de 239800 caracteres de roadmap-release.js, então nada foi commitado. O déficit medido é 150 caracteres, na implementação mais enxuta que respeita a spec. A árvore de trabalho está limpa (git status --porcelain vazio) e o HEAD continua em a636183 (E24 T3). Escrevi o teste primeiro nos dois arquivos e vi a falha. Depois implementei `S; branch feat/E24 kept at D:/projects/claude-play-wt/E24
+
+## Registro do estágio blocked-record
+
+Esta execução (estágio blocked-record) repete os dados acima sem alteração: nenhum item crítico ou importante em nenhuma revisão, menores somados conforme a tabela, nenhum item não resolvido, nenhum risco aceito, tarefas 1 a 3 concluídas e tarefa 4 BLOCKED. O corte 6 acima foi acrescentado nesta execução; os cortes 1 a 5 foram mantidos.
