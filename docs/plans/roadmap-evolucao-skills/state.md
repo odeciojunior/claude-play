@@ -140,6 +140,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E10, 1ª tarefa que edita o script: TEST_INTEGRITY_DEFAULT (1.506 caracteres) vira script do plugin e resume-test-integrity despacha o agente test-integrity. E24 deve fechar perto de 239.904 (folga 96); E28 só começa com 450.
 - (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
 - (executor) Depois do merge de E24, antes de E10: commit próprio na release subindo MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), citando docs/reports/2026-11-13-E8-limite-lancamento-workflow.md no comentário de size.test.mjs. Preflight/skill: diagnosticar not found como script acima de 512 KiB.
+- (executor) fix/carga-plano: resumeFromRunId de execução anterior à mudança, mesmo caminho de plugin, pode comparar emit completo com enxuto e parar em plan-frozen-tasks falso; normalizar em authoredTask ou avisar em operator.md. plan-author.md:40 descreve o emit com data em vez de plan.
 <!-- /roadmap:pending -->
 
 ## Em andamento
