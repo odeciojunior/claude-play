@@ -18,6 +18,8 @@
 
 Retomada (BLQ-10, nota do dono): T1-T7 estão commitadas e congeladas. Na ponta `50a80d0` de `feat/E21` o script mede 240.425 caracteres LF (425 acima do teto), porque a T5 (`f8df406`) abriu espaço encurtando comentários de outros estágios e a correção final `66afa1d` os restaurou. O commit `3b5c950` (o arnês de revisão por tarefa mede o `task-reviewer` real) fica. A nova Tarefa 9 libera o espaço só no texto da revisão por tarefa e vem antes da Tarefa 8 (comportamental), que roda sobre a nova ponta. A revisão final da branch inteira (opus, high) é o estágio final do workflow e se repete sobre a ponta nova; não é tarefa deste plano. A decisão do dono (R13 e R14 da spec) é gravada em `decisions.md` pelo estágio de registro do workflow, na release; esta branch não edita a pasta do roadmap.
 
+Segunda retomada (BLQ-11, nota do dono, DEC-597 emendada por DEC-598, DEC-599, DEC-600, DEC-601): a T9 terminou no caminho de reversão (`a2cfea8`, `0ee4677`, script em 239.866 caracteres LF) e a T8 foi feita pelo orquestrador principal e commitada em `c72dafc` com o relatório em `docs/reports`. As tarefas 1 a 9 ficam congeladas (texto da T5 incluído, embora seu código tenha sido revertido); a T8 não roda de novo nem tem o relatório reescrito; `3b5c950` fica. A revisão única com dois veredictos saiu para o card E28: o AC3 da spec ficou só com a metade padrão, e E21 não a reimplementa. O plano acrescenta só a Tarefa 10 (preflight aceita só `taskReview.restricted`) e a Tarefa 11 (volta dos testes da metade padrão do AC3 removidos por `0ee4677`). Nenhuma das duas edita `roadmap-release.js` nem `agents/task-reviewer.md` (o texto do modo `review` e os campos `spec` e `quality` de `S_TASKREVIEW` ficam sem uso, para E28). Se uma rodada de correção exigir mexer no script, a edição fica em `restrictedRound`, `taskIssues`, `buildTaskReviewPrompt` e no laço `kind`, mede `workflowChars` depois de cada edição e devolve `BLOCKED` acima de 240.000, sem editar `size.test.mjs` nem `MAX_WORKFLOW_CHARS` e sem tocar texto ou comentário de outro estágio.
+
 Toda tarefa que edita `roadmap-release.js` mede depois de cada edição com `node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs` (que usa `workflowChars`). A T2 é a primeira que edita o script: move o texto genérico de `buildTaskReviewPrompt`, a chamada a `repeatRule()` desse prompt e o texto de verificações vazias de `fmtChecks` para `agents/task-reviewer.md`, e troca o despacho por `revAgent`, antes de acrescentar qualquer outro código; relata a folga obtida. T3, T4 e T5 acrescentam o mínimo: as instruções dos modos ficam no agente, o prompt leva só uma linha curta de modo e os dados. Se em qualquer tarefa o total passar de 240.000, a tarefa para com `BLOCKED`, diz quantos caracteres passou e pede ação do dono; nunca edita `size.test.mjs` nem `MAX_WORKFLOW_CHARS` (DEC-556, DEC-563, nota do dono, C5).
 
 ## Tarefas
@@ -114,13 +116,40 @@ Rodar `prompts.test.mjs`, `review.test.mjs`, `flow.test.mjs` e o teste de tamanh
 
 Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda passar de 240.000, reverter só o código da T5 (`f8df406`) em `roadmap-release.js` e nos testes (`review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs`): o laço volta a `['spec', 'quality']` fixo, `taskIssues` perde a reprovação de veredicto do modo único, `buildTaskReviewPrompt` perde o modo `review`, e saem os testes `AC3` de T5 e a extensão do AC5 para o modo único. Ficam a revisão restrita, o agente (o texto do modo `review` no agente fica, sem uso), `S_TASKREVIEW`, o preflight e `config.md` (fora de "script e testes"). Medir de novo; commitar `E21 T9: reverte o modo único da T5 (AC3 adiado)` e devolver `BLOCKED` parcial com o total medido, o AC3 (parte do modo único) adiado para card novo e a pendência de `taskReview.single` aceito pelo preflight e documentado sem efeito, para o dono. Se nem assim couber, `BLOCKED` com o total, sem outra edição. Nunca editar `size.test.mjs`.
 
+### Tarefa 10: Preflight aceita só taskReview.restricted
+
+Roda no worktree `D:/projects/claude-play-wt/E21`, em `feat/E21`, sem navegador e sem servidor. Não edita `roadmap-release.js` nem `agents/task-reviewer.md` (DEC-599, R15 da spec).
+
+Teste primeiro em `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs`:
+
+- o teste `E21: validateReleaseConfig accepts a missing taskReview and valid flags, refuses other shapes` (~765) passa a se chamar `E21: validateReleaseConfig accepts only taskReview.restricted and names any other key`: aceita `taskReview` ausente, `{}`, `{ restricted: true }` e `{ restricted: false }` (lista de erros vazia); recusa `true`, `[]` e `{ restricted: 'yes' }` com erro que cita `taskReview`; recusa `{ single: true }`, `{ single: false }`, `{ restricted: true, single: false }` e uma chave inventada (`{ restricted: true, foo: 1 }`), com um erro que contém `taskReview.single` (ou `taskReview.foo`) e `restricted`.
+- no teste `E21: the review-package.mjs rule is required only with taskReview.restricted === true, from the plugin root` (~773), o caso `run({ restricted: false, single: true })` (~785) passa a `run({ restricted: false })`, com o mesmo assert (a regra não entra).
+
+Rodar `node --test plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs` e relatar a falha (`single` ainda aceito).
+
+Implementar em `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs`, em `validateReleaseConfig` (~25-27): com `taskReview` objeto, cada chave diferente de `restricted` gera o erro `taskReview.<chave> is not a known key; only restricted is accepted`, e `restricted` presente e não booleano gera `taskReview.restricted must be a boolean`; `taskReview` que não é objeto continua `taskReview must be an object`. O filtro de `review-package.mjs` em `extras.scripts` (~413) não muda. Em `plugins/productivity-tools/skills/roadmap-release/references/config.md`, a linha `taskReview` (~21) documenta só o booleano opcional `restricted` (ausente ou outro valor que não `true` vale falso, lido com `=== true`; liga a nova revisão restrita aos achados abertos e ao diff da correção pelo script do pacote; desligado por padrão, E27 decide ligar) e diz que o preflight recusa `taskReview` que não é objeto, `restricted` não booleano e qualquer outra chave, `single` incluída; a frase sobre `single` sai. A linha 55 (regra de `review-package.mjs` só com `restricted`) fica.
+
+Rodar `preflight.test.mjs` e `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` (o teste ~3234 de `WORKFLOW_SCRIPTS` segue passando). Commit `E21 T10: preflight aceita só taskReview.restricted`.
+
+### Tarefa 11: Testes da metade padrão do AC3
+
+Roda no worktree `D:/projects/claude-play-wt/E21`, em `feat/E21`, sem navegador e sem servidor. Só testes, sem teste primeiro: o código já existe na ponta (laço `for (const kind of ['spec', 'quality'])` e `revAgent` em `roadmap-release.js` ~2500-2505), e um teste que passa de primeira é o esperado (R16 da spec, DEC-598). Não edita `roadmap-release.js`, `agents/task-reviewer.md`, `size.test.mjs` nem `prompts.test.mjs`. Partir de `git -C D:/projects/claude-play-wt/E21 show 0ee4677 -- plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` e descartar todo assert do modo único (`TR.single`, `['review']`, `taskIssues` com `single`, `Mode: review`, `review1`, `review-fix1`, `config: { taskReview: { single: true } }`).
+
+- Em `workflow/review.test.mjs`, no fim do arquivo, restaurar `AC3: by default each task gets the spec and quality reviews on today's model` (texto do script, por `SRC`): no corpo de `runDeliverable`, o laço é `for (const kind of ['spec', 'quality'])` (dois laços em sequência); o trecho do `reviewLoop` por tarefa até `if (loop.halted)` contém `revAgent(`, `model: rvModel || reviewModelFor(t)` e `effort: effortFor(rvModel || reviewModelFor(t))`; a linha de `const revAgent` contém `agentType: 'productivity-tools:task-reviewer'`; o script não lê `taskReview.single` (`doesNotMatch` de `/\.single\b/` no corpo de `runDeliverable`).
+- Em `workflow/flow.test.mjs`, no fim do arquivo, restaurar `AC3: default spec and quality reviews on the task-reviewer agent` com a metade padrão do teste removido: `exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) })`; os rótulos de revisão da tarefa são `['E1:t1:spec1', 'E1:t1:quality1']`, sem `E1:t1:review`; em cada um `opts.agentType === 'productivity-tools:task-reviewer'` e `opts.model` presente; o `opts.model` das duas é o mesmo.
+
+Rodar `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` e `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` até passar; o teste de tamanho continua passando (script intocado, 239.866). Depois os gates G1, G2, G3 e G5. Conferir com `git -C D:/projects/claude-play-wt/E21 diff --stat HEAD~1` que só os dois testes mudaram. Commit `E21 T11: testes da metade padrão do AC3`.
+
+Evidência aceitável se um gate não puder rodar neste ambiente (por exemplo, `claude` ausente): a saída literal do comando e o motivo, sem resultado inventado.
+
 ## Evidência dos critérios
 
 | Critério | Tipo | Comando | Teste |
 |---|---|---|---|
 | AC1 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC1: sameFinding with byId treats the same id with other wording as a repeat`, `AC1: fmt writes the id before the description`, `AC1: runReviewLoop escalates the fixer when a finding returns with the same id and other wording` |
 | AC2 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC2: by default a re-review rereads the whole task range`, `AC2: the restricted re-review gets only the open findings and the fix diff`, `AC2: taskIssues keeps open and missing verdicts and drops closed ones` |
-| AC3 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC3: by default each task gets the spec and quality reviews on today's model`, `AC3: taskIssues fails a single review with a missing or failing verdict without a blocking finding`, `AC3: the single review prompt asks for both verdicts` |
+| AC3 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs` | `AC3: by default each task gets the spec and quality reviews on today's model` (restaurado pela T11) |
+| AC3 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` | `AC3: default spec and quality reviews on the task-reviewer agent` (restaurado pela T11) |
 | AC4 | test | `node --test plugins/productivity-tools/scripts/review-package.test.mjs` | `AC4: review-package writes one file with the header and the diff of the range`, `AC4: review-package refuses an unknown ref and a base that is not an ancestor, writing nothing`, `AC4: review-package accepts an empty range` |
 | AC5 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs` | `AC5: task review prompts cite no superpowers and forbid asking` |
 
@@ -133,6 +162,8 @@ Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda p
 - R18: retomada de BLQ-10 como Tarefa 9 depois da T7; a T8 passa a depender da T9.
 - R19: `taskReview` normalizado uma vez; a garantia de "só `true` liga" passa ao teste da normalização e ao `flow.test.mjs`.
 - R20: no caminho de reversão, `single` fica no preflight, em `config.md` e no agente; o BLOCKED parcial cita a pendência.
+- R21: segunda retomada (BLQ-11) com T1-T9 congeladas; Tarefa 10 (preflight só `restricted`, teste primeiro) e Tarefa 11 (testes da metade padrão do AC3, sem teste primeiro, com os gates), sem editar o script nem o agente.
+- R22: a evidência do AC3 mantém o comando da marca (`review.test.mjs`) e passa a citar o teste restaurado pela T11; os testes do modo único saem do `testRef` (E28); uma linha a mais cita o teste de `flow.test.mjs`.
 
 ## Bloco de dados
 
@@ -157,7 +188,9 @@ Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda p
     "Retomada de BLQ-10 na ponta 50a80d0 de feat/E21, mantendo 3b5c950; T1-T7 commitadas e congeladas.",
     "A T9 só edita restrictedRound, taskIssues, buildTaskReviewPrompt, o laço kind de runDeliverable e seus comentários em roadmap-release.js; nunca comentário ou texto de outro estágio (DEC-556, DEC-563, DEC-592).",
     "Se a T9 não chegar a 240000 caracteres LF, reverter só o código da T5 (f8df406) no script e nos testes, manter a revisão restrita e o agente, AC3 adiado para card novo e BLOCKED parcial para o dono (R14 da spec).",
-    "A decisão do dono vai para decisions.md pelo estágio de registro do workflow, na release; a revisão final (opus, high) da branch inteira é o estágio final do workflow e se repete sobre a nova ponta."
+    "A decisão do dono vai para decisions.md pelo estágio de registro do workflow, na release; a revisão final (opus, high) da branch inteira é o estágio final do workflow e se repete sobre a nova ponta.",
+    "Segunda retomada (BLQ-11): T1-T9 congeladas (texto da T5 incluído); a T8 não roda de novo nem tem o relatório reescrito; manter 3b5c950; a revisão única (taskReview.single) é do card E28 e não é reimplementada (DEC-597, DEC-598, DEC-600).",
+    "T10 e T11 não editam roadmap-release.js nem agents/task-reviewer.md; uma correção que precise do script fica em restrictedRound, taskIssues, buildTaskReviewPrompt e no laço kind, mede workflowChars depois de cada edição e devolve BLOCKED acima de 240000."
   ],
   "tasks": [
     {
@@ -427,6 +460,65 @@ Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda p
       "external": false,
       "externalDedupe": null,
       "noCommit": false
+    },
+    {
+      "n": 10,
+      "title": "Preflight aceita só taskReview.restricted",
+      "deps": [6],
+      "files": {
+        "create": [],
+        "modify": [
+          "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+          "plugins/productivity-tools/skills/roadmap-release/references/config.md"
+        ],
+        "test": ["plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"]
+      },
+      "writes": [],
+      "score": { "ambiguity": 0, "reasoning": 1, "blast": 1, "verifiability": 0 },
+      "produces": ["validateReleaseConfig recusa toda chave de taskReview além de restricted com o erro 'taskReview.<chave> is not a known key; only restricted is accepted'"],
+      "consumes": [],
+      "covers": ["AC2"],
+      "testFirst": true,
+      "checks": [
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs", "expect": "exit 0" }
+      ],
+      "locks": [],
+      "external": false,
+      "externalDedupe": null,
+      "noCommit": false
+    },
+    {
+      "n": 11,
+      "title": "Testes da metade padrão do AC3",
+      "deps": [9, 10],
+      "files": {
+        "create": [],
+        "modify": [],
+        "test": [
+          "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
+          "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+        ]
+      },
+      "writes": [],
+      "score": { "ambiguity": 0, "reasoning": 1, "blast": 0, "verifiability": 0 },
+      "produces": [],
+      "consumes": [],
+      "covers": ["AC3"],
+      "testFirst": { "exempt": "só testes de código que já existe na ponta (R16 da spec, DEC-598); passam de primeira" },
+      "checks": [
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs", "expect": "exit 0" },
+        { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs", "expect": "exit 0 (até 240000 caracteres LF)" },
+        { "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"", "expect": "exit 0 (G1)" },
+        { "cmd": "claude plugin validate .", "expect": "exit 0 (G2)" },
+        { "cmd": "claude plugin validate plugins/productivity-tools", "expect": "exit 0 (G3)" },
+        { "cmd": "node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/productivity-tools", "expect": "exit 0 (G5)" }
+      ],
+      "locks": [],
+      "external": false,
+      "externalDedupe": null,
+      "noCommit": false
     }
   ],
   "evidence": [
@@ -452,7 +544,16 @@ Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda p
       "ac": "AC3",
       "kind": "test",
       "command": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
-      "testRef": "AC3: by default each task gets the spec and quality reviews on today's model; AC3: taskIssues fails a single review with a missing or failing verdict without a blocking finding; AC3: the single review prompt asks for both verdicts",
+      "testRef": "AC3: by default each task gets the spec and quality reviews on today's model",
+      "external": false,
+      "externalDedupe": null,
+      "blq": null
+    },
+    {
+      "ac": "AC3",
+      "kind": "test",
+      "command": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs",
+      "testRef": "AC3: default spec and quality reviews on the task-reviewer agent",
       "external": false,
       "externalDedupe": null,
       "blq": null
@@ -560,6 +661,28 @@ Caminho de reversão (R14 da spec, C5): se, esgotado esse texto, o total ainda p
       "decision": "Ficam como estão (a nota do dono limita a reversão ao script e aos testes); o BLOCKED parcial cita a pendência de single aceito e documentado sem efeito para o card novo decidir.",
       "basis": "Nota do dono: reverter só o código da T5 no script e nos testes, manter restrita e agente.",
       "alternative": "Tirar single também do preflight e de config.md.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R21",
+      "question": "Como a segunda retomada (BLQ-11) entra no plano com T1-T9 congeladas?",
+      "decision": "Duas tarefas novas: T10 (teste primeiro; validateReleaseConfig aceita só taskReview.restricted e recusa qualquer outra chave nomeando-a; config.md documenta só restricted) e T11 (só testes, sem teste primeiro; restaura em review.test.mjs e flow.test.mjs a metade padrão do AC3 removida por 0ee4677, com os gates G1, G2, G3 e G5). Nenhuma edita roadmap-release.js nem agents/task-reviewer.md; a T11 depende da T10 para os gates rodarem sobre a ponta final.",
+      "basis": "Nota do dono (itens 1 a 7), DEC-597 emendada por DEC-598, DEC-599, DEC-600, DEC-601; R15 e R16 da spec; tarefa nova recebe número maior que o maior existente.",
+      "alternative": "Reescrever a T5 ou a T6 em vez de tarefas novas.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
+    },
+    {
+      "id": "R22",
+      "question": "Que evidência fica para o AC3 depois que os testes do modo único saíram para E28?",
+      "decision": "A linha do AC3 mantém o comando da marca (review.test.mjs) e cita só o teste restaurado pela T11 com o nome de antes; uma segunda linha cita o teste de flow.test.mjs (rótulos spec1 e quality1, agentType task-reviewer, mesmo modelo).",
+      "basis": "Regra da marca verify (comando mantido); DEC-598 deixa no AC3 só a metade padrão; os nomes dos testes do modo único não existem mais na ponta.",
+      "alternative": "Manter no testRef os nomes dos testes do modo único.",
       "costIfWrong": "low",
       "reversible": true,
       "scope": "local",
