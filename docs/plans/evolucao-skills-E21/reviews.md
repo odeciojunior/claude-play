@@ -153,3 +153,23 @@ Riscos aceitos: nenhum.
 ## Execução do registro de bloqueio após T9 (blocked-record)
 
 Esta execução reconfirmou os dados da retomada de T9 (rodadas, concerns, tarefas e entradas humanas idênticos aos já registrados em "Execução de retomada (T9, falhou)"). Acrescentou apenas o item 7 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED (task 9, reversão parcial); branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
+
+## Execução de 2026-11-13 (falhou na carga do plano)
+
+Execução: falhou.
+
+Motivo da falha: plan load: integrity digest not confirmed (plan-tool emit output is not JSON (JSON Parse error: Unexpected identifier "TRUNCATED")).
+
+### Revisões desta execução
+
+| Estágio | Rodadas (número, modelo do revisor, tier da correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1 (opus, -) | nenhum | 0 | nenhuma |
+
+Riscos aceitos: nenhum.
+
+Concerns desta execução: nenhuma.
+
+Gates desta execução: nenhum rodado (a execução parou na carga do plano).
+
+Entradas humanas desta execução: nenhuma.
