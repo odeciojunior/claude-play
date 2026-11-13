@@ -14,6 +14,16 @@ const REMOVED = 50508;
 const TARGET = 6000;
 const BOUNDARY = '## After the workflow returns';
 
+test('the launch section names every required workflow arg', () => {
+  const skill = lf(readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8'));
+  const m = skill.match(/\{ plan, state, runToken, [^}]*\}/);
+  assert.ok(m, 'SKILL.md lacks the args list');
+  for (const k of ['plan', 'state', 'runToken', 'progress']) {
+    assert.ok(new RegExp(`\\b${k}\\b`).test(m[0]), `args list lacks ${k}`);
+  }
+  assert.ok(skill.includes('scripts/progress.mjs'), 'SKILL.md does not say where progress comes from');
+});
+
 test('AC4: prose loaded before the launch stays within the derived target', () => {
   assert.equal(TARGET, BASELINE - REMOVED);
   const skill = lf(readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8'));
