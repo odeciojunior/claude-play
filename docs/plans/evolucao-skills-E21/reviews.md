@@ -102,6 +102,9 @@ Resumo registrado nas concerns: T7 mediu G1 com 1678 testes (baseline 1657), wor
 6. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: add-decision --decision.
    Texto completo: Retomar na ponta 50a80d0 de feat/E21, mantendo 3b5c950, e liberar pelo menos 425 caracteres só no texto da revisão por tarefa (restrictedRound, taskIssues, buildTaskReviewPrompt, o laço kind e seus comentários): mover para agents/task-reviewer.md os rótulos e instruções genéricas do prompt (explicação das linhas Range e Measure, rótulos das verificações e da rodada anterior), normalizar taskReview uma vez, encurtar a mensagem e o comentário do modo único; medir workflowChars após cada edição; nunca tocar comentário ou texto de outro estágio, size.test.mjs ou o teto.
 
+7. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: block-open --what.
+   Texto completo: E21 bloqueado: automatic execution stopped (conteudo): task 9 BLOCKED: Partial BLOCKED, as the plan's reversal path (R14/C5) and the owner instruction require. Text freed in the per-task review wording (restrictedRound, taskIssues, buildTaskReviewPrompt, kind loop, and their comments) got workflowChars only from 240425 to 240252, short of the 240000 cap. I measured that even deleting both comments would only reach about 240080. So I reverted only the ; branch feat/E21 kept at D:/projects/claude-play-wt/E21
+
 ## Execução do registro de bloqueio (blocked-record)
 
 Esta execução reconfirmou os dados acima sem alterações nas rodadas, nos achados, nas concerns, nos gates e nas entradas humanas. Acrescentou apenas o item 5 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED até decisão do dono; branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
@@ -146,3 +149,7 @@ Riscos aceitos: nenhum.
 
 1. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): despachar o agente task-reviewer com um pacote de revisão real e registrar o resultado em docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueante: não. Contorno: Nenhum relatório criado e nenhum commit feito, para não registrar um aceite fictício (R16). O orquestrador executa e commita 'E21 T8: relatório comportamental do task-reviewer'.
 2. O quê: execução comportamental do orquestrador da sessão principal (DEC-204): rodar o teste comportamental do task-reviewer com ferramenta de subagent e gravar docs/reports/2026-11-12-E21-revisor-comportamental.md. Bloqueante: sim. Contorno: Nenhum relatório fictício foi criado. O orquestrador da sessão principal executa a tarefa e commita 'E21 T8: relatório comportamental do task-reviewer'.
+
+## Execução do registro de bloqueio após T9 (blocked-record)
+
+Esta execução reconfirmou os dados da retomada de T9 (rodadas, concerns, tarefas e entradas humanas idênticos aos já registrados em "Execução de retomada (T9, falhou)"). Acrescentou apenas o item 7 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED (task 9, reversão parcial); branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
