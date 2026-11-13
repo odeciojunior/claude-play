@@ -4338,6 +4338,26 @@ test('AC3: a recorded baseline wins over a partial baseline returned by the pref
   assert.ok(calls.some((c) => c.label === 'E1:setup'));
 });
 
+// fix/pos-E23 (P5 fase 2): a recorded value the workflow rejects never falls back to the agent's own copy.
+test('AC3: recorded in prose with a copied baseline stops at the preflight, no gate accepted', async () => {
+  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: 'The baseline command printed the recorded measure; reused it.', baseline: gm('abc1234') } : undefined);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(r.operatorActions.some((o) => o.kind === 'preflight:other'), JSON.stringify(r.operatorActions));
+  assert.ok(!labels.some((l) => /^E1:/.test(l)), labels.join(','));
+  // empty recorded: the measured baseline is used as before
+  const measured = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'preflight' ? { ...over(l), recorded: '' } : undefined) });
+  assert.ok(!measured.r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.ok(measured.labels.includes('E1:setup'));
+});
+
+test('AC3: the preflight Return line names recorded and the install runs in both cases', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const lines = calls.find((c) => c.label === 'preflight').prompt.split('\n');
+  const ret = lines.find((x) => x.startsWith('Return ok'));
+  assert.match(ret, /recorded \(raw stdout of step 4's first command, verbatim, as a string; then no baseline\)/, ret);
+  assert.match(lines.find((x) => x.startsWith('4. ')), /Install first in both cases/);
+});
+
 test('E23 final-fix F2: a spec fix round in this run forces the plan review even when the record matches', async () => {
   let n = 0;
   const bad = (l) => (/:spec-load\d$/.test(l) && n++ === 0 ? { checkExit: 1, checkStdout: '{"errors":[{"code":"schema"}]}', emitExit: 1, emitStdout: '' } : undefined);
