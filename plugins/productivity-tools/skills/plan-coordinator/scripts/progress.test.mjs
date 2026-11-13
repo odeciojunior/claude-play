@@ -11,6 +11,7 @@ import {
   initState,
   nextAction,
   applyEvent,
+  applyEvents,
 } from '../../../lib/progress-state.mjs';
 import { emitPlan, checkPlan, buildMap } from '../../../scripts/plan-tool.mjs';
 import { checkPureSource } from '../../../scripts/embed.mjs';
@@ -47,7 +48,7 @@ test('exported constants', () => {
   assert.equal(STATE_SCHEMA, 'progress/1');
   assert.deepEqual(STEP_STATUSES, ['pending', 'launched', 'review-owed', 'pass', 'skip', 'skip-manual', 'waiting-manual', 'stopped']);
   assert.deepEqual(RUN_STATUSES, ['map-ready', 'in-progress', 'blocked', 'completed']);
-  assert.equal(EVENT_TYPES.length, 21);
+  assert.equal(EVENT_TYPES.length, 22);
   assert.ok(EVENT_TYPES.includes('approve-map') && EVENT_TYPES.includes('final-gate'));
 });
 
@@ -1145,4 +1146,76 @@ test('a later wave keeps its gate when an earlier wave is reopened', () => {
     else s = ok(s, { type: 'advance' });
   }
   assert.ok(seen.includes(2) && seen.includes(3), 'gates for wave 2 and wave 3: ' + seen);
+});
+
+test('initState records files and noCommit of each task', () => {
+  const r = emitPlan(planText, { planPath });
+  const s = initState(r.out, { planPath: 'plan.md', now: NOW });
+  for (const t of r.out.plan.tasks) {
+    const expected = [...new Set([...t.files.create, ...t.files.modify, ...t.files.test])];
+    assert.deepEqual(step(s, t.n).files, expected);
+    assert.equal(step(s, t.n).noCommit, t.noCommit === true);
+  }
+  const synthetic = structuredClone(r.out);
+  synthetic.plan.tasks[0].files = { create: ['a.txt', 'b.txt'], modify: ['b.txt', 'c.txt'], test: ['a.txt', 'd.txt'] };
+  delete synthetic.plan.tasks[0].noCommit;
+  synthetic.plan.tasks[1].noCommit = true;
+  const s2 = initState(synthetic, { now: NOW });
+  assert.deepEqual(s2.steps[0].files, ['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+  assert.equal(s2.steps[0].noCommit, false);
+  assert.equal(s2.steps[1].noCommit, true);
+});
+
+test('rerun keeps files and noCommit on the new step', () => {
+  const s = stateFor();
+  const c = structuredClone(s);
+  step(c, 5).files = ['x.txt', 'y.txt'];
+  step(c, 5).noCommit = true;
+  step(c, 5).status = 'stopped';
+  c.run.status = 'in-progress';
+  c.manual.push({ kind: 'open-question', step: 5, text: 't', open: true });
+  const r = ok(c, { type: 'answer', step: 5, value: 'rerun' });
+  const n7 = step(r, 7);
+  assert.deepEqual(n7.files, ['x.txt', 'y.txt']);
+  assert.equal(n7.noCommit, true);
+});
+
+test('baseline event records run.baseline', () => {
+  assert.ok(EVENT_TYPES.includes('baseline'));
+  const s = started();
+  const b = { type: 'baseline', test: 'npm t', exit: 1, tail: 'x', failedNames: ['a', 'b'] };
+  const r = ok(s, b);
+  assert.deepEqual(r.run.baseline, { test: 'npm t', exit: 1, tail: 'x', failedNames: ['a', 'b'] });
+  assert.equal(r.run.test, 'npm t');
+  const withTest = ok({ ...structuredClone(s), run: { ...s.run, test: 'keep' } }, b);
+  assert.equal(withTest.run.test, 'keep');
+  refused(s, { ...b, exit: 'x' }, 'wrong-status');
+  refused(s, { ...b, exit: 1.5 }, 'wrong-status');
+  refused(s, { ...b, failedNames: 'a' }, 'wrong-status');
+  refused(s, { ...b, failedNames: ['a', 2] }, 'wrong-status');
+});
+
+test('report pass keeps the handoff field', () => {
+  const l = ok(wave2(), { type: 'launch', steps: [2] });
+  const withHandoff = ok(l, { type: 'report', step: 2, value: 'pass', handoff: 'next: do Y' });
+  assert.equal(step(withHandoff, 2).handoff, 'next: do Y');
+  const without = ok(l, { type: 'report', step: 2, value: 'pass' });
+  assert.equal(step(without, 2).handoff, null);
+});
+
+test('applyEvents applies a batch atomically', () => {
+  const s = mapReady();
+  const before = structuredClone(s);
+  const good = applyEvents(s, [{ type: 'approve-map' }, { type: 'block', text: 'q' }, { type: 'unblock', at: T1 }], T0);
+  assert.equal(good.ok, true);
+  assert.equal(good.state.run.status, 'in-progress');
+  assert.equal(good.state.history.at(-1).at, T1);
+  assert.equal(good.state.history.at(-2).at, T0);
+  assert.deepEqual(s, before);
+  const bad = applyEvents(s, [{ type: 'approve-map' }, { type: 'approve-map' }, { type: 'block' }], T0);
+  assert.equal(bad.ok, false);
+  assert.equal(bad.code, 'wrong-status');
+  assert.equal(bad.index, 1);
+  assert.equal(bad.state, undefined);
+  assert.deepEqual(s, before);
 });

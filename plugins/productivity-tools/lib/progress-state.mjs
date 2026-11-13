@@ -30,6 +30,7 @@ export const EVENT_TYPES = [
   'refuse',
   'card-changed',
   'answer',
+  'baseline',
 ];
 
 const psClone = (v) => JSON.parse(JSON.stringify(v));
@@ -85,6 +86,8 @@ export function initState(emitted, opts = {}) {
     reviewTier: t.route.reviewTier,
     gate: t.route.gate,
     external: t.external,
+    files: [...new Set([...t.files.create, ...t.files.modify, ...t.files.test])],
+    noCommit: t.noCommit === true,
     mode: 'delegated',
     agent: 'general-purpose',
     status: 'pending',
@@ -384,6 +387,7 @@ const psHandlers = {
     if (s.status !== 'launched') return psRefuse('wrong-status', 'passo ' + s.n + ' não está launched');
     if (!['pass', 'fail', 'blocked'].includes(ev.value)) return psRefuse('wrong-status', 'valor inválido: ' + ev.value);
     if (ev.text !== undefined) s.note = ev.text;
+    if (ev.value === 'pass' && ev.handoff !== undefined) s.handoff = ev.handoff;
     if (ev.value === 'pass') {
       s.status = s.gate ? 'review-owed' : 'pass';
     } else if (s.external) { // linha 12
@@ -594,6 +598,16 @@ const psHandlers = {
     return null;
   },
 
+  baseline(state, ev) { // linha de base dos testes
+    if (!Number.isInteger(ev.exit)) return psRefuse('wrong-status', 'exit deve ser inteiro');
+    if (!Array.isArray(ev.failedNames) || ev.failedNames.some((x) => typeof x !== 'string')) {
+      return psRefuse('wrong-status', 'failedNames deve ser lista de textos');
+    }
+    state.run.baseline = { test: ev.test ?? null, exit: ev.exit, tail: ev.tail ?? null, failedNames: psClone(ev.failedNames) };
+    if (state.run.test === null || state.run.test === undefined) state.run.test = ev.test ?? null;
+    return null;
+  },
+
   'card-changed'(state, ev) { // linha 7, 19
     const r = psResolve(state, ev, false);
     if (r.ok === false) return r;
@@ -716,4 +730,19 @@ export function applyEvent(state, event, now) {
   next.history.push(entry);
   next.run.updated = now;
   return { ok: true, state: next };
+}
+
+// Aplica o lote sobre uma cópia, com o `at` de cada evento (ou now); atômico: uma recusa
+// devolve o código e o índice do evento e nenhum estado.
+export function applyEvents(state, events, now) {
+  if (!Array.isArray(events)) return { ...psRefuse('unknown-event', 'lote de eventos não é lista'), index: 0 };
+  let cur = psClone(state);
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    const at = ev && ev.at !== undefined ? ev.at : now;
+    const r = applyEvent(cur, ev, at);
+    if (!r.ok) return { ok: false, code: r.code, message: r.message, index: i };
+    cur = r.state;
+  }
+  return { ok: true, state: cur, code: null, index: null };
 }
