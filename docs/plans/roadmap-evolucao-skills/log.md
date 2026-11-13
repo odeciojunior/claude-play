@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E12 | r1 mesclou E12 (55b2b84), G1 1797/0, G2 a G5 verdes; US$ 26,65. Registro executando falhou (script-runner devolveu exit 2 e stdout vazio no grupo com 16 decisões): decisões gravadas pelo orquestrador. Descoberta paginada (6 chamadas) funcionou. | `docs/reports/2026-11-13-E12-run.md` |
 | 2026-11-13 | E12 | E12 passou para na-branch | `55b2b842c15ad1b144de7fe603520cefd5c4c86f`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E12/spec.md`, `docs/plans/evolucao-skills-E12/plan.md`, `docs/plans/evolucao-skills-E12/reviews.md` |
 | 2026-11-13 | E18 | fix/status-releitura mesclada (DEC-672): status --deliverable E<n> (1.005 contra 30.045 bytes) nas releituras do registro e de docs-measure; revisão opus/high aprovou; comportamental haiku 2/2 (US$ 0,02); G1 1752/0; script 238.519 LF. | `cb1f085` |
 | 2026-11-13 | - | Poda das pendências (DEC-673): 27 notas arquivadas por entregável em docs/reports/2026-11-13-pendencias-por-entregavel.md (E11, gate DEC-458, E12, E13, E28 ou próxima edição do release workflow); state.md guarda um ponteiro por grupo. | `docs/reports/2026-11-13-pendencias-por-entregavel.md` |
