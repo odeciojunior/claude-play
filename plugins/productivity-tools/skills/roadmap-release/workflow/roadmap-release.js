@@ -244,7 +244,7 @@ function zeroTestGates(defs, baseline) {
     return def.kind === 'tests' && !def.invariant && !!r && r.ran !== false && !(r.total > 0)
   }).map(def => def.name)
 }
-// Post-merge floor: the target may not have fewer tests than the branch measured.
+// Post-merge floor: the target may not have fewer tests than the branch measured (minus baseline failures already unstable).
 function mergeFloor(baseline, branchMeasure) {
   const floor = JSON.parse(JSON.stringify(baseline || {}))
   for (const name of Object.keys(floor)) {
@@ -389,14 +389,14 @@ function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
 }
 // What the script itself verifies about a review: blocking issues plus a commit in the range and a clean tree.
-// marks = how many of minCommits are bookkeeping marks (started, completion), named in the finding.
+// marks = how many of minCommits are bookkeeping marks (started, completion), named in the finding so a fix does not invent a commit.
 function reviewTruth(r, minCommits, label, marks = 0) {
   const iss = [...blocking(r)]
   if (r && r.commitsInRange < minCommits) iss.push({ severity: 'critical', category: 'defeito', description: `fewer commits than expected in the range (${label}: ${r.commitsInRange} < ${minCommits}${marks > 0 ? '; the started and completion marks count; missing a started or completion mark?' : ''})` })
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
-// The route of the plan/1 emit (recalculated from the score) drives the models; the reviewer is opus for the route's reviewTier, an opus implementer and any external task.
+// The route of the plan/1 emit (recalculated here from the score, checked against the emitted one) drives the models; the reviewer is opus for the route's reviewTier, an opus implementer and any external task.
 function implModel(task) {
   const t = task && task.route && task.route.tier
   return ['haiku', 'sonnet', 'opus'].includes(t) ? t : 'sonnet'
@@ -449,7 +449,7 @@ function tasksFromPlan(plan) {
 function evidenceFromPlan(plan) {
   return ((plan && plan.evidence) || []).map(e => ({ ac: e.ac, kind: e.kind, command: e.command, testRef: e.testRef === undefined ? null : e.testRef, blq: e.blq, external: e.external, externalDedupe: e.externalDedupe }))
 }
-// Differences on tasks already committed between two plans (canonical JSON of the author's fields; wave, fileCount and route are derived, so ignored); a committed task missing from the next plan differs.
+// Differences on tasks already committed between two plans (canonical JSON of the fields the author writes; wave, fileCount and route are derived by plan-tool from the whole plan, so they are ignored); a committed task missing from the next plan is a difference.
 const authoredTask = t => { const { wave, fileCount, route, ...rest } = t || {}; return rest }
 function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   const find = (p, n) => ((p && p.tasks) || []).find(t => t.n === n)
@@ -463,7 +463,7 @@ function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   }
   return out
 }
-// The raw output of one plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit and the blob is a git id.
+// The raw output of one plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit and the blob is a git object id.
 function checkPlanLoad(t, { E, RM } = {}) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit code of emit' }
@@ -552,7 +552,7 @@ function briefing(ctx) {
 function lockNote(locks) {
   return locks && locks.length ? `You HOLD the lock(s): ${locks.join(', ')}.` : 'You hold no lock.'
 }
-// mark = { E, target }: the implementer guard of a launch, right before the effect; the first live call when a resume replays every call before it.
+// mark = { E, target }: the implementer guard of a launch, right before the effect; it is the first live call when a resume replayed every call before it.
 function externalNote(authorizedExternal, task, mark) {
   const first = mark && mark.E && mark.target ? `Immediately before the effect (before its duplicate check, after any code, test or lock need, so a BLOCKED for a lock writes nothing): in ${mark.target}..HEAD, if a commit whose subject starts "${mark.E} T${task.n} started" is newer than the newest one starting "${mark.E} T${task.n} launching", return NEEDS_HUMAN at once, say the effect may have started in an earlier run, and do not run the effect. Otherwise commit --allow-empty "${mark.E} T${task.n} started" (git reset -q first) and only then run the duplicate check and the effect. ` : ''
   return authorizedExternal
@@ -684,7 +684,7 @@ function truthDivergences(truth, slim, claims, target, lastGood, integBroken) {
   return out
 }
 // Resume args as shown to the report agent: the config is long and already known to the caller.
-// approveRulings is typed by the person (it names the exact text of each costly ruling): never in resume args.
+// approveRulings is typed by the person (it names the exact text of each costly ruling): it never goes back in resume args.
 function withoutApprove(args) {
   if (!args || typeof args !== 'object') return args
   const { approveRulings, ...rest } = args
@@ -983,7 +983,7 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   const res = results || {}
   const exp = expected || []
   const inN = r => r.n >= 1 && r.n <= exp.length
-  // The git add/commit asked after the list are not runs of it; a run names its command by n, by its text only without n.
+  // The git add/commit asked after the list are not runs of it; a run names its command by n (a model abbreviates long echoes), by its text only without n.
   const runs = (Array.isArray(res.runs) ? res.runs : []).filter(r => !(r && /^git /.test(r.command) && !inN(r) && !exp.includes(r.command)))
   const is = (r, i) => !!r && (Number.isInteger(r.n) ? r.n === i + 1 : r.command === exp[i])
   const rd = read || {}
@@ -1033,11 +1033,11 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
     if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
     else for (const id of changedIds) if (!list.includes(id)) failures.push(`${id} written by add-decision is not in pending-decisions`)
   }
-  // holdIds: decisions that can hold dependents. An existing: true answer holds only while the reread still lists it as pending; without a readable list it holds.
+  // holdIds: decisions that can hold dependents. An existing: true answer (the CLI dedupes regardless of status) holds only while the reread still lists it as pending; without a readable list it holds (fail safe).
   const holdIds = decisionIds.filter(d => d.changed || !list || list.includes(d.id)).map(d => d.id)
   return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id), holdIds }
 }
-// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence or a trailing "(local)" / "(contract)" / "(scope: local)" sets the scope; anything else is contrato.
+// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence, or a trailing "(local)" / "(contract)" / "(scope: local)" parenthetical, sets the scope and leaves the text; anything else is contrato.
 function parseDecision(text) {
   const t = collapseWs(text)
   const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t) || /\s*\(\s*(?:(?:alcance|scope)\s*:\s*)?(local|contrato|contract)\s*\)\.?$/i.exec(t)
@@ -1079,7 +1079,7 @@ function pluginRootOf(trackerCli) {
 function approveKey(ruling) {
   return `${ruling.id}:${fnv1a(collapseWs(ruling.decision))}`
 }
-// Stop rules over the spec data (spec-tool stopsOf plus the approval release): blocking human input, a ruling that contradicts a decision or gate, a costly irreversible ruling not yet approved.
+// Stop rules over the spec data (same stop set as spec-tool stopsOf, plus the approval release): blocking human input, a ruling that contradicts a decision or gate, a costly irreversible ruling not yet approved. The rest is carried on.
 function stopOrCarry({ rulings, needsPerson, approved }) {
   const ok = Array.isArray(approved) ? approved : []
   const filled = v => v !== null && v !== undefined && v !== ''
@@ -1097,7 +1097,7 @@ function stopOrCarry({ rulings, needsPerson, approved }) {
 function rulingDecisions(rulings) {
   return (rulings || []).map(r => ({ text: r.decision, scope: r.scope === 'contract' ? 'contrato' : 'local', discarded: r.alternative }))
 }
-// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify (only when the card criterion carries a valid tag).
+// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify (compared only when the card criterion carries a valid tag, as spec-tool check --roadmap does).
 function specCardMismatch(data, E, card) {
   const out = []
   if (!data || data.id !== E) out.push(`spec id ${data && data.id} is not ${E}`)
@@ -1119,7 +1119,7 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
-// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a failed check is not a failed load (a critical review issue),
+// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a failed check is not a failed load (it becomes a critical issue of the review),
 // an emit that is not the spec/1 envelope of this deliverable, or that differs from the card, is a failed load.
 function checkSpecLoad(t, E, card) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
@@ -2032,7 +2032,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Task commits of the previous version without a native spec: a new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
+  // Task commits of the previous version (spec and plan of the previous skills) without a native spec: the new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
   if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
     const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
     op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${artifactPaths(disc.roadmapSlug, E).spec}`,
