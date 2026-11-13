@@ -64,13 +64,13 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 - (executor) Na 1ª execução do release com E10 na ponta (E12): conferir a descoberta em páginas (6 chamadas), o grupo do registro confirmado pelo digest, truthStdout do relatório e o acerto por tentativa da cópia; anotar no relatório. Falha: correção antes da execução seguinte.
 - (executor) roadmap-release.js mede 238.471 caracteres LF na ponta da release (c1d6647): folga de 11.529 sob o teto de 250.000 (DEC-647). fix/status-releitura e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
-- (executor) Antes de E12: fix/status-releitura: status --deliverable <E> na CLI do tracker, usado pela releitura do registro e por docs-measure; teste primeiro, revisão opus, sem bump; conferência com haiku da releitura real e de discover --page 2 antes do merge.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E11: 11 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E11); ler no spec de E11.
 - (executor) Gate DEC-458: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção Gate DEC-458); ler antes de publicar plan-writer (DEC-458).
 - (executor) E12: 3 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E12); ler no spec de E12.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
+- (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
 <!-- /roadmap:pending -->
 
 ## Em andamento

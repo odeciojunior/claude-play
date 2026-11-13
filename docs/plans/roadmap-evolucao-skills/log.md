@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E18 | fix/status-releitura mesclada (DEC-672): status --deliverable E<n> (1.005 contra 30.045 bytes) nas releituras do registro e de docs-measure; revisão opus/high aprovou; comportamental haiku 2/2 (US$ 0,02); G1 1752/0; script 238.519 LF. | `cb1f085` |
 | 2026-11-13 | - | Poda das pendências (DEC-673): 27 notas arquivadas por entregável em docs/reports/2026-11-13-pendencias-por-entregavel.md (E11, gate DEC-458, E12, E13, E28 ou próxima edição do release workflow); state.md guarda um ponteiro por grupo. | `docs/reports/2026-11-13-pendencias-por-entregavel.md` |
 | 2026-11-13 | - | Poda das pendências (DEC-673): 6 itens de custo (E20 duas passadas, E21, E23, E24, E10) lançados em measurements.md e removidos; o custo de E9 segue pendente por falta de valor no repositório. | `DEC-673, measurements.md` |
 | 2026-11-13 | - | Poda das pendências (DEC-673): item Observar de E21 em diante fechado, absorvido pelo item de DEC-571 e DEC-573. | `DEC-673, DEC-571, DEC-573` |
