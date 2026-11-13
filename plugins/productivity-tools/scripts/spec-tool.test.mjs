@@ -372,6 +372,15 @@ test('emit: fixture prints data with parsed verify', () => {
   assert.ok(ac[0].textWithoutTag.startsWith('Given an empty system'));
 });
 
+// The workflow load agent copies emit's stdout; the Bash tool moves output above ~30 KB to a file,
+// so emit prints compact JSON on one line, like plan-tool emit.
+test('emit CLI prints compact one-line JSON', () => {
+  const r = runCli(['emit', FIXTURE_SPEC, '--roadmap', FIXTURE_ROADMAP]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim().split('\n').length, 1);
+  assert.equal(r.stdout.trim(), JSON.stringify(JSON.parse(r.stdout)));
+});
+
 test('emit: spec with an error exits 1 and prints nothing on stdout', () => {
   const r = runCli(['emit', '$SPEC'], mutate((d) => { delete d.mode; }));
   assert.equal(r.status, 1);
