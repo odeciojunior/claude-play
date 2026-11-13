@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.6 2026-11-13 -->
-# Evolução das skills de roadmap -- Estratégia v1.6
+<!-- roadmap:version 1.7 2026-11-13 -->
+# Evolução das skills de roadmap -- Estratégia v1.7
 
 ## Registro de mudanças
 
+- v1.7 (2026-11-13): card E23 corrigido por delegação do dono (risco 4 do card; H1 do spec de E23): passa a nomear o teste do script do registro, `plugins/productivity-tools/scripts/run-record.test.mjs`, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.6 (2026-11-13): critério 3 de E21 emendado por delegação do dono (DEC-597, DEC-598): só a metade padrão fica em E21, e a revisão única por tarefa passa ao card novo E28, porque a T5 levou roadmap-release.js a 240.252 caracteres contra o teto de 240.000 e foi revertida (0ee4677). Muda a peça 3 de E21; E27 peça 2 passa a valer só se E28 estiver integrado. E28 entra em ponta-a-ponta, depende de E21 e não é dependência de E13.
 - v1.5 (2026-11-12): critério 4 de E25 emendado por delegação do dono (DEC-282): o diálogo do Workflow não aprova script de 213.337 caracteres, então o critério passa a conferir a recusa sem regra e o lançamento com a regra exata. Nenhum entregável ou dependência muda.
 - v1.4 (2026-11-12): linha de base de E15 registrada e conferida. Entra a tabela de metas derivadas em "Métricas e metas" (critério 4 de E15; DEC-034, DEC-098), com as metas de prosa do planner (E4) e do tracker (E22). Nenhum entregável, dependência ou critério de aceite muda.
@@ -756,7 +757,7 @@ Peças:
 - Peça 1: registro da execução gravado por script na branch, com o que foi aprovado (spec, plano, árvore da branch, ponta do alvo sincronizada).
 - Peça 2: retomada que pula a revisão de spec, de plano e final quando esses quatro valores são os do registro, e reaproveita a medição de preparação quando o alvo não mudou.
 
-Arquivo de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que já existe e ganha os casos deste card.
+Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que já existe e ganha os casos deste card, e `plugins/productivity-tools/scripts/run-record.test.mjs`, criado aqui para o script do registro (peça 1).
 
 <!-- roadmap:acceptance -->
 1. Dada uma retomada em que spec, plano, árvore da branch e ponta do alvo são os registrados na aprovação, quando o workflow roda, então não faz nenhuma chamada de revisão de spec, de plano nem final. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs}
@@ -770,7 +771,7 @@ Definição de pronto: aceite passa na branch de release; G1, G2, G3 e G5 verdes
 - Gravar a aprovação move a ponta da branch e invalida a própria chave de retomada -> a chave usa a árvore e os arquivos, nunca a ponta da branch.
 - A retomada pula uma revisão que devia rodar (área com mais correções recentes, SRC-02 §1) -> sem registro, ou com qualquer dos quatro valores diferente, a retomada revisa como hoje; a lógica de efeito externo não é alterada nesta entrega e os testes atuais continuam passando.
 - A medição de preparação é feita uma vez por execução, no alvo, e o registro é por entregável, na branch -> o spec decide onde a medição fica guardada, e ela só é reaproveitada com a ponta do alvo igual à registrada (critério 3).
-- O script do registro não tem arquivo de teste nomeado neste card -> conferir o caminho no spec e corrigir o card pela estratégia antes da execução.
+- O script do registro não tinha arquivo de teste nomeado neste card -> resolvido na v1.7: o spec nomeou `plugins/productivity-tools/scripts/run-record.test.mjs` (R1, DEC-609) e o card passa a citá-lo.
 <!-- /roadmap:risks -->
 <!-- /roadmap:card -->
 
@@ -1029,6 +1030,7 @@ Nenhuma.
 | 1.4 | 2026-11-12 | Tabela de metas derivadas após a linha de base de E15 (DEC-034) |
 | 1.5 | 2026-11-12 | Critério 4 de E25 emendado após a conferência delegada (DEC-282) |
 | 1.6 | 2026-11-13 | Critério 3 de E21 emendado: a revisão única passa ao card novo E28 (DEC-597, DEC-598) |
+| 1.7 | 2026-11-13 | Card E23 nomeia o teste do script do registro, `run-record.test.mjs` (risco 4) |
 
 ## Fontes
 

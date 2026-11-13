@@ -3,6 +3,15 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E23 | Estratégia v1.7 por delegação (Fable): o card E23 nomeia o teste do script do registro, plugins/productivity-tools/scripts/run-record.test.mjs, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
+| 2026-11-13 | E23 | E23 integrada (9f62a7e) e ratificada por delegação (Fable): 12 decisões, 3 de contrato; 7 como estão, 5 com emenda (DEC-609, 611, 613, 615, 617). Script em 239.927 LF (folga 73). Custo US$ 19,33 mais r2 (r1 7,47; r2 sem valor: sessão morta 04:29 sem result, host; r3 11,48; B4 0,38). | `decisions.md` |
+| 2026-11-13 | E23 | DEC-617 (E23) ratificada com emenda por delegação (Fable): comportamental após o merge, na ponta da release, antes de E24, teto US$ 6 | `decisions.md` |
+| 2026-11-13 | E23 | DEC-615 (E23) ratificada com emenda por delegação (Fable): limites em escada de DEC-619, fecho em 239.927 LF (folga 73) | `decisions.md` |
+| 2026-11-13 | E23 | DEC-613 (E23, contrato) ratificada com emenda por delegação (Fable): com registro o preflight pula só a medição e ainda instala; a medição registrada vence a do agente | `decisions.md` |
+| 2026-11-13 | E23 | DEC-611 (E23) ratificada com emenda por delegação (Fable): o pulo do plano exige a revisão de spec pulada na mesma execução (c1afdb2) | `decisions.md` |
+| 2026-11-13 | E23 | DEC-609 (E23, contrato) ratificada com emenda por delegação (Fable): run.json só vale vindo de commit de run-record (0ea32bd) | `decisions.md` |
+| 2026-11-13 | E23 | DEC-619 e DEC-620 (E23, origem dono via Fable) ratificadas por delegação (Fable): limites em escada cumpridos (T3 238.792 a T6 239.788) e regra de chamada simples do implementer.md integrada em 74746f6, com B4 aprovado. | `decisions.md` |
+| 2026-11-13 | E23 | DEC-610 (contrato) e DEC-612, DEC-614, DEC-616 e DEC-618 de E23 ratificadas pelo dono por delegação (Fable), conferidas contra o código integrado em 9f62a7e (ponta 16e5a7a); nenhuma repete outra. | `decisions.md` |
 | 2026-11-13 | E23 | E23 passou para na-branch | `9f62a7e1b51fbae5ea883723346ed44a6e3bd365`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `docs/plans/evolucao-skills-E23/reviews.md` |
 | 2026-11-13 | E23 | E23 passou para executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
 | 2026-11-13 | E23 | BLQ-12 resolvido: desbloqueio de E23 pelo release | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |

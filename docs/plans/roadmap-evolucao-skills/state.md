@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.6 -- 2026-11-13
+Estratégia v1.7 -- 2026-11-13
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -118,7 +118,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Lançar em measurements.md a suíte de gatilho de E20: 50 execuções, US$ 6,04 (haiku 0,16; opus 5,87), fora do teto de E17 (DEC-478).
 - (executor) E20/gatilho: spec-3 (pt/en) passa direto a spec-author sem chamar Skill; a config descartável tem CLAUDE.md de usuário com regras de roteamento. Na próxima medição (E11), rodar spec-3 numa config sem CLAUDE.md de usuário ou contar o despacho a spec-author como rota do plugin.
 - (executor) Lançar em measurements.md a 2ª passada opus da suíte de gatilho de E20: 26 execuções, US$ 7,04 (sonda 0,62), saldo de DEC-478 restante US$ 6,92.
-- (executor) roadmap-release.js mede 239.866 caracteres LF na ponta da release (db32b32): folga de 134 sob o teto de 240.000 (DEC-556, DEC-563). E23, E24 e E10 editam o arquivo, em série; cada spec libera espaço no próprio estágio antes de somar código. E28 só começa com 450 de folga.
 - (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E24 ou E28, o primeiro que editar prompts.test.mjs: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (linha 337); apertar a conferência. E21 editou o arquivo e não apertou.
@@ -127,11 +126,14 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E28: em task-reviewer.md, verdicts só no modo restrito e spec/quality só no modo review (ponto 2 do relatório comportamental de E21). Hoje o script ignora esses campos fora do modo. Se E28 for descartado, a linha sai junto com o texto do modo review (DEC-600).
 - (executor) E10: a carga de spec e de plano deixa de copiar o stdout do emit (o Bash grava em arquivo a saída acima de ~30 KB; plano de E21: 27.212 bytes, 11 tarefas): ler de arquivo ou em partes, com teste. Antes de E10, emit de plano acima de 27 KB ou carga falha por tamanho vira correção própria.
 - (executor) Lançar em measurements.md o custo de E21 (DEC-567): r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; comportamental 1,34; total US$ 38,37, dos quais 8,85 em duas falhas de carga do plano. Conferir o teto de US$ 150 junto com E9 (maior execução sã: 13,65).
-- (dono) Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
-- (executor) Depois do merge de E23: ratificar DEC-609 a DEC-618 contra o código integrado (DEC-615 sai emendada pelos limites em escada) e revisão da estratégia v1.7 para o card E23 nomear plugins/productivity-tools/scripts/run-record.test.mjs.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
-- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
+- (executor) roadmap-release.js mede 239.927 caracteres LF na ponta da release (16e5a7a): folga de 73 sob o teto de 240.000 (DEC-556, DEC-563). E24 e E10 editam o arquivo, em série; cada um libera espaço no próprio estágio antes de somar código. E28 só começa com 450 de folga.
+- (executor) Antes de lançar E24: comportamental de E23 (DEC-204, emenda a DEC-617) na ponta da release, teto US$ 6, relatório em docs/reports/2026-11-13-E23-retomada-comportamental.md. Falha insegura segura E24; correção em roadmap-release.js pede nova medida e nota de E24 atualizada.
+- (executor) Lançar em measurements.md o custo de E23 (DEC-567): r1 7,47; r2 sem valor (sessão morta às 04:29 sem evento result, interrupção do host); r3 11,48; B4 0,38; total conhecido US$ 19,33. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
+- (executor) E10: o approve leva a medição dos gates num argumento codificado que um agente copia. Ao mover o registro para código, gravar a medição por script ou conferir um hash da carga em run-record.mjs. Até lá a fidelidade da cópia é a medida no comportamental de E23.
+- (executor) E11: a variante parada-retomada mede a meta de E23 de ponta a ponta (opus 9 para 7, ponderado 669 para 589) com o release nativo; o comportamental de E23 só confere os estágios, um a um.
+- (executor) Na 1ª execução de E24 com o plugin da ponta: conferir em feat/E24 o commit E24: run record (spec,plan) só com run.json e, havendo retomada, os concerns de review skipped; anotar no relatório de execução de E24.
 <!-- /roadmap:pending -->
 
 ## Em andamento
