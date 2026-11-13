@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E24 | Estratégia v1.8 (dono via Fable): card E24 nomeia preflight.test.mjs e flow.test.mjs; DEC-556 e DEC-563 substituídas por DEC-647; commits de run.json de feat/E24 (a431419, 3a449f4, 64b8761) conferidos, sem revisão pulada. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
+| 2026-11-13 | E24 | DEC-643 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E8 | DEC-641 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E24 | DEC-633 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E24 | DEC-632 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E24, E10 | Ratificação de E24 por delegação (Fable): 15 sem emenda; DEC-628 como repetição de DEC-642 (R3 do spec; vale o texto de DEC-642); DEC-643 e DEC-644 realizam DEC-637 e DEC-638. | `decisions.md` |
 | 2026-11-13 | E24 | Comportamental de E24 (DEC-204) depois do merge: final-reviewer pelo nome em review achou o defeito plantado; em verify refutou só o achado falso; splitRefuted real descartou só ele. 7/7 aprovado; US$ 0,30. | `docs/reports/2026-11-13-E24-revisao-final-comportamental.md` |
 | 2026-11-13 | E8 | MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), comentário de size.test.mjs cita o relatório do limite; commit próprio na release; G1 1714/0. | `9381791` |
 | 2026-11-13 | E24 | r3 mesclou E24 (4308baa), G1 1714/0, G2 a G5 verdes; US$ 7,95. Docs com docsOk false por relato do agente (comando com texto diferente, 1 a mais, painel relido sem E24), mas state, log e painel conferidos corretos e checker 0 erros: ação de docs encerrada. | `docs/reports/2026-11-13-E24-run.md` |

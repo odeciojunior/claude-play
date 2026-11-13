@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.7 2026-11-13 -->
-# Evolução das skills de roadmap -- Estratégia v1.7
+<!-- roadmap:version 1.8 2026-11-13 -->
+# Evolução das skills de roadmap -- Estratégia v1.8
 
 ## Registro de mudanças
 
+- v1.8 (2026-11-13): card E24 corrigido por delegação do dono (H1 do spec de E24; DEC-636): passa a nomear também o teste da validação de `finalReview`, `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs`, e `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que ganhou os casos de ponta a ponta dos critérios 1 a 3. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.7 (2026-11-13): card E23 corrigido por delegação do dono (risco 4 do card; H1 do spec de E23): passa a nomear o teste do script do registro, `plugins/productivity-tools/scripts/run-record.test.mjs`, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.6 (2026-11-13): critério 3 de E21 emendado por delegação do dono (DEC-597, DEC-598): só a metade padrão fica em E21, e a revisão única por tarefa passa ao card novo E28, porque a T5 levou roadmap-release.js a 240.252 caracteres contra o teto de 240.000 e foi revertida (0ee4677). Muda a peça 3 de E21; E27 peça 2 passa a valer só se E28 estiver integrado. E28 entra em ponta-a-ponta, depende de E21 e não é dependência de E13.
 - v1.5 (2026-11-12): critério 4 de E25 emendado por delegação do dono (DEC-282): o diálogo do Workflow não aprova script de 213.337 caracteres, então o critério passa a conferir a recusa sem regra e o lançamento com a regra exata. Nenhum entregável ou dependência muda.
@@ -785,7 +786,7 @@ Peças:
 - Peça 1: verificação adversarial de cada achado bloqueante da revisão final, como modo desligado por padrão; ligada, só o achado refutado explicitamente deixa de gerar correção, e fica registrado.
 - Peça 2: o número de rodadas de correção final continua o atual; a onda única existe como modo.
 
-Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs`.
+Arquivos de teste deste card: `plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs`, `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs`, que ganha os casos da validação de `finalReview`, e `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que ganha os casos de ponta a ponta dos critérios 1 a 3.
 
 <!-- roadmap:acceptance -->
 1. Dado o modo de verificação adversarial ligado e um achado bloqueante que a verificação refuta, quando o workflow o processa, então ele não gera correção e fica registrado como refutado no resultado da revisão. {verify: test; evidence: node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs}
@@ -1031,6 +1032,7 @@ Nenhuma.
 | 1.5 | 2026-11-12 | Critério 4 de E25 emendado após a conferência delegada (DEC-282) |
 | 1.6 | 2026-11-13 | Critério 3 de E21 emendado: a revisão única passa ao card novo E28 (DEC-597, DEC-598) |
 | 1.7 | 2026-11-13 | Card E23 nomeia o teste do script do registro, `run-record.test.mjs` (risco 4) |
+| 1.8 | 2026-11-13 | Card E24 nomeia também `preflight.test.mjs` e `flow.test.mjs` entre os arquivos de teste (H1 do spec de E24) |
 
 ## Fontes
 

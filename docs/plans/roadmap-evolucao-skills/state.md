@@ -1,6 +1,6 @@
 # Estado
 
-Estratégia v1.7 -- 2026-11-13
+Estratégia v1.8 -- 2026-11-13
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
@@ -113,14 +113,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E8, fora do plano (DEC-204): rodar no sandbox, com o plugin da ponta da release, o teste comportamental plan-only (definição de pronto do card) e a medição do limite de lançamento pelo nome; relatórios em docs/reports/. Sem a medição, o teto de 240.000 segue provisório (DEC-556).
 - (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
 - (executor) E11, preparação: tools/measure ainda espera os artefatos de E5 em docs/superpowers (make-scenario.mjs, E5_PATHS) e ratifica decisões entre as sessões de parada-retomada (DEC-442); adaptar aos caminhos de DEC-537 e à exceção de retomada antes de medir o release nativo.
-- (executor) Até a publicação de E11 o release instalado é o 1.7.0, sem E8: cada retomada ainda regrava as decisões do spec com outro texto e pode gravar nota como decisão. Ao fechar E9, E21, E23 e E24, ratificar um registro e tratar as repetições como em E8.
 - (executor) E12: se a description do plan-coordinator mudar, rodar de novo os 3 casos plan-execution (pt e en) em opus antes de integrar e registrar em docs/reports/.
 - (executor) Lançar em measurements.md a suíte de gatilho de E20: 50 execuções, US$ 6,04 (haiku 0,16; opus 5,87), fora do teto de E17 (DEC-478).
 - (executor) E20/gatilho: spec-3 (pt/en) passa direto a spec-author sem chamar Skill; a config descartável tem CLAUDE.md de usuário com regras de roteamento. Na próxima medição (E11), rodar spec-3 numa config sem CLAUDE.md de usuário ou contar o despacho a spec-author como rota do plugin.
 - (executor) Lançar em measurements.md a 2ª passada opus da suíte de gatilho de E20: 26 execuções, US$ 7,04 (sonda 0,62), saldo de DEC-478 restante US$ 6,92.
 - (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
-- (executor) E24 ou E28, o primeiro que editar prompts.test.mjs: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (linha 337); apertar a conferência. E21 editou o arquivo e não apertou.
 - (executor) Antes de E23, branch fix/pos-E21, sem tocar roadmap-release.js: em task-reviewer.md o modo restrito lê o arquivo em path do JSON do pacote e só abre outro arquivo se o diff não decidir o achado; rodar de novo só b-restricted na fixture E21-T8 e anexar ao relatório comportamental de E21.
 - (executor) Na mesma fix/pos-E21: spec-tool emit em JSON compacto numa linha, com teste (como 25511ec); operator.md diz que falha de carga por emit acima de ~30 KB não é transitória (não repetir; medir o emit) e que BASH_MAX_OUTPUT_LENGTH não resolve. Não mesclar durante execução do release.
 - (executor) E28: em task-reviewer.md, verdicts só no modo restrito e spec/quality só no modo review (ponto 2 do relatório comportamental de E21). Hoje o script ignora esses campos fora do modo. Se E28 for descartado, a linha sai junto com o texto do modo review (DEC-600).
@@ -130,17 +128,16 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Lançar em measurements.md o custo de E23 (DEC-567): r1 7,47; r2 sem valor (sessão morta às 04:29 sem evento result, interrupção do host); r3 11,48; B4 0,38; total conhecido US$ 19,33. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
 - (executor) E10: o approve leva a medição dos gates num argumento codificado que um agente copia. Ao mover o registro para código, gravar a medição por script ou conferir um hash da carga em run-record.mjs. Até lá a fidelidade da cópia é a medida no comportamental de E23.
 - (executor) E11: a variante parada-retomada mede a meta de E23 de ponta a ponta (opus 9 para 7, ponderado 669 para 589) com o release nativo; o comportamental de E23 só confere os estágios, um a um.
-- (executor) Na 1ª execução de E24 com o plugin da ponta: conferir em feat/E24 o commit E24: run record (spec,plan) só com run.json e, havendo retomada, os concerns de review skipped; anotar no relatório de execução de E24.
-- (executor) roadmap-release.js mede 239.994 caracteres LF na ponta da release (8d1f08f): folga de 6 sob o teto de 240.000 (DEC-556, DEC-563). E24 e E10 editam o arquivo, em série; cada um libera espaço no próprio estágio antes de somar código. E28 só começa com 450 de folga.
 - (executor) Achados menores do comportamental de E23 (fora do portão): sync lê "run after the merge" como argumento run do key; key imprime o prep inteiro em recorded e haiku o corrompe (tirar o prep); setup instala no diretório corrente e não no worktree; progresso sem a regra de comando simples.
 - (executor) Revisão de 76676df (menor): parada própria preflight:recorded-invalid para registro recusado, com saída para ignorar o registro; recorded só com espaços conta como presente (usar trim). Custa caracteres: E10.
-- (dono) Corrigir o card E24 por revisão da estratégia para nomear também plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs entre os arquivos de teste (validação de finalReview).
-- (dono) Depois do merge de E24: revisão da estratégia para o card E24 nomear plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs; ratificar DEC-626 a DEC-636 e as desta retomada num só registro, DEC-632 com emenda e os tamanhos medidos, tratando as repetições como em E8.
-- (executor) E10, 1ª tarefa que edita o script: TEST_INTEGRITY_DEFAULT (1.506 caracteres) vira script do plugin e resume-test-integrity despacha o agente test-integrity. E24 deve fechar perto de 239.904 (folga 96); E28 só começa com 450.
+- (executor) E10: TEST_INTEGRITY_DEFAULT (1.506 caracteres) deixa de ser obrigatório mover por espaço (teto 250.000); o spec de E10 decide se o programa vira script do plugin e resume-test-integrity despacha o agente test-integrity.
 - (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
 - (executor) fix/carga-plano: resumeFromRunId de execução anterior à mudança, mesmo caminho de plugin, pode comparar emit completo com enxuto e parar em plan-frozen-tasks falso; normalizar em authoredTask ou avisar em operator.md. plan-author.md:40 descreve o emit com data em vez de plan.
 - (executor) E10: recordVerdict da etapa docs acusou falso positivo em E24 r3 (texto de comando diferente, comando extra, painel relido sem segmento) com registro correto; medir se o relato do agente de registro deve vir de script em vez de cópia.
 - (executor) Preflight/skill: diagnosticar "not found" do lançamento pelo nome como script acima de 512 KiB (docs/reports/2026-11-13-E8-limite-lancamento-workflow.md).
+- (executor) roadmap-release.js mede 239.898 caracteres LF na ponta da release (53a7781): folga de 10.102 sob o teto de 250.000 (DEC-647). E10 e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
+- (executor) Lançar em measurements.md o custo de E24 (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30; total US$ 22,56. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
+- (executor) Na 1ª execução do release com o plugin da ponta (E10): conferir a chamada <E>:test-integrity (campos medidos, sem o concern test integrity not measured, arquivo de _tmp apagado) e a revisão final pelo agente em opus/high; anotar no relatório.
 <!-- /roadmap:pending -->
 
 ## Em andamento
