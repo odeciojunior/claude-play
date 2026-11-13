@@ -223,6 +223,10 @@ test('AC5: task review prompts cite no superpowers and forbid asking', () => {
     assert.doesNotMatch(p, /superpowers/i);
     assert.equal(/Mode: restricted/.test(p), !!c.taskReview);
   }
+  const single = P.buildTaskReviewPrompt({ ...ctx, taskReview: { single: true } }, task, 'review', impl);
+  assert.ok(single.startsWith(ctx.base), 'single review prompt opens with the briefing');
+  assert.match(single, /Mode: review/);
+  assert.doesNotMatch(single, /superpowers/i);
 });
 
 test('effortFor: haiku low, sonnet and opus medium', () => {

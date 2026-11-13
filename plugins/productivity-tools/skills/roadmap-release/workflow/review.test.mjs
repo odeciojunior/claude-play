@@ -607,3 +607,36 @@ test('AC2: runReviewLoop hands the next review the previous findings and the mea
   assert.equal(seen[0], undefined);
   assert.deepEqual(seen[1], { iss: [F('F1')], head: 'h1' });
 });
+
+// ---- E21 T5: single review, off by default ----
+test("AC3: by default each task gets the spec and quality reviews on today's model", () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  assert.match(body, /\.single === true \? \['review'\] : \['spec', 'quality'\]/);
+  assert.doesNotMatch(SRC, /\.single\) /);
+  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
+  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
+  assert.match(at, /revAgent\(/);
+  assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
+  assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
+});
+
+test('AC3: taskIssues fails a single review with a missing or failing verdict without a blocking finding', () => {
+  const one = rCtx({ taskReview: { single: true }, was: undefined, prev: null });
+  for (const r of [{ issues: [], spec: 'pass' }, { issues: [], spec: 'pass', quality: 'fail' }, { issues: [], quality: 'pass' }, { issues: [], spec: 'fail', quality: 'pass' }]) {
+    const out = P2.taskIssues(r, one);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].severity, 'critical');
+    assert.equal(out[0].category, 'defeito');
+  }
+  assert.deepEqual(P2.taskIssues({ issues: [], spec: 'pass', quality: 'pass' }, one), []);
+  const withBlock = { issues: [F('F1')], spec: 'fail', quality: 'pass' };
+  assert.deepEqual(P2.taskIssues(withBlock, one).map(i => i.id), ['F1']);
+  const r = { issues: [], spec: 'pass' };
+  assert.equal(P2.taskIssues(r, rCtx({ taskReview: { single: 'true' }, was: undefined })), r.issues);
+});
+
+test('AC3: the single review prompt asks for both verdicts', () => {
+  const p = P2.buildTaskReviewPrompt(rCtx({ taskReview: { single: true }, was: undefined, prev: null }), rTask, 'review', rImpl);
+  assert.match(p, /Mode: review/);
+  assert.ok(p.startsWith('BASE'));
+});
