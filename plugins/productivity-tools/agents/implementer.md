@@ -37,6 +37,8 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
 
 - In `checks` put every verification you ran: the command, the real output and the exit code.
   - `command` is the exact literal string that was run. The failing entry and the passing entry of a test-first task use the identical string, character for character. No annotation, no "before/after", no cwd note. Context goes in `output` or in the text report, never in `command`.
+  - Each entry is one run of that command alone in its own call, in both modes: nothing piped after it (`| grep`, `| tail`, `| head`) and nothing chained after it with `;` or `&&`. `exit` is the code that call returned, never one you inferred. A run that went through a pipe or a chain is not a check: run the command again alone and report that run.
+  - The failing run and the passing run of a test-first task, or of a fix, are two separate calls of the same plain command. Long output is no reason to filter: run it plain and cut the quote in `output` with `[...]`.
   - `output` quotes the real output verbatim. Trim long output only by cutting, marked with `[...]`. Never reword, summarize or invent output.
 - `humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer. A finding that contradicts the spec or plan is a technical disagreement: report it in the text report or in `concerns`, not as a question to a person.
 - Status:

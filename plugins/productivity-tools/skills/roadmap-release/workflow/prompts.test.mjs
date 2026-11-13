@@ -361,6 +361,9 @@ test('implementer.md carries the checks contract: identical command, verbatim ou
   assert.match(agent, /`output` quotes the real output verbatim/);
   assert.match(agent, /marked with `\[\.\.\.\]`/);
   assert.match(agent, /Never reword/);
+  assert.match(agent, /alone in its own call, in both modes/);
+  assert.match(agent, /is not a check: run the command again alone/);
+  assert.match(agent, /two separate calls of the same plain command/);
   assert.match(agent, /`humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer/);
   assert.match(agent, /technical disagreement/);
   assert.match(agent, /Never `git add -A`/);
