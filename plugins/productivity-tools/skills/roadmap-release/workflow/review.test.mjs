@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, closedBlockers, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps } = loadPure();
+const { isHard, nextTier, sameFinding, parseVerifyTag, evidenceGaps, closedBlockers, lastContiguousDone, resumeAction, parseAuthorizeExternal, externalHold, planFingerprint, bindAuthorizations, externalGaps, testFirstGap, tasksFromPlan } = loadPure();
 const statuses = { onBranch: 'na-branch', integrated: ['integrada', 'publicada'], blocked: 'bloqueada', discarded: 'descartada' };
 
 test('isHard: no category, defeito and decisao are hard; critical is hard unless a registered environment blocker', () => {
@@ -413,4 +413,80 @@ test('evidenceGaps: the card tag is compared with the value that is dispatched',
   const tagged = (evidence) => [{ id: 'AC1', text: 't', tag: { kind: 'smoke', evidence } }];
   assert.equal(changed('a\\ ', tagged('a\\')), true);
   assert.equal(changed('cat <<E\nx\nE ', tagged('cat <<E\nx\nE')), true);
+});
+
+const ck = (command, exit) => ({ command, output: 'o', exit });
+const tfTask = { n: 2, testFirst: true, noCommit: false, files: ['a.js'] };
+const stub = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] };
+
+test('AC1: testFirstGap fails a test-first task without red before green', () => {
+  const bad = [
+    [ck('t', 0)],
+    [ck('t', 0), ck('t', 1)],
+    [ck('t1', 1), ck('t2', 0)],
+    [],
+  ];
+  for (const status of ['DONE', 'DONE_WITH_CONCERNS']) {
+    for (const checks of bad) {
+      const gap = testFirstGap(tfTask, { status, checks }, false);
+      assert.ok(gap && gap.includes('2') && gap.includes(`(${checks.length} checks)`), JSON.stringify(checks));
+    }
+  }
+});
+
+test('AC2: testFirstGap passes resumed, unmarked, no-file and blocked tasks', () => {
+  const good = { status: 'DONE', checks: [ck('t', 1), ck('t', 0)] };
+  assert.equal(testFirstGap(tfTask, stub, true), '');
+  assert.equal(testFirstGap({ ...tfTask, testFirst: { exempt: 'docs' } }, { status: 'DONE', checks: [] }, false), '');
+  assert.equal(testFirstGap({ n: 2, noCommit: false, files: ['a.js'] }, { status: 'DONE', checks: [] }, false), '');
+  assert.equal(testFirstGap({ ...tfTask, noCommit: true, files: [] }, { status: 'DONE', checks: [] }, false), '');
+  for (const status of ['BLOCKED', 'NEEDS_HUMAN']) assert.equal(testFirstGap(tfTask, { status, checks: [] }, false), '');
+  assert.equal(testFirstGap(tfTask, good, false), '');
+  assert.equal(testFirstGap(tfTask, { status: 'DONE_WITH_CONCERNS', checks: [ck(' node --test x ', 1), ck('node --test x', 0)] }, false), '');
+  assert.equal(testFirstGap(tfTask, { status: 'DONE', checks: [ck('a', 0), ck('t', 1), ck('b', 0), ck('`t`', 0)] }, false), '');
+});
+
+test('tasksFromPlan copies testFirst (true and exempt)', () => {
+  const ts = tasksFromPlan({ tasks: [{ n: 1, title: 'a', testFirst: true }, { n: 2, title: 'b', testFirst: { exempt: 'docs' } }, { n: 3, title: 'c' }] });
+  assert.equal(ts[0].testFirst, true);
+  assert.deepEqual(ts[1].testFirst, { exempt: 'docs' });
+  assert.equal(ts[2].testFirst, undefined);
+});
+
+test('AC1: the test-first check runs before the first task reviewer and fails without a reviewer', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const close = body.indexOf('closeEffect(t, awaitingPerson.includes(t.n))');
+  const call = body.indexOf('testFirstGap(t, impl, resumed)');
+  const loop = body.indexOf('reviewLoop(`T${t.n}:${kind}`');
+  assert.ok(close > 0 && call > close && loop > call, 'order: closeEffect, testFirstGap, reviewLoop');
+  const between = body.slice(call, loop);
+  assert.match(between, /if \(gap\) return fail\('conteudo'/);
+  const ret = between.indexOf("return fail('conteudo'");
+  assert.ok(ret > 0 && !/agent\(/.test(between.slice(0, ret)), 'no agent call before the failing return');
+});
+
+test('AC1: the test-first failure names the start commit to reset to before a rerun', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
+  assert.ok(line, 'fail message built from the gap');
+  // HEAD as the <branch> argument rebases a detached HEAD and leaves the branch with the task commit.
+  assert.match(line, /rebase --onto \$\{start\} <last task commit> \$\{br\}/);
+  assert.doesNotMatch(line, /<last task commit> HEAD/);
+  assert.match(line, /keeping the review log/);
+  assert.doesNotMatch(line, /reset --hard \$\{start\}/);
+  assert.match(line, /\$\{wt\}/);
+  assert.ok(body.indexOf('let start =') > 0 && body.indexOf('let start =') < body.indexOf(line), 'start is defined before the failure');
+});
+
+test('AC1: with effect or wait marks the test-first failure asks the owner instead of a rebase', () => {
+  // "T<n>: external effect completed" and "T<n>: resumed after awaiting person" match the done grep, and an earlier
+  // run's wait marks sit inside start..task, so no rebase of the task commits makes a rerun run the check.
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
+  const m = line.match(/\$\{(authorizedExt \|\| awaitingPerson\.includes\(t\.n\)) \? `([^`]*)` : `([^`]*)`\}/);
+  assert.ok(m, 'the marker cases (closeEffect runs for them) branch away from the rebase');
+  assert.match(m[2], /ask the owner/);
+  assert.doesNotMatch(m[2], /rebase/);
+  assert.match(m[3], /rebase --onto/);
+  assert.match(body, /if \(authorizedExt \|\| awaitingPerson\.includes\(t\.n\)\) \{\s*const closed = await closeEffect/);
 });

@@ -427,6 +427,7 @@ function tasksFromPlan(plan) {
       noCommit: t.noCommit,
       route: t.route,
       deps: t.deps || [],
+      testFirst: t.testFirst,
     }
   })
 }
@@ -553,9 +554,7 @@ function buildImplPrompt(ctx, task) {
 
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}, in the deliverable worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Follow TDD (superpowers:test-driven-development). Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}
-Report in "checks" EVERY verification you ran, with the exact command, its real output (the relevant part) and its exit code: the reviewer reads this instead of trusting your summary. Never invent or paraphrase output.
-Status: DONE; DONE_WITH_CONCERNS (describe in concerns); BLOCKED (impossible without changing the plan, or it needs a lock you do not hold: set needsLock=<name>); NEEDS_HUMAN (depends on human input: humanInputs + placeholder implemented).`
+Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}`
 }
 // Failures show at the end of the output, so a long output keeps its tail.
 function tailOf(output) {
@@ -782,6 +781,13 @@ function commandKey(s) {
   if (v.length < 2 || v[0] !== '`' || v[v.length - 1] !== '`') return v
   const inner = v.slice(1, -1)
   return inner.includes('`') || oddSlashes(v, v.length - 1) ? v : inner
+}
+// A test-first task must report a failing check, then the same check passing.
+function testFirstGap(task, impl, resumed) {
+  if (resumed || !task || task.testFirst !== true || noFiles(task) || !impl || !/^DONE/.test(impl.status)) return ''
+  const c = impl.checks || []
+  if (c.some((a, i) => a.exit !== 0 && c.slice(i + 1).some(b => b.exit === 0 && commandKey(a.command) === commandKey(b.command)))) return ''
+  return `task ${task.n}: test-first without a failing check then the same check passing (${c.length} checks)`
 }
 // Nothing a shell could run: empty, only blanks, or quotes around only blanks.
 function blankCommand(s) {
@@ -1645,6 +1651,7 @@ let integBroken = null
 const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a format migration, whatever the event triggers: the owner's pre-approval never covers them. Do not edit any file of ${RM} by hand: the commands above are the whole roadmap job.`
 // Fixed clause of the prompts of the native spec and plan stages (E8): no stage ever asks.
 const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
+const implAgent = (p, o) => agent(p, { agentType: 'productivity-tools:implementer', schema: S_IMPL, ...o })
 // Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const LANG = disc.language || ''
@@ -1842,13 +1849,13 @@ Commit only that file ("${E}: external effects of the acceptance evidence"). Ret
       if (g.ok) break
       if (k >= 1 || g.nullAgent) return onBad(`post-merge gates failed: ${g.summary}`, g.nullAgent ? 'infra' : 'conteudo')
       const preFix = g.m.headSha
-      const fx = await withLocks(TASK_LOCKS, () => agent(`${Cn()}
+      const fx = await withLocks(TASK_LOCKS, () => implAgent(`${Cn()}
 
 Integration worktree ${INTWT} (branch ${TARGET}). ${lockNote(TASK_LOCKS)} The post-merge gates of ${E} failed:
 ${g.summary}
 Failing output: ${String(g.m.log || '').slice(0, 3000)}
-Use superpowers:systematic-debugging; fix on ${TARGET} with a test and commit "${E} merge-fix: ...". Do not mask failures. ${noSpecEdit()}`,
-        { label: `${E}:merge-fix`, phase: 'Merge', schema: S_IMPL, model: 'sonnet', effort: 'medium' }))
+Fix on ${TARGET} with a test and commit "${E} merge-fix: ...". Do not mask failures. ${noSpecEdit()}`,
+        { label: `${E}:merge-fix`, phase: 'Merge', model: 'sonnet', effort: 'medium' }))
       if (!fx || fx.status === 'BLOCKED') return onBad(`post-merge fix ${fx ? 'BLOCKED: ' + fx.summary : 'null'}`, fx ? 'conteudo' : 'infra')
       const rr = await agent(`${Cn()}
 
@@ -2009,7 +2016,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Task commits of the previous version (spec and plan of the superpowers skills) without a native spec: the new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
+  // Task commits of the previous version (spec and plan of the previous skills) without a native spec: the new spec or plan would rewrite committed work, so the person finishes on the previous version or discards the branch.
   if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
     const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
     op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${artifactPaths(disc.roadmapSlug, E).spec}`,
@@ -2443,7 +2450,7 @@ ${NO_ASK}`,
         return fail('externo', `external task ${t.n} awaits authorization (${held[0].item})`)
       }
     }
-    const runImpl = label => withLocks(locks, () => agent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', schema: S_IMPL, model: implModel(t), effort: implEffort(t) }))
+    const runImpl = label => withLocks(locks, () => implAgent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', model: implModel(t), effort: implEffort(t) }))
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       if (authorizedExt) {
@@ -2474,6 +2481,8 @@ ${NO_ASK}`,
         }
       }
     }
+    const gap = testFirstGap(t, impl, resumed)
+    if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {
@@ -2481,10 +2490,10 @@ ${NO_ASK}`,
         (round, prev, rvModel) => agent(buildTaskReviewPrompt(ctxFor({ locks, start, round, prev, rangeNote }), t, kind, cur),
           { label: `${E}:t${t.n}:${kind}${round}`, phase: 'Implementation', schema: S_REVIEW, model: rvModel || reviewModelFor(t), effort: effortFor(rvModel || reviewModelFor(t)) }),
         (iss, k, tier) => withLocks(locks, async () => {
-          const fx = await agent(`${C()}
+          const fx = await implAgent(`${C()}
 
-In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} Never edit the spec or the plan to satisfy a finding: they are approved, so if an item can only be met by changing them (for example a commit the plan does not call for), do not apply it and explain in concerns. If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
-${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier, effort: effortFor(tier) })
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} ${noSpecEdit()}
+${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', model: tier, effort: effortFor(tier) })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
         }),
@@ -2546,10 +2555,10 @@ Measure: headSha, clean, commitsInRange (git -C "${wt}" rev-list --count ${TARGE
       if (rs.some(x => !x)) return null
       return { issues: rs.flatMap(x => x.issues), headSha: rs[0].headSha, clean: rs.every(x => x.clean), commitsInRange: rs[0].commitsInRange }
     },
-    (iss, k, tier) => withLocks(planLocks, () => agent(`${C()}
+    (iss, k, tier) => withLocks(planLocks, () => implAgent(`${C()}
 
-Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()} If you disagree technically, do not apply the item and explain in concerns.
-${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', schema: S_IMPL, model: tier, effort: effortFor(tier) })),
+Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
+${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier, effort: effortFor(tier) })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
     { tier: 'sonnet', reviewModel: 'opus' })
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
@@ -2608,13 +2617,13 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
       }
       if (k >= MAXFIX) return { ok: false, kind: 'conteudo', msg: `branch gates did not pass: ${failText}` }
       const preFix = g.m.headSha
-      const fx = await withLocks(planLocks, () => agent(`${C()}
+      const fx = await withLocks(planLocks, () => implAgent(`${C()}
 
 ${lockNote(planLocks)} ${noSpecEdit()} The gates failed against the baseline:
 ${failText}
 Failing output: ${String(g.m.log || '').slice(0, 3000)}
-Use superpowers:systematic-debugging: root cause, a fix with a test when it is a defect, run the failed gate again and commit "${E} gates-fix: ...". A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.${externalEvidenceNote()}`,
-        { label: `${E}:${tag}gates-fix${k + 1}`, phase: 'Gates', schema: S_IMPL, model: 'sonnet', effort: 'medium' }))
+Root cause, a fix with a test when it is a defect, run the failed gate again and commit "${E} gates-fix: ...". A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.${externalEvidenceNote()}`,
+        { label: `${E}:${tag}gates-fix${k + 1}`, phase: 'Gates', model: 'sonnet', effort: 'medium' }))
       if (!fx) return { ok: false, kind: 'infra', msg: 'gates fix: null agent' }
       if (fx.status === 'BLOCKED') return { ok: false, kind: 'conteudo', msg: `gates fix BLOCKED: ${fx.summary}` }
       if (fx.concerns) out.concerns.push(`${tag}gates-fix${k + 1}: ${fx.concerns}`)
@@ -2669,10 +2678,10 @@ LATE-SYNC REVIEW (read-only). Other deliverables landed on ${TARGET} after the l
 Blocks (defeito): a contract of the incoming change that this branch breaks or that breaks this branch (callers, schemas, permissions, generated files), a criterion of the card no longer proved, a duplicated or conflicting definition${prev ? ', an edit to the spec or the plan made by a fix round' : ''}.${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}` : ''}
 Measure: headSha, clean, commitsInRange=0 is fine here.`,
             { label: `${E}:delta-review${round}`, phase: 'Merge', schema: S_REVIEW, model: 'opus', effort: 'high' }),
-          (iss, k, tier) => withLocks(planLocks, () => agent(`${C()}
+          (iss, k, tier) => withLocks(planLocks, () => implAgent(`${C()}
 
-Fix the late-sync review problems below on the branch ${br} (worktree ${wt}), with tests, and commit "${E} resync-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()} If you disagree technically, do not apply the item and explain in concerns.
-${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', schema: S_IMPL, model: tier, effort: effortFor(tier) })),
+Fix the late-sync review problems below on the branch ${br} (worktree ${wt}), with tests, and commit "${E} resync-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
+${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', model: tier, effort: effortFor(tier) })),
           r => reviewTruth(r, 0, ''),
           { tier: 'sonnet', reviewModel: 'opus' })
         if (!dl.ok) return { ok: false, kind: dl.kind, why: `late-sync review: ${dl.msg}` }

@@ -253,3 +253,44 @@ test('SKILL.md: the authorization message names the git show; the resume takes t
   assert.match(skill, /When `reportPath` is null, leave that sentence out/);
   assert.doesNotMatch(skill, /ask again\. When|compaction\), ask again/);
 });
+
+test('AC3: implementer and fixer prompts cite no superpowers and forbid asking', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const agent = readFileSync(join(here, '..', '..', '..', 'agents', 'implementer.md'), 'utf8').replace(/\r\n/g, '\n');
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8');
+  const noAsk = src.match(/const NO_ASK = '([^']*)'/)[1];
+  const fm = agent.match(/^---\n([\s\S]*?)\n---\n/);
+  assert.ok(fm, 'frontmatter present');
+  const body = agent.slice(fm[0].length);
+  assert.match(fm[1], /^name: implementer$/m);
+  assert.match(fm[1], /^description: .*never asks the person/mi);
+  assert.match(fm[1], /^tools: Read, Grep, Glob, Bash, Write, Edit$/m);
+  assert.doesNotMatch(fm[1], /^(model|effort):/m);
+  assert.doesNotMatch(body, /superpowers/i);
+  assert.ok(body.includes(noAsk), 'body carries NO_ASK literally');
+
+  // Second part: the six implementation and fix calls go through implAgent.
+  assert.doesNotMatch(src, /superpowers/i);
+  assert.equal(src.split('schema: S_IMPL').length - 1, 1, 'schema: S_IMPL appears once');
+  const defLine = src.split('\n').find((l) => l.includes('schema: S_IMPL'));
+  assert.match(defLine, /^const implAgent = /);
+  assert.ok(defLine.includes("agentType: 'productivity-tools:implementer'"));
+  const chunks = src.split('implAgent(').slice(1);
+  assert.equal(chunks.length, 6, 'six calls');
+  const labels = [/:impl/, /-fix/, /final-fix/, /gates-fix/, /merge-fix/, /delta-fix/];
+  const calls = chunks.map((c) => c.slice(0, 2000));
+  for (const re of labels) {
+    assert.ok(calls.some((c) => re.test(c)), `a call carries ${re}`);
+  }
+  assert.ok(calls.some((c) => c.startsWith('buildImplPrompt(')));
+  assert.equal(calls.filter((c) => c.startsWith('`${C()}')).length, 4);
+  assert.equal(calls.filter((c) => c.startsWith('`${Cn()}')).length, 1);
+  assert.ok(!P.buildImplPrompt(ctx, task).includes(noAsk), 'the implementer prompt leaves NO_ASK to the agent file');
+  const ti = P.buildImplPrompt(ctx, { ...task, testFirst: true });
+  assert.match(ti, /test-first task/);
+  const ex = P.buildImplPrompt(ctx, { ...task, testFirst: { exempt: 'only docs' } });
+  assert.match(ex, /exempt from test-first: only docs/);
+  assert.doesNotMatch(ex, /test-first task/);
+  const plain = P.buildImplPrompt(ctx, task);
+  assert.doesNotMatch(plain, /test-first|exempt/i);
+});
