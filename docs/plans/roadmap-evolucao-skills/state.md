@@ -123,7 +123,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E24 ou E28, o primeiro que editar prompts.test.mjs: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (linha 337); apertar a conferência. E21 editou o arquivo e não apertou.
-- (executor) implementer.md: a regra de comando simples só está no modo de implementação; no modo de correção o agente rodou o vermelho por pipe (| tail) e relatou exit sem vê-lo. Levar a regra à seção Report. Atualizar a tabela de veredito no topo do relatório comportamental de E9.
 - (executor) Antes de E23, branch fix/pos-E21, sem tocar roadmap-release.js: em task-reviewer.md o modo restrito lê o arquivo em path do JSON do pacote e só abre outro arquivo se o diff não decidir o achado; rodar de novo só b-restricted na fixture E21-T8 e anexar ao relatório comportamental de E21.
 - (executor) Na mesma fix/pos-E21: spec-tool emit em JSON compacto numa linha, com teste (como 25511ec); operator.md diz que falha de carga por emit acima de ~30 KB não é transitória (não repetir; medir o emit) e que BASH_MAX_OUTPUT_LENGTH não resolve. Não mesclar durante execução do release.
 - (executor) E28: em task-reviewer.md, verdicts só no modo restrito e spec/quality só no modo review (ponto 2 do relatório comportamental de E21). Hoje o script ignora esses campos fora do modo. Se E28 for descartado, a linha sai junto com o texto do modo review (DEC-600).
@@ -132,6 +131,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) Depois do merge de E23: ratificar DEC-609 a DEC-618 contra o código integrado (DEC-615 sai emendada pelos limites em escada) e revisão da estratégia v1.7 para o card E23 nomear plugins/productivity-tools/scripts/run-record.test.mjs.
+- (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 <!-- /roadmap:pending -->
 
 ## Em andamento
