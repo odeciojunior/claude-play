@@ -108,3 +108,61 @@ Texto da falha e do bloco aberto (block-open --what): "E9 bloqueado: automatic e
 3. Origem: docs/plans/evolucao-skills-E9/reviews.md. Destino: argumento `--what` de block-open. Texto completo:
 
    E9 bloqueado: automatic execution stopped (conteudo): final has open issues after 2 fixes: 1. [important/defeito] plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js The new test-first failure instruction (line 2485) does not work as written. (a) `git -C "<wt>" rebase --onto ${start} <last task commit> HEAD` passes HEAD as the <branch> argument, so git rebases a detached HEAD and leaves the branch alone. I reproduced this in; branch feat/E9 kept at D:/projects/claude-play-wt/E9
+
+## Execução de retomada (esta execução)
+
+Sem falha registrada: a revisão final passou sem problemas bloqueantes. As tarefas T1 a T4 foram retomadas como já revisadas (RESUMED, already reviewed). T6 continua aguardando a pessoa.
+
+### Revisões por etapa (esta execução)
+
+| Etapa | Rodadas (n, revisor, tier da correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1 (opus, sem correção) | nenhum | 0 | nenhuma |
+| plan | 1 (opus, sem correção) | nenhum | 2 | nenhuma |
+| T5:spec | 1 (sonnet, sem correção) | nenhum | 0 | nenhuma |
+| T5:quality | 1 (sonnet, sem correção) | nenhum | 0 | nenhuma |
+| T6:spec | 1 (sonnet, sem correção) | nenhum | 1 | nenhuma |
+| T6:quality | 1 (sonnet, sem correção) | nenhum | 1 | nenhuma |
+| final | 1 (opus, sem correção) | nenhum | 3 | nenhuma |
+
+Riscos aceitos: nenhum. Concerns: nenhuma. Falha: nenhuma.
+
+### Tarefas (esta execução)
+
+| T | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Agente implementer com modos de implementação e correção | RESUMED (already reviewed) | - |
+| 2 | Conferência pura de teste primeiro e testFirst em tasksFromPlan | RESUMED (already reviewed) | - |
+| 3 | Chamada da conferência antes do primeiro revisor | RESUMED (already reviewed) | - |
+| 4 | Seis chamadas pelo implementer e texto movido para o agente | RESUMED (already reviewed) | - |
+| 5 | Linha do agente no README do plugin e gates | DONE | 10 |
+| 6 | Teste comportamental do implementer pelo orquestrador | NEEDS_HUMAN | 0 |
+
+### Portões (esta execução)
+
+Nenhum resultado de gate foi informado nos dados desta execução.
+
+### Entradas humanas (esta execução)
+
+1. O quê: execução comportamental do orquestrador da sessão principal (DEC-204).
+   - BLQ: nenhum informado.
+   - Workaround: None implemented. The plan forbids a fictional report. The main-session orchestrator must run the two sonnet subagents (implementation mode and fix mode) on the SYNTHETIC FIXTURE files in D:/projects/claude-play-wt/_tmp/E9-comportamental/. It must then run the read-only opus review, write docs/reports/2026-11-12-E9-implementador-comportamental.md, and commit 'E9 T6: relatório comportamental do implementer'.
+   - Bloqueante: sim.
+2. O quê: execução comportamental do orquestrador da sessão principal (DEC-204).
+   - BLQ: nenhum informado.
+   - Workaround: None implemented. A report would have to be invented, which the plan forbids. The main-session orchestrator runs the two sonnet subagents on synthetic fixtures in D:/projects/claude-play-wt/_tmp/E9-comportamental/, then an opus read-only review. It writes the report and commits 'E9 T6: relatório comportamental do implementer'.
+   - Bloqueante: sim.
+
+### Textos cortados no registro (esta execução)
+
+4. Origem: docs/plans/evolucao-skills-E9/reviews.md. Destino: argumento `--decision` de add-decision. Texto completo:
+
+   Mover para o agente o texto genérico dos prompts (TDD, relato de checks, status, não editar spec e plano, discordância técnica, método de depuração), passar as seis chamadas por implAgent e medir com workflowChars depois de cada edição; se não couber, parar com BLOCKED e ação do dono, sem editar size.test.mjs.
+
+5. Origem: docs/plans/evolucao-skills-E9/reviews.md. Destino: argumento `--decision` de add-decision. Texto completo:
+
+   Tarefa do orquestrador da sessão principal no worktree de E9: dois subagents seguem agents/implementer.md literalmente (implementação de teste primeiro sobre fixture sintética marcada, e correção sobre lista de achados), uma revisão adversarial só de leitura, relatório em docs/reports/2026-11-12-E9-implementador-comportamental.md.
+
+6. Origem: docs/plans/evolucao-skills-E9/reviews.md. Destino: argumento `--decision` de add-decision. Texto completo:
+
+   Sem marcas de efeito nem de espera: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}, nomeando a branch e mantendo o registro de revisão; com tarefa externa autorizada ou que aguardava a pessoa: pedir ao dono, sem rebase, porque essas marcas contam como tarefa feita na retomada. Feito em d1f4fbf, com testes em review.test.mjs.
