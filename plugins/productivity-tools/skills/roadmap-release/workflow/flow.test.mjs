@@ -4224,6 +4224,9 @@ const RR_PATH = '/p/productivity-tools/scripts/run-record.mjs';
 const approvePrefix = (stages) => `node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 ${stages} - '`;
 const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.indexOf(" - '") + 4, prompt.indexOf("'", prompt.indexOf(" - '") + 4))));
 
+const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
+const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
+
 test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
   assert.equal(r.results[0].merged, true);
@@ -4244,6 +4247,29 @@ test('AC1: a resume with every recorded value skips the spec, plan and final rev
   const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(null) });
   assert.ok(none.labels.includes('E1:spec-review1'));
   assert.ok(none.labels.includes('E1:plan-review1'));
+  // T5: the sync returns the same four values and the recorded target tip: no final review, no test-integrity, on to the gates
+  const fin = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSync(FINAL_REC, 'abc1234') });
+  assert.equal(fin.r.results[0].merged, true);
+  for (const l of fin.labels) assert.ok(!/:final-|:test-integrity/.test(l), l);
+  assert.ok(fin.labels.includes('E1:gates1-1'));
+  assert.ok(fin.r.results[0].concerns.some((c) => /final review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(!fin.calls.some((c) => /review-log/.test(c.label) && c.prompt.includes('run-record.mjs')));
+  const sync = fin.calls.find((c) => c.label === 'E1:sync');
+  assert.ok(sync.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
+  assert.ok(sync.opts.schema.properties.record);
+  // a different tree after the sync: the final review runs
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: 's1', plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
+  assert.ok(moved.labels.includes('E1:final-1-r1'));
+});
+
+test('AC2: the final review runs again when the target moved', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSync(FINAL_REC, 'def5678') });
+  assert.equal(r.results[0].merged, true);
+  assert.ok(labels.includes('E1:final-1-r1'));
+  assert.ok(!labels.includes('E1:spec-review1') && !labels.includes('E1:plan-review1'));
+  const p = calls.find((c) => c.label === 'E1:review-log').prompt;
+  assert.ok(p.includes(`node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 final def5678 '`), p.slice(0, 300));
+  assert.ok(p.indexOf('run-record.mjs') < p.indexOf('Write docs/plans/x-E1/reviews.md'));
 });
 
 test('E23: progress records spec and plan only after a review ran', async () => {

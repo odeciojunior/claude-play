@@ -1416,7 +1416,7 @@ const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
 const S_RECORD = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { n: INT, exit: INT, stdout: STR }, required: ['n', 'exit', 'stdout'] } } }, required: ['runs'] }
 const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
-const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
+const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS, record: STR }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
@@ -1753,7 +1753,7 @@ Never write or quote a credential, token or key from the owner instruction in an
   const C = () => briefing(ctxFor())
   // Briefing without the owner notes, for every stage that writes to a committed record (docs, review log, merge-fix).
   const Cn = () => briefing({ ...ctxFor(), base: baseOf(false) })
-  // Slim briefing of this deliverable, for its mechanical stages (no owner notes: several of them write committed records).
+  // Slim briefing for the mechanical stages (no owner notes: several write committed records).
   const Cs = () => `${COMMON_SLIM()}\nDELIVERABLE ${E}: worktree ${wt}, branch ${br}, port range ${port}-${port + 9}.`
   const cardRef = `card ${E} in ${STRAT} (section ${E}; REQs ${card.reqs.join(', ')}; depends on ${card.deps.join(', ') || '-'}${card.critical ? '; CRITICAL' : ''})`
   const noteE = A.notes && A.notes[E]
@@ -1763,22 +1763,22 @@ Never write or quote a credential, token or key from the owner instruction in an
   let spec = null, plan = null
   let specRef = null, planRef = null  // null while recovering an interrupted merge
   let setupOk = false  // the worktree exists, so the log can be written
-  // Outside the spec and plan stages, an approved spec or plan is never edited to clear a finding.
+  // Outside the spec and plan stages, an approved spec or plan is never edited for a finding.
   const noSpecEdit = () => `Never edit the spec${specRef ? ' ' + specRef : ''} or the plan${planRef ? ' ' + planRef : ''} to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns.`
   const fmtRisk = x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`
   const acceptRisks = (stage, issues) => out.acceptedRisks.push(...issues.map(i => ({ stage, severity: i.severity, category: i.category, description: i.description, file: i.file })))
-  const persistReviews = async (tag, stages) => {
+  const persistReviews = async (tag, stages, tip) => {
     if (!setupOk || (!stages && !out.reviews.length && !out.externalRun.length && !out.recordCuts.length)) return
     const cutsTxt = out.recordCuts.length ? ', plus a section "Textos cortados no registro": one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the earlier entries' : ''
     const ranTxt = out.externalRun.length ? ', plus a section "External effects run": one line per entry of externalRun (item, title or command, status or exit, reviewed), keeping the earlier lines' : ''
     const w = await agent(`${Cs()}
 
-${stages ? `Run first: ${recAt(stages)} (ignore a failure).\n\n` : ''}Write ${AP.reviews} on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep everything it holds and add this run; never remove or rewrite an earlier record): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
+${stages ? `Run first: ${recAt(stages, tip)} (ignore a failure).\n\n` : ''}Write ${AP.reviews} on the branch ${br}, in the language of the roadmap, with the review log (if that file already exists, keep all it holds and add this run; never remove or rewrite an earlier record): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)${ranTxt}${cutsTxt}. Transcribe faithfully; do not summarize blocking issues. Data: ${JSON.stringify({ reviews: out.reviews, acceptedRisks: out.acceptedRisks, concerns: out.concerns, gates: out.gates, tasks: out.tasks, humanInputs: human, failure: out.error || null, ...(out.externalRun.length ? { externalRun: out.externalRun } : {}), ...(out.recordCuts.length ? { recordCuts: out.recordCuts } : {}) })}
 Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
       { label: `${E}:review-log${tag ? '-' + tag : ''}`, phase: 'Plan', model: 'sonnet', effort: 'medium' })
     if (w == null) out.concerns.push(`review log${tag ? ' (' + tag + ')' : ''} not written: null agent`)
   }
-  // Not enumerable: the blocked record, written later, lands its cut texts in the log with them.
+  // Not enumerable: the blocked record, written later, logs its cut texts through them.
   Object.defineProperty(out, 'logPath', { value: () => AP.reviews })
   Object.defineProperty(out, 'persistLog', { value: persistReviews })
   const fail = async (kind, msg) => {
@@ -1786,7 +1786,7 @@ Commit only that file ("${E}: review log${tag ? ' (' + tag + ')' : ''}").`,
     await persistReviews('failed')
     return out
   }
-  // Human acts and accepted risks of an earlier run live only in the persisted files; both resume paths read them here.
+  // Human acts and accepted risks of an earlier run live only in the persisted files; resume reads them here.
   const readPersistedLog = (dir, ph) => agent(`Read-only. In "${dir}" read ${AP.reviews} (the review log), ${AP.spec} (the spec) and ${AP.plan} (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log (stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. Transcribe faithfully, do not invent.`,
     { label: `${E}:resume-review-log`, phase: ph, schema: S_RESUMELOG, model: 'sonnet', effort: 'medium' })
   const restoreFromLog = (rl, unsettled = []) => {
@@ -2032,7 +2032,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   // ---------- Setup
   const pluginRoot = pluginRootOf(A.trackerCli)
   const RR = `${pluginRoot}/scripts/run-record.mjs`
-  const recAt = stages => recordCmd(RR, wt, AP.dir, E, stages, '', { trailer: TRAILER, ...(MODE !== 'plan-only' && pre.baseline ? { prep: { targetHead: pre.targetHead, gatesKey: GATES_KEY, baseline: pre.baseline } } : {}) })
+  const recAt = (stages, tip) => recordCmd(RR, wt, AP.dir, E, stages, tip, { trailer: TRAILER, ...(MODE !== 'plan-only' && pre.baseline ? { prep: { targetHead: pre.targetHead, gatesKey: GATES_KEY, baseline: pre.baseline } } : {}) })
   const setup = await setupLock(() => agent(`${C()}
 
 SETUP of deliverable ${E} (mechanical; do not change tracked files).
@@ -2046,11 +2046,11 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (!setup || !setup.ok || !setup.baseCommit) return fail('infra', `setup failed: ${setup ? setup.error : 'null agent'}`)
   setupOk = true
   const K0 = runKey(setup.record)
-  const skipRev = (stage, ok) => ok && skipReview(stage, K0) && !!out.concerns.push(`${stage} review skipped: ${AP.run} matches`)
+  const skipRev = (stage, ok, k = K0, tip) => ok && skipReview(stage, k, tip) &&!!out.concerns.push(`${stage} review skipped: ${AP.run} matches`)
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Task commits of the previous version and no native spec: the person finishes there or discards the branch.
+  // Task commits of the previous version, no native spec: the person finishes there or discards the branch.
   if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
     const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
     op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${AP.spec}`,
@@ -2223,7 +2223,7 @@ ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   // The digest is recalculated here from the emit.
-  // useSpec false: the frozen previous plan is read against no spec (the old plan cannot cover the owner note).
+  // useSpec false: the frozen previous plan is read against no spec (it cannot cover the owner note).
   const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => checkPlanLoad(t, { E, RM }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}
@@ -2554,28 +2554,29 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
   const syncBranch = (label, ref, from) => agent(`${Cs()}
 
 Bring the target state into the branch: headBefore = git -C "${wt}" rev-parse HEAD; git -C "${wt}" merge --no-ff ${ref} -m "${E}: sync with ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource. Nothing to merge: ok=true without a commit.
-Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in).`,
+Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in), record = the raw stdout of node "${RR}" key "${wt}" ${AP.dir} run after the merge (empty when it fails).`,
     { label, phase: 'Final review', schema: S_SYNC, model: 'sonnet', effort: 'medium' })
-  // Sync with the last VALIDATED tip (a merge still under validation stays out).
+  // Sync with the last validated tip (a merge under validation stays out).
   let syncAt = lastGood
-  let myBase = snapshotBase()  // baseline matching syncAt (captured together, no await between them)
+  let myBase = snapshotBase()  // baseline of syncAt (captured with it, no await between)
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
   if (!sync || !sync.ok) return fail(sync ? 'conteudo' : 'infra', `sync with ${TARGET} failed: ${sync ? sync.details : 'null agent'}`)
-  if (sync.conflictsResolved !== 0) {  // as on the late sync: a resolution is reviewed with the full briefing
+  if (sync.conflictsResolved !== 0) {  // a resolution is reviewed in full, as on the late sync
     const rc = await reviewConflicts(sync.head, wt, `${E}:sync-review`)
     if (!rc.ok) return fail(rc.kind, rc.why)
   }
 
-  const integ = TEST_INTEGRITY ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
+  const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin
+  const integ = TI ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
     { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
-  if (TEST_INTEGRITY && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
+  if (TI && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
   const integTxt = alerts.length ? `\nALERTS MEASURED IN THE TESTS (check each one; weakening a test without justification is a critical defect): ${alerts.join('; ')}.` : ''
 
   const lenses = card.critical
     ? ['correctness across layers and the card acceptance criteria', 'security: authorization, secrets, sensitive data, injection and any security rule of the PROJECT block (or the file it points to)']
     : ['correctness across layers, the card acceptance criteria and security']
-  const finalLoop = await reviewLoop('final',
+  const finalLoop = skipFin ? { ok: true } : await reviewLoop('final',
     async (round, prev) => {
       const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
 
@@ -2670,7 +2671,7 @@ Review (read-only) the gates fix: git -C "${wt}" diff ${preFix}..HEAD. Blocks (d
       exp = null
     }
   }
-  await persistReviews('')  // committed BEFORE the final measurement, so the measured head includes it
+  await persistReviews('', !skipFin && 'final', sync.targetTip)  // before the final measurement, which then includes it
   const bg = await branchGates('', null)
   if (!bg.ok) return fail(bg.kind, bg.msg)
   let validatedHead = bg.head  // the branch head the gates and evidence measured
