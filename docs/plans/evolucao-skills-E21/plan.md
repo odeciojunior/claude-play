@@ -59,9 +59,11 @@ Teste primeiro em `workflow/review.test.mjs`:
 - `AC2: taskIssues keeps open and missing verdicts and drops closed ones` (C3): `taskIssues({ issues: [novo], verdicts: [{ id: 'F1', open: true }, { id: 'F2', open: false }] }, { restricted: true, prev: [F1, F2, F3] })` devolve o novo, `F1` e `F3` (veredicto ausente conta como aberto), sem duplicar por `id`; fora do modo restrito devolve `r.issues`.
 - texto do script: o laço por tarefa lê `CFG.taskReview` com `=== true` e só passa o modo restrito quando `restricted === true`.
 
+Estender em `workflow/prompts.test.mjs` o teste `AC5: task review prompts cite no superpowers and forbid asking` (mesmo nome, que é a evidência do AC5) com o modo restrito: `P.buildTaskReviewPrompt` com `restricted: true`, `prev` presente e todo achado aberto com `id` abre com o briefing (`ctx.base`), contém `Mode: restricted` e não contém `superpowers`; o mesmo prompt com `restricted` ausente (padrão) continua abrindo com o briefing.
+
 Teste complementar em `workflow/flow.test.mjs` (arnês `exec`): tarefa com achado `F1` na primeira revisão e correção; com `config: { taskReview: { restricted: true } }` o prompt de `E1:t1:spec2` contém `review-package.mjs`; sem a configuração não contém e traz o `log -p` do intervalo.
 
-Rodar `review.test.mjs` e relatar a falha. Implementar: `runReviewLoop` passa à nova revisão um quarto argumento `{ iss, head: r.headSha }` (achados da rodada anterior e ponta medida); função pura `taskIssues(r, opt)` no bloco `// <pure>`; `buildTaskReviewPrompt` usa a linha `Mode: restricted`, os achados abertos (`fmt`) e o comando do pacote quando `ctx.taskReview.restricted === true`, há `prev` e todo achado aberto tem `id`; senão o prompt de hoje; o laço por tarefa calcula o modo a partir de `CFG.taskReview` com `=== true`, passa `pluginRoot`, `prevIss`, `prevHead` e o caminho do diff em `<WT>/_tmp/<E>-t<n>-<kind><round>.diff`, e o `truth` passa a ser `r => reviewTruth({ ...r, issues: taskIssues(r, ...) }, ...)`. Rodar `review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs` e o teste de tamanho (BLOCKED se passar). Commit `E21 T4: revisão restrita`.
+Rodar `review.test.mjs` e `prompts.test.mjs` e relatar a falha. Implementar: `runReviewLoop` passa à nova revisão um quarto argumento `{ iss, head: r.headSha }` (achados da rodada anterior e ponta medida); função pura `taskIssues(r, opt)` no bloco `// <pure>`; `buildTaskReviewPrompt` usa a linha `Mode: restricted`, os achados abertos (`fmt`) e o comando do pacote quando `ctx.taskReview.restricted === true`, há `prev` e todo achado aberto tem `id`; senão o prompt de hoje; o laço por tarefa calcula o modo a partir de `CFG.taskReview` com `=== true`, passa `pluginRoot`, `prevIss`, `prevHead` e o caminho do diff em `<WT>/_tmp/<E>-t<n>-<kind><round>.diff`, e o `truth` passa a ser `r => reviewTruth({ ...r, issues: taskIssues(r, ...) }, ...)`. Rodar `review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs` e o teste de tamanho (BLOCKED se passar). Commit `E21 T4: revisão restrita`.
 
 ### Tarefa 5: Modo de revisão única desligado por padrão
 
@@ -71,9 +73,11 @@ Teste primeiro em `workflow/review.test.mjs`:
 - `AC3: taskIssues fails a single review with a missing or failing verdict without a blocking finding`: com `single: true`, `{ issues: [], spec: 'pass' }` (falta `quality`) e `{ issues: [], spec: 'pass', quality: 'fail' }` devolvem um achado `critical`/`defeito`; `{ issues: [], spec: 'pass', quality: 'pass' }` devolve `[]`; `fail` com achado bloqueante não acrescenta outro.
 - `AC3: the single review prompt asks for both verdicts`: `buildTaskReviewPrompt(ctx, task, 'review', impl)` contém `Mode: review` e abre com o briefing.
 
+Estender em `workflow/prompts.test.mjs` o teste `AC5: task review prompts cite no superpowers and forbid asking` (mesmo nome) com o modo único: `P.buildTaskReviewPrompt(ctx, task, 'review', impl)` abre com o briefing (`ctx.base`) e não contém `superpowers`. Com isso o teste do AC5 cobre os quatro prompts (`spec`, `quality`, restrito e `review`).
+
 Teste complementar em `workflow/flow.test.mjs` (arnês `exec`): na configuração padrão os rótulos `E1:t1:spec1` e `E1:t1:quality1`, com `opts.agentType === 'productivity-tools:task-reviewer'` e `opts.model` igual a `reviewModelFor` da tarefa; com `config: { taskReview: { single: true } }` só `E1:t1:review1`, com o mesmo modelo, e o corretor rotulado `E1:t1:review-fix1`.
 
-Rodar `review.test.mjs` e relatar a falha. Implementar: `const kinds = CFG.taskReview && CFG.taskReview.single === true ? ['review'] : ['spec', 'quality']` no laço por tarefa; `buildTaskReviewPrompt` com `Mode: review` para `kind === 'review'`; `taskIssues` acrescenta o achado crítico `defeito` quando falta `spec` ou `quality`, ou um deles é `fail` sem achado bloqueante (R6); o corretor é o `implAgent` de hoje com `kind` `review` no texto e no rótulo, sem mudar `implAgent` nem `agents/implementer.md`. Rodar `review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs` e o teste de tamanho (BLOCKED se passar). Commit `E21 T5: revisão única`.
+Rodar `review.test.mjs` e `prompts.test.mjs` e relatar a falha. Implementar: `const kinds = CFG.taskReview && CFG.taskReview.single === true ? ['review'] : ['spec', 'quality']` no laço por tarefa; `buildTaskReviewPrompt` com `Mode: review` para `kind === 'review'`; `taskIssues` acrescenta o achado crítico `defeito` quando falta `spec` ou `quality`, ou um deles é `fail` sem achado bloqueante (R6); o corretor é o `implAgent` de hoje com `kind` `review` no texto e no rótulo, sem mudar `implAgent` nem `agents/implementer.md`. Rodar `review.test.mjs`, `prompts.test.mjs`, `flow.test.mjs` e o teste de tamanho (BLOCKED se passar). Commit `E21 T5: revisão única`.
 
 ### Tarefa 6: Preflight valida taskReview e regra do script do pacote
 
@@ -222,7 +226,10 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
           "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
           "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
         ],
-        "test": ["plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs"]
+        "test": [
+          "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
+          "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs"
+        ]
       },
       "writes": [],
       "score": { "ambiguity": 1, "reasoning": 2, "blast": 1, "verifiability": 1 },
@@ -231,7 +238,7 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
         { "task": 1, "sig": "node review-package.mjs <repo> <base> <tip> <out> -> stdout {ok,path,base,tip,commits,bytes} | exit 1 {ok:false,error} | exit 2 uso" },
         { "task": 3, "sig": "sameFinding(prevIssues, issues, blqIds, byId) -> boolean" }
       ],
-      "covers": ["AC2", "C2", "C3", "C5"],
+      "covers": ["AC2", "AC5", "C2", "C3", "C5"],
       "testFirst": true,
       "checks": [
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "expect": "exit 0" },
@@ -254,13 +261,16 @@ Sem ferramenta de subagent (executor do workflow), a tarefa não roda: o impleme
           "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
           "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
         ],
-        "test": ["plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs"]
+        "test": [
+          "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
+          "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs"
+        ]
       },
       "writes": [],
       "score": { "ambiguity": 1, "reasoning": 1, "blast": 1, "verifiability": 1 },
       "produces": ["laço por tarefa com kinds ['review'] quando taskReview.single === true"],
       "consumes": [{ "task": 4, "sig": "taskIssues(r, opt) -> issues" }],
-      "covers": ["AC3", "C5"],
+      "covers": ["AC3", "AC5", "C5"],
       "testFirst": true,
       "checks": [
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs", "expect": "exit 0" },
