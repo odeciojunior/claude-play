@@ -3,9 +3,9 @@
   "plan": {
     "path": "docs/plans/text-utilities/plan.md",
     "id": "E3",
-    "digest": "86867873",
+    "digest": "fe187178",
     "maxWidth": 4,
-    "roadmap": "docs/plans/roadmap-text-utilities/",
+    "roadmap": null,
     "spec": null
   },
   "piece": null,
@@ -20,7 +20,7 @@
     "commits": "none",
     "waveGateOwed": null,
     "question": null,
-    "updated": "2026-11-13T00:27:38.093Z"
+    "updated": "2026-11-13T00:31:45.752Z"
   },
   "waves": [
     {
@@ -126,13 +126,7 @@
   "history": [
     {
       "event": "init",
-      "at": "2026-11-13T00:27:38.093Z"
-    },
-    {
-      "event": "default",
-      "what": "base",
-      "value": "45ac74d3aa30cf223bb323a10698645a52421a55",
-      "at": "2026-11-13T00:27:38.093Z"
+      "at": "2026-11-13T00:31:45.752Z"
     }
   ]
 }

@@ -88,7 +88,7 @@ export function citedPaths(cases) {
   const found = new Set();
   for (const c of cases) {
     for (const text of Object.values(c.prompt ?? {})) {
-      for (const m of String(text).matchAll(/docs\/[A-Za-z0-9_./-]*[A-Za-z0-9_]/g)) found.add(m[0]);
+      for (const m of String(text).replace(/\\/g, '/').matchAll(/(?:\.\/)?(docs\/[A-Za-z0-9_./-]*[A-Za-z0-9_])/g)) found.add(m[1]);
     }
   }
   return [...found].sort();
@@ -108,9 +108,10 @@ export async function sandboxFiles(root = SANDBOX_FIXTURES) {
   return out.sort();
 }
 
-// Grava os arquivos citados no sandbox; texto sempre em LF, mesmo num checkout CRLF.
-export async function seedSandbox(sandbox, write, root = SANDBOX_FIXTURES) {
-  for (const rel of await sandboxFiles(root)) {
+// Grava no sandbox só os arquivos pedidos (c.fixtures do caso); texto sempre em LF, mesmo num checkout CRLF.
+// Nunca semeie a saída da skill esperada: cada caso lista só o que cita ou o que um arquivo citado exige.
+export async function seedSandbox(sandbox, write, files = [], root = SANDBOX_FIXTURES) {
+  for (const rel of files) {
     const text = (await readFile(join(root, rel), 'utf8')).replace(/\r\n/g, '\n');
     await write(join(sandbox, ...rel.split('/')), text);
   }
@@ -166,7 +167,7 @@ export async function runTrigger(opts, deps = {}) {
       const sandbox = await d.mkdtemp(join(work, `${c.id}-${l}-`));
       try {
         await d.spawn('git', ['init', '-q'], { cwd: sandbox });
-        await seedSandbox(sandbox, d.writeFile);
+        await seedSandbox(sandbox, d.writeFile, c.fixtures ?? []);
         const r = await d.spawn('claude', args, { cwd: sandbox });
         results.push(scoreCase({ ...c, lang: l }, parseTranscript(r?.stdout ?? ''), { code: r?.code, error: r?.error }));
       } finally {

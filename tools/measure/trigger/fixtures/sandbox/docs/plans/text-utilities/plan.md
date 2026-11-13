@@ -24,7 +24,7 @@ Descrever no README as duas funções com um exemplo cada.
   "id": "E3",
   "title": "Text utilities",
   "spec": "spec.md",
-  "roadmap": "docs/plans/roadmap-text-utilities/",
+  "roadmap": null,
   "constraints": [
     "Cada tarefa termina com os testes dela passando."
   ],
