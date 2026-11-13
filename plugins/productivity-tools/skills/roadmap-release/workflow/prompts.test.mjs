@@ -223,10 +223,6 @@ test('AC5: task review prompts cite no superpowers and forbid asking', () => {
     assert.doesNotMatch(p, /superpowers/i);
     assert.equal(/Mode: restricted/.test(p), !!c.taskReview);
   }
-  const single = P.buildTaskReviewPrompt({ ...ctx, taskReview: { single: true } }, task, 'review', impl);
-  assert.ok(single.startsWith(ctx.base), 'single review prompt opens with the briefing');
-  assert.match(single, /Mode: review/);
-  assert.doesNotMatch(single, /superpowers/i);
   // E21 T9: the generic labels live in the agent; the prompt keeps only the data.
   const how = (agentText.match(/## Reading the prompt\n([\s\S]*?)(?=\n## |$)/) || [])[1] || '';
   assert.match(how, /`Mode:`/);
@@ -239,7 +235,6 @@ test('AC5: task review prompts cite no superpowers and forbid asking', () => {
   const shown = [
     [P.buildTaskReviewPrompt(withPrev, task, 'spec', impl), /log -p abc123\.\.HEAD/],
     [P.buildTaskReviewPrompt(withPrev, task, 'quality', impl), /log -p abc123\.\.HEAD/],
-    [P.buildTaskReviewPrompt({ ...withPrev, taskReview: { single: true } }, task, 'review', impl), /Mode: review/],
     [P.buildTaskReviewPrompt(rw, task, 'spec', impl), /node "\/plug\/scripts\/review-package\.mjs" "\/wt\/E7" h1 HEAD "\/wt\/_tmp\/x\.diff"/],
   ];
   for (const [p, range] of shown) {

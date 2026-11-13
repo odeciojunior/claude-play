@@ -4149,30 +4149,3 @@ test('AC2: the default configuration rereads the task range, taskReview.restrict
   const flag = await restrictedRun({ taskReview: { restricted: 'true' } });
   assert.doesNotMatch(flag.calls.find((c) => c.label === 'E1:t1:spec2').prompt, /review-package\.mjs/);
 });
-
-// ---- E21 T5: single review is off by default ----
-test('AC3: default spec and quality reviews, taskReview.single one review', async () => {
-  const def = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
-  const task = def.calls.filter((c) => /^E1:t1:/.test(c.label));
-  assert.deepEqual(task.map((c) => c.label).filter((l) => /(spec|quality)\d$/.test(l)), ['E1:t1:spec1', 'E1:t1:quality1']);
-  assert.ok(!def.calls.some((c) => /^E1:t1:review/.test(c.label)));
-  for (const l of ['E1:t1:spec1', 'E1:t1:quality1']) {
-    const o = def.calls.find((c) => c.label === l).opts;
-    assert.equal(o.agentType, 'productivity-tools:task-reviewer');
-    assert.ok(o.model);
-  }
-  const model = def.calls.find((c) => c.label === 'E1:t1:spec1').opts.model;
-  let n = 0;
-  const one = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { taskReview: { single: true } }, over: withPlan([tk(1, false)], (l) => {
-    if (l === 'E1:t1:review1' && n++ === 0) return { issues: [{ severity: 'critical', category: 'defeito', id: 'F1', file: 'a.js', description: 'x' }], spec: 'fail', quality: 'pass', headSha: 'h7', clean: true, commitsInRange: 2 };
-    if (l === 'E1:t1:review-fix1') return { status: 'DONE', summary: 'f', checks: [] };
-    return undefined;
-  }) });
-  const labels = one.calls.map((c) => c.label);
-  assert.ok(labels.includes('E1:t1:review1'));
-  assert.ok(labels.includes('E1:t1:review-fix1'));
-  assert.ok(!labels.includes('E1:t1:spec1') && !labels.includes('E1:t1:quality1'));
-  const o = one.calls.find((c) => c.label === 'E1:t1:review1').opts;
-  assert.equal(o.agentType, 'productivity-tools:task-reviewer');
-  assert.equal(o.model, model);
-});

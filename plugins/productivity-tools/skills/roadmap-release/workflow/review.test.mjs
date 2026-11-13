@@ -601,19 +601,17 @@ test('AC2: the per-task loop turns the restricted mode on only when taskReview.r
 test('AC2: taskReview is normalized once in runDeliverable and only true turns a mode on', () => {
   assert.equal((SRC.match(/CFG\.taskReview/g) || []).length, 1);
   assert.equal((SRC.match(/restricted === true/g) || []).length, 1);
-  assert.equal((SRC.match(/single === true/g) || []).length, 1);
   const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
-  const norm = body.match(/const (tr = CFG\.taskReview \|\| \{\}, TR = \{[^}]*\})/);
+  const norm = body.match(/const (TR = \{ restricted: [^\r\n]*\})(?=\r?\n)/);
   assert.ok(norm, 'one normalization in runDeliverable');
   assert.ok(body.indexOf(norm[0]) < body.indexOf('reviewLoop(`T${t.n}:${kind}`'), 'normalized before the per-task loop');
   const run = taskReview => new Function('CFG', `const ${norm[1]}; return TR`)({ taskReview });
-  assert.deepEqual(run(undefined), { restricted: false, single: false });
-  assert.deepEqual(run({}), { restricted: false, single: false });
-  assert.deepEqual(run({ restricted: false, single: false }), { restricted: false, single: false });
-  assert.deepEqual(run({ restricted: 'yes', single: 'true' }), { restricted: false, single: false });
-  assert.deepEqual(run({ restricted: 1, single: 1 }), { restricted: false, single: false });
-  assert.deepEqual(run({ restricted: true, single: true }), { restricted: true, single: true });
-  assert.deepEqual(run({ restricted: true }), { restricted: true, single: false });
+  assert.deepEqual(run(undefined), { restricted: false });
+  assert.deepEqual(run({}), { restricted: false });
+  assert.deepEqual(run({ restricted: false }), { restricted: false });
+  assert.deepEqual(run({ restricted: 'yes' }), { restricted: false });
+  assert.deepEqual(run({ restricted: 1 }), { restricted: false });
+  assert.deepEqual(run({ restricted: true }), { restricted: true });
 });
 
 test('AC2: runReviewLoop hands the next review the previous findings and the measured head', async () => {
@@ -624,38 +622,4 @@ test('AC2: runReviewLoop hands the next review the previous findings and the mea
     async () => ({ status: 'DONE' }), r => r.issues, { tier: 'sonnet', byId: true });
   assert.equal(seen[0], undefined);
   assert.deepEqual(seen[1], { iss: [F('F1')], head: 'h1' });
-});
-
-// ---- E21 T5: single review, off by default ----
-test("AC3: by default each task gets the spec and quality reviews on today's model", () => {
-  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
-  assert.match(body, /TR\.single \? \['review'\] : \['spec', 'quality'\]/);
-  assert.doesNotMatch(SRC, /\.single\) /);
-  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
-  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
-  assert.match(at, /revAgent\(/);
-  assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
-  assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
-});
-
-test('AC3: taskIssues fails a single review with a missing or failing verdict without a blocking finding', () => {
-  const one = rCtx({ taskReview: { single: true }, was: undefined, prev: null });
-  for (const r of [{ issues: [], spec: 'pass' }, { issues: [], spec: 'pass', quality: 'fail' }, { issues: [], quality: 'pass' }, { issues: [], spec: 'fail', quality: 'pass' }]) {
-    const out = P2.taskIssues(r, one);
-    assert.equal(out.length, 1);
-    assert.equal(out[0].severity, 'critical');
-    assert.equal(out[0].category, 'defeito');
-  }
-  assert.deepEqual(P2.taskIssues({ issues: [], spec: 'pass', quality: 'pass' }, one), []);
-  const withBlock = { issues: [F('F1')], spec: 'fail', quality: 'pass' };
-  assert.deepEqual(P2.taskIssues(withBlock, one).map(i => i.id), ['F1']);
-  const r = { issues: [], spec: 'pass' };
-  assert.equal(P2.taskIssues(r, rCtx({ taskReview: { single: false }, was: undefined })), r.issues);
-  assert.equal(P2.taskIssues(r, rCtx({ taskReview: undefined, was: undefined })), r.issues);
-});
-
-test('AC3: the single review prompt asks for both verdicts', () => {
-  const p = P2.buildTaskReviewPrompt(rCtx({ taskReview: { single: true }, was: undefined, prev: null }), rTask, 'review', rImpl);
-  assert.match(p, /Mode: review/);
-  assert.ok(p.startsWith('BASE'));
 });

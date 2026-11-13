@@ -375,15 +375,11 @@ function restrictedRound(c) {
   const p = c.was && c.was.iss, t = c.taskReview
   return t && t.restricted && p && p.length && p.every(i => i.id)
 }
-// Restricted: new findings and open ones no verdict closed. Single: both verdicts pass.
+// Restricted: new findings and open ones no verdict closed.
 function taskIssues(r, c) {
-  let a = r.issues
-  if (restrictedRound(c)) {
-    const now = a || [], gone = [...(r.verdicts || []).filter(v => !v.open), ...now]
-    a = [...now, ...c.was.iss.filter(p => !gone.some(i => i.id === p.id))]
-  }
-  const bad = c.taskReview && c.taskReview.single && (r.spec !== 'pass' || r.quality !== 'pass') && !blocking({ issues: a }).length
-  return bad ? [...(a || []), { severity: 'critical', category: 'defeito', description: 'single review: spec and quality must pass, else a blocking finding' }] : a
+  if (!restrictedRound(c)) return r.issues
+  const now = r.issues || [], gone = [...(r.verdicts || []).filter(v => !v.open), ...now]
+  return [...now, ...c.was.iss.filter(p => !gone.some(i => i.id === p.id))]
 }
 function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
@@ -2501,8 +2497,8 @@ ${NO_ASK}`,
     if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
-    const tr = CFG.taskReview || {}, TR = { restricted: tr.restricted === true, single: tr.single === true }
-    for (const kind of TR.single ? ['review'] : ['spec', 'quality']) {
+    const TR = { restricted: (CFG.taskReview || {}).restricted === true }
+    for (const kind of ['spec', 'quality']) {
       let cx
       const loop = await reviewLoop(`T${t.n}:${kind}`,
         (round, prev, rvModel, was) => revAgent(buildTaskReviewPrompt(cx = ctxFor({ locks, start, round, prev, rangeNote, taskReview: TR, pluginRoot, was, diffPath: `${WT}/_tmp/${E}-t${t.n}-${kind}${round}.diff` }), t, kind, cur),
