@@ -3632,6 +3632,21 @@ test('evidenceFromPlan keeps the row fields', () => {
   assert.deepEqual(rows[1], { ac: 'AC2', kind: 'blocked', command: null, testRef: null, blq: 'BLQ-1', external: false, externalDedupe: null });
 });
 
+test('DEC-640: the lean emit printed by plan-tool loads, and a change in a frozen task is still detected', () => {
+  const pure = loadPure();
+  const e = fixtureEmit();
+  assert.equal(e.plan.rulings, undefined);
+  assert.equal(e.plan.tasks[0].checks, undefined);
+  assert.match(e.plan.tasks[0].authored, /^[0-9a-f]{8}$/);
+  const r = pure.loadPlanEmit(JSON.stringify(e), { E: 'E1', RM: 'docs/plans/roadmap-exemplo/' });
+  assert.equal(r.ok, true, r.why);
+  const next = JSON.parse(JSON.stringify(e.plan));
+  assert.deepEqual(pure.frozenTaskDiffs(e.plan, next, [1, 2]), []);
+  next.tasks[1].authored = '00000000';
+  assert.equal(pure.frozenTaskDiffs(e.plan, next, [1]).length, 0);
+  assert.equal(pure.frozenTaskDiffs(e.plan, next, [2]).length, 1);
+});
+
 test('frozenTaskDiffs flags a changed or missing committed task and ignores the others', () => {
   const pure = loadPure();
   const prev = fixtureEmit().plan;
@@ -3757,13 +3772,14 @@ test('a trackerCli outside the plugin layout fails as infra before the author', 
   for (const l of ['E1:spec', 'E1:spec-load1', 'E1:spec-commit']) assert.ok(!labels.includes(l), l);
 });
 
-test('a spec load that keeps diverging from the card fails as infra after three tries', async () => {
+test('a spec load that keeps diverging from the card fails as infra after five tries', async () => {
   const diverge = (l) => (/:spec-load\d$/.test(l) ? specLoadOk('E1', { acceptance: [{ id: 'AC1', text: 'something else' }] }) : undefined);
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: diverge });
   assert.equal(r.results[0].failKind, 'infra');
   assert.match(r.results[0].error, /spec load/);
-  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3']);
-  assert.deepEqual(['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3'].map((l) => [calls.find((c) => c.label === l).opts.model, calls.find((c) => c.label === l).opts.effort]), [['haiku', 'low'], ['haiku', 'low'], ['sonnet', 'medium']]);
+  const five = ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3', 'E1:spec-load4', 'E1:spec-load5'];
+  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), five);
+  assert.deepEqual(five.map((l) => [calls.find((c) => c.label === l).opts.model, calls.find((c) => c.label === l).opts.effort]), [['haiku', 'low'], ['haiku', 'low'], ['sonnet', 'medium'], ['sonnet', 'medium'], ['sonnet', 'medium']]);
   assert.ok(!labels.includes('E1:spec-commit'));
   assert.ok(!labels.includes('E1:plan'));
 });
@@ -3854,8 +3870,9 @@ test('AC3: a plan whose digest does not match after the retries fails as infra w
   const e = r.results[0];
   assert.equal(e.failKind, 'infra');
   assert.match(e.error, /plan load: integrity digest/);
-  assert.deepEqual(['E1:plan-load1', 'E1:plan-load2', 'E1:plan-load3'].map((l) => modelOf(calls, l).model), ['haiku', 'haiku', 'sonnet']);
-  assert.deepEqual(['E1:plan-load1', 'E1:plan-load3'].map((l) => modelOf(calls, l).effort), ['low', 'medium']);
+  assert.deepEqual(calls.map((c) => c.label).filter((l) => /^E1:plan-load\d$/.test(l)), [1, 2, 3, 4, 5].map((k) => `E1:plan-load${k}`));
+  assert.deepEqual([1, 2, 3, 4, 5].map((k) => modelOf(calls, `E1:plan-load${k}`).model), ['haiku', 'haiku', 'sonnet', 'sonnet', 'sonnet']);
+  assert.deepEqual([1, 3, 5].map((k) => modelOf(calls, `E1:plan-load${k}`).effort), ['low', 'medium', 'medium']);
   assert.ok(!labels.some((l) => /:t\d+:/.test(l)));
   assert.ok(!labels.some((l) => /^E1:status-/.test(l) && !/blocked|-read/.test(l)), 'no executing record');
   assert.ok(!labels.includes('E1:plan-review1'));

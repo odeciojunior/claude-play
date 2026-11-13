@@ -37,7 +37,7 @@ Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `
 | `plan-frozen-tasks` | The owner instruction rewrote tasks already committed on the branch; the plan file was restored. No task ran. | Reword `notes` to touch only uncommitted tasks, or revert those task commits, then run again. |
 | `report` | The report agent returned nothing. | Rebuild the report from the result. |
 
-An `infra` stop where loading the plan or the spec failed is not transient when the emit output passed ~30 KB: the Bash tool saves larger output to a file and returns only a pointer, so running again fails the same way. Measure the size of `plan-tool emit` and `spec-tool emit` first; `BASH_MAX_OUTPUT_LENGTH` does not help.
+An `infra` stop where loading the plan or the spec failed is not transient when the emit output passed ~30 KB: the Bash tool saves larger output to a file and returns only a pointer, so running again fails the same way. Measure the size of `plan-tool emit` and `spec-tool emit` first; `BASH_MAX_OUTPUT_LENGTH` does not help. `plan-tool emit` prints a lean emit (only what the loader reads, about a third of the full size); `plan-tool emit --full` prints the full one, and its digest differs from the lean digest.
 
 The internal failure class (`infra`, `conteudo`, `decisao`, `humano`, `externo`) shows up only in `results[].failKind` and in the "blocked" status the run records for a stopped deliverable (not for `externo`); `conteudo` becomes the `defect` action, `decisao` the `decision` action and `externo` (an item waiting for authorization) the `authorize-external` action.
 

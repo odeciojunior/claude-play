@@ -470,7 +470,7 @@ test('example plan stays at zero errors and warnings', () => {
 
 // ---- Task 5: emit (resumo de integridade e cópia gerada para os workflows) ----
 import vm from 'node:vm';
-import { emitPlan } from './plan-tool.mjs';
+import { emitPlan, leanEmit } from './plan-tool.mjs';
 import { embedFile } from './embed.mjs';
 
 const COPY_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'workflow-copy.js');
@@ -533,6 +533,51 @@ test('emit CLI prints compact one-line JSON', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim().split('\n').length, 1);
   assert.equal(r.stdout.trim(), JSON.stringify(JSON.parse(r.stdout)));
+});
+
+// DEC-640: the workflow load agent copies emit's stdout; a lean emit keeps only what the loader reads.
+const LEAN_TASK_KEYS = ['authored', 'deps', 'external', 'externalDedupe', 'files', 'locks', 'n', 'noCommit', 'route', 'score', 'testFirst', 'title'];
+test('DEC-640: emit prints a lean emit with only what the workflow loader reads', () => {
+  const r = runCli(['emit', PLAN_PATH]);
+  assert.equal(r.status, 0, r.stderr);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(o).sort(), ['digest', 'path', 'plan', 'schema', 'source', 'tool']);
+  assert.deepEqual(Object.keys(o.plan).sort(), ['evidence', 'id', 'roadmap', 'schema', 'tasks']);
+  for (const t of o.plan.tasks) {
+    assert.deepEqual(Object.keys(t).sort(), LEAN_TASK_KEYS);
+    assert.match(t.authored, /^[0-9a-f]{8}$/);
+  }
+  assert.equal(r.stdout.trim().split('\n').length, 1);
+});
+
+test('DEC-640: emit --full prints exactly the old output', () => {
+  const r = runCli(['emit', PLAN_PATH, '--full']);
+  assert.equal(r.status, 0, r.stderr);
+  const { out } = emit(PLAN_TEXT);
+  assert.equal(r.stdout.trim(), JSON.stringify(out));
+  assert.ok(JSON.parse(r.stdout).plan.rulings !== undefined);
+  assert.ok(JSON.parse(r.stdout).plan.tasks[0].checks !== undefined);
+  assert.ok(r.stdout.length > runCli(['emit', PLAN_PATH]).stdout.length);
+});
+
+test('DEC-640: the workflow copy recomputes the digest of the lean emit', () => {
+  const o = JSON.parse(runCli(['emit', PLAN_PATH]).stdout);
+  assert.equal(loadCopy().planDigest({ plan: o.plan, source: o.source }), o.digest);
+  const full = JSON.parse(runCli(['emit', PLAN_PATH, '--full']).stdout);
+  assert.notEqual(full.digest, o.digest);
+});
+
+test('DEC-640: authored changes when a frozen task checks or produces change', () => {
+  const base = leanEmit(emit(PLAN_TEXT).out).plan.tasks[0].authored;
+  for (const m of [
+    (d) => (d.tasks[0].checks[0].expect = 'outra coisa'),
+    (d) => (d.tasks[0].produces = [...d.tasks[0].produces, 'x()']),
+  ]) {
+    const e = emit(mutate(m));
+    assert.deepEqual(e.errors, []);
+    assert.notEqual(leanEmit(e.out).plan.tasks[0].authored, base);
+  }
+  assert.equal(leanEmit(emit(PLAN_TEXT).out).plan.tasks[0].authored, base);
 });
 
 test('emit adds route, wave and fileCount', () => {
@@ -761,7 +806,7 @@ test('DEC-208: emit honors maxWidth and records it in the plan and the digest', 
 test('DEC-208: emit, map and brief CLIs agree on waves with --max-width 2', () => {
   const m = JSON.parse(runCli(['map', PLAN_PATH, '--max-width', '2', '--json']).stdout);
   const mapWave = new Map(m.waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
-  const r = runCli(['emit', PLAN_PATH, '--max-width', '2']);
+  const r = runCli(['emit', PLAN_PATH, '--max-width', '2', '--full']);
   assert.equal(r.status, 0, r.stderr);
   const e = JSON.parse(r.stdout);
   assert.equal(e.plan.maxWidth, 2);

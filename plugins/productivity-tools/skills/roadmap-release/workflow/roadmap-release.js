@@ -2107,10 +2107,10 @@ ${numbered([`node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" --json`,
 ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:spec-load${k}`, phase: 'Spec', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-  // Attempts 1-2 haiku, 3rd sonnet; a failed check is not a failed load.
+  // Attempts 1-2 haiku, 3-5 sonnet; a failed check is not a failed load.
   const load3 = async (once, check) => {
     let why = ''
-    for (let k = 1; k <= 3; k++) {
+    for (let k = 1; k <= 5; k++) {
       const v = check(await once(k))
       if (v.ok) return v
       why = v.why
