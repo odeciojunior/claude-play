@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E8 | MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), comentário de size.test.mjs cita o relatório do limite; commit próprio na release; G1 1714/0. | `9381791` |
+| 2026-11-13 | E24 | r3 mesclou E24 (4308baa), G1 1714/0, G2 a G5 verdes; US$ 7,95. Docs com docsOk false por relato do agente (comando com texto diferente, 1 a mais, painel relido sem E24), mas state, log e painel conferidos corretos e checker 0 erros: ação de docs encerrada. | `docs/reports/2026-11-13-E24-run.md` |
 | 2026-11-13 | E24 | E24 passou para na-branch | `4308baaa13175b1ab3549f9c15f075814ef87919`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `docs/plans/evolucao-skills-E24/reviews.md` |
 | 2026-11-13 | E24 | E24 passou para executando | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |
 | 2026-11-13 | E24 | BLQ-13 resolvido: desbloqueio de E24 pelo release | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md` |

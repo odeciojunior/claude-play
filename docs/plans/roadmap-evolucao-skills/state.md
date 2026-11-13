@@ -138,9 +138,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Depois do merge de E24: revisão da estratégia para o card E24 nomear plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs; ratificar DEC-626 a DEC-636 e as desta retomada num só registro, DEC-632 com emenda e os tamanhos medidos, tratando as repetições como em E8.
 - (executor) E10, 1ª tarefa que edita o script: TEST_INTEGRITY_DEFAULT (1.506 caracteres) vira script do plugin e resume-test-integrity despacha o agente test-integrity. E24 deve fechar perto de 239.904 (folga 96); E28 só começa com 450.
 - (executor) E10: workflow não lê arquivo; a carga sempre passa por cópia de agente. Depois de fix/carga-plano, medir acerto por tentativa (antes: haiku 13/23, sonnet 2/3; 1 grupo falho em 16). Enxugar ou paginar o emit do spec só se um grupo de carga voltar a falhar.
-- (executor) Depois do merge de E24, antes de E10: commit próprio na release subindo MAX_WORKFLOW_CHARS de 240.000 a 250.000 (DEC-641), citando docs/reports/2026-11-13-E8-limite-lancamento-workflow.md no comentário de size.test.mjs. Preflight/skill: diagnosticar not found como script acima de 512 KiB.
 - (executor) fix/carga-plano: resumeFromRunId de execução anterior à mudança, mesmo caminho de plugin, pode comparar emit completo com enxuto e parar em plan-frozen-tasks falso; normalizar em authoredTask ou avisar em operator.md. plan-author.md:40 descreve o emit com data em vez de plan.
 - (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
+- (executor) E10: recordVerdict da etapa docs acusou falso positivo em E24 r3 (texto de comando diferente, comando extra, painel relido sem segmento) com registro correto; medir se o relato do agente de registro deve vir de script em vez de cópia.
+- (executor) Preflight/skill: diagnosticar "not found" do lançamento pelo nome como script acima de 512 KiB (docs/reports/2026-11-13-E8-limite-lancamento-workflow.md).
 <!-- /roadmap:pending -->
 
 ## Em andamento
