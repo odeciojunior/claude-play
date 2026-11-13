@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E8 | E8 passou para na-branch | `37234367718719ba7e155d07efee76356e734627`, `gates G1, G2, G3, G4, G5`, `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E8 | E8 passou para executando | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E8 | BLQ-8 resolvido: desbloqueio de E8 pelo release | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md` |
 | 2026-11-12 | E17 | Ponto de medição do 1.7.0 concluído e liberado por delegação (DEC-507, DEC-508, DEC-509): detecção sem queda, contadores dentro de DEC-448, haiku +5 de parada-retomada liberado, deriva do superpowers aceita, metas de E4 e E22 atingidas. Gasto cerca de US$ 87,4. Relatórios em 73cd476, merge 4c4027e. | `docs/reports/2026-11-12-e17-ponto-de-medicao/comparacao.md, achados-1.7.0.md` |
