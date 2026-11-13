@@ -4149,3 +4149,17 @@ test('AC2: the default configuration rereads the task range, taskReview.restrict
   const flag = await restrictedRun({ taskReview: { restricted: 'true' } });
   assert.doesNotMatch(flag.calls.find((c) => c.label === 'E1:t1:spec2').prompt, /review-package\.mjs/);
 });
+
+// ---- E21 T11: default half of AC3 (spec and quality reviews on the task-reviewer agent) ----
+test('AC3: default spec and quality reviews on the task-reviewer agent', async () => {
+  const def = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
+  const task = def.calls.filter((c) => /^E1:t1:/.test(c.label));
+  assert.deepEqual(task.map((c) => c.label).filter((l) => /(spec|quality)\d$/.test(l)), ['E1:t1:spec1', 'E1:t1:quality1']);
+  assert.ok(!def.calls.some((c) => /^E1:t1:review/.test(c.label)));
+  for (const l of ['E1:t1:spec1', 'E1:t1:quality1']) {
+    const o = def.calls.find((c) => c.label === l).opts;
+    assert.equal(o.agentType, 'productivity-tools:task-reviewer');
+    assert.ok(o.model);
+  }
+  assert.equal(def.calls.find((c) => c.label === 'E1:t1:spec1').opts.model, def.calls.find((c) => c.label === 'E1:t1:quality1').opts.model);
+});

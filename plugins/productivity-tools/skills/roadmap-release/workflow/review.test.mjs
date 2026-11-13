@@ -623,3 +623,16 @@ test('AC2: runReviewLoop hands the next review the previous findings and the mea
   assert.equal(seen[0], undefined);
   assert.deepEqual(seen[1], { iss: [F('F1')], head: 'h1' });
 });
+
+// ---- E21 T11: default half of AC3 (spec and quality reviews) ----
+test("AC3: by default each task gets the spec and quality reviews on today's model", () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  assert.match(body, /for \(const kind of \['spec', 'quality'\]\)/);
+  assert.doesNotMatch(body, /\.single\b/);
+  assert.match(SRC, /const revAgent = \(p, o\) => agent\(p, \{ agentType: 'productivity-tools:task-reviewer'/);
+  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
+  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
+  assert.match(at, /revAgent\(/);
+  assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
+  assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
+});
