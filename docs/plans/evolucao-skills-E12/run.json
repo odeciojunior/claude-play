@@ -45,5 +45,11 @@
       ],
       "log": "run-record baseline: no output, exit 1 (not recorded). G1 node --test: tests 1752, pass 1752, fail 0, skipped 0. G2-G5 exit 0."
     }
+  },
+  "final": {
+    "spec": "7b02efadd8ebc3b9077f856908c81054bc0864cc",
+    "plan": "07edd94022b5cd9a676ffe092d5d1875a88759ed",
+    "tree": "3db222e25e29d8f4d8d8bd2139b0902d2b8e4ac0c909745a41eb68a662be967f",
+    "target": "7a9dd82cc52415c66b415b56e289067497cbb857"
   }
 }
