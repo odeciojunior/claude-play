@@ -452,3 +452,15 @@ test('tasksFromPlan copies testFirst (true and exempt)', () => {
   assert.deepEqual(ts[1].testFirst, { exempt: 'docs' });
   assert.equal(ts[2].testFirst, undefined);
 });
+
+test('AC1: the test-first check runs before the first task reviewer and fails without a reviewer', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const close = body.indexOf('closeEffect(t, awaitingPerson.includes(t.n))');
+  const call = body.indexOf('testFirstGap(t, impl, resumed)');
+  const loop = body.indexOf('reviewLoop(`T${t.n}:${kind}`');
+  assert.ok(close > 0 && call > close && loop > call, 'order: closeEffect, testFirstGap, reviewLoop');
+  const between = body.slice(call, loop);
+  assert.match(between, /if \(gap\) return fail\('conteudo'/);
+  const ret = between.indexOf("return fail('conteudo'");
+  assert.ok(ret > 0 && !/agent\(/.test(between.slice(0, ret)), 'no agent call before the failing return');
+});

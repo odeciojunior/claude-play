@@ -2480,6 +2480,8 @@ ${NO_ASK}`,
         }
       }
     }
+    const gap = testFirstGap(t, impl, resumed)
+    if (gap) return fail('conteudo', gap)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {
@@ -2489,7 +2491,7 @@ ${NO_ASK}`,
         (iss, k, tier) => withLocks(locks, async () => {
           const fx = await agent(`${C()}
 
-In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} Never edit the spec or the plan to satisfy a finding: they are approved, so if an item can only be met by changing them (for example a commit the plan does not call for), do not apply it and explain in concerns. If you disagree technically with an item, do not apply it and explain in concerns. Report in "checks" every verification you ran, with the exact command, real output and exit code.
+In Task ${t.n} of the plan ${plan.planPath}, fix the ${kind} problems below, run the task's checks and commit "${E} T${t.n}: fix ...". ${authorizedExt && !resumed ? `The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.` : externalNote(false, t)} STOP after this fix. ${lockNote(locks)} Never edit the spec or the plan to satisfy a finding: they are approved, so if an item can only be met by changing them (for example a commit the plan does not call for), do not apply it and explain in concerns.
 ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', schema: S_IMPL, model: tier, effort: effortFor(tier) })
           if (fx) { if (fx.checks) cur.checks = fx.checks; if (fx.summary) cur.summary = fx.summary }
           return fx
