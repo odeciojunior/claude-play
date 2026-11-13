@@ -73,7 +73,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
 - (dono) T10:spec: [important/pelo-plano] Task 10 (behavioral test of the short entry by the orchestrator) has no deliverable. The executor has no subagent tool, so no report was written and no commit was made. Plan decision R20 and [...] texto completo em docs/plans/evolucao-skills-E12/reviews.md
 - (dono) Registrar na estratégia, por nova revisão, a meta de prosa de E12 declarada em R9 (≤ 6.000 bytes LF, linha de base 56.508, removido 50.508) na tabela de Metas derivadas.
-- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
+- (executor) Defeito menor (comportamental de E12): plan-coordinator SKILL.md:25 não proíbe authorizeExternal e answers no 1º lançamento; a regra só está em delegation-protocol.md:27. Acrescentar a frase (~150 bytes) na próxima fix.
 <!-- /roadmap:pending -->
 
 ## Em andamento
