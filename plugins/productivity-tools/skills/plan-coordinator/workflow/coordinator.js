@@ -1144,6 +1144,7 @@ const implPrompt = (s, defects) => {
     `Repository: ${ROOT}. Read the brief of the step first: ${briefOf(s)} (plan constraints, files, checks and the interfaces this step consumes). Never read the plan file.`,
     `Files of this step: ${filesOf(s).length ? filesOf(s).join(', ') : 'none (this step writes no file)'}.`,
     handoffs.length ? handoffs.join('\n') : 'HANDOFF: none (no dependency of this step left a handoff).',
+    s.external ? `This step is external and the owner authorized it (plan:T${s.n}@${S.plan.digest}): perform the external effect exactly as the brief says, once, and report what happened.` : '',
     prev,
     'Rules:',
     RULES,
@@ -1165,6 +1166,13 @@ const reviewPrompt = (s, rep) => {
     'Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty (false is expected while the step is uncommitted); commitsInRange = 0.',
   ].join('\n')
 }
+const preLaunchPrompt = (s) => [
+  'Mode: review',
+  `Pre-launch review of external step T${s.n} of plan ${S.plan.id}: ${s.title}, in ${ROOT}. Read-only: never edit, stage, commit or run the step.`,
+  `Brief of the step: ${briefOf(s)}. Read it and check that it names the exact external effect and its target, says how a repeat is avoided (externalDedupe), lists the checks that prove the result and needs nothing that is not written there. Never read the plan file.`,
+  `Files of the step: ${filesOf(s).length ? filesOf(s).join(', ') : 'none'}.`,
+  `Measure: headSha = git -C ${shq(ROOT)} rev-parse HEAD; clean = git status --porcelain empty; commitsInRange = 0. Set spec to fail when the brief cannot be executed once, as written, without asking anyone.`,
+].join('\n')
 const finalPrompt = () => {
   const base = S.run.base || 'HEAD'
   const steps = S.steps.map((s) => `- T${s.n} ${s.title} [${s.status}]${s.noCommit ? ' (no commit)' : ''}: ${filesOf(s).join(', ') || 'no files'}`).join('\n')
@@ -1261,6 +1269,16 @@ if (!samePlan(S.plan.path, A.plan)) return failWith(`the state belongs to anothe
 if (first.data.planChanged === true) return stopWith('plan-changed', { message: 'the plan changed after progress.mjs init; the state is kept as it is. Recreate it with init --restart only if the person asks' })
 
 try {
+  // A step still launched on disk belongs to a run that died: no report came. A common step goes back to pending; an external
+  // step becomes stopped and the person is asked, because its effect may have happened (it never runs twice).
+  for (const s of S.steps.filter((x) => x.status === 'launched').sort((a, b) => a.n - b.n)) {
+    queue({ type: 'no-report', step: s.n, text: 'the run that launched this step ended without its report' })
+  }
+  // What the person answered is applied before the loop, then both are on disk before anything is dispatched.
+  for (const a of Array.isArray(A.answers) ? A.answers : []) queue(a)
+  const resumed = await flush('resume')
+  if (resumed) return resumed
+
   for (let turn = 0; turn < 500; turn++) {
     const act = nextAction(S)
     // Every other action means the wave is settled: its passed steps are committed first.
@@ -1375,8 +1393,43 @@ try {
         return await finish(stopWith('ask', { question: act.question || S.run.question || (act.manual || []).map((m) => `T${m.step}: ${m.text}`).join(' | '), manual: act.manual || [] }))
       case 'done':
         return await finish({ status: 'done', ...summaryOf() })
-      default: // prelaunch-review and authorize: external steps arrive with the next task of the plan
-        return await finish(failWith(`action ${act.action} is not handled by this version of coordinator-workflow yet`, { action: act }))
+      case 'prelaunch-review': { // external steps are reviewed before the person is asked, read-only on the brief
+        phase('Review')
+        const outs = await parallel(act.steps.map((n) => async () => {
+          const s = stepOf(n)
+          return { n, out: await agent(preLaunchPrompt(s),
+            { agentType: 'productivity-tools:task-reviewer', label: `T${n}:prelaunch${s.rounds + 1}`, phase: 'Review', schema: S_TASKREVIEW, model: 'opus', effort: 'medium' }) }
+        }))
+        for (const { n, out } of outs.slice().sort((a, b) => a.n - b.n)) {
+          const v = reviewVerdict(out)
+          if (v.verdict === 'lost') {
+            const k = `pre${n}`
+            lost.set(k, (lost.get(k) || 0) + 1)
+            if (lost.get(k) >= 3) {
+              const question = `the pre-launch reviewer of external step T${n} returned nothing 3 times`
+              queue({ type: 'block', text: question })
+              return await finish(stopWith('ask', { question }))
+            }
+            continue
+          }
+          if (v.verdict === 'pass') queue({ type: 'prelaunch-review', step: n, value: 'pass' })
+          else queue({ type: 'prelaunch-review', step: n, value: 'defects', text: v.text.slice(0, 600) })
+        }
+        break
+      }
+      case 'authorize': { // the item is bound to the digest of the plan: another digest never authorizes
+        const asks = []
+        for (const n of act.steps) {
+          const s = stepOf(n)
+          const item = externalHold({ n, external: s.external }, 'plan', checkedArgs.authorizeExternal, S.plan.digest)
+          if (item === null) queue({ type: 'authorize', step: n })
+          else asks.push({ item, step: n, title: s.title })
+        }
+        if (asks.length) return await finish(stopWith('authorize', { items: asks }))
+        break
+      }
+      default:
+        return await finish(failWith(`action ${act.action} is not handled by coordinator-workflow`, { action: act }))
     }
   }
   return await finish(failWith('coordinator-workflow: the loop did not settle in 500 turns'))

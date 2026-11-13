@@ -13,6 +13,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, '..', '..', '..');
 const PROGRESS = join(PLUGIN, 'skills', 'plan-coordinator', 'scripts', 'progress.mjs').replace(/\\/g, '/');
 const FIXTURE_PLAN = join(HERE, 'fixtures', 'two-waves', 'plan.md');
+const EXTERNAL_PLAN = join(HERE, 'fixtures', 'external-step', 'plan.md');
 const SRC = readFileSync(join(HERE, 'coordinator.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const runWorkflow = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budget', SRC);
@@ -376,3 +377,116 @@ test('state divergence and plan changes stop the run', async () => {
     assert.ok(runnerCmds(sim).some((c) => / read /.test(c) && c !== runnerCmds(sim)[0]), 'a new read confirms the write');
   });
 });
+
+// ---- T6: authorization bound to the plan digest, resume after a kill without repeating an effect
+
+const withExternal = (fn) => withSandbox(fn, { plan: readFileSync(EXTERNAL_PLAN, 'utf8') });
+const preLaunch = (sim) => byAgent(sim, REVIEWER).filter((c) => /T3:prelaunch/.test(c.o.label));
+// An implementer that did its work (the files of its step are on disk) and then died before returning.
+const dieAfterWriting = (sb, n) => {
+  const st = readState(sb).steps.find((s) => s.n === n);
+  for (const f of st.files) {
+    mkdirSync(dirname(join(sb.dir, f)), { recursive: true });
+    writeFileSync(join(sb.dir, f), `// step ${n}, written before the kill\n`);
+  }
+  throw new Error('killed');
+};
+
+test('AC2: an external step stops before its implementer and returns the item to authorize', () => withExternal(async (sb) => {
+  const digest = readState(sb).plan.digest;
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb, { authorizeExternal: undefined }));
+  assert.equal(r.status, 'stopped', JSON.stringify(r));
+  assert.equal(r.stop.kind, 'authorize');
+  assert.deepEqual(r.stop.items, [{ item: `plan:T3@${digest}`, step: 3, title: 'Módulo c' }]);
+  assert.equal(preLaunch(sim).length, 1, 'the pre-launch review of T3 ran');
+  assert.equal(preLaunch(sim)[0].o.model, 'opus');
+  assert.equal(preLaunch(sim)[0].o.effort, 'medium');
+  assert.equal(implOf(sim, 3), undefined, 'the implementer of T3 is never called');
+  assert.equal(implOf(sim, 4), undefined, 'nothing of the stopped wave is dispatched');
+  for (const k of ['authorizeExternal', 'answers', 'runToken']) assert.ok(!(k in r.resumeArgs), `resumeArgs has no ${k}`);
+  assert.equal(r.resumeArgs.plan, launchArgs(sb).plan);
+  assert.equal(r.resumeArgs.state, launchArgs(sb).state);
+  // the stop is written before the return: the review is on disk, the authorization is not
+  const st = readState(sb);
+  assert.equal(st.steps[2].preLaunchReview, 'pass');
+  assert.equal(st.steps[2].authorized, null);
+  assert.equal(st.steps[2].status, 'pending');
+  // the resume with the item runs T3 once
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb, { authorizeExternal: [r.stop.items[0].item] }));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  assert.equal(byAgent(sim2, IMPL).filter((c) => c.step === 3).length, 1, 'T3 is launched once');
+  assert.equal(preLaunch(sim2).length, 0, 'the review that passed is not repeated');
+  assert.match(implOf(sim2, 3).prompt, /external and the owner authorized it/);
+  assert.equal(implOf(sim2, 3).snap[3], 'launched');
+  const st2 = readState(sb);
+  assert.ok(st2.steps[2].authorized, 'the authorization is recorded');
+  assert.deepEqual(st2.steps.map((s) => s.status), ['pass', 'pass', 'pass', 'pass']);
+}));
+
+test('AC2: an authorization bound to another plan digest does not count', () => withExternal(async (sb) => {
+  const digest = readState(sb).plan.digest;
+  const other = digest === '00000000' ? '11111111' : '00000000';
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb, { authorizeExternal: [`plan:T3@${other}`] }));
+  assert.equal(r.status, 'stopped', JSON.stringify(r));
+  assert.equal(r.stop.kind, 'authorize');
+  assert.equal(r.stop.items[0].item, `plan:T3@${digest}`);
+  assert.equal(implOf(sim, 3), undefined, 'T3 is not dispatched');
+  assert.equal(readState(sb).steps[2].authorized, null);
+}));
+
+test('AC3: a relaunch after a kill skips passed steps and asks about a launched external step', () => withExternal(async (sb) => {
+  const item = `plan:T3@${readState(sb).plan.digest}`;
+  // the run dies inside the implementer of the authorized external step
+  const sim = makeSim(sb, { impl: (n) => (n === 3 ? dieAfterWriting(sb, 3) : undefined) });
+  await assert.rejects(sim.go(launchArgs(sb, { authorizeExternal: [item] })), /killed/);
+  const dead = readState(sb);
+  assert.equal(dead.steps[2].status, 'launched');
+  assert.ok(dead.steps[2].authorized);
+  assert.equal(dead.steps[0].status, 'pass');
+  // relaunch with the same state and another token: the effect is not repeated
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'stopped', JSON.stringify(r2));
+  assert.equal(r2.stop.kind, 'ask');
+  assert.ok(r2.stop.manual.some((m) => m.step === 3), 'the question is about T3');
+  assert.deepEqual(byAgent(sim2, IMPL).map((c) => c.step), [4], 'T1, T2 and T3 are not dispatched again; only the common T4 comes back');
+  assert.equal(preLaunch(sim2).length, 0);
+  const mid = readState(sb);
+  assert.equal(mid.steps[2].status, 'stopped');
+  assert.equal(mid.manual.filter((m) => m.open && m.step === 3).length, 1);
+  // the person says it is done: T3 closes, is committed and the run ends
+  const sim3 = makeSim(sb);
+  const r3 = await sim3.go(launchArgs(sb, { answers: [{ type: 'answer', step: 3, value: 'done' }] }));
+  assert.equal(r3.status, 'done', JSON.stringify(r3));
+  assert.equal(byAgent(sim3, IMPL).length, 0, 'no implementer on the third call');
+  const end = readState(sb);
+  assert.deepEqual(end.steps.map((s) => s.status), ['pass', 'pass', 'pass', 'pass']);
+  assert.ok(end.steps[2].sha, 'T3 is committed');
+  assert.equal(sh(sb.dir, 'git', ['log', '-1', '--format=%s', end.steps[2].sha]), 'FX T3: Módulo c');
+}));
+
+test('AC3: a relaunch after a kill in a common step relaunches only that step', () => withSandbox(async (sb) => {
+  // T2 is reviewed, the review finds a defect and the fix round dies inside the implementer of T2
+  let reviews = 0;
+  let impls2 = 0;
+  const defect = { issues: [{ severity: 'important', category: 'defeito', description: 'b is wrong', file: 'src/b.mjs' }], headSha: 'abc', clean: false, commitsInRange: 0, spec: 'fail', quality: 'pass' };
+  const sim = makeSim(sb, {
+    review: () => (++reviews === 1 ? defect : undefined),
+    impl: (n) => (n === 2 && ++impls2 === 2 ? dieAfterWriting(sb, 2) : undefined),
+  });
+  await assert.rejects(sim.go(launchArgs(sb)), /killed/);
+  const dead = readState(sb);
+  assert.equal(dead.steps[1].status, 'launched');
+  assert.equal(dead.steps[0].status, 'pass');
+  // the relaunch: only T2 of wave 1 comes back
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const impls = byAgent(sim2, IMPL);
+  assert.deepEqual(impls.filter((c) => c.step <= 2).map((c) => c.step), [2], 'only T2 is dispatched again');
+  assert.equal(impls.find((c) => c.step === 2).snap[2], 'launched');
+  assert.deepEqual(readState(sb).steps.map((s) => s.status), ['pass', 'pass', 'pass', 'pass']);
+}));
