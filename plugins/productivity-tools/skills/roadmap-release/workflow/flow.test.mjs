@@ -1899,6 +1899,13 @@ test('resume of a task that is not external gets no bookkeeping note', async () 
   assert.ok(!x.calls.find((c) => c.label === 'E1:t1:spec1').prompt.includes('awaiting person:'));
 });
 
+test('F1: the run record commit is bookkeeping for the review of a resumed task, external or not', async () => {
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, clearedProgress) });
+  assert.match(a.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1: run record[^\n]*not extra scope/);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)], clearedProgress) });
+  assert.match(b.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1: run record[^\n]*not extra scope/);
+});
+
 test('the docs stage explains the mark: a fulfilled request leaves pending, any other need stays', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), asksAuth, evOk) });
   const docs = calls.find((c) => c.label === 'E1:docs1').prompt;

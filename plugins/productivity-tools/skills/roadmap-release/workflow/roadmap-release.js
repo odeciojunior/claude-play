@@ -2464,8 +2464,9 @@ ${NO_ASK}`,
     if (resumed && (t.n < lastDone || awaitingPerson.some(n => n > t.n))) { taskLog.push({ n: t.n, title: t.title, status: 'RESUMED (already reviewed)' }); const seen = out.externalRun.find(e => e.item === `${E}:T${t.n}`); if (seen) seen.reviewed = true; continue }
     const earlier = awaitingPerson.includes(t.n) ? (prog.done || []).find(d => d.n === t.n) : null
     let start = resumed ? resumed.firstParent : earlier ? earlier.firstParent : head  // a re-run may add nothing to the commits of the run that stopped
-    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${startedSubject(t.n)}", "${effectDone(t.n)}", "${E} T${t.n}: resumed after awaiting person" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.`
-    let rangeNote = earlier || (resumed && t.external !== false) ? bookkeepingNote : ''
+    const runRecNote = ` A commit "${E}: run record (...)" is bookkeeping, not extra scope.`
+    const bookkeepingNote = ` The range may hold this task's commits from a run that stopped for a person: commits with the subject "${E} T${t.n} awaiting person:", "${mayHaveRunMark(t.n)}:", "${E} T${t.n} awaiting person (effect unknown):", "${launchSubject(t.n)}", "${startedSubject(t.n)}", "${effectDone(t.n)}", "${E} T${t.n}: resumed after awaiting person" or "${E}: review log" are bookkeeping and not extra scope. The spec ${spec.specPath} and the plan ${plan.planPath}, committed by this resume, may be in the range too and are not extra scope.${runRecNote}`
+    let rangeNote = earlier || (resumed && t.external !== false) ? bookkeepingNote : resumed ? runRecNote : ''
     let completionInRange = 0  // the completion mark of this run sits inside the range and is not the implementer's commit
     let startedInRange = 0  // so does the started mark the implementer writes first
     let locks = asList(t.needsLock).filter(n => TASK_LOCKS.includes(n))
