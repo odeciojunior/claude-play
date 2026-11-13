@@ -4301,3 +4301,21 @@ test('E23: plan-only records spec and plan in the review log', async () => {
   const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: recordedSetup(RUN_REC) });
   assert.ok(!skipped.labels.some((l) => /review-log/.test(l)));
 });
+
+// ---- E23 T6: the preflight reuses the recorded gates baseline when the target did not move.
+const recordedPre = (rec) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: rec } : undefined);
+
+test('AC3: an unchanged target reuses the recorded gates baseline', async () => {
+  const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
+  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify(prep)) });
+  assert.ok(calls.find((c) => c.label === 'preflight').prompt.includes('run-record.mjs" baseline'));
+  assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.ok(calls.some((c) => c.label === 'E1:setup'));
+  const prompt = calls.find((c) => c.label === 'E1:setup').prompt;
+  assert.ok(prompt.includes('unit: '), prompt.slice(0, 200));
+  // another gatesKey: stops in preflight as before
+  const other = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify({ ...prep, gatesKey: 'zzz' })) });
+  assert.ok(other.r.operatorActions.some((o) => /^preflight:/.test(o.kind)));
+  assert.ok(!other.calls.some((c) => c.label === 'E1:setup'));
+});

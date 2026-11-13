@@ -1391,7 +1391,7 @@ const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, 
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
   ok: BOOL, errorKind: { type: 'string', enum: ['dirty', 'setup', 'target', 'other'] }, error: STR,
-  integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE,
+  integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE, recorded: STR,
 }, required: ['ok'] }
 const S_SETUP = { type: 'object', properties: { ok: BOOL, error: STR, worktree: STR, branch: STR, baseCommit: STR, head: STR, reused: BOOL, clean: BOOL, taskCommits: INT, committedTasks: { type: 'array', items: INT }, nativeSpec: BOOL, nativePlan: BOOL, record: STR }, required: ['ok', 'taskCommits', 'committedTasks', 'nativeSpec', 'nativePlan'] }
 const HUMAN = { type: 'array', items: { type: 'object', properties: { blq: STR, what: STR, workaround: STR, blocking: BOOL }, required: ['what'] } }
@@ -1602,12 +1602,13 @@ PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only step
 1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
 2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. ${foreignRule} If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort only when that worktree is ${WT}/_integracao; in any other path do NOT abort. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
 3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Only if step 2 did not stop. Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
-4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First, BEFORE any command: clean (git status --porcelain empty) and headSha (git rev-parse HEAD). Install first${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then measure every gate. ${measureTxt(GATES)}`}
+4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, return it verbatim as recorded and skip the rest of step 4. Else, BEFORE any command: clean (git status --porcelain empty) and headSha (git rev-parse HEAD). Install first${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then measure every gate. ${measureTxt(GATES)}`}
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (for example CRLF, scripts that require bash).
 Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : ', baseline { headSha, clean, gates } (none when step 2 stopped)'}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
+if (pre && MODE === 'run' && !pre.baseline) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES) || undefined
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
-// Unauthorized foreign checkout: left as found, so there is no baseline.
+// Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
 if (!pre || !pre.ok || !pre.integrationWorktree || (MODE !== 'plan-only' && !pre.baseline && !foreignHold)) {
   const kind = pre ? pre.errorKind || 'other' : 'other'
@@ -2039,7 +2040,7 @@ SETUP of deliverable ${E} (mechanical; do not change tracked files).
 1. If ${wt} is already a registered worktree, reuse it (reused=true). Otherwise, if the branch ${br} exists: git -C "${REPO}" worktree add "${wt}" ${br}; else: git -C "${REPO}" worktree add "${wt}" -b ${br} ${lastGood}.
 2. Install${INSTALL ? `: ${INSTALL}` : ': nothing to install'}.
 3. baseCommit = git -C "${wt}" merge-base ${br} ${TARGET}; head = git -C "${wt}" rev-parse HEAD; clean = git -C "${wt}" status --porcelain empty (do not clean anything here).
-4. Measure the previous version's work on the branch, read-only: git -C "${wt}" log --format=%s ${TARGET}..HEAD; taskCommits = the number of those subjects that match ^${E} T(\\d+): ; committedTasks = the distinct task numbers (the digits) of those subjects, ascending; nativeSpec = the file ${AP.spec} exists in ${wt} on this branch; nativePlan = the file ${AP.plan} exists in ${wt} on this branch.
+4. Measure the previous version's work on the branch, read-only: git -C "${wt}" log --format=%s ${TARGET}..HEAD; taskCommits = how many of those subjects match ^${E} T(\\d+): ; committedTasks = their distinct task numbers, ascending; nativeSpec / nativePlan = whether ${AP.spec} / ${AP.plan} exists in ${wt} on this branch.
 5. record = the raw stdout of: node "${RR}" key "${wt}" ${AP.dir} (empty when it fails).
 Return ok (true only if baseCommit and head are not empty), worktree, branch, baseCommit, head, reused, clean, taskCommits, committedTasks, nativeSpec, nativePlan, record.`,
     { label: `${E}:setup`, phase: 'Setup', schema: S_SETUP, model: 'haiku', effort: 'low' }))
@@ -2050,7 +2051,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   if (setup.clean === false && !(await sanitize('setup'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
   out.setup = { worktree: setup.worktree || wt, branch: setup.branch || br, baseCommit: setup.baseCommit, head: setup.head, reused: !!setup.reused }
 
-  // Task commits of the previous version, no native spec: the person finishes there or discards the branch.
+  // Previous-version task commits, no native spec: the person decides.
   if (setup.taskCommits > 0 && setup.nativeSpec !== true) {
     const done = Array.isArray(setup.committedTasks) && setup.committedTasks.length ? ` (tasks ${setup.committedTasks.join(', ')})` : ''
     op('previous-version', E, `the branch ${br} already holds ${setup.taskCommits} task commit(s)${done} made by the previous version of the release and has no native spec at ${AP.spec}`,
@@ -2095,7 +2096,7 @@ ${numbered([`node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" --json`,
 ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:spec-load${k}`, phase: 'Spec', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-  // Attempts 1-2 haiku/low, 3rd sonnet/medium; a failed check is not a failed load.
+  // Attempts 1-2 haiku, 3rd sonnet; a failed check is not a failed load.
   const load3 = async (once, check) => {
     let why = ''
     for (let k = 1; k <= 3; k++) {
@@ -2223,7 +2224,7 @@ ${BASH_ONLY}
 ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   // The digest is recalculated here from the emit.
-  // useSpec false: the frozen previous plan is read against no spec (it cannot cover the owner note).
+  // useSpec false: the frozen plan is read against no spec.
   const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => checkPlanLoad(t, { E, RM }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}
@@ -2329,7 +2330,7 @@ ${NO_ASK}`,
     { tier: 'sonnet', reviewModel: 'opus' })
   if (planLoadErr) return planLoadFail(planLoadErr)
   if (!planLoop.ok) return fail(planLoop.kind, planLoop.msg)
-  // A note is consumed only when written into the spec or plan; otherwise it stays in resumeWith.
+  // A note is consumed only when written into the spec or plan.
   if (noteE && !(spec.reused === true && plan.reused === true)) NOTES_READ.push(E)
   out.plan = plan.planPath
   planRef = plan.planPath
@@ -2556,7 +2557,7 @@ ${fmt(iss)}`, { label: `${E}:t${t.n}:${kind}-fix${k}`, phase: 'Implementation', 
 Bring the target state into the branch: headBefore = git -C "${wt}" rev-parse HEAD; git -C "${wt}" merge --no-ff ${ref} -m "${E}: sync with ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource. Nothing to merge: ok=true without a commit.
 Return ok (false if a conflict stayed unresolved; then git merge --abort), head, conflictsResolved, details, targetTip = git -C "${wt}" rev-parse ${ref}, deltaFiles = git -C "${wt}" diff --name-only ${from}..${ref} (empty when nothing came in), record = the raw stdout of node "${RR}" key "${wt}" ${AP.dir} run after the merge (empty when it fails).`,
     { label, phase: 'Final review', schema: S_SYNC, model: 'sonnet', effort: 'medium' })
-  // Sync with the last validated tip (a merge under validation stays out).
+  // Sync with the last validated tip.
   let syncAt = lastGood
   let myBase = snapshotBase()  // baseline of syncAt (captured with it, no await between)
   const sync = await syncBranch(`${E}:sync`, syncAt, syncAt)
@@ -2595,7 +2596,7 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier,
     { tier: 'sonnet', reviewModel: 'opus' })
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
 
-  // ---------- Gates on the branch (+ reviewed fix). Every acceptance criterion is proved by a command that ran.
+  // ---------- Gates on the branch (+ reviewed fix); every criterion is proved by a command that ran.
   // The value compared with the plan file is the value dispatched.
   const acExec = () => normalizePlanAc(cardAc, plan.ac).filter(p => VERIFY_EXEC.includes(p.kind) && p.command).map(p => ({ ...p, command: commandKey(p.command) }))
   const externalEvidenceNote = () => {
