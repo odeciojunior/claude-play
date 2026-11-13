@@ -636,3 +636,30 @@ test("AC3: by default each task gets the spec and quality reviews on today's mod
   assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
   assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
 });
+
+// ---- E24 T3: single wave of the final review ----
+test("AC3: by default the final review has no verification call and today's fix rounds; the single wave has one fix and one re-review", async () => {
+  const run = async (opt, maxFix = 2) => {
+    const fixes = [];
+    const reviews = [];
+    const env = { maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks() {} };
+    const res = await P2.runReviewLoop(env, 'final', async round => { reviews.push(round); return { issues: [F('F1', ['d1', 'd1', 'd2', 'd3', 'd4'][round - 1])], headSha: 'h', clean: true, commitsInRange: 1 }; },
+      async (iss, k, tier) => { fixes.push(k); return { status: 'DONE' }; }, r => r.issues, { tier: 'sonnet', reviewModel: 'opus', ...opt });
+    return { res, fixes, reviews };
+  };
+  const dflt = await run({});
+  assert.deepEqual(dflt.fixes, [1, 2, 3]);
+  assert.deepEqual(dflt.reviews, [1, 2, 3, 4]);
+  const once = await run({ once: true });
+  assert.deepEqual(once.fixes, [1]);
+  assert.deepEqual(once.reviews, [1, 2]);
+  assert.equal(once.res.ok, false);
+  assert.match(once.res.msg, /after 1 fixes/);
+  const none = await run({ once: true }, 0);
+  assert.deepEqual(none.fixes, []);
+  assert.deepEqual(none.reviews, [1]);
+  const body = SRC.slice(SRC.indexOf("const finalLoop = skipFin"));
+  const loop = body.slice(0, body.indexOf('if (!finalLoop.ok)'));
+  assert.match(SRC, /const FR = CFG\.finalReview \|\| \{\}/);
+  assert.match(loop, /once: FR\.singleWave === true/);
+});

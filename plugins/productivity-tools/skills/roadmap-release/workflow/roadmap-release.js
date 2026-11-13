@@ -508,8 +508,9 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
   if (!r) { r = await review('1b', null); note('1b') }
   if (!r) { record(r); return { ok: false, kind: 'infra', msg: `${stage}: null review` } }
   let iss = truth(r)
+  const lim = opt.once ? Math.min(1, env.maxFix) : env.maxFix
   let bonus = false
-  for (let k = 1; iss.length && env.maxFix > 0 && k <= env.maxFix + (bonus ? 1 : 0); k++) {
+  for (let k = 1; iss.length && env.maxFix > 0 && k <= lim + (bonus ? 1 : 0); k++) {
     const fixable = iss.filter(i => isHard(i, env.blqIds))  // ambiente/fora-do-escopo/pelo-plano do not spend a fix
     if (!fixable.length) break
     const fx = await fix(fixable, k, tier)
@@ -531,13 +532,13 @@ async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
         return { ok: false, kind: kindOf(hard), msg: `${stage}: the same finding reappeared after a fix at opus:\n${fmt(hard)}` }
       }
       tier = up
-      bonus = true
+      bonus = !opt.once
     }
   }
   record(r, iss)
   if (!iss.length) return { ok: true, r }
   const hard = iss.filter(i => isHard(i, env.blqIds))
-  if (hard.length) return { ok: false, kind: kindOf(hard), msg: `${stage} has open issues after ${env.maxFix} fixes:\n${fmt(hard)}` }
+  if (hard.length) return { ok: false, kind: kindOf(hard), msg: `${stage} has open issues after ${lim} fixes:\n${fmt(hard)}` }
   env.acceptRisks(stage, iss)
   return { ok: true, r }
 }
@@ -2576,7 +2577,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
   const alerts = integrityAlerts(integ)
 
   const lenses = card.critical ? ['correctness', 'security'] : ['all']
-  const FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }
+  const FR = CFG.finalReview || {}, FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }
   const finalLoop = skipFin ? { ok: true } : await reviewLoop('final',
     async (round, prev) => {
       const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
@@ -2592,7 +2593,7 @@ Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAl
 Fix the final review problems below and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
 ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier, effort: effortFor(tier) })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
-    { tier: 'sonnet', reviewModel: 'opus' })
+    { tier: 'sonnet', reviewModel: 'opus', once: FR.singleWave === true })
   if (!finalLoop.ok) return fail(finalLoop.kind, finalLoop.msg)
 
   // ---------- Gates on the branch (+ reviewed fix); every criterion is proved by a command that ran.

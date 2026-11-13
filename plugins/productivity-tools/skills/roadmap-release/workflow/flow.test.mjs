@@ -4372,3 +4372,20 @@ test('E23 final-fix F2: a spec fix round in this run forces the plan review even
   assert.ok(labels.includes('E1:spec-fix1'));
   assert.ok(labels.includes('E1:plan-review1'));
 });
+
+test('E24 AC3: the default final review calls no final-verify; singleWave makes one final-fix1 and one final re-review', async () => {
+  const issue = { severity: 'important', category: 'defeito', description: 'd' };
+  const over = (l) => {
+    if (/^E1:final-1-r[12]$/.test(l)) return { issues: [{ ...issue, description: `d${l.slice(-1)}` }], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (/^E1:final-fix\d$/.test(l)) return { status: 'DONE', summary: 'f', checks: [] };
+    return undefined;
+  };
+  const dflt = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:final-1-r2' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : over(l)) });
+  assert.ok(dflt.labels.includes('E1:final-fix1'));
+  assert.ok(!dflt.labels.some((l) => /:final-verify/.test(l)));
+  const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over, config: { finalReview: { singleWave: true } } });
+  assert.equal(one.labels.filter((l) => /^E1:final-fix/.test(l)).join(), 'E1:final-fix1');
+  assert.equal(one.labels.filter((l) => /^E1:final-1-r/.test(l)).join(), 'E1:final-1-r1,E1:final-1-r2');
+  assert.ok(!one.labels.some((l) => /:final-verify/.test(l)));
+  assert.notEqual(one.r.results[0].merged, true);
+});
