@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E9 | E9 passou para executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` |
 | 2026-11-12 | E9 | 1ª execução de E9 falhou por infraestrutura: o agente productivity-tools:spec-author não existe no 1.6.0 instalado. DEC-566, DEC-567, DEC-568: o release passa a rodar em claude -p com --plugin-dir na árvore de _integracao. | `docs/reports/2026-11-12-E9-run.md` |
 | 2026-11-12 | E9 | DEC-566, DEC-567, DEC-568 (execução do release sem interface com --plugin-dir) decididas pelo dono por delegação (Fable) | `decisions.md` |
 | 2026-11-12 | E8 | E8 fechado por delegação (Fable): 28 decisões da rodada integrada ratificadas (8 de contrato; DEC-548 com emenda), 47 repetições ratificadas e DEC-493, DEC-502 e DEC-532 rejeitadas; gatilho de DEC-442 aceito; sonda acceptEdits autorizada. E9, E11 e E26 liberados (DEC-030). | `decisions.md` |

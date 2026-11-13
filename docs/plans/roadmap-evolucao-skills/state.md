@@ -23,7 +23,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E6 | na-branch | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5 | `release/roadmap-skills-v2` entra em `main` depois do portão do release |
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
 | E8 | na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
-| E9 | nao-iniciado | - | Aguardar E8 |
+| E9 | executando | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md` | E9: seguir o fluxo do release após executando |
 | E10 | nao-iniciado | - | Aguardar E2, E18 e E24 |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
 | E12 | nao-iniciado | - | Aguardar E7, E9 e E21 |
@@ -135,4 +135,5 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| feat/E9 | viva | E9 em execução pelo release |
 <!-- /roadmap:inflight -->
