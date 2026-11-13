@@ -3,6 +3,14 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | - | Poda das pendências (DEC-673): 27 notas arquivadas por entregável em docs/reports/2026-11-13-pendencias-por-entregavel.md (E11, gate DEC-458, E12, E13, E28 ou próxima edição do release workflow); state.md guarda um ponteiro por grupo. | `docs/reports/2026-11-13-pendencias-por-entregavel.md` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): 6 itens de custo (E20 duas passadas, E21, E23, E24, E10) lançados em measurements.md e removidos; o custo de E9 segue pendente por falta de valor no repositório. | `DEC-673, measurements.md` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): item Observar de E21 em diante fechado, absorvido pelo item de DEC-571 e DEC-573. | `DEC-673, DEC-571, DEC-573` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): 2 itens fechados, pois fix/pos-E21 e fix/emit-compacto estão mescladas. | `DEC-673` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): 3 itens fechados por serem informativos ou de DEC-382 (duas Respostas da rodada de perguntas, ponta da release com E7 e E19). | `DEC-673, DEC-382` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): 4 itens fechados sem ação, pois o entregável está publicado (scripts de session-metrics, Incerto de E15, dois Incertos de E1). | `DEC-673` |
+| 2026-11-13 | - | Poda das pendências (DEC-673): 2 itens fechados por estarem resolvidos por DEC-310 (T4:quality do arm plan-fix-atual.md e a decisão do dono sobre o arm). | `DEC-673, DEC-310` |
+| 2026-11-13 | E17 | Poda das pendências (DEC-673): 26 itens do ponto de medição de E17 fechados, pois E17 está publicada (execuções pagas, ratificação em lote, aceite da branch, liberação de bytes, critérios AC1 a AC6). | `DEC-673` |
 | 2026-11-13 | E10 | Estratégia v1.9 (dono via Fable): meta de E10 fixada no valor do spec (DEC-658, DEC-668); 8 pendências de E10 fechadas, 5 novas; DEC-672 (fix/status-releitura) e DEC-673 (poda das pendências). | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
 | 2026-11-13 | E10 | Correção da linha de cb67d26: G1 no merge de E10 foi 1746/0 (1742 era a contagem da T7, antes da correção final), conforme o relatório e reviews.md. | `docs/reports/2026-11-13-E10-run.md` |
 | 2026-11-13 | E10 | DEC-665 ratificada pelo dono | `decisions.md` |

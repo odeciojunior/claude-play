@@ -23,4 +23,10 @@ Execuções pagas e marcos de medição. Registrado e Faturado são colunas sepa
 | 2026-11-12 | E15 | linha-de-base | codigo-semeado-B: 5/5 válidas, pipeline completo (3 inválidas fora do valor) | US$ 21,53 (custo devolvido pela CLI, só válidas) | - | concluído |
 | 2026-11-12 | E15 | linha-de-base | detecção, classe plano: 40 válidas; 40 capturados, 0 perdidos, 0 indeterminados; 0 inválidas; semeadura de execução aprovada (DEC-278) | - (já nas linhas plano-semeado) | - | concluído |
 | 2026-11-12 | E15 | linha-de-base | detecção, classe código: 40 válidas; 38 capturados, 0 perdidos, 2 indeterminados (C5, C7); 5 inválidas (33,3%, parou-antes-do-codigo) | - (já nas linhas codigo-semeado) | - | concluído |
+| 2026-11-12 | E20 | sonda | Suíte de gatilho: 50 execuções (haiku e opus), fora do teto de E17 (DEC-478) | US$ 6,04 (haiku 0,16; opus 5,87) | - | concluído |
+| 2026-11-12 | E20 | sonda | 2ª passada opus da suíte de gatilho: 26 execuções (sonda 0,62); saldo de DEC-478 restante US$ 6,92 | US$ 7,04 | - | concluído |
+| 2026-11-13 | E21 | release | Execução do release (DEC-567): r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; comportamental 1,34; 8,85 em duas falhas de carga do plano; maior execução sã 13,65 | US$ 38,37 (custo devolvido pela CLI) | - | concluído |
+| 2026-11-13 | E23 | release | Execução do release (DEC-567): r1 7,47; r2 sem valor (sessão morta às 04:29 sem evento result, interrupção do host); r3 11,48; B4 0,38 | US$ 19,33 (soma conhecida, sem r2) | - | concluído |
+| 2026-11-13 | E24 | release | Execução do release (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30 | US$ 22,56 (custo devolvido pela CLI) | - | concluído |
+| 2026-11-13 | E10 | release | Execução do release (DEC-567): r1 9,85 (defeito de spec); r2 19,82; comportamental 0,38; maior execução sã passa a 19,82 (E10 r2); teto de US$ 150 mantido | US$ 30,05 (custo devolvido pela CLI) | - | concluído |
 <!-- /roadmap:measurements -->
