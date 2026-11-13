@@ -887,7 +887,7 @@ test('I5: another red gate keeps the offer', async () => {
 test('m2: the docs are not ok when the panel does not show the status after the merge', async () => {
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
-  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --json/);
+  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --deliverable E1 --json/);
   assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('statusStdout'));
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { statusStdout: readWith('c').status, briefStdout: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
@@ -3153,6 +3153,26 @@ test('recordVerdict: reprova releitura com outra palavra e brief ausente, sem ch
   bad((v) => { delete v.read.brief; }, /brief/);
 });
 
+test('recordVerdict: releitura com painel de uma linha só do E1 passa; linha de outro id reprova', () => {
+  const v = VX();
+  assert.equal(JSON.parse(v.read.status).result.panel.length, 1);
+  assert.equal(PU.recordVerdict(v).ok, true);
+  bad((x) => { x.read.status = panelOut('plano').replace('"id":"E1"', '"id":"E2"'); }, /reread panel has no segment of E1/);
+});
+
+test('status --deliverable: a releitura e o docs-measure pedem só a linha do E; nenhum prompt chama status sem a flag', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const rd = plain(calls.find((c) => c.label === 'E1:status-d-read').prompt);
+  assert.ok(/1\. node "[^"]*roadmap\.mjs" status '[^']*' --deliverable E1 --json/.test(rd), rd);
+  const dm = plain(calls.find((c) => c.label === 'E1:docs-measure1').prompt);
+  assert.match(dm, /statusStdout = node "[^"]*roadmap\.mjs" status '[^']*' --deliverable E1 --json/);
+  for (const c of calls.filter((x) => x.label !== 'discovery')) {
+    for (const m of plain(c.prompt).matchAll(/roadmap\.mjs" status '[^']*'([^\n;]*)/g)) {
+      assert.match(m[1], /--deliverable E\d+ --json/, c.label);
+    }
+  }
+});
+
 test('recordVerdict: segmento rotulado, bloqueado com a nota BLQ e id de decisão ausente', () => {
   const v = VX();
   v.piece = 'code';
@@ -3531,7 +3551,7 @@ test('checker só de brief: nenhum prompt cita o arquivo do checker; docs-measur
   }
   for (const l of ['E1:docs-measure1', 'E1:status-d-read']) {
     const p = calls.find((c) => c.label === l).prompt;
-    assert.match(p, /roadmap\.mjs" status '[^']*' --json/, l);
+    assert.match(p, /roadmap\.mjs" status '[^']*' --deliverable E1 --json/, l);
     assert.match(p, /roadmap\.mjs" brief '[^']*' --json/, l);
   }
   const rep = calls.find((c) => c.label === 'report').prompt;
