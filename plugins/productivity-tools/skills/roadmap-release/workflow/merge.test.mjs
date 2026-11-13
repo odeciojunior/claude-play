@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
+import { truthDivergences } from '../scripts/verify-run.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -78,7 +79,7 @@ test('gateSummary shows each gate against its baseline and handles a null measur
   assert.match(gateSummary(defs, null, {}), /not measured/);
 });
 
-const { mergeParentsOk, truthDivergences } = loadPure();
+const { mergeParentsOk } = loadPure();
 
 test('needsDeltaReview: a missing file list needs review (fail closed); an empty list does not', () => {
   assert.equal(needsDeltaReview(undefined, RM, ['docs/']), true);

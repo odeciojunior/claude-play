@@ -1,0 +1,54 @@
+{
+  "schema": "run/1",
+  "spec": {
+    "spec": "98bbc2eb2b333c67d2852a5a327c50cc1c908aed"
+  },
+  "plan": {
+    "spec": "98bbc2eb2b333c67d2852a5a327c50cc1c908aed",
+    "plan": "f6afdac72ee05400de10b625823891d073e8f4a5"
+  },
+  "prep": {
+    "targetHead": "0b587a4fa7c20f1d45d8ee8aab9f8f1d2d734634",
+    "gatesKey": "936533eb",
+    "baseline": {
+      "headSha": "0b587a4fa7c20f1d45d8ee8aab9f8f1d2d734634",
+      "clean": true,
+      "gates": [
+        {
+          "name": "G1",
+          "ran": true,
+          "exit": 0,
+          "total": 1714,
+          "skipped": 0,
+          "failedNames": []
+        },
+        {
+          "name": "G2",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G3",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G4",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G5",
+          "ran": true,
+          "exit": 0
+        }
+      ]
+    }
+  },
+  "final": {
+    "spec": "98bbc2eb2b333c67d2852a5a327c50cc1c908aed",
+    "plan": "f6afdac72ee05400de10b625823891d073e8f4a5",
+    "tree": "14b1d568d9a180348f5d99da724f2fb65d82261e828224d55e2f3f3ee7dc7655",
+    "target": "0b587a4fa7c20f1d45d8ee8aab9f8f1d2d734634"
+  }
+}
