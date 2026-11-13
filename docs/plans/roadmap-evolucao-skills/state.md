@@ -111,15 +111,17 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
 - (executor) E8, fora do plano (DEC-204): rodar no sandbox, com o plugin da ponta da release, o teste comportamental plan-only (definição de pronto do card) e a medição do limite de lançamento pelo nome; relatórios em docs/reports/. Sem a medição, o teto de 240.000 segue provisório (DEC-556).
 - (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
-- (executor) roadmap-release.js mede 239.908 caracteres LF na ponta da release: folga de 92 sob o teto de 240.000 (DEC-556). E9, E21, E23, E24 e E10 editam o arquivo; cada spec precisa caber reduzindo o script. Aumentar o teto pede decisão do dono com a medição pelo nome em mãos.
 - (executor) E11, preparação: tools/measure ainda espera os artefatos de E5 em docs/superpowers (make-scenario.mjs, E5_PATHS) e ratifica decisões entre as sessões de parada-retomada (DEC-442); adaptar aos caminhos de DEC-537 e à exceção de retomada antes de medir o release nativo.
 - (executor) Até a publicação de E11 o release instalado é o 1.7.0, sem E8: cada retomada ainda regrava as decisões do spec com outro texto e pode gravar nota como decisão. Ao fechar E9, E21, E23 e E24, ratificar um registro e tratar as repetições como em E8.
 - (executor) E12: se a description do plan-coordinator mudar, rodar de novo os 3 casos plan-execution (pt e en) em opus antes de integrar e registrar em docs/reports/.
 - (executor) Lançar em measurements.md a suíte de gatilho de E20: 50 execuções, US$ 6,04 (haiku 0,16; opus 5,87), fora do teto de E17 (DEC-478).
-- (dono) Execução comportamental do orquestrador da sessão principal (DEC-204).
-- (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
 - (executor) E20/gatilho: spec-3 (pt/en) passa direto a spec-author sem chamar Skill; a config descartável tem CLAUDE.md de usuário com regras de roteamento. Na próxima medição (E11), rodar spec-3 numa config sem CLAUDE.md de usuário ou contar o despacho a spec-author como rota do plugin.
 - (executor) Lançar em measurements.md a 2ª passada opus da suíte de gatilho de E20: 26 execuções, US$ 7,04 (sonda 0,62), saldo de DEC-478 restante US$ 6,92.
+- (executor) roadmap-release.js mede 239.997 caracteres LF na ponta da release (1e1425d): folga de 3 sob o teto de 240.000 (DEC-556, DEC-563). E21, E23, E24 e E10 editam o arquivo; cada spec precisa caber reduzindo o script. Subir o teto pede decisão do dono com a medição pelo nome em mãos.
+- (executor) E9 comportamental (DEC-204, DEC-576): antes de E21, 2 sessões claude -p com --plugin-dir despacham productivity-tools:implementer pelo nome, uma por modo; revisão opus só leitura; relatório docs/reports/2026-11-12-E9-implementador-comportamental.md. Portão: publicação com E9.
+- (executor) Observar de E21 em diante: falha de testFirstGap em tarefa legítima (mesmo comando com outra grafia, ou relato sem o vermelho). Com 2 casos, propor ao dono uma nova tentativa única do implementador ou uma chave de comando mais tolerante (DEC-571, DEC-573).
+- (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
+- (executor) E21: o teste AC3 de E9 confere o rótulo :impl por substring nos 2.000 caracteres depois de implAgent( (concern de T4); apertar a conferência ao editar prompts.test.mjs.
 <!-- /roadmap:pending -->
 
 ## Em andamento

@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-12 | E9 | E9 integrada (2d1c5e1) e ratificada por delegação (Fable): DEC-569 (contrato), DEC-570 a DEC-578 e DEC-582, sem repetições; DEC-576 com emenda (comportamental após o merge, despacho pelo nome em claude -p). Script em 239.997 LF (folga 3). E21 liberado (DEC-030) depois do comportamental. | `decisions.md` |
+| 2026-11-12 | E9 | DEC-576 (E9) ratificada com emenda por delegação (Fable) | `decisions.md` |
+| 2026-11-12 | E9 | DEC-569 (contrato) e DEC-570 a DEC-575, DEC-577, DEC-578 e DEC-582 de E9 ratificadas pelo dono por delegação (Fable), conferidas contra o código integrado em 2d1c5e1; nenhuma repete outra. | `decisions.md` |
 | 2026-11-12 | E20 | 2ª passada opus da suíte de gatilho (DEC-581): 22/24, 0 erros, 2 inconclusivos (spec-3 pt/en passa a spec-author sem Skill); plan-execution-1 vai a plan-coordinator nas 2 línguas; gatilho de DEC-579/580 não disparou. US$ 7,04. Portão de spec-writer/plan-writer cumprido. | `docs/reports/2026-11-13-E20-suite-gatilho-2.md` |
 | 2026-11-12 | E17 | productivity-tools 1.7.0 publicado pelo dono a partir de feat/E17-medicao (DEC-445): main 3fbb59b -> 73cd476 (árvore do plugin 214fb3b), push feito; G1 1434/0, G2-G5, X1, X2 verdes; cache 1.7.0 com gitCommitSha 73cd476. marketplace-tools não está instalado na config do dono. | `73cd476` |
 | 2026-11-12 | E9 | E9 passou para na-branch | `2d1c5e1ed83190e968ead9977c6f428779721e2b`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `docs/plans/evolucao-skills-E9/reviews.md` |
