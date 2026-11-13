@@ -464,3 +464,12 @@ test('AC1: the test-first check runs before the first task reviewer and fails wi
   const ret = between.indexOf("return fail('conteudo'");
   assert.ok(ret > 0 && !/agent\(/.test(between.slice(0, ret)), 'no agent call before the failing return');
 });
+
+test('AC1: the test-first failure names the start commit to reset to before a rerun', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  const line = body.split('\n').find(l => l.includes("return fail('conteudo', `${gap}"));
+  assert.ok(line, 'fail message built from the gap');
+  assert.match(line, /reset --hard \$\{start\}/);
+  assert.match(line, /\$\{wt\}/);
+  assert.ok(body.indexOf('let start =') > 0 && body.indexOf('let start =') < body.indexOf(line), 'start is defined before the failure');
+});

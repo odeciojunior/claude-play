@@ -2482,7 +2482,7 @@ ${NO_ASK}`,
       }
     }
     const gap = testFirstGap(t, impl, resumed)
-    if (gap) return fail('conteudo', gap)
+    if (gap) return fail('conteudo', `${gap}. The task commit stays on ${br}: before running again, drop it with git -C "${wt}" reset --hard ${start}, or the next run takes the task as done and skips this check`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
     for (const kind of ['spec', 'quality']) {
