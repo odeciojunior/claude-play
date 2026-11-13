@@ -2186,7 +2186,14 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
   const rule = /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns\./;
   for (const l of ['E1:gates-fix1', 'E1:final-fix1']) assert.match(x.calls.find((c) => c.label === l).prompt, rule, l);
   assert.match(x.calls.find((c) => c.label === 'E1:gates-fix1-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
-  assert.match(x.calls.find((c) => c.label === 'E1:final-1-r2').prompt, /Blocks \(defeito\): an edit to the spec or the plan/);
+  // E24: the generic final-review text moved to the agent; the round with previous findings still carries the rule through it.
+  const fr2 = x.calls.find((c) => c.label === 'E1:final-1-r2');
+  assert.equal(fr2.opts.agentType, 'productivity-tools:final-reviewer');
+  assert.match(fr2.prompt, /Mode: review/);
+  assert.match(fr2.prompt, /Previous issues[^\n]*:\n[^\n]*\bd\b/);
+  const agentMd = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'agents', 'final-reviewer.md'), 'utf8');
+  const reviewMode = agentMd.slice(agentMd.indexOf('## Review mode'), agentMd.indexOf('## Verify mode'));
+  assert.ok(reviewMode.includes('Previous issues') && reviewMode.includes('Blocks (defeito): an edit to the spec or the plan made by a fix round'));
 });
 
 test('R3/I-2: the post-merge fixer may not edit the spec or the plan, and its review blocks it', async () => {

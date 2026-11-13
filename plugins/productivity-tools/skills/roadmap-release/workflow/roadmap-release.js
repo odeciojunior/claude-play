@@ -2570,29 +2570,26 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
   }
 
   const skipFin = skipRev('final', true, runKey(sync.record), sync.targetTip), TI = TEST_INTEGRITY && !skipFin
-  const integ = TI ? await agent(`Read-only. Write this Node program to "${WT}/_tmp/${E}-integrity.cjs", run exactly: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}" (the program calls git in the current directory), delete the file and return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
-    { label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
+  const integ = TI ? await agent(`Program: "${WT}/_tmp/${E}-integrity.cjs"\nCommand: cd "${wt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${TARGET}"\n${TEST_INTEGRITY}\n`,
+    { agentType: 'productivity-tools:test-integrity', label: `${E}:test-integrity`, phase: 'Final review', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
   if (TI && (!integ || integ.removedAsserts < 0)) out.concerns.push('test integrity not measured')
   const alerts = integrityAlerts(integ)
-  const integTxt = alerts.length ? `\nALERTS MEASURED IN THE TESTS (check each one; weakening a test without justification is a critical defect): ${alerts.join('; ')}.` : ''
 
-  const lenses = card.critical
-    ? ['correctness across layers and the card acceptance criteria', 'security: authorization, secrets, sensitive data, injection and any security rule of the PROJECT block (or the file it points to)']
-    : ['correctness across layers, the card acceptance criteria and security']
+  const lenses = card.critical ? ['correctness', 'security'] : ['all']
+  const FRA = { agentType: 'productivity-tools:final-reviewer', phase: 'Final review', model: 'opus', effort: 'high' }
   const finalLoop = skipFin ? { ok: true } : await reviewLoop('final',
     async (round, prev) => {
       const rs = await parallel(lenses.map((lens, li) => () => agent(`${C()}
 
-FINAL REVIEW OF THE WHOLE BRANCH (mandatory; read-only), lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD (branch already synced with the target).
-Check against the spec ${spec.specPath}, the plan ${plan.planPath} and the acceptance criteria of the ${cardRef}. Look for what per-task reviews miss: contracts broken between layers, regressions in screens, flows, scripts and tests of earlier deliverables, generated files inconsistent with their sources, an acceptance criterion with no test.${integTxt}${prev ? `\nPrevious issues (verify them; ${repeatRule()}):\n${prev}\nBlocks (defeito): an edit to the spec or the plan made by a fix round.` : ''}
-Measure: headSha, clean, ${R_COUNT}.`,
-        { label: `${E}:final-${li + 1}-r${round}`, phase: 'Final review', schema: S_REVIEW, model: 'opus', effort: 'high' })))
+Mode: review, lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD
+Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAlerts: ${alerts.join('; ')}.` : ''}${prev ? `\nPrevious issues (${repeatRule()}):\n${prev}` : ''}`,
+        { label: `${E}:final-${li + 1}-r${round}`, schema: S_REVIEW, ...FRA })))
       if (rs.some(x => !x)) return null
-      return { issues: rs.flatMap(x => x.issues), headSha: rs[0].headSha, clean: rs.every(x => x.clean), commitsInRange: rs[0].commitsInRange }
+      return { ...rs[0], issues: rs.flatMap(x => x.issues), clean: rs.every(x => x.clean) }
     },
     (iss, k, tier) => withLocks(planLocks, () => implAgent(`${C()}
 
-Fix the final review problems below, with a test for each defect, run the affected tests and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
+Fix the final review problems below and commit "${E} final-fix: ...". ${lockNote(planLocks)} ${noSpecEdit()}
 ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier, effort: effortFor(tier) })),
     r => reviewTruth(r, 1, `${TARGET}..HEAD`),
     { tier: 'sonnet', reviewModel: 'opus' })
