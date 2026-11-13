@@ -139,6 +139,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Lançar em measurements.md o custo de E24 (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30; total US$ 22,56. Maior execução sã segue 13,65 (E21); teto de US$ 150 mantido.
 - (executor) Na 1ª execução do release com o plugin da ponta (E10): conferir a chamada <E>:test-integrity (campos medidos, sem o concern test integrity not measured, arquivo de _tmp apagado) e a revisão final pelo agente em opus/high; anotar no relatório.
 - (dono) execução comportamental do orquestrador da sessão principal (DEC-204)
+- (executor) Defeito baixo (comportamental de E10): runPrompt (roadmap-release.js:1434) termina com BASH_ONLY, que pede lista vazia com error no-bash, incompatível com S_RUN {exit, stdout} e com script-runner.md:23; usar variante sem a frase da lista.
 <!-- /roadmap:pending -->
 
 ## Em andamento

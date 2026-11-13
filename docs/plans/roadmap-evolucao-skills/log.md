@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E10 | Comportamental de E10 (DEC-662) depois do merge: dry-run da skill, script-runner pelo nome em discover e group, adulteração recusada por checkRun; 12/12 aprovado; US$ 0,38. Defeito baixo: runPrompt usa BASH_ONLY incompatível com S_RUN. | `docs/reports/2026-11-13-E10-release-mecanico-comportamental.md` |
 | 2026-11-13 | E10 | r2 mesclou E10 (c1d6647), 8 tarefas, G1 1742/0, G2 a G5 verdes; US$ 19,82 (r1 9,85). Script 238.471 LF. Test-integrity mediu (removedAsserts 0) e final-reviewer rodou em opus. Registro executing sem painel: status --json tem 30.393 bytes, acima do corte de ~30 KB do Bash. | `docs/reports/2026-11-13-E10-run.md` |
 | 2026-11-13 | E10 | E10 passou para na-branch | `c1d6647796f8f49c788eeae07d11600ed03c76e0`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `docs/plans/evolucao-skills-E10/reviews.md` |
 | 2026-11-13 | E10 | E10 passou para executando | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md` |
