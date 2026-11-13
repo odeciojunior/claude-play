@@ -4216,3 +4216,62 @@ test('E23: recordedBaseline accepts only a matching valid measure', () => {
   assert.equal(pure.recordedBaseline('not json', 'abc1234', 'k', defs), null);
   assert.equal(pure.recordedBaseline('', 'abc1234', 'k', defs), null);
 });
+
+// ---- E23 T4: setup reads the record; the spec and plan reviews are skipped; the approval is written by the progress and review-log agents.
+const RUN_REC = { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' } };
+const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);
+const RR_PATH = '/p/productivity-tools/scripts/run-record.mjs';
+const approvePrefix = (stages) => `node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 ${stages} - '`;
+const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.indexOf(" - '") + 4, prompt.indexOf("'", prompt.indexOf(" - '") + 4))));
+
+test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
+  assert.equal(r.results[0].merged, true);
+  for (const l of labels) assert.ok(!/:spec-review|:plan-review|^E1:spec$|^E1:plan$/.test(l), l);
+  assert.ok(labels.includes('E1:spec-load1'));
+  assert.ok(labels.includes('E1:plan-load1'));
+  assert.ok(r.results[0].concerns.some((c) => /spec review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(r.results[0].concerns.some((c) => /plan review skipped/.test(c) && /run\.json/.test(c)));
+  assert.ok(calls.find((c) => c.label === 'E1:progress').prompt.startsWith('Read-only'));
+  const setup = calls.find((c) => c.label === 'E1:setup');
+  assert.ok(setup.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
+  assert.ok(setup.opts.schema.properties.record);
+  // a stale plan blob: the spec stays skipped, the plan review runs
+  const stale = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup({ ...RUN_REC, plan: { spec: 's1', plan: 'p0' } }) });
+  assert.ok(!stale.labels.includes('E1:spec-review1'));
+  assert.ok(stale.labels.includes('E1:plan-review1'));
+  // no record: both reviews run
+  const none = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(null) });
+  assert.ok(none.labels.includes('E1:spec-review1'));
+  assert.ok(none.labels.includes('E1:plan-review1'));
+});
+
+test('E23: progress records spec and plan only after a review ran', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.ok(p.startsWith(`Run first: ${approvePrefix('spec,plan')}`), p.slice(0, 200));
+  assert.ok(!p.startsWith('Read-only'));
+  const pay = payloadOf(p);
+  assert.equal(typeof pay.trailer, 'string');
+  assert.equal(pay.prep.targetHead, 'abc1234');
+  assert.equal(pay.prep.gatesKey, loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES))));
+  assert.equal(pay.prep.baseline.headSha, 'abc1234');
+  const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
+  assert.ok(skipped.calls.find((c) => c.label === 'E1:progress').prompt.startsWith('Read-only'));
+  assert.ok(!skipped.calls.find((c) => c.label === 'E1:progress').prompt.includes('run-record.mjs'));
+});
+
+test('E23: plan-only records spec and plan in the review log', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' } });
+  assert.equal(r.results[0].planOnly, true);
+  const p = calls.find((c) => c.label === 'E1:review-log-plan').prompt;
+  assert.ok(p.includes(approvePrefix('spec,plan')), p.slice(0, 300));
+  assert.ok(p.indexOf('run-record.mjs') < p.indexOf('Write docs/plans/x-E1/reviews.md'));
+  const pay = payloadOf(p);
+  assert.equal(typeof pay.trailer, 'string');
+  assert.equal('prep' in pay, false);
+  assert.ok(!labels.includes('E1:progress'));
+  // nothing reviewed and nothing cut: no review-log call at all
+  const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: recordedSetup(RUN_REC) });
+  assert.ok(!skipped.labels.some((l) => /review-log/.test(l)));
+});
