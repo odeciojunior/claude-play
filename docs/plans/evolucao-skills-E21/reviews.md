@@ -173,3 +173,25 @@ Concerns desta execução: nenhuma.
 Gates desta execução: nenhum rodado (a execução parou na carga do plano).
 
 Entradas humanas desta execução: nenhuma.
+
+## Execução de 2026-11-13 (retomada, falhou na carga do plano)
+
+Execução: falhou.
+
+Motivo da falha: plan load: integrity digest not confirmed (the emit has no plan with a task list).
+
+### Revisões desta execução
+
+| Estágio | Rodadas (número, modelo do revisor, tier da correção anterior) | Críticos/importantes | Menores | Pendências |
+|---|---|---|---|---|
+| spec | 1 (opus, -) | nenhum | 0 | nenhuma |
+
+Riscos aceitos: nenhum.
+
+Concerns desta execução:
+
+- resume: uncommitted files from a previous run were discarded; patch in D:/projects/claude-play-wt/_tmp/E21-dirty
+
+Gates desta execução: nenhum rodado (a execução parou na carga do plano).
+
+Entradas humanas desta execução: nenhuma.
