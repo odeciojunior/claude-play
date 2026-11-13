@@ -95,3 +95,10 @@ Resumo registrado nas concerns: T7 mediu G1 com 1678 testes (baseline 1657), wor
 
 4. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: add-decision --decision.
    Texto completo: Tarefa do orquestrador da sessão principal no worktree de E21 antes do merge: no workflow devolve NEEDS_HUMAN, sem relatório fictício; o orquestrador despacha subagents que seguem agents/task-reviewer.md literalmente em cada modo sobre fixture sintética marcada, com revisão adversarial só de leitura, e grava docs/reports/2026-11-12-E21-revisor-comportamental.md.
+
+5. Origem: docs/plans/evolucao-skills-E21/reviews.md. Destino: block-open --what.
+   Texto completo: E21 bloqueado: automatic execution stopped (conteudo): final: fix BLOCKED: Item 2 foi corrigido, com teste, no commit 3b5c950. No item 1 os comentários dos outros estágios voltaram ao texto original (commit 66afa1d). Com isso roadmap-release.js passa a ter 240.425 caracteres LF, 425 acima do teto de 240.000, e size.test.mjs falha de propósito. Por isso E21 está BLOCKED até o dono decidir. Os testes de tools/measure/run-batch.test.mjs passam (65). Não ; branch feat/E21 kept at D:/projects/claude-play-wt/E21
+
+## Execução do registro de bloqueio (blocked-record)
+
+Esta execução reconfirmou os dados acima sem alterações nas rodadas, nos achados, nas concerns, nos gates e nas entradas humanas. Acrescentou apenas o item 5 em "Textos cortados no registro" (origem: block-open --what). Estado: E21 BLOCKED até decisão do dono; branch feat/E21 mantida em D:/projects/claude-play-wt/E21.
