@@ -490,3 +490,19 @@ test('AC3: a relaunch after a kill in a common step relaunches only that step', 
   assert.equal(impls.find((c) => c.step === 2).snap[2], 'launched');
   assert.deepEqual(readState(sb).steps.map((s) => s.status), ['pass', 'pass', 'pass', 'pass']);
 }));
+
+test('AC5: the skill launches coordinator-workflow by name', () => {
+  const skill = readFileSync(join(PLUGIN, 'skills', 'plan-coordinator', 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(skill.includes('productivity-tools:coordinator-workflow'));
+  const fm = skill.match(/^---\n([\s\S]*?)\n---\n/)[1];
+  assert.ok(!/^allowed-tools:/m.test(fm), 'no allowed-tools');
+  assert.ok(!/^disable-model-invocation:/m.test(fm), 'no disable-model-invocation');
+  const DESCRIPTION = 'description: "Use when executing a multi-step implementation plan from docs/plans/<topic>/plan.md with subagents and you want per-step model-tier routing (haiku/sonnet/opus by complexity), conflict-free parallel waves, and a persistent state file that survives compaction, or when resuming such a plan from that state. The orchestrator approves its own Execution Map, without human map approval. Not for ad-hoc plans without a data block (adopt them with plan-writer first)."';
+  assert.ok(fm.split('\n').includes(DESCRIPTION), 'description is unchanged');
+  const lines = skill.split('\n').filter((l) => l.includes('scriptPath'));
+  assert.ok(lines.length > 0, 'the fallback by scriptPath is described');
+  for (const l of lines) {
+    assert.ok(/unknown|not found/.test(l), `scriptPath line names the unknown/not found condition: ${l}`);
+    assert.ok(l.includes('--add-dir'), `scriptPath line cites --add-dir: ${l}`);
+  }
+});
