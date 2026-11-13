@@ -113,3 +113,76 @@ Nenhum registrado nesta execução.
 - O quê: Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
   - Bloqueante (blq): não
   - Workaround: O spec nomeia o arquivo e o teste roda no G1.
+
+## Execução concluída com tarefa pendente de humano (esta execução)
+
+Execução: tarefas 1 a 7 concluídas ou retomadas; tarefa 8 em NEEDS_HUMAN. Dados desta execução, transcritos sem resumir.
+
+### Revisões por estágio ou tarefa (esta execução)
+
+| Estágio | Rodada | Modelo do revisor | Tier da correção anterior | Críticos/importantes | Menores | Não resolvidos |
+|---|---|---|---|---|---|---|
+| spec | 1 | opus | nenhum | nenhum | 0 | nenhum |
+| plan | 1 | opus | nenhum | nenhum | 1 | nenhum |
+| T7:spec | 1 | sonnet | nenhum | nenhum | 0 | nenhum |
+| T7:quality | 1 | sonnet | nenhum | nenhum | 0 | nenhum |
+| T8:spec | 1 | sonnet | nenhum | nenhum | 0 | nenhum |
+| T8:quality | 1 | sonnet | nenhum | nenhum | 0 | nenhum |
+| final | 1 | opus | nenhum | nenhum | 1 | nenhum |
+| final | 2 | opus | sonnet | nenhum | 1 | nenhum |
+| final | 3 | opus | sonnet | nenhum | 1 | nenhum |
+
+Observação: o estágio final registra 1 menor no total (dado agregado do estágio, não por rodada).
+
+Riscos aceitos: nenhum.
+
+### Tarefas (esta execução)
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Script do registro da execução com teste | RESUMED (already reviewed) | - |
+| 2 | Regra de permissão do script e config.md | RESUMED (already reviewed) | - |
+| 3 | Liberar espaço e funções puras do registro | RESUMED (already reviewed) | - |
+| 4 | Setup lê o registro; pulo de spec e plano; aprovação em progress e plan-only | RESUMED (already reviewed) | - |
+| 5 | Sincronização devolve o registro; pulo da revisão final | RESUMED (already reviewed) | - |
+| 6 | Preflight reaproveita a medição registrada | RESUMED (already reviewed) | - |
+| 7 | operator.md e gates | DONE | 16 |
+| 8 | Teste comportamental pelo orquestrador | NEEDS_HUMAN | 0 |
+
+### Concerns (esta execução)
+
+- final fix1: The failing and passing flow.test.mjs runs both executed the whole file, because --test-name-pattern did not filter, so the F1 test was not run alone. I did not capture the failing run's exact exit code or output; the tool returned exit 1 with the output cut. I did not run the full G1 gate, only flow.test.mjs and size.test.mjs.
+- final fix2: The full G1 suite was not run, only the roadmap-release workflow tests. The F2 test's two runs use the same command string, run from the workflow directory.
+
+### Gates (esta execução)
+
+Nenhum registrado nesta execução.
+
+### Entradas humanas (esta execução)
+
+- O quê: Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
+  - Bloqueante (blq): não
+  - Workaround: O spec nomeia o arquivo e o teste roda no G1.
+- O quê: execução comportamental do orquestrador da sessão principal (DEC-204)
+  - Bloqueante (blq): não
+  - Workaround: None. No report was written and nothing was committed, because the plan forbids a fictional report. The main-session orchestrator should run the stop and resume on the fixture at D:/projects/claude-play-wt/_tmp/E23-comportamental/, marked SYNTHETIC FIXTURE. It should check that the resume skips the recorded reviews and reuses the recorded measurement. It should then write docs/reports/2026-11-13-E23-retomada-comportamental.md, delete the folder, and commit as 'E23 T8: relatório comportamental'.
+
+### Textos cortados no registro (esta execução)
+
+#### 5. add-decision --decision
+
+- Origem: docs/plans/evolucao-skills-E23/reviews.md
+- Destino: add-decision --decision
+- Texto completo: Em docs/plans/<slug>-<E>/run.json na branch do entregável, gravado e commitado só por plugins/productivity-tools/scripts/run-record.mjs (subcomandos approve, key e baseline, git por execFileSync sem shell), com teste em run-record.test.mjs. approve funde com o run.json de HEAD: troca só os estágios recebidos e só troca prep quando a carga o traz.
+
+#### 6. add-decision --decision
+
+- Origem: docs/plans/evolucao-skills-E23/reviews.md
+- Destino: add-decision --decision
+- Texto completo: Sem chamada nova: spec e plano como primeiro comando do agente de leitura de progresso, só quando uma das duas revisões rodou; final como primeiro comando do agente do log de revisões em persistReviews(''), só quando a revisão final rodou. Em plan-only, que retorna antes do agente de progresso, spec e plano vão no primeiro comando de persistReviews('plan'), chamado só quando uma das duas revisões rodou (junto com o caso de textos cortados). approve funde com HEAD:<dir>run.json e mantém os estágios que não grava. Falha na gravação só faz a retomada revisar.
+
+#### 7. add-decision --decision
+
+- Origem: docs/plans/evolucao-skills-E23/reviews.md
+- Destino: add-decision --decision
+- Texto completo: Em prep { targetHead, gatesKey, baseline } de cada run.json, gravado junto de cada aprovação; no modo run o preflight roda run-record.mjs baseline sobre as branches dos entregáveis selecionados e, se houver saída, não mede; o workflow aceita só com targetHead igual, gatesKey igual a fnv1a(canon(GATES)) e validMeasure, senão mede como hoje.
