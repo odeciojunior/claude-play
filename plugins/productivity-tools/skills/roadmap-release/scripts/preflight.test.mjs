@@ -501,7 +501,7 @@ test('AC1: card aberto com verify e script do plugin sem regra aparecem em missi
   assert.deepEqual(missingRules(req, [{ permissions: { allow: ['Bash(node:*)', 'Bash(npx:*)', 'Bash(git:*)'] } }], cmds), []);
   assert.deepEqual(cmds['Bash(node *roadmap.mjs" *)'], ['node "/p/roadmap.mjs" status']);
   assert.equal(scriptRule('roadmap.mjs'), 'Bash(node *roadmap.mjs" *)');
-  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs', 'review-package.mjs']);
+  assert.deepEqual(WORKFLOW_SCRIPTS, ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs']);
 });
 
 function rmRepo(statusCell) {
@@ -796,4 +796,19 @@ test('E21: the review-package.mjs rule is required only with taskReview.restrict
   const cmds = requiredCommands({ gates: [], install: '' }, { scripts: [{ name: 'review-package.mjs', path: pluginRoot + '/scripts/review-package.mjs' }] });
   assert.deepEqual(cmds[rule], ['node "' + pluginRoot + '/scripts/review-package.mjs" status']);
   assert.ok(existsSync(pluginRoot + '/scripts/review-package.mjs'));
+});
+
+test('E23: the run-record.mjs rule is always required, from the plugin root', () => {
+  const { dir } = rmRepo('spec');
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify({ ...good(), locks: [], gates: [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }] }));
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const cfgDir = mkdtempSync(join(tmpdir(), 'cfg-'));
+  const res = runPreflight(dir, { home, configDir: cfgDir });
+  const rule = scriptRule('run-record.mjs');
+  assert.deepEqual(res.errors, []);
+  assert.ok(res.missingRules.includes(rule), res.missingRules.join());
+  const pluginRoot = dirname(dirname(dirname(dirname(trackerCliPath().path))));
+  const cmds = requiredCommands({ gates: [], install: '' }, { scripts: [{ name: 'run-record.mjs', path: pluginRoot + '/scripts/run-record.mjs' }] });
+  assert.deepEqual(cmds[rule], ['node "' + pluginRoot + '/scripts/run-record.mjs" status']);
+  assert.ok(existsSync(pluginRoot + '/scripts/run-record.mjs'));
 });

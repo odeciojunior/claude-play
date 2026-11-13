@@ -193,7 +193,7 @@ export function subcommands(cmd) {
 const ENV_PREFIX = /^([A-Za-z_]\w*=\S*\s+)+/;
 
 // Scripts of the plugin that the workflow runs through Bash with an exact path (DEC-060): the rule is narrower than Bash(node:*).
-export const WORKFLOW_SCRIPTS = ['roadmap.mjs', 'review-package.mjs'];
+export const WORKFLOW_SCRIPTS = ['roadmap.mjs', 'review-package.mjs', 'run-record.mjs'];
 
 // The release workflow is launched by name; its permission rule is only warned about (never required), because the skill's own
 // allowed-tools or the dialog grants the launch and only a run without the interface needs the rule.
@@ -412,9 +412,9 @@ export function runPreflight(folder, { home = homedir(), ref = null, configDir =
     pending = readPendingDecisions(texts, warnings);
     const extras = {
       cards,
-      // roadmap.mjs lives in the tracker skill; review-package.mjs in <plugin root>/scripts and is required only with taskReview.restricted.
+      // roadmap.mjs lives in the tracker skill; review-package.mjs and run-record.mjs in <plugin root>/scripts; review-package.mjs is required only with taskReview.restricted.
       scripts: WORKFLOW_SCRIPTS.filter((name) => name !== 'review-package.mjs' || config.taskReview?.restricted === true)
-        .map((name) => ({ name, path: name === 'review-package.mjs' ? `${dirname(dirname(dirname(dirname(tracker.path))))}/scripts/${name}` : tracker.path })),
+        .map((name) => ({ name, path: name === 'roadmap.mjs' ? tracker.path : `${dirname(dirname(dirname(dirname(tracker.path))))}/scripts/${name}` })),
     };
     const cmds = requiredCommands(config, extras);
     missing = missingRules(Object.keys(cmds), settings, cmds);
