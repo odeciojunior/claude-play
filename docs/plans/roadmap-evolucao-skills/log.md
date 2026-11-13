@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E23 | r1 parou em defeito (T3 sem vermelho válido: saída por \| grep). US$ 7,47. Fable decidiu: rebase de T3, correção do implementer.md antes da retomada, limites de workflowChars em escada (T3 238800 a T6 239800). | `docs/reports/2026-11-13-E23-run.md` |
 | 2026-11-13 | E23 | BLQ-12 aberto: E23 bloqueado: automatic execution stopped (conteudo): task 3: test-first without a failing check then the same check passing (4 checks). A rerun takes the task as done and skips this check: first drop its [...] texto completo em docs/plans/evolucao-skills-E23/reviews.md | `branch feat/E23` |
 | 2026-11-13 | E23 | E23 passou para executando | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md` |
 | 2026-11-13 | E21 | E21 integrada (07e625c) e ratificada por delegação (Fable): 17 decisões, 6 de contrato; 14 como estão e DEC-587, DEC-589 e DEC-594 com emenda. Script em 239.866 LF (folga 134). Custo US$ 38,37 (r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; T8 1,34). E23 liberado (DEC-030). | `decisions.md` |

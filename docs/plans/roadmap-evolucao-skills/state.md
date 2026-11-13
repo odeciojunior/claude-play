@@ -130,6 +130,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E10: a carga de spec e de plano deixa de copiar o stdout do emit (o Bash grava em arquivo a saída acima de ~30 KB; plano de E21: 27.212 bytes, 11 tarefas): ler de arquivo ou em partes, com teste. Antes de E10, emit de plano acima de 27 KB ou carga falha por tamanho vira correção própria.
 - (executor) Lançar em measurements.md o custo de E21 (DEC-567): r1 13,65; r2 6,80; r3 4,50; r4 4,35; r5 7,73; comportamental 1,34; total US$ 38,37, dos quais 8,85 em duas falhas de carga do plano. Conferir o teto de US$ 150 junto com E9 (maior execução sã: 13,65).
 - (dono) Corrigir o card E23 por revisão da estratégia para nomear o teste do script, plugins/productivity-tools/scripts/run-record.test.mjs (risco 4 do card).
+- (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
+- (executor) Depois do merge de E23: ratificar DEC-609 a DEC-618 contra o código integrado (DEC-615 sai emendada pelos limites em escada) e revisão da estratégia v1.7 para o card E23 nomear plugins/productivity-tools/scripts/run-record.test.mjs.
 <!-- /roadmap:pending -->
 
 ## Em andamento
