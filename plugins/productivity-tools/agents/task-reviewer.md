@@ -36,7 +36,7 @@ Give each finding an `id`: `F1`, `F2`, ... in order within the review loop. A fi
 
 ## Restricted mode
 
-Run the package command given in the prompt, read only that diff and the open findings listed, and return `verdicts` with `{ id, open }` for every open finding. New findings go in `issues`.
+Run the package command given in the prompt; it prints JSON whose `path` is the package file. Read that file and judge the open findings listed from it; open other files only when the diff alone cannot settle a finding. Return `verdicts` with `{ id, open }` for every open finding. New findings go in `issues`. `Measure:` counts the whole task range while the package holds only the fix; that difference is expected.
 
 ## Review mode
 
