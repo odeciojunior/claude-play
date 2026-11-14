@@ -311,7 +311,7 @@ export function missingRules(required, settingsList, commandsByRule = {}) {
 }
 
 // DEC-719: wtRoot (where worktrees are created, outside the session dir) must be in permissions.additionalDirectories,
-// or acceptEdits denies the agents writes there. entries = [{ settings, base }]: base resolves relative entries
+// or acceptEdits denies the agents writes there. entries = [{ settings }]
 // (absolute paths only; `~` expands to home; relative entries never count). Covered = an entry equals wtRoot or is an ancestor of it.
 const normDir = (p, win) => { let n = String(p).replace(/\\/g, '/').replace(/\/+$/, ''); if (n === '') n = '/'; return win ? n.toLowerCase() : n; };
 export function missingDirs(wtRoot, entries, { platform = process.platform, home = null } = {}) {
@@ -597,7 +597,7 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   }
   const userBase = configDir || join(home, ".claude");
   const wt = (wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
-  const dirEntries = [{ settings: readJson(join(userBase, "settings.json")), base: home }, { settings: readJson(join(root, ".claude", "settings.json")), base: root }, { settings: readJson(join(root, ".claude", "settings.local.json")), base: root }];
+  const dirEntries = [{ settings: readJson(join(userBase, "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.local.json")) }];
   // Claude Code grants an additional directory only if it exists when the session starts, so a covered but absent wtRoot is still missing. Read-only: never created here.
   const wtExists = existsSync(wt);
   const missingD = missingDirs(wt, dirEntries, { platform, home });
