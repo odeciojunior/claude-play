@@ -277,8 +277,10 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
       break;
   }
   if (RELEASE_RUN_VARIANTS.includes(variant)) {
-    writeIn(sandbox, LOCAL_SETTINGS, JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
+    writeIn(sandbox, LOCAL_SETTINGS, JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES, additionalDirectories: [sandbox + '-wt'] } }, null, 2) + '\n');
     excludeFromGit(sandbox, LOCAL_SETTINGS);
+    // Claude Code grants an additional directory only if it exists when the session starts.
+    mkdirSync(sandbox + '-wt', { recursive: true });
   }
   return scenario;
 }

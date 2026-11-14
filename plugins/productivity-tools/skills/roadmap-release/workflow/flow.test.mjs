@@ -2564,7 +2564,7 @@ test('FF/I4: wtRoot comes from the skill; without it the run stops before discov
   const skill = ffRead('SKILL.md');
   assert.ok(skill.includes('Let `wtRoot` be `<dirname(repo)>/<basename(repo)>-wt`'));
   assert.ok(skill.includes('checked out somewhere other than `<wtRoot>/_integracao`'));
-  assert.ok(skill.includes('outside `repo` and outside `<wtRoot>`'));
+  assert.ok(skill.includes('under `<wtRoot>/_tmp/`'));
 });
 
 test('FF/M2, M3, M9: resume notes without an answer, preflight output, the human-input row', () => {

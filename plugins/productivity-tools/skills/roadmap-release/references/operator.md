@@ -66,9 +66,9 @@ A resume skips the spec, plan and final reviews whose values are those of `run.j
 
 The default permission mode is the supported one; `bypassPermissions` is not the default and is never needed. Without an approval dialog, grant the launch by a rule in `.claude/settings.local.json` (`permissions.allow`: `Workflow(productivity-tools:release-workflow)`, shown by the preflight warning; the person adds it, never the skill) or on the command line:
 
-`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<request>" --allowedTools "Bash(git:*)" "Bash(node:*)"`
+`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<request>" --permission-mode acceptEdits --add-dir "<wtRoot>" --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:release-workflow)"`
 
-`Bash(git:*)` and `Bash(node:*)` stay required. The variable keeps `-p` from ending while the workflow runs. The preflight cannot see how permissions are granted: pass `--declare-permissions "<how, in your words>"` to it, and it echoes the text in `permissionsDeclared`. The scriptPath fallback does not pass the approval dialog above 213.337 characters (value in `state.md`; "not measured" when unmeasured), so the supported path is the name.
+`Bash(git:*)` and `Bash(node:*)` stay required. `--add-dir "<wtRoot>"` (the sibling `<repo>-wt` folder) is required too, and the folder must exist before the command starts (create it first; a folder created during the session stays denied): under `acceptEdits` the workflow's agents are denied there otherwise; no bypass. The variable keeps `-p` from ending while the workflow runs. The preflight cannot see how permissions are granted, and a headless run cannot answer its stop: the request must state how permissions are granted (it is passed to preflight as `--declare-permissions`), or the stop ends the run. Pass `--declare-permissions "<how, in your words>"` to it, and it echoes the text in `permissionsDeclared`. The scriptPath fallback does not pass the approval dialog above 213.337 characters (value in `state.md`; "not measured" when unmeasured), so the supported path is the name.
 
 ## Integrity alerts
 

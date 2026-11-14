@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, isAbsolute } from 'node:path';
+import { join, isAbsolute, sep } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   validateReleaseConfig, deriveConfig, classifyGate,
@@ -1037,4 +1037,94 @@ test('E10 final-fix: discover --page prints each signed page of the project road
   const beyond = run(n + 1);
   assert.equal(beyond.status, 1);
   assert.match(JSON.parse(beyond.stdout).error, /page/);
+});
+
+// ---- missingDirs (DEC-719): wtRoot must be in permissions.additionalDirectories ----
+import { missingDirs } from './preflight.mjs';
+import { realpathSync } from 'node:fs';
+
+const D = (...dirs) => ({ settings: { permissions: { additionalDirectories: dirs } }, base: '/repo' });
+
+test('missingDirs: covered by the exact entry', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt')]), []);
+});
+test('missingDirs: covered by an ancestor entry', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w')]), []);
+});
+test('missingDirs: trailing slash/backslash and case on win32', () => {
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('d:\\W\\Repo-WT\\')], { platform: 'win32' }), []);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('D:/w/repo-wt/')], { platform: 'win32' }), []);
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/W/REPO-WT')], { platform: 'linux' }), ['/w/repo-wt']);
+});
+test('missingDirs: a -wt2 sibling does not cover -wt', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt2')]), ['/w/repo-wt']);
+});
+test('missingDirs: not covered when absent, empty or malformed', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [{}, null, { settings: {}, base: '/' }, D()]), ['/w/repo-wt']);
+  assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: 'x' } }, base: '/' }]), ['/w/repo-wt']);
+});
+test('missingDirs: relative entries never count as covering', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: ['../repo-wt', '.', 'repo-wt'] } }, base: '/w/repo' }]), ['/w/repo-wt']);
+});
+test('missingDirs: absolute entries are normalized (. and ..)', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/x/../repo-wt/./')]), []);
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt/..')]), []);
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt/../x')]), ['/w/repo-wt']);
+});
+test('missingDirs: windows paths (drive, backslash, .., case)', () => {
+  const w = { platform: 'win32' };
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('D:\\w\\x\\..\\repo-wt')], w), []);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('d:/')], w), []);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('E:/w')], w), ['D:/w/repo-wt']);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('D:\\w\\repo-wt2')], w), ['D:/w/repo-wt']);
+});
+test('missingDirs: ~ always expands to home, in any settings file', () => {
+  const e = { settings: { permissions: { additionalDirectories: ['~/proj-wt'] } }, base: '/some/repo' };
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [e], { home: '/home/u' }), []);
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [{ ...e, settings: { permissions: { additionalDirectories: ['~'] } } }], { home: '/home/u' }), []);
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [e], { home: '/home/v' }), ['/home/u/proj-wt']);
+});
+
+test('runPreflight: missingDirs does not enter errors and --wt-root override works', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const wt = join(mkdtempSync(join(tmpdir(), 'wtr-')), 'x-wt').split(sep).join('/');
+  mkdirSync(wt);
+  const miss = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
+  assert.deepEqual(miss.missingDirs, [wt]);
+  assert.match(miss.missingDirsHint, /additionalDirectories/);
+  assert.deepEqual(miss.errors, []);
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { additionalDirectories: [wt] } }));
+  const ok = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
+  assert.deepEqual(ok.missingDirs, []);
+  assert.equal(ok.missingDirsHint, null);
+});
+
+test('runPreflight: a covered wtRoot that does not exist is still missing, with a create hint, and is not created', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const wt = join(mkdtempSync(join(tmpdir(), 'wtr-')), 'y-wt').split(sep).join('/');
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { additionalDirectories: [wt] } }));
+  const r = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
+  assert.deepEqual(r.missingDirs, [wt]);
+  assert.match(r.missingDirsHint, /create/);
+  assert.match(r.missingDirsHint, /before starting Claude Code/);
+  assert.equal(existsSync(wt), false);
+  assert.deepEqual(r.errors, []);
+});
+
+test('runPreflight: default wtRoot is <main repo>-wt even from a linked worktree', () => {
+  const { root, dir } = repoWithRoadmap(true);
+  const linked = root + '-linked';
+  execFileSync('git', ['worktree', 'add', '-q', linked, 'rel'], { cwd: root, stdio: 'ignore' });
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const want = realpathSync.native(root).split(sep).join('/') + '-wt';
+  const fromMain = runPreflight(dir, { home, ref: 'rel' }).missingDirs;
+  const fromLinked = runPreflight(join(linked, 'docs', 'plans', 'roadmap-x'), { home, ref: 'rel' }).missingDirs;
+  const norm = (a) => a.map((p) => p.toLowerCase());
+  assert.deepEqual(norm(fromMain), norm([want]));
+  assert.deepEqual(norm(fromLinked), norm([want]));
+  rmSync(linked, { recursive: true, force: true });
 });
