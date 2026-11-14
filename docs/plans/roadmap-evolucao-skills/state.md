@@ -7,7 +7,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E27 (medição da política de revisão, depende de E15 e E21), depois E26. Executa: executor. Depende de: E15, E21.
+1. E8: trio do sandbox (plan-only, sonda acceptEdits, trechos do registro). Executa: executor.
+2. E26: preparo do arnês e lotes; depois E27 passada B e E11. Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -41,7 +42,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
-| E27 | executando | - | Passada A (peça 1) depois de fix/measure-e27; passada B no preparo de E26. |
+| E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md` | Passada B (peças 3 e 4) depois do preparo de E26; passada C (peça 2) depois de E28. |
 | E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
 
@@ -58,7 +59,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Operar os pontos de medição E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
-- (executor) E8, fora do plano (DEC-204): rodar no sandbox, com o plugin da ponta da release, o teste comportamental plan-only (definição de pronto do card) e a medição do limite de lançamento pelo nome; relatórios em docs/reports/. Sem a medição, o teto de 240.000 segue provisório (DEC-556).
+- (executor) E8, fora do plano (DEC-204): trio do sandbox, plugin da ponta por --plugin-dir: plan-only (1 execução, teto US$ 5), depois a sonda acceptEdits (item abaixo) e os trechos do registro lidos das duas; relatórios em docs/reports/. Limite de lançamento medido (DEC-647).
 - (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
@@ -69,10 +70,11 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
 - (executor) roadmap-release.js mede 238.706 caracteres LF na ponta da release (55b2b84): folga de 11.294 sob o teto de 250.000 (DEC-647). fix/registro-8k (239.420 no worktree, limite 239.900) e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
-- (executor) Antes de publicar em E11: fix do canal do coordinator (DEC-696): apply --events em trechos sob o teto de comando, evento único acima do teto falha cedo, read enxuto ou paginado; estimado 8.549 caracteres com 6 relatos cheios numa onda.
 - (executor) Na 1ª execução do release depois da fix/registro-8k: conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. No cenário fixo, medir os trechos por status: mais de 1 pede emenda à meta de E10.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
-- (executor) E27 passada B (peças 3 e 4: adversarial ligada/desligada, onda única): depois do laço de rodadas e do estágio de revisão final no arnês, feitos no preparo de E26; teto provisório US$ 60. Lotes pagos nunca em paralelo (porta 48731 fixa em make-sandbox.mjs:42).
+- (executor) E27 passada B (peças 3 e 4), depois do laço de rodadas e do estágio de revisão final no arnês (preparo de E26); teto provisório US$ 60. Passada C (peça 2) depois de E28. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731, make-sandbox.mjs:42).
+- (executor) Antes das execuções pagas da variante coordinator em E11: fix do canal do coordinator (DEC-696): apply --events em trechos de até 6.000 caracteres, evento único acima do teto falha cedo, read enxuto ou paginado abaixo de 30 KB; estimado 8.549 com 6 relatos numa onda.
+- (executor) fix do task-reviewer.md (falso bloqueante nenhum check reportado em tarefa retomada: sonnet 2/10, opus 0/10, E27 passada A): regra afirmativa + teste de texto; conferir com 10 tentativas sonnet (0 falso, capturas ≥ 38/40), teto US$ 5, antes dos lotes de E26.
 <!-- /roadmap:pending -->
 
 ## Em andamento
