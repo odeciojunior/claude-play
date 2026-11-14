@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E8 | fix/releitura-assinada integrada (DEC-711): verify-run.mjs read assinado com orçamento < 8.000 (pior caso 7.886), releitura do registro e de docs por checkRun, até 5 tentativas. 3 rodadas (2 sonnet, 1 opus), revisão opus/high APPROVE. G1 1838/0, G2-G5 ok. | `2bb59c6` |
 | 2026-11-14 | E11 | fix/coordinator-canal integrada (DEC-696): apply em trechos de até 6.000 caracteres com cadeia de digest, read paginado (~20.000 por página). Revisão opus/high APPROVE. G1 1819/0, G2 e G3 passam. | `031c9c1` |
 | 2026-11-14 | E27 | fix/task-reviewer-retomada integrada (DEC-708): regra afirmativa de tarefa retomada, sem re-rodar check com trava ou efeito externo (achado I1 da revisão opus/high, APPROVE). G1 1813/0. | `df2a48f` |
 | 2026-11-13 | E8 | Errata: DEC-712 e DEC-713 citam BLQ-15, mas o bloqueio aberto em b930d2a é BLQ-16 (o block-open numerou depois de redigidas). Leia BLQ-16 nas duas. | `state.md (blockers)` |
