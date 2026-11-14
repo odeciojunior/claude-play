@@ -1008,9 +1008,10 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
     const row = panel.find(p => p && p.id === E)
     const segs = row && Array.isArray(row.segments) ? row.segments : []
     const seg = piece ? segs.find(s => s.label === piece) : segs[0]
+    const noteOf = g => String(g.note || '') + ' ' + (Array.isArray(g.blqIds) ? g.blqIds.join(' ') : '')  // the read cuts long notes but lists the BLQ ids of the full one
     if (!seg) failures.push(`reread panel has no ${piece ? `segment "${piece}" of ` : 'segment of '}${E}`)
     else if (seg.word !== word) failures.push(`reread panel shows "${seg.word}" for ${E}, expected "${word}"`)
-    else if (word === blockedStatus && !(blq ? new RegExp('\\b' + blq + '\\b').test(String(seg.note || '')) : /\bBLQ-\d+\b/.test(String(seg.note || '')))) failures.push(`reread blocked segment of ${E} does not cite ${blq || 'a BLQ'} in its note`)
+    else if (word === blockedStatus && !(blq ? new RegExp('\\b' + blq + '\\b').test(noteOf(seg)) : /\bBLQ-\d+\b/.test(noteOf(seg)))) failures.push(`reread blocked segment of ${E} does not cite ${blq || 'a BLQ'} in its note`)
   }
   const brief = parseCli(rd.brief)
   const checker = brief && brief.result && brief.result.checker
@@ -1020,12 +1021,13 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   const changedIds = decisionIds.filter(d => d.changed).map(d => d.id)
   const pend = parseCli(rd.pendingDecisions)
   const list = pend && pend.result && Array.isArray(pend.result.decisions) ? pend.result.decisions.map(d => d && d.id) : null
+  const trunc = !!list && pend.result.total > list.length  // a cut list: an id missing from it is unknown, not ratified
   if (changedIds.length) {
     if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
-    else for (const id of changedIds) if (!list.includes(id)) failures.push(`${id} written by add-decision is not in pending-decisions`)
+    else for (const id of changedIds) if (!list.includes(id)) failures.push(trunc ? `${id} written by add-decision is not in the truncated pending-decisions list (the read keeps the newest ${list.length} of ${pend.result.total}): fail safe` : `${id} written by add-decision is not in pending-decisions`)
   }
   // holdIds: decisions that can hold dependents. An existing: true answer (the CLI dedupes regardless of status) holds only while the reread still lists it as pending; without a readable list it holds (fail safe).
-  const holdIds = decisionIds.filter(d => d.changed || !list || list.includes(d.id)).map(d => d.id)
+  const holdIds = decisionIds.filter(d => d.changed || !list || trunc || list.includes(d.id)).map(d => d.id)
   return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id), holdIds }
 }
 // Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence, or a trailing "(local)" / "(contract)" / "(scope: local)" parenthetical, sets the scope and leaves the text; anything else is contrato.
@@ -1439,10 +1441,12 @@ const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // Read-back of a record: verify-run.mjs read runs status/brief/pending-decisions/head/porcelain; a script-runner only copies its stdout, which checkRun confirms by tool, nonce and digest. A read only, so it repeats (as readDisc).
 let readSeq = 0
-const readBack = async (E, label, phase, cwd, folder) => {
+const readBack = async (E, label, phase, cwd, folder, piece) => {
+  const readCmd = nonce => `node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E, ...(piece ? { piece } : {}) })}`
+  if (readCmd(`${RUN_TAG}:${E}:read000`).length > CMD_CAP) return null  // fail safe: a command above the cap is not dispatched
   for (let k = 1; k <= 5; k++) {
     const nonce = `${RUN_TAG}:${E}:read${++readSeq}`
-    const out = await agent(runPrompt(`node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E })}`),
+    const out = await agent(runPrompt(readCmd(nonce)),
       { agentType: 'productivity-tools:script-runner', label: k === 1 ? label : `${label}-retry${k}`, phase, schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
     const v = checkRun(out && out.stdout, 'verify-run', nonce)
     if (v.ok && v.data.mode === 'read') return v.data
@@ -1787,7 +1791,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })
     if (v.data.stopped || v.data.steps.some(s => s.exit !== 0)) break
   }
-  const read = await readBack(E, `${E}:status-${status}-read`, 'Plan', INTWT, absFolder)
+  const read = await readBack(E, `${E}:status-${status}-read`, 'Plan', INTWT, absFolder, piece)
   if (!results || !read) { holdUnconfirmed(E, x, []); return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts } }
   const v = recordVerdict({ expected: rc.commands, results, read, E, word: status, piece, blockedStatus: STATUSES.blocked })
   const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
@@ -1991,13 +1995,13 @@ ${docsMaybe.map(c => '- ' + c).join('\n')}
 3. ${NO_REVISION}
 4. Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then commit the files of item 1 and of ${RM}, adding only them (never git add -A), with "docs: ${E} on ${TARGET}" and the trailer "${TRAILER}", and return the commit hash in commit.${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(docsMeasure)}. Fix what it lists${DOCS.measure ? ' (measureOk must be true)' : ''}; the commands above are only those that still lack a good result.` : ''}`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet', effort: 'medium' })
-      // The roadmap read-back is code (verify-run read); only the project's own measurement program (DOCS.measure) still needs a model.
-      const rd = await readBack(E, `${E}:docs-read${k + 1}`, 'Docs', INTWT, absFolder)
-      const mm = !rd || !DOCS.measure ? {} : await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):
+      // The roadmap read-back is code (verify-run read) and runs after the measurement program, so a dirtying measurement shows; only DOCS.measure still needs a model.
+      const mm = !DOCS.measure ? {} : await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):
 ${DOCS.measure}
 ${BASH_ONLY}`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku', effort: 'low' })
-      meas = rd && mm ? { ...rd, ...mm } : null
+      const rd = mm ? await readBack(E, `${E}:docs-read${k + 1}`, 'Docs', INTWT, absFolder, docPiece) : null
+      meas = rd && mm ? { ...rd, measureOk: mm.measureOk, measureDetails: mm.measureDetails } : null
       if (docs && meas) {
         const maybeSet = new Set(docsMaybe)
         verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
@@ -2011,7 +2015,7 @@ ${BASH_ONLY}`,
         const panelFailed = verdict.failures.some(f => /^reread (panel|status)/.test(f))
         const left = new Set(commandsLeft(docsFirst, docs.runs))
         cmds = docsAll.filter(c => left.has(c) || (panelFailed && cliVerb(c) === 'set-status'))
-      } else { docsMeasure = { failures: [!docs ? 'null docs agent' : 'null measurement agent'] }; cmds = docsFirst }
+      } else { docsMeasure = { failures: [!docs ? 'null docs agent' : !mm ? 'null measurement agent' : 'null docs read'] }; cmds = docsFirst }
     }
     const docsOk = !!verdict && verdict.ok && !!meas && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)
     if (docsOk && meas.head) lastGood = meas.head

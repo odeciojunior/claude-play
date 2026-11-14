@@ -11,7 +11,7 @@
 //
 //   group payload: { nonce, digest, cwd, steps: [text], finally: { commit: { add: [paths], message: [m1, m2] } } | null }
 //     -> { tool: 'verify-run', mode: 'group', nonce, steps: [{ n, exit, out }], stopped: { n, exit } | null, commit, head, digest }
-//   read payload: { nonce, digest, cwd, cli, folder, deliverable }  (read-only: the CLI status --deliverable, brief and pending-decisions, git rev-parse HEAD, git status --porcelain)
+//   read payload: { nonce, digest, cwd, cli, folder, deliverable, piece? }  (read-only: the CLI status --deliverable, brief and pending-decisions, git rev-parse HEAD, git status --porcelain)
 //     -> { tool: 'verify-run', mode: 'read', nonce, exits, status, brief, pendingDecisions, head, porcelain, clean, digest }  (under 8000 characters)
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
@@ -138,15 +138,17 @@ export function runGroup(p) {
 // Every list and string is capped so that the whole output stays under 8000 characters; a cut list carries its total.
 const cap = (s, n) => { const t = String(s == null ? '' : s); return t.length > n ? t.slice(0, n) + '...' : t; };
 const capList = (a, n, f = (x) => x) => (Array.isArray(a) ? a.slice(0, n).map(f) : []);
+// The first 4 segments, plus the one of the piece asked for (kept past the cap, with a longer note: recordVerdict reads it).
+const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i < 4 || i === hit); };
 const cliJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
-export function buildRead({ status, brief, pending, head, porcelain }, E) {
+export function buildRead({ status, brief, pending, head, porcelain }, E, piece) {
   const so = cliJson(status), bo = cliJson(brief), po = cliJson(pending);
   const sum = (o) => ({ exitCode: o.summary && typeof o.summary === 'object' ? o.summary.exitCode : undefined });
   let st = null;
   if (so) {
     const panel = so.result && Array.isArray(so.result.panel) ? so.result.panel : null;
     const row = panel && panel.find((p) => p && p.id === E);
-    st = { tool: 'roadmap', summary: sum(so), result: panel ? { panel: row ? [{ id: row.id, segments: capList(row.segments, 4, (s) => ({ label: cap(s && s.label, 40), word: cap(s && s.word, 40), note: cap(s && s.note, 200) })), evidence: cap(row.evidence, 200), next: cap(row.next, 200) }] : [] } : {} };
+    st = { tool: 'roadmap', summary: sum(so), result: panel ? { panel: row ? [{ id: row.id, segments: pickSegments(row.segments, piece).map((s) => ({ label: cap(s && s.label, 40), word: cap(s && s.word, 40), note: cap(s && s.note, piece && s && s.label === piece ? 1500 : 200), blqIds: [...new Set(String((s && s.note) || '').match(/\bBLQ-\d+\b/g) || [])].slice(0, 10) })), evidence: cap(row.evidence, 200), next: cap(row.next, 200) }] : [] } : {} };
   }
   let br = null;
   if (bo) {
@@ -156,9 +158,9 @@ export function buildRead({ status, brief, pending, head, porcelain }, E) {
   let pd = null;
   if (po) {
     const ds = po.result && Array.isArray(po.result.decisions) ? po.result.decisions : null;
-    pd = { tool: 'roadmap', summary: sum(po), result: ds ? { decisions: capList(ds, 100, (d) => ({ id: cap(d && d.id, 20) })), total: ds.length } : {} };
+    pd = { tool: 'roadmap', summary: sum(po), result: ds ? { decisions: ds.slice(-100).map((d) => ({ id: cap(d && d.id, 20) })), total: ds.length } : {} };
   }
-  const pt = String(porcelain.stdout || '').trim();
+  const pt = String(porcelain.stdout || '').replace(/\s+$/, ''); // the first line keeps its leading space
   const clean = porcelain.exit === 0 && pt === '';
   return {
     exits: { status: status.exit, brief: brief.exit, pendingDecisions: pending.exit, head: head.exit, porcelain: porcelain.exit },
@@ -171,7 +173,7 @@ export function buildRead({ status, brief, pending, head, porcelain }, E) {
 
 export function runRead(p) {
   const cli = (verb, extra = []) => exec('node', [p.cli, verb, p.folder, ...extra, '--json'], p.cwd);
-  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['status', '--porcelain']) }, p.deliverable);
+  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['--no-optional-locks', 'status', '--porcelain']) }, p.deliverable, p.piece);
   return { tool: TOOL, mode: 'read', nonce: p.nonce, ...r };
 }
 
@@ -218,7 +220,7 @@ export function runCheck(p) {
 
 const REQUIRED = {
   group: (p) => typeof p.cwd === 'string' && p.cwd && Array.isArray(p.steps) && p.steps.every((t) => typeof t === 'string'),
-  read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
+  read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && (p.piece === undefined || typeof p.piece === 'string') && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
   check: (p) => ['repo', 'intwt', 'target'].every((k) => typeof p[k] === 'string' && p[k]) && (p.order === undefined || Array.isArray(p.order)),
 };
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -223,4 +223,39 @@ test('read: a huge CLI answer is cut so the output stays under 8000 characters, 
   assert.equal(d.pendingDecisions.result.total, 1000);
   assert.equal(d.clean, false);
   assert.match(d.porcelain, /\(300 lines\)/);
+});
+
+test('read: with 101 pending decisions the NEWEST 100 stay, the total says 101', async () => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const cliOut = (result) => ({ exit: 0, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, result }) });
+  const d = buildRead({ status: cliOut({ panel: [] }), brief: cliOut({ checker: { errors: 0, warnings: 0 } }), pending: cliOut({ decisions: Array.from({ length: 101 }, (_, i) => ({ id: 'DEC-' + (100 + i) })) }),
+    head: { exit: 0, stdout: 'h\n' }, porcelain: { exit: 0, stdout: '' } }, 'E1');
+  const ids = d.pendingDecisions.result.decisions.map((x) => x.id);
+  assert.equal(ids.length, 100);
+  assert.equal(d.pendingDecisions.result.total, 101);
+  assert.ok(ids.includes('DEC-200'), 'the newest stays');
+  assert.ok(!ids.includes('DEC-100'), 'the oldest goes');
+});
+
+test('read: the first porcelain line keeps its leading space; the BLQ id is searched in the full note and the piece segment is not cut', async () => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const cliOut = (result) => ({ exit: 0, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, result }) });
+  const seg = (label, note) => ({ label, word: 'bloqueado', note });
+  const segs = [seg('a', 'x'), seg('b', 'x'), seg('c', 'x'), seg('d', 'x'), seg('code', 'y'.repeat(600) + ' blocked by BLQ-7')];
+  const mk = (piece) => buildRead({ status: cliOut({ panel: [{ id: 'E1', segments: segs }] }), brief: cliOut({ checker: { errors: 0, warnings: 0 } }), pending: cliOut({ decisions: [] }),
+    head: { exit: 0, stdout: 'h\n' }, porcelain: { exit: 0, stdout: ' M docs/a.md\n?? b.txt\n' } }, 'E1', piece);
+  const d = mk('code');
+  assert.equal(d.porcelain.split('\n')[0], ' M docs/a.md');
+  const row = d.status.result.panel[0];
+  const code = row.segments.find((x) => x.label === 'code');
+  assert.ok(code, 'the piece segment is kept even past the cap of 4');
+  assert.ok(code.note.endsWith('BLQ-7'), 'uncut');
+  assert.ok(row.segments.every((x) => Array.isArray(x.blqIds)));
+  assert.deepEqual(code.blqIds, ['BLQ-7']);
+  assert.deepEqual(mk(undefined).status.result.panel[0].segments[0].blqIds, []);
+});
+
+test('read: git runs with --no-optional-locks (the read never touches the index)', () => {
+  const src = readFileSync(SCRIPT, 'utf8');
+  assert.match(src, /'--no-optional-locks', 'status', '--porcelain'/);
 });

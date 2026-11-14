@@ -4879,3 +4879,79 @@ test('releitura: nonce de outra chamada e digest adulterado sao recusados', asyn
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: stale });
   assert.ok(labels.includes('E1:status-d-read-retry2'));
 });
+
+// ---- review round: truncated pending list, forged measurement answer, tamper shapes, docs order, read command cap
+test('recordVerdict: a truncated pending-decisions list fails a record whose written id is not in it, and holds the existing ones (fail safe)', () => {
+  const trunc = (ids, total) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { decisions: ids.map((id) => ({ id })), total } });
+  const v = VX();
+  v.read.pendingDecisions = trunc(['DEC-1'], 101);
+  const r = PU.recordVerdict(v);
+  assert.equal(r.ok, false);
+  assert.match(r.failures.join('\n'), /truncated/);
+  const ok = VX();
+  ok.read.pendingDecisions = trunc(['DEC-1', 'DEC-300'], 101);
+  assert.equal(PU.recordVerdict(ok).ok, true);
+  const ex = VX();
+  ex.results.runs[2].stdout = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { id: 'DEC-300', existing: true } });
+  ex.read.pendingDecisions = trunc(['DEC-1'], 101);
+  const re = PU.recordVerdict(ex);
+  assert.equal(re.ok, true, re.failures.join('\n'));
+  assert.deepEqual(re.holdIds, ['DEC-300'], 'past the cut: hold');
+});
+
+test('recordVerdict: the BLQ id comes from blqIds when the note was cut', () => {
+  const v = VX();
+  v.word = 'bloqueado';
+  v.blockedStatus = 'bloqueado';
+  v.results.runs[0].stdout = okOut('block-open', { id: 'BLQ-7' });
+  const mk = (blqIds) => JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, errors: [], changed: [], result: { panel: [{ id: 'E1', segments: [{ label: '', word: 'bloqueado', note: 'cut...', blqIds }] }] } });
+  v.read.status = mk(['BLQ-7']);
+  assert.ok(!PU.recordVerdict(v).failures.some((f) => /cite/.test(f)));
+  v.read.status = mk([]);
+  assert.ok(PU.recordVerdict(v).failures.some((f) => /cite/.test(f)));
+});
+
+test('docs: the model answer of the measurement cannot overwrite the signed clean and head', async () => {
+  const forged = (l) => (/:docs-measure\d$/.test(l) ? { measureOk: true, measureDetails: 'ok', head: 'FORGED', clean: false } : undefined);
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: forged, config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  assert.equal(r.results[0].merge.docsOk, true);
+  const rep = calls.find((c) => c.label === 'report');
+  assert.equal(verifyArg(rep.prompt, 'check').lastGood, 'm2');
+});
+
+test('docs: the read runs AFTER the measurement program, and a null read says "null docs read"', async () => {
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  assert.ok(labels.indexOf('E1:docs-measure1') >= 0 && labels.indexOf('E1:docs-measure1') < labels.indexOf('E1:docs-read1'));
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-read\d/.test(l) ? { exit: 0, stdout: 'ok' } : undefined) });
+  assert.match(JSON.stringify(r.results[0].concerns) + JSON.stringify(r.operatorActions), /null docs read/);
+  assert.doesNotMatch(JSON.stringify(r.results[0].concerns) + JSON.stringify(r.operatorActions), /null measurement agent/);
+});
+
+test('releitura: output re-signed with a foreign nonce, and a tampered body with the right nonce, are both refused', async () => {
+  const good = (prompt) => JSON.parse(readStdout(prompt, makeRecordMock(() => [card('E1')]).read('E1')));
+  const resigned = (l, prompt) => {
+    if (l !== 'E1:status-d-read') return undefined;
+    const { digest, ...rest } = good(prompt);
+    return { exit: 0, stdout: signedOut({ ...rest, nonce: 'foreign' }) };
+  };
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: resigned });
+  assert.ok(a.labels.includes('E1:status-d-read-retry2'));
+  const tampered = (l, prompt) => {
+    if (l !== 'E1:status-d-read') return undefined;
+    return { exit: 0, stdout: JSON.stringify({ ...good(prompt), head: 'forged' }) };
+  };
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: tampered });
+  assert.ok(b.labels.includes('E1:status-d-read-retry2'));
+  assert.equal(b.r.results[0].merged, true);
+});
+
+// The read payload (cwd, cli, folder, deliverable) is always smaller than a group chunk (cli and folder in every step), so a long path trips the group cap first: the read guard is a second line, checked in the source.
+test('releitura: readBack compares its command with CMD_CAP before the first dispatch (fail safe)', async () => {
+  const body = /const readBack = async[\s\S]*?\r?\n}\r?\n/.exec(SRC)[0];
+  assert.match(body, /readCmd\([^)]*\)\.length > CMD_CAP\) return null/);
+  assert.ok(body.indexOf('> CMD_CAP') < body.indexOf('await agent('), 'the check comes before any dispatch');
+  const id = 'E' + 'x'.repeat(2400);
+  const { labels, r } = await exec({ cards: [card(id)], deliverables: [id] });
+  assert.ok(!labels.some((l) => /-read/.test(l)), 'nothing is read when the commands are over the cap');
+  assert.ok(r.results[0].error || r.results[0].concerns.length, 'and the run says so');
+});
