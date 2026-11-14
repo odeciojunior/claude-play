@@ -1784,10 +1784,20 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   let results = { runs: [] }
   for (let k = 0; k < chunks.length && results; k++) {
     const g = grp(k, chunks[k])
-    const out = await agent(runPrompt(grpCmd(g),`Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
-      { agentType: 'productivity-tools:script-runner', label: `${E}:status-${status}${k ? `-part${k + 1}` : ''}`, phase: 'Plan', schema: S_RUN, model: 'haiku', effort: 'low' })
-    const v = checkRun(out && out.stdout, 'verify-run', g.nonce)
-    if (!v.ok || v.data.mode !== 'group' || !Array.isArray(v.data.steps)) { results = null; break }
+    // The copy repeats (the group is idempotent by nonce in verify-run.mjs, DEC-714): the SAME command up to 5 attempts, 1-2 haiku, 3-5 sonnet; a refusal signed by the script is final.
+    const base = `${E}:status-${status}${k ? `-part${k + 1}` : ''}`
+    let v = { ok: false }
+    for (let a = 1; a <= 5; a++) {
+      const out = await agent(runPrompt(grpCmd(g),`Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
+        { agentType: 'productivity-tools:script-runner', label: a === 1 ? base : `${base}-retry${a}`, phase: 'Plan', schema: S_RUN, model: a < 3 ? 'haiku' : 'sonnet', effort: a < 3 ? 'low' : 'medium' })
+      v = checkRun(out && out.stdout, 'verify-run', g.nonce)
+      if (v.ok && v.data.mode === 'group' && Array.isArray(v.data.steps)) break
+      v = { ok: false }
+      let o = null
+      try { o = JSON.parse(String(out && out.stdout)) } catch { /* not JSON */ }
+      if (o && o.tool === 'verify-run' && o.error !== undefined) break
+    }
+    if (!v.ok) { results = null; break }
     for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })
     if (v.data.stopped || v.data.steps.some(s => s.exit !== 0)) break
   }
