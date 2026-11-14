@@ -178,6 +178,43 @@ const addTo = (acc, role) => {
   acc.agents += role.agents;
 };
 
+const emptyRole = () => ({
+  calls: Object.fromEntries(FAMILIES.map((f) => [f, 0])),
+  promptBytes: 0,
+  tokens: { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 },
+  cost: null,
+  agents: 0,
+});
+
+// E26 A5: total_cost_usd of every claude -p of the attempt, summed; null when no call reported one.
+export function sumCliCost(costs) {
+  return costs.length ? costs.reduce((a, b) => a + b, 0) : null;
+}
+
+const addNullable = (a, b) => (b === null || b === undefined ? a : (a ?? 0) + b);
+
+// E26 A5: the roles of one run grouped by label, before the other:* collapse. review = a label with "review" and
+// without "fix"; fix = a label with "fix"; the rest is other. session keeps the CLI cost beside the transcript cost
+// (unknown whether total_cost_usd already includes the Workflow agents, so both numbers stay).
+export function rolesByLabel(run, cliCostUsd) {
+  const out = { review: emptyRole(), fix: emptyRole(), other: emptyRole() };
+  for (const [name, role] of Object.entries(run.roles)) {
+    const bucket = name.includes('fix') ? 'fix' : name.includes('review') ? 'review' : 'other';
+    addTo(out[bucket], role);
+  }
+  return { ...out, session: { cliCostUsd, transcriptCostUsd: run.main.cost ?? null } };
+}
+
+function sumRolesByLabel(list) {
+  const out = { review: emptyRole(), fix: emptyRole(), other: emptyRole(), session: { cliCostUsd: null, transcriptCostUsd: null } };
+  for (const r of list) {
+    for (const k of ['review', 'fix', 'other']) addTo(out[k], r[k]);
+    out.session.cliCostUsd = addNullable(out.session.cliCostUsd, r.session.cliCostUsd);
+    out.session.transcriptCostUsd = addNullable(out.session.transcriptCostUsd, r.session.transcriptCostUsd);
+  }
+  return out;
+}
+
 // Roles summed over the valid attempts. `other:<label>` roles come from agent labels, so they collapse.
 function sumRoles(runs) {
   const out = {};
@@ -1085,6 +1122,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   for (let k = 1; k <= runs; k++) {
     const scenario = await makeScenario(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun });
     const sessions = [];
+    const cliCosts = [];
     let denied = false;
     let failed = false;
     let failReason = 'execucao-falhou';
@@ -1148,6 +1186,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         r = await exec('claude', args, { cwd: scenario.dir });
       }
       const j = parseClaudeJson(r.stdout);
+      if (typeof j?.total_cost_usd === 'number') cliCosts.push(j.total_cost_usd);
       if (j?.session_id) sessions.push(j.session_id);
       else if (aborted) for (const id of sessionIds(opts.configDir)) if (!known.has(id) && !sessions.includes(id)) sessions.push(id);
       if (j && Array.isArray(j.permission_denials) && j.permission_denials.length > 0) {
@@ -1254,7 +1293,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const stageOf = !h ? () => stage : loop ? () => (loop.ok ? 'approved' : 'stopped') : (presents) => harnessStage(h, journal.entries, presents);
       outcomes = await attemptOutcomes(variant, scenario, journal, stageOf, reachable);
     }
-    const attempt = { n: k, ...extra(), status: 'valid', counters: toAttemptCounters(run), outcomes };
+    const cliCostUsd = sumCliCost(cliCosts);
+    const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd) };
     if (h && journal) attempt.review = reviewCounts(journal.entries, `${h.st.label}1`);
     if (h && journal && loop) {
       attempt.loop = loop;
@@ -1275,6 +1315,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const invalidReasons = {};
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
   const costs = attempts.filter((a) => a.status === 'valid' && a.counters.cost !== null).map((a) => a.counters.cost);
+  const sessionCosts = attempts.filter((a) => a.status === 'valid' && a.counters.session.cliCostUsd !== null).map((a) => a.counters.session.cliCostUsd);
   const models = FAMILIES.filter((f) => validRuns.some((r) => r.total.calls[f] > 0));
   const { installPath: _installPath, ...publicPlugin } = plugin;
   const aggregate = {
@@ -1293,8 +1334,12 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     permissionMode: opts.permissionMode,
     attempts,
     roles: sumRoles(validRuns),
+    rolesByLabel: sumRolesByLabel(attempts.filter((a) => a.status === 'valid').map((a) => a.rolesByLabel)),
     ...(h ? { harness: h.harness } : {}),
-    cost: costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null },
+    cost: {
+      ...(costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null }),
+      session: sessionCosts.length ? { median: median(sessionCosts), min: Math.min(...sessionCosts), max: Math.max(...sessionCosts) } : { median: null, min: null, max: null },
+    },
     ...totalOutcomes(attempts),
     ...(h?.rounds === 'loop' ? loopAggregate(attempts) : {}),
   };

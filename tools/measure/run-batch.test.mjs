@@ -6,7 +6,7 @@ import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, NATIVE_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -1988,6 +1988,81 @@ test('A2: no {{ placeholder is left in any generated prompt (every stage, varian
       if (variant.startsWith('spec')) assert.ok(review.includes('deliverable E5 ') && review.includes('/docs/plans/roadmap-sandbox/requirements.md'), `${tag}: ${review}`);
       if (/nativo/.test(variant)) assert.ok(review.includes(NATIVE_PATHS[variant.startsWith('spec') ? 'spec' : 'plan']), tag);
     }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A5: session cost and roles by label (T8) ----
+
+test('A5: sumCliCost adds total_cost_usd across sessions and is null without any value', () => {
+  assert.equal(sumCliCost([0.25, 0.5]), 0.75);
+  assert.equal(sumCliCost([0.1]), 0.1);
+  assert.equal(sumCliCost([]), null);
+});
+
+test('A5: rolesByLabel separates review from fix and keeps the main-session cost beside the agents', () => {
+  const calls = (s) => ({ haiku: 0, sonnet: s, opus: 0, fable: 0, other: 0 });
+  const role = (s, bytes, cost) => ({ calls: calls(s), promptBytes: bytes, tokens: { input: 1, output: 2 }, cost, agents: s });
+  const run = {
+    roles: {
+      'other:spec-review': role(1, 10, 1),
+      'other:spec-review-fix': role(1, 20, 2),
+      'task-fix': role(2, 5, 0.5),
+      'final-review': role(1, 7, 0.25),
+      spec: role(1, 3, 0.125),
+    },
+    main: { cost: 4 },
+  };
+  const r = rolesByLabel(run, 5);
+  assert.equal(r.review.agents, 2);
+  assert.equal(r.review.cost, 1.25);
+  assert.equal(r.review.promptBytes, 17);
+  assert.equal(r.fix.agents, 3);
+  assert.equal(r.fix.cost, 2.5);
+  assert.equal(r.other.agents, 1);
+  assert.equal(r.other.cost, 0.125);
+  assert.deepEqual(r.session, { cliCostUsd: 5, transcriptCostUsd: 4 });
+  assert.equal(rolesByLabel({ roles: {}, main: { cost: null } }, null).review.cost, null);
+});
+
+test('A5: the attempt records the CLI cost, rolesByLabel, and the aggregate sums both with cost.session', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 2 }), { exec: fake.exec, now: NOW });
+    for (const a of r.aggregate.attempts) {
+      assert.deepEqual(a.counters.session, { cliCostUsd: 0.01 });
+      assert.ok(a.rolesByLabel && a.rolesByLabel.session.cliCostUsd === 0.01);
+      assert.ok('transcriptCostUsd' in a.rolesByLabel.session);
+    }
+    assert.equal(r.aggregate.rolesByLabel.session.cliCostUsd, 0.02);
+    assert.deepEqual(r.aggregate.cost.session, { median: 0.01, min: 0.01, max: 0.01 });
+    assert.ok(r.aggregate.rolesByLabel.other.agents > 0);
+    assert.ok(r.aggregate.roles.discovery);
+  } finally {
+    s.done();
+  }
+});
+
+test('A5: without total_cost_usd in the CLI JSON the session cost is null', async () => {
+  const s = setup();
+  try {
+    const base = makeFake(s.configDir);
+    const exec = async (cmd, args, o) => {
+      const r = await base.exec(cmd, args, o);
+      if (cmd === 'claude' && args[0] === '-p') {
+        const { total_cost_usd: _t, ...rest } = JSON.parse(r.stdout);
+        return { ...r, stdout: JSON.stringify(rest) };
+      }
+      return r;
+    };
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.deepEqual(a.counters.session, { cliCostUsd: null });
+    assert.equal(a.rolesByLabel.session.cliCostUsd, null);
+    assert.equal(r.aggregate.rolesByLabel.session.cliCostUsd, null);
+    assert.deepEqual(r.aggregate.cost.session, { median: null, min: null, max: null });
   } finally {
     s.done();
   }
