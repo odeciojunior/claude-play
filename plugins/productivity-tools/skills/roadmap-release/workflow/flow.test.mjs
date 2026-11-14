@@ -3418,10 +3418,17 @@ test('DEC-714: group copies 3 to 5 run on sonnet and 5 bad copies keep the safe 
 });
 
 test('DEC-714: a refusal signed by the script (error) is not repeated', async () => {
-  const over = both(specWith({ rulings: [ruling({})] }), (l) => (isGroupCopy(l) ? { exit: 2, stdout: JSON.stringify({ tool: 'verify-run', mode: 'group', error: 'a group with this nonce already ran with another payload' }) } : undefined));
+  const over = both(specWith({ rulings: [ruling({})] }), (l, prompt) => (isGroupCopy(l) ? { exit: 2, stdout: JSON.stringify({ tool: 'verify-run', mode: 'group', nonce: verifyArg(prompt, 'group').nonce, error: 'a group with this nonce already ran with another payload' }) } : undefined));
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d');
   assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('DEC-714: a refusal without the nonce (the model altered the command) is a bad copy and is repeated', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l) => (l === 'E1:status-d' ? { exit: 2, stdout: JSON.stringify({ tool: 'verify-run', mode: 'group', error: 'the payload digest does not match: nothing was run' }) } : undefined));
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d,E1:status-d-retry2');
+  assert.ok(!r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
 });
 
 test('DEC-714: the nonce of a group is the same for every copy and fixed by deliverable, status and chunk', async () => {

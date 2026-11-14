@@ -1769,7 +1769,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
   if (rc.error) { holdUnconfirmed(E, x, []); return { ok: false, failures: [rc.error], head: null, cuts: [] } }
   const msg = phrases(LANG).commit(E, status)
-  // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written. The group writes, so it is never repeated.
+  // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written.
   // A payload over CMD_CAP characters splits into consecutive chunks (no command is cut), each with its own finally; a failed chunk stops the next ones.
   const grp = (k, steps) => ({ nonce: `${RUN_TAG}:${E}:${status}:${k}`, cwd: INTWT, steps, finally: { commit: { add: [RM], message: [msg, TRAILER] } } })
   const grpCmd = g => `node "${VERIFY_RUN}" group ${encArg(g)}`
@@ -1795,7 +1795,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
       v = { ok: false }
       let o = null
       try { o = JSON.parse(String(out && out.stdout)) } catch { /* not JSON */ }
-      if (o && o.tool === 'verify-run' && o.error !== undefined) break
+      if (o && o.tool === 'verify-run' && o.error !== undefined && o.nonce === g.nonce) break  // a refusal of this very group; without the nonce the command was altered: a bad copy
     }
     if (!v.ok) { results = null; break }
     for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })

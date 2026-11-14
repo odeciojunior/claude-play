@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync, utimesSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -405,4 +405,73 @@ test('DEC-714: markers older than 7 days are pruned at start, newer ones stay', 
   assert.equal(o.exit, 0, o.stdout);
   assert.equal(existsSync(old), false);
   assert.equal(existsSync(fresh), true);
+});
+
+// ---- DEC-714 review: nonce in late refusals, atomic output, live pid, marker removed on a refused step
+const runEnv = (payload, env) => {
+  const r = spawnSync(process.execPath, [SCRIPT, 'group', enc(payload)], { encoding: 'utf8', env: { ...process.env, ...env } });
+  let json = null; try { json = JSON.parse(r.stdout); } catch { /* */ }
+  return { exit: r.status, stdout: r.stdout, json };
+};
+test('DEC-714: refusals after the digest check carry the nonce, the ones before it do not', () => {
+  const r = repo();
+  const sideless = 'node -e "1"';
+  const pre = run('group', { ...groupPayload(r, [sideless]), steps: ['node -e "2"'] });
+  assert.equal(pre.exit, 2);
+  assert.equal(pre.json.nonce, undefined);
+  const bad = run('group', groupPayload(r, [sideless, 'echo hi']));
+  assert.equal(bad.json.nonce, NONCE, 'tokenize refusal');
+  const missing = run('group', sign({ nonce: NONCE, cwd: r.dir, steps: 'x' }));
+  assert.equal(missing.json.nonce, NONCE, 'missing field');
+  const p = groupPayload(r, [sideless], { nonce: 'n-m' });
+  run('group', p);
+  const other = run('group', groupPayload(r, [sideless, sideless], { nonce: 'n-m' }));
+  assert.equal(other.json.nonce, 'n-m', 'marker refusal');
+});
+
+test('DEC-714: the replay reads complete JSON and no temp file is left', () => {
+  const r = repo();
+  const o = run('group', groupPayload(r, ['git status --porcelain']));
+  assert.equal(JSON.parse(readFileSync(markerFile(r), 'utf8')).output, o.stdout);
+  assert.deepEqual(readdirSync(markerDir(r)).filter((f) => !f.endsWith('.json')), []);
+});
+
+test('DEC-714: a tokenize refusal removes the marker (nothing started)', () => {
+  const r = repo();
+  const o = run('group', groupPayload(r, ['echo hi']));
+  assert.equal(o.exit, 2);
+  assert.equal(existsSync(markerFile(r)), false);
+});
+
+test('DEC-714: marker without output and a dead pid is refused at once', () => {
+  const r = repo();
+  const p = groupPayload(r, ['git status --porcelain']);
+  const dead = spawnSync(process.execPath, ['-e', '0']);
+  mkdirSync(markerDir(r), { recursive: true });
+  writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: 2 ** 22 + 12345 }));
+  const t = Date.now();
+  const o = runEnv(p, { VERIFY_RUN_WAIT_MS: '20000' });
+  assert.equal(o.exit, 2);
+  assert.ok(Date.now() - t < 10000);
+  assert.ok(dead);
+});
+
+test('DEC-714: a live pid without output is waited for, then the output is replayed', async () => {
+  const r = repo();
+  const p = groupPayload(r, ['git status --porcelain']);
+  const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},20000)']);
+  try {
+    mkdirSync(markerDir(r), { recursive: true });
+    writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid }));
+    const output = '{"tool":"verify-run","mode":"group","done":true}\n';
+    setTimeout(() => writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid, output })), 1500);
+    const o = await new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, 'group', enc(p)], { env: { ...process.env, VERIFY_RUN_WAIT_MS: '15000' } }); let s = ''; c.stdout.on('data', (d) => { s += d; }); c.on('close', (code) => res({ code, s })); });
+    assert.equal(o.s, output);
+    // never finishing: refused after the bound
+    writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid }));
+    const t = Date.now();
+    const late = runEnv(p, { VERIFY_RUN_WAIT_MS: '1200' });
+    assert.equal(late.exit, 2);
+    assert.ok(Date.now() - t >= 1000);
+  } finally { child.kill(); }
 });
