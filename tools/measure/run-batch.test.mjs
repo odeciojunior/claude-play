@@ -560,7 +560,7 @@ test('task-review atual dispatches the real task-reviewer agent; other stages an
   const s = setup();
   try {
     const code = makeFake(s.configDir, { journal: jl({ label: 'E5:task-review1', result: { issues: [] } }), afterRun: mergeE5 });
-    await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review' }), { exec: code.exec, now: NOW });
+    await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', reviewModel: 'sonnet' }), { exec: code.exec, now: NOW });
     const sent = code.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
     assert.ok(readFileSync(join(sent.cwd, 'review-only.js'), 'utf8').includes("agentType: 'productivity-tools:task-reviewer'"));
   } finally {
@@ -652,11 +652,11 @@ test('harness aggregate records the arm source and workflow commit', async () =>
     assert.ok(!scriptText.includes('{{artifactPath}}'));
 
     const code = makeFake(s.configDir, { journal: jl({ label: 'E5:task-review1', result: { issues: [] } }), afterRun: mergeE5 });
-    const rc = await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', work: join(s.base, 'work2') }), {
+    const rc = await runBatch(seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', reviewModel: 'sonnet', work: join(s.base, 'work2') }), {
       exec: code.exec,
       now: () => new Date('2026-11-10T12:00:05Z'),
     });
-    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, reviewModel: 'sonnet', reviewEffort: 'medium' });
     assert.equal(rc.aggregate.valid, 1);
 
     const plain = makeFake(s.configDir);
@@ -1381,6 +1381,118 @@ test('E17 D2: ratifyE5Contract against the real roadmap.mjs of this tree ratifie
     assert.equal(gitIn(wt, 'status', '--porcelain').stdout.trim(), '');
   } finally {
     spawnSync('git', ['worktree', 'prune'], { cwd: join(s.base, 'sb') });
+    s.done();
+  }
+});
+
+// ---- DEC-700: --review-model, --plugin-dir, review counts ----
+const taskOpts = (s, extra = {}) => seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', reviewModel: 'sonnet', ...extra });
+const taskJournal = (...issues) => jl({ label: 'E5:task-review1', result: { issues } });
+const firstClaudeP = (fake) => fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+
+test('task-review requires a valid --review-model (library and CLI)', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(taskOpts(s, { reviewModel: undefined }), { exec: fake.exec }), UsageError);
+    await assert.rejects(runBatch(taskOpts(s, { reviewModel: 'gpt' }), { exec: fake.exec }), /--review-model/);
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
+    const common = ['--variant', 'codigo-semeado-A', '--stage', 'task-review', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const missing = spawnSync(process.execPath, [script, ...common], { encoding: 'utf8' });
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /--review-model/);
+    const bad = spawnSync(process.execPath, [script, ...common, '--review-model', 'nope'], { encoding: 'utf8' });
+    assert.equal(bad.status, 2);
+    assert.match(bad.stderr, /--review-model/);
+  } finally {
+    s.done();
+  }
+});
+
+test('script carries the reviewer model and effort; spec and plan keep opus without effort', () => {
+  const t = buildReviewOnlyScript({ stage: 'task-review', reviewPrompt: 'R', fixPrompt: 'F', model: 'sonnet', effort: 'medium' });
+  assert.match(t, /label: 'E5:task-review1'[^\n]*model: 'sonnet', effort: 'medium', schema: SCHEMA/);
+  assert.equal(t.includes("model: 'opus'"), false);
+  const p = buildReviewOnlyScript({ stage: 'plan-review', reviewPrompt: 'R', fixPrompt: 'F' });
+  assert.match(p, /label: 'E5:plan-review1'[^\n]*model: 'opus', schema: SCHEMA/);
+  assert.equal(p.includes('effort'), false);
+});
+
+test('batch writes the review model into the script, the aggregate and the folder name', async () => {
+  const s = setup();
+  try {
+    for (const m of ['sonnet', 'opus']) {
+      const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+      const r = await runBatch(taskOpts(s, { reviewModel: m, work: join(s.base, `work-${m}`) }), { exec: fake.exec, now: NOW });
+      assert.equal(r.dir, join(s.out, `codigo-semeado-A-task-review-atual-${m}-20261110-120000`));
+      assert.equal(r.aggregate.harness.reviewModel, m);
+      assert.equal(r.aggregate.harness.reviewEffort, 'medium');
+      const text = readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
+      assert.ok(text.includes(`model: '${m}', effort: 'medium'`));
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('spec and plan stages keep their default folder name and no review model', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.dir, join(s.out, 'plano-semeado-A-plan-review-atual-20261110-120000'));
+    assert.equal('reviewModel' in r.aggregate.harness, false);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', reviewModel: 'sonnet', work: join(s.base, 'w2') }), { exec: fake.exec }), /--review-model/);
+  } finally {
+    s.done();
+  }
+});
+
+test('--plugin-dir reaches every claude -p call and the aggregate records that folder version and commit', async () => {
+  const s = setup();
+  try {
+    const dir = join(s.base, 'pdir');
+    mkdirSync(join(dir, '.claude-plugin'), { recursive: true });
+    writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'productivity-tools', version: '3.2.1' }));
+    gitIn(dir, 'init', '-q');
+    gitIn(dir, 'add', '-A');
+    gitIn(dir, 'commit', '-q', '-m', 'x');
+    const head = gitIn(dir, 'rev-parse', 'HEAD').stdout.trim();
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    const r = await runBatch(taskOpts(s, { pluginDir: dir }), { exec: fake.exec, now: NOW });
+    const ps = fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.ok(ps.length > 0);
+    for (const c of ps) assert.equal(c.args[c.args.indexOf('--plugin-dir') + 1], dir);
+    assert.equal(r.aggregate.plugin.version, '3.2.1');
+    assert.equal(r.aggregate.plugin.commit, head);
+    assert.equal('installPath' in r.aggregate.plugin, false);
+    // without a repo the commit is null; without the flag no --plugin-dir is passed
+    const plain = join(s.base, 'plain');
+    mkdirSync(join(plain, '.claude-plugin'), { recursive: true });
+    writeFileSync(join(plain, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '1.0.0' }));
+    const f2 = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    const r2 = await runBatch(taskOpts(s, { pluginDir: plain, work: join(s.base, 'w2') }), { exec: f2.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.deepEqual({ v: r2.aggregate.plugin.version, c: r2.aggregate.plugin.commit }, { v: '1.0.0', c: null });
+    const f3 = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(taskOpts(s, { work: join(s.base, 'w3') }), { exec: f3.exec, now: () => new Date('2026-11-10T12:00:10Z') });
+    assert.equal(firstClaudeP(f3).args.includes('--plugin-dir'), false);
+  } finally {
+    s.done();
+  }
+});
+
+test('each attempt records the reviewer blocking and minor counts, or null with a reason', async () => {
+  const s = setup();
+  try {
+    const issues = [{ severity: 'critical', description: 'a' }, { severity: 'important', description: 'b' }, { severity: 'minor', description: 'c' }, { severity: 'minor', description: 'd' }, { severity: 'minor', description: 'e' }];
+    const fake = makeFake(s.configDir, { journal: taskJournal(...issues), afterRun: mergeE5 });
+    const r = await runBatch(taskOpts(s), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.attempts[0].review, { blocking: 2, minor: 3 });
+    const none = makeFake(s.configDir, { journal: jl({ label: 'E5:plan-review1', result: { measuredPlanBlob: '{{PLAN_BLOB}}' } }) });
+    const r2 = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', work: join(s.base, 'w2') }), { exec: none.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.equal(r2.aggregate.attempts[0].status, 'valid');
+    assert.deepEqual(r2.aggregate.attempts[0].review, { blocking: null, minor: null, reason: 'sem-lista-de-issues' });
+  } finally {
     s.done();
   }
 });
