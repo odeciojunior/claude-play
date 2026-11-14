@@ -414,6 +414,7 @@ test('task-reviewer states the resumed-task exemption affirmatively, before the 
   const resumed = t.search(/^- Resumed task \(the summary says it was resumed from a previous run\): missing check output is never a finding/m);
   const defect = t.search(/^- Otherwise, when the prompt reports no checks \(`\(no checks reported\)`\)/m);
   assert.ok(resumed >= 0, 'affirmative resumed rule exists');
+  assert.match(t, /^- Resumed task .*except those the rule above tells you not to re-run \(shared lock, external effect\)/m, 'resumed rule keeps the lock and external-effect ban');
   assert.ok(defect >= 0, 'no-checks defect rule starts with Otherwise');
   assert.ok(resumed < defect, 'resumed rule precedes the defect rule');
   assert.match(t, /run the plan's verification commands yourself and judge by their result/);
