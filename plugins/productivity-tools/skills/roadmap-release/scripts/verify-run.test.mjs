@@ -211,14 +211,20 @@ test('read: a huge CLI answer is cut so the output stays under 8000 characters, 
   const long = 'x'.repeat(5000);
   const codes = Array.from({ length: 500 }, (_, i) => 'code-' + long.slice(0, 80) + i);
   const d = buildRead({
-    status: cliOut({ panel: [{ id: 'E1', segments: Array.from({ length: 40 }, () => ({ label: long, word: long, note: long })), evidence: long, next: long }] }),
+    status: cliOut({ panel: [{ id: 'E1', segments: Array.from({ length: 40 }, (_, i) => ({ label: i === 39 ? 'code' : long, word: long, note: long + Array.from({ length: 12 }, (_, k) => ` BLQ-${k}${'9'.repeat(k < 6 ? 2 : 40)}`).join('') + (i === 39 ? ' BLQ-7' : '') })), evidence: long, next: long }] }),
     brief: cliOut({ checker: { folder: long, plugin: '1', stale: false, errors: 300, warnings: 300, errorCodes: codes, warningCodes: codes } }),
     pending: cliOut({ decisions: Array.from({ length: 1000 }, (_, i) => ({ id: 'DEC-' + (100000 + i) })) }),
     head: { exit: 0, stdout: 'a'.repeat(40) + '\n' },
     porcelain: { exit: 0, stdout: Array.from({ length: 300 }, (_, i) => ` M ${long}${i}`).join('\n') },
-  }, 'E1');
+  }, 'E1', 'code');
   const text = JSON.stringify({ tool: 'verify-run', mode: 'read', nonce: 'n'.repeat(80), ...d, digest: 'd'.repeat(8) });
   assert.ok(text.length < 8000, String(text.length));
+  const segsOut = d.status.result.panel[0].segments;
+  assert.ok(segsOut.length <= 4, String(segsOut.length));
+  const code = segsOut.find((x) => x.label === 'code');
+  assert.ok(code, 'the piece segment stays within the cap of 4');
+  assert.ok(code.blqIds.length <= 5 && code.blqIds.every((x) => x.length <= 20), JSON.stringify(code.blqIds));
+  assert.ok(code.blqIds.includes('BLQ-099'), 'a BLQ id of the piece is found');
   assert.equal(d.brief.result.checker.errors, 300);
   assert.equal(d.pendingDecisions.result.total, 1000);
   assert.equal(d.clean, false);
@@ -248,8 +254,8 @@ test('read: the first porcelain line keeps its leading space; the BLQ id is sear
   assert.equal(d.porcelain.split('\n')[0], ' M docs/a.md');
   const row = d.status.result.panel[0];
   const code = row.segments.find((x) => x.label === 'code');
-  assert.ok(code, 'the piece segment is kept even past the cap of 4');
-  assert.ok(code.note.endsWith('BLQ-7'), 'uncut');
+  assert.ok(code, 'the piece segment is kept within the cap of 4');
+  assert.ok(code.note.length <= 203, 'the piece note is cut like the others; blqIds covers the BLQ check');
   assert.ok(row.segments.every((x) => Array.isArray(x.blqIds)));
   assert.deepEqual(code.blqIds, ['BLQ-7']);
   assert.deepEqual(mk(undefined).status.result.panel[0].segments[0].blqIds, []);

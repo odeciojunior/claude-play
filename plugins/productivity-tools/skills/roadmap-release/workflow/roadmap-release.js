@@ -1443,7 +1443,7 @@ const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/sc
 let readSeq = 0
 const readBack = async (E, label, phase, cwd, folder, piece) => {
   const readCmd = nonce => `node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E, ...(piece ? { piece } : {}) })}`
-  if (readCmd(`${RUN_TAG}:${E}:read000`).length > CMD_CAP) return null  // fail safe: a command above the cap is not dispatched
+  if (readCmd(`${RUN_TAG}:${E}:read999999`).length > CMD_CAP) return null  // fail safe: a command above the cap is not dispatched
   for (let k = 1; k <= 5; k++) {
     const nonce = `${RUN_TAG}:${E}:read${++readSeq}`
     const out = await agent(runPrompt(readCmd(nonce)),

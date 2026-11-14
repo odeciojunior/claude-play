@@ -138,8 +138,8 @@ export function runGroup(p) {
 // Every list and string is capped so that the whole output stays under 8000 characters; a cut list carries its total.
 const cap = (s, n) => { const t = String(s == null ? '' : s); return t.length > n ? t.slice(0, n) + '...' : t; };
 const capList = (a, n, f = (x) => x) => (Array.isArray(a) ? a.slice(0, n).map(f) : []);
-// The first 4 segments, plus the one of the piece asked for (kept past the cap, with a longer note: recordVerdict reads it).
-const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i < 4 || i === hit); };
+// At most 4 segments, the piece's included (the first 3 plus it when it sits past them). Notes are cut at 200; blqIds (at most 5, each <= 20 chars) come from the full note.
+const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i === hit || i < (hit >= 4 ? 3 : 4)); };
 const cliJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
 export function buildRead({ status, brief, pending, head, porcelain }, E, piece) {
   const so = cliJson(status), bo = cliJson(brief), po = cliJson(pending);
@@ -148,7 +148,7 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece)
   if (so) {
     const panel = so.result && Array.isArray(so.result.panel) ? so.result.panel : null;
     const row = panel && panel.find((p) => p && p.id === E);
-    st = { tool: 'roadmap', summary: sum(so), result: panel ? { panel: row ? [{ id: row.id, segments: pickSegments(row.segments, piece).map((s) => ({ label: cap(s && s.label, 40), word: cap(s && s.word, 40), note: cap(s && s.note, piece && s && s.label === piece ? 1500 : 200), blqIds: [...new Set(String((s && s.note) || '').match(/\bBLQ-\d+\b/g) || [])].slice(0, 10) })), evidence: cap(row.evidence, 200), next: cap(row.next, 200) }] : [] } : {} };
+    st = { tool: 'roadmap', summary: sum(so), result: panel ? { panel: row ? [{ id: row.id, segments: pickSegments(row.segments, piece).map((s) => ({ label: cap(s && s.label, 40), word: cap(s && s.word, 40), note: cap(s && s.note, 200), blqIds: [...new Set(String((s && s.note) || '').match(/\bBLQ-\d+\b/g) || [])].filter((x) => x.length <= 20).slice(0, 5) })), evidence: cap(row.evidence, 200), next: cap(row.next, 200) }] : [] } : {} };
   }
   let br = null;
   if (bo) {
