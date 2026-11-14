@@ -41,7 +41,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | nao-iniciado | - | Aguardar E8 e E15 |
-| E27 | nao-iniciado | - | Aguardar E15 e E21 |
+| E27 | executando | - | Passada A (peça 1) depois de fix/measure-e27; passada B no preparo de E26. |
 | E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
 
@@ -72,6 +72,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Antes de publicar em E11: fix do canal do coordinator (DEC-696): apply --events em trechos sob o teto de comando, evento único acima do teto falha cedo, read enxuto ou paginado; estimado 8.549 caracteres com 6 relatos cheios numa onda.
 - (executor) Na 1ª execução do release depois da fix/registro-8k: conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. No cenário fixo, medir os trechos por status: mais de 1 pede emenda à meta de E10.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
+- (executor) E27 passada B (peças 3 e 4: adversarial ligada/desligada, onda única): depois do laço de rodadas e do estágio de revisão final no arnês, feitos no preparo de E26; teto provisório US$ 60. Lotes pagos nunca em paralelo (porta 48731 fixa em make-sandbox.mjs:42).
 <!-- /roadmap:pending -->
 
 ## Em andamento
