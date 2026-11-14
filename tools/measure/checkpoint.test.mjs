@@ -263,3 +263,26 @@ test('E26 A2: arm.files lists every *-atual.md and only the plan class blocks', 
   assert.equal(b.arm.planFix, false);
   assert.equal(b.exit, 1);
 });
+
+test('E26 A2: spec arms and the plan-fix check fragment match the workflow at HEAD', () => {
+  const wf = disk(WORKFLOW);
+  for (const f of ['spec-review-atual.md', 'spec-fix-atual.md', 'plan-fix-check-atual.md']) {
+    assert.equal(armMatches(disk(`tools/measure/arms/${f}`), wf), true, f);
+  }
+  const spec = disk('tools/measure/arms/spec-fix-atual.md');
+  assert.ok(spec.includes('run node "{{specTool}}" check "{{specAbs}}" --roadmap "{{rmAbs}}"'));
+  assert.ok(spec.includes('{{issues}}'));
+  const frag = disk('tools/measure/arms/plan-fix-check-atual.md').replace(/\r\n/g, '\n').trimEnd().split('\n');
+  assert.equal(frag.length, 2);
+  assert.match(frag[0], /^Copied from: plugins\/productivity-tools\/skills\/roadmap-release\/workflow\/roadmap-release\.js at commit [0-9a-f]{40}$/);
+  assert.ok(frag[1].includes('run node "{{planTool}}" check "{{planAbs}}" --spec "{{specAbs}}"'));
+  const commits = ['spec-review-atual.md', 'spec-fix-atual.md', 'plan-fix-check-atual.md'].map((f) => disk(`tools/measure/arms/${f}`).split(/\r?\n/)[0].match(/commit ([0-9a-f]{40})$/)[1]);
+  assert.equal(new Set(commits).size, 1);
+});
+
+test('E26 A2: the plan arms stay byte-identical (DEC-310 keeps plan-fix-atual.md for E15)', async () => {
+  const { createHash } = await import('node:crypto');
+  const sha = (f) => createHash('sha256').update(disk(`tools/measure/arms/${f}`).replace(/\r\n/g, '\n')).digest('hex');
+  assert.equal(sha('plan-fix-atual.md'), '5e9c89b4d5679be50611907319519466b0c5e4b70f1001a0096f29d6d7b23906');
+  assert.equal(sha('plan-review-atual.md'), '0069d96612ea1db2c3b978569b85633de61e8eb343b18322cb49251eb75e5d6d');
+});
