@@ -1267,6 +1267,49 @@ test('read prints the signed state', () => withSandbox((sb) => {
   assert.equal(j2.planChanged, true);
 }));
 
+// A state of 60 passed steps with long notes: the pretty-printed read was 100 KB, the Bash tool spills anything above 30 KB.
+function bigState(sb) {
+  const st = readJson(sb.state);
+  const base = st.steps[0];
+  st.steps = Array.from({ length: 60 }, (_, i) => ({ ...base, n: i + 1, title: 't' + (i + 1), files: ['src/a' + i + '.mjs', 'tests/a' + i + '.test.mjs'], status: 'pass', note: 'n'.repeat(400), handoff: 'h'.repeat(500), sha: 'a'.repeat(40) }));
+  writeJson(sb.state, st);
+  return st;
+}
+
+test('read of a big state stays under 30000 bytes per page, pages are signed and add up to the signed state digest', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const st = bigState(sb);
+  const first = cli(['read', sb.state, '--nonce', 'N', '--json']);
+  assert.equal(first.code, 0, first.err);
+  const j = JSON.parse(first.out);
+  assert.ok(j.pages > 1, 'a big state comes in pages: ' + j.pages);
+  const steps = [];
+  for (let k = 0; k < j.pages; k++) {
+    const r = k === 0 ? first : cli(['read', sb.state, '--nonce', 'N' + k, '--page', String(k), '--json']);
+    assert.equal(r.code, 0, r.err);
+    assert.ok(Buffer.byteLength(r.out) < 30000, 'page ' + k + ' has ' + Buffer.byteLength(r.out) + ' bytes');
+    const p = JSON.parse(r.out);
+    const { digest, ...rest } = p;
+    assert.equal(digest, signDigest(rest), 'page ' + k + ' is signed');
+    assert.equal(p.page, k);
+    assert.equal(p.stateDigest, j.stateDigest);
+    steps.push(...(k === 0 ? p.state.steps : p.steps));
+  }
+  assert.deepEqual(steps.map((x) => x.n), st.steps.map((x) => x.n), 'every step, in order');
+  assert.equal(stateDigest({ ...j.state, steps }), j.stateDigest);
+  assert.equal(j.stateDigest, stateDigest(st));
+  assert.equal(cli(['read', sb.state, '--nonce', 'N', '--page', String(j.pages), '--json']).code, 2);
+}));
+
+test('read of a small state is one page with the whole state', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j.pages, 1);
+  assert.equal(j.page, 0);
+  assert.deepEqual(j.state.steps, readJson(sb.state).steps);
+  assert.equal(j.stateDigest, stateDigest(readJson(sb.state)));
+}));
+
 test('apply --events writes a batch and signs the result', () => withSandbox((sb) => {
   initSandbox(sb);
   const before = readJson(sb.state);
