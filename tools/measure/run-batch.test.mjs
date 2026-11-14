@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
@@ -19,6 +19,9 @@ function setup({ withPlugins = true } = {}) {
   const dirs = { base, work: join(base, 'work'), out: join(base, 'out'), configDir: join(base, 'cfg') };
   mkdirSync(join(dirs.configDir, 'plugins'), { recursive: true });
   if (withPlugins) {
+    const installed = join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9');
+    mkdirSync(join(installed, 'agents'), { recursive: true });
+    writeFileSync(join(installed, 'agents', 'task-reviewer.md'), '---\nname: task-reviewer\n---\n');
     writeFileSync(
       join(dirs.configDir, 'plugins', 'installed_plugins.json'),
       JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234', installPath: join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9') }] } }),
@@ -27,6 +30,7 @@ function setup({ withPlugins = true } = {}) {
   return { ...dirs, done: () => rmSync(base, { recursive: true, force: true }) };
 }
 
+const HEAD = spawnSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
 const sid = (k) => `00000000-0000-4000-8000-0000000001${String(k).padStart(2, '0')}`;
 
 const JOURNALS = join(here, 'fixtures', 'journals');
@@ -645,7 +649,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
     const sha = first.match(/commit ([0-9a-f]{40})$/)[1];
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
-    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha });
+    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, harnessCommit: HEAD });
     const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
     const scriptText = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
     assert.ok(!scriptText.includes('Copied from:'));
@@ -656,7 +660,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
       exec: code.exec,
       now: () => new Date('2026-11-10T12:00:05Z'),
     });
-    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, reviewModel: 'sonnet', reviewEffort: 'medium' });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium' });
     assert.equal(rc.aggregate.valid, 1);
 
     const plain = makeFake(s.configDir);
@@ -1454,6 +1458,8 @@ test('--plugin-dir reaches every claude -p call and the aggregate records that f
     const dir = join(s.base, 'pdir');
     mkdirSync(join(dir, '.claude-plugin'), { recursive: true });
     writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'productivity-tools', version: '3.2.1' }));
+    mkdirSync(join(dir, 'agents'));
+    writeFileSync(join(dir, 'agents', 'task-reviewer.md'), 'x');
     gitIn(dir, 'init', '-q');
     gitIn(dir, 'add', '-A');
     gitIn(dir, 'commit', '-q', '-m', 'x');
@@ -1470,6 +1476,8 @@ test('--plugin-dir reaches every claude -p call and the aggregate records that f
     const plain = join(s.base, 'plain');
     mkdirSync(join(plain, '.claude-plugin'), { recursive: true });
     writeFileSync(join(plain, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '1.0.0' }));
+    mkdirSync(join(plain, 'agents'));
+    writeFileSync(join(plain, 'agents', 'task-reviewer.md'), 'x');
     const f2 = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
     const r2 = await runBatch(taskOpts(s, { pluginDir: plain, work: join(s.base, 'w2') }), { exec: f2.exec, now: () => new Date('2026-11-10T12:00:05Z') });
     assert.deepEqual({ v: r2.aggregate.plugin.version, c: r2.aggregate.plugin.commit }, { v: '1.0.0', c: null });
@@ -1493,6 +1501,95 @@ test('each attempt records the reviewer blocking and minor counts, or null with 
     assert.equal(r2.aggregate.attempts[0].status, 'valid');
     assert.deepEqual(r2.aggregate.attempts[0].review, { blocking: null, minor: null, reason: 'sem-lista-de-issues' });
   } finally {
+    s.done();
+  }
+});
+
+function pluginDirAt(parent, { agent = true, manifest = true } = {}) {
+  const dir = mkdtempSync(join(parent, 'pd-'));
+  if (manifest) {
+    mkdirSync(join(dir, '.claude-plugin'), { recursive: true });
+    writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '4.0.0' }));
+  }
+  if (agent) {
+    mkdirSync(join(dir, 'agents'), { recursive: true });
+    writeFileSync(join(dir, 'agents', 'task-reviewer.md'), 'x');
+  }
+  return dir;
+}
+
+test('a relative --plugin-dir is resolved once and the absolute path reaches claude -p', async () => {
+  const s = setup();
+  const dir = pluginDirAt(process.cwd());
+  try {
+    const rel = relative(process.cwd(), dir);
+    assert.equal(isAbsolute(rel), false);
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    const r = await runBatch(taskOpts(s, { pluginDir: rel }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.plugin.version, '4.0.0');
+    const ps = fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.ok(ps.length > 0);
+    for (const c of ps) assert.equal(c.args[c.args.indexOf('--plugin-dir') + 1], resolve(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    s.done();
+  }
+});
+
+test('task-review atual needs the task-reviewer agent; an unreadable plugin.json under --plugin-dir is an error', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    const noAgent = pluginDirAt(s.base, { agent: false });
+    await assert.rejects(runBatch(taskOpts(s, { pluginDir: noAgent }), { exec: fake.exec }), (e) => e instanceof UsageError && /task-reviewer/.test(e.message));
+    const noManifest = pluginDirAt(s.base, { manifest: false });
+    await assert.rejects(runBatch(taskOpts(s, { pluginDir: noManifest, work: join(s.base, 'w2') }), { exec: fake.exec }), (e) => e instanceof UsageError && /plugin\.json/.test(e.message));
+    rmSync(join(s.configDir, 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9', 'agents'), { recursive: true });
+    await assert.rejects(runBatch(taskOpts(s, { work: join(s.base, 'w3') }), { exec: fake.exec }), (e) => e instanceof UsageError && /task-reviewer/.test(e.message));
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('review effort mirrors the workflow: haiku low, sonnet and opus medium', async () => {
+  const s = setup();
+  try {
+    for (const [m, e] of [['haiku', 'low'], ['sonnet', 'medium'], ['opus', 'medium']]) {
+      const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+      const r = await runBatch(taskOpts(s, { reviewModel: m, work: join(s.base, 'w-' + m) }), { exec: fake.exec, now: NOW });
+      assert.equal(r.aggregate.harness.reviewEffort, e);
+      assert.ok(readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8').includes("model: '" + m + "', effort: '" + e + "'"));
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('aggregate.harness records harnessCommit and a different plugin commit prints a warning', async () => {
+  const s = setup();
+  const warn = mock.method(console, 'error', () => {});
+  try {
+    const dir = pluginDirAt(s.base);
+    gitIn(dir, 'init', '-q');
+    gitIn(dir, 'add', '-A');
+    gitIn(dir, 'commit', '-q', '-m', 'x');
+    const pc = gitIn(dir, 'rev-parse', 'HEAD').stdout.trim();
+    assert.notEqual(pc, HEAD);
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    const r = await runBatch(taskOpts(s, { pluginDir: dir }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.harness.harnessCommit, HEAD);
+    assert.equal(r.aggregate.plugin.commit, pc);
+    const said = warn.mock.calls.map((c) => c.arguments.join(' ')).join('\n');
+    assert.match(said, /harnessCommit/);
+    assert.ok(said.includes(HEAD) && said.includes(pc));
+    warn.mock.resetCalls();
+    const same = pluginDirAt(s.base);
+    const f2 = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(taskOpts(s, { pluginDir: same, work: join(s.base, 'w2') }), { exec: f2.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.equal(warn.mock.calls.map((c) => c.arguments.join(' ')).join('\n').includes('harnessCommit'), false);
+  } finally {
+    warn.mock.restore();
     s.done();
   }
 });

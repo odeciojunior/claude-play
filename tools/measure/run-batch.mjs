@@ -118,7 +118,7 @@ export function readPluginDir(dir) {
   try {
     version = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? 'unknown';
   } catch {
-    console.error(`run-batch: no readable .claude-plugin/plugin.json in --plugin-dir; recording version "unknown"`);
+    throw new UsageError('no readable .claude-plugin/plugin.json in --plugin-dir');
   }
   let commit = null;
   try {
@@ -460,7 +460,7 @@ const STAGES = {
   'task-review': { variant: /^codigo-semeado-/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, blobPath: null },
 };
 const REVIEW_MODELS = ['haiku', 'sonnet', 'opus'];
-const REVIEW_EFFORT = 'medium'; // the workflow passes model and effort together (effortFor: sonnet and opus medium)
+const reviewEffortFor = (model) => (model === 'haiku' ? 'low' : 'medium'); // mirrors effortFor in roadmap-release.js
 const COPIED = /^Copied from: (\S+) at commit ([0-9a-f]{40})$/;
 
 export function readArm(file, { requireSource = false } = {}) {
@@ -560,8 +560,9 @@ function prepareHarness(opts) {
       workflowCommit = review.source.commit;
     }
   }
-  const reviewer = reviewModel ? { model: reviewModel, effort: REVIEW_EFFORT } : {};
-  return { stage, arm, st, review, fixArm, reviewer, harness: { stage, arm, armSource, workflowCommit, ...(reviewModel ? { reviewModel, reviewEffort: REVIEW_EFFORT } : {}) } };
+  const reviewEffort = reviewModel ? reviewEffortFor(reviewModel) : null;
+  const reviewer = reviewModel ? { model: reviewModel, effort: reviewEffort } : {};
+  return { stage, arm, st, review, fixArm, reviewer, harness: { stage, arm, armSource, workflowCommit, ...(reviewModel ? { reviewModel, reviewEffort } : {}) } };
 }
 
 const slash = (p) => p.replace(/\\/g, '/');
@@ -781,10 +782,28 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const seeded = variant.includes('semeado');
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
   const h = prepareHarness(opts);
+  const pluginDir = opts.pluginDir ? resolve(opts.pluginDir) : null; // claude -p runs in the sandbox: it needs the absolute path
+  if (pluginDir) opts = { ...opts, pluginDir };
+  const plugin = pluginDir ? readPluginDir(pluginDir) : readPlugin(opts.configDir);
+  if (h && h.stage === 'task-review' && h.arm === 'atual') {
+    const agentFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'agents', 'task-reviewer.md') : null;
+    if (!agentFile || !existsSync(agentFile)) throw new UsageError(`task-review with arm atual needs agents/task-reviewer.md in the measured plugin (${pluginDir ? '--plugin-dir' : 'installed plugin'})`);
+  }
+  if (h) {
+    let harnessCommit = null;
+    try {
+      harnessCommit = execFileSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || null;
+    } catch {
+      /* not a repo */
+    }
+    h.harness.harnessCommit = harnessCommit;
+    if (harnessCommit && plugin.commit && plugin.commit !== 'unknown' && plugin.commit !== harnessCommit) {
+      console.error(`run-batch: warning: harnessCommit ${harnessCommit} differs from the measured plugin commit ${plugin.commit} (prompt and agent come from different commits)`);
+    }
+  }
   const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}${h.harness.reviewModel ? `-${h.harness.reviewModel}` : ''}` : ''}-${stamp(now())}`);
   const priv = join(dir, 'private');
   mkdirSync(priv, { recursive: true });
-  const plugin = opts.pluginDir ? readPluginDir(opts.pluginDir) : readPlugin(opts.configDir);
   const superpowers = readSuperpowers(opts.configDir);
   const seedSource = seeded ? seedSourceOf(opts.fromRun) : undefined;
   const cli = (await exec('claude', ['--version'], {})).stdout.trim();
