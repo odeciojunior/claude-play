@@ -419,3 +419,14 @@ test('task-reviewer states the resumed-task exemption affirmatively, before the 
   assert.ok(resumed < defect, 'resumed rule precedes the defect rule');
   assert.match(t, /run the task's verification commands from the plan yourself and judge by their result/);
 });
+
+test('DEC-715: script-runner agent and runPrompt: answer only after the Bash result, never with the call, never a placeholder', () => {
+  const agent = readFileSync(join(here, '..', '..', '..', 'agents', 'script-runner.md'), 'utf8').replace(/\r\n/g, '\n');
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8');
+  const rp = src.match(/const runPrompt = .*/)[1 - 1];
+  for (const t of [agent, rp]) {
+    assert.match(t, /after the Bash result has arrived/);
+    assert.match(t, /never in the same message as the Bash call/);
+    assert.match(t, /never a placeholder/i);
+  }
+});

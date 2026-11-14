@@ -1435,7 +1435,7 @@ const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
-const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file):\n${cmd}\n${extra}${BASH_ONLY}`
+const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${BASH_ONLY}`
 // The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
