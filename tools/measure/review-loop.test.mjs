@@ -156,6 +156,24 @@ test('A1: refusals: no runReviewLoop, no intArg(A.maxFixRounds, 2, 0), stage lit
   assert.throws(() => checkLoopWorkflow(WF, 'task-review'), UsageError);
 });
 
+test('A1 review: a reviewer or fixer model/effort change inside the stage slice is drift too', () => {
+  const inSlice = (stage, from, to) => {
+    const call = stage === 'spec-review' ? "reviewLoop('spec'," : "reviewLoop('plan',";
+    const at = WF.indexOf(call);
+    const next = WF.indexOf('reviewLoop(', at + 1);
+    const slice = WF.slice(at, next);
+    assert.ok(slice.includes(from), `${stage}: ${from}`);
+    return WF.slice(0, at) + slice.replace(from, to) + WF.slice(next);
+  };
+  const REVIEW = "model: 'opus', effort: 'medium' }";
+  const FIX = 'model: tier, effort: effortFor(tier) }';
+  for (const stage of ['spec-review', 'plan-review']) {
+    assert.throws(() => checkLoopWorkflow(inSlice(stage, REVIEW, "model: 'opus', effort: 'high' }"), stage), (e) => e instanceof UsageError && /reviewer/.test(e.message), stage);
+    assert.throws(() => checkLoopWorkflow(inSlice(stage, REVIEW, "model: 'sonnet', effort: 'medium' }"), stage), UsageError, stage);
+    assert.throws(() => checkLoopWorkflow(inSlice(stage, FIX, "model: 'opus', effort: 'high' }"), stage), (e) => e instanceof UsageError && /fixer/.test(e.message), stage);
+  }
+});
+
 test('A1: a generated script over 200,000 characters is refused', () => {
   const pure = checkLoopWorkflow(WF, 'spec-review') + '\n// ' + 'x'.repeat(200000);
   assert.throws(() => buildLoopScript({ stage: 'spec-review', pure, reviewBody: 'R', measure: MEASURE, fixPrompt: 'F {{issues}}' }), (e) => e instanceof UsageError && /200,?000/.test(e.message));

@@ -1681,7 +1681,7 @@ test('A2 review: an installed plugin without roadmap-release.js is refused for -
     assert.equal(claudeCalls(fake).length, 0);
     const none = setup({ withPlugins: false });
     try {
-      await assert.rejects(runBatch(seededOpts(none, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(none.configDir).exec, now: NOW }), UsageError);
+      await assert.rejects(runBatch(seededOpts(none, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(none.configDir).exec, now: NOW }), (e) => e instanceof UsageError && /not found/.test(e.message) && !/has no skills/.test(e.message));
     } finally {
       none.done();
     }
@@ -1959,6 +1959,50 @@ test('A3: spec-nativo-B records humanInputs from the spec/1 block (seeded and at
     const fix = promptConsts(sentScript(fake).text).FIX_PROMPT;
     assert.ok(fix.includes(`run node "${REAL_PLUGIN.replace(/\\/g, '/')}/scripts/spec-tool.mjs" check "`), fix);
     assert.ok(fix.includes('/docs/plans/roadmap-sandbox"'), fix);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1 review: a journal whose stage labels the replay did not use, or repeats, is laco-divergente', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const clean = { label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) };
+      const text = {
+        // a clean review 1 ends the loop: a fix and a 2nd review in the journal never belong to it
+        1: jl(clean, { label: 'E5:plan-review-fix1', result: { summary: '[fab]' } }, { label: 'E5:plan-review2', result: rv([], 'x', 'measuredPlanBlob', b) }),
+        2: jl(clean, clean),
+        3: jl(clean, { label: 'E5:plan-review-extra', result: { summary: '[fab]' } }),
+        4: jl({ label: 'E5:plan-review1', result: null }, { label: 'E5:plan-review1b', result: rv([], 'x', 'measuredPlanBlob', b) }),
+      }[n];
+      writeFileSync(journalFileOf(s.configDir, n), text);
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 4 }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.reason ?? a.status), ['laco-divergente', 'laco-divergente', 'laco-divergente', 'valid']);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1 review: an unreachable sandbox without a 1st fix keeps afterFirstFix verified (the end outcomes, headSha null)', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) }));
+      gitq(cwd, 'checkout', '-q', 'main');
+      gitq(cwd, 'branch', '-q', '-D', 'feat/E5');
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    for (const o of a.outcomes) assert.equal(o.outcome, 'indeterminado');
+    assert.deepEqual(a.afterFirstFix, { headSha: null, verified: true, outcomes: a.outcomes });
+    assert.equal(r.aggregate.afterFirstFixUnverified, 0);
   } finally {
     s.done();
   }

@@ -641,6 +641,8 @@ const STAGE_CALL = {
   'plan-review': { call: "reviewLoop('plan',", literal: "{ tier: 'sonnet', reviewModel: 'opus' })", name: 'plan' },
 };
 const MAXFIX_LITERAL = 'intArg(A.maxFixRounds, 2, 0)';
+const REVIEW_OPTS_LITERAL = "model: 'opus', effort: 'medium' }";
+const FIX_OPTS_LITERAL = 'model: tier, effort: effortFor(tier) }';
 export const LOOP_RM = 'docs/plans/roadmap-sandbox/';
 const LOOP_SCRIPT_LIMIT = 200000;
 
@@ -666,6 +668,9 @@ export function checkLoopWorkflow(workflowText, stage) {
   const next = at < 0 ? -1 : text.indexOf('reviewLoop(', at + sc.call.length);
   const slice = at < 0 ? '' : text.slice(at, next < 0 ? text.length : next);
   if (!slice.includes(sc.literal)) throw new UsageError(`--rounds loop: the ${sc.name} stage of the measured workflow no longer passes ${sc.literal} to reviewLoop (options drift)`);
+  // STAGE_LOOP hardcodes the reviewer (opus/medium) and the fixer (tier/effortFor(tier)): their agent() options must still say so.
+  if (!slice.includes(REVIEW_OPTS_LITERAL)) throw new UsageError(`--rounds loop: the ${sc.name} reviewer of the measured workflow no longer runs with ${REVIEW_OPTS_LITERAL} (reviewer model/effort drift)`);
+  if (!slice.includes(FIX_OPTS_LITERAL)) throw new UsageError(`--rounds loop: the ${sc.name} fixer of the measured workflow no longer runs with ${FIX_OPTS_LITERAL} (fixer model/effort drift)`);
   return pure;
 }
 
@@ -1037,27 +1042,37 @@ function loopEntries(h, entries) {
 }
 
 // Replays the measured runReviewLoop over the journal: the same rounds, tiers and stop the script went through.
-// Returns null when a review or fix the loop asked for is missing or null (laco-infra).
+// `entries` is the raw journal (review 1 and its retry 1b as written). Returns { infra: true } when a review or fix the loop
+// asked for is missing or null (laco-infra), and { divergent: true } when the journal holds stage entries the replay did not
+// use, or repeats a stage label (laco-divergente): the replay then is not the run the script went through.
 async function loopResult(h, entries, P) {
   const opt = STAGE_LOOP[h.stage];
   const label = h.st.label;
   let reviews = 0;
   const fixTiers = [];
+  const used = new Set();
+  const take = (l) => {
+    const e = find(entries, l);
+    if (e) used.add(l);
+    return e;
+  };
   const env = { maxFix: opt.maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: () => {} };
   const review = async (round) => {
-    const e = find(entries, `${label}${round}`);
+    const e = take(`${label}${round}`);
     if (!e || !e.result) return null;
     reviews += 1;
     return e.result;
   };
   const fix = async (iss, k, tier) => {
-    const e = find(entries, `${label}-fix${k}`);
+    const e = take(`${label}-fix${k}`);
     if (nullResult(e)) return null;
     fixTiers.push(tier);
     return { status: 'DONE' };
   };
   const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, (r) => P.reviewTruth(r, 0, 'main..HEAD'), { tier: opt.tier, reviewModel: opt.reviewModel });
-  if (res.kind === 'infra') return null;
+  if (res.kind === 'infra') return { infra: true };
+  const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(label));
+  if (new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !used.has(l))) return { divergent: true };
   return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null };
 }
 
@@ -1079,16 +1094,22 @@ function afterFixVerified(h, entries, scenario, sha, fixes) {
   return true;
 }
 
-async function afterFirstFix(h, variant, scenario, journal, endOutcomes) {
+// Stage of the two branches, as the spec sets them (A1): without a 1st fix the state after it is the end state, so the outcomes
+// (and their stage, the loop verdict) are the end ones; with a fix, the outcomes at headSha take the stage from harnessStage
+// (review 1 did not block, or the fixer ran and removed a seeded defect), since the loop had not ended there.
+async function afterFirstFix(h, variant, scenario, journal, endOutcomes, reachable) {
   const entries = journal.entries;
   if (!find(entries, `${h.st.label}-fix1`)) return { headSha: null, verified: true, outcomes: endOutcomes };
-  const reported = find(entries, `${h.st.label}2`)?.result?.headSha;
+  const r2 = entries.findIndex((e) => e.label === `${h.st.label}2`);
+  const reported = r2 >= 0 ? entries[r2].result?.headSha : undefined;
   const sha = typeof reported === 'string' ? reported.trim() : '';
   const fixes = entries.filter((e) => new RegExp(`^${h.st.label}-fix\\d+$`).test(e.label)).length;
-  if (!afterFixVerified(h, entries, scenario, sha, fixes)) {
+  if (!reachable || !afterFixVerified(h, entries, scenario, sha, fixes)) {
     return { headSha: sha || null, verified: false, outcomes: endOutcomes.map((o) => ({ ...o, outcome: 'indeterminado' })) };
   }
-  const outcomes = await attemptOutcomes(variant, scenario, journal, (presents) => harnessStage(h, entries, presents), true, sha);
+  // Code signals count only up to review 2: later rounds are not part of the state after the 1st fix.
+  const upTo = { ...journal, entries: entries.slice(0, r2 + 1) };
+  const outcomes = await attemptOutcomes(variant, scenario, upTo, (presents) => harnessStage(h, upTo.entries, presents), true, sha);
   return { headSha: sha, verified: true, outcomes };
 }
 
@@ -1142,7 +1163,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         h.harness.pureSha256 = extractPure(wfText).sha256;
         h.harness.stageOptions = { ...STAGE_LOOP[h.stage] };
       }
-    } else throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
+    } else if (!wfFile) throw new UsageError(`the measured plugin was not found (installed ${PLUGIN_KEY} missing from installed_plugins.json, or no installPath): cannot check the arm templates`);
+    else throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
   }
   if (h) {
     h.installPath = plugin.installPath;
@@ -1273,11 +1295,13 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let loop = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
+      const rawEntries = journal.entries;
       if (h?.rounds === 'loop') journal = { ...journal, entries: loopEntries(h, journal.entries) };
       let v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
       if (v.valid && h?.rounds === 'loop') {
-        loop = await loopResult(h, journal.entries, h.loopFns);
-        if (!loop) v = { valid: false, reason: 'laco-infra' };
+        loop = await loopResult(h, rawEntries, h.loopFns);
+        if (loop.infra) v = { valid: false, reason: 'laco-infra' };
+        else if (loop.divergent) v = { valid: false, reason: 'laco-divergente' };
       }
       if (!v.valid) {
         attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
@@ -1348,9 +1372,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${h.st.label}1`) : reviewCounts(journal.entries, `${h.st.label}1`);
     if (h && journal && loop) {
       attempt.loop = loop;
-      attempt.afterFirstFix = reachable
-        ? await afterFirstFix(h, variant, scenario, journal, outcomes)
-        : { headSha: null, verified: false, outcomes: outcomes.map((o) => ({ ...o, outcome: 'indeterminado' })) };
+      attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
     }
     if (h && journal && artifactOf(variant)?.set === 'e5-native' && h.st.artifact) {
       attempt.toolCheck = toolCheck(h, scenario, plugin.installPath, reachable);
