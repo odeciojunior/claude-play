@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E8 | BLQ-18 aberto: Sem bypass, com as regras do preflight, o completo não roda: gravação em wtRoot negada (falta pasta adicional) e a skill compõe comandos fora de Bash(git:*). Segura a publicação de E11; não segura o preparo de E26 nem a passada B de E27 (lotes em bypass, DEC-311). | `docs/reports/2026-11-14-E8-sonda-acceptEdits.md` |
 | 2026-11-14 | E8 | BLQ-17 resolvido: 3º plan-only em af782a4 sem FAILED, com os 5 critérios de DEC-709; cópia do grupo e releitura assinadas aceitas na 1ª tentativa (DEC-717). | `docs/reports/2026-11-14-E8-plan-only-3-sandbox.md` |
 | 2026-11-14 | E8 | fix/grupo-idempotente integrada (DEC-714, DEC-715): verify-run group idempotente por nonce (marca com pid e saída atômica no git dir), recordStatus repete a cópia até 5 vezes, script-runner só responde após o Bash. 2 rodadas sonnet, revisão opus/high APPROVE. G1 1856/0, G2-G5 ok. | `7ee7f23` |
 | 2026-11-14 | E8 | BLQ-17 aberto: Cópia por modelo da saída do grupo de escrita reprova registro correto: 2º plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | `docs/reports/2026-11-14-E8-plan-only-2-sandbox.md` |

@@ -26,6 +26,13 @@ O preflight rodou na sessão principal e devolveu `errors: []` e `missingRules: 
 
 `<wtRoot>` = `D:/claude-e8p-work/completo/completo-1-wt`, a pasta irmã do repositório onde o workflow cria as worktrees (SKILL.md, passo 1).
 
+## Errata (revisão do Fable nas transcrições)
+
+- E5 falhou já no autor do spec: as leituras dele foram negadas, o spec não foi escrito e `spec-load1` deu ENOENT. A negação do Write do commit veio depois.
+- Faltam na tabela: `cd <dir> && git ...`, negado até dentro do diretório da sessão ("changes directory before running a version-control command"); atribuição de variável (`R="..."; ...`); 2 chamadas da ferramenta PowerShell pelo agente de baseline; `cd` e `ls` do Bash em wtRoot; `ls; head` do agente do relatório.
+- Passou: `git -C <pasta fora da sessão>` sob `Bash(git:*)`.
+- `missingRules` veio vazio porque `tools/measure/make-scenario.mjs` grava as regras no `settings.local.json` das variantes run.
+
 ## Leitura do executor
 
 1. O `acceptEdits` só aceita edições e leituras dentro do diretório da sessão e das pastas adicionais. O workflow trabalha em `<wtRoot>`, que fica fora do repositório por desenho, e o preflight não pede `additionalDirectories` (ou `--add-dir`) para essa pasta nem para a pasta do plugin. Por isso `missingRules` veio vazio e a execução parou na primeira gravação.
