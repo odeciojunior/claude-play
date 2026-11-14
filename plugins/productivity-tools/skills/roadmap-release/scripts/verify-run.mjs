@@ -12,7 +12,7 @@
 //   group payload: { nonce, digest, cwd, steps: [text], finally: { commit: { add: [paths], message: [m1, m2] } } | null }
 //     -> { tool: 'verify-run', mode: 'group', nonce, steps: [{ n, exit, out }], stopped: { n, exit } | null, commit, head, digest }
 //   read payload: { nonce, digest, cwd, cli, folder, deliverable, piece? }  (read-only: the CLI status --deliverable, brief and pending-decisions, git rev-parse HEAD, git status --porcelain)
-//     -> { tool: 'verify-run', mode: 'read', nonce, exits, status, brief, pendingDecisions, head, porcelain, clean, digest }  (under 8000 characters)
+//     -> { tool: 'verify-run', mode: 'read', nonce, exits, status, brief, pendingDecisions, head, porcelain, clean, digest }  (under 8000 characters: a final budget in buildRead guarantees it)
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
@@ -141,9 +141,10 @@ const capList = (a, n, f = (x) => x) => (Array.isArray(a) ? a.slice(0, n).map(f)
 // At most 4 segments, the piece's included (the first 3 plus it when it sits past them). Notes are cut at 200; blqIds (at most 5, each <= 20 chars) come from the full note.
 const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i === hit || i < (hit >= 4 ? 3 : 4)); };
 const cliJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
-export function buildRead({ status, brief, pending, head, porcelain }, E, piece) {
+export function buildRead({ status, brief, pending, head, porcelain }, E, piece, nonce = '') {
   const so = cliJson(status), bo = cliJson(brief), po = cliJson(pending);
-  const sum = (o) => ({ exitCode: o.summary && typeof o.summary === 'object' ? o.summary.exitCode : undefined });
+  const num = (v) => (v == null || typeof v === 'number' || typeof v === 'boolean' ? v : cap(v, 20)); // a non-number stays a non-number, bounded
+  const sum = (o) => ({ exitCode: num(o.summary && typeof o.summary === 'object' ? o.summary.exitCode : undefined) });
   let st = null;
   if (so) {
     const panel = so.result && Array.isArray(so.result.panel) ? so.result.panel : null;
@@ -153,7 +154,7 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece)
   let br = null;
   if (bo) {
     const c = bo.result && bo.result.checker;
-    br = { tool: 'roadmap', summary: sum(bo), result: c && typeof c === 'object' ? { checker: { ...c, errorCodes: capList(c.errorCodes, 10, (x) => cap(x, 40)), warningCodes: capList(c.warningCodes, 10, (x) => cap(x, 40)), folder: c.folder == null ? null : cap(c.folder, 200) } } : {} };
+    br = { tool: 'roadmap', summary: sum(bo), result: c && typeof c === 'object' ? { checker: { folder: c.folder == null ? null : cap(c.folder, 200), plugin: c.plugin == null ? null : cap(c.plugin, 40), stale: num(c.stale), errors: num(c.errors), warnings: num(c.warnings), errorCodes: capList(c.errorCodes, 10, (x) => cap(x, 40)), warningCodes: capList(c.warningCodes, 10, (x) => cap(x, 40)) } } : {} };
   }
   let pd = null;
   if (po) {
@@ -162,18 +163,29 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece)
   }
   const pt = String(porcelain.stdout || '').replace(/\s+$/, ''); // the first line keeps its leading space
   const clean = porcelain.exit === 0 && pt === '';
-  return {
+  const lines = pt.split('\n');
+  const porc = (n) => (porcelain.exit === 0 ? lines.slice(0, n).map((l) => cap(l, 100)).join('\n') + (lines.length > n ? `\n[+${lines.length - n} lines cut]` : '') : `(git status exit ${porcelain.exit})`);
+  const d = {
     exits: { status: status.exit, brief: brief.exit, pendingDecisions: pending.exit, head: head.exit, porcelain: porcelain.exit },
     status: st, brief: br, pendingDecisions: pd,
     head: head.exit === 0 ? cap(head.stdout.trim(), 64) : '',
-    porcelain: porcelain.exit === 0 ? capList(pt.split('\n'), 20, (l) => cap(l, 100)).join('\n') + (pt.split('\n').length > 20 ? `\n... (${pt.split('\n').length} lines)` : '') : `(git status exit ${porcelain.exit})`,
+    porcelain: porc(20),
     clean,
   };
+  // Final budget (DEC-711): while the whole output, envelope included, would reach 7900 chars, cut (1) porcelain down to its first line,
+  // (2) the OLDEST pending ids (total stays, so recordVerdict's truncated fail-safe applies), (3) segment notes to 80 chars.
+  // The piece segment, blqIds, head, exits and the brief's error count are never touched.
+  const over = () => JSON.stringify({ tool: TOOL, mode: 'read', nonce, ...d, digest: signDigest({}) }).length >= 7900;
+  for (let n = Math.min(lines.length, 20) - 1; n >= 1 && over(); n--) d.porcelain = porc(n);
+  const decs = pd && pd.result && pd.result.decisions;
+  while (decs && decs.length && over()) decs.shift();
+  if (over() && st && st.result.panel && st.result.panel[0]) for (const g of st.result.panel[0].segments) g.note = cap(g.note, 80);
+  return d;
 }
 
 export function runRead(p) {
   const cli = (verb, extra = []) => exec('node', [p.cli, verb, p.folder, ...extra, '--json'], p.cwd);
-  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['--no-optional-locks', 'status', '--porcelain']) }, p.deliverable, p.piece);
+  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['--no-optional-locks', 'status', '--porcelain']) }, p.deliverable, p.piece, p.nonce);
   return { tool: TOOL, mode: 'read', nonce: p.nonce, ...r };
 }
 

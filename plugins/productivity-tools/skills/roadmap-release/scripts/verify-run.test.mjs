@@ -228,7 +228,61 @@ test('read: a huge CLI answer is cut so the output stays under 8000 characters, 
   assert.equal(d.brief.result.checker.errors, 300);
   assert.equal(d.pendingDecisions.result.total, 1000);
   assert.equal(d.clean, false);
-  assert.match(d.porcelain, /\(300 lines\)/);
+  assert.match(d.porcelain, /\[\+\d+ lines cut\]$/);
+});
+
+// Every cap filled: 100 pending ids of 20 chars, a 64-char head, 20 porcelain lines of 100 chars, the piece at segment 39, 5 BLQ ids of 20 chars in every note.
+const maxRead = async ({ porcelain = true, nonce = 'n'.repeat(80) } = {}) => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const cliOut = (result) => ({ exit: 0, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, result }) });
+  const long = 'x'.repeat(5000);
+  const blqs = Array.from({ length: 5 }, (_, k) => ' BLQ-' + String(k).repeat(16)).join('');
+  const ids = Array.from({ length: 100 }, (_, i) => 'DEC-' + String(1e15 + i));
+  const segs = Array.from({ length: 40 }, (_, i) => ({ label: i === 39 ? 'code' : long, word: i === 39 ? 'plano' : long, note: long + blqs }));
+  const d = buildRead({
+    status: cliOut({ panel: [{ id: 'E1', segments: segs, evidence: long, next: long }] }),
+    brief: cliOut({ checker: { folder: long, plugin: '1', stale: false, errors: 0, warnings: 300, errorCodes: [], warningCodes: Array.from({ length: 50 }, () => long) } }),
+    pending: cliOut({ decisions: ids.map((id) => ({ id })) }),
+    head: { exit: 0, stdout: 'a'.repeat(64) + '\n' },
+    porcelain: { exit: 0, stdout: porcelain ? Array.from({ length: 300 }, (_, i) => ` M ${long}${i}`).join('\n') : '' },
+  }, 'E1', 'code', nonce);
+  const text = JSON.stringify({ tool: 'verify-run', mode: 'read', nonce, ...d, digest: 'd'.repeat(8) });
+  return { d, text, ids };
+};
+
+test('read: with every cap filled the output (envelope included) stays under 8000 and keeps the piece, its blqIds, head, exits and error count', async () => {
+  const { d, text } = await maxRead();
+  assert.ok(text.length < 8000, String(text.length));
+  const code = d.status.result.panel[0].segments.find((x) => x.label === 'code');
+  assert.ok(code, 'the piece segment stays');
+  assert.equal(code.blqIds.length, 5);
+  assert.equal(d.head, 'a'.repeat(64));
+  assert.equal(d.exits.porcelain, 0);
+  assert.equal(d.brief.result.checker.errors, 0);
+  assert.equal(d.clean, false, 'clean comes from the full porcelain');
+  assert.ok(d.porcelain.startsWith(' M x'), 'the first porcelain line stays');
+  assert.match(d.porcelain, /\[\+\d+ lines cut\]$/);
+  assert.equal(d.pendingDecisions.result.total, 100);
+});
+
+test('read: a long nonce makes the budget drop the OLDEST pending ids and cut notes; total stays and recordVerdict accepts the newest written id', async () => {
+  const { loadPure } = await import('../workflow/load-pure.mjs');
+  const PU = loadPure();
+  for (const nonce of ['n'.repeat(80), 'n'.repeat(2000), 'n'.repeat(3500)]) {
+    const { d, text, ids } = await maxRead({ porcelain: false, nonce });
+    assert.ok(text.length < 8000, `${nonce.length}: ${text.length}`);
+    const list = d.pendingDecisions.result.decisions.map((x) => x.id);
+    assert.equal(d.pendingDecisions.result.total, 100);
+    assert.equal(list[list.length - 1], ids[99], 'the newest stays');
+    if (nonce.length > 80) assert.ok(list.length < 100, 'oldest dropped');
+    const code = d.status.result.panel[0].segments.find((x) => x.label === 'code');
+    assert.ok(code && code.blqIds.length === 5);
+    const ok = (cmd, result) => JSON.stringify({ tool: 'roadmap', command: cmd, changed: ['state.md'], result, errors: [], summary: { exitCode: 0 } });
+    const expected = ['node "cli" set-status f E1 code plano', 'node "cli" add-decision f x'];
+    const results = { runs: [{ n: 1, exit: 0, stdout: ok('set-status', {}) }, { n: 2, exit: 0, stdout: ok('add-decision', { id: ids[99], existing: false }) }] };
+    const v = PU.recordVerdict({ expected, results, read: { ...d }, E: 'E1', word: 'plano', piece: 'code', blockedStatus: 'bloqueado' });
+    assert.ok(v.ok, v.failures.join('; '));
+  }
 });
 
 test('read: with 101 pending decisions the NEWEST 100 stay, the total says 101', async () => {
