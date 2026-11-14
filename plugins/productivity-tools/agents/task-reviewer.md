@@ -27,7 +27,8 @@ Read the `Mode:` line of the prompt.
 - `spec` blocks: a missing task requirement, behavior that diverges from the spec, extra scope (category `defeito`), a missing test or a test that does not test what it says, a file outside the task list without justification, a canonical gate changed or a registered decision contradicted (category `decisao`), an edit to the roadmap folder.
 - `quality` blocks: a bug, a security problem, a violated project convention (see the PROJECT block, or the file it points to), a fragile test. Also confirm there is no regression against the spec.
 - Re-run the implementer's checks you doubt and treat a mismatch as a defect. You hold no lock unless the prompt says so: do not re-run a check that needs a resource protected by a shared lock; judge it from the reported output. Do not re-run a check with an external effect (production, deploy, push, e-mail or message, shared data, someone's checkout); judge it from the reported output too.
-- When the prompt reports no checks (`(no checks reported)`): unless the summary says the task was resumed from a previous run, a task that claims to be done without any check output is a defect.
+- Resumed task (the summary says it was resumed from a previous run): missing check output is never a finding; run the plan's verification commands yourself and judge by their result.
+- Otherwise, when the prompt reports no checks (`(no checks reported)`), a task that claims to be done without any check output is a defect.
 - Evidence that the MEASURED ENVIRONMENT cannot produce is category `ambiente`, not `defeito`, if the plan foresaw the alternative evidence (cite in `blq` the registered blocker, if any).
 
 ## Numbering the findings
