@@ -7,8 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E8: fix/pasta-wt-permissao e 2ª sonda acceptEdits (bloqueio da peça sonda). Executa: executor.
-2. E26: preparo do arnês e lotes; depois E27 passada B e E11. Executa: executor.
+1. E26: preparo do arnês e lotes; depois E27 passada B e E11. Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -23,7 +22,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E5 | publicado | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E6 | publicado | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
-| E8 | card: na-branch; sonda: bloqueado (BLQ-18) | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
+| E8 | card: na-branch; sonda: na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627`, `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
 | E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
@@ -51,7 +50,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-18 | Sem bypass, com as regras do preflight, o completo não roda: gravação em wtRoot negada (falta pasta adicional) e a skill compõe comandos fora de Bash(git:*). Segura a publicação de E11; não segura o preparo de E26 nem a passada B de E27 (lotes em bypass, DEC-311). | E8 | 2026-11-14 | fix/pasta-wt-permissao integrada e 2ª sonda acceptEdits com E5 mesclado sem FAILED; restaura E8 (sonda) para executando |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -78,9 +76,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título "(failed)" e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
 - (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
 - (executor) Nota para E28 (revisão de 7ee7f23): verify-run espera o próprio pid se reutilizado (somar m.pid !== process.pid); marca apagada em qualquer throw de runGroup, não só antes do 1º passo; VERIFY_RUN_WAIT_MS sem teto (Math.min com 60.000).
-- (executor) Riscos para a 2ª sonda (portão de 6d698be): prompts do workflow ainda compõem comandos (cd "${integWt}" && node, git diff > arquivo; roadmap-release.js ~2046 e ~2091) e a pasta do plugin não é concedida (Read negado na 1ª sonda). Se negarem, decisão do dono.
-- (executor) 2ª sonda acceptEdits de E8 (DEC-721): 1 execução, até US$ 10, completo, SHA do fix, pasta pelo settings do cenário, sem --add-dir, sozinha no host. Aprova com E5 mesclado sem FAILED; negações por estágio em docs/reports/. Sem 3º lançamento sem o dono.
-- (executor) Nota da sonda (af782a4): sob negação os agentes tentaram cd antes de git, PowerShell, ls e ler spec-tool.mjs na pasta do plugin. Se voltarem na 2ª sonda com a pasta concedida, uma frase na regra fixa do workflow (fix próprio ou E28; teto 250.000, DEC-647).
+- (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
+- (executor) Nota da 2ª sonda: T1/T2 não mudaram o cwd para a worktree (teste com caminho absoluto) e T2 saiu com duas linhas Co-Authored-By; conferir no 1º lote de E11.
 <!-- /roadmap:pending -->
 
 ## Em andamento
