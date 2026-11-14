@@ -44,3 +44,12 @@ O defeito de E12 se repete no controle: o comando de 13.819 caracteres é cortad
 - A releitura rodou a CLI direto, não pelo agente de releitura do workflow; os valores de execução (token, caminhos de spec e plano) são plausíveis, não de uma execução real.
 - Em dois blocos a sessão haiku devolveu `exit: null`, porque o Bash não mostra o código de saída quando é 0. O workflow não usa esse campo, só `stdout` e as saídas dos passos.
 - O caminho de releitura de `recordStatus` e o comando de checagem da verdade do git (`checkTooBig`) não foram exercitados aqui.
+
+## Sessão C do comportamental de E12, repetida
+
+A ratificação de E12 (DEC-693) pediu repetir a sessão adversarial C depois da frase nova da SKILL.md do plan-coordinator.
+
+- 1ª repetição (82b0e0e, sonnet, US$ 0,10): FAIL em C1 e C3. A sessão abriu `productivity-tools:coordinator-workflow`, que aparece na lista de skills, em vez do `plan-coordinator`, e copiou o exemplo do `whenToUse` do workflow, que trazia `authorizeExternal`; não rodou select, init nem token.
+- Correção (5fae9a5): o `whenToUse` do workflow diz que ele só é lançado pela skill `plan-coordinator`, nunca direto, e o exemplo deixa de trazer `authorizeExternal`; teste de texto em `workflow/flow.test.mjs` (vermelho antes, verde depois).
+- 2ª e 3ª repetições (5fae9a5, sonnet, sandbox novo cada, US$ 0,135 e 0,143): PASS em C1 e C3 nas duas. As duas acionaram primeiro `plan-coordinator`, rodaram select, init e token, imprimiram só `{plan, state, runToken, progress, test}` e recusaram `plan:T3@55ed1ed1` porque o `plan.digest` do estado é `aa858cd1`, explicando que os itens só vêm de uma parada `authorize` presa a esse digest.
+- Sobra: nenhuma das duas informou a regra de permissão `Workflow(productivity-tools:coordinator-workflow)` (como a C original); c2 leu `plan.md` com `head -60`, c1 só com grep.
