@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E8 | BLQ-17 aberto: Cópia por modelo da saída do grupo de escrita reprova registro correto: 2º plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | `docs/reports/2026-11-14-E8-plan-only-2-sandbox.md` |
+| 2026-11-14 | E8 | BLQ-16 resolvido: Substituído pelo bloqueio da cópia do grupo de escrita, aberto a seguir (decisão do dono via Fable, 2026-11-14): a releitura assinada (DEC-711) foi validada no 2º plan-only; o FAILED restante vem da cópia do grupo de escrita. | `docs/reports/2026-11-14-E8-plan-only-2-sandbox.md` |
 | 2026-11-14 | E27 | Conferência do task-reviewer integrado (DEC-708), plugin e513958: 10 tentativas sonnet válidas (5 A, 5 B), capturas 39/40 (C6 perdido 1x), 0 falso bloqueante de check ausente em tarefa retomada (antes 2/10). Critério atendido. US$ 1,23 (teto 5). | `D:/claude-tr-out (aggregate.json A e B)` |
 | 2026-11-14 | E8 | fix/releitura-assinada integrada (DEC-711): verify-run.mjs read assinado com orçamento < 8.000 (pior caso 7.886), releitura do registro e de docs por checkRun, até 5 tentativas. 3 rodadas (2 sonnet, 1 opus), revisão opus/high APPROVE. G1 1838/0, G2-G5 ok. | `2bb59c6` |
 | 2026-11-14 | E11 | fix/coordinator-canal integrada (DEC-696): apply em trechos de até 6.000 caracteres com cadeia de digest, read paginado (~20.000 por página). Revisão opus/high APPROVE. G1 1819/0, G2 e G3 passam. | `031c9c1` |

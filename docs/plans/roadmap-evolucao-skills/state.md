@@ -23,7 +23,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E5 | publicado | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E6 | publicado | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E7 | na-branch | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77` | E7: seguir o fluxo do release após na-branch |
-| E8 | bloqueado (BLQ-16) | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
+| E8 | bloqueado (BLQ-17) | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
 | E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
 | E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
@@ -51,7 +51,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-16 | Releitura do registro por cópia de modelo reprova registro correto: plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | E8 | 2026-11-13 | fix/releitura-assinada integrada na release e 2º plan-only sem FAILED, com os 5 critérios de DEC-709; restaura E8 para na-branch |
+| BLQ-17 | Cópia por modelo da saída do grupo de escrita reprova registro correto: 2º plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | E8 | 2026-11-14 | fix/grupo-idempotente integrada na release e 3º plan-only sem FAILED, com os 5 critérios de DEC-709; restaura E8 para na-branch |
 <!-- /roadmap:blockers -->
 
 ## Pendentes
@@ -60,8 +60,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Operar os pontos de medição E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
-- (executor) E8, depois do fix (DEC-713): 2º plan-only (teto US$ 5) no SHA novo; passando, fecha BLQ-16 e roda a sonda acceptEdits no mesmo SHA (item abaixo). Relatórios com os trechos do registro e as tentativas da releitura por status.
-- (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
+- (executor) E8: fix/grupo-idempotente (DEC-714, DEC-715), teste primeiro, revisão opus, sem bump, roadmap-release.js ≤ 241.000 LF; integrado, 3º plan-only (teto US$ 5) no SHA novo; passando, fecha BLQ-17 e roda a sonda (DEC-717). Relatório com as tentativas da cópia do grupo e da releitura.
+- (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o 3º plan-only passar (DEC-717). Negações por estágio em docs/reports/; conclusão sobre DEC-312.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
@@ -70,14 +70,15 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
-- (executor) roadmap-release.js mede 239.420 caracteres LF na ponta da release (9fde041): folga de 10.580 sob o teto de 250.000 (DEC-647). fix/releitura-assinada (limite 240.400) e E28 editam o arquivo, em série; a folga de 450 de E28 segue atendida.
+- (executor) roadmap-release.js mede ~240.122 caracteres LF na ponta da release (2bb59c6), teto 250.000 (DEC-647). fix/grupo-idempotente com limite 241.000; E28 depois, em série; a folga de 450 de E28 segue atendida.
 - (executor) Na 1ª execução do release depois da fix/registro-8k: conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. No cenário fixo, medir os trechos por status: mais de 1 pede emenda à meta de E10.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
 - (executor) E27 passada B (peças 3 e 4), depois do laço de rodadas e do estágio de revisão final no arnês (preparo de E26); teto provisório US$ 60. Passada C (peça 2) depois de E28. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731, make-sandbox.mjs:42).
 - (executor) Antes das execuções pagas da variante coordinator em E11 (canal integrado em 031c9c1): limitar textos de evento (pergunta do gate a 600, failedNames a 50 + "+N" com flag de lista cortada, tail do baseline), página 0 contando o estado sem passos, runCmd recusando comando > CMD_CAP.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) Nota para E28 (revisão de 2bb59c6): cap() da nota pode cortar um BLQ no meio (um id longo vira o prefixo de outro, seguido de "...") e casar com o regex de outro id; cortar a palavra parcial antes do "..." ou checar só blqIds. Risco baixo: block-open grava o id no início da nota.
-- (executor) Achados do plan-only de E8 (9fde041): reviews.md sai com título FAILED e o relatório manda rodar de novo quando só a releitura falhou. Conferir no 2º plan-only; se restar, nota para E28.
+- (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título "(failed)" e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
+- (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
 <!-- /roadmap:pending -->
 
 ## Em andamento

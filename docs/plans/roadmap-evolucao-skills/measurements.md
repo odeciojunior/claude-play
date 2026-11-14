@@ -33,4 +33,5 @@ Execuções pagas e marcos de medição. Registrado e Faturado são colunas sepa
 | 2026-11-13 | E27 | medição | Passada A, peça 1 (DEC-698): task-review, braço atual, codigo-semeado-A e B, 5 válidas por artefato e modelo; sonnet 40/40, opus 40/40, 0 inválidas; agentes 3,34 + sessão principal 5,26 (estimada) | US$ 8,60 | sem diferença mensurável (DEC-699) | concluído |
 | 2026-11-14 | E27 | medição | Conferência do task-reviewer (DEC-708), e513958: task-review, braço atual, sonnet, codigo-semeado-A e B, 5 válidas cada; capturas 39/40, 0 falso bloqueante | US$ 1,23 | critério atendido (0 falso, ≥ 38/40) | concluído |
 | 2026-11-14 | E8 | medição | Trio do sandbox (DEC-709), passo 1: plan-only em 4594315 por --plugin-dir, 1 válida; critérios atendidos, run FAILED por defeito da releitura do registro; sonda acceptEdits não rodou | US$ 1,48 | defeito do produto | parado |
+| 2026-11-14 | E8 | medição | 2º plan-only (DEC-713) em b734c12 por --plugin-dir, 1 válida; critérios atendidos, releitura assinada ok, run FAILED pela cópia "PLACEHOLDER" do grupo de escrita | US$ 1,88 | defeito do produto (BLQ-17) | parado |
 <!-- /roadmap:measurements -->
