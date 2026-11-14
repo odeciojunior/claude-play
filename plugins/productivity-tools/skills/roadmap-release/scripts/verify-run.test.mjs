@@ -152,3 +152,75 @@ test('E10 AC3: a payload with a wrong digest exits 2 and runs nothing, in both s
   assert.equal(spawnSync(process.execPath, [SCRIPT, 'group', '%E0%A4%A'], { encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [SCRIPT, 'nope', 'x'], { encoding: 'utf8' }).status, 2);
 });
+
+// ---- read: the signed read-back of a roadmap record (replaces the haiku copy of five stdouts)
+const TRACKER = join(HERE, '..', '..', 'roadmap-tracker', 'scripts');
+const CLI = join(TRACKER, 'roadmap.mjs');
+const FIXTURE = join(TRACKER, 'fixtures', 'valid');
+const readPayload = (r, o = {}) => sign({ nonce: 'rd-1', cwd: r.dir, cli: CLI, folder: FIXTURE, deliverable: 'E1', ...o });
+
+test('read: signed output with the panel row, checker, pending ids, head and clean flag', () => {
+  const r = repo();
+  const o = run('read', readPayload(r));
+  assert.equal(o.exit, 0, o.stdout);
+  assert.equal(o.json.tool, 'verify-run');
+  assert.equal(o.json.mode, 'read');
+  assert.equal(o.json.nonce, 'rd-1');
+  assert.ok(outDigest(o.json));
+  assert.deepEqual(o.json.exits, { status: 0, brief: 0, pendingDecisions: 0, head: 0, porcelain: 0 });
+  assert.equal(o.json.status.result.panel.length, 1);
+  assert.equal(o.json.status.result.panel[0].id, 'E1');
+  assert.equal(o.json.status.result.panel[0].segments[0].word, 'spec');
+  assert.equal(o.json.status.summary.exitCode, 0);
+  assert.equal(o.json.brief.result.checker.errors, 0);
+  assert.equal(typeof o.json.brief.result.checker.warnings, 'number');
+  assert.deepEqual(o.json.pendingDecisions.result.decisions, []);
+  assert.equal(o.json.head, r.merge);
+  assert.equal(o.json.porcelain, '');
+  assert.equal(o.json.clean, true);
+  assert.ok(o.stdout.length < 8000, String(o.stdout.length));
+});
+
+test('read: never writes; a dirty tree shows in porcelain and clean=false; a bad CLI becomes null with its exit code', () => {
+  const r = repo();
+  writeFileSync(join(r.dir, 'dirty.txt'), 'x');
+  const before = r.git('status', '--porcelain');
+  const o = run('read', readPayload(r));
+  assert.equal(r.git('status', '--porcelain'), before);
+  assert.equal(o.json.clean, false);
+  assert.match(o.json.porcelain, /dirty\.txt/);
+  const bad = run('read', readPayload(r, { folder: join(r.dir, 'nope') }));
+  assert.equal(bad.exit, 0);
+  assert.equal(bad.json.status, null);
+  assert.equal(bad.json.brief, null);
+  assert.notEqual(bad.json.exits.status, 0);
+  const noGit = run('read', readPayload(r, { cwd: tmpdir() }));
+  assert.equal(noGit.json.head, '');
+});
+
+test('read: refuses a wrong digest, a missing field and an option-like deliverable, running nothing', () => {
+  const r = repo();
+  assert.match(run('read', { ...readPayload(r), deliverable: 'E2' }).json.error, /digest/);
+  assert.equal(run('read', readPayload(r, { cli: undefined })).exit, 2);
+  assert.equal(run('read', readPayload(r, { deliverable: '--json' })).exit, 2);
+});
+
+test('read: a huge CLI answer is cut so the output stays under 8000 characters, with the counts kept', async () => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const cliOut = (result) => ({ exit: 0, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, result }) });
+  const long = 'x'.repeat(5000);
+  const codes = Array.from({ length: 500 }, (_, i) => 'code-' + long.slice(0, 80) + i);
+  const d = buildRead({
+    status: cliOut({ panel: [{ id: 'E1', segments: Array.from({ length: 40 }, () => ({ label: long, word: long, note: long })), evidence: long, next: long }] }),
+    brief: cliOut({ checker: { folder: long, plugin: '1', stale: false, errors: 300, warnings: 300, errorCodes: codes, warningCodes: codes } }),
+    pending: cliOut({ decisions: Array.from({ length: 1000 }, (_, i) => ({ id: 'DEC-' + (100000 + i) })) }),
+    head: { exit: 0, stdout: 'a'.repeat(40) + '\n' },
+    porcelain: { exit: 0, stdout: Array.from({ length: 300 }, (_, i) => ` M ${long}${i}`).join('\n') },
+  }, 'E1');
+  const text = JSON.stringify({ tool: 'verify-run', mode: 'read', nonce: 'n'.repeat(80), ...d, digest: 'd'.repeat(8) });
+  assert.ok(text.length < 8000, String(text.length));
+  assert.equal(d.brief.result.checker.errors, 300);
+  assert.equal(d.pendingDecisions.result.total, 1000);
+  assert.equal(d.clean, false);
+  assert.match(d.porcelain, /\(300 lines\)/);
+});
