@@ -3,6 +3,7 @@
 // Usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir>
 //          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
 //          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>] [--review-model haiku|sonnet|opus (required with task-review)]]
+//          [--rounds loop|single] (loop: the product review loop, spec-review/plan-review with --arm atual; default single)
 //          [--plugin-dir <dir>] (passed to every claude -p; the aggregate records that folder's version and commit)
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
@@ -12,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { makeScenario, artifactOf, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
@@ -512,27 +514,7 @@ const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in va
 export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentType = null, model = 'opus', effort = null }) {
   const st = STAGES[stage];
   if (!st) throw new UsageError(`unknown stage: ${stage}`);
-  const props = {
-    issues: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
-          category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
-          description: { type: 'string' }, file: { type: 'string' }, blq: { type: 'string' },
-        },
-        required: ['severity', 'description'],
-      },
-    },
-    summary: { type: 'string' }, headSha: { type: 'string' }, clean: { type: 'boolean' }, commitsInRange: { type: 'integer' },
-  };
-  const required = ['issues', 'headSha', 'clean', 'commitsInRange'];
-  if (st.blobKey) {
-    props[st.blobKey] = { type: 'string' };
-    required.push(st.blobKey);
-  }
-  const schema = { type: 'object', properties: props, required };
+  const schema = reviewSchema(st);
   return [
     'export const meta = {',
     "  name: 'review-only',",
@@ -555,9 +537,114 @@ export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentTyp
   ].join('\n');
 }
 
+// ---- E26 A1: --rounds loop, the product's review loop (DEC-723) ----
+
+// Options of the measured stage loop (roadmap-release.js, spec and plan stages) plus the reviewer effort and MAXFIX default.
+export const STAGE_LOOP = {
+  'spec-review': { tier: 'opus', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 },
+  'plan-review': { tier: 'sonnet', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 },
+};
+// The options literal each stage passes to reviewLoop, searched only inside that stage's call (the plan one repeats in the delta stage).
+const STAGE_CALL = {
+  'spec-review': { call: "reviewLoop('spec',", literal: "{ tier: 'opus', reviewModel: 'opus' })", name: 'spec' },
+  'plan-review': { call: "reviewLoop('plan',", literal: "{ tier: 'sonnet', reviewModel: 'opus' })", name: 'plan' },
+};
+const MAXFIX_LITERAL = 'intArg(A.maxFixRounds, 2, 0)';
+export const LOOP_RM = 'docs/plans/roadmap-sandbox/';
+const LOOP_SCRIPT_LIMIT = 200000;
+
+// The `// <pure>` block by the loadPure rule (lines split on \r?\n, joined with \n), and its sha256.
+export function extractPure(workflowText) {
+  const lines = String(workflowText).split(/\r?\n/);
+  const start = lines.findIndex((l) => l.trim() === '// <pure>');
+  const end = lines.findIndex((l) => l.trim() === '// </pure>');
+  if (start === -1 || end === -1 || end < start) throw new UsageError('--rounds loop: the measured workflow has no "// <pure>" ... "// </pure>" block');
+  const pure = lines.slice(start + 1, end).join('\n');
+  return { pure, sha256: createHash('sha256').update(pure).digest('hex') };
+}
+
+// Refuses a measured workflow the loop harness would not reproduce; returns the pure block.
+export function checkLoopWorkflow(workflowText, stage) {
+  const sc = STAGE_CALL[stage];
+  if (!sc) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review (got ${stage})`);
+  const text = lf(workflowText);
+  const { pure } = extractPure(text);
+  if (!/^async function runReviewLoop\(/m.test(pure)) throw new UsageError('--rounds loop: the measured workflow has no function runReviewLoop in its pure block (DEC-723)');
+  if (!text.includes(MAXFIX_LITERAL)) throw new UsageError(`--rounds loop: ${MAXFIX_LITERAL} is gone from the measured workflow (the maxFixRounds default may have changed)`);
+  const at = text.indexOf(sc.call);
+  const next = at < 0 ? -1 : text.indexOf('reviewLoop(', at + sc.call.length);
+  const slice = at < 0 ? '' : text.slice(at, next < 0 ? text.length : next);
+  if (!slice.includes(sc.literal)) throw new UsageError(`--rounds loop: the ${sc.name} stage of the measured workflow no longer passes ${sc.literal} to reviewLoop (options drift)`);
+  return pure;
+}
+
+// The review-only.js of --rounds loop: the pure block literally, then the harness (H_ names) running runReviewLoop.
+export function buildLoopScript({ stage, pure, reviewBody, measure, fixPrompt }) {
+  const st = STAGES[stage];
+  const opt = STAGE_LOOP[stage];
+  if (!st || !opt) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review (got ${stage})`);
+  const body = reviewBody.split('${RM}').join(LOOP_RM);
+  const fix = fixPrompt.includes('{{issues}}') ? fixPrompt : fixPrompt + '\n{{issues}}';
+  const text = [
+    'export const meta = {',
+    "  name: 'review-only',",
+    "  description: 'Measurement harness: the review loop of one stage (runReviewLoop of the measured workflow) on a seeded artifact.',",
+    "  phases: [{ title: 'Review', detail: 'reviewer and fixer of one stage, in rounds' }],",
+    '}',
+    pure,
+    `const H_SCHEMA = ${JSON.stringify(reviewSchema(st))}`,
+    `const H_REVIEW_BODY = ${JSON.stringify(body)}`,
+    `const H_MEASURE = ${JSON.stringify(measure)}`,
+    `const H_FIX = ${JSON.stringify(fix)}`,
+    `const H_LABEL = ${JSON.stringify(st.label)}`,
+    `const H_STAGE = ${JSON.stringify(STAGE_CALL[stage].name)}`,
+    `const H_OPT = ${JSON.stringify({ tier: opt.tier, reviewModel: opt.reviewModel })}`,
+    'const H_accepted = []',
+    `const H_env = { maxFix: ${opt.maxFix}, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: (s, iss) => { H_accepted.push(...iss) } }`,
+    `const H_review = (round, prev) => agent(H_REVIEW_BODY + (prev ? '\\nIssues from the previous round (' + repeatRule() + '):\\n' + prev : '') + H_MEASURE, { label: H_LABEL + round, phase: 'Review', model: ${JSON.stringify(opt.reviewModel)}, effort: ${JSON.stringify(opt.reviewEffort)}, schema: H_SCHEMA })`,
+    "const H_fix = async (iss, k, tier) => {",
+    "  const fx = await agent(H_FIX.split('{{issues}}').join(fmt(iss)), { label: H_LABEL + '-fix' + k, phase: 'Review', model: tier, effort: effortFor(tier) })",
+    "  return fx ? { status: 'DONE' } : null",
+    '}',
+    "const H_truth = r => reviewTruth(r, 0, 'main..HEAD')",
+    'const H_result = await runReviewLoop(H_env, H_STAGE, H_review, H_fix, H_truth, H_OPT)',
+    'return { ok: H_result.ok, kind: H_result.kind || null, msg: H_result.msg || null, reviews: H_env.reviews, accepted: H_accepted }',
+    '',
+  ].join('\n');
+  if (text.length > LOOP_SCRIPT_LIMIT) throw new UsageError(`--rounds loop: the generated script has ${text.length} characters, over the 200,000 limit`);
+  return text;
+}
+
+function reviewSchema(st) {
+  const props = {
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
+          category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
+          description: { type: 'string' }, file: { type: 'string' }, blq: { type: 'string' },
+        },
+        required: ['severity', 'description'],
+      },
+    },
+    summary: { type: 'string' }, headSha: { type: 'string' }, clean: { type: 'boolean' }, commitsInRange: { type: 'integer' },
+  };
+  const required = ['issues', 'headSha', 'clean', 'commitsInRange'];
+  if (st.blobKey) {
+    props[st.blobKey] = { type: 'string' };
+    required.push(st.blobKey);
+  }
+  return { type: 'object', properties: props, required };
+}
+
 function prepareHarness(opts) {
   const { stage } = opts;
-  if (!stage) return null;
+  if (!stage) {
+    if (opts.rounds !== undefined) throw new UsageError('--rounds only applies with --stage spec-review or plan-review');
+    return null;
+  }
   const st = STAGES[stage];
   if (!st) throw new UsageError(`--stage must be spec-review, plan-review or task-review (got "${stage}")`);
   if (!st.variant.test(opts.variant)) throw new UsageError(`--stage ${stage} does not accept the variant "${opts.variant}"`);
@@ -572,6 +659,9 @@ function prepareHarness(opts) {
   if (!/^[A-Za-z0-9_-]+$/.test(arm)) throw new UsageError(`invalid --arm: ${arm}`);
   const armsDir = resolve(opts.armsDir ?? join(here, 'arms'));
   const current = arm === 'atual';
+  const rounds = opts.rounds ?? 'single';
+  if (rounds !== 'single' && rounds !== 'loop') throw new UsageError(`--rounds must be loop or single (got "${rounds}")`);
+  if (rounds === 'loop' && (!STAGE_LOOP[stage] || !current)) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review with --arm atual (got --stage ${stage} --arm ${arm})`);
   const builtIn = stage === 'task-review' && current; // the prompt comes from the workflow itself
   let review = null;
   let workflowCommit = null;
@@ -592,7 +682,7 @@ function prepareHarness(opts) {
   const reviewEffort = reviewModel ? reviewEffortFor(reviewModel) : null;
   const reviewer = reviewModel ? { model: reviewModel, effort: reviewEffort } : {};
   const armCommits = { review: review?.source?.commit ?? null, fix: fixArm?.source?.commit ?? null, fixCheck: fixCheck?.source?.commit ?? null };
-  return { stage, arm, st, review, fixArm, fixCheck, reviewer, harness: { stage, arm, armSource, workflowCommit, armCommits, ...(reviewModel ? { reviewModel, reviewEffort } : {}) } };
+  return { stage, arm, rounds, st, review, fixArm, fixCheck, reviewer, harness: { stage, arm, armSource, workflowCommit, armCommits, ...(reviewModel ? { reviewModel, reviewEffort } : {}), rounds } };
 }
 
 const slash = (p) => p.replace(/\\/g, '/');
@@ -627,8 +717,12 @@ function harnessPrompts(h, scenario) {
       fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
     };
   }
+  const reviewBody = fill(h.review.text, vars).trimEnd();
+  const measured = measure(h.stage === 'task-review' ? null : h.st.blobKey);
   return {
-    reviewPrompt: fill(h.review.text, vars).trimEnd() + measure(h.stage === 'task-review' ? null : h.st.blobKey),
+    reviewPrompt: reviewBody + measured,
+    reviewBody,
+    measure: measured,
     fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}' }).trimEnd(),
   };
 }
@@ -821,8 +915,15 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   }
   if (h && h.arm === 'atual' && h.stage !== 'task-review') {
     const wfFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js') : null;
-    if (wfFile && existsSync(wfFile)) assertArmsCurrent(h, readFileSync(wfFile, 'utf8'));
-    else if (pluginDir) throw new UsageError('--plugin-dir has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against');
+    if (wfFile && existsSync(wfFile)) {
+      const wfText = readFileSync(wfFile, 'utf8');
+      assertArmsCurrent(h, wfText);
+      if (h.rounds === 'loop') {
+        h.pure = checkLoopWorkflow(wfText, h.stage);
+        h.harness.pureSha256 = extractPure(wfText).sha256;
+        h.harness.stageOptions = { ...STAGE_LOOP[h.stage] };
+      }
+    } else if (pluginDir || h.rounds === 'loop') throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
   }
   if (h) {
     let harnessCommit = null;
@@ -859,7 +960,10 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
-      const script = buildReviewOnlyScript({ stage: h.stage, ...h.reviewer, ...harnessPrompts(h, scenario) });
+      const prompts = harnessPrompts(h, scenario);
+      const script = h.rounds === 'loop'
+        ? buildLoopScript({ stage: h.stage, pure: h.pure, reviewBody: prompts.reviewBody, measure: prompts.measure, fixPrompt: prompts.fixPrompt })
+        : buildReviewOnlyScript({ stage: h.stage, ...h.reviewer, ...prompts });
       writeFileSync(join(scenario.dir, 'review-only.js'), script);
       excludeFromGit(scenario.dir, 'review-only.js');
       scenario.prompts = [`Run the workflow script at ${slash(scenario.dir)}/review-only.js`];
@@ -1044,7 +1148,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review]] [--plugin-dir <dir>] [--from-run <pasta>] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--stop-on-denial]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -1052,7 +1156,7 @@ function parseCli(argv) {
     '--variant': 'variant', '--runs': 'runs', '--work': 'work', '--out': 'out', '--config-dir': 'configDir',
     '--permission-mode': 'permissionMode', '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model',
     '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir', '--from-run': 'fromRun',
-    '--review-model': 'reviewModel', '--plugin-dir': 'pluginDir',
+    '--review-model': 'reviewModel', '--plugin-dir': 'pluginDir', '--rounds': 'rounds',
   };
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--stop-on-denial') {

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
 
@@ -649,7 +650,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
     const sha = first.match(/commit ([0-9a-f]{40})$/)[1];
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
-    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, armCommits: { review: sha, fix: sha, fixCheck: null }, harnessCommit: HEAD });
+    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, armCommits: { review: sha, fix: sha, fixCheck: null }, harnessCommit: HEAD, rounds: 'single' });
     const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
     const scriptText = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
     assert.ok(!scriptText.includes('Copied from:'));
@@ -660,7 +661,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
       exec: code.exec,
       now: () => new Date('2026-11-10T12:00:05Z'),
     });
-    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, armCommits: { review: null, fix: null, fixCheck: null }, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium' });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, armCommits: { review: null, fix: null, fixCheck: null }, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium', rounds: 'single' });
     assert.equal(rc.aggregate.valid, 1);
 
     const plain = makeFake(s.configDir);
@@ -1648,6 +1649,100 @@ test('A2: a current arm passes against the real workflow and the aggregate recor
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir }), { exec: fake.exec, now: NOW });
     assert.deepEqual(r.aggregate.harness.armCommits, { review: sha, fix: sha, fixCheck: null });
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1: frozen single-round script (T5) ----
+const sha256Of = (t) => createHash('sha256').update(t).digest('hex');
+// sha256 of the whole review-only.js of plano-semeado-A (single round, arm atual, FIX_PROMPT included) with the sandbox path as <SB>.
+const GOLDEN_SINGLE_PLAN_A = '257bb16e735b611ea8942ea0e773ec7dd957cd63c70472c32412656ce2b471f9';
+
+async function singleScriptOf(s, extra = {}) {
+  const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+  await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual', ...extra }), { exec: fake.exec, now: NOW });
+  const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+  return readFileSync(join(sent.cwd, 'review-only.js'), 'utf8').split(sent.cwd.replace(/\\/g, '/')).join('<SB>');
+}
+
+test('A1: the single-round script of plano-semeado-A is frozen byte for byte (golden, FIX_PROMPT included)', async () => {
+  const s = setup();
+  try {
+    const text = await singleScriptOf(s);
+    assert.ok(text.includes('const FIX_PROMPT = '));
+    assert.ok(!/[A-Za-z]:[\\/]/.test(text), 'no absolute Windows path left');
+    assert.equal(sha256Of(text), GOLDEN_SINGLE_PLAN_A, text);
+    // --rounds single is the default and writes the same bytes
+    const s2 = setup();
+    try {
+      assert.equal(await singleScriptOf(s2, { rounds: 'single' }), text);
+    } finally {
+      s2.done();
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1: --rounds loop (T5) ----
+const REAL_PLUGIN = join(REPO, 'plugins', 'productivity-tools');
+
+test('A1: --rounds loop writes the loop script from the measured workflow and records rounds, pureSha256 and stageOptions', async () => {
+  const s = setup();
+  try {
+    const dir = pluginDirWithWorkflow(s.base, readFileSync(WORKFLOW, 'utf8'));
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir, rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    const text = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
+    assert.ok(text.includes('async function runReviewLoop('));
+    assert.ok(text.includes('const H_REVIEW_BODY = '));
+    const bodyLine = text.split('\n').find((l) => l.startsWith('const H_REVIEW_BODY = '));
+    assert.ok(!bodyLine.includes('${RM}') && bodyLine.includes('**Roadmap:** docs/plans/roadmap-sandbox/'), bodyLine);
+    assert.ok(text.length <= 200000);
+    const lines = readFileSync(WORKFLOW, 'utf8').split(/\r?\n/);
+    const pure = lines.slice(lines.findIndex((l) => l.trim() === '// <pure>') + 1, lines.findIndex((l) => l.trim() === '// </pure>')).join('\n');
+    assert.equal(r.aggregate.harness.rounds, 'loop');
+    assert.equal(r.aggregate.harness.pureSha256, sha256Of(pure));
+    assert.deepEqual(r.aggregate.harness.stageOptions, { tier: 'sonnet', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 });
+    const single = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const rs = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir, work: join(s.base, 'w2') }), { exec: single.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.equal(rs.aggregate.harness.rounds, 'single');
+    assert.equal(rs.aggregate.harness.pureSha256, undefined);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: --rounds refusals exit 2 before any claude call', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const good = pluginDirWithWorkflow(s.base, wf);
+    const noLoop = pluginDirWithWorkflow(s.base, wf.replace('async function runReviewLoop(', 'async function otherLoop('));
+    const noMax = pluginDirWithWorkflow(s.base, wf.replace('intArg(A.maxFixRounds, 2, 0)', 'intArg(A.maxFixRounds, 4, 0)'));
+    const at = wf.indexOf("reviewLoop('plan',");
+    const next = wf.indexOf('reviewLoop(', at + 1);
+    const drift = pluginDirWithWorkflow(s.base, wf.slice(0, at) + wf.slice(at, next).replace("{ tier: 'sonnet', reviewModel: 'opus' })", "{ tier: 'opus', reviewModel: 'opus' })") + wf.slice(next));
+    const cases = [
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', noLoop, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', noMax, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', drift, '--rounds', 'loop']],
+      ['codigo-semeado-A', ['--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop']],
+      ['spec-semeado-A', ['--stage', 'spec-review', '--arm', 'perguntas', '--plugin-dir', good, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', good, '--rounds', 'twice']],
+      ['completo', ['--rounds', 'loop']],
+    ];
+    for (const [variant, extra] of cases) {
+      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+      assert.equal(cli.status, 2, `${variant} ${extra.join(' ')}: ${cli.stderr}`);
+    }
+    for (const [pluginDir, opt] of [[noLoop, {}], [noMax, {}], [drift, {}], [good, { stage: 'task-review', reviewModel: 'sonnet', variant: 'codigo-semeado-A' }]]) {
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(seededOpts(s, opt.variant ?? 'plano-semeado-A', { stage: 'plan-review', pluginDir, rounds: 'loop', ...opt }), { exec: fake.exec, now: NOW }), UsageError);
+      assert.equal(claudeCalls(fake).length, 0);
+    }
   } finally {
     s.done();
   }
