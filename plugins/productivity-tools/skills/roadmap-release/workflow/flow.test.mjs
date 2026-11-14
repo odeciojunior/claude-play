@@ -3365,7 +3365,7 @@ test('E10 AC3: a group payload over 28000 characters runs in chunks and renumber
   const all = [];
   for (const c of parts) {
     const enc = /verify-run\.mjs" group (\S+)/.exec(c.prompt)[1];
-    assert.ok(enc.length <= 28000, `${c.label}: ${enc.length}`);
+    assert.ok(/node "[^"]*verify-run\.mjs" group \S+/.exec(c.prompt)[0].length <= 6000, `${c.label}: ${enc.length}`);
     const g = verifyArg(c.prompt, 'group');
     assert.ok(g.finally && g.finally.commit.add.length === 1, `${c.label} carries its own finally`);
     all.push(...g.steps);
@@ -3383,6 +3383,43 @@ test('E10 AC3: a failed chunk stops the next ones', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.ok(!labels.includes('E1:status-d-part2'), 'the chunk after a failed one does not run');
   assert.ok(r.results[0].concerns.some((x) => /command 4 \(add-decision\) exit 1/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+// Git Bash on Windows cuts the bash -c string at 8186 characters and the Bash tool wrapper takes ~500: no dispatched command may exceed 6000.
+const CMD_CAP_T = 6000;
+const fullGroupCmd = (prompt) => /node "[^"]*verify-run\.mjs" group \S+/.exec(prompt)[0];
+
+test('8k: 16 long accented decisions make only group commands of at most 6000 characters, steps kept in order', async () => {
+  const rulings = Array.from({ length: 16 }, (_, i) => ruling({ id: `R${i + 1}`, decision: `Decisão ${i + 1} ${'ação possível, análise então. '.repeat(10)}`.trim().slice(0, 280), scope: 'local' }));
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings }) });
+  const parts = calls.filter((c) => /^E1:status-d(-part\d+)?$/.test(c.label));
+  assert.ok(parts.length >= 2, `chunks: ${parts.length}`);
+  const sizes = parts.map((c) => fullGroupCmd(c.prompt).length);
+  for (const n of sizes) assert.ok(n <= CMD_CAP_T, `sizes: ${sizes.join('/')}`);
+  const all = parts.flatMap((c) => verifyArg(c.prompt, 'group').steps);
+  assert.equal(all.filter((c) => /add-decision/.test(c)).length, 16);
+  assert.equal(new Set(all).size, all.length, 'no step duplicated');
+  const ids = all.filter((c) => /add-decision/.test(c)).map((c) => /Decisão (\d+)/.exec(c)[1]);
+  assert.deepEqual(ids, Array.from({ length: 16 }, (_, i) => String(i + 1)), 'order kept');
+  assert.match(all[0], /set-status|block-/);
+  assert.match(all[all.length - 1], /inflight-add/);
+  assert.equal(r.results[0].merged, true);
+  console.log(`# 8k chunk sizes: ${sizes.join('/')}`);
+});
+
+test('8k: a single step above the cap is not dispatched and fails with its size and the limit', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { roadmapSlug: 'x'.repeat(4000) } });
+  assert.ok(!labels.some((l) => /^E1:status-[a-z]+(-part\d+)?$/.test(l)), `dispatched: ${labels.filter((l) => /:status-/.test(l)).join(',')}`);
+  const msgs = [r.results[0].error, ...(r.results[0].concerns || [])].filter(Boolean).join('\n');
+  assert.match(msgs, /a single record step makes a command of \d+ characters, above the limit of 6000/);
+});
+
+test('8k: a check command above the cap is not dispatched and becomes a clear divergence', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { repo: `/r/${'x'.repeat(7000)}` } });
+  const rep = calls.find((c) => c.label === 'report');
+  assert.ok(rep, 'the report still runs');
+  assert.ok(!/verify-run\.mjs" check/.test(rep.prompt), 'the oversize check is not sent');
+  assert.ok(r.operatorActions.some((o) => /git truth check command has \d+ characters, above the limit of 6000/.test(o.what || o.detail || JSON.stringify(o))), JSON.stringify(r.operatorActions));
 });
 
 test('o veredito ignora statusWritten e details do agente', async () => {
