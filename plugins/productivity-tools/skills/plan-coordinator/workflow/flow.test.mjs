@@ -219,6 +219,14 @@ const byAgent = (sim, type) => sim.calls.filter((c) => c.o.agentType === type);
 const implOf = (sim, n) => byAgent(sim, IMPL).find((c) => c.step === n);
 const runnerCmds = (sim) => byAgent(sim, RUNNER).map((c) => c.cmd);
 
+test('whenToUse sends the session to plan-coordinator and its example carries no authorizeExternal nor answers', () => {
+  const m = /^\s*whenToUse: '([^']*)',$/m.exec(SRC);
+  assert.ok(m, 'meta.whenToUse not found as a single-quoted line');
+  assert.match(m[1], /plan-coordinator skill/);
+  assert.match(m[1], /never call(ed)? (it )?directly/i);
+  assert.doesNotMatch(m[1], /authorizeExternal|answers/);
+});
+
 test('AC1: a wave is dispatched in one parallel call and a step waits for its dependency', () => withSandbox(async (sb) => {
   const sim = makeSim(sb);
   const r = await sim.go(launchArgs(sb));

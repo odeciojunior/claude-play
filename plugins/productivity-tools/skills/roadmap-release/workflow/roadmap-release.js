@@ -1735,6 +1735,8 @@ const lastWord = new Map(disc.cards.map(c => {
 }))
 const CHECKERS = {}  // E -> result.checker of the last brief --json read by the docs stage
 const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
+// Git Bash on Windows cuts bash -c strings at 8186 chars; the Bash tool wrapper takes ~500.
+const CMD_CAP = 6000
 // Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
 // extra = { rulings?: spec rulings (the only source of recorded decisions), pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
 const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
@@ -1753,18 +1755,21 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   if (rc.error) { holdUnconfirmed(E, x, []); return { ok: false, failures: [rc.error], head: null, cuts: [] } }
   const msg = phrases(LANG).commit(E, status)
   // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written. The group writes, so it is never repeated.
-  // A payload over 28000 characters splits into consecutive chunks (no command is cut), each with its own finally; a failed chunk stops the next ones.
+  // A payload over CMD_CAP characters splits into consecutive chunks (no command is cut), each with its own finally; a failed chunk stops the next ones.
   const grp = (k, steps) => ({ nonce: `${RUN_TAG}:${E}:${status}:${k}`, cwd: INTWT, steps, finally: { commit: { add: [RM], message: [msg, TRAILER] } } })
+  const grpCmd = g => `node "${VERIFY_RUN}" group ${encArg(g)}`
   const chunks = []
   for (const s of rc.commands) {
     const k = chunks.length - 1
-    if (k >= 0 && encArg(grp(k, [...chunks[k], s])).length <= 28000) chunks[k].push(s)
+    if (k >= 0 && grpCmd(grp(k, [...chunks[k], s])).length <= CMD_CAP) chunks[k].push(s)
     else chunks.push([s])
   }
+  const big = chunks.map((c, k) => grpCmd(grp(k, c)).length).find(n => n > CMD_CAP)
+  if (big) { holdUnconfirmed(E, x, []); return { ok: false, failures: [`a single record step makes a command of ${big} characters, above the limit of ${CMD_CAP}: not dispatched`], head: null, cuts: rc.cuts } }
   let results = { runs: [] }
   for (let k = 0; k < chunks.length && results; k++) {
     const g = grp(k, chunks[k])
-    const out = await agent(runPrompt(`node "${VERIFY_RUN}" group ${encArg(g)}`, `Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
+    const out = await agent(runPrompt(grpCmd(g),`Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
       { agentType: 'productivity-tools:script-runner', label: `${E}:status-${status}${k ? `-part${k + 1}` : ''}`, phase: 'Plan', schema: S_RUN, model: 'haiku', effort: 'low' })
     const v = checkRun(out && out.stdout, 'verify-run', g.nonce)
     if (!v.ok || v.data.mode !== 'group' || !Array.isArray(v.data.steps)) { results = null; break }
@@ -2894,7 +2899,9 @@ for (const r of RESULTS) {
 const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).map(r => ({ id: r.id, commit: r.merge.mergeCommit }))
 // verify-run.mjs check measures git and lists what the run claimed against it; the report agent runs it as its first step and copies the stdout, which checkRun confirms below.
 const CHECK_NONCE = `${RUN_TAG}:check`
-const checkCmd = MODE === 'plan-only' ? '' : `node "${VERIFY_RUN}" check ${encArg({ nonce: CHECK_NONCE, repo: REPO, intwt: INTWT, wtRoot: WT, target: TARGET, lastGood, order, claims, reported: slim.map(r => ({ id: r.id, merged: r.merged, broken: r.broken, planOnly: r.planOnly })), integBroken: !!(integBroken || foreignHold) })}`
+const checkFull = MODE === 'plan-only' ? '' : `node "${VERIFY_RUN}" check ${encArg({ nonce: CHECK_NONCE, repo: REPO, intwt: INTWT, wtRoot: WT, target: TARGET, lastGood, order, claims, reported: slim.map(r => ({ id: r.id, merged: r.merged, broken: r.broken, planOnly: r.planOnly })), integBroken: !!(integBroken || foreignHold) })}`
+const checkTooBig = checkFull.length > CMD_CAP
+const checkCmd = checkTooBig ? '' : checkFull
 const ids = order.join('-').slice(0, 60)
 const reportPath = reportPathFor(TODAY, ids)
 const resumeIds = [...slim.filter(r => (!r.merged || r.broken) && !r.planOnly).map(r => r.id), ...picked.skipped.filter(s => /maxDeliverables/.test(s.reason)).map(s => s.id)]
@@ -2937,7 +2944,8 @@ const report = rep && typeof rep === 'object' ? rep.report : rep
 // The confirmed check gives the truth and the divergences; anything else is the null git truth agent.
 let truth = null
 let divergences = []
-if (MODE !== 'plan-only') {
+if (checkTooBig) divergences = [`the git truth check command has ${checkFull.length} characters, above the limit of ${CMD_CAP}: not run, verify the target branch by hand`]
+else if (MODE !== 'plan-only') {
   const v = checkRun(rep && rep.truthStdout, 'verify-run', CHECK_NONCE)
   if (v.ok && v.data.mode === 'check' && v.data.truth && Array.isArray(v.data.divergences)) { truth = v.data.truth; divergences = v.data.divergences }
   else divergences = ['the git truth agent returned nothing: verify the target branch by hand']
