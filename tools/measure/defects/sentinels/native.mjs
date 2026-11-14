@@ -1,6 +1,7 @@
 // Native sentinels (E26 A3): seed one flaw by id in the native E5 spec or plan and tell whether it is present at a git ref.
 // seed(dir, id, { only }) edits the working tree; present(dir, ref, id) reads the committed file. A coupled defect lives in
 // two places (prose and json data block) and stays present while either place still has it; `only` seeds a single place.
+// present returns null (indeterminate) when its answer needs the json data block and the block is missing or unparsable.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -49,6 +50,12 @@ function inTask(id, text, n, fn) {
   const m = TASK_RE(n).exec(text) ?? fail(id);
   return text.slice(0, m.index) + fn(m[0]) + text.slice(m.index + m[0].length);
 }
+// Whitespace-normalized text: a reflow is never a fix.
+const norm = (s) => String(s).replace(/\s+/g, ' ');
+// A defect whose evidence is in the json data block reads indeterminate (null) when the block is missing or unparsable.
+const fromData = (data, fn) => (data ? fn(data) : null);
+// Coupled: present while either place has it; with no data, the prose decides when it shows the defect, else null.
+const coupled = (proseHas, data, jsonHas) => (proseHas ? true : data ? jsonHas(data) : null);
 const task = (data, n) => (data && Array.isArray(data.tasks) ? data.tasks.find((t) => t && t.n === n) : null) ?? null;
 const checks = (t) => (t && Array.isArray(t.checks) ? t.checks : []);
 
@@ -67,9 +74,10 @@ const DEFECTS = {
       json: (id, t) => inPart(id, t, 'json', (j) => replaceOnce(id, j, PLAN_CHECK('e5-truncate'), '"checks": [],')),
     },
     present: (text) => {
-      const prose = taskProse(split(text).prose, 2);
-      const proseGone = prose !== '' && !prose.split('\n').some((l) => l.includes('node --test') && !l.includes('expected to fail'));
-      return proseGone || checks(task(split(text).data, 2)).length === 0;
+      const { prose, data } = split(text);
+      const b = taskProse(prose, 2);
+      const proseGone = b !== '' && !b.split('\n').some((l) => l.includes('node --test') && /exit 0/.test(l));
+      return coupled(proseGone, data, (d) => checks(task(d, 2)).length === 0);
     },
   },
   // Task 1 verifies with a script that does not exist.
@@ -78,7 +86,7 @@ const DEFECTS = {
     places: {
       json: (id, t) => inPart(id, t, 'json', (j) => replaceOnce(id, j, PLAN_CHECK('e5-slugify'), '"checks": [{"cmd": "npm run verify-slug", "expect": "exit 0"}],')),
     },
-    present: (text) => checks(task(split(text).data, 1)).some((c) => String(c.cmd).includes('verify-slug')),
+    present: (text) => fromData(split(text).data, (d) => checks(task(d, 1)).some((c) => String(c.cmd).includes('verify-slug'))),
   },
   // Task 3 writes the module before the step that expects the test to fail, and keeps testFirst true.
   P9: {
@@ -92,8 +100,8 @@ const DEFECTS = {
       const { prose, data } = split(text);
       const b = taskProse(prose, 3);
       const w = b.search(/Write `src\/word-count\.mjs`/);
-      const f = b.indexOf('expected to fail');
-      return task(data, 3)?.testFirst === true && w >= 0 && (f < 0 || w < f);
+      const r = b.search(/Run `node --test tests\/e5-word-count/);
+      return fromData(data, (d) => task(d, 3)?.testFirst === true && w >= 0 && (r < 0 || w < r));
     },
   },
   // Task 2 test only checks that truncate is a function.
@@ -104,9 +112,12 @@ const DEFECTS = {
         /^(1\. Write `tests\/e5-truncate\.test\.mjs` importing `\{ truncate \}` from `\.\.\/src\/truncate\.mjs`\.) Cases: [^\n]*$/m,
         "$1 The test asserts that truncate is a function (`assert.equal(typeof truncate, 'function')`).")),
     },
+    // The whole step 1 (its line and any sub-bullets up to step 2), whitespace-normalized: weak while it asserts no real case.
     present: (text) => {
-      const line = taskProse(split(text).prose, 2).split('\n').find((l) => l.includes('tests/e5-truncate.test.mjs') && /Write/.test(l)) ?? '';
-      return line.includes('truncate is a function') && !line.includes('RangeError');
+      const b = taskProse(split(text).prose, 2);
+      const m = /^1\. [\s\S]*?(?=^\d+\. |(?![\s\S]))/m.exec(b);
+      const step = norm(m ? m[0] : '');
+      return step.includes('tests/e5-truncate.test.mjs') && !step.includes('RangeError') && !step.includes("'hell…'");
     },
   },
   // Task 1 appends to a file outside the repository and still declares external: false.
@@ -119,7 +130,8 @@ const DEFECTS = {
     },
     present: (text) => {
       const { prose, data } = split(text);
-      return taskProse(prose, 1).includes('../outbox.log') && task(data, 1)?.external !== true;
+      if (!taskProse(prose, 1).includes('../outbox.log')) return false;
+      return fromData(data, (d) => task(d, 1)?.external !== true);
     },
   },
   // Task 3 runs the whole suite (which binds the sandbox port) with no lock.
@@ -130,9 +142,8 @@ const DEFECTS = {
         '"checks": [{"cmd": "node --test tests/e5-word-count.test.mjs", "expect": "exit 0"}, {"cmd": "node --test", "expect": "exit 0"}],')),
     },
     present: (text) => {
-      const data = split(text).data;
-      return !!data && Array.isArray(data.tasks) && data.tasks.some((t) => checks(t).some((c) => String(c.cmd).trim() === 'node --test')
-        && !(Array.isArray(t.locks) && t.locks.includes('sandbox-port')));
+      return fromData(split(text).data, (d) => Array.isArray(d.tasks) && d.tasks.some((t) => checks(t).some((c) => String(c.cmd).trim() === 'node --test')
+        && !(Array.isArray(t.locks) && t.locks.includes('sandbox-port'))));
     },
   },
   // Task 2 also edits src/greet.mjs, which the spec puts out of scope (prose Files line and json files/writes).
@@ -148,9 +159,13 @@ const DEFECTS = {
     },
     present: (text) => {
       const { prose, data } = split(text);
-      const t2 = task(data, 2);
-      const inJson = !!t2 && [...(t2.files?.modify ?? []), ...(t2.files?.create ?? []), ...(Array.isArray(t2.writes) ? t2.writes : [])].includes(ADDED_FILE);
-      return taskProse(prose, 2).includes(ADDED_FILE) || inJson;
+      // Only the Files line, listing it as a file the task touches, counts; a "do not modify" note is a fix.
+      const files = norm(taskProse(prose, 2).split('\n').find((l) => /^Files:/.test(l)) ?? '');
+      const inProse = /`src\/greet\.mjs` \((modify|new|edit|change)/.test(files);
+      return coupled(inProse, data, (d) => {
+        const t2 = task(d, 2);
+        return !!t2 && [...(t2.files?.modify ?? []), ...(t2.files?.create ?? []), ...(Array.isArray(t2.writes) ? t2.writes : [])].includes(ADDED_FILE);
+      });
     },
   },
   // Task 3 scores blast radius 2 with no external effect and no shared file.
@@ -162,8 +177,10 @@ const DEFECTS = {
         '"score": {"ambiguity": 0, "reasoning": 0, "blast": 2, "verifiability": 0}')),
     },
     present: (text) => {
-      const t3 = task(split(text).data, 3);
-      return !!t3 && Number(t3.score?.blast) >= 2 && t3.external === false;
+      return fromData(split(text).data, (d) => {
+        const t3 = task(d, 3);
+        return !!t3 && Number(t3.score?.blast) >= 2 && t3.external === false;
+      });
     },
   },
 
@@ -177,7 +194,11 @@ const DEFECTS = {
         "`slugify('Café au Lait!')` is therefore `'cafe-au-lait'`.",
         "`slugify('Café au Lait!')` is therefore `'café-au-lait'`.")),
     },
-    present: (text) => split(text).prose.includes("'café-au-lait'"),
+    // The example or the method: fixing only the example while the method still keeps accents is not a fix.
+    present: (text) => {
+      const p = norm(split(text).prose);
+      return p.includes("'café-au-lait'") || p.includes('keep accented letters as they are');
+    },
   },
   // A new ruling R4 and a design paragraph add a disk cache to truncate, against DEC-002.
   SN2: {
@@ -200,8 +221,8 @@ const DEFECTS = {
     },
     present: (text) => {
       const { prose, data } = split(text);
-      const rulings = data && Array.isArray(data.rulings) ? data.rulings : [];
-      return prose.includes('.cache/truncate.json') || rulings.some((r) => JSON.stringify(r).includes('.cache/truncate.json'));
+      return coupled(prose.includes('.cache/truncate.json'), data,
+        (d) => (Array.isArray(d.rulings) ? d.rulings : []).some((r) => JSON.stringify(r).includes('.cache/truncate.json')));
     },
   },
   // Design of criterion 2 measures length with text.length, against ruling R2.
@@ -212,7 +233,7 @@ const DEFECTS = {
         'Length is measured in Unicode code points via `Array.from(text)` so a surrogate pair is never split (ruling R2).',
         'Length is measured with `text.length`, so the result is at most `max` UTF-16 code units long.')),
     },
-    present: (text) => split(text).prose.includes('measured with `text.length`'),
+    present: (text) => norm(split(text).prose).includes('measured with `text.length`'),
   },
   // Design of criterion 3 imports a helper from a module that does not exist.
   SN4: {
@@ -222,7 +243,7 @@ const DEFECTS = {
         /`src\/word-count\.mjs` exports `wordCount\(text\)`: `const t = String\(text\)\.trim\(\); return t === '' \? 0 : t\.split\(\/\\s\+\/\)\.length;`\./,
         '`src/word-count.mjs` exports `wordCount(text)`: it imports `splitWords` from `src/text-core.mjs` and returns `splitWords(String(text).trim()).length`, which is 0 for blank text.')),
     },
-    present: (text) => split(text).prose.includes('src/text-core.mjs'),
+    present: (text) => norm(split(text).prose).includes('src/text-core.mjs'),
   },
   // Scope In gains a fourth module the card does not ask for.
   SN5: {
@@ -232,7 +253,11 @@ const DEFECTS = {
         '- `src/word-count.mjs` exporting `wordCount(text)`, tested by `tests/e5-word-count.test.mjs`.\n',
         '- `src/word-count.mjs` exporting `wordCount(text)`, tested by `tests/e5-word-count.test.mjs`.\n- `src/capitalize.mjs` exporting `capitalize(text)`, tested by `tests/e5-capitalize.test.mjs`.\n')),
     },
-    present: (text) => split(text).prose.includes('src/capitalize.mjs'),
+    // Only Scope In counts: the module moved to Scope Out is a fix.
+    present: (text) => {
+      const m = /^In:\s*\n([\s\S]*?)^Out:/m.exec(split(text).prose);
+      return !!m && m[1].includes('src/capitalize.mjs');
+    },
   },
   // Intent cites a confirmation that no decision records.
   SN6: {
@@ -242,7 +267,7 @@ const DEFECTS = {
         'DEC-002 (in force) settles that the utilities are pure: no I/O and no dependencies.',
         "DEC-002 (in force) settles that the utilities are pure: no I/O and no dependencies. For truncate, the product owner confirmed the ellipsis in DEC-004.")),
     },
-    present: (text) => split(text).prose.includes('confirmed the ellipsis in DEC-004'),
+    present: (text) => norm(split(text).prose).includes('confirmed the ellipsis in DEC-004'),
   },
   // The hyphen of slugify, already fixed by AC1, is declared a blocking human input (json needsPerson and a prose section).
   SN7: {
@@ -255,8 +280,10 @@ const DEFECTS = {
     },
     present: (text) => {
       const { prose, data } = split(text);
-      const np = data && Array.isArray(data.needsPerson) ? data.needsPerson : [];
-      return np.some((h) => h && h.blocking === true) || /^## Depends on human input/m.test(prose);
+      // The heading alone ("None.") is not the defect: a blocking item under it is.
+      const sec = /^## Depends on human input[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(prose);
+      const inProse = !!sec && /^\s*[-*] .*\(blocking\)/m.test(sec[1]);
+      return coupled(inProse, data, (d) => (Array.isArray(d.needsPerson) ? d.needsPerson : []).some((h) => h && h.blocking === true));
     },
   },
   // Design appends to a file outside the repository after the merge, with externalEffects still empty.
@@ -266,11 +293,8 @@ const DEFECTS = {
       prose: (id, t) => inPart(id, t, 'prose', (p) => replaceOnce(id, p, '\n\nAll three modules are named-export ESM files',
         '\n\nRelease note. After the merge, append the release note to ../outbox.log, one line per utility.\n\nAll three modules are named-export ESM files')),
     },
-    present: (text) => {
-      const { prose, data } = split(text);
-      const fx = data && Array.isArray(data.externalEffects) ? data.externalEffects : [];
-      return prose.includes('../outbox.log') && fx.length === 0;
-    },
+    // Declaring the effect does not remove it: it still runs after the merge while the prose says so.
+    present: (text) => split(text).prose.includes('../outbox.log'),
   },
 };
 

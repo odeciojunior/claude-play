@@ -373,7 +373,7 @@
     "detectedBy": "reviewer",
     "description": "Tarefa 2 also modifies src/greet.mjs, which the spec puts out of scope (prose Files line and json files.modify/writes)",
     "replaces": "P7",
-    "noteE11": "P7 as designed (docs/plans/roadmap-sandbox/state.md in the Files line and in files.modify/writes of task 2) is refused by plan-tool check (roadmap-edit, exit 1), so the code catches it before any reviewer. P10 keeps a coupled defect in artifact B with the same shape: task 2 writes a file the spec forbids (src/greet.mjs)."
+    "noteE11": "P7 as designed (docs/plans/roadmap-sandbox/state.md in the Files line and in files.modify/writes of task 2) is refused by plan-tool check (roadmap-edit, exit 1), so the code catches it before any reviewer. P10 keeps a coupled defect in artifact B with the same shape: task 2 writes a file the spec forbids (src/greet.mjs). Unlike the legacy P7, an out-of-scope file edit is not in the blocking list of the plan-review prompt, so the reviewer must infer it from the spec Out list."
   },
   {
     "id": "P8",
