@@ -6,7 +6,8 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
+import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree, NATIVE_PATHS, NATIVE_SEEDS, readNativeSeeds, prepareNativeBranch } from './make-scenario.mjs';
+import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -632,6 +633,94 @@ test('E20: the legacy plan has no data block and names the sandbox roadmap', asy
   } finally {
     t.done();
   }
+});
+
+// E26 A3: native spec and plan of E5, copied from the 2nd probe (release/sandbox, plugin c5658cf).
+const NATIVE_DIR = join(here, 'scenario', 'e5-native');
+const NATIVE_SHA = {
+  spec: 'fa68eb1f1c1c017003beffb380887cb6143f3012b4136a5b1dc5a4dcbe1d7cec',
+  plan: '6d486e526820c082cfe008a63765acbc1377236ff69334285979f7c145c0da30',
+};
+const NATIVE_BLOB = { spec: '52e8d1fd302041c0383d5df3ef503669e0d12c2e', plan: '36fc2dffb82273a2fa6f260d713876671372b76f' };
+const PLUGIN = resolve(here, '..', '..', 'plugins/productivity-tools');
+const SPEC_TOOL = join(PLUGIN, 'scripts/spec-tool.mjs');
+const PLAN_TOOL = join(PLUGIN, 'scripts/plan-tool.mjs');
+
+test('E26: native seeds are LF copies whose sha256 matches the probe blobs', () => {
+  for (const k of ['spec', 'plan']) {
+    const bytes = readFileSync(join(NATIVE_DIR, k + '.md'));
+    assert.ok(!bytes.includes(13), k + ' has CR');
+    assert.equal(sha(bytes), NATIVE_SHA[k], k);
+    assert.equal(NATIVE_SEEDS[k].sha256, NATIVE_SHA[k], k);
+    assert.equal(NATIVE_SEEDS[k].file, 'scenario/e5-native/' + k + '.md');
+  }
+});
+
+test('E26: NATIVE_PATHS comes from artifactPaths of the measured workflow', () => {
+  assert.deepEqual(NATIVE_PATHS, loadPure().artifactPaths('sandbox', 'E5'));
+  assert.equal(NATIVE_PATHS.spec, 'docs/plans/sandbox-E5/spec.md');
+  assert.equal(NATIVE_PATHS.plan, 'docs/plans/sandbox-E5/plan.md');
+});
+
+test('E26: readNativeSeeds refuses a seed whose sha256 diverges', () => {
+  const t = tmp('seeds');
+  try {
+    mkdirSync(t.dir, { recursive: true });
+    writeFileSync(join(t.dir, 'spec.md'), readFileSync(join(NATIVE_DIR, 'spec.md')));
+    writeFileSync(join(t.dir, 'plan.md'), readFileSync(join(NATIVE_DIR, 'plan.md')));
+    assert.deepEqual(Object.keys(readNativeSeeds(t.dir)).sort(), ['plan', 'spec']);
+    writeFileSync(join(t.dir, 'plan.md'), readText(join(NATIVE_DIR, 'plan.md')) + 'x\n');
+    assert.throws(() => readNativeSeeds(t.dir), /plan.*sha256/);
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: prepareNativeBranch commits the probe blobs at NATIVE_PATHS on feat/E5', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true });
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feat/E5');
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.spec), NATIVE_BLOB.spec);
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.plan), NATIVE_BLOB.plan);
+    assert.deepEqual(git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(plan): E5 text utilities plan', 'docs(spec): E5 text utilities design']);
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    const roadmap = join(t.dir, 'docs/plans/roadmap-sandbox');
+    const s = spawnSync(process.execPath, [SPEC_TOOL, 'check', join(t.dir, NATIVE_PATHS.spec), '--roadmap', roadmap], { encoding: 'utf8' });
+    assert.equal(s.status, 0, s.stdout + s.stderr);
+    const p = spawnSync(process.execPath, [PLAN_TOOL, 'check', join(t.dir, NATIVE_PATHS.plan), '--spec', join(t.dir, NATIVE_PATHS.spec)], { encoding: 'utf8' });
+    assert.equal(p.status, 0, p.stdout + p.stderr);
+    const u = tmp('sb');
+    try {
+      await makeScenario(u.dir, 'completo');
+      prepareNativeBranch(u.dir, { withPlan: false });
+      assert.deepEqual(git(u.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(spec): E5 text utilities design']);
+    } finally {
+      u.done();
+    }
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: makeScenario returns scenario.paths (legacy paths for the old variants)', async () => {
+  const t = tmp('sb');
+  try {
+    const s = await makeScenario(t.dir, 'plano-semeado-A');
+    assert.deepEqual(s.paths, E5_PATHS);
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: seedSourceOf describes the native seeds of the 2nd probe', () => {
+  assert.deepEqual(seedSourceOf(undefined, { set: 'e5-native' }), {
+    kind: 'nativo-sonda-2', spec: 'scenario/e5-native/spec.md', plan: 'scenario/e5-native/plan.md',
+    specSha256: NATIVE_SHA.spec, planSha256: NATIVE_SHA.plan, probePluginCommit: 'c5658cf',
+  });
+  assert.throws(() => seedSourceOf('/some/run', { set: 'e5-native' }), /--from-run/);
+  assert.equal(seedSourceOf().kind, 'sintetico');
 });
 
 test('E20: plan-writer adopt script is marked synthetic and approves', () => {

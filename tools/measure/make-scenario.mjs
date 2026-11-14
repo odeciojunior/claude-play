@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { makeSandbox, STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
+import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCEN = join(here, 'scenario');
@@ -27,6 +28,17 @@ export const E5_PATHS = {
   spec: 'docs/superpowers/specs/2026-11-10-E5-text-utilities-design.md',
   plan: 'docs/superpowers/plans/2026-11-10-E5-text-utilities.md',
 };
+
+// E26 A3: the native spec and plan live where the measured workflow reads them (DEC-026).
+export const NATIVE_PATHS = loadPure().artifactPaths('sandbox', 'E5');
+
+// Exact LF copies of the 2nd probe blobs (D:/claude-e8q-work/completo/completo-1, release/sandbox,
+// docs/plans/sandbox-E5/, plugin c5658cf); a copy whose sha256 diverges is refused.
+export const NATIVE_SEEDS = {
+  spec: { file: 'scenario/e5-native/spec.md', sha256: 'fa68eb1f1c1c017003beffb380887cb6143f3012b4136a5b1dc5a4dcbe1d7cec' },
+  plan: { file: 'scenario/e5-native/plan.md', sha256: '6d486e526820c082cfe008a63765acbc1377236ff69334285979f7c145c0da30' },
+};
+const NATIVE_PROBE_COMMIT = 'c5658cf';
 
 const RELEASE = '/productivity-tools:roadmap-release';
 
@@ -103,8 +115,39 @@ function e5Texts(fromRun) {
 
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
+// Reads the native seeds of `scenDir` (LF) and refuses any whose sha256 diverges from NATIVE_SEEDS.
+export function readNativeSeeds(scenDir = join(SCEN, 'e5-native')) {
+  const out = {};
+  for (const k of ['spec', 'plan']) {
+    const text = readText(join(scenDir, k + '.md'));
+    const got = sha256(text);
+    if (got !== NATIVE_SEEDS[k].sha256) throw new Error(`native ${k} seed: sha256 ${got} differs from the recorded ${NATIVE_SEEDS[k].sha256}`);
+    out[k] = text;
+  }
+  return out;
+}
+
+// Creates feat/E5 from main with the native spec and, optionally, the native plan at NATIVE_PATHS.
+export function prepareNativeBranch(dir, { withPlan } = {}) {
+  const { spec, plan } = readNativeSeeds();
+  git(dir, 'checkout', '-q', '-b', 'feat/E5', 'main');
+  writeIn(dir, NATIVE_PATHS.spec, spec);
+  git(dir, 'add', NATIVE_PATHS.spec);
+  git(dir, 'commit', '-q', '-m', 'docs(spec): E5 text utilities design');
+  if (withPlan) {
+    writeIn(dir, NATIVE_PATHS.plan, plan);
+    git(dir, 'add', NATIVE_PATHS.plan);
+    git(dir, 'commit', '-q', '-m', 'docs(plan): E5 text utilities plan');
+  }
+}
+
 // Describes where the seeded spec and plan came from: file names and hashes only, never the folder path.
-export function seedSourceOf(fromRun) {
+export function seedSourceOf(fromRun, { set } = {}) {
+  if (set === 'e5-native') {
+    if (fromRun) throw new Error('--from-run does not apply to the native seeds');
+    const n = readNativeSeeds();
+    return { kind: 'nativo-sonda-2', spec: NATIVE_SEEDS.spec.file, plan: NATIVE_SEEDS.plan.file, specSha256: sha256(n.spec), planSha256: sha256(n.plan), probePluginCommit: NATIVE_PROBE_COMMIT };
+  }
   const { spec, plan } = e5Texts(fromRun);
   const base = { specSha256: sha256(spec), planSha256: sha256(plan) };
   if (!fromRun) {
@@ -208,7 +251,7 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
   if (/semeado/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
-  const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {} };
+  const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, paths: { ...E5_PATHS } };
   switch (variant) {
     case 'plano-semeado-A':
     case 'plano-semeado-B':
