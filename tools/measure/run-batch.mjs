@@ -2,7 +2,8 @@
 // Batch launcher: runs one measurement variant n times in disposable sandboxes and writes an aggregate.
 // Usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir>
 //          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
-//          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>]]
+//          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>] [--review-model haiku|sonnet|opus (required with task-review)]]
+//          [--plugin-dir <dir>] (passed to every claude -p; the aggregate records that folder's version and commit)
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
@@ -110,6 +111,33 @@ export function readPlugin(configDir) {
   return unknown;
 }
 
+// Plugin loaded with --plugin-dir: version from its plugin.json, commit from git (null when the folder is not a repo).
+// installPath is the folder itself (same layout as an install); it stays out of the public aggregate.
+export function readPluginDir(dir) {
+  let version = 'unknown';
+  try {
+    version = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? 'unknown';
+  } catch {
+    throw new UsageError('no readable .claude-plugin/plugin.json in --plugin-dir');
+  }
+  let commit = null;
+  try {
+    commit = execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || null;
+  } catch {
+    /* not a repo */
+  }
+  return { version, commit, installPath: resolve(dir) };
+}
+
+// Blocking (critical or important) and minor counts of the stage reviewer, read from its journal entry.
+export function reviewCounts(entries, label) {
+  const entry = entries.find((e) => e.label === label);
+  if (!entry) return { blocking: null, minor: null, reason: 'sem-entrada-do-revisor' };
+  const issues = entry.result?.issues;
+  if (!Array.isArray(issues)) return { blocking: null, minor: null, reason: 'sem-lista-de-issues' };
+  return { blocking: issues.filter((i) => BLOCKING.has(i?.severity)).length, minor: issues.filter((i) => i?.severity === 'minor').length };
+}
+
 // First "superpowers@<marketplace>" entry of installed_plugins.json, whatever the marketplace is called.
 export function readSuperpowers(configDir) {
   const absent = { version: 'ausente', commit: 'ausente' };
@@ -173,6 +201,7 @@ function promptArgs(prompt, o) {
     '--allowedTools', (o.allow ?? []).join(','),
     ...(o.addDir ?? []).flatMap((d) => ['--add-dir', d]),
     ...(o.model ? ['--model', o.model] : []),
+    ...(o.pluginDir ? ['--plugin-dir', o.pluginDir] : []),
     ...(o.maxBudgetUsd ? ['--max-budget-usd', String(o.maxBudgetUsd)] : []),
   ];
 }
@@ -430,6 +459,8 @@ const STAGES = {
   'plan-review': { variant: /^plano-semeado-[AB]$/, fix: 'plan-fix', label: 'E5:plan-review', blobKey: 'measuredPlanBlob', blobPath: E5_PATHS.plan },
   'task-review': { variant: /^codigo-semeado-/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, blobPath: null },
 };
+const REVIEW_MODELS = ['haiku', 'sonnet', 'opus'];
+const reviewEffortFor = (model) => (model === 'haiku' ? 'low' : 'medium'); // mirrors effortFor in roadmap-release.js
 const COPIED = /^Copied from: (\S+) at commit ([0-9a-f]{40})$/;
 
 export function readArm(file, { requireSource = false } = {}) {
@@ -450,7 +481,8 @@ const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in va
 // The script review-only.js written at the sandbox root: one reviewer and, on a blocking issue, one fixer.
 // Same contract as roadmap-release.js: no imports and no Node API.
 // agentType (optional): the plugin agent the reviewer runs as; without it the reviewer is a general-purpose agent.
-export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentType = null }) {
+// model/effort: the reviewer's tier (default opus without effort, the spec and plan stages); the task-review stage passes both, like the workflow.
+export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentType = null, model = 'opus', effort = null }) {
   const st = STAGES[stage];
   if (!st) throw new UsageError(`unknown stage: ${stage}`);
   const props = {
@@ -483,7 +515,7 @@ export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentTyp
     `const SCHEMA = ${JSON.stringify(schema)}`,
     `const REVIEW_PROMPT = ${JSON.stringify(reviewPrompt)}`,
     `const FIX_PROMPT = ${JSON.stringify(fixPrompt)}`,
-    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', ${agentType ? `agentType: '${agentType}', ` : ''}model: 'opus', schema: SCHEMA })`,
+    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', ${agentType ? `agentType: '${agentType}', ` : ''}model: '${model}', ${effort ? `effort: '${effort}', ` : ''}schema: SCHEMA })`,
     "const blocking = review && Array.isArray(review.issues) ? review.issues.filter(i => i.severity === 'critical' || i.severity === 'important') : []",
     'let fix = null',
     'if (blocking.length > 0) {',
@@ -502,6 +534,13 @@ function prepareHarness(opts) {
   const st = STAGES[stage];
   if (!st) throw new UsageError(`--stage must be spec-review, plan-review or task-review (got "${stage}")`);
   if (!st.variant.test(opts.variant)) throw new UsageError(`--stage ${stage} does not accept the variant "${opts.variant}"`);
+  let reviewModel = null;
+  if (stage === 'task-review') {
+    if (!REVIEW_MODELS.includes(opts.reviewModel)) throw new UsageError(`--review-model is required with --stage task-review and must be one of ${REVIEW_MODELS.join(', ')} (got "${opts.reviewModel ?? ''}")`);
+    reviewModel = opts.reviewModel;
+  } else if (opts.reviewModel !== undefined) {
+    throw new UsageError(`--review-model only applies to --stage task-review (got --stage ${stage})`);
+  }
   const arm = opts.arm ?? 'atual';
   if (!/^[A-Za-z0-9_-]+$/.test(arm)) throw new UsageError(`invalid --arm: ${arm}`);
   const armsDir = resolve(opts.armsDir ?? join(here, 'arms'));
@@ -521,7 +560,9 @@ function prepareHarness(opts) {
       workflowCommit = review.source.commit;
     }
   }
-  return { stage, arm, st, review, fixArm, harness: { stage, arm, armSource, workflowCommit } };
+  const reviewEffort = reviewModel ? reviewEffortFor(reviewModel) : null;
+  const reviewer = reviewModel ? { model: reviewModel, effort: reviewEffort } : {};
+  return { stage, arm, st, review, fixArm, reviewer, harness: { stage, arm, armSource, workflowCommit, ...(reviewModel ? { reviewModel, reviewEffort } : {}) } };
 }
 
 const slash = (p) => p.replace(/\\/g, '/');
@@ -741,10 +782,28 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const seeded = variant.includes('semeado');
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
   const h = prepareHarness(opts);
-  const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}` : ''}-${stamp(now())}`);
+  const pluginDir = opts.pluginDir ? resolve(opts.pluginDir) : null; // claude -p runs in the sandbox: it needs the absolute path
+  if (pluginDir) opts = { ...opts, pluginDir };
+  const plugin = pluginDir ? readPluginDir(pluginDir) : readPlugin(opts.configDir);
+  if (h && h.stage === 'task-review' && h.arm === 'atual') {
+    const agentFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'agents', 'task-reviewer.md') : null;
+    if (!agentFile || !existsSync(agentFile)) throw new UsageError(`task-review with arm atual needs agents/task-reviewer.md in the measured plugin (${pluginDir ? '--plugin-dir' : 'installed plugin'})`);
+  }
+  if (h) {
+    let harnessCommit = null;
+    try {
+      harnessCommit = execFileSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || null;
+    } catch {
+      /* not a repo */
+    }
+    h.harness.harnessCommit = harnessCommit;
+    if (harnessCommit && plugin.commit && plugin.commit !== 'unknown' && plugin.commit !== harnessCommit) {
+      console.error(`run-batch: warning: harnessCommit ${harnessCommit} differs from the measured plugin commit ${plugin.commit} (prompt and agent come from different commits)`);
+    }
+  }
+  const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}${h.harness.reviewModel ? `-${h.harness.reviewModel}` : ''}` : ''}-${stamp(now())}`);
   const priv = join(dir, 'private');
   mkdirSync(priv, { recursive: true });
-  const plugin = readPlugin(opts.configDir);
   const superpowers = readSuperpowers(opts.configDir);
   const seedSource = seeded ? seedSourceOf(opts.fromRun) : undefined;
   const cli = (await exec('claude', ['--version'], {})).stdout.trim();
@@ -765,7 +824,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
-      const script = buildReviewOnlyScript({ stage: h.stage, ...harnessPrompts(h, scenario) });
+      const script = buildReviewOnlyScript({ stage: h.stage, ...h.reviewer, ...harnessPrompts(h, scenario) });
       writeFileSync(join(scenario.dir, 'review-only.js'), script);
       excludeFromGit(scenario.dir, 'review-only.js');
       scenario.prompts = [`Run the workflow script at ${slash(scenario.dir)}/review-only.js`];
@@ -913,6 +972,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
     }
     const attempt = { n: k, ...extra(), status: 'valid', counters: toAttemptCounters(run), outcomes };
+    if (h && journal) attempt.review = reviewCounts(journal.entries, `${h.st.label}1`);
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath, { deliverable: EXPECTED_PANEL[variant].deliverable });
     attempts.push(attempt);
@@ -949,7 +1009,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>]] [--from-run <pasta>] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review> [--arm <nome>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review]] [--plugin-dir <dir>] [--from-run <pasta>] [--stop-on-denial]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -957,6 +1017,7 @@ function parseCli(argv) {
     '--variant': 'variant', '--runs': 'runs', '--work': 'work', '--out': 'out', '--config-dir': 'configDir',
     '--permission-mode': 'permissionMode', '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model',
     '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir', '--from-run': 'fromRun',
+    '--review-model': 'reviewModel', '--plugin-dir': 'pluginDir',
   };
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--stop-on-denial') {
