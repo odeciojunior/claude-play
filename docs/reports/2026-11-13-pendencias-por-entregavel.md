@@ -17,6 +17,7 @@ Notas retiradas de `docs/plans/roadmap-evolucao-skills/state.md` por DEC-673 (pe
 - (executor) E11, preparação: tools/measure ainda espera os artefatos de E5 em docs/superpowers (make-scenario.mjs, E5_PATHS) e ratifica decisões entre as sessões de parada-retomada (DEC-442); adaptar aos caminhos de DEC-537 e à exceção de retomada antes de medir o release nativo.
 - (executor) E20/gatilho: spec-3 (pt/en) passa direto a spec-author sem chamar Skill; a config descartável tem CLAUDE.md de usuário com regras de roteamento. Na próxima medição (E11), rodar spec-3 numa config sem CLAUDE.md de usuário ou contar o despacho a spec-author como rota do plugin.
 - (executor) E11: a variante parada-retomada mede a meta de E23 de ponta a ponta (opus 9 para 7, ponderado 669 para 589) com o release nativo; o comportamental de E23 só confere os estágios, um a um.
+- (executor) E11, preparo: fix/measure-e26 traz as sementes nativas de plano e os caminhos por artifactPaths só no arnês de estágio; as variantes de pipeline (completo, parada-retomada, codigo-semeado) e a ratificação entre sessões (DEC-442) seguem por adaptar.
 
 ## Gate DEC-458
 
