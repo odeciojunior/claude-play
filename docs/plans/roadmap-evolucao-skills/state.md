@@ -81,6 +81,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
 - (executor) Nota da 2ª sonda: T1/T2 não mudaram o cwd para a worktree (teste com caminho absoluto) e T2 saiu com duas linhas Co-Authored-By; conferir no 1º lote de E11.
 - (executor) E26 peça 3: depois do lote completo de E11, braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
+- (executor) E26 peça 1, antes do lote pago do braço perguntas: decisão do dono sobre a condição 3 de DEC-726 alcançar o braço perguntas (não há leitura depois da edição do autor). A T7 do bloco A fica por último e pode ser cortada sem retrabalho.
 <!-- /roadmap:pending -->
 
 ## Em andamento
