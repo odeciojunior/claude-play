@@ -34,16 +34,17 @@ function armStatus(readAt, listAt) {
     }
   };
   let names = [];
+  let listError = null;
   try {
     names = listAt(ARMS_DIR).map((f) => f.split('/').pop()).filter((f) => f.endsWith('-atual.md')).sort();
-  } catch {
-    /* no listing: only the plan arms are known */
+  } catch (e) {
+    listError = String(e?.message ?? e); // no listing: only the plan arms are known, and the report says so
   }
   const files = {};
   for (const f of names) files[f] = check(`${ARMS_DIR}/${f}`);
   const planReview = check(ARMS.planReview);
   const planFix = check(ARMS.planFix);
-  return { planReview, planFix, files };
+  return { planReview, planFix, files, listError };
 }
 
 function safeCompare(before, after, options) {
@@ -156,6 +157,7 @@ function markdown(result, { date, before, after }) {
   for (const [name, ps] of Object.entries(result.panel)) for (const p of ps) L.push(`| ${name} | ${p.n} | ${p.ok ? 'ok' : 'diferente'} | ${p.reasons.join('; ') || '-'} |`);
   L.push('', '## Braço da classe plano', '', `- plan-review-atual.md casa com o workflow: ${result.arm.planReview ? 'sim' : 'não'}`, `- plan-fix-atual.md casa com o workflow: ${result.arm.planFix ? 'sim' : 'não'}`);
   for (const [f, ok] of Object.entries(result.arm.files ?? {})) L.push(`- ${f} casa com o workflow: ${ok ? 'sim' : 'não'}`);
+  if (result.arm.listError) L.push(`- a listagem de ${ARMS_DIR} falhou (${result.arm.listError}): só os dois braços de plano foram conferidos`);
   L.push('', '## Metas', '', 'Não bloqueiam (DEC-034).', '', '| Meta | Entregável | Alvo | Medido | Veredito |', '|---|---|---|---|---|');
   for (const g of result.goals) L.push(`| ${g.goal} | ${g.deliverable} | ${g.target == null ? '-' : `${g.target} ${g.unit}`} | ${g.measured ?? '-'} | ${g.verdict} |`);
   L.push('', '## Linhas para roadmap:measurements', '', '| Data | Entregável | Tipo | Detalhe | Registrado | Faturado | Status |', '|---|---|---|---|---|---|---|', ...result.measurementRows, '');

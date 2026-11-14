@@ -639,6 +639,14 @@ function reviewSchema(st) {
   return { type: 'object', properties: props, required };
 }
 
+// Same-commit rule: review and fix arms come from one commit. The plan-fix check fragment is exempt: the plan arms stay
+// frozen by DEC-310 at a commit that has no check line, so the fragment comes from a later one; assertArmsCurrent checks it
+// against the measured workflow and armCommits.fixCheck records its commit.
+export function assertArmCommits(review, fixArm, fixCheck) {
+  if (review?.source?.commit !== fixArm?.source?.commit) throw new UsageError('review and fix arm templates were copied from different commits');
+  if (fixCheck && !fixCheck.source?.commit) throw new UsageError('the fix-check arm template has no source commit');
+}
+
 function prepareHarness(opts) {
   const { stage } = opts;
   if (!stage) {
@@ -674,7 +682,7 @@ function prepareHarness(opts) {
     review = readArm(join(armsDir, `${stage}-${arm}.md`), { requireSource: current });
     if (current) {
       if (/^plano-nativo-/.test(opts.variant)) fixCheck = readArm(join(armsDir, 'plan-fix-check-atual.md'), { requireSource: true });
-      if (review.source.commit !== fixArm.source.commit || (fixCheck && fixCheck.source.commit !== review.source.commit)) throw new UsageError('review, fix and fix-check arm templates were copied from different commits');
+      assertArmCommits(review, fixArm, fixCheck);
       armSource = 'copia-do-prompt';
       workflowCommit = review.source.commit;
     }
@@ -923,7 +931,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         h.harness.pureSha256 = extractPure(wfText).sha256;
         h.harness.stageOptions = { ...STAGE_LOOP[h.stage] };
       }
-    } else if (pluginDir || h.rounds === 'loop') throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
+    } else throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
   }
   if (h) {
     let harnessCommit = null;

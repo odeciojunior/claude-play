@@ -264,6 +264,16 @@ test('E26 A2: arm.files lists every *-atual.md and only the plan class blocks', 
   assert.equal(b.exit, 1);
 });
 
+test('E26 A2 review: a failed arms listing is reported, not an empty files map', () => {
+  const cls = { variant: 'plano-semeado', harness: { stage: 'plan-review', arm: 'atual' }, attempts: attemptsOf(3), deteccaoPorCodigo: {} };
+  const noList = { ...readOk, listAt: () => { throw new Error('git ls-tree failed'); } };
+  const r = run(agg(baseVariants(true), { 'plano-semeado': cls }), agg(baseVariants(true), { 'plano-semeado': cls }), noList);
+  assert.match(r.arm.listError, /git ls-tree failed/);
+  assert.equal(r.arm.planReview && r.arm.planFix, true);
+  const ok = run(agg(baseVariants(true), { 'plano-semeado': cls }), agg(baseVariants(true), { 'plano-semeado': cls }));
+  assert.equal(ok.arm.listError, null);
+});
+
 test('E26 A2: spec arms and the plan-fix check fragment match the workflow at HEAD', () => {
   const wf = disk(WORKFLOW);
   for (const f of ['spec-review-atual.md', 'spec-fix-atual.md', 'plan-fix-check-atual.md']) {

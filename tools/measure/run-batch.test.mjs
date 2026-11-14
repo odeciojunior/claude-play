@@ -19,16 +19,19 @@ function setup({ withPlugins = true } = {}) {
   const base = mkdtempSync(join(tmpdir(), 'run-batch-'));
   const dirs = { base, work: join(base, 'work'), out: join(base, 'out'), configDir: join(base, 'cfg') };
   mkdirSync(join(dirs.configDir, 'plugins'), { recursive: true });
+  const installed = join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9');
   if (withPlugins) {
-    const installed = join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9');
     mkdirSync(join(installed, 'agents'), { recursive: true });
     writeFileSync(join(installed, 'agents', 'task-reviewer.md'), '---\nname: task-reviewer\n---\n');
+    // the measured workflow: --stage spec/plan with --arm atual checks the arms against it
+    mkdirSync(join(installed, 'skills', 'roadmap-release', 'workflow'), { recursive: true });
+    copyFileSync(WORKFLOW, join(installed, 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js'));
     writeFileSync(
       join(dirs.configDir, 'plugins', 'installed_plugins.json'),
       JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234', installPath: join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9') }] } }),
     );
   }
-  return { ...dirs, done: () => rmSync(base, { recursive: true, force: true }) };
+  return { ...dirs, installed, done: () => rmSync(base, { recursive: true, force: true }) };
 }
 
 const HEAD = spawnSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
@@ -1649,6 +1652,39 @@ test('A2: a current arm passes against the real workflow and the aggregate recor
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir }), { exec: fake.exec, now: NOW });
     assert.deepEqual(r.aggregate.harness.armCommits, { review: sha, fix: sha, fixCheck: null });
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A2 review fixes ----
+const { assertArmCommits } = await import('./run-batch.mjs');
+
+test('A2 review: review and fix must share a commit; the fix-check fragment may come from a later commit', () => {
+  const at = (c) => ({ text: 'x', source: { path: 'p', commit: c.repeat(40) } });
+  assert.doesNotThrow(() => assertArmCommits(at('a'), at('a'), at('b')));
+  assert.doesNotThrow(() => assertArmCommits(at('a'), at('a'), null));
+  assert.throws(() => assertArmCommits(at('a'), at('b'), null), UsageError);
+  assert.throws(() => assertArmCommits(at('a'), at('b'), at('a')), UsageError);
+  // the real arms: plan arms frozen at one commit (DEC-310), the fragment copied later
+  const commit = (f) => readArm(join(ARMS, f), { requireSource: true });
+  assert.notEqual(commit('plan-review-atual.md').source.commit, commit('plan-fix-check-atual.md').source.commit);
+  assert.doesNotThrow(() => assertArmCommits(commit('plan-review-atual.md'), commit('plan-fix-atual.md'), commit('plan-fix-check-atual.md')));
+});
+
+test('A2 review: an installed plugin without roadmap-release.js is refused for --stage spec/plan --arm atual', async () => {
+  const s = setup();
+  try {
+    rmSync(join(s.installed, 'skills'), { recursive: true, force: true });
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review' }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /installed plugin/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+    const none = setup({ withPlugins: false });
+    try {
+      await assert.rejects(runBatch(seededOpts(none, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(none.configDir).exec, now: NOW }), UsageError);
+    } finally {
+      none.done();
+    }
   } finally {
     s.done();
   }
