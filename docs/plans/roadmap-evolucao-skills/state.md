@@ -1,13 +1,13 @@
 # Estado
 
-Estratégia v1.9 -- 2026-11-13
+Estratégia v2.0 -- 2026-11-13
 
 Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 
 ## Agora
 
 <!-- roadmap:now -->
-1. Antes de E12: fix/status-releitura (status --deliverable <E> na CLI do tracker, teste primeiro, revisão opus, sem bump), depois E12. Executa: executor. Depende de: E7, E9, E21.
+1. Antes de E27: fix/registro-8k (CMD_CAP 6.000 no grupo e no check, recusa cedo acima do teto, frase da SKILL.md do coordinator; revisão opus; conferência real), depois E27. Executa: executor. Depende de: E15, E21.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -62,18 +62,16 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o plan-only passar. Negações por estágio em docs/reports/; conclusão sobre o gatilho de DEC-312 no relatório.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
-- (executor) Na 1ª execução do release com E10 na ponta (E12): conferir a descoberta em páginas (6 chamadas), o grupo do registro confirmado pelo digest, truthStdout do relatório e o acerto por tentativa da cópia; anotar no relatório. Falha: correção antes da execução seguinte.
-- (executor) roadmap-release.js mede 238.471 caracteres LF na ponta da release (c1d6647): folga de 11.529 sob o teto de 250.000 (DEC-647). fix/status-releitura e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E11: 11 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E11); ler no spec de E11.
 - (executor) Gate DEC-458: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção Gate DEC-458); ler antes de publicar plan-writer (DEC-458).
-- (executor) E12: 3 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E12); ler no spec de E12.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
-- (dono) T10:spec: [important/pelo-plano] Task 10 (behavioral test of the short entry by the orchestrator) has no deliverable. The executor has no subagent tool, so no report was written and no commit was made. Plan decision R20 and [...] texto completo em docs/plans/evolucao-skills-E12/reviews.md
-- (dono) Registrar na estratégia, por nova revisão, a meta de prosa de E12 declarada em R9 (≤ 6.000 bytes LF, linha de base 56.508, removido 50.508) na tabela de Metas derivadas.
-- (executor) Defeito menor (comportamental de E12): plan-coordinator SKILL.md:25 não proíbe authorizeExternal e answers no 1º lançamento; a regra só está em delegation-protocol.md:27. Acrescentar a frase (~150 bytes) na próxima fix.
+- (executor) Antes de E27: fix/registro-8k: CMD_CAP 6.000 no grupo e no check, recusa cedo acima do teto, frase da SKILL.md do coordinator com asserção de texto; revisão opus; conferência real (registro >7.700 em trechos; sessão C repetida); relatório em docs/reports; sem bump.
+- (executor) roadmap-release.js mede 238.706 caracteres LF na ponta da release (55b2b84): folga de 11.294 sob o teto de 250.000 (DEC-647). fix/registro-8k (239.420 no worktree, limite 239.900) e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
+- (executor) Antes de publicar em E11: fix do canal do coordinator (DEC-696): apply --events em trechos sob o teto de comando, evento único acima do teto falha cedo, read enxuto ou paginado; estimado 8.549 caracteres com 6 relatos cheios numa onda.
+- (executor) Na 1ª execução do release depois da fix/registro-8k: conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. No cenário fixo, medir os trechos por status: mais de 1 pede emenda à meta de E10.
 <!-- /roadmap:pending -->
 
 ## Em andamento

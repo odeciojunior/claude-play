@@ -29,4 +29,5 @@ Execuções pagas e marcos de medição. Registrado e Faturado são colunas sepa
 | 2026-11-13 | E23 | release | Execução do release (DEC-567): r1 7,47; r2 sem valor (sessão morta às 04:29 sem evento result, interrupção do host); r3 11,48; B4 0,38 | US$ 19,33 (soma conhecida, sem r2) | - | concluído |
 | 2026-11-13 | E24 | release | Execução do release (DEC-567): r1 11,39; r2 2,92 (falha de carga do plano); r3 7,95; comportamental 0,30 | US$ 22,56 (custo devolvido pela CLI) | - | concluído |
 | 2026-11-13 | E10 | release | Execução do release (DEC-567): r1 9,85 (defeito de spec); r2 19,82; comportamental 0,38; maior execução sã passa a 19,82 (E10 r2); teto de US$ 150 mantido | US$ 30,05 (custo devolvido pela CLI) | - | concluído |
+| 2026-11-13 | E12 | release | Execução do release (DEC-567): r1 26,65; comportamental 0,39; maior execução sã passa a 26,65 (E12 r1); teto de US$ 150 mantido | US$ 27,04 (custo devolvido pela CLI) | - | concluído |
 <!-- /roadmap:measurements -->

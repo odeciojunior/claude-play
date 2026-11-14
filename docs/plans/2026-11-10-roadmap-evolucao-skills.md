@@ -1,8 +1,9 @@
-<!-- roadmap:version 1.9 2026-11-13 -->
-# Evolução das skills de roadmap -- Estratégia v1.9
+<!-- roadmap:version 2.0 2026-11-13 -->
+# Evolução das skills de roadmap -- Estratégia v2.0
 
 ## Registro de mudanças
 
+- v2.0 (2026-11-13): meta derivada de prosa de E12 registrada por delegação do dono no valor que o spec declarou (R9; DEC-682 e a sua emenda, DEC-692): ≤ 6.000 bytes LF carregados antes do lançamento do workflow, linha de base 56.508, removido 50.508. A frase "Sem meta numérica" deixa de citar a prosa de E12. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.9 (2026-11-13): meta derivada de E10 fixada por delegação do dono no valor que o spec declarou (DEC-658 e a sua emenda, DEC-668): ≤ 22 chamadas na variante completo, provisória, com a descoberta numa página. A coluna Cálculo passa a citar a chamada git-truth. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.8 (2026-11-13): card E24 corrigido por delegação do dono (H1 do spec de E24; DEC-636): passa a nomear também o teste da validação de `finalReview`, `plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs`, e `plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`, que ganhou os casos de ponta a ponta dos critérios 1 a 3. Nenhum entregável, dependência ou critério de aceite muda.
 - v1.7 (2026-11-13): card E23 corrigido por delegação do dono (risco 4 do card; H1 do spec de E23): passa a nomear o teste do script do registro, `plugins/productivity-tools/scripts/run-record.test.mjs`, e o risco 4 fica resolvido. Nenhum entregável, dependência ou critério de aceite muda.
@@ -980,11 +981,12 @@ Linha de base: `docs/reports/2026-11-11-e15-linha-de-base/linha-de-base.md` (tag
 | E23 | chamadas opus | parada-retomada | 9 | 9 − 2: revisão de spec e de plano não repetidas na retomada | 7 | E13 |
 | E23 | ponderado | parada-retomada | 669 | 669 − 2 × 40 | 589 | E13 |
 | E12 | chamadas (principal) | coordinator | 4 | 4 − 4: o despacho passa ao workflow | 0 | E13 |
+| E12 | prosa carregada antes do lançamento do coordinator, bytes LF | estático | 56.508 (SRC-02 §1 em LF; DEC-682) | 56.508 − 50.508 | ≤ 6.000 | E13 |
 | E10 | total de chamadas (haiku + sonnet + opus) | completo | 23 | 23 − 1: a chamada git-truth entra na chamada do relatório (DEC-658) | ≤ 22, provisória, com a descoberta numa página (até 8.000 caracteres; cada página de cards soma 1 chamada haiku) | E13 |
 
-Sem meta numérica: E3 (o tracker não lança subagente; turnos não têm meta); E18 (o registro segue numa chamada de agente, que passa a rodar a CLI); E8, E19, E20, E9 e E7 (trocam autor ou conferência sem eliminar papel); E21 e E24 (modos desligados, DEC-021); bytes de E23 (a linha de base não isola a chamada da retomada); prosa de E12 (derivada no spec de E12 e registrada por nova revisão). Para esses vale só a regra de não piorar do portão.
+Sem meta numérica: E3 (o tracker não lança subagente; turnos não têm meta); E18 (o registro segue numa chamada de agente, que passa a rodar a CLI); E8, E19, E20, E9 e E7 (trocam autor ou conferência sem eliminar papel); E21 e E24 (modos desligados, DEC-021); bytes de E23 (a linha de base não isola a chamada da retomada). Para esses vale só a regra de não piorar do portão.
 
-As metas de E23 valem se a retomada do cenário mantiver spec e plano aprovados; o spec de E23 confirma. A meta de E10 é a que o spec de E10 declarou (DEC-658, com a emenda do dono sobre a descoberta em páginas, DEC-668).
+As metas de E23 valem se a retomada do cenário mantiver spec e plano aprovados; o spec de E23 confirma. A meta de E10 é a que o spec de E10 declarou (DEC-658, com a emenda do dono sobre a descoberta em páginas, DEC-668). A meta de prosa de E12 é a que o spec de E12 declarou (R9; DEC-682): conta a SKILL.md do plan-coordinator inteira mais as referências citadas antes de "## After the workflow returns", e é conferida em todo G1 por `prose-budget.test.mjs`.
 
 ## Riscos transversais
 
@@ -1035,6 +1037,7 @@ Nenhuma.
 | 1.7 | 2026-11-13 | Card E23 nomeia o teste do script do registro, `run-record.test.mjs` (risco 4) |
 | 1.8 | 2026-11-13 | Card E24 nomeia também `preflight.test.mjs` e `flow.test.mjs` entre os arquivos de teste (H1 do spec de E24) |
 | 1.9 | 2026-11-13 | Meta derivada de E10 fixada no valor do spec, com a condição da descoberta numa página (DEC-658, DEC-668) |
+| 2.0 | 2026-11-13 | Meta derivada de prosa de E12 registrada no valor do spec: ≤ 6.000 bytes LF antes do lançamento (R9; DEC-682) |
 
 ## Fontes
 

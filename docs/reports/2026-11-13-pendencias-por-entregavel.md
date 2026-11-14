@@ -36,6 +36,7 @@ Notas retiradas de `docs/plans/roadmap-evolucao-skills/state.md` por DEC-673 (pe
 ## E13
 
 - (executor) Texto de model.md em E4 sem prazo de publicação: W3 (questions só para retomada), W7 (releaseBranch ausente) e a parte de texto de W5 (relatório comportamental de E4).
+- (executor) Na execução real do coordinator, medir se a sessão lê plan.md antes do lançamento (B e C leram no comportamental de E12) e se informa a regra de permissão (C não citou).
 
 ## E28 ou próxima edição do release workflow
 
@@ -45,3 +46,4 @@ Notas retiradas de `docs/plans/roadmap-evolucao-skills/state.md` por DEC-673 (pe
 - (executor) Preflight/skill: diagnosticar "not found" do lançamento pelo nome como script acima de 512 KiB (docs/reports/2026-11-13-E8-limite-lancamento-workflow.md).
 - (executor) Defeito baixo (comportamental de E10): runPrompt (roadmap-release.js:1434) termina com BASH_ONLY, que pede lista vazia com error no-bash, incompatível com S_RUN {exit, stdout} e com script-runner.md:23; usar variante sem a frase da lista.
 - (executor) Próxima edição de roadmap-release.js (E28 ou fix): erro determinístico do script de descoberta ({ tool, error }) repete 5 vezes; parar na 1ª resposta com error. Tratar junto o defeito do BASH_ONLY em runPrompt.
+- (executor) run-record approve leva prep.baseline num argumento só (roadmap-release.js:1069 e 2088), sem guarda de tamanho; medir com baseline vermelho (revisão de fix/registro-8k, 2026-11-13).

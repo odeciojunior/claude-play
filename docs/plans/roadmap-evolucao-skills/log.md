@@ -3,6 +3,13 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E12 | Estratégia v2.0 (dono via Fable): meta de prosa de E12 (≤ 6.000 bytes LF, DEC-682); DEC-695 (fix/registro-8k antes de E27) e DEC-696 (canal do coordinator antes de E11); 6 pendências fechadas, 4 novas; custo de E12 em measurements.md. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
+| 2026-11-13 | E18 | DEC-672 e DEC-673 ratificadas sem emenda (Fable): fix/status-releitura mesclada em cb1f085 e poda feita em 7621307. | `decisions.md` |
+| 2026-11-13 | E12 | DEC-689 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E12 | DEC-684 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E12 | DEC-682 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E12 | DEC-677 ratificada pelo dono | `decisions.md` |
+| 2026-11-13 | E12 | Ratificação de E12 (Fable): 13 sem emenda, 4 com emenda. Têm alcance contrato no spec DEC-674, 676, 677, 678, 680, 682, 683, 687, 688 e 690, gravadas como local pelo relatório; alternativas descartadas nas rulings R1 a R16 do spec. | `decisions.md` |
 | 2026-11-13 | E12 | Comportamental de E12 depois do merge: entrada curta em pt e en monta a chamada do coordinator-workflow; 11/13; falha de prosa: a skill repassou autorização de outro plano (o código recusa); US$ 0,39. | `docs/reports/2026-11-13-E12-coordinator-workflow-comportamental.md` |
 | 2026-11-13 | E12 | r1 mesclou E12 (55b2b84), G1 1797/0, G2 a G5 verdes; US$ 26,65. Registro executando falhou (script-runner devolveu exit 2 e stdout vazio no grupo com 16 decisões): decisões gravadas pelo orquestrador. Descoberta paginada (6 chamadas) funcionou. | `docs/reports/2026-11-13-E12-run.md` |
 | 2026-11-13 | E12 | E12 passou para na-branch | `55b2b842c15ad1b144de7fe603520cefd5c4c86f`, `gates G1, G2, G3, G4, G5`, `docs/plans/evolucao-skills-E12/spec.md`, `docs/plans/evolucao-skills-E12/plan.md`, `docs/plans/evolucao-skills-E12/reviews.md` |
