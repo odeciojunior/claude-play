@@ -83,3 +83,13 @@ test('SKILL.md forbids adding approveRulings from doNow or resumeArgs', () => {
   assert.match(line, /person's own message/);
   assert.match(line, /never goes into `resumeWith`/);
 });
+
+test('SKILL.md treats missingDirs like missingRules and forbids composed shell commands', () => {
+  const m = /\n2\. \*\*Preflight\.\*\*[\s\S]*?\n3\. \*\*/.exec(skillMd);
+  assert.ok(m, 'step 2');
+  assert.ok(m[0].includes('--wt-root <wtRoot>'));
+  assert.ok(m[0].includes('missingDirs'));
+  for (const way of ['permissions.additionalDirectories', '--add-dir', '/add-dir']) assert.ok(m[0].includes(way), way);
+  assert.ok(skillMd.split('\n').some((l) => l.startsWith('- One simple command per Bash call')));
+  assert.ok(operatorMd.includes('--permission-mode acceptEdits --add-dir'));
+});
