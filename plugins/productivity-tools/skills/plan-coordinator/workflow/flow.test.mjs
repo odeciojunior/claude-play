@@ -154,7 +154,7 @@ const resign = (o) => {
   return JSON.stringify({ ...rest, digest: fnv1a(JSON.stringify(canon(rest))) });
 };
 // The same signed output with one character of the digest changed (the copy by the agent went wrong).
-const garble = (stdout) => stdout.replace(/("digest": ")([0-9a-f])(?=[0-9a-f]*"\s*\}\s*$)/, (_, a, c) => a + (c === '0' ? '1' : '0'));
+const garble = (stdout) => stdout.replace(/("digest": ?")([0-9a-f])(?=[0-9a-f]*"\s*\}\s*$)/, (_, a, c) => a + (c === '0' ? '1' : '0'));
 
 // A simulated runtime. The script-runner really runs the commands of progress.mjs and git; the implementer writes the files of its step
 // (read from the state on disk) without committing; the reviewers approve. over.impl(n, rec), over.review(rec) and over.runner(rec, res)
@@ -544,3 +544,83 @@ test('AC3: a kill after git commit and before its commit event resumes by findin
   assert.equal(sh(sb.dir, 'git', ['log', '-1', '--format=%s', end.steps[0].sha]), 'FX T1: ' + end.steps[0].title);
   assert.equal(sh(sb.dir, 'git', ['log', '--format=%s', '--grep', '^FX T1:']).split('\n').length, 1, 'T1 is committed once');
 }));
+
+// ---- E12: every command the agent runs stays under CMD_CAP (Git Bash cuts a bash -c string at 8186 characters)
+// A plan of N independent steps in one wave, built from the fixture (prose headings and data block).
+function widePlan(n) {
+  const text = readFileSync(FIXTURE_PLAN, 'utf8').replace(/\r\n/g, '\n');
+  const i = text.indexOf('```json data\n');
+  const j = text.indexOf('\n```', i + 13);
+  const data = JSON.parse(text.slice(i + 13, j));
+  const tpl = data.tasks[0];
+  data.tasks = Array.from({ length: n }, (_, k) => ({ ...tpl, n: k + 1, title: `Módulo ${k + 1}`, files: { create: [`src/m${k + 1}.mjs`], modify: [], test: [`tests/m${k + 1}.test.mjs`] }, produces: [], covers: k === 0 ? ['AC1'] : [] }));
+  data.id = 'FX';
+  const prose = ['# Plano FX -- Largo', '', 'SYNTHETIC FIXTURE', '', `Onda 1: T1 a T${n}, sem dependências.`, '', '## Tarefas', '',
+    ...data.tasks.flatMap((t) => [`### Tarefa ${t.n}: ${t.title}`, '', `Escrever o teste de \`m${t.n}\`, ver falhar, implementar, ver passar.`, ''])];
+  return prose.join('\n') + '\n## Bloco de dados\n\n```json data\n' + JSON.stringify(data, null, 2) + '\n```\n';
+}
+const longSummary = (n) => Array.from({ length: 5 }, (_, k) => `line ${k + 1} of T${n}: ` + 'ç'.repeat(80)).join('\n');
+const applyCmds = (sim) => runnerCmds(sim).filter((c) => / apply /.test(c));
+const decodeEvents = (cmd) => JSON.parse(decodeURIComponent(/--events '([^']*)'/.exec(cmd)[1]));
+
+test('E12: a wave (4 steps at most) with long accented reports applies them in chunks of at most 6000 characters, once and in order', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { impl: (n) => ({ status: 'DONE', summary: longSummary(n), checks: [{ command: 'x', output: 'ok', exit: 0 }] }) });
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'done', JSON.stringify(r));
+  const cmds = applyCmds(sim);
+  assert.ok(runnerCmds(sim).every((c) => c.length <= 6000), 'no command above 6000: ' + runnerCmds(sim).map((c) => c.length).sort((a, b) => b - a).slice(0, 3));
+  const reportChunks = cmds.map(decodeEvents).filter((p) => p.events.some((e) => e.type === 'report' && e.value === 'pass'));
+  assert.ok(reportChunks.length >= 2, 'the reports needed more than one chunk: ' + reportChunks.length);
+  const order = reportChunks.flatMap((p) => p.events.filter((e) => e.type === 'report').map((e) => e.step));
+  assert.deepEqual(order, [1, 2, 3, 4, 5, 6, 7], 'each report applied once, in order');
+  // each chunk starts from the digest the previous one left on disk
+  const history = readState(sb).history.filter((h) => h.event === 'report').map((h) => h.step);
+  assert.deepEqual(history, [1, 2, 3, 4, 5, 6, 7]);
+  const st = readState(sb);
+  assert.equal(st.run.status, 'completed');
+  assert.ok(st.steps.every((s) => s.status === 'pass'));
+  console.log('# chunk sizes of the reports:', cmds.map((c) => c.length).join(','));
+}, { plan: widePlan(7) }));
+
+test('E12: a chunk that fails stops the next chunks and writes nothing of itself', () => withSandbox(async (sb) => {
+  let seen = 0;
+  let refused = null;
+  const sim = makeSim(sb, {
+    impl: (n) => ({ status: 'DONE', summary: longSummary(n), checks: [{ command: 'x', output: 'ok', exit: 0 }] }),
+    runner: (rec, res) => {
+      if (!/ apply /.test(rec.cmd) || !decodeEvents(rec.cmd).events.some((e) => e.type === 'report')) return undefined;
+      if (++seen === 2) { refused = rec.cmd; const o = JSON.parse(res.stdout); return { exit: 1, stdout: resign({ ...o, ok: false, code: 'wrong-status' }) }; }
+      return undefined;
+    },
+  });
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'error', JSON.stringify(r));
+  assert.match(r.error, /refused the events/);
+  assert.equal(seen, 2, 'the chunks after the failed one are not sent');
+  assert.equal(applyCmds(sim).at(-1), refused, 'no apply after the refused chunk');
+  assert.equal(readState(sb).history.filter((h) => h.event === 'report').length, 2, 'only the first chunk (2 reports) is on disk');
+}, { plan: widePlan(7) }));
+
+test('E12: a single event whose command alone is above the cap fails before any apply is dispatched', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { impl: () => ({ status: 'DONE', summary: '漢'.repeat(600), checks: [{ command: 'x', output: 'ok', exit: 0 }] }) });
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'error', JSON.stringify(r));
+  assert.match(r.error, /single event.*above the limit of 6000.*not dispatched/);
+  assert.ok(runnerCmds(sim).every((c) => c.length <= 6000));
+  assert.equal(readState(sb).steps[0].status, 'launched', 'nothing of the reports was written');
+}));
+
+test('E12: a state of many steps is read in signed pages and the run uses all of it', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { impl: (n) => ({ status: 'DONE', summary: longSummary(n), checks: [{ command: 'x', output: 'ok', exit: 0 }] }) });
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'done', JSON.stringify(r));
+  assert.equal(readState(sb).steps.length, 40);
+  // a new run over the big finished state reads it in pages and sees every step
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const reads = runnerCmds(sim2).filter((c) => / read /.test(c));
+  assert.ok(reads.some((c) => / --page 1 /.test(c)), 'a second page was read: ' + reads.length);
+  assert.ok(runnerCmds(sim2).every((c) => c.length <= 6000));
+  assert.equal(byAgent(sim2, IMPL).length, 0, 'every step is seen as passed');
+}, { plan: widePlan(40) }));

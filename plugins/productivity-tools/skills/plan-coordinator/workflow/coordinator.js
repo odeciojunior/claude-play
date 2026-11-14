@@ -1085,30 +1085,50 @@ const readSigned = async (label, first) => {
       why = 'the signed read has no valid progress/1 state'
       continue
     }
-    return { data }
+    // A big state comes in pages (page 0 with the state, the others with steps only): every page is signed and carries the digest of the whole state.
+    const pages = Number.isInteger(data.pages) ? data.pages : 1
+    const steps = data.state.steps.slice()
+    let bad = ''
+    for (let pg = 1; pg < pages && !bad; pg++) {
+      const pn = nonceOf()
+      const po = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(pn)} --page ${pg} --json`,
+        `${label}-page${pg}`, { phase: 'Read', model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+      const pd = parseJson(po && po.stdout)
+      const pv = checkSigned(pd, pn, 'read')
+      if (!pv.ok) bad = pv.error
+      else if (pd.page !== pg || pd.stateDigest !== data.stateDigest || !Array.isArray(pd.steps)) bad = `page ${pg} of the signed read does not belong to the same state`
+      else steps.push(...pd.steps)
+    }
+    if (!bad && pages > 1 && stateDigest({ ...data.state, steps }) !== data.stateDigest) bad = 'the pages of the signed read do not add up to the state they sign'
+    if (bad) { why = bad; continue }
+    return { data: pages > 1 ? { ...data, state: { ...data.state, steps } } : data }
   }
   return { why }
 }
 
 const divergence = (message) => stopWith('state-divergence', { message })
 
-// Writes the queued events in ONE signed apply. Returns null when they are on disk, else the result to return.
-// A write is not repeated blindly: an output that does not check leads to a new read, and the batch is sent again
-// only when the state read still has the digest the batch started from.
-const flush = async (why) => {
-  if (queued.length === 0) return null
+// Git Bash cuts a `bash -c` string near 8186 characters and the Bash tool wraps about 500 more: an apply command stays under CMD_CAP.
+const CMD_CAP = 6000
+const applyCmd = (expect, events, nonce) => `node ${shq(PROGRESS)} apply ${shq(STATE_FILE)} --events ${shq(eventsPayload(expect, events))} --nonce ${shq(nonce)} --json`
+
+// One signed apply of consecutive events on top of DISK. Returns null when they are on disk, else the result to return.
+// A write is not repeated blindly: an output that does not check leads to a new read, and the chunk is sent again
+// only when the state read still has the digest the chunk started from.
+const flushChunk = async (why, events) => {
   const expect = stateDigest(DISK)
-  const want = stateDigest(S)
-  const events = queued.slice()
-  const written = (now) => { DISK = S; queued.length = 0; if (now) NOW = now; return null }
+  const after = applyEvents(DISK, events, NOW)
+  if (!after.ok) return failWith(`the local state refused the queued events: ${after.code} at event ${after.index}`)
+  const want = stateDigest(after.state)
+  const written = (now) => { DISK = after.state; queued.splice(0, events.length); if (now) NOW = now; return null }
   for (let attempt = 1; attempt <= 2; attempt++) {
     const nonce = nonceOf()
-    const out = await runCmd(`node ${shq(PROGRESS)} apply ${shq(STATE_FILE)} --events ${shq(eventsPayload(expect, events))} --nonce ${shq(nonce)} --json`,
+    const out = await runCmd(applyCmd(expect, events, nonce),
       `apply:${why}${attempt > 1 ? '-retry' : ''}`, { phase: 'Read', writes: true })
     const data = parseJson(out && out.stdout)
     if (checkSigned(data, nonce, 'apply').ok) {
       if (data.ok !== true) {
-        if (data.code === 'concurrent-change') return divergence('progress.json changed while the run was writing (concurrent-change); nothing was written')
+        if (data.code === 'concurrent-change') return divergence('progress.json changed while the run was writing (concurrent-change); this chunk was not written')
         return failWith(`progress.mjs refused the events: ${data.code}${Number.isInteger(data.index) ? ` at event ${data.index} (${events[data.index] && events[data.index].type})` : ''}`)
       }
       if (data.stateDigest !== want) return divergence('the state written by progress.mjs differs from the state this run computed')
@@ -1122,6 +1142,27 @@ const flush = async (why) => {
     NOW = rd.data.now
   }
   return failWith('the events could not be written')
+}
+
+// Writes the queued events in order, in signed applies of at most CMD_CAP characters each. Every chunk starts from the digest
+// the previous one left on disk; a failed chunk stops the next ones and nothing of it is half-applied. Returns null when all are on disk.
+const flush = async (why) => {
+  if (queued.length === 0) return null
+  const events = queued.slice()
+  const sizing = 'x'.repeat(24)
+  const chunks = []
+  for (const ev of events) {
+    const k = chunks.length - 1
+    if (k >= 0 && applyCmd(stateDigest(DISK), [...chunks[k], ev], sizing).length <= CMD_CAP) chunks[k].push(ev)
+    else chunks.push([ev])
+  }
+  const big = chunks.map((c) => applyCmd(stateDigest(DISK), c, sizing).length).find((n) => n > CMD_CAP)
+  if (big) return failWith(`a single event makes an apply command of ${big} characters, above the limit of ${CMD_CAP}: not dispatched`)
+  for (let k = 0; k < chunks.length; k++) {
+    const r = await flushChunk(chunks.length > 1 ? `${why}-${k + 1}of${chunks.length}` : why, chunks[k])
+    if (r) return r
+  }
+  return null
 }
 // Writes what is queued, then returns the result, unless the write itself fails.
 const finish = async (result) => (await flush('return')) || result

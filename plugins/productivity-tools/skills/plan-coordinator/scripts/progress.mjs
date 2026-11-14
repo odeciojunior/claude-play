@@ -18,7 +18,7 @@ const USAGE = [
   '     node progress.mjs next <progress.json> [--json]',
   '     node progress.mjs apply <progress.json> <evento> [--step <n>] [--steps <n,...>] [--value <v>] [--text <t>] [--agent-id <id>] [--sha <sha>] [--tier <t>] [--json]',
   '     node progress.mjs apply <progress.json> --events <carga> --nonce <n> [--json]',
-  '     node progress.mjs read <progress.json> --nonce <n> [--json]',
+  '     node progress.mjs read <progress.json> --nonce <n> [--page <k>] [--json]',
   '     node progress.mjs token',
   '     node progress.mjs show <progress.json>',
   '     node progress.mjs select [--query <texto>] [--root <pasta>] [--json]',
@@ -82,6 +82,20 @@ function defaultBase(cwd) {
   const cur = git(cwd, ['symbolic-ref', '--short', 'HEAD']);
   if (cur === def) return sha;
   return git(cwd, ['merge-base', def, 'HEAD']);
+}
+
+// Groups steps in pages whose compact JSON stays under READ_PAGE_CHARS (a step alone above it gets a page of its own).
+export const READ_PAGE_CHARS = 20000;
+export function readPages(steps) {
+  const pages = [[]];
+  let size = 0;
+  for (const st of steps) {
+    const n = JSON.stringify(st).length + 1;
+    if (size + n > READ_PAGE_CHARS && pages[pages.length - 1].length > 0) { pages.push([]); size = 0; }
+    pages[pages.length - 1].push(st);
+    size += n;
+  }
+  return pages;
 }
 
 function parseArgs(rest, valued, flags) {
@@ -235,7 +249,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   try {
     if (cmd === 'init') parsed = parseArgs(rest, ['--spec', '--max-width', '--piece', '--base', '--commits'], ['--restart', '--json']);
     else if (cmd === 'apply') parsed = parseArgs(rest, ['--step', '--steps', '--value', '--text', '--agent-id', '--sha', '--tier', '--events', '--nonce'], ['--json']);
-    else if (cmd === 'read') parsed = parseArgs(rest, ['--nonce'], ['--json']);
+    else if (cmd === 'read') parsed = parseArgs(rest, ['--nonce', '--page'], ['--json']);
     else if (cmd === 'next') parsed = parseArgs(rest, [], ['--json']);
     else parsed = parseArgs(rest, [], []);
   } catch (e) {
@@ -366,8 +380,14 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     }
     const base = path.dirname(path.resolve(file));
     const g = git(base, ['rev-parse', '--show-toplevel']);
-    const body = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, state: { ...state, history: [] } };
-    out(JSON.stringify(signed(body), null, 2));
+    // The output stays under 30 KB (the Bash tool spills more to a file): compact JSON, and the steps split into pages of READ_PAGE_CHARS.
+    // Page 0 carries the state without its steps' tail; the other pages carry only steps. stateDigest is of the whole state, the same on every page.
+    const page = opts.page === undefined ? 0 : Number(opts.page);
+    const pages = readPages(state.steps);
+    if (!Number.isInteger(page) || page < 0 || page >= pages.length) return bad('--page deve ser um inteiro de 0 a ' + (pages.length - 1));
+    const head = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, page, pages: pages.length, stateDigest: stateDigest(state) };
+    const body = page === 0 ? { ...head, state: { ...state, history: [], steps: pages[0] } } : { ...head, steps: pages[page] };
+    out(JSON.stringify(signed(body)));
     return 0;
   }
 
