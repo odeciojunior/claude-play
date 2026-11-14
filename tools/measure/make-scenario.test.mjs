@@ -6,7 +6,8 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree } from './make-scenario.mjs';
+import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree, NATIVE_PATHS, NATIVE_SEEDS, readNativeSeeds, prepareNativeBranch, manifestEntries } from './make-scenario.mjs';
+import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,9 +24,10 @@ test('lists every variant of the spec table', () => {
     'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
     'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
+    'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
   ].sort());
-  assert.equal(VARIANTS.length, 15);
-  assert.equal(VARIANTS[VARIANTS.length - 1], 'plan-author');
+  assert.equal(VARIANTS.length, 19);
+  assert.equal(VARIANTS[VARIANTS.length - 1], 'plano-nativo-B');
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
@@ -147,8 +149,8 @@ async function checkSeeded(variant) {
   const t = tmp('sb');
   try {
     const s = await makeScenario(t.dir, variant);
-    const { class: cls, artifact } = artifactOf(variant);
-    const entries = manifest.filter((e) => e.class === cls && e.artifact === artifact);
+    const { class: cls } = artifactOf(variant);
+    const entries = manifestEntries(variant);
     assert.ok(entries.length > 0, 'no manifest entries for ' + variant);
     assert.deepEqual(s.seeded, entries.map((e) => e.id));
     assert.ok(s.seededCommit);
@@ -157,8 +159,8 @@ async function checkSeeded(variant) {
     for (const e of entries) {
       const mod = await sentinel(e);
       assert.ok(changed.includes(e.file), e.id + ': file not changed in the seeded commit');
-      assert.equal(mod.present(t.dir, s.seededCommit), true, e.id + ': sentinel absent after seeding');
-      if (cls !== 'code') assert.equal(mod.present(t.dir, s.seededCommit + '^'), false, e.id + ': sentinel present in the clean artifact');
+      assert.equal(mod.present(t.dir, s.seededCommit, e.id), true, e.id + ': sentinel absent after seeding');
+      if (cls !== 'code') assert.equal(mod.present(t.dir, s.seededCommit + '^', e.id), false, e.id + ': sentinel present in the clean artifact');
       assert.equal(s.seededBlobs[e.file], git(t.dir, 'rev-parse', s.seededCommit + ':' + e.file));
     }
     git(t.dir, 'checkout', '-q', 'main');
@@ -189,14 +191,15 @@ async function checkSeeded(variant) {
 }
 
 test('every manifest entry is seeded by exactly one variant', () => {
-  assert.equal(manifest.length, 27);
+  const legacy = manifest.filter((x) => !x.set);
+  assert.equal(legacy.length, 27);
   for (const cls of ['plan', 'spec', 'code']) {
-    const own = manifest.filter((x) => x.class === cls);
+    const own = legacy.filter((x) => x.class === cls);
     assert.equal(own.filter((x) => x.detectedBy === 'reviewer').length, 8, cls);
   }
   assert.equal(manifest.filter((x) => x.detectedBy === 'code').length, 3);
   for (const e of manifest) {
-    const n = VARIANTS.filter((v) => { const a = artifactOf(v); return a && a.class === e.class && a.artifact === e.artifact; }).length;
+    const n = VARIANTS.filter((v) => { const a = artifactOf(v); return a && a.class === e.class && a.artifact === e.artifact && a.set === (e.set ?? 'e5'); }).length;
     assert.equal(n, 1, e.id);
   }
 });
@@ -250,7 +253,7 @@ test('retries the sandbox suite on EADDRINUSE', () => {
 });
 
 test('seeded history never names the seeding', async () => {
-  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo', 'spec-semeado-A', 'spec-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B']) {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-semeado-codigo', 'spec-semeado-A', 'spec-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B', 'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B']) {
     const t = tmp('sb');
     try {
       await makeScenario(t.dir, v);
@@ -363,7 +366,7 @@ const PLAN_FORMATS = {
 };
 // Formats without a task that runs the bare suite / declares the sandbox-port lock cannot take P3 / P6.
 const NO_ANCHOR = { 'real-2': { P3: 'P3: anchor not found', P6: 'P6: anchor not found' } };
-const planEntries = manifest.filter((e) => e.class === 'plan');
+const planEntries = manifest.filter((e) => e.class === 'plan' && !e.set);
 
 function planRepo(format) {
   const t = tmp('plan');
@@ -629,6 +632,232 @@ test('E20: the legacy plan has no data block and names the sandbox roadmap', asy
     const text = readFileSync(join(t.dir, E20_PATHS.plan), 'utf8');
     assert.equal(readDataBlock(text).error.code, 'data-block-missing');
     assert.ok(text.includes('**Roadmap:** docs/plans/roadmap-sandbox/'));
+  } finally {
+    t.done();
+  }
+});
+
+// E26 A3: native spec and plan of E5, copied from the 2nd probe (release/sandbox, plugin c5658cf).
+const NATIVE_DIR = join(here, 'scenario', 'e5-native');
+const NATIVE_SHA = {
+  spec: 'fa68eb1f1c1c017003beffb380887cb6143f3012b4136a5b1dc5a4dcbe1d7cec',
+  plan: '6d486e526820c082cfe008a63765acbc1377236ff69334285979f7c145c0da30',
+};
+const NATIVE_BLOB = { spec: '52e8d1fd302041c0383d5df3ef503669e0d12c2e', plan: '36fc2dffb82273a2fa6f260d713876671372b76f' };
+const PLUGIN = resolve(here, '..', '..', 'plugins/productivity-tools');
+const SPEC_TOOL = join(PLUGIN, 'scripts/spec-tool.mjs');
+const PLAN_TOOL = join(PLUGIN, 'scripts/plan-tool.mjs');
+
+test('E26: native seeds are LF copies whose sha256 matches the probe blobs', () => {
+  for (const k of ['spec', 'plan']) {
+    const bytes = readFileSync(join(NATIVE_DIR, k + '.md'));
+    assert.ok(!bytes.includes(13), k + ' has CR');
+    assert.equal(sha(bytes), NATIVE_SHA[k], k);
+    assert.equal(NATIVE_SEEDS[k].sha256, NATIVE_SHA[k], k);
+    assert.equal(NATIVE_SEEDS[k].file, 'scenario/e5-native/' + k + '.md');
+  }
+});
+
+test('E26: NATIVE_PATHS comes from artifactPaths of the measured workflow', () => {
+  assert.deepEqual(NATIVE_PATHS, loadPure().artifactPaths('sandbox', 'E5'));
+  assert.equal(NATIVE_PATHS.spec, 'docs/plans/sandbox-E5/spec.md');
+  assert.equal(NATIVE_PATHS.plan, 'docs/plans/sandbox-E5/plan.md');
+});
+
+test('E26: readNativeSeeds refuses a seed whose sha256 diverges', () => {
+  const t = tmp('seeds');
+  try {
+    mkdirSync(t.dir, { recursive: true });
+    writeFileSync(join(t.dir, 'spec.md'), readFileSync(join(NATIVE_DIR, 'spec.md')));
+    writeFileSync(join(t.dir, 'plan.md'), readFileSync(join(NATIVE_DIR, 'plan.md')));
+    assert.deepEqual(Object.keys(readNativeSeeds(t.dir)).sort(), ['plan', 'spec']);
+    writeFileSync(join(t.dir, 'plan.md'), readText(join(NATIVE_DIR, 'plan.md')) + 'x\n');
+    assert.throws(() => readNativeSeeds(t.dir), /plan.*sha256/);
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: prepareNativeBranch commits the probe blobs at NATIVE_PATHS on feat/E5', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true });
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feat/E5');
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.spec), NATIVE_BLOB.spec);
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.plan), NATIVE_BLOB.plan);
+    assert.deepEqual(git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(plan): E5 text utilities plan', 'docs(spec): E5 text utilities design']);
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+    const roadmap = join(t.dir, 'docs/plans/roadmap-sandbox');
+    const s = spawnSync(process.execPath, [SPEC_TOOL, 'check', join(t.dir, NATIVE_PATHS.spec), '--roadmap', roadmap], { encoding: 'utf8' });
+    assert.equal(s.status, 0, s.stdout + s.stderr);
+    const p = spawnSync(process.execPath, [PLAN_TOOL, 'check', join(t.dir, NATIVE_PATHS.plan), '--spec', join(t.dir, NATIVE_PATHS.spec)], { encoding: 'utf8' });
+    assert.equal(p.status, 0, p.stdout + p.stderr);
+    const u = tmp('sb');
+    try {
+      await makeScenario(u.dir, 'completo');
+      prepareNativeBranch(u.dir, { withPlan: false });
+      assert.deepEqual(git(u.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(spec): E5 text utilities design']);
+    } finally {
+      u.done();
+    }
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: makeScenario returns scenario.paths (legacy paths for the old variants)', async () => {
+  const t = tmp('sb');
+  try {
+    const s = await makeScenario(t.dir, 'plano-semeado-A');
+    assert.deepEqual(s.paths, E5_PATHS);
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: seedSourceOf describes the native seeds of the 2nd probe', () => {
+  assert.deepEqual(seedSourceOf(undefined, { set: 'e5-native' }), {
+    kind: 'nativo-sonda-2', spec: 'scenario/e5-native/spec.md', plan: 'scenario/e5-native/plan.md',
+    specSha256: NATIVE_SHA.spec, planSha256: NATIVE_SHA.plan, probePluginCommit: 'c5658cf',
+  });
+  assert.throws(() => seedSourceOf('/some/run', { set: 'e5-native' }), /--from-run/);
+  assert.equal(seedSourceOf().kind, 'sintetico');
+});
+
+// E26 T4: native defects, one module (sentinels/native.mjs) driven by the id.
+const NATIVE_VARIANTS = ['plano-nativo-A', 'plano-nativo-B', 'spec-nativo-A', 'spec-nativo-B'];
+const NATIVE_IDS = {
+  'plano-nativo-A': ['P1', 'P2', 'P9', 'P4'],
+  'plano-nativo-B': ['P5', 'P6', 'P10', 'P8'],
+  'spec-nativo-A': ['SN1', 'SN2', 'SN3', 'SN4'],
+  'spec-nativo-B': ['SN5', 'SN6', 'SN7', 'SN8'],
+};
+const COUPLED = { 'plano-nativo-A': 'P1', 'plano-nativo-B': 'P10', 'spec-nativo-A': 'SN2', 'spec-nativo-B': 'SN7' };
+const nativeEntries = manifest.filter((e) => e.set === 'e5-native');
+const PURE = loadPure();
+const RM = 'docs/plans/roadmap-sandbox/';
+
+// The plan gaps of the workflow, recomposed from its pure functions over the plan-tool emit and the card E5.
+function nativePlanGaps(sandbox) {
+  const r = spawnSync(process.execPath, [PLAN_TOOL, 'emit', join(sandbox, NATIVE_PATHS.plan), '--spec', join(sandbox, NATIVE_PATHS.spec)], { encoding: 'utf8' });
+  const ld = PURE.checkPlanLoad({ emitExit: r.status, emitStdout: r.stdout, checkStdout: r.stderr, blob: '0'.repeat(40) }, { E: 'E5', RM });
+  if (!ld.ok) return ['plan load: ' + ld.why];
+  const strategy = readText(join(sandbox, RM, 'strategy.md'));
+  const card = strategy.slice(strategy.indexOf('<!-- roadmap:card id=E5 '));
+  const block = /<!-- roadmap:acceptance -->\n([\s\S]*?)\n<!-- \/roadmap:acceptance -->/.exec(card)[1];
+  const cardAc = block.split('\n').filter((l) => /^\d+\. /.test(l)).map((l, i) => {
+    const text = l.replace(/^\d+\. /, '');
+    return { id: 'AC' + (i + 1), text, tag: PURE.parseVerifyTag(text) };
+  });
+  assert.equal(cardAc.length, 3);
+  const locks = JSON.parse(readText(join(sandbox, RM, 'release.config.json'))).locks.filter((n) => n !== 'merge');
+  const tasks = PURE.tasksFromPlan(ld.plan);
+  const ac = PURE.evidenceFromPlan(ld.plan);
+  return [
+    ...PURE.evidenceGaps(cardAc, ac, new Set()),
+    ...PURE.externalGaps(tasks),
+    ...PURE.evidenceExternalGaps(cardAc, ac),
+    ...tasks.filter((t, i) => t.n !== i + 1).map((t) => ({ description: 'task numbers must run 1..N' })),
+    ...tasks.flatMap((t) => (t.needsLock || []).filter((n) => !locks.includes(n)).map((n) => ({ description: 'unknown lock ' + n }))),
+  ].map((g) => g.description);
+}
+
+function toolCheck(sandbox, cls) {
+  const args = cls === 'spec'
+    ? [SPEC_TOOL, 'check', join(sandbox, NATIVE_PATHS.spec), '--roadmap', join(sandbox, RM)]
+    : [PLAN_TOOL, 'check', join(sandbox, NATIVE_PATHS.plan), '--spec', join(sandbox, NATIVE_PATHS.spec)];
+  return spawnSync(process.execPath, args, { encoding: 'utf8' });
+}
+
+test('E26: native manifest entries carry set, file, seed, sha256, sentinel and the E11 notes', () => {
+  assert.deepEqual(nativeEntries.map((e) => e.id).sort(), Object.values(NATIVE_IDS).flat().sort());
+  for (const e of nativeEntries) {
+    assert.equal(e.file, NATIVE_PATHS[e.class], e.id);
+    assert.equal(e.seed, NATIVE_SEEDS[e.class].file, e.id);
+    assert.equal(e.seedSha256, NATIVE_SEEDS[e.class].sha256, e.id);
+    assert.equal(e.sentinel, 'sentinels/native.mjs', e.id);
+    assert.equal(e.detectedBy, 'reviewer', e.id);
+    assert.ok(['prose', 'json', 'coupled'].includes(e.where), e.id);
+    if (e.replaces) assert.ok(typeof e.noteE11 === 'string' && e.noteE11.length > 20, e.id + ': replacement without noteE11');
+  }
+  const byId = Object.fromEntries(nativeEntries.map((e) => [e.id, e]));
+  assert.equal(byId.P9.replaces, 'P3');
+  assert.ok(byId.P9.noteE11 && byId.P6.noteE11);
+  assert.equal(byId.P10.replaces, 'P7');
+  for (const v of NATIVE_VARIANTS) {
+    assert.deepEqual(manifestEntries(v).map((e) => e.id), NATIVE_IDS[v], v);
+    assert.deepEqual(manifestEntries(v).filter((e) => e.where === 'coupled').map((e) => e.id), [COUPLED[v]], v);
+    assert.equal(artifactOf(v).set, 'e5-native');
+  }
+  assert.equal(artifactOf('plano-semeado-A').set, 'e5');
+  assert.deepEqual(manifestEntries('plano-semeado-A').map((e) => e.id), ['P1', 'P2', 'P3', 'P4']);
+});
+
+test('E26: readNativeSeeds refuses a manifest sha256 that diverges from the copy', () => {
+  assert.throws(() => readNativeSeeds(undefined, { plan: '0'.repeat(64) }), /plan.*sha256/);
+});
+
+test('E26: native variants seed every defect in one commit; the product tools still pass', async () => {
+  for (const v of NATIVE_VARIANTS) {
+    const { s } = await checkSeeded(v);
+    assert.deepEqual(s.paths, NATIVE_PATHS, v);
+    assert.deepEqual(s.prompts, v.startsWith('plano') ? ['/productivity-tools:roadmap-release plan-only E5'] : [], v);
+    assert.equal(s.seededSubject, v.startsWith('plano') ? 'docs(plan): E5 refine plan' : 'docs(spec): E5 clarify design');
+    const t = tmp('sb');
+    try {
+      const sc = await makeScenario(t.dir, v);
+      git(t.dir, 'checkout', '-q', 'feat/E5');
+      const cls = artifactOf(v).class;
+      const r = toolCheck(t.dir, cls);
+      assert.equal(r.status, 0, v + ': ' + r.stdout + r.stderr);
+      if (cls === 'plan') assert.deepEqual(nativePlanGaps(t.dir), [], v);
+      assert.deepEqual(Object.keys(sc.seededBlobs), [NATIVE_PATHS[cls]]);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('E26: each native defect alone passes the product tools and its sentinel', async () => {
+  const native = await import(pathToFileURL(join(here, 'defects', 'sentinels', 'native.mjs')).href);
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true });
+    const clean = git(t.dir, 'rev-parse', 'HEAD');
+    for (const e of nativeEntries) {
+      assert.equal(native.present(t.dir, clean, e.id), false, e.id + ': present on the clean artifact');
+      native.seed(t.dir, e.id);
+      git(t.dir, 'commit', '-q', '-am', 'x');
+      assert.equal(native.present(t.dir, 'HEAD', e.id), true, e.id + ': absent after seeding');
+      const r = toolCheck(t.dir, e.class);
+      assert.equal(r.status, 0, e.id + ': ' + r.stdout + r.stderr);
+      if (e.class === 'plan') assert.deepEqual(nativePlanGaps(t.dir), [], e.id);
+      git(t.dir, 'reset', '-q', '--hard', clean);
+    }
+  } finally {
+    t.done();
+  }
+});
+
+test('E26: a coupled defect stays present while either place still has it', async () => {
+  const native = await import(pathToFileURL(join(here, 'defects', 'sentinels', 'native.mjs')).href);
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true });
+    const clean = git(t.dir, 'rev-parse', 'HEAD');
+    for (const id of Object.values(COUPLED)) {
+      for (const only of ['prose', 'json']) {
+        native.seed(t.dir, id, { only });
+        git(t.dir, 'commit', '-q', '-am', 'x');
+        assert.equal(native.present(t.dir, 'HEAD', id), true, id + ' ' + only);
+        git(t.dir, 'reset', '-q', '--hard', clean);
+      }
+    }
+    assert.throws(() => native.present(t.dir, 'HEAD'), /id/);
+    assert.throws(() => native.seed(t.dir, 'P3'), /P3/);
   } finally {
     t.done();
   }

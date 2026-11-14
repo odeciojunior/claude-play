@@ -394,7 +394,7 @@ export function settleSandbox(sandbox, seededCommit) {
 async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = true) {
   const art = artifactOf(variant);
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
-  const entries = manifest.filter((m) => m.class === art.class && m.artifact === art.artifact);
+  const entries = manifest.filter((m) => m.class === art.class && m.artifact === art.artifact && (m.set ?? 'e5') === (art.set ?? 'e5'));
   const presents = [];
   for (const e of entries) {
     if (!reachable) {
@@ -403,7 +403,7 @@ async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = 
     }
     try {
       const mod = await import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
-      presents.push(mod.present(scenario.dir, 'feat/E5'));
+      presents.push(mod.present(scenario.dir, 'feat/E5', e.id));
     } catch {
       presents.push(null);
     }
