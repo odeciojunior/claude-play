@@ -1,7 +1,7 @@
 export const meta = {
   name: 'coordinator-workflow',
   description: 'Runs the waves of an approved plan/1: dispatches each wave in parallel, reviews each step, commits in series after the wave, runs the wave gate against the baseline and records every transition in the signed progress state',
-  whenToUse: 'Execute a written plan with plan-coordinator without a main-session loop. Example args: {"plan":"<abs path to plan.md>","state":"<abs path to progress.json>","runToken":"<token from progress.mjs token>","progress":"<abs path to scripts/progress.mjs>","authorizeExternal":["plan:T3@<8 hex>"],"test":"<test command>"}',
+  whenToUse: 'Launched only by the plan-coordinator skill after its select, init and token steps; never call it directly: to execute a plan, use the plan-coordinator skill. Args it passes: {"plan":"<abs path to plan.md>","state":"<abs path to progress.json>","runToken":"<token from progress.mjs token>","progress":"<abs path to scripts/progress.mjs>","test":"<test command>"}',
   phases: [
     { title: 'Read', detail: 'signed read of the progress state and plan check' },
     { title: 'Wave', detail: 'parallel implementers of the open steps whose dependencies passed' },
