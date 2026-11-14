@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E27 | Passada A (peça 1): revisor por tarefa sonnet 40/40 contra opus 40/40, 40 válidas por braço, 0 inválidas; diferença 0 < 6 (DEC-699): sem diferença mensurável, sonnet fica pela regra. US$ 8,60 (teto 35). Linha de política na ratificação. | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md` |
 | 2026-11-13 | E27 | fix/measure-e27 mesclada (DEC-700): --review-model obrigatório em task-review (esforço como effortFor), --plugin-dir absoluto repassado e gravado, recusa sem task-reviewer.md, harnessCommit, achados por tentativa. Revisão opus aprovou; G1 1812/0. | `e1c3ae8` |
 | 2026-11-13 | E10 | fix/registro-8k mesclada (DEC-695): CMD_CAP 6.000 no grupo do registro e no check; whenToUse do coordinator-workflow manda à skill; frase da SKILL.md com teste. Revisão opus aprovou; comportamental 3 trechos ok e sessão C 2/2; G1 1802/0; script 239.420 LF. | `e039707` |
 | 2026-11-13 | E12 | Estratégia v2.0 (dono via Fable): meta de prosa de E12 (≤ 6.000 bytes LF, DEC-682); DEC-695 (fix/registro-8k antes de E27) e DEC-696 (canal do coordinator antes de E11); 6 pendências fechadas, 4 novas; custo de E12 em measurements.md. | `docs/plans/2026-11-10-roadmap-evolucao-skills.md` |
