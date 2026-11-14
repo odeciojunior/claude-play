@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E11 | fix/coordinator-canal integrada (DEC-696): apply em trechos de até 6.000 caracteres com cadeia de digest, read paginado (~20.000 por página). Revisão opus/high APPROVE. G1 1819/0, G2 e G3 passam. | `031c9c1` |
+| 2026-11-14 | E27 | fix/task-reviewer-retomada integrada (DEC-708): regra afirmativa de tarefa retomada, sem re-rodar check com trava ou efeito externo (achado I1 da revisão opus/high, APPROVE). G1 1813/0. | `df2a48f` |
 | 2026-11-13 | E8 | Errata: DEC-712 e DEC-713 citam BLQ-15, mas o bloqueio aberto em b930d2a é BLQ-16 (o block-open numerou depois de redigidas). Leia BLQ-16 nas duas. | `state.md (blockers)` |
 | 2026-11-13 | E8 | BLQ-16 aberto: Releitura do registro por cópia de modelo reprova registro correto: plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | `docs/reports/2026-11-14-E8-plan-only-sandbox.md` |
 | 2026-11-13 | E8 | Trio de E8, passo 1: plan-only atendeu os 5 critérios (spec e plano nativos, nada em superpowers, sem pergunta, painel plan, checker 0), mas terminou FAILED: releitura haiku pôs ok no campo status de S_RECORD_READ. Sonda não rodou. US$ 1,48. | `docs/reports/2026-11-14-E8-plan-only-sandbox.md` |
