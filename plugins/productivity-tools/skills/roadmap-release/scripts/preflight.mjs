@@ -2,7 +2,7 @@
 // Preflight for the roadmap-release skill: validates (or derives) release.config.json
 // and checks permission rules. Read-only: it never writes any file or setting.
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve, isAbsolute, relative, sep, dirname, posix } from 'node:path';
+import { join, resolve, isAbsolute, relative, sep, dirname, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -312,26 +312,28 @@ export function missingRules(required, settingsList, commandsByRule = {}) {
 
 // DEC-719: wtRoot (where worktrees are created, outside the session dir) must be in permissions.additionalDirectories,
 // or acceptEdits denies the agents writes there. entries = [{ settings, base }]: base resolves relative entries
-// (project/local settings: the repo root; user settings: home). Covered = an entry equals wtRoot or is an ancestor of it.
+// (absolute paths only; `~` expands to home; relative entries never count). Covered = an entry equals wtRoot or is an ancestor of it.
 const normDir = (p, win) => { let n = String(p).replace(/\\/g, '/').replace(/\/+$/, ''); if (n === '') n = '/'; return win ? n.toLowerCase() : n; };
-export function missingDirs(wtRoot, entries, { platform = process.platform } = {}) {
+export function missingDirs(wtRoot, entries, { platform = process.platform, home = null } = {}) {
   const win = platform === "win32";
-  const target = normDir(wtRoot, win);
+  const target = normDir((win ? win32 : posix).normalize(String(wtRoot)), win);
   const covered = (entries || []).some((e) => {
     const list = e?.settings?.permissions?.additionalDirectories;
     if (!Array.isArray(list)) return false;
     return list.some((raw) => {
       if (typeof raw !== "string" || raw.trim() === "") return false;
       let d = raw.trim();
-      if (d === "~" || d.startsWith("~/") || d.startsWith("~\\")) d = join(e.base || "", d.slice(1));
-      const isAbs = isAbsolute(d) || /^[A-Za-z]:[\\/]/.test(d) || d.startsWith('/');
-      const abs = normDir(isAbs ? d : posix.resolve(String(e.base || '/').replace(/\\/g, '/'), d.replace(/\\/g, '/')), win);
-      return target === abs || abs === "/" || target.startsWith(abs.endsWith("/") ? abs : abs + "/");
+      // `~` always means home, in any settings file.
+      if (d === '~' || d.startsWith('~/') || d.startsWith('~\\')) { if (!home) return false; d = home + d.slice(1); }
+      // Relative entries never count: how Claude Code resolves them from a subfolder is unverified.
+      const isAbs = win ? /^([A-Za-z]:[\\/]|[\\/])/.test(d) : d.startsWith('/');
+      if (!isAbs) return false;
+      const abs = normDir((win ? win32 : posix).normalize(d), win);
+      return target === abs || abs === '/' || /^[a-z]:\/$/i.test(abs) && target.startsWith(abs) || target.startsWith(abs.endsWith('/') ? abs : abs + '/');
     });
   });
   return covered ? [] : [String(wtRoot).replace(/\\/g, '/').replace(/(.)\/+$/, '$1')];
 }
-
 function mainCheckout(from) {
   try {
     const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: from, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -596,10 +598,15 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   const userBase = configDir || join(home, ".claude");
   const wt = (wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
   const dirEntries = [{ settings: readJson(join(userBase, "settings.json")), base: home }, { settings: readJson(join(root, ".claude", "settings.json")), base: root }, { settings: readJson(join(root, ".claude", "settings.local.json")), base: root }];
-  const missingD = missingDirs(wt, dirEntries, { platform });
+  // Claude Code grants an additional directory only if it exists when the session starts, so a covered but absent wtRoot is still missing. Read-only: never created here.
+  const wtExists = existsSync(wt);
+  const missingD = missingDirs(wt, dirEntries, { platform, home });
+  const covered = missingD.length === 0;
+  if (!wtExists) missingD.splice(0, missingD.length, wt);
+  const missingDirsHint = wtExists && covered ? null : (wtExists ? `add the absolute path ${wt} to permissions.additionalDirectories in .claude/settings.local.json, or state in the request how it is granted (for example --add-dir)` : `create ${wt} before starting Claude Code: a folder granted by additionalDirectories or --add-dir counts only if it exists when the session starts${covered ? "" : `, and add the absolute path ${wt} to permissions.additionalDirectories in .claude/settings.local.json`}`);
   // New on every call, never inside config: the workflow puts it in its discovery read (the first agent call) so a resume reads git again instead of a cached answer.
   const runToken = `${new Date().toISOString()}-${randomBytes(6).toString('hex')}`;
-  return { configPath, generated, errors, missingRules: missing, missingDirs: missingD, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending, permissionsDeclared: typeof declarePermissions === 'string' && declarePermissions.trim() !== '' ? declarePermissions : null };
+  return { configPath, generated, errors, missingRules: missing, missingDirs: missingD, missingDirsHint, warnings, config, runToken, trackerCli: tracker.path, pendingDecisions: pending, permissionsDeclared: typeof declarePermissions === 'string' && declarePermissions.trim() !== '' ? declarePermissions : null };
 }
 
 // An agent copies the stdout of discover, and a Bash output over ~30 KB reaches it only as a preview. So the output is kept small:

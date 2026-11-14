@@ -1063,21 +1063,56 @@ test('missingDirs: not covered when absent, empty or malformed', () => {
   assert.deepEqual(missingDirs('/w/repo-wt', [{}, null, { settings: {}, base: '/' }, D()]), ['/w/repo-wt']);
   assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: 'x' } }, base: '/' }]), ['/w/repo-wt']);
 });
-test('missingDirs: relative entries resolve against the settings base', () => {
-  assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: ['../repo-wt'] } }, base: '/w/repo' }]), []);
-  assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: ['../repo-wt'] } }, base: '/other/repo' }]), ['/w/repo-wt']);
+test('missingDirs: relative entries never count as covering', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [{ settings: { permissions: { additionalDirectories: ['../repo-wt', '.', 'repo-wt'] } }, base: '/w/repo' }]), ['/w/repo-wt']);
+});
+test('missingDirs: absolute entries are normalized (. and ..)', () => {
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/x/../repo-wt/./')]), []);
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt/..')]), []);
+  assert.deepEqual(missingDirs('/w/repo-wt', [D('/w/repo-wt/../x')]), ['/w/repo-wt']);
+});
+test('missingDirs: windows paths (drive, backslash, .., case)', () => {
+  const w = { platform: 'win32' };
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('D:\\w\\x\\..\\repo-wt')], w), []);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('d:/')], w), []);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('E:/w')], w), ['D:/w/repo-wt']);
+  assert.deepEqual(missingDirs('D:/w/repo-wt', [D('D:\\w\\repo-wt2')], w), ['D:/w/repo-wt']);
+});
+test('missingDirs: ~ always expands to home, in any settings file', () => {
+  const e = { settings: { permissions: { additionalDirectories: ['~/proj-wt'] } }, base: '/some/repo' };
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [e], { home: '/home/u' }), []);
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [{ ...e, settings: { permissions: { additionalDirectories: ['~'] } } }], { home: '/home/u' }), []);
+  assert.deepEqual(missingDirs('/home/u/proj-wt', [e], { home: '/home/v' }), ['/home/u/proj-wt']);
 });
 
 test('runPreflight: missingDirs does not enter errors and --wt-root override works', () => {
   const { dir } = repoWithRoadmap(true);
   const home = mkdtempSync(join(tmpdir(), 'home-'));
   const wt = join(mkdtempSync(join(tmpdir(), 'wtr-')), 'x-wt').split(sep).join('/');
+  mkdirSync(wt);
   const miss = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
   assert.deepEqual(miss.missingDirs, [wt]);
+  assert.match(miss.missingDirsHint, /additionalDirectories/);
   assert.deepEqual(miss.errors, []);
   mkdirSync(join(home, '.claude'), { recursive: true });
   writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { additionalDirectories: [wt] } }));
-  assert.deepEqual(runPreflight(dir, { home, ref: 'rel', wtRoot: wt }).missingDirs, []);
+  const ok = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
+  assert.deepEqual(ok.missingDirs, []);
+  assert.equal(ok.missingDirsHint, null);
+});
+
+test('runPreflight: a covered wtRoot that does not exist is still missing, with a create hint, and is not created', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const wt = join(mkdtempSync(join(tmpdir(), 'wtr-')), 'y-wt').split(sep).join('/');
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ permissions: { additionalDirectories: [wt] } }));
+  const r = runPreflight(dir, { home, ref: 'rel', wtRoot: wt });
+  assert.deepEqual(r.missingDirs, [wt]);
+  assert.match(r.missingDirsHint, /create/);
+  assert.match(r.missingDirsHint, /before starting Claude Code/);
+  assert.equal(existsSync(wt), false);
+  assert.deepEqual(r.errors, []);
 });
 
 test('runPreflight: default wtRoot is <main repo>-wt even from a linked worktree', () => {

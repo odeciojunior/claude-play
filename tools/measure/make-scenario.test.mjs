@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -338,6 +338,8 @@ test('release run variants carry the permission rules in an excluded settings.lo
       const file = join(t.dir, '.claude', 'settings.local.json');
       if (variant === 'completo' || variant === 'parada-retomada') {
         assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES, additionalDirectories: [sc.dir + '-wt'] } }, null, 2) + '\n');
+        // Claude Code grants an additional directory only if it exists when the session starts.
+        assert.ok(statSync(sc.dir + '-wt').isDirectory());
         assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
         assert.ok(git(t.dir, 'check-ignore', '.claude/settings.local.json').length > 0);
         assert.equal(git(t.dir, 'ls-files', '.claude/settings.local.json'), '');

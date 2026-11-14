@@ -89,7 +89,9 @@ test('SKILL.md treats missingDirs like missingRules and forbids composed shell c
   assert.ok(m, 'step 2');
   assert.ok(m[0].includes('--wt-root <wtRoot>'));
   assert.ok(m[0].includes('missingDirs'));
-  for (const way of ['permissions.additionalDirectories', '--add-dir', '/add-dir']) assert.ok(m[0].includes(way), way);
+  for (const way of ['permissions.additionalDirectories', '--add-dir', 'must exist before Claude Code starts']) assert.ok(m[0].includes(way), way);
+  assert.ok(!m[0].includes('/add-dir'));
+  assert.ok(operatorMd.includes('must exist before'));
   assert.ok(skillMd.split('\n').some((l) => l.startsWith('- One simple command per Bash call')));
   assert.ok(operatorMd.includes('--permission-mode acceptEdits --add-dir'));
 });
