@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E8 | fix/grupo-idempotente integrada (DEC-714, DEC-715): verify-run group idempotente por nonce (marca com pid e saída atômica no git dir), recordStatus repete a cópia até 5 vezes, script-runner só responde após o Bash. 2 rodadas sonnet, revisão opus/high APPROVE. G1 1856/0, G2-G5 ok. | `7ee7f23` |
 | 2026-11-14 | E8 | BLQ-17 aberto: Cópia por modelo da saída do grupo de escrita reprova registro correto: 2º plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | `docs/reports/2026-11-14-E8-plan-only-2-sandbox.md` |
 | 2026-11-14 | E8 | BLQ-16 resolvido: Substituído pelo bloqueio da cópia do grupo de escrita, aberto a seguir (decisão do dono via Fable, 2026-11-14): a releitura assinada (DEC-711) foi validada no 2º plan-only; o FAILED restante vem da cópia do grupo de escrita. | `docs/reports/2026-11-14-E8-plan-only-2-sandbox.md` |
 | 2026-11-14 | E27 | Conferência do task-reviewer integrado (DEC-708), plugin e513958: 10 tentativas sonnet válidas (5 A, 5 B), capturas 39/40 (C6 perdido 1x), 0 falso bloqueante de check ausente em tarefa retomada (antes 2/10). Critério atendido. US$ 1,23 (teto 5). | `D:/claude-tr-out (aggregate.json A e B)` |

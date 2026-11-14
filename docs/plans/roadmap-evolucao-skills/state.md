@@ -60,7 +60,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (dono) Operar os pontos de medição E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
-- (executor) E8: fix/grupo-idempotente (DEC-714, DEC-715), teste primeiro, revisão opus, sem bump, roadmap-release.js ≤ 241.000 LF; integrado, 3º plan-only (teto US$ 5) no SHA novo; passando, fecha BLQ-17 e roda a sonda (DEC-717). Relatório com as tentativas da cópia do grupo e da releitura.
+- (executor) E8: fix integrada (7ee7f23); 3º plan-only (teto US$ 5) no SHA novo; passando, fecha BLQ-17 e roda a sonda (DEC-717). Relatório com as tentativas da cópia do grupo e da releitura.
 - (executor) Sonda acceptEdits de E8 autorizada: 1 execução, até US$ 10, sem repetir; variante completo, plugin da ponta da release, regras exatas do preflight, --stop-on-denial; só depois de o 3º plan-only passar (DEC-717). Negações por estágio em docs/reports/; conclusão sobre DEC-312.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
@@ -79,6 +79,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Nota para E28 (revisão de 2bb59c6): cap() da nota pode cortar um BLQ no meio (um id longo vira o prefixo de outro, seguido de "...") e casar com o regex de outro id; cortar a palavra parcial antes do "..." ou checar só blqIds. Risco baixo: block-open grava o id no início da nota.
 - (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título "(failed)" e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
 - (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
+- (executor) Nota para E28 (revisão de 7ee7f23): verify-run espera o próprio pid se reutilizado (somar m.pid !== process.pid); marca apagada em qualquer throw de runGroup, não só antes do 1º passo; VERIFY_RUN_WAIT_MS sem teto (Math.min com 60.000).
 <!-- /roadmap:pending -->
 
 ## Em andamento
