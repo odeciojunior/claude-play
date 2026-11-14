@@ -24,6 +24,15 @@ test('the launch section names every required workflow arg', () => {
   assert.ok(skill.includes('scripts/progress.mjs'), 'SKILL.md does not say where progress comes from');
 });
 
+test('the launch section forbids authorizeExternal and answers on the first launch, before the boundary', () => {
+  const skill = lf(readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8'));
+  const at = skill.indexOf(BOUNDARY);
+  const rule = skill.indexOf('Never pass `authorizeExternal` or `answers` on the first launch');
+  assert.ok(rule >= 0, 'SKILL.md lacks the first-launch rule for authorizeExternal and answers');
+  assert.ok(at < 0 || rule < at, 'the first-launch rule must be read before the launch');
+  assert.ok(skill.slice(rule, rule + 200).includes('`authorize` stop'), 'the rule does not say items come only from an authorize stop');
+});
+
 test('AC4: prose loaded before the launch stays within the derived target', () => {
   assert.equal(TARGET, BASELINE - REMOVED);
   const skill = lf(readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8'));
