@@ -649,7 +649,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
     const sha = first.match(/commit ([0-9a-f]{40})$/)[1];
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
-    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, harnessCommit: HEAD });
+    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, armCommits: { review: sha, fix: sha, fixCheck: null }, harnessCommit: HEAD });
     const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
     const scriptText = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
     assert.ok(!scriptText.includes('Copied from:'));
@@ -660,7 +660,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
       exec: code.exec,
       now: () => new Date('2026-11-10T12:00:05Z'),
     });
-    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium' });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, armCommits: { review: null, fix: null, fixCheck: null }, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium' });
     assert.equal(rc.aggregate.valid, 1);
 
     const plain = makeFake(s.configDir);
@@ -1590,6 +1590,65 @@ test('aggregate.harness records harnessCommit and a different plugin commit prin
     assert.equal(warn.mock.calls.map((c) => c.arguments.join(' ')).join('\n').includes('harnessCommit'), false);
   } finally {
     warn.mock.restore();
+    s.done();
+  }
+});
+
+// ---- E26 A2: stale arm refusal, armCommits ----
+const { armMatches: armMatchesRB, assertArmsCurrent } = await import('./run-batch.mjs');
+
+function pluginDirWithWorkflow(parent, workflowText) {
+  const dir = pluginDirAt(parent);
+  const wfDir = join(dir, 'skills', 'roadmap-release', 'workflow');
+  mkdirSync(wfDir, { recursive: true });
+  writeFileSync(join(wfDir, 'roadmap-release.js'), workflowText);
+  return dir;
+}
+const claudeCalls = (fake) => fake.calls.filter((c) => c.cmd === 'claude');
+
+test('A2: armMatches lives in run-batch and checkpoint re-exports the same function', async () => {
+  const cp = await import('./checkpoint.mjs');
+  assert.equal(cp.armMatches, armMatchesRB);
+  assert.equal(armMatchesRB('Copied from: x.js at commit abc\nA {{x}} b.\n', 'A 1 b.'), true);
+});
+
+test('A2: assertArmsCurrent refuses a stale arm and names the file', () => {
+  const sha = 'a'.repeat(40);
+  const arm = (t) => ({ text: t, source: { path: 'p', commit: sha } });
+  const h = { stage: 'spec-review', arm: 'atual', review: arm('Review it {{artifactPath}} now.'), fixArm: arm('Fix it {{artifactPath}}\n{{issues}}'), fixCheck: arm('run check {{planTool}}') };
+  const wf = 'x Review it P now. y Fix it Q\nI z run check T';
+  assert.doesNotThrow(() => assertArmsCurrent(h, wf));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Review it', 'Look at')), (e) => e instanceof UsageError && /review/.test(e.message));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Fix it', 'Mend')), (e) => e instanceof UsageError && /fix/.test(e.message));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('run check', 'run nothing')), (e) => e instanceof UsageError && /fixCheck|check/.test(e.message));
+  assert.doesNotThrow(() => assertArmsCurrent({ ...h, fixCheck: null }, wf.replace('run check', 'run nothing')));
+  assert.doesNotThrow(() => assertArmsCurrent({ stage: 'task-review', arm: 'atual', review: null, fixArm: null, fixCheck: null }, 'nothing'));
+  assert.doesNotThrow(() => assertArmsCurrent({ ...h, arm: 'perguntas' }, 'nothing'));
+});
+
+test('A2: a stale arm against the --plugin-dir workflow is refused before any claude call', async () => {
+  const s = setup();
+  try {
+    const stale = pluginDirWithWorkflow(s.base, 'nothing alike');
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: stale }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /plan-review/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    assert.equal(cli.status, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('A2: a current arm passes against the real workflow and the aggregate records armCommits', async () => {
+  const s = setup();
+  try {
+    const dir = pluginDirWithWorkflow(s.base, readFileSync(WORKFLOW, 'utf8'));
+    const sha = norm(readFileSync(join(ARMS, 'plan-review-atual.md'), 'utf8')).split('\n')[0].match(/commit ([0-9a-f]{40})$/)[1];
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.harness.armCommits, { review: sha, fix: sha, fixCheck: null });
+  } finally {
     s.done();
   }
 });

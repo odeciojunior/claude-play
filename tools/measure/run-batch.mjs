@@ -476,6 +476,33 @@ export function readArm(file, { requireSource = false } = {}) {
   return { text: (m ? lines.slice(1) : lines).join('\n'), source: m ? { path: m[1], commit: m[2] } : null };
 }
 
+const lf = (t) => String(t).replace(/\r\n?/g, '\n');
+
+// The arm template (minus its "Copied from" line) must appear in the workflow, piece by piece in order, byte for byte.
+export function armMatches(armText, workflowText) {
+  const lines = lf(armText).split('\n');
+  // A table-escaped pipe is the same text with or without its escape: the JS source has \\|, the runtime prompt \|, the arm | (DEC-310).
+  const pipe = (t) => t.replace(/\\+\|/g, '|');
+  const body = pipe((/^Copied from:/.test(lines[0]) ? lines.slice(1) : lines).join('\n').trimEnd());
+  const workflow = pipe(lf(workflowText));
+  let at = 0;
+  for (const piece of body.split(/\{\{[^}]*\}\}/)) {
+    if (piece === '') continue;
+    const i = workflow.indexOf(piece, at);
+    if (i < 0) return false;
+    at = i + piece.length;
+  }
+  return true;
+}
+
+// A current arm that no longer matches the measured workflow would measure a prompt the product does not send: refuse.
+export function assertArmsCurrent(h, workflowText) {
+  if (!h || h.arm !== 'atual') return;
+  for (const [role, arm] of [['review', h.review], ['fix', h.fixArm], ['fixCheck', h.fixCheck]]) {
+    if (arm && !armMatches(arm.text, workflowText)) throw new UsageError(`stale arm: the ${role} template of --stage ${h.stage} --arm atual no longer matches the measured workflow (recopy it from the workflow)`);
+  }
+}
+
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in vars ? vars[k] : all));
 
 // The script review-only.js written at the sandbox root: one reviewer and, on a blocking issue, one fixer.
@@ -549,20 +576,23 @@ function prepareHarness(opts) {
   let review = null;
   let workflowCommit = null;
   let armSource = 'modelo';
+  let fixCheck = null;
   const fixArm = builtIn ? null : readArm(join(armsDir, `${st.fix}-${arm}.md`), { requireSource: current });
   if (builtIn) {
     armSource = 'workflow';
   } else {
     review = readArm(join(armsDir, `${stage}-${arm}.md`), { requireSource: current });
     if (current) {
-      if (review.source.commit !== fixArm.source.commit) throw new UsageError('review and fix arm templates were copied from different commits');
+      if (/^plano-nativo-/.test(opts.variant)) fixCheck = readArm(join(armsDir, 'plan-fix-check-atual.md'), { requireSource: true });
+      if (review.source.commit !== fixArm.source.commit || (fixCheck && fixCheck.source.commit !== review.source.commit)) throw new UsageError('review, fix and fix-check arm templates were copied from different commits');
       armSource = 'copia-do-prompt';
       workflowCommit = review.source.commit;
     }
   }
   const reviewEffort = reviewModel ? reviewEffortFor(reviewModel) : null;
   const reviewer = reviewModel ? { model: reviewModel, effort: reviewEffort } : {};
-  return { stage, arm, st, review, fixArm, reviewer, harness: { stage, arm, armSource, workflowCommit, ...(reviewModel ? { reviewModel, reviewEffort } : {}) } };
+  const armCommits = { review: review?.source?.commit ?? null, fix: fixArm?.source?.commit ?? null, fixCheck: fixCheck?.source?.commit ?? null };
+  return { stage, arm, st, review, fixArm, fixCheck, reviewer, harness: { stage, arm, armSource, workflowCommit, armCommits, ...(reviewModel ? { reviewModel, reviewEffort } : {}) } };
 }
 
 const slash = (p) => p.replace(/\\/g, '/');
@@ -788,6 +818,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   if (h && h.stage === 'task-review' && h.arm === 'atual') {
     const agentFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'agents', 'task-reviewer.md') : null;
     if (!agentFile || !existsSync(agentFile)) throw new UsageError(`task-review with arm atual needs agents/task-reviewer.md in the measured plugin (${pluginDir ? '--plugin-dir' : 'installed plugin'})`);
+  }
+  if (h && h.arm === 'atual' && h.stage !== 'task-review') {
+    const wfFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js') : null;
+    if (wfFile && existsSync(wfFile)) assertArmsCurrent(h, readFileSync(wfFile, 'utf8'));
+    else if (pluginDir) throw new UsageError('--plugin-dir has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against');
   }
   if (h) {
     let harnessCommit = null;
