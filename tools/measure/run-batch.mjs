@@ -131,6 +131,14 @@ export function readPluginDir(dir) {
   return { version, commit, installPath: resolve(dir) };
 }
 
+// E26 A4: how many questions the fresh reader asked, or null with a reason.
+export function questionCount(entries, label) {
+  const entry = entries.find((e) => e.label === label);
+  if (!entry) return { questions: null, reason: 'sem-entrada-do-revisor' };
+  const q = entry.result?.questions;
+  return Array.isArray(q) ? { questions: q.length } : { questions: null, reason: 'sem-lista-de-perguntas' };
+}
+
 // Blocking (critical or important) and minor counts of the stage reviewer, read from its journal entry.
 export function reviewCounts(entries, label) {
   const entry = entries.find((e) => e.label === label);
@@ -586,6 +594,40 @@ export function buildReviewOnlyScript({ stage, reviewPrompt, fixPrompt, agentTyp
   ].join('\n');
 }
 
+// E26 A4: the questions arm. A fresh reader returns the questions whose answer would change the plan; with at least
+// one, a single spec-author call settles them (no second read). An empty list calls nobody.
+export function buildQuestionsScript({ reviewPrompt, fixPrompt, model = 'opus', effort = 'medium' }) {
+  const st = STAGES['spec-review'];
+  const schema = {
+    type: 'object',
+    properties: {
+      questions: { type: 'array', items: { type: 'object', properties: { q: { type: 'string' }, whyItChangesThePlan: { type: 'string' } }, required: ['q', 'whyItChangesThePlan'] } },
+      headSha: { type: 'string' }, clean: { type: 'boolean' }, commitsInRange: { type: 'integer' }, [st.blobKey]: { type: 'string' },
+    },
+    required: ['questions', 'headSha', 'clean', 'commitsInRange', st.blobKey],
+  };
+  return [
+    'export const meta = {',
+    "  name: 'review-only',",
+    "  description: 'Measurement harness: a fresh reader asks the questions that change the plan and, if there are any, one spec-author call settles them.',",
+    "  phases: [{ title: 'Review', detail: 'question reader and spec author' }],",
+    '}',
+    `const SCHEMA = ${JSON.stringify(schema)}`,
+    `const REVIEW_PROMPT = ${JSON.stringify(reviewPrompt)}`,
+    `const FIX_PROMPT = ${JSON.stringify(fixPrompt)}`,
+    `const review = await agent(REVIEW_PROMPT, { label: '${st.label}1', phase: 'Review', model: '${model}', effort: '${effort}', schema: SCHEMA })`,
+    'const questions = review && Array.isArray(review.questions) ? review.questions : []',
+    'let fix = null',
+    'if (questions.length > 0) {',
+    "  const listed = questions.map((x, k) => (k + 1) + '. ' + x.q + ' (changes the plan: ' + x.whyItChangesThePlan + ')').join('\\n')",
+    "  const text = FIX_PROMPT.split('{{questions}}').join(listed)",
+    `  fix = await agent(text, { agentType: 'productivity-tools:spec-author', label: '${st.label}-fix1', phase: 'Review' })`,
+    '}',
+    'return { review, fix }',
+    '',
+  ].join('\n');
+}
+
 // ---- E26 A1: --rounds loop, the product's review loop (DEC-723) ----
 
 // Options of the measured stage loop (roadmap-release.js, spec and plan stages) plus the reviewer effort and MAXFIX default.
@@ -716,6 +758,7 @@ function prepareHarness(opts) {
   if (!/^[A-Za-z0-9_-]+$/.test(arm)) throw new UsageError(`invalid --arm: ${arm}`);
   const armsDir = resolve(opts.armsDir ?? join(here, 'arms'));
   const current = arm === 'atual';
+  if (arm === 'perguntas' && stage !== 'spec-review') throw new UsageError(`--arm perguntas only applies to --stage spec-review (got --stage ${stage})`);
   const rounds = opts.rounds ?? 'single';
   if (rounds !== 'single' && rounds !== 'loop') throw new UsageError(`--rounds must be loop or single (got "${rounds}")`);
   if (rounds === 'loop' && (!STAGE_LOOP[stage] || !current)) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review with --arm atual (got --stage ${stage} --arm ${arm})`);
@@ -791,7 +834,7 @@ function harnessPrompts(h, scenario) {
     reviewBody,
     measure: measured,
     // e5-native plan variants: the check line of the measured plan fixer is appended (plan-fix-atual.md stays frozen, DEC-310).
-    fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}' }).trimEnd() + (h.fixCheck ? '\n' + fill(h.fixCheck.text, vars).trim() : ''),
+    fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}', questions: '{{questions}}' }).trimEnd() + (h.fixCheck ? '\n' + fill(h.fixCheck.text, vars).trim() : ''),
   };
 }
 
@@ -963,6 +1006,11 @@ function harnessValidity(h, variant, journal, scenario) {
 function harnessStage(h, entries, presents) {
   const review = find(entries, `${h.st.label}1`);
   if (!review) return 'stopped';
+  if (h.arm === 'perguntas') {
+    const questions = review.result?.questions;
+    if (Array.isArray(questions) && questions.length === 0) return 'approved';
+    return find(entries, `${h.st.label}-fix1`) !== undefined && presents.some((p) => p === false) ? 'approved' : 'stopped';
+  }
   const issues = review.result?.issues;
   if (!(Array.isArray(issues) && issues.some((i) => BLOCKING.has(i?.severity)))) return 'approved';
   const fixed = find(entries, `${h.st.label}-fix1`) !== undefined;
@@ -1134,7 +1182,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
       const prompts = harnessPrompts(h, scenario);
-      const script = h.rounds === 'loop'
+      const script = h.arm === 'perguntas'
+        ? buildQuestionsScript({ reviewPrompt: prompts.reviewPrompt, fixPrompt: prompts.fixPrompt })
+        : h.rounds === 'loop'
         ? buildLoopScript({ stage: h.stage, pure: h.pure, reviewBody: prompts.reviewBody, measure: prompts.measure, fixPrompt: prompts.fixPrompt })
         : buildReviewOnlyScript({ stage: h.stage, ...h.reviewer, ...prompts });
       writeFileSync(join(scenario.dir, 'review-only.js'), script);
@@ -1295,7 +1345,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const cliCostUsd = sumCliCost(cliCosts);
     const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd) };
-    if (h && journal) attempt.review = reviewCounts(journal.entries, `${h.st.label}1`);
+    if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${h.st.label}1`) : reviewCounts(journal.entries, `${h.st.label}1`);
     if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = reachable

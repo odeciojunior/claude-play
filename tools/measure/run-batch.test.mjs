@@ -6,7 +6,7 @@ import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { redactPaths, runBatch, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, NATIVE_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2066,4 +2066,107 @@ test('A5: without total_cost_usd in the CLI JSON the session cost is null', asyn
   } finally {
     s.done();
   }
+});
+
+// ---- E26 A4: questions arm (T7) ----
+
+const Q = [{ q: '[fab] which file holds the cache?', whyItChangesThePlan: '[fab] adds a task' }];
+const rq = (questions, key, blob) => ({ questions, headSha: 'x', clean: true, commitsInRange: 1, [key]: blob });
+
+test('A4: --arm perguntas outside spec-review, with --rounds loop, or on another variant is a UsageError before any claude call', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    for (const o of [
+      nativeOpts(s, 'plano-nativo-A', { arm: 'perguntas' }),
+      nativeOpts(s, 'spec-nativo-A', { arm: 'perguntas', rounds: 'loop' }),
+      seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', reviewModel: 'sonnet', arm: 'perguntas' }),
+    ]) {
+      await assert.rejects(runBatch(o, { exec: fake.exec, now: NOW }), /UsageError|--arm perguntas|--rounds loop/);
+    }
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('A4: the perguntas script has the questions schema, a fresh opus/medium reader and exactly one spec-author on questions', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { afterRun: (cwd, n) => writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`)) })) });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-A', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const { text } = sentScript(fake);
+    assert.match(text, /"whyItChangesThePlan"/);
+    assert.match(text, /"questions"/);
+    assert.ok(!text.includes('"issues"'));
+    assert.match(text, /label: 'E5:spec-review1'.*model: 'opus'.*effort: 'medium'/);
+    assert.equal(text.match(/agentType: 'productivity-tools:spec-author'/g).length, 1);
+    assert.match(text, /label: 'E5:spec-review-fix1'/);
+    assert.ok(!/spec-author'[^\n]*model:/.test(text), 'the author takes no explicit model');
+    assert.ok(text.includes('questions.length > 0'));
+    const c = promptConsts(text);
+    assert.ok(!c.REVIEW_PROMPT.includes('{{'), c.REVIEW_PROMPT);
+    const fix = text.split('\n').find((l) => l.startsWith('const FIX_PROMPT = '));
+    const fixText = JSON.parse(fix.slice('const FIX_PROMPT = '.length));
+    assert.ok(fixText.startsWith('mode: unattended\noutput: '), fixText);
+    assert.ok(fixText.includes('{{questions}}'));
+    assert.ok(!fixText.replace('{{questions}}', '').includes('{{'), fixText);
+    assert.ok(fixText.includes('/scripts/spec-tool.mjs"'));
+    assert.equal(r.aggregate.harness.arm, 'perguntas');
+    assert.equal(r.aggregate.harness.armSource, 'modelo');
+  } finally {
+    s.done();
+  }
+});
+
+test('A4: an empty list is approved with review.questions 0; questions plus a fix that removes a defect is approved with humanInputs; a fix that changes nothing is stopped', async () => {
+  const run = async (journalOf, fixed) => {
+    const s = setup();
+    try {
+      const afterRun = (cwd, n) => {
+        const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+        if (fixed) restoreClean(cwd, 'spec');
+        writeFileSync(journalFileOf(s.configDir, n), jl(...journalOf(seeded)));
+      };
+      const fake = makeFake(s.configDir, { afterRun });
+      const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+      return r.aggregate.attempts[0];
+    } finally {
+      s.done();
+    }
+  };
+  const empty = await run((b) => [{ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', b) }], false);
+  assert.equal(empty.status, 'valid', JSON.stringify(empty));
+  assert.deepEqual(empty.review, { questions: 0 });
+  assert.deepEqual(empty.humanInputs, { blockingSeeded: 1, blockingAtEnd: 1 });
+  assert.deepEqual(empty.toolCheck.exit === 0 || empty.toolCheck.exit === 1 || empty.toolCheck.exit === null, true);
+  const asked = [(b) => ({ label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', b) }), () => ({ label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } })];
+  const fixedA = await run((b) => asked.map((f) => f(b)), true);
+  assert.equal(fixedA.status, 'valid', JSON.stringify(fixedA));
+  assert.deepEqual(fixedA.review, { questions: 1 });
+  assert.deepEqual(fixedA.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+  assert.ok(fixedA.outcomes.some((o) => o.outcome === 'capturado'));
+  const idle = await run((b) => asked.map((f) => f(b)), false);
+  assert.deepEqual(idle.review, { questions: 1 });
+  assert.ok(idle.outcomes.every((o) => o.outcome !== 'capturado'));
+});
+
+test('A4: running the generated script with a stub agent: an empty list calls no author, questions call exactly one', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const script = buildQuestionsScript({ reviewPrompt: 'R', fixPrompt: 'mode: unattended\n{{questions}}' }).replace(/^export const meta = \{[\s\S]*?\n\}\n/, '');
+  const exec = async (questions) => {
+    const calls = [];
+    const agent = async (prompt, o) => {
+      calls.push({ prompt, o });
+      return o.label === 'E5:spec-review1' ? { questions } : { summary: 'ok' };
+    };
+    await new AsyncFunction('agent', script)(agent);
+    return calls;
+  };
+  assert.equal((await exec([])).length, 1);
+  const calls = await exec(Q);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].o.agentType, 'productivity-tools:spec-author');
+  assert.ok(calls[1].prompt.includes('1. [fab] which file holds the cache? (changes the plan: [fab] adds a task)'), calls[1].prompt);
+  assert.ok(!calls[1].prompt.includes('{{'));
 });
