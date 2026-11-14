@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. Antes de E27: fix/registro-8k (CMD_CAP 6.000 no grupo e no check, recusa cedo acima do teto, frase da SKILL.md do coordinator; revisão opus; conferência real), depois E27. Executa: executor. Depende de: E15, E21.
+1. E27 (medição da política de revisão, depende de E15 e E21), depois E26. Executa: executor. Depende de: E15, E21.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -68,10 +68,10 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
-- (executor) Antes de E27: fix/registro-8k: CMD_CAP 6.000 no grupo e no check, recusa cedo acima do teto, frase da SKILL.md do coordinator com asserção de texto; revisão opus; conferência real (registro >7.700 em trechos; sessão C repetida); relatório em docs/reports; sem bump.
 - (executor) roadmap-release.js mede 238.706 caracteres LF na ponta da release (55b2b84): folga de 11.294 sob o teto de 250.000 (DEC-647). fix/registro-8k (239.420 no worktree, limite 239.900) e E28 editam o arquivo, em série; a folga de 450 de E28 está atendida.
 - (executor) Antes de publicar em E11: fix do canal do coordinator (DEC-696): apply --events em trechos sob o teto de comando, evento único acima do teto falha cedo, read enxuto ou paginado; estimado 8.549 caracteres com 6 relatos cheios numa onda.
 - (executor) Na 1ª execução do release depois da fix/registro-8k: conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. No cenário fixo, medir os trechos por status: mais de 1 pede emenda à meta de E10.
+- (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
 <!-- /roadmap:pending -->
 
 ## Em andamento
