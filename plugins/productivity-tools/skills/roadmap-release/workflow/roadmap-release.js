@@ -961,7 +961,7 @@ function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, stat
 // JSON of the CLI (tool "roadmap") or null.
 function parseCli(s) {
   try {
-    const o = JSON.parse(String(s == null ? '' : s))
+    const o = s && typeof s === 'object' ? s : JSON.parse(String(s == null ? '' : s))
     return o && typeof o === 'object' && o.tool === 'roadmap' ? o : null
   } catch { return null }
 }
@@ -1414,12 +1414,11 @@ const S_PROGRESS = { type: 'object', properties: { head: STR, clean: BOOL, done:
 const S_PROGRESS_EXT = { ...S_PROGRESS, properties: { ...S_PROGRESS.properties, launchOpen: { type: 'array', items: INT }, effectMayHaveRun: { type: 'array', items: INT }, effectCompleted: { type: 'array', items: INT } }, required: [...S_PROGRESS.required, 'launchOpen', 'effectMayHaveRun', 'effectCompleted'] }
 const S_MARK = { type: 'object', properties: { ok: BOOL }, required: ['ok'] }
 const S_LAUNCH = { type: 'object', properties: { ok: BOOL, head: STR }, required: ['ok', 'head'] }
-const S_RECORD_READ = { type: 'object', properties: { status: STR, brief: STR, pendingDecisions: STR, head: STR, porcelain: STR }, required: ['status', 'brief', 'head', 'porcelain'] }
 const S_SYNC = { type: 'object', properties: { ok: BOOL, head: STR, conflictsResolved: INT, details: STR, targetTip: STR, deltaFiles: STRS, record: STR }, required: ['ok', 'head', 'conflictsResolved', 'targetTip', 'deltaFiles'] }
 const S_PROBE = { type: 'object', properties: { head: STR, clean: BOOL, branchHasTarget: BOOL, branchMerged: BOOL }, required: ['head', 'clean', 'branchHasTarget', 'branchMerged'] }
 const S_MERGE = { type: 'object', properties: { mergeCommit: STR, firstParent: STR, secondParent: STR, conflicts: INT, clean: BOOL, details: STR }, required: ['clean', 'conflicts', 'mergeCommit', 'firstParent', 'secondParent'] }
 const S_DOCS = { type: 'object', properties: { error: STR, commit: STR, runs: { type: 'array', items: { type: 'object', properties: { command: STR, exit: INT, stdout: STR }, required: ['command', 'exit', 'stdout'] } } }, required: ['runs'] }
-const S_DOCMEAS = { type: 'object', properties: { statusStdout: STR, briefStdout: STR, clean: BOOL, head: STR, measureOk: BOOL, measureDetails: STR }, required: ['statusStdout', 'briefStdout', 'clean'] }
+const S_DOCMEAS = { type: 'object', properties: { measureOk: BOOL, measureDetails: STR }, required: ['measureOk'] }
 const S_FIXES = { type: 'object', properties: { commits: { type: 'array', items: { type: 'object', properties: { sha: STR, subject: STR }, required: ['sha', 'subject'] } }, rangeOk: BOOL }, required: ['commits', 'rangeOk'] }
 const S_LOCATE = { type: 'object', properties: { mergeSha: STR, rangeOk: BOOL, secondParent: STR, branchTip: STR }, required: ['mergeSha', 'rangeOk', 'secondParent', 'branchTip'] }
 const S_CLEAN = { type: 'object', properties: { ok: BOOL, leftovers: STRS, details: STR }, required: ['ok'] }
@@ -1438,6 +1437,18 @@ const runPrompt = (cmd, extra = '') => `Run this command once and return its exi
 // The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
+// Read-back of a record: verify-run.mjs read runs status/brief/pending-decisions/head/porcelain; a script-runner only copies its stdout, which checkRun confirms by tool, nonce and digest. A read only, so it repeats (as readDisc).
+let readSeq = 0
+const readBack = async (E, label, phase, cwd, folder) => {
+  for (let k = 1; k <= 5; k++) {
+    const nonce = `${RUN_TAG}:${E}:read${++readSeq}`
+    const out = await agent(runPrompt(`node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E })}`),
+      { agentType: 'productivity-tools:script-runner', label: k === 1 ? label : `${label}-retry${k}`, phase, schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+    const v = checkRun(out && out.stdout, 'verify-run', nonce)
+    if (v.ok && v.data.mode === 'read') return v.data
+  }
+  return null
+}
 // The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, which checkRun confirms by tool, nonce and digest.
 // The run token is the nonce and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
 const discCmd = [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(RUN_TOKEN)}`].filter(Boolean).join(' ')
@@ -1776,12 +1787,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })
     if (v.data.stopped || v.data.steps.some(s => s.exit !== 0)) break
   }
-  const read = await agent(`${COMMON_SLIM()}
-
-READ-ONLY re-read in the integration worktree ${INTWT} after the record of ${E}. Run these commands exactly, one per call, change nothing, and return the raw stdout of each (not summarized, not reformatted): status = 1, brief = 2, pendingDecisions = 3, head = 4, porcelain = 5 (empty string when the output is empty).
-${numbered([cliCmd(A.trackerCli, 'status', absFolder, ['--deliverable ' + E]), cliCmd(A.trackerCli, 'brief', absFolder), cliCmd(A.trackerCli, 'pending-decisions', absFolder), `git -C "${INTWT}" rev-parse HEAD`, `git -C "${INTWT}" status --porcelain`])}
-${BASH_ONLY}`,
-    { label: `${E}:status-${status}-read`, phase: 'Plan', schema: S_RECORD_READ, model: 'haiku', effort: 'low' })
+  const read = await readBack(E, `${E}:status-${status}-read`, 'Plan', INTWT, absFolder)
   if (!results || !read) { holdUnconfirmed(E, x, []); return { ok: false, failures: [!results ? 'null record agent' : 'null re-read agent'], head: null, cuts: rc.cuts } }
   const v = recordVerdict({ expected: rc.commands, results, read, E, word: status, piece, blockedStatus: STATUSES.blocked })
   const failures = rc.commands.length ? v.failures : v.failures.filter(f => f !== 'the record agent ran no command')
@@ -1985,15 +1991,19 @@ ${docsMaybe.map(c => '- ' + c).join('\n')}
 3. ${NO_REVISION}
 4. Return in runs, for each command you ran: command (the exact text), exit and stdout (the whole output). Then commit the files of item 1 and of ${RM}, adding only them (never git add -A), with "docs: ${E} on ${TARGET}" and the trailer "${TRAILER}", and return the commit hash in commit.${k ? `\nFIX ROUND. The independent measurement found: ${JSON.stringify(docsMeasure)}. Fix what it lists${DOCS.measure ? ' (measureOk must be true)' : ''}; the commands above are only those that still lack a good result.` : ''}`,
         { label: `${E}:docs${k + 1}`, phase: 'Docs', schema: S_DOCS, model: 'sonnet', effort: 'medium' })
-      meas = await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": ${DOCS.measure ? `write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):\n${DOCS.measure}\n` : ''}Also run exactly, one per call, and return the raw stdout of each (not summarized, not reformatted): statusStdout = ${cliCmd(A.trackerCli, 'status', absFolder, ['--deliverable ' + E])}; briefStdout = ${cliCmd(A.trackerCli, 'brief', absFolder)}. clean = git status --porcelain empty; head = git rev-parse HEAD.
+      // The roadmap read-back is code (verify-run read); only the project's own measurement program (DOCS.measure) still needs a model.
+      const rd = await readBack(E, `${E}:docs-read${k + 1}`, 'Docs', INTWT, absFolder)
+      const mm = !rd || !DOCS.measure ? {} : await agent(`MEASUREMENT (read-only) in the worktree "${INTWT}": write this Node program to "${WT}/_tmp/${E}-docs-measure.cjs", run exactly: cd "${INTWT}" && node "${WT}/_tmp/${E}-docs-measure.cjs", delete the file and return its JSON as measureOk (ok) and measureDetails (details):
+${DOCS.measure}
 ${BASH_ONLY}`,
         { label: `${E}:docs-measure${k + 1}`, phase: 'Docs', schema: S_DOCMEAS, model: 'haiku', effort: 'low' })
+      meas = rd && mm ? { ...rd, ...mm } : null
       if (docs && meas) {
         const maybeSet = new Set(docsMaybe)
-        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.statusStdout, brief: meas.briefStdout, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
+        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
         if (!cmds.length) verdict.failures = verdict.failures.filter(f => f !== 'the record agent ran no command')
         verdict.ok = verdict.failures.length === 0
-        const bc = parseCli(meas.briefStdout)
+        const bc = parseCli(meas.brief)
         if (bc && bc.result && bc.result.checker) CHECKERS[E] = bc.result.checker
         docsMeasure = { failures: verdict.failures, clean: meas.clean, head: meas.head, ...(DOCS.measure ? { measureOk: meas.measureOk, measureDetails: meas.measureDetails } : {}) }
         if (verdict.ok && meas.clean !== false && (!DOCS.measure || meas.measureOk === true)) break

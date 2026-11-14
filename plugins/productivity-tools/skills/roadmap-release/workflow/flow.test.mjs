@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
-import { truthDivergences } from '../scripts/verify-run.mjs';
+import { truthDivergences, buildRead } from '../scripts/verify-run.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -103,7 +103,7 @@ const cliJson = (over = {}) => JSON.stringify({ tool: 'roadmap', summary: { exit
 const verifyArg = (prompt, mode) => { const m = new RegExp(`verify-run\\.mjs" ${mode} (\\S+)`).exec(prompt); return m ? JSON.parse(decodeURIComponent(m[1])) : null; };
 const promptCommands = (prompt) => { const g = verifyArg(prompt, 'group'); return g ? g.steps : [...prompt.matchAll(/^\d+\. (node ".*)$/gm)].map((m) => m[1]); };
 // The prompt with the group payload replaced by its decoded steps, numbered the way the old record prompt listed them.
-const plain = (prompt) => prompt.replace(/(verify-run\.mjs" group )(\S+)/, (_, a) => a + '\n' + promptCommands(prompt).map((c, i) => `${i + 1}. ${c}`).join('\n'));
+const plain = (prompt) => prompt.replace(/(verify-run\.mjs" read )(\S+)/, (_, a, b) => a + '<read payload of ' + JSON.parse(decodeURIComponent(b)).deliverable + '>').replace(/(verify-run\.mjs" group )(\S+)/, (_, a) => a + '\n' + promptCommands(prompt).map((c, i) => `${i + 1}. ${c}`).join('\n'));
 const signedOut = (o) => JSON.stringify({ ...o, digest: fnv1a(JSON.stringify(canon(o))) });
 // What verify-run.mjs group prints for the commands the agent ran ({ exit, stdout } each): it stops at the first exit other than 0.
 function groupStdout(prompt, results, nonce = verifyArg(prompt, 'group').nonce) {
@@ -120,6 +120,13 @@ function checkStdout(prompt, truth = TRUTH_OK) {
   return signedOut({ tool: 'verify-run', mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth });
 }
 const reportOf = (prompt, truth) => ({ report: 'REPORT', truthStdout: verifyArg(prompt, 'check') ? checkStdout(prompt, truth) : '' });
+// What verify-run.mjs read prints for the raw stdouts of the five commands ({ status, brief, pendingDecisions, head, porcelain }): the reduction is the script's own.
+const readStdout = (prompt, raw) => {
+  const p = verifyArg(prompt, 'read');
+  const o = (stdout) => ({ exit: 0, stdout: String(stdout == null ? '' : stdout) });
+  return signedOut({ tool: 'verify-run', mode: 'read', nonce: p.nonce, ...buildRead({ status: o(raw.status), brief: o(raw.brief), pending: o(raw.pendingDecisions), head: o(raw.head), porcelain: o(raw.porcelain) }, p.deliverable) });
+};
+const isRead = (l) => /(:status-.*-read|:docs-read\d)(-retry\d)?$/.test(l);
 function makeRecordMock(cardsOf) {
   const st = {};
   let decN = 900;
@@ -181,7 +188,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
   const answerOf = async (prompt, o) => {
     const l = o.label;
     calls.push({ label: l, prompt, opts: o });
-    if (over) { const v = over(l, prompt, o); if (v !== undefined) return v; }
+    if (over) { const v = over(l, prompt, o); if (v !== undefined) return v && typeof v === 'object' && isRead(l) && 'status' in v && !('stdout' in v) ? { exit: 0, stdout: readStdout(prompt, v) } : v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
     if (l === 'discovery' || /^discovery-retry\d$/.test(l)) return { exit: 0, stdout: discStdout(nonceOf(prompt), { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
     if (l === 'discovery-donot') return { donotHolds: [] };
@@ -198,7 +205,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
-    if (/:status-.*-read$/.test(l)) return recMock.read(E);
+    if (/:status-.*-read(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, recMock.read(E)) };
+    if (/:docs-read\d(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, { ...recMock.read(E), pendingDecisions: '', head: 'm2' }) };
     if (/:status-/.test(l)) return { exit: 0, stdout: groupStdout(prompt, recMock.run(prompt, E).runs) };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
@@ -211,7 +219,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
     if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
-    if (/:docs-measure/.test(l)) return { statusStdout: recMock.read(E).status, briefStdout: recMock.read(E).brief, clean: true, head: 'm2' };
+    if (/:docs-measure/.test(l)) return { measureOk: true, measureDetails: '' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
@@ -887,9 +895,9 @@ test('I5: another red gate keeps the offer', async () => {
 test('m2: the docs are not ok when the panel does not show the status after the merge', async () => {
   const good = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(good.r.results[0].merge.docsOk, true);
-  assert.match(good.calls.find((c) => c.label === 'E1:docs-measure1').prompt, /status '[^']*' --deliverable E1 --json/);
-  assert.ok(good.calls.find((c) => c.label === 'E1:docs-measure1').opts.schema.required.includes('statusStdout'));
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-measure/.test(l) ? { statusStdout: readWith('c').status, briefStdout: readWith('c').brief, clean: true, head: 'm2' } : undefined) });
+  assert.equal(verifyArg(good.calls.find((c) => c.label === 'E1:docs-read1').prompt, 'read').deliverable, 'E1');
+  assert.ok(!good.labels.includes('E1:docs-measure1'), 'no model measurement without docsStage.measure');
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:docs-read\d/.test(l) ? { ...readWith('c'), head: 'm2' } : undefined) });
   assert.equal(r.results[0].merge.docsOk, false);
   assert.ok(r.operatorActions.some((o) => o.kind === 'docs'));
 });
@@ -3162,10 +3170,11 @@ test('recordVerdict: releitura com painel de uma linha só do E1 passa; linha de
 
 test('status --deliverable: a releitura e o docs-measure pedem só a linha do E; nenhum prompt chama status sem a flag', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const rd = plain(calls.find((c) => c.label === 'E1:status-d-read').prompt);
-  assert.ok(/1\. node "[^"]*roadmap\.mjs" status '[^']*' --deliverable E1 --json/.test(rd), rd);
-  const dm = plain(calls.find((c) => c.label === 'E1:docs-measure1').prompt);
-  assert.match(dm, /statusStdout = node "[^"]*roadmap\.mjs" status '[^']*' --deliverable E1 --json/);
+  for (const l of ['E1:status-d-read', 'E1:docs-read1']) {
+    const p = verifyArg(calls.find((c) => c.label === l).prompt, 'read');
+    assert.equal(p.deliverable, 'E1', l);
+    assert.match(p.cli, /roadmap\.mjs$/, l);
+  }
   for (const c of calls.filter((x) => x.label !== 'discovery')) {
     for (const m of plain(c.prompt).matchAll(/roadmap\.mjs" status '[^']*'([^\n;]*)/g)) {
       assert.match(m[1], /--deliverable E\d+ --json/, c.label);
@@ -3321,7 +3330,9 @@ test('E10 AC3: the happy path of a one-task deliverable makes ANTES - 1 calls, n
   assert.equal(calls[w].opts.effort, 'low');
   assert.deepEqual(calls[w].opts.schema.required, ['exit', 'stdout']);
   assert.match(calls[w].prompt, /verify-run\.mjs" group \S+/);
-  assert.notEqual(calls[rd].opts.agentType, 'productivity-tools:script-runner', 'the re-read stays with the agent of today');
+  assert.equal(calls[rd].opts.agentType, 'productivity-tools:script-runner', 'the re-read is a signed verify-run read, not a model copy of five stdouts');
+  assert.deepEqual(calls[rd].opts.schema.required, ['exit', 'stdout']);
+  assert.match(calls[rd].prompt, /verify-run\.mjs" read \S+/);
   assert.equal(labels[labels.length - 1], 'report');
 });
 
@@ -3523,7 +3534,7 @@ test('registro de bloqueio com texto cortado: a fonte é o log real e o texto co
 });
 
 // ---- E18 T5: etapa de documentação pela CLI
-const docsPrompts = (calls) => calls.filter((c) => /:docs(-measure)?\d$/.test(c.label));
+const docsPrompts = (calls) => calls.filter((c) => /:docs(-measure|-read)?\d$/.test(c.label));
 
 test('AC2 documentação pela CLI', async () => {
   const humanSpec = specWith({ needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
@@ -3546,7 +3557,7 @@ test('AC2 documentação pela CLI', async () => {
 
 test('AC3 documentação: releitura falha leva à 2ª rodada só com o que faltou', async () => {
   const mk = (rounds) => (l) => {
-    if (l === 'E1:docs-measure1' || (rounds === 2 && l === 'E1:docs-measure2')) return { statusStdout: readWith('zzz').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
+    if (l === 'E1:docs-read1' || (rounds === 2 && l === 'E1:docs-read2')) return { ...readWith('zzz'), brief: readWith('e').brief, head: 'm2' };
     return undefined;
   };
   const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mk(1) });
@@ -3566,7 +3577,7 @@ test('AC3 documentação: releitura falha leva à 2ª rodada só com o que falto
 test('AC3 documentação: comando com erro da CLI repete só ele e o veredito não confia no agente', async () => {
   let n = 0;
   const bad = (l, prompt) => {
-    if (/^E1:docs-measure/.test(l)) return { statusStdout: readWith('e').status, briefStdout: readWith('e').brief, clean: true, head: 'm2' };
+    if (/^E1:docs-read/.test(l)) return { ...readWith('e'), head: 'm2' };
     if (!/:docs\d$/.test(l)) return undefined;
     n++;
     return { runs: promptCommands(prompt).map((command) => (n === 1 && / log /.test(command)
@@ -3586,10 +3597,10 @@ test('checker só de brief: nenhum prompt cita o arquivo do checker; docs-measur
     assert.ok(!c.prompt.includes('check-roadmap.mjs'), c.label);
     assert.ok(!c.prompt.includes('docs/plans/roadmap-x/check.mjs'), c.label);
   }
-  for (const l of ['E1:docs-measure1', 'E1:status-d-read']) {
-    const p = calls.find((c) => c.label === l).prompt;
-    assert.match(p, /roadmap\.mjs" status '[^']*' --deliverable E1 --json/, l);
-    assert.match(p, /roadmap\.mjs" brief '[^']*' --json/, l);
+  for (const l of ['E1:docs-read1', 'E1:status-d-read']) {
+    const p = verifyArg(calls.find((c) => c.label === l).prompt, 'read');
+    assert.equal(p.deliverable, 'E1', l);
+    assert.match(p.cli, /roadmap\.mjs$/, l);
   }
   const rep = calls.find((c) => c.label === 'report').prompt;
   assert.match(rep, /brief --json/);
@@ -4495,17 +4506,16 @@ test('discovery requires pendingDecisions as a list', async () => {
 });
 
 test('docs-measure schema has no status field', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { docsStage: { instructions: 'x', measure: 'm' } } });
   const s = calls.find((c) => c.label === 'E1:docs-measure1').opts.schema;
   assert.equal('status' in s.properties, false);
   assert.equal('brief' in s.properties, false);
-  assert.deepEqual(s.required, ['statusStdout', 'briefStdout', 'clean']);
+  assert.deepEqual(s.required, ['measureOk']);
   const p = calls.find((c) => c.label === 'E1:docs-measure1').prompt;
-  assert.match(p, /statusStdout = /);
-  assert.match(p, /briefStdout = /);
+  assert.doesNotMatch(p, /statusStdout|briefStdout/);
 });
 
-test('a docs-measure answer with statusStdout passes without the missing-panel alarm', async () => {
+test('a docs-read answer passes without the missing-panel alarm', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(r.results[0].merge.docsOk, true);
   assert.ok(!JSON.stringify(r).includes('reread status --json is missing or has no panel'));
@@ -4829,4 +4839,43 @@ test('E24 C4: a refuted finding reported again after another fix is verified aga
   assert.doesNotMatch(fixPrompt, /refuted one/);
   assert.deepEqual(loggedReviews(x).filter((v) => v.stage === 'final-verify').map((v) => v.round), [1, 2]);
   assert.equal(x.r.results[0].merged, true);
+});
+
+// ---- fix/releitura-assinada: the record read-back is a signed verify-run read, never a model copy
+test('releitura: stdout sem assinatura na 1a tentativa e assinado na 2a aceita o registro', async () => {
+  let n = 0;
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, prompt) => {
+    if (l === 'E1:status-d-read') { n++; return { exit: 0, stdout: 'ok' }; }
+    return undefined;
+  } });
+  assert.equal(n, 1);
+  assert.ok(labels.includes('E1:status-d-read-retry2'));
+  assert.equal(calls.find((c) => c.label === 'E1:status-d-read-retry2').opts.model, 'haiku');
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.results[0].concerns, []);
+});
+
+test('releitura: 3a a 5a tentativas sobem para sonnet; 5 falhas = null como antes', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:status-d-read/.test(l) ? { exit: 0, stdout: 'ok' } : undefined) });
+  const reads = calls.filter((c) => /:status-d-read/.test(c.label));
+  assert.equal(reads.length, 5);
+  assert.deepEqual(reads.map((c) => c.opts.model), ['haiku', 'haiku', 'sonnet', 'sonnet', 'sonnet']);
+  assert.ok(r.results[0].concerns.some((x) => /null re-read agent/.test(x)), r.results[0].concerns.join(' '));
+});
+
+test('releitura: o defeito do E8 (status "ok" e so o result em pendingDecisions) nao reprova um registro correto', async () => {
+  const E8 = (l) => (/:status-d-read$/.test(l) ? { exit: 0, stdout: JSON.stringify({ status: 'ok', brief: 'ok', pendingDecisions: { decisions: [] }, head: 'abc1234', porcelain: '' }) } : undefined);
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: E8 });
+  assert.equal(r.results[0].merged, true);
+  assert.deepEqual(r.results[0].concerns, []);
+});
+
+test('releitura: nonce de outra chamada e digest adulterado sao recusados', async () => {
+  const stale = (l, prompt) => {
+    if (l !== 'E1:status-d-read') return undefined;
+    const good = JSON.parse(readStdout(prompt, makeRecordMock(() => [card('E1')]).read('E1')));
+    return { exit: 0, stdout: JSON.stringify({ ...good, nonce: 'other' }) };
+  };
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: stale });
+  assert.ok(labels.includes('E1:status-d-read-retry2'));
 });
