@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync, utimesSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -121,7 +121,7 @@ test('E10 AC3: a group with nothing to commit and no stop reports commit false a
   assert.equal(o.json.stopped, null);
   assert.equal(o.json.commit, false);
   assert.equal(o.json.head, r.merge);
-  const n = run('group', sign({ nonce: NONCE, cwd: r.dir, steps: ['node -e "process.stdout.write(\'hi\')"'], finally: null }));
+  const n = run('group', sign({ nonce: 'n-2', cwd: r.dir, steps: ['node -e "process.stdout.write(\'hi\')"'], finally: null }));
   assert.equal(n.json.steps[0].out, 'hi');
   assert.equal(n.json.commit, false);
 });
@@ -318,4 +318,160 @@ test('read: the first porcelain line keeps its leading space; the BLQ id is sear
 test('read: git runs with --no-optional-locks (the read never touches the index)', () => {
   const src = readFileSync(SCRIPT, 'utf8');
   assert.match(src, /'--no-optional-locks', 'status', '--porcelain'/);
+});
+
+// ---- DEC-714: the group is idempotent by nonce (a marker in the git dir of the payload cwd)
+const counterStep = (file) => `node -e "require('fs').appendFileSync('${file.split('\\').join('/')}','x')"`;
+const markerDir = (r) => join(r.git('rev-parse', '--absolute-git-dir'), 'verify-run');
+const markerFile = (r, nonce = NONCE) => join(markerDir(r), fnv1a(nonce) + '.json');
+const groupPayload = (r, steps, o = {}) => sign({ nonce: NONCE, cwd: r.dir, steps, finally: null, ...o });
+
+test('DEC-714: the same group twice runs its steps once and prints the same output', () => {
+  const r = repo();
+  const side = join(realpathSync(mkdtempSync(join(tmpdir(), 'vr-side-'))), 'count.txt');
+  const p = groupPayload(r, [counterStep(side)]);
+  const a = run('group', p);
+  const b = run('group', p);
+  assert.equal(a.exit, 0, a.stdout);
+  assert.equal(readFileSync(side, 'utf8'), 'x', 'the step ran once');
+  assert.equal(b.exit, 0);
+  assert.equal(b.stdout, a.stdout, 'byte-identical');
+  assert.ok(outDigest(b.json));
+  const m = JSON.parse(readFileSync(markerFile(r), 'utf8'));
+  assert.equal(m.nonce, NONCE);
+  assert.equal(m.digest, p.digest);
+  assert.equal(m.output, a.stdout);
+});
+
+test('DEC-714: a stopped group is also replayed, not rerun', () => {
+  const r = repo();
+  const side = join(realpathSync(mkdtempSync(join(tmpdir(), 'vr-side-'))), 'count.txt');
+  const p = groupPayload(r, [counterStep(side), 'node -e "process.exit(3)"']);
+  const a = run('group', p);
+  const b = run('group', p);
+  assert.deepEqual(a.json.stopped, { n: 2, exit: 3 });
+  assert.equal(b.stdout, a.stdout);
+  assert.equal(readFileSync(side, 'utf8'), 'x');
+});
+
+test('DEC-714: the same nonce with another digest is refused and runs nothing', () => {
+  const r = repo();
+  const side = join(realpathSync(mkdtempSync(join(tmpdir(), 'vr-side-'))), 'count.txt');
+  run('group', groupPayload(r, [counterStep(side)]));
+  const o = run('group', groupPayload(r, [counterStep(side), counterStep(side)]));
+  assert.equal(o.exit, 2);
+  assert.equal(o.json.tool, 'verify-run');
+  assert.ok(o.json.error);
+  assert.equal(readFileSync(side, 'utf8'), 'x');
+});
+
+test('DEC-714: a marker without output (the process died mid-run) is refused and runs nothing', () => {
+  const r = repo();
+  const side = join(realpathSync(mkdtempSync(join(tmpdir(), 'vr-side-'))), 'count.txt');
+  const p = groupPayload(r, [counterStep(side)]);
+  mkdirSync(markerDir(r), { recursive: true });
+  writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest }));
+  const o = run('group', p);
+  assert.equal(o.exit, 2);
+  assert.ok(o.json.error);
+  assert.equal(existsSync(side), false);
+});
+
+test('DEC-714: a marker that cannot be written refuses and runs nothing', () => {
+  const r = repo();
+  const side = join(realpathSync(mkdtempSync(join(tmpdir(), 'vr-side-'))), 'count.txt');
+  writeFileSync(markerDir(r), 'a file where the folder should be');
+  const o = run('group', groupPayload(r, [counterStep(side)]));
+  assert.equal(o.exit, 2);
+  assert.ok(o.json.error);
+  assert.equal(existsSync(side), false);
+});
+
+test('DEC-714: the worktree stays clean after a group (the marker lives in the git dir)', () => {
+  const r = repo();
+  run('group', groupPayload(r, ['git status --porcelain']));
+  assert.equal(existsSync(markerFile(r)), true);
+  assert.equal(r.git('status', '--porcelain'), '');
+});
+
+test('DEC-714: markers older than 7 days are pruned at start, newer ones stay', () => {
+  const r = repo();
+  mkdirSync(markerDir(r), { recursive: true });
+  const old = join(markerDir(r), 'old.json'), fresh = join(markerDir(r), 'fresh.json');
+  writeFileSync(old, '{}'); writeFileSync(fresh, '{}');
+  const t = (Date.now() - 8 * 86400000) / 1000;
+  utimesSync(old, t, t);
+  const o = run('group', groupPayload(r, ['git status --porcelain']));
+  assert.equal(o.exit, 0, o.stdout);
+  assert.equal(existsSync(old), false);
+  assert.equal(existsSync(fresh), true);
+});
+
+// ---- DEC-714 review: nonce in late refusals, atomic output, live pid, marker removed on a refused step
+const runEnv = (payload, env) => {
+  const r = spawnSync(process.execPath, [SCRIPT, 'group', enc(payload)], { encoding: 'utf8', env: { ...process.env, ...env } });
+  let json = null; try { json = JSON.parse(r.stdout); } catch { /* */ }
+  return { exit: r.status, stdout: r.stdout, json };
+};
+test('DEC-714: refusals after the digest check carry the nonce, the ones before it do not', () => {
+  const r = repo();
+  const sideless = 'node -e "1"';
+  const pre = run('group', { ...groupPayload(r, [sideless]), steps: ['node -e "2"'] });
+  assert.equal(pre.exit, 2);
+  assert.equal(pre.json.nonce, undefined);
+  const bad = run('group', groupPayload(r, [sideless, 'echo hi']));
+  assert.equal(bad.json.nonce, NONCE, 'tokenize refusal');
+  const missing = run('group', sign({ nonce: NONCE, cwd: r.dir, steps: 'x' }));
+  assert.equal(missing.json.nonce, NONCE, 'missing field');
+  const p = groupPayload(r, [sideless], { nonce: 'n-m' });
+  run('group', p);
+  const other = run('group', groupPayload(r, [sideless, sideless], { nonce: 'n-m' }));
+  assert.equal(other.json.nonce, 'n-m', 'marker refusal');
+});
+
+test('DEC-714: the replay reads complete JSON and no temp file is left', () => {
+  const r = repo();
+  const o = run('group', groupPayload(r, ['git status --porcelain']));
+  assert.equal(JSON.parse(readFileSync(markerFile(r), 'utf8')).output, o.stdout);
+  assert.deepEqual(readdirSync(markerDir(r)).filter((f) => !f.endsWith('.json')), []);
+});
+
+test('DEC-714: a tokenize refusal removes the marker (nothing started)', () => {
+  const r = repo();
+  const o = run('group', groupPayload(r, ['echo hi']));
+  assert.equal(o.exit, 2);
+  assert.equal(existsSync(markerFile(r)), false);
+});
+
+test('DEC-714: marker without output and a dead pid is refused at once', () => {
+  const r = repo();
+  const p = groupPayload(r, ['git status --porcelain']);
+  const dead = spawnSync(process.execPath, ['-e', '0']);
+  mkdirSync(markerDir(r), { recursive: true });
+  writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: 2 ** 22 + 12345 }));
+  const t = Date.now();
+  const o = runEnv(p, { VERIFY_RUN_WAIT_MS: '20000' });
+  assert.equal(o.exit, 2);
+  assert.ok(Date.now() - t < 10000);
+  assert.ok(dead);
+});
+
+test('DEC-714: a live pid without output is waited for, then the output is replayed', async () => {
+  const r = repo();
+  const p = groupPayload(r, ['git status --porcelain']);
+  const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},20000)']);
+  try {
+    mkdirSync(markerDir(r), { recursive: true });
+    writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid }));
+    const output = '{"tool":"verify-run","mode":"group","done":true}\n';
+    setTimeout(() => writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid, output })), 1500);
+    const o = await new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, 'group', enc(p)], { env: { ...process.env, VERIFY_RUN_WAIT_MS: '15000' } }); let s = ''; c.stdout.on('data', (d) => { s += d; }); c.on('close', (code) => res({ code, s })); });
+    assert.equal(o.s, output);
+    // never finishing: refused after the bound
+    writeFileSync(markerFile(r), JSON.stringify({ nonce: NONCE, digest: p.digest, pid: child.pid }));
+    const t = Date.now();
+    const late = runEnv(p, { VERIFY_RUN_WAIT_MS: '1200' });
+    assert.equal(late.exit, 2);
+    assert.ok(Date.now() - t >= 1000);
+  } finally { child.kill(); }
 });

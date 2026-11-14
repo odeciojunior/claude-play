@@ -17,10 +17,14 @@
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
 //
+// The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
+// ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
+// byte-identical and runs nothing; a marker without output or with another digest is refused. Markers older than 7 days are pruned at start.
+//
 // Exit codes: 0 the command ran (a failing step is reported in the output, not in the exit code), 2 refused payload.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, realpathSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
@@ -230,6 +234,38 @@ export function runCheck(p) {
   return { tool: TOOL, mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth };
 }
 
+const MARKER_TTL_MS = 7 * 86400000;
+// Returns { replay: string } | { file } | { error }. Creates the marker with wx; never throws.
+const alive = (pid) => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return !!e && e.code === 'EPERM'; } };
+function openMarker(p) {
+  try {
+    const g = git(p.cwd, ['rev-parse', '--absolute-git-dir']);
+    if (g.exit !== 0 || !g.stdout.trim()) return { error: 'the git dir of the payload cwd cannot be resolved: nothing was run' };
+    const dir = join(g.stdout.trim(), 'verify-run');
+    mkdirSync(dir, { recursive: true });
+    try {
+      const now = Date.now();
+      for (const f of readdirSync(dir)) { try { const fp = join(dir, f); if (now - statSync(fp).mtimeMs > MARKER_TTL_MS) unlinkSync(fp); } catch { /* prune never fails the run */ } }
+    } catch { /* prune never fails the run */ }
+    const file = join(dir, fnv1a(p.nonce) + '.json');
+    try { writeFileSync(file, JSON.stringify({ nonce: p.nonce, digest: p.digest, pid: process.pid }), { flag: 'wx' }); } catch (e) {
+      if (!e || e.code !== 'EEXIST') return { error: 'the marker of this group cannot be written (' + (e && e.message) + '): nothing was run' };
+      const load = () => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
+      let m = load();
+      if (!m || m.nonce !== p.nonce || m.digest !== p.digest) return { error: 'a group with this nonce already ran with another payload, or its marker is unreadable: nothing was run' };
+      // Output missing: a live owner is waited for (bounded), a dead one is refused at once.
+      const limit = Date.now() + (Number(process.env.VERIFY_RUN_WAIT_MS) || 60000);
+      while ((typeof m.output !== 'string' || !m.output) && alive(m.pid) && Date.now() < limit) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+        m = load() || m;
+      }
+      if (typeof m.output !== 'string' || !m.output) return { error: 'a group with this nonce started and left no output (the process died mid-run, or is still running): nothing was run' };
+      return { replay: m.output };
+    }
+    return { file };
+  } catch (e) { return { error: 'the marker of this group cannot be created (' + e.message + '): nothing was run' }; }
+}
+
 const REQUIRED = {
   group: (p) => typeof p.cwd === 'string' && p.cwd && Array.isArray(p.steps) && p.steps.every((t) => typeof t === 'string'),
   read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && (p.piece === undefined || typeof p.piece === 'string') && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
@@ -243,16 +279,28 @@ function cli(argv) {
     process.stdout.write(`${JSON.stringify(o)}\n`);
   };
   const [mode, arg] = argv;
-  const refuse = (error) => out({ tool: TOOL, mode, error }, 2);
+  const refuse = (error, nonce) => out({ tool: TOOL, mode, ...(nonce === undefined ? {} : { nonce }), error }, 2);
   if (!REQUIRED[mode] || argv.length !== 2) return refuse('usage: node verify-run.mjs group|read|check <payload: encodeURIComponent(JSON)>');
   let p;
   try { p = JSON.parse(decodeURIComponent(arg)); } catch (e) { return refuse(`the payload is not encodeURIComponent(JSON): ${e.message}`); }
   if (!p || typeof p !== 'object' || Array.isArray(p) || typeof p.nonce !== 'string' || !p.nonce || typeof p.digest !== 'string') return refuse('the payload needs nonce and digest');
   const { digest, ...rest } = p;
   if (signDigest(rest) !== digest) return refuse('the payload digest does not match: nothing was run');
-  if (!REQUIRED[mode](p)) return refuse(`the ${mode} payload is missing a required field`);
+  if (!REQUIRED[mode](p)) return refuse(`the ${mode} payload is missing a required field`, p.nonce);
+  let marker = null;
+  if (mode === 'group') {
+    marker = openMarker(p);
+    if (marker.error) return refuse(marker.error, p.nonce);
+    if (marker.replay !== undefined) { process.exitCode = 0; process.stdout.write(marker.replay); return; }
+  }
   let result;
-  try { result = mode === 'group' ? runGroup(p) : mode === 'read' ? runRead(p) : runCheck(p); } catch (e) { return refuse(e.message); }
+  try { result = mode === 'group' ? runGroup(p) : mode === 'read' ? runRead(p) : runCheck(p); } catch (e) { if (marker) { try { unlinkSync(marker.file); } catch { /* best effort */ } } return refuse(e.message, p.nonce); }
+  if (marker) {
+    const line = `${JSON.stringify({ ...result, digest: signDigest(result) })}\n`;
+    const body = JSON.stringify({ nonce: p.nonce, digest: p.digest, pid: process.pid, output: line });
+    const tmp = marker.file + '.' + process.pid + '.tmp'; // atomic: a replay never reads half a file
+    try { writeFileSync(tmp, body); try { renameSync(tmp, marker.file); } catch { writeFileSync(marker.file, body); try { unlinkSync(tmp); } catch { /* */ } } } catch { /* the output is still printed; a replay then refuses: the marker has no output */ }
+  }
   return out(result, 0);
 }
 

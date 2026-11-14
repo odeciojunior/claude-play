@@ -3309,7 +3309,7 @@ test('AC3 stdout que não é JSON da CLI, ou comando omitido, reprova', async ()
 
 test('AC3 no-bash reprova', async () => {
   // E10: the script-runner has no list to return empty, so a run without Bash is an output that no digest confirms: the null record agent.
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+$/.test(l) ? { exit: -1, stdout: '' } : undefined) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over: (l) => (/:status-[a-z]+(-retry\d)?$/.test(l) ? { exit: -1, stdout: '' } : undefined) });
   assert.ok(r.results[0].error);
   assert.match(r.results[0].error, /null record agent/);
 });
@@ -3354,14 +3354,14 @@ test('E10 AC3: a group whose step 2 exits 1 is not repeated and command 2 fails 
 });
 
 test('E10 AC3: a group output with one changed character is a null record agent', async () => {
-  const over = (l, prompt) => (l === 'E1:status-d' ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() }))).replace('"head":"abc1234"', '"head":"abc1235"') } : undefined);
+  const over = (l, prompt) => (isGroupCopy(l) ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() }))).replace('"head":"abc1234"', '"head":"abc1235"') } : undefined);
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
-  assert.equal(labels.filter((l) => l === 'E1:status-d').length, 1, 'no new run of the group');
+  assert.equal(labels.filter(isGroupCopy).length, 5, 'the same copy is repeated, five attempts at most');
   assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
 });
 
 test('E10 AC3: a group output of another run (another nonce) is a null record agent', async () => {
-  const over = (l, prompt) => (l === 'E1:status-d' ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() })), 'old-run') } : undefined);
+  const over = (l, prompt) => (isGroupCopy(l) ? { exit: 0, stdout: groupStdout(prompt, promptCommands(prompt).map(() => ({ exit: 0, stdout: cliJson() })), 'old-run') } : undefined);
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)));
 });
@@ -3394,6 +3394,49 @@ test('E10 AC3: a failed chunk stops the next ones', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.ok(!labels.includes('E1:status-d-part2'), 'the chunk after a failed one does not run');
   assert.ok(r.results[0].concerns.some((x) => /command 4 \(add-decision\) exit 1/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+// ---- DEC-714: the group copy repeats (the write is idempotent by nonce in verify-run.mjs)
+const isGroupCopy = (l) => /^E1:status-d(-part\d+)?(-retry\d)?$/.test(l);
+test('DEC-714: a PLACEHOLDER first copy of the group is repeated and the second good copy records ok', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l) => (l === 'E1:status-d' ? { exit: 0, stdout: 'PLACEHOLDER' } : undefined));
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d,E1:status-d-retry2');
+  assert.ok(!r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+  const [a, b] = calls.filter((c) => isGroupCopy(c.label));
+  assert.equal(a.prompt, b.prompt, 'the SAME copy is repeated');
+  assert.equal(a.opts.model, 'haiku');
+  assert.equal(b.opts.model, 'haiku');
+});
+
+test('DEC-714: group copies 3 to 5 run on sonnet and 5 bad copies keep the safe failure', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l) => (isGroupCopy(l) ? { exit: 0, stdout: 'PLACEHOLDER' } : undefined));
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d,E1:status-d-retry2,E1:status-d-retry3,E1:status-d-retry4,E1:status-d-retry5');
+  assert.deepEqual(calls.filter((c) => isGroupCopy(c.label)).map((c) => [c.opts.model, c.opts.effort]), [['haiku', 'low'], ['haiku', 'low'], ['sonnet', 'medium'], ['sonnet', 'medium'], ['sonnet', 'medium']]);
+  assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('DEC-714: a refusal signed by the script (error) is not repeated', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l, prompt) => (isGroupCopy(l) ? { exit: 2, stdout: JSON.stringify({ tool: 'verify-run', mode: 'group', nonce: verifyArg(prompt, 'group').nonce, error: 'a group with this nonce already ran with another payload' }) } : undefined));
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d');
+  assert.ok(r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('DEC-714: a refusal without the nonce (the model altered the command) is a bad copy and is repeated', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l) => (l === 'E1:status-d' ? { exit: 2, stdout: JSON.stringify({ tool: 'verify-run', mode: 'group', error: 'the payload digest does not match: nothing was run' }) } : undefined));
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.equal(labels.filter(isGroupCopy).join(','), 'E1:status-d,E1:status-d-retry2');
+  assert.ok(!r.results[0].concerns.some((x) => /null record agent/.test(x)), r.results[0].concerns.join('\n'));
+});
+
+test('DEC-714: the nonce of a group is the same for every copy and fixed by deliverable, status and chunk', async () => {
+  const over = both(specWith({ rulings: [ruling({})] }), (l) => (l === 'E1:status-d' ? { exit: 0, stdout: 'PLACEHOLDER' } : undefined));
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  const [a, b] = calls.filter((c) => isGroupCopy(c.label)).map((c) => verifyArg(c.prompt, 'group').nonce);
+  assert.equal(a, b);
+  assert.match(a, /^[^:]+:E1:d:0$/);
 });
 
 // Git Bash on Windows cuts the bash -c string at 8186 characters and the Bash tool wrapper takes ~500: no dispatched command may exceed 6000.
@@ -4414,7 +4457,7 @@ test('AC8: a contract ruling holds a selected dependent citing the decision and 
 });
 
 test('AC8 fail safe: a failed executing record of a contract ruling still holds the dependent', async () => {
-  const over = (l) => (/^E1:/.test(l) ? (l === 'E1:status-d' ? { exit: 1, stdout: 'boom' } : contractSpec('E1')(l)) : undefined);
+  const over = (l) => (/^E1:/.test(l) ? (isGroupCopy(l) ? { exit: 1, stdout: 'boom' } : contractSpec('E1')(l)) : undefined);
   const { r, labels } = await exec({ cards: chain(), deliverables: ['E1', 'E2', 'E3'], over });
   const m = runsOf(r);
   assert.equal(m.E2.merged, false);

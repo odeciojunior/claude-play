@@ -1435,7 +1435,7 @@ const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
-const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file):\n${cmd}\n${extra}${BASH_ONLY}`
+const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${BASH_ONLY}`
 // The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
@@ -1769,7 +1769,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
     inflight: x.inflight, skipStatus: cur === status, lang: LANG, cellChars: CELL_CHARS, source: x.source || RM + 'state.md', blockedStatus: STATUSES.blocked })
   if (rc.error) { holdUnconfirmed(E, x, []); return { ok: false, failures: [rc.error], head: null, cuts: [] } }
   const msg = phrases(LANG).commit(E, status)
-  // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written. The group writes, so it is never repeated.
+  // The commands run in verify-run.mjs group (one script-runner call per chunk): it stops at the first failure and commits what was written.
   // A payload over CMD_CAP characters splits into consecutive chunks (no command is cut), each with its own finally; a failed chunk stops the next ones.
   const grp = (k, steps) => ({ nonce: `${RUN_TAG}:${E}:${status}:${k}`, cwd: INTWT, steps, finally: { commit: { add: [RM], message: [msg, TRAILER] } } })
   const grpCmd = g => `node "${VERIFY_RUN}" group ${encArg(g)}`
@@ -1784,10 +1784,20 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   let results = { runs: [] }
   for (let k = 0; k < chunks.length && results; k++) {
     const g = grp(k, chunks[k])
-    const out = await agent(runPrompt(grpCmd(g),`Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
-      { agentType: 'productivity-tools:script-runner', label: `${E}:status-${status}${k ? `-part${k + 1}` : ''}`, phase: 'Plan', schema: S_RUN, model: 'haiku', effort: 'low' })
-    const v = checkRun(out && out.stdout, 'verify-run', g.nonce)
-    if (!v.ok || v.data.mode !== 'group' || !Array.isArray(v.data.steps)) { results = null; break }
+    // The copy repeats (the group is idempotent by nonce in verify-run.mjs, DEC-714): the SAME command up to 5 attempts, 1-2 haiku, 3-5 sonnet; a refusal signed by the script is final.
+    const base = `${E}:status-${status}${k ? `-part${k + 1}` : ''}`
+    let v = { ok: false }
+    for (let a = 1; a <= 5; a++) {
+      const out = await agent(runPrompt(grpCmd(g),`Do NOT propose, write or approve a strategy revision or a format migration: the owner's pre-approval never covers them.\n`),
+        { agentType: 'productivity-tools:script-runner', label: a === 1 ? base : `${base}-retry${a}`, phase: 'Plan', schema: S_RUN, model: a < 3 ? 'haiku' : 'sonnet', effort: a < 3 ? 'low' : 'medium' })
+      v = checkRun(out && out.stdout, 'verify-run', g.nonce)
+      if (v.ok && v.data.mode === 'group' && Array.isArray(v.data.steps)) break
+      v = { ok: false }
+      let o = null
+      try { o = JSON.parse(String(out && out.stdout)) } catch { /* not JSON */ }
+      if (o && o.tool === 'verify-run' && o.error !== undefined && o.nonce === g.nonce) break  // a refusal of this very group; without the nonce the command was altered: a bad copy
+    }
+    if (!v.ok) { results = null; break }
     for (const s of v.data.steps) results.runs.push({ n: results.runs.length + 1, exit: s.exit, stdout: s.out })
     if (v.data.stopped || v.data.steps.some(s => s.exit !== 0)) break
   }
