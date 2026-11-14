@@ -305,13 +305,13 @@ export function checkValidity(variant, journal, scenario) {
       blob = review.result.measuredPlanBlob;
     }
     if (plan.result.reused === false) return { valid: false, reason: 'plano-reescrito' };
-    if (blob !== undefined && blob !== scenario.seededBlobs?.[E5_PATHS.plan]) return { valid: false, reason: 'blob-diferente' };
+    if (blob !== undefined && blob !== scenario.seededBlobs?.[(scenario.paths ?? E5_PATHS).plan]) return { valid: false, reason: 'blob-diferente' };
     return { valid: true, reason: 'ok' };
   }
   if (art.class === 'spec') {
     const review = find(entries, 'E5:spec-review1');
     if (typeof review?.result?.measuredSpecBlob !== 'string') return INVALID_FORMAT;
-    if (review.result.measuredSpecBlob !== scenario.seededBlobs?.[E5_PATHS.spec]) return { valid: false, reason: 'blob-diferente' };
+    if (review.result.measuredSpecBlob !== scenario.seededBlobs?.[(scenario.paths ?? E5_PATHS).spec]) return { valid: false, reason: 'blob-diferente' };
     return { valid: true, reason: 'ok' };
   }
   // code: the run resumes at task 3, so its review must exist and tasks 1 to 3 must not be redone
@@ -393,7 +393,7 @@ export function settleSandbox(sandbox, seededCommit) {
 }
 
 // stageOf(presents) lets the review-stage harness decide the stage from what the sentinels still see.
-async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = true) {
+async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = true, ref = 'feat/E5') {
   const art = artifactOf(variant);
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
   const entries = manifest.filter((m) => m.class === art.class && m.artifact === art.artifact && (m.set ?? 'e5') === (art.set ?? 'e5'));
@@ -405,7 +405,7 @@ async function attemptOutcomes(variant, scenario, journal, stageOf, reachable = 
     }
     try {
       const mod = await import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
-      presents.push(mod.present(scenario.dir, 'feat/E5', e.id));
+      presents.push(mod.present(scenario.dir, ref, e.id));
     } catch {
       presents.push(null);
     }
@@ -435,6 +435,18 @@ function totalOutcomes(attempts) {
   return { outcomes, deteccaoPorCodigo: byCode };
 }
 
+// Loop batches: outcomes after the 1st fix, reviews per attempt, ok/stopped and the unverified after-fix SHAs (valid attempts).
+function loopAggregate(attempts) {
+  const valid = attempts.filter((a) => a.status === 'valid' && a.loop);
+  const reviews = {};
+  for (const a of valid) reviews[a.loop.reviews] = (reviews[a.loop.reviews] ?? 0) + 1;
+  return {
+    outcomesAfterFirstFix: totalOutcomes(valid.map((a) => ({ status: 'valid', outcomes: a.afterFirstFix?.outcomes ?? [] }))).outcomes,
+    loopSummary: { reviews, ok: valid.filter((a) => a.loop.ok).length, stopped: valid.filter((a) => !a.loop.ok).length },
+    afterFirstFixUnverified: valid.filter((a) => a.afterFirstFix && !a.afterFirstFix.verified).length,
+  };
+}
+
 function sessionIds(configDir) {
   const root = join(configDir, 'projects');
   if (!existsSync(root)) return new Set();
@@ -457,9 +469,9 @@ function parseClaudeJson(stdout) {
 // ---- Review-stage harness (DEC-083, DP-6) ----
 
 const STAGES = {
-  'spec-review': { variant: /^spec-semeado-/, fix: 'spec-fix', label: 'E5:spec-review', blobKey: 'measuredSpecBlob', blobPath: E5_PATHS.spec },
-  'plan-review': { variant: /^plano-semeado-[AB]$/, fix: 'plan-fix', label: 'E5:plan-review', blobKey: 'measuredPlanBlob', blobPath: E5_PATHS.plan },
-  'task-review': { variant: /^codigo-semeado-/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, blobPath: null },
+  'spec-review': { variant: /^spec-(semeado|nativo)-[AB]$/, fix: 'spec-fix', label: 'E5:spec-review', blobKey: 'measuredSpecBlob', artifact: 'spec' },
+  'plan-review': { variant: /^plano-(semeado|nativo)-[AB]$/, fix: 'plan-fix', label: 'E5:plan-review', blobKey: 'measuredPlanBlob', artifact: 'plan' },
+  'task-review': { variant: /^codigo-semeado-/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, artifact: null },
 };
 const REVIEW_MODELS = ['haiku', 'sonnet', 'opus'];
 const reviewEffortFor = (model) => (model === 'haiku' ? 'low' : 'medium'); // mirrors effortFor in roadmap-release.js
@@ -697,14 +709,24 @@ const slash = (p) => p.replace(/\\/g, '/');
 
 function harnessPrompts(h, scenario) {
   const sb = slash(scenario.dir);
+  const paths = scenario.paths ?? E5_PATHS;
+  const tools = h.installPath && h.installPath !== 'unknown' ? `${slash(h.installPath)}/scripts` : '<plugin>/scripts';
+  // Every placeholder of the arms (A2): the product's names, with the sandbox paths and the measured plugin's tools.
   const vars = {
-    artifactPath: `${sb}/${h.stage === 'spec-review' ? E5_PATHS.spec : E5_PATHS.plan}`,
-    specPath: `${sb}/${E5_PATHS.spec}`,
+    artifactPath: `${sb}/${h.st.artifact === 'spec' ? paths.spec : paths.plan}`,
+    specPath: `${sb}/${paths.spec}`,
     cardRef: 'card E5 of docs/plans/roadmap-sandbox/ (the sandbox roadmap)',
     repo: sb,
+    E: 'E5',
+    RM: LOOP_RM,
+    rmAbs: `${sb}/${LOOP_RM.replace(/\/+$/, '')}`,
+    specTool: `${tools}/spec-tool.mjs`,
+    planTool: `${tools}/plan-tool.mjs`,
+    specAbs: `${sb}/${paths.spec}`,
+    planAbs: `${sb}/${paths.plan}`,
   };
   const measure = (key) =>
-    `\nMeasure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${sb}" rev-list --count main..HEAD)${key ? `, ${key} = the output of git -C "${sb}" rev-parse "HEAD:${h.st.blobPath}", run by you` : ''}.`;
+    `\nMeasure: headSha, clean (status --porcelain empty), commitsInRange (git -C "${sb}" rev-list --count main..HEAD)${key ? `, ${key} = the output of git -C "${sb}" rev-parse "HEAD:${paths[h.st.artifact]}", run by you` : ''}.`;
   if (h.stage === 'task-review' && h.arm === 'atual') {
     let plan = '';
     try {
@@ -731,7 +753,8 @@ function harnessPrompts(h, scenario) {
     reviewPrompt: reviewBody + measured,
     reviewBody,
     measure: measured,
-    fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}' }).trimEnd(),
+    // e5-native plan variants: the check line of the measured plan fixer is appended (plan-fix-atual.md stays frozen, DEC-310).
+    fixPrompt: fill(h.fixArm.text, { ...vars, issues: '{{issues}}' }).trimEnd() + (h.fixCheck ? '\n' + fill(h.fixCheck.text, vars).trim() : ''),
   };
 }
 
@@ -909,9 +932,111 @@ function harnessStage(h, entries, presents) {
   return fixed && presents.some((p) => p === false) ? 'approved' : 'stopped';
 }
 
+// ---- E26 A1: loop result, outcomes after the 1st fix, tool check and human inputs (T6) ----
+
+// A journal entry whose agent returned nothing (the raw line carries no result).
+function nullResult(entry) {
+  if (!entry) return true;
+  if (entry.result) return false;
+  const raw = parseObject(entry.text ?? '');
+  const v = raw ? (raw.result ?? raw.resultJson) : undefined;
+  return v === null || v === undefined || v === '';
+}
+
+// Loop mode: when review 1 came back null, the retry 1b stands in for it (validity and stage read review 1).
+function loopEntries(h, entries) {
+  const r1 = find(entries, `${h.st.label}1`);
+  const r1b = find(entries, `${h.st.label}1b`);
+  if (r1b && (!r1 || nullResult(r1))) return [{ ...r1b, label: `${h.st.label}1` }, ...entries.filter((e) => e !== r1 && e !== r1b)];
+  return entries;
+}
+
+// Replays the measured runReviewLoop over the journal: the same rounds, tiers and stop the script went through.
+// Returns null when a review or fix the loop asked for is missing or null (laco-infra).
+async function loopResult(h, entries, P) {
+  const opt = STAGE_LOOP[h.stage];
+  const label = h.st.label;
+  let reviews = 0;
+  const fixTiers = [];
+  const env = { maxFix: opt.maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: () => {} };
+  const review = async (round) => {
+    const e = find(entries, `${label}${round}`);
+    if (!e || !e.result) return null;
+    reviews += 1;
+    return e.result;
+  };
+  const fix = async (iss, k, tier) => {
+    const e = find(entries, `${label}-fix${k}`);
+    if (nullResult(e)) return null;
+    fixTiers.push(tier);
+    return { status: 'DONE' };
+  };
+  const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, (r) => P.reviewTruth(r, 0, 'main..HEAD'), { tier: opt.tier, reviewModel: opt.reviewModel });
+  if (res.kind === 'infra') return null;
+  return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null };
+}
+
+// The SHA reported by reviewer 2 counts only when it is the state reviewer 2 really measured, right after the 1st fix.
+function afterFixVerified(h, entries, scenario, sha, fixes) {
+  const dir = scenario.dir;
+  const artifact = (scenario.paths ?? E5_PATHS)[h.st.artifact];
+  const blob = find(entries, `${h.st.label}2`)?.result?.[h.st.blobKey];
+  if (!/^[0-9a-f]{7,64}$/.test(sha) || !gitOk(dir, 'cat-file', '-e', `${sha}^{commit}`)) return false;
+  if (!scenario.seededCommit || !gitOk(dir, 'merge-base', '--is-ancestor', scenario.seededCommit, sha) || !gitOk(dir, 'merge-base', '--is-ancestor', sha, 'feat/E5')) return false;
+  let atSha;
+  try {
+    atSha = gitOut(dir, 'rev-parse', `${sha}:${artifact}`);
+  } catch {
+    return false;
+  }
+  if (typeof blob !== 'string' || blob.trim() !== atSha) return false;
+  if (fixes === 1 && gitOut(dir, 'rev-parse', `${sha}^{commit}`) !== gitOut(dir, 'rev-parse', 'feat/E5')) return false;
+  return true;
+}
+
+async function afterFirstFix(h, variant, scenario, journal, endOutcomes) {
+  const entries = journal.entries;
+  if (!find(entries, `${h.st.label}-fix1`)) return { headSha: null, verified: true, outcomes: endOutcomes };
+  const reported = find(entries, `${h.st.label}2`)?.result?.headSha;
+  const sha = typeof reported === 'string' ? reported.trim() : '';
+  const fixes = entries.filter((e) => new RegExp(`^${h.st.label}-fix\\d+$`).test(e.label)).length;
+  if (!afterFixVerified(h, entries, scenario, sha, fixes)) {
+    return { headSha: sha || null, verified: false, outcomes: endOutcomes.map((o) => ({ ...o, outcome: 'indeterminado' })) };
+  }
+  const outcomes = await attemptOutcomes(variant, scenario, journal, (presents) => harnessStage(h, entries, presents), true, sha);
+  return { headSha: sha, verified: true, outcomes };
+}
+
+// Exit of the measured plugin's own check on the artifact at the tip of feat/E5 (the sandbox root), or null when it cannot run.
+function toolCheck(h, scenario, installPath, reachable) {
+  if (!reachable || !installPath || installPath === 'unknown') return { exit: null };
+  const paths = scenario.paths ?? E5_PATHS;
+  const dir = scenario.dir;
+  const tool = join(installPath, 'scripts', h.st.artifact === 'spec' ? 'spec-tool.mjs' : 'plan-tool.mjs');
+  if (!existsSync(tool)) return { exit: null };
+  const args = h.st.artifact === 'spec'
+    ? [tool, 'check', join(dir, paths.spec), '--roadmap', join(dir, LOOP_RM.replace(/\/+$/, ''))]
+    : [tool, 'check', join(dir, paths.plan), '--spec', join(dir, paths.spec)];
+  const r = spawnSync(process.execPath, args, { cwd: dir, encoding: 'utf8' });
+  return { exit: typeof r.status === 'number' ? r.status : null };
+}
+
+// Blocking needsPerson items of the spec/1 json data block at a ref, or null when the block cannot be read.
+function blockingHumanInputs(scenario, ref) {
+  try {
+    const text = lf(gitOut(scenario.dir, 'show', `${ref}:${(scenario.paths ?? E5_PATHS).spec}`));
+    const m = /```json data\n([\s\S]*?)\n```/.exec(text);
+    if (!m) return null;
+    const np = JSON.parse(m[1]).needsPerson;
+    return Array.isArray(np) ? np.filter((x) => x && x.blocking === true).length : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract } = {}) {
   const { variant, runs } = opts;
-  const seeded = variant.includes('semeado');
+  const seeded = /semeado|nativo/.test(variant);
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
   const h = prepareHarness(opts);
   const pluginDir = opts.pluginDir ? resolve(opts.pluginDir) : null; // claude -p runs in the sandbox: it needs the absolute path
@@ -928,12 +1053,14 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       assertArmsCurrent(h, wfText);
       if (h.rounds === 'loop') {
         h.pure = checkLoopWorkflow(wfText, h.stage);
+        h.loopFns = loadPure(wfFile); // the loop result is replayed with the measured workflow's own functions
         h.harness.pureSha256 = extractPure(wfText).sha256;
         h.harness.stageOptions = { ...STAGE_LOOP[h.stage] };
       }
     } else throw new UsageError(`${pluginDir ? '--plugin-dir' : 'the installed plugin'} has no skills/roadmap-release/workflow/roadmap-release.js to check the arm templates against`);
   }
   if (h) {
+    h.installPath = plugin.installPath;
     let harnessCommit = null;
     try {
       harnessCommit = execFileSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() || null;
@@ -945,11 +1072,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       console.error(`run-batch: warning: harnessCommit ${harnessCommit} differs from the measured plugin commit ${plugin.commit} (prompt and agent come from different commits)`);
     }
   }
-  const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}${h.harness.reviewModel ? `-${h.harness.reviewModel}` : ''}` : ''}-${stamp(now())}`);
+  const dir = join(resolve(opts.out), `${variant}${h ? `-${h.stage}-${h.arm}${h.harness.reviewModel ? `-${h.harness.reviewModel}` : ''}${h.rounds === 'loop' ? '-loop' : ''}` : ''}-${stamp(now())}`);
   const priv = join(dir, 'private');
   mkdirSync(priv, { recursive: true });
   const superpowers = readSuperpowers(opts.configDir);
-  const seedSource = seeded ? seedSourceOf(opts.fromRun) : undefined;
+  const seedSource = seeded ? seedSourceOf(opts.fromRun, { set: artifactOf(variant)?.set }) : undefined;
   const cli = (await exec('claude', ['--version'], {})).stdout.trim();
 
   const attempts = [];
@@ -1054,9 +1181,15 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     privateAttempts.push({ n: k, sessions, ...extra() });
     writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
     let journal = null;
+    let loop = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
-      const v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
+      if (h?.rounds === 'loop') journal = { ...journal, entries: loopEntries(h, journal.entries) };
+      let v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
+      if (v.valid && h?.rounds === 'loop') {
+        loop = await loopResult(h, journal.entries, h.loopFns);
+        if (!loop) v = { valid: false, reason: 'laco-infra' };
+      }
       if (!v.valid) {
         attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
         if (v.reason === 'formato-do-diario') {
@@ -1112,14 +1245,27 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     validRuns.push(run);
     let outcomes = [];
+    let reachable = false;
     if (journal) {
       // The sentinels read the tip of feat/E5 in the working tree. The stage is read first: settling may recreate the branch.
       const stage = !h ? stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit) : null;
-      const reachable = settleSandbox(scenario.dir, scenario.seededCommit);
-      outcomes = await attemptOutcomes(variant, scenario, journal, h ? (presents) => harnessStage(h, journal.entries, presents) : () => stage, reachable);
+      reachable = settleSandbox(scenario.dir, scenario.seededCommit);
+      // Loop: the stage at the end is the loop's own verdict (approved when it ended ok).
+      const stageOf = !h ? () => stage : loop ? () => (loop.ok ? 'approved' : 'stopped') : (presents) => harnessStage(h, journal.entries, presents);
+      outcomes = await attemptOutcomes(variant, scenario, journal, stageOf, reachable);
     }
     const attempt = { n: k, ...extra(), status: 'valid', counters: toAttemptCounters(run), outcomes };
     if (h && journal) attempt.review = reviewCounts(journal.entries, `${h.st.label}1`);
+    if (h && journal && loop) {
+      attempt.loop = loop;
+      attempt.afterFirstFix = reachable
+        ? await afterFirstFix(h, variant, scenario, journal, outcomes)
+        : { headSha: null, verified: false, outcomes: outcomes.map((o) => ({ ...o, outcome: 'indeterminado' })) };
+    }
+    if (h && journal && artifactOf(variant)?.set === 'e5-native' && h.st.artifact) {
+      attempt.toolCheck = toolCheck(h, scenario, plugin.installPath, reachable);
+      if (h.st.artifact === 'spec') attempt.humanInputs = { blockingSeeded: blockingHumanInputs(scenario, scenario.seededCommit), blockingAtEnd: reachable ? blockingHumanInputs(scenario, 'feat/E5') : null };
+    }
     if (!h && (variant === 'completo' || variant === 'parada-retomada')) attempt.integrated = e5Integrated(scenario.dir);
     if (PANEL_VARIANTS.includes(variant)) attempt.panel = readPanel(scenario.dir, plugin.installPath, { deliverable: EXPECTED_PANEL[variant].deliverable });
     attempts.push(attempt);
@@ -1150,6 +1296,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     ...(h ? { harness: h.harness } : {}),
     cost: costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null },
     ...totalOutcomes(attempts),
+    ...(h?.rounds === 'loop' ? loopAggregate(attempts) : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
   return { dir, aggregate, exitCode: status('denied') + status('invalid') > 0 ? 1 : 0 };

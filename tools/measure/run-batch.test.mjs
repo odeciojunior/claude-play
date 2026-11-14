@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
-import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
+import { E5_PATHS, NATIVE_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'run-batch.mjs');
@@ -1778,6 +1778,215 @@ test('A1: --rounds refusals exit 2 before any claude call', async () => {
       const fake = makeFake(s.configDir);
       await assert.rejects(runBatch(seededOpts(s, opt.variant ?? 'plano-semeado-A', { stage: 'plan-review', pluginDir, rounds: 'loop', ...opt }), { exec: fake.exec, now: NOW }), UsageError);
       assert.equal(claudeCalls(fake).length, 0);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1/A2/A3: loop aggregate and native wiring (T6) ----
+const NATIVE_SCEN = join(here, 'scenario', 'e5-native');
+const journalFileOf = (configDir, n) => join(configDir, 'projects', 'fab-sandbox', sid(n), 'subagents', 'workflows', 'wf_fab', 'journal.jsonl');
+const rv = (issues, headSha, key, blob) => ({ issues, headSha, clean: true, commitsInRange: 1, [key]: blob });
+// The fixer of the simulated run: the clean native file comes back in one commit on feat/E5.
+function restoreClean(cwd, kind) {
+  gitq(cwd, 'checkout', '-q', 'feat/E5');
+  writeFileSync(join(cwd, NATIVE_PATHS[kind]), norm(readFileSync(join(NATIVE_SCEN, `${kind}.md`), 'utf8')));
+  gitq(cwd, '-c', 'user.name=fab', '-c', 'user.email=fab@example.invalid', 'commit', '-q', '-am', `docs(${kind}): E5 review fixes`);
+  return gitq(cwd, 'rev-parse', 'feat/E5');
+}
+const nativeOpts = (s, variant, extra = {}) => seededOpts(s, variant, { stage: variant.startsWith('spec') ? 'spec-review' : 'plan-review', pluginDir: REAL_PLUGIN, ...extra });
+const promptConsts = (text) =>
+  Object.fromEntries(
+    text.split('\n').map((l) => /^const (REVIEW_PROMPT|FIX_PROMPT|H_REVIEW_BODY|H_FIX|H_MEASURE) = (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], JSON.parse(m[2])]),
+  );
+const sentScript = (fake) => {
+  const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+  return { cwd: sent.cwd, text: readFileSync(join(sent.cwd, 'review-only.js'), 'utf8') };
+};
+
+test('A1: loop on plano-nativo-A, blocker then clean: loop record, verified afterFirstFix, toolCheck and the loop summary', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const head1 = gitq(cwd, 'rev-parse', 'feat/E5');
+      const tip = restoreClean(cwd, 'plan');
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], head1, 'measuredPlanBlob', seeded) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab] fixed' } },
+        { label: 'E5:plan-review2', result: rv([], tip, 'measuredPlanBlob', gitq(cwd, 'rev-parse', `${tip}:${NATIVE_PATHS.plan}`)) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.deepEqual(a.loop, { reviews: 2, fixes: 1, fixTiers: ['sonnet'], ok: true, kind: null });
+    assert.deepEqual(outcomeMap(a), { P1: 'capturado', P2: 'capturado', P9: 'capturado', P4: 'capturado' });
+    assert.equal(a.afterFirstFix.verified, true);
+    assert.match(a.afterFirstFix.headSha, /^[0-9a-f]{40}$/);
+    assert.deepEqual(Object.fromEntries(a.afterFirstFix.outcomes.map((o) => [o.id, o.outcome])), { P1: 'capturado', P2: 'capturado', P9: 'capturado', P4: 'capturado' });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    assert.equal(a.humanInputs, undefined);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 2: 1 }, ok: 1, stopped: 0 });
+    assert.equal(r.aggregate.afterFirstFixUnverified, 0);
+    assert.equal(r.aggregate.outcomesAfterFirstFix.P1.capturado, 1);
+    assert.equal(r.aggregate.seedSource.kind, 'nativo-sonda-2');
+    const fragCommit = norm(readFileSync(join(ARMS, 'plan-fix-check-atual.md'), 'utf8')).split('\n')[0].match(/commit ([0-9a-f]{40})$/)[1];
+    assert.equal(r.aggregate.harness.armCommits.fixCheck, fragCommit);
+    const { text } = sentScript(fake);
+    const fix = promptConsts(text).H_FIX;
+    assert.ok(fix.includes(`run node "${REAL_PLUGIN.replace(/\\/g, '/')}/scripts/plan-tool.mjs" check "`), fix);
+    assert.ok(fix.includes(`/${NATIVE_PATHS.plan}" --spec "`), fix);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: afterFirstFix is unverified (all indeterminado) for a missing SHA, a SHA out of range, a different blob and a non-tip SHA after 1 fix', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const fixSha = restoreClean(cwd, 'plan');
+      const fixBlob = gitq(cwd, 'rev-parse', `${fixSha}:${NATIVE_PATHS.plan}`);
+      let head = fixSha;
+      let blob = fixBlob;
+      if (n === 1) head = '0123456789abcdef0123456789abcdef01234567';
+      if (n === 2) head = gitq(cwd, 'rev-parse', 'main');
+      if (n === 3) blob = seeded;
+      if (n === 4) {
+        writeFileSync(join(cwd, 'notes.txt'), 'later\n');
+        gitq(cwd, 'add', 'notes.txt');
+        gitq(cwd, '-c', 'user.name=fab', '-c', 'user.email=fab@example.invalid', 'commit', '-q', '-m', 'chore: later commit');
+      }
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', seeded) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab] fixed' } },
+        { label: 'E5:plan-review2', result: rv([], head, 'measuredPlanBlob', blob) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 4 }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 4, JSON.stringify(r.aggregate.invalidReasons));
+    for (const a of r.aggregate.attempts) {
+      assert.equal(a.afterFirstFix.verified, false, `attempt ${a.n}`);
+      for (const o of a.afterFirstFix.outcomes) assert.equal(o.outcome, 'indeterminado', `attempt ${a.n} ${o.id}`);
+      assert.equal(a.loop.ok, true);
+    }
+    assert.equal(r.aggregate.afterFirstFixUnverified, 4);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: loop without a blocker: one review, afterFirstFix equals the end; a missing fix is laco-infra; a null review 1 validates on 1b', async () => {
+  const s = setup();
+  try {
+    const seededBlob = (cwd) => gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+    const afterRun = (cwd, n) => {
+      const b = seededBlob(cwd);
+      const text = {
+        1: jl({ label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) }),
+        2: jl({ label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) }),
+        3: jl({ label: 'E5:plan-review1', result: null }, { label: 'E5:plan-review1b', result: rv([minorIssue], 'x', 'measuredPlanBlob', b) }),
+      }[n];
+      writeFileSync(journalFileOf(s.configDir, n), text);
+    };
+    const minorIssue = { severity: 'minor', category: 'defeito', description: '[fab] wording' };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 3 }), { exec: fake.exec, now: NOW });
+    const [a1, a2, a3] = r.aggregate.attempts;
+    assert.equal(a1.status, 'valid');
+    assert.deepEqual(a1.loop, { reviews: 1, fixes: 0, fixTiers: [], ok: true, kind: null });
+    assert.deepEqual(a1.afterFirstFix, { headSha: null, verified: true, outcomes: a1.outcomes });
+    for (const o of a1.outcomes) assert.equal(o.outcome, 'perdido', o.id);
+    assert.deepEqual({ status: a2.status, reason: a2.reason }, { status: 'invalid', reason: 'laco-infra' });
+    assert.equal(a3.status, 'valid', JSON.stringify(a3));
+    assert.equal(a3.loop.ok, true);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 1: 2 }, ok: 2, stopped: 0 });
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: a loop that stops leaves the end stage stopped (outcomes of present defects indeterminado) and counts as stopped', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      // the fixer commits nothing that removes the defects; the same finding comes back twice: sonnet, then opus, then stop
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab]' } },
+        { label: 'E5:plan-review2', result: rv([BLOCKER], gitq(cwd, 'rev-parse', 'feat/E5'), 'measuredPlanBlob', b) },
+        { label: 'E5:plan-review-fix2', result: { summary: '[fab]' } },
+        { label: 'E5:plan-review3', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.deepEqual(a.loop, { reviews: 3, fixes: 2, fixTiers: ['sonnet', 'opus'], ok: false, kind: 'conteudo' });
+    for (const o of a.outcomes) assert.equal(o.outcome, 'indeterminado', o.id);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 3: 1 }, ok: 0, stopped: 1 });
+  } finally {
+    s.done();
+  }
+});
+
+test('A3: spec-nativo-B records humanInputs from the spec/1 block (seeded and at the end) and the spec-tool check exit', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      restoreClean(cwd, 'spec');
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:spec-review1', result: rv([BLOCKER], 'x', 'measuredSpecBlob', seeded) },
+        { label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B'), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.deepEqual(a.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    assert.equal(a.loop, undefined);
+    assert.equal(a.afterFirstFix, undefined);
+    assert.deepEqual(outcomeMap(a), { SN5: 'capturado', SN6: 'capturado', SN7: 'capturado', SN8: 'capturado' });
+    const fix = promptConsts(sentScript(fake).text).FIX_PROMPT;
+    assert.ok(fix.includes(`run node "${REAL_PLUGIN.replace(/\\/g, '/')}/scripts/spec-tool.mjs" check "`), fix);
+    assert.ok(fix.includes('/docs/plans/roadmap-sandbox"'), fix);
+  } finally {
+    s.done();
+  }
+});
+
+test('A2: no {{ placeholder is left in any generated prompt (every stage, variant and arm; {{issues}} only in the fixer); the check fragment only in plano-nativo', async () => {
+  const s = setup();
+  try {
+    const combos = [
+      ...['spec-semeado-A', 'spec-semeado-B', 'spec-nativo-A', 'spec-nativo-B', 'plano-semeado-A', 'plano-semeado-B', 'plano-nativo-A', 'plano-nativo-B'].map((v) => [v, {}]),
+      ...['codigo-semeado-A', 'codigo-semeado-B'].map((v) => [v, { stage: 'task-review', reviewModel: 'sonnet' }]),
+      ...['spec-semeado-A', 'spec-nativo-A', 'plano-semeado-A', 'plano-nativo-B'].map((v) => [v, { rounds: 'loop' }]),
+    ];
+    let k = 0;
+    for (const [variant, extra] of combos) {
+      k += 1;
+      const fake = makeFake(s.configDir);
+      await runBatch(nativeOpts(s, variant, { work: join(s.base, `w${k}`), ...extra }), { exec: fake.exec, now: () => new Date(Date.UTC(2026, 10, 10, 12, 0, k)) });
+      const c = promptConsts(sentScript(fake).text);
+      const review = c.REVIEW_PROMPT ?? c.H_REVIEW_BODY + c.H_MEASURE;
+      const fix = c.FIX_PROMPT ?? c.H_FIX;
+      const tag = `${variant} ${JSON.stringify(extra)}`;
+      assert.ok(typeof review === 'string' && typeof fix === 'string', tag);
+      assert.ok(!review.includes('{{'), `${tag}: ${review}`);
+      assert.ok(!fix.replace(/\{\{issues\}\}/g, '').includes('{{'), `${tag}: ${fix}`);
+      assert.equal(fix.includes('plan-tool.mjs" check'), variant.startsWith('plano-nativo'), tag);
+      if (variant.startsWith('spec')) assert.ok(review.includes('deliverable E5 ') && review.includes('/docs/plans/roadmap-sandbox/requirements.md'), `${tag}: ${review}`);
+      if (/nativo/.test(variant)) assert.ok(review.includes(NATIVE_PATHS[variant.startsWith('spec') ? 'spec' : 'plan']), tag);
     }
   } finally {
     s.done();
