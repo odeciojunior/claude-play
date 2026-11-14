@@ -18,6 +18,7 @@ export const VARIANTS = [
   'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
   'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
+  'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
 ];
 
 // KNOWN GAP (E8, for E11 criterion 1): the roadmap-release workflow now reads and writes the native spec and plan at
@@ -116,20 +117,23 @@ function e5Texts(fromRun) {
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 
 // Reads the native seeds of `scenDir` (LF) and refuses any whose sha256 diverges from NATIVE_SEEDS.
-export function readNativeSeeds(scenDir = join(SCEN, 'e5-native')) {
+// `expect` ({ spec?, plan? }) adds the seedSha256 of the manifest entries: a copy that diverges from it is refused too.
+export function readNativeSeeds(scenDir = join(SCEN, 'e5-native'), expect = {}) {
   const out = {};
   for (const k of ['spec', 'plan']) {
     const text = readText(join(scenDir, k + '.md'));
     const got = sha256(text);
-    if (got !== NATIVE_SEEDS[k].sha256) throw new Error(`native ${k} seed: sha256 ${got} differs from the recorded ${NATIVE_SEEDS[k].sha256}`);
+    for (const want of [NATIVE_SEEDS[k].sha256, expect[k]]) {
+      if (want !== undefined && got !== want) throw new Error(`native ${k} seed: sha256 ${got} differs from the recorded ${want}`);
+    }
     out[k] = text;
   }
   return out;
 }
 
 // Creates feat/E5 from main with the native spec and, optionally, the native plan at NATIVE_PATHS.
-export function prepareNativeBranch(dir, { withPlan } = {}) {
-  const { spec, plan } = readNativeSeeds();
+export function prepareNativeBranch(dir, { withPlan, expect } = {}) {
+  const { spec, plan } = readNativeSeeds(undefined, expect);
   git(dir, 'checkout', '-q', '-b', 'feat/E5', 'main');
   writeIn(dir, NATIVE_PATHS.spec, spec);
   git(dir, 'add', NATIVE_PATHS.spec);
@@ -187,14 +191,19 @@ export function prepareE5Branch(dir, { withPlan, tasks, fromRun } = {}) {
   }
 }
 
+// set: 'e5' is the legacy synthetic scenario (entries without a set); 'e5-native' the native seeds of E26.
 const SEEDED = {
-  'plano-semeado-A': { class: 'plan', artifact: 'A' },
-  'plano-semeado-B': { class: 'plan', artifact: 'B' },
-  'plano-semeado-codigo': { class: 'plan', artifact: 'C' },
-  'codigo-semeado-A': { class: 'code', artifact: 'A' },
-  'codigo-semeado-B': { class: 'code', artifact: 'B' },
-  'spec-semeado-A': { class: 'spec', artifact: 'A' },
-  'spec-semeado-B': { class: 'spec', artifact: 'B' },
+  'plano-semeado-A': { class: 'plan', artifact: 'A', set: 'e5' },
+  'plano-semeado-B': { class: 'plan', artifact: 'B', set: 'e5' },
+  'plano-semeado-codigo': { class: 'plan', artifact: 'C', set: 'e5' },
+  'codigo-semeado-A': { class: 'code', artifact: 'A', set: 'e5' },
+  'codigo-semeado-B': { class: 'code', artifact: 'B', set: 'e5' },
+  'spec-semeado-A': { class: 'spec', artifact: 'A', set: 'e5' },
+  'spec-semeado-B': { class: 'spec', artifact: 'B', set: 'e5' },
+  'spec-nativo-A': { class: 'spec', artifact: 'A', set: 'e5-native' },
+  'spec-nativo-B': { class: 'spec', artifact: 'B', set: 'e5-native' },
+  'plano-nativo-A': { class: 'plan', artifact: 'A', set: 'e5-native' },
+  'plano-nativo-B': { class: 'plan', artifact: 'B', set: 'e5-native' },
 };
 
 export function artifactOf(variant) {
@@ -205,17 +214,31 @@ function loadManifest() {
   return JSON.parse(readFileSync(join(DEFECTS, 'manifest.json'), 'utf8'));
 }
 
+// Manifest entries of a seeded variant: same class, artifact and set (an entry without a set belongs to 'e5').
+export function manifestEntries(variant) {
+  const a = artifactOf(variant);
+  if (!a) return [];
+  return loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact && (e.set ?? 'e5') === a.set);
+}
+
 // Applies every defect of the variant's artifact in one neutral commit on feat/E5.
 async function seedVariant(dir, variant, fromRun) {
   const a = artifactOf(variant);
-  const entries = loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact);
+  const entries = manifestEntries(variant);
   const isCode = a.class === 'code';
-  prepareE5Branch(dir, { withPlan: a.class !== 'spec', tasks: isCode ? 2 : 0, fromRun });
+  if (a.set === 'e5-native') {
+    if (fromRun) throw new Error('--from-run does not apply to the native seeds');
+    const expect = {};
+    for (const e of entries) expect[e.class] = e.seedSha256;
+    prepareNativeBranch(dir, { withPlan: a.class === 'plan', expect });
+  } else {
+    prepareE5Branch(dir, { withPlan: a.class !== 'spec', tasks: isCode ? 2 : 0, fromRun });
+  }
   // Code: task 3 is committed with its own files and the defects applied, in a single commit.
   if (isCode) copyTree(join(SCEN, 'e5', 'code', 't3'), dir);
   for (const e of entries) {
     const mod = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
-    mod.seed(dir);
+    mod.seed(dir, e.id);
   }
   const files = [...new Set(entries.map((e) => e.file))];
   if (isCode) {
@@ -249,7 +272,7 @@ export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
 
 export async function makeScenario(dir, variant, { fromRun } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
-  if (/semeado/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
+  if (/semeado|nativo/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
   const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, paths: { ...E5_PATHS } };
   switch (variant) {
@@ -262,6 +285,15 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'spec-semeado-A':
     case 'spec-semeado-B':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      break;
+    case 'plano-nativo-A':
+    case 'plano-nativo-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun), { paths: { ...NATIVE_PATHS } });
+      scenario.prompts = [`${RELEASE} plan-only E5`];
+      break;
+    case 'spec-nativo-A':
+    case 'spec-nativo-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun), { paths: { ...NATIVE_PATHS } });
       break;
     case 'codigo-semeado-A':
     case 'codigo-semeado-B':
