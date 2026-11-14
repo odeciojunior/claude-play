@@ -334,10 +334,10 @@ test('release run variants carry the permission rules in an excluded settings.lo
   for (const variant of ['completo', 'parada-retomada', 'plan-only', 'coordinator']) {
     const t = tmp('sb');
     try {
-      await makeScenario(t.dir, variant);
+      const sc = await makeScenario(t.dir, variant);
       const file = join(t.dir, '.claude', 'settings.local.json');
       if (variant === 'completo' || variant === 'parada-retomada') {
-        assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES } }, null, 2) + '\n');
+        assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES, additionalDirectories: [sc.dir + '-wt'] } }, null, 2) + '\n');
         assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
         assert.ok(git(t.dir, 'check-ignore', '.claude/settings.local.json').length > 0);
         assert.equal(git(t.dir, 'ls-files', '.claude/settings.local.json'), '');
