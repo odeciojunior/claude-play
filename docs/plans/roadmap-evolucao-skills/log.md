@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E8 | fix/pasta-wt-permissao integrada (DEC-719, DEC-720): preflight --wt-root, missingDirs e missingDirsHint (pasta deve existir antes da sessão), SKILL.md com 1 comando simples por chamada, operator.md sem bypass, make-scenario cria <sandbox>-wt. 3 rodadas, portão opus/high APPROVE. G1 1869/0. | `6d698be` |
 | 2026-11-14 | E8 | Sonda de 1 caso (DEC-721, haiku, US$ 0,03): pasta irmã por additionalDirectories em settings e por --add-dir vale sob acceptEdits para Write da sessão, cd && node e Write/Read de subagente; em modo padrão sem concessão Write e Read são negados (permission_denials veio vazio). | `D:/claude-onecase/*.json` |
 | 2026-11-14 | E8 | BLQ-18 aberto: Sem bypass, com as regras do preflight, o completo não roda: gravação em wtRoot negada (falta pasta adicional) e a skill compõe comandos fora de Bash(git:*). Segura a publicação de E11; não segura o preparo de E26 nem a passada B de E27 (lotes em bypass, DEC-311). | `docs/reports/2026-11-14-E8-sonda-acceptEdits.md` |
 | 2026-11-14 | E8 | BLQ-17 resolvido: 3º plan-only em af782a4 sem FAILED, com os 5 critérios de DEC-709; cópia do grupo e releitura assinadas aceitas na 1ª tentativa (DEC-717). | `docs/reports/2026-11-14-E8-plan-only-3-sandbox.md` |
