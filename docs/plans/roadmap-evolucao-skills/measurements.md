@@ -31,4 +31,5 @@ Execuções pagas e marcos de medição. Registrado e Faturado são colunas sepa
 | 2026-11-13 | E10 | release | Execução do release (DEC-567): r1 9,85 (defeito de spec); r2 19,82; comportamental 0,38; maior execução sã passa a 19,82 (E10 r2); teto de US$ 150 mantido | US$ 30,05 (custo devolvido pela CLI) | - | concluído |
 | 2026-11-13 | E12 | release | Execução do release (DEC-567): r1 26,65; comportamental 0,39; maior execução sã passa a 26,65 (E12 r1); teto de US$ 150 mantido | US$ 27,04 (custo devolvido pela CLI) | - | concluído |
 | 2026-11-13 | E27 | medição | Passada A, peça 1 (DEC-698): task-review, braço atual, codigo-semeado-A e B, 5 válidas por artefato e modelo; sonnet 40/40, opus 40/40, 0 inválidas; agentes 3,34 + sessão principal 5,26 (estimada) | US$ 8,60 | sem diferença mensurável (DEC-699) | concluído |
+| 2026-11-14 | E8 | medição | Trio do sandbox (DEC-709), passo 1: plan-only em 4594315 por --plugin-dir, 1 válida; critérios atendidos, run FAILED por defeito da releitura do registro; sonda acceptEdits não rodou | US$ 1,48 | defeito do produto | parado |
 <!-- /roadmap:measurements -->
