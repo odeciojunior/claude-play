@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-13 | E8 | BLQ-16 aberto: Releitura do registro por cópia de modelo reprova registro correto: plan-only de E8 terminou FAILED com os 5 critérios atendidos; a sonda acceptEdits não roda | `docs/reports/2026-11-14-E8-plan-only-sandbox.md` |
 | 2026-11-13 | E8 | Trio de E8, passo 1: plan-only atendeu os 5 critérios (spec e plano nativos, nada em superpowers, sem pergunta, painel plan, checker 0), mas terminou FAILED: releitura haiku pôs ok no campo status de S_RECORD_READ. Sonda não rodou. US$ 1,48. | `docs/reports/2026-11-14-E8-plan-only-sandbox.md` |
 | 2026-11-13 | E27 | DEC-701 ratificada pelo dono | `decisions.md` |
 | 2026-11-13 | E27 | DEC-699 ratificada pelo dono | `decisions.md` |
