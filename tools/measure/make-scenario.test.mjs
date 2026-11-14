@@ -870,3 +870,46 @@ test('E20: plan-writer adopt script is marked synthetic and approves', () => {
   assert.match(text, /^## Approval\s*\n+approve\s*$/m);
   assert.ok(!/(sk-|ghp_|xox[bp]-|AKIA)[A-Za-z0-9]/.test(text));
 });
+
+// E26 T4 review probes: a correct fix worded differently must read absent (false); a non-fix or a reformat must still
+// read present (true); a missing json block makes a json-only defect indeterminate (null).
+const NATIVE_PROBES = [
+  ['P9 correct order, reworded "must fail"', 'P9', 'plan', false, (t) => t.replace(/2\. (Write `src\/word-count\.mjs`[^\n]*)\n3\. Run `node --test tests\/e5-word-count\.test\.mjs`: expected to fail \(module missing\)\.\n/, '2. Run `node --test tests/e5-word-count.test.mjs`: it must fail because the module is missing.\n3. $1\n')],
+  ['P10 fixed + note "do not modify src/greet.mjs"', 'P10', 'plan', false, (t) => t.replace(', `src/greet.mjs` (modify).', '. Do not modify `src/greet.mjs` (out of scope).').replace('"modify": ["src/greet.mjs"]', '"modify": []').replace('"src/truncate.mjs", "src/greet.mjs", ', '"src/truncate.mjs", ')],
+  ['SN5 moved to Scope Out', 'SN5', 'spec', false, (t) => t.replace('- `src/capitalize.mjs` exporting `capitalize(text)`, tested by `tests/e5-capitalize.test.mjs`.\n', '').replace('Out:\n\n', 'Out:\n\n- `src/capitalize.mjs` (not asked by the card).\n')],
+  ['SN1 partial: only the example fixed', 'SN1', 'spec', true, (t) => t.replace("'caf\u00e9-au-lait'", "'cafe-au-lait'")],
+  ['SN7 fixed, section kept as "None."', 'SN7', 'spec', false, (t) => t.replace(/- H1 \(blocking\)[^\n]*/, 'None: AC1 fixes the hyphen.').replace(/"needsPerson": \[\n[^\n]*\n  \],/, '"needsPerson": [],')],
+  ['SN8 only declared in externalEffects', 'SN8', 'spec', true, (t) => t.replace('"externalEffects": []', '"externalEffects": [{"what": "append release note to ../outbox.log after the merge"}]')],
+  ['P1 restored, mentioning "expected to fail"', 'P1', 'plan', false, (t) => t.replace('4. Commit step: `E5 T2:', '4. Run `node --test tests/e5-truncate.test.mjs` again: exit 0 (it was expected to fail in step 2).\n5. Commit step: `E5 T2:').replace(/("n": 2,[\s\S]*?)"checks": \[\],/, '$1"checks": [{"cmd": "node --test tests/e5-truncate.test.mjs", "expect": "exit 0"}],')],
+  ['P4 kept line + real cases on sub-bullets', 'P4', 'plan', false, (t) => t.replace(/(The test asserts that truncate is a function[^\n]*)\n/, "$1 Then the cases:\n   - `truncate('hello world', 5)` is `'hell\u2026'`; `assert.throws(() => truncate('abc', -1), RangeError)`.\n")],
+  ['P4 line reflowed', 'P4', 'plan', true, (t) => t.replace('The test asserts that truncate', 'The test asserts\n   that truncate')],
+  // P1 keeps its prose place: with the block broken the prose still shows the missing step, so it reads present.
+  ...['P2', 'P6', 'P8'].map((id) => ['fence broken', id, 'plan', null, (t) => t.replace('```json data', '```json')]),
+  ['fence broken (prose place still seeded)', 'P1', 'plan', true, (t) => t.replace('```json data', '```json')],
+  ['fence broken (P10 prose place still seeded)', 'P10', 'plan', true, (t) => t.replace('```json data', '```json')],
+  ...['P2', 'P6', 'P8'].map((id) => ['json reindented only', id, 'plan', true, (t) => { const m = /```json data\n([\s\S]*?)\n```/.exec(t); return t.replace(m[1], () => JSON.stringify(JSON.parse(m[1]), null, 4)); }]),
+  ['SN3 reflowed', 'SN3', 'spec', true, (t) => t.replace('Length is measured with `text.length`, so', 'Length is measured\nwith `text.length`, so')],
+];
+
+test('E26: native sentinels capture differently-worded fixes and survive reformatting', async () => {
+  const native = await import(pathToFileURL(join(here, 'defects', 'sentinels', 'native.mjs')).href);
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true });
+    const clean = git(t.dir, 'rev-parse', 'HEAD');
+    for (const [name, id, cls, want, edit] of NATIVE_PROBES) {
+      native.seed(t.dir, id);
+      const f = join(t.dir, NATIVE_PATHS[cls]);
+      const before = readFileSync(f, 'utf8');
+      const after = edit(before);
+      assert.notEqual(after, before, name + ': probe edit did not apply');
+      writeFileSync(f, after);
+      git(t.dir, 'commit', '-q', '-am', 'x');
+      assert.equal(native.present(t.dir, 'HEAD', id), want, id + ' ' + name);
+      git(t.dir, 'reset', '-q', '--hard', clean);
+    }
+  } finally {
+    t.done();
+  }
+});
