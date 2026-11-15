@@ -34,6 +34,19 @@ test('validMeasure: without expectedSha only a full 40-hex headSha counts', () =
   assert.equal(validMeasure(meas(g, { headSha: sha40 }), '', [T]), true);
 });
 
+test('fullSha accepts SHA-1 and SHA-256 ids only; agent SHAs are trimmed and lowercased', () => {
+  const g = [res('unit')];
+  const hex = (n) => 'a1b2c3d4'.repeat(8).slice(0, n);
+  assert.equal(validMeasure(meas(g, { headSha: hex(64) }), null, [T]), true);
+  assert.equal(validMeasure(meas(g, { headSha: hex(40) }), null, [T]), true);
+  assert.equal(validMeasure(meas(g, { headSha: hex(41) }), null, [T]), false);
+  assert.equal(validMeasure(meas(g, { headSha: hex(63) }), null, [T]), false);
+  assert.equal(validMeasure(meas(g, { headSha: hex(40) + '\n' }), null, [T]), true);
+  assert.equal(validMeasure(meas(g, { headSha: hex(40).toUpperCase() }), hex(40), [T]), true);
+  assert.equal(validEvidence({ clean: true, headSha: ' ' + hex(40).toUpperCase() + '\n', beforeOk: true }, hex(40), false), true);
+  assert.equal(validEvidence({ clean: true, headSha: hex(63), beforeOk: true }, null, false), false);
+});
+
 test('validEvidence: needs clean, full headSha, matching exp and beforeOk when required', () => {
   const sha40 = 'b'.repeat(40);
   const ev = (o = {}) => ({ clean: true, headSha: sha40, beforeOk: true, ...o });

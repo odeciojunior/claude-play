@@ -269,6 +269,22 @@ test('a merge whose second parent is not the validated head is rolled back', asy
   assert.ok(labels.includes('E1:rollback'));
 });
 
+test('incident: a 36-char headSha on the first branch gates measure is retried and the full SHA is accepted by gates and evidence', async () => {
+  const FULL = 'a2'.padEnd(40, '1');
+  let first = true;
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => {
+      if (l === 'E1:gates1-1' && first) { first = false; return { ...gm(FULL), headSha: FULL.slice(0, 36) }; }
+      if (/^E1:gates1-/.test(l)) return gm(FULL);
+      if (l === 'E1:evidence1') return { headSha: FULL, clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
+      return undefined;
+    } });
+  assert.ok(labels.includes('E1:gates1-1-retry'), labels.join(','));
+  assert.ok(!labels.includes('E1:evidence1-retry'));
+  assert.equal(r.results[0].failKind, undefined, r.results[0].error);
+  assert.equal(r.results[0].merged, true);
+});
+
 test('gates-fix review is logged and the log is committed before re-measuring', async () => {
   let n = 0;
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
