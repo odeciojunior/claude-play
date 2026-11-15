@@ -211,6 +211,19 @@ export function classifyRole(label, { workflow, agentType } = {}) {
   return `agent:${agentType ?? 'general'}`;
 }
 
+// E11 P10: counters of piece 3 read from r.agents (calls and dominant model per normalized label).
+// Task fixers are `t<n>:(spec|quality)-fix<k>`; the gate fixer is `gates-fix<k>` (`gates-fix<k>-review` is a review, not a fix).
+export function piece3Of(run) {
+  const taskFixByTask = {};
+  let gateFix = 0;
+  for (const [label, a] of Object.entries(run?.agents ?? {})) {
+    const t = /^t(\d+):(spec|quality)-fix\d+$/.exec(label);
+    if (t) taskFixByTask[t[1]] = (taskFixByTask[t[1]] ?? 0) + a.calls;
+    else if (/gates-fix\d+$/.test(label)) gateFix += a.calls;
+  }
+  return { taskFixByTask, gateFix, planAuthorModel: run?.agents?.plan?.model ?? null };
+}
+
 // Review loops seen in a label: returns { loop, round } or null.
 function reviewLoop(label) {
   const l = normalizeLabel(label);
@@ -284,6 +297,7 @@ export function extract({ root, sessions, runs, prices }) {
       run,
       sessions: sids,
       roles: {},
+      agents: {}, // per normalized label: { calls, model } (model = dominant family over its agents)
       total: newCounters(),
       reviewRounds: { loops: {}, extra: 0, extraAgents: newCounters() },
       fixAgents: newCounters(), // fix agents outside the task loop (conditional work)
@@ -291,6 +305,7 @@ export function extract({ root, sessions, runs, prices }) {
       main: { turns: 0, agentCalls: {}, promptBytes: 0, tokens: emptyTokens(), cost: null },
     };
     const taskIds = new Set();
+    const famTally = {};
     for (const sid of sids) {
       const s = bySid.get(sid);
       if (!s) continue;
@@ -307,6 +322,12 @@ export function extract({ root, sessions, runs, prices }) {
         r.roles[role] ??= { ...newCounters(), agents: 0 };
         addCounters(r.roles[role], c);
         r.roles[role].agents += 1;
+        const label = normalizeLabel(a.meta.description);
+        if (label) {
+          const tally = (famTally[label] ??= { haiku: 0, sonnet: 0, opus: 0, fable: 0, other: 0 });
+          for (const f of FAMILIES) tally[f] += c.calls[f];
+          r.agents[label] = { calls: (r.agents[label]?.calls ?? 0) + 1, model: FAMILIES.reduce((best, f) => (tally[f] > tally[best] ? f : best), 'other') };
+        }
         addCounters(r.total, c);
         for (const f of c.unpriced) unpricedAll.add(f);
         const rl = reviewLoop(a.meta.description);
