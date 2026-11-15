@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Baseline consolidator: merges the aggregates of --out into baseline.json and linha-de-base.md.
-// Usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>]
+// Usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>] [--plan e17|e11] [--accept-superpowers DEC-xxx]
+//   --plan picks the variant list (default e17); --accept-superpowers lets variants with different superpowers merge, recording the DEC in baseline.json.
 // Exit codes: 0 complete and coherent, 1 coherence errors, missing pieces or private data, 2 usage error.
 // Missing pieces never stop the files from being written (except private data), so the owner sees what is left.
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -381,7 +382,7 @@ export function buildBaseline({ outDir, tagCommit, date, plan = BASELINE_PLAN, a
   const errors = coherenceErrors(inPlan, { tagCommit, acceptSuperpowers });
   const spStates = new Set(inPlan.map((a) => `${a.superpowers?.version ?? 'ausente'} (${a.superpowers?.commit ?? 'ausente'})`));
   const acceptedSuperpowers = acceptSuperpowers && spStates.size > 1 ? acceptSuperpowers : undefined;
-  const wfCommits = [...new Set(raw.filter((a) => isPlanVariant(a.variant)).map((a) => a.harness?.workflowCommit ?? 'ausente'))];
+  const wfCommits = [...new Set(raw.filter((a) => isPlanVariant(a.variant) && plan.some((p) => p.variant === a.variant)).map((a) => a.harness?.workflowCommit ?? 'ausente'))];
   if (wfCommits.length > 1) errors.push(`plan harness workflow commit diverges: ${wfCommits.join(', ')}`);
   const incomplete = plan.filter((p) => (variants[p.variant]?.valid ?? 0) < p.runs).map((p) => p.variant);
 

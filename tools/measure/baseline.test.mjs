@@ -423,6 +423,18 @@ test('superpowers is recorded per variant and divergence needs --accept-superpow
   });
 });
 
+test('wfCommits only looks at plan variants of the chosen plan', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    const list = E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs));
+    list.push(synthAgg('plano-semeado-A', 5, { harness: { ...E11_HARNESS, workflowCommit: 'f'.repeat(40) } }));
+    writeAggs(out, list);
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.exitCode, 0);
+  });
+});
+
 test('E17: panel survives the merge of partial aggregates', () => {
   const panel = (n) => ({ e5Status: 'on-branch', e5Evidence: `merge ${n}`, mergeCommit: `abc123${n}`, checkerErrors: 0 });
   const att = (n) => ({ n, status: 'valid', counters: { cost: n, structural: { weighted: 1 } }, outcomes: [], panel: panel(n) });
