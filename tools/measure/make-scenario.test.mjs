@@ -6,7 +6,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree, NATIVE_PATHS, NATIVE_SEEDS, readNativeSeeds, prepareNativeBranch, manifestEntries } from './make-scenario.mjs';
+import { makeScenario, SANDBOX_RELEASE_RULES, seedSourceOf, prepareE5Branch, runSandboxSuite, VARIANTS, E5_PATHS, artifactOf, readText, copyTree, NATIVE_PATHS, NATIVE_SEEDS, readNativeSeeds, prepareNativeBranch, manifestEntries, taskTitles, RELEASE_RUN_VARIANTS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
@@ -25,10 +25,12 @@ test('lists every variant of the spec table', () => {
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
     'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
     'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
-    'correcao-semeada-A', 'correcao-semeada-B',
+    'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B',
   ].sort());
-  assert.equal(VARIANTS.length, 21);
-  assert.equal(VARIANTS[VARIANTS.length - 1], 'correcao-semeada-B');
+  assert.equal(VARIANTS.length, 23);
+  assert.equal(VARIANTS[VARIANTS.length - 3], 'correcao-semeada-B');
+  assert.deepEqual(VARIANTS.slice(-2), ['codigo-nativo-A', 'codigo-nativo-B']);
+  assert.equal(VARIANTS[VARIANTS.length - 1], 'codigo-nativo-B');
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
@@ -737,7 +739,8 @@ const NATIVE_IDS = {
   'spec-nativo-B': ['SN5', 'SN6', 'SN7', 'SN8'],
 };
 const COUPLED = { 'plano-nativo-A': 'P1', 'plano-nativo-B': 'P10', 'spec-nativo-A': 'SN2', 'spec-nativo-B': 'SN7' };
-const nativeEntries = manifest.filter((e) => e.set === 'e5-native');
+// The E26 tests below cover the plan and spec entries; the native code entries (E11 P5) have their own tests at the end.
+const nativeEntries = manifest.filter((e) => e.set === 'e5-native' && e.class !== 'code');
 const PURE = loadPure();
 const RM = 'docs/plans/roadmap-sandbox/';
 
@@ -1097,6 +1100,98 @@ test('B1: legacy variants are unchanged', async () => {
       assert.equal(git(t.dir, 'rev-parse', s.seededCommit + '^{tree}'), tree, v);
       assert.equal(s.fixSha, null);
       assert.deepEqual(s.fixEntries, []);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+// E11 P5: codigo-nativo-A/B run the native release pipeline over native clean code with C1..C8 (C9 for C1) seeded.
+const NATIVE_CODE_IDS = { A: ['C2', 'C3', 'C4', 'C9'], B: ['C5', 'C6', 'C7', 'C8'] };
+const nativeSentinel = (e) => import(pathToFileURL(join(here, 'defects', e.sentinel)).href);
+
+test('E11: artifactOf describes codigo-nativo-A and B', () => {
+  assert.deepEqual(artifactOf('codigo-nativo-A'), { class: 'code', artifact: 'A', set: 'e5-native' });
+  assert.deepEqual(artifactOf('codigo-nativo-B'), { class: 'code', artifact: 'B', set: 'e5-native' });
+  for (const a of ['A', 'B']) assert.deepEqual(manifestEntries('codigo-nativo-' + a).map((e) => e.id), NATIVE_CODE_IDS[a]);
+  assert.deepEqual(manifestEntries('codigo-semeado-A').map((e) => e.id), ['C1', 'C2', 'C3', 'C4']);
+});
+
+test('taskTitles accepts "### Tarefa n:" and the data block title', () => {
+  assert.deepEqual(taskTitles('### Tarefa 2: truncate\n'), { 2: 'truncate' });
+  assert.deepEqual(taskTitles('### Task 1: x\n\n### Task 3: z\n'), { 1: 'x', 3: 'z' });
+  const block = '```json data\n{"tasks":[{"n":1,"title":"from block"},{"n":2,"title":"other"}]}\n```\n';
+  assert.deepEqual(taskTitles('### Tarefa 2: heading wins\n\n' + block), { 1: 'from block', 2: 'heading wins' });
+});
+
+test('E11: prepareNativeBranch with code commits spec, plan and three E5 T<n> commits without index.mjs', async () => {
+  const t = tmp('sb');
+  try {
+    await makeScenario(t.dir, 'completo');
+    prepareNativeBranch(t.dir, { withPlan: true, code: true });
+    const subjects = git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n').reverse();
+    assert.equal(subjects.length, 5);
+    assert.deepEqual(subjects.slice(2).map((s) => /^E5 T(\d+): /.exec(s)?.[1]), ['1', '2', '3']);
+    assert.match(subjects[2], /^E5 T1: slugify/);
+    const files = git(t.dir, 'ls-files').split('\n');
+    for (const f of ['src/slugify.mjs', 'src/truncate.mjs', 'src/word-count.mjs', 'tests/e5-slugify.test.mjs', 'tests/e5-truncate.test.mjs', 'tests/e5-word-count.test.mjs', NATIVE_PATHS.spec, NATIVE_PATHS.plan]) assert.ok(files.includes(f), f);
+    assert.ok(!files.includes('src/index.mjs'));
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+  } finally {
+    t.done();
+  }
+});
+
+test('E11: seedVariant for codigo-nativo-A and B applies the C entries of set e5-native', async () => {
+  for (const art of ['A', 'B']) {
+    const v = 'codigo-nativo-' + art;
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, v);
+      assert.deepEqual(s.seeded, NATIVE_CODE_IDS[art], v);
+      assert.deepEqual(s.paths, NATIVE_PATHS, v);
+      assert.deepEqual(s.prompts, ['/productivity-tools:roadmap-release run E5'], v);
+      assert.equal(s.fixSha, null);
+      assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+      assert.equal(git(t.dir, 'rev-parse', 'feat/E5'), s.seededCommit);
+      const subjects = git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n');
+      assert.equal(subjects.filter((x) => /^E5 T\d+: /.test(x)).length, 3, v);
+      assert.match(subjects[0], /^E5 T3: /);
+      git(t.dir, 'checkout', '-q', 'feat/E5');
+      const changed = git(t.dir, 'diff', '--name-only', s.seededCommit + '^', s.seededCommit).split('\n');
+      for (const e of manifestEntries(v)) {
+        const mod = await nativeSentinel(e);
+        assert.ok(changed.includes(e.file), e.id + ': file not changed in the seeded commit');
+        assert.equal(mod.present(t.dir, s.seededCommit, e.id), true, e.id);
+        assert.equal(s.seededBlobs[e.file], git(t.dir, 'rev-parse', s.seededCommit + ':' + e.file));
+      }
+      assert.ok(!git(t.dir, 'ls-files').split('\n').includes('src/index.mjs'));
+      git(t.dir, 'checkout', '-q', 'main');
+      assert.equal(git(t.dir, 'status', '--porcelain'), '');
+      // The T3 files only exist from the T3 commit on, so the clean code is a fresh sandbox without seeding.
+      const c = tmp('clean');
+      try {
+        await makeScenario(c.dir, 'completo');
+        prepareNativeBranch(c.dir, { withPlan: true, code: true });
+        for (const e of manifestEntries(v)) assert.equal((await nativeSentinel(e)).present(c.dir, 'HEAD', e.id), false, e.id + ': present in the clean native code');
+      } finally {
+        c.done();
+      }
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('E11: codigo-nativo-A/B are in RELEASE_RUN_VARIANTS and use NATIVE_PATHS', async () => {
+  for (const v of ['codigo-nativo-A', 'codigo-nativo-B']) {
+    assert.ok(RELEASE_RUN_VARIANTS.includes(v), v);
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, v);
+      assert.deepEqual(s.paths, NATIVE_PATHS);
+      assert.ok(existsSync(join(t.dir, '.claude', 'settings.local.json')), v);
+      assert.ok(existsSync(t.dir + '-wt'), v);
     } finally {
       t.done();
     }
