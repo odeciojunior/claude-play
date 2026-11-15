@@ -1988,12 +1988,16 @@ export function recountLenses(totals, mode, leitura = {}) {
 
 // The side of the rule for the totals of the atual arm and (unless atual is the ceiling or the floor) of the unica arm.
 // `early` false disables the early ceiling (from 10 valid attempts the 38/20/32 thresholds of the 40 opportunities are the rule).
+// valid attempts an arm needs before the 40-opportunity rule reads it (the atual arm may stop earlier only by the early ceiling)
+const RULE_C_MIN_VALID = 10;
 function decideSideC(atual, unica, early = true) {
   if (early && earlyCeiling(atual)) return { side: 'teto', reason: 'teto antecipado: as 6 primeiras validas do atual, 3 A e 3 B intercaladas, em 24 de 24' };
   if (atual.capturas >= RULE_C.ceiling) return { side: 'teto', reason: `atual com ${atual.capturas} capturas (${RULE_C.ceiling} ou mais)` };
   if (atual.capturas < RULE_C.floor) return { side: 'piso', reason: `atual com ${atual.capturas} capturas (menos de ${RULE_C.floor})` };
   if (atual.determinadas < RULE_C.minDeterminadas) return { side: 'piso', reason: `atual com ${atual.determinadas} determinadas (menos de ${RULE_C.minDeterminadas})` };
   if (!unica) return { side: 'sem-unica', reason: 'a unica nao tem totais e o atual nao e teto nem piso' };
+  // the unica has no early ceiling: it is compared only at 10 valid attempts, below that it goes on
+  if ((unica.valid ?? 0) < RULE_C_MIN_VALID) return { side: 'continua', reason: `a unica tem ${unica.valid ?? 0} validas: segue ate ${RULE_C_MIN_VALID} validas` };
   const stays = (reason) => ({ side: 'atual', reason });
   if (unica.determinadas < RULE_C.minDeterminadas) return stays('determinadas');
   if (unica.capturas < atual.capturas - RULE_C.capturasMargin) return stays('capturas');
@@ -2007,28 +2011,28 @@ function decideSideC(atual, unica, early = true) {
 // The rule of the passada C over the totals of the two arms (armTotals). `unica` may be absent when atual is the ceiling or the floor.
 // The recounts (capturadoSemMencao as indeterminado, then the failRiscoAceito attempts as indeterminado, in both arms) must keep the
 // side, or the answer is inconclusivo and the two loops stay. Returns { side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo'|'continua', reason, recount }
-// ('continua': the early ceiling fell in the recount, the atual arm goes on to 10 valid attempts).
+// ('continua': below 10 valid attempts of atual anything but an early ceiling that holds raw and in both recounts, the atual arm goes
+// on to 10 valid attempts; or a unica below 10 valid attempts when atual at 10 is neither teto nor piso, the unica goes on).
 export function ruleSideC({ atual, unica = null, leitura = {} }) {
   if (!atual) throw new UsageError('ruleSideC needs the totals of the atual arm');
   const summary = (t) => (t ? { capturas: t.capturas, perdidos: t.perdidos, indeterminados: t.indeterminados, determinadas: t.determinadas, outcomesByLens: t.outcomesByLens, costPerValid: t.costPerValid } : null);
   const recount = {};
-  // The early ceiling only applies below 10 valid attempts, and only when it holds in the raw totals AND in the recounts (the reading of
-  // the diary for captures no review names, then the failRiscoAceito attempts as indeterminado). When it holds raw but not in a recount
-  // the arm continues to 10 valid attempts (never a piso or inconclusivo from 6 attempts, which cannot reach the 32 determined). From
-  // 10 valid the early ceiling is off and the normal thresholds apply to the base and to every recount.
-  const young = (atual.valid ?? 0) < 10;
-  const rawEarly = earlyCeiling(atual);
-  if (young && rawEarly) {
-    if (!earlyCeiling(recountLenses(atual, 'semMencao', leitura))) {
-      return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao): o atual segue ate 10 validas', recount };
-    }
-    if (!earlyCeiling(recountLenses(atual, 'failRisco', leitura))) {
-      return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem dos failRiscoAceito: o atual segue ate 10 validas', recount };
-    }
+  // Below 10 valid attempts of atual the only decision is the early ceiling, and only when it holds in the raw totals AND in the
+  // recounts (the reading of the diary for captures no review names, then the failRiscoAceito attempts as indeterminado); anything else
+  // is continua: the arm goes on to 10 valid attempts (never a piso, inconclusivo, atual/unica or the sem-unica throw from fewer than
+  // 10, whose totals cannot be read against the 40 opportunities). From 10 valid the early ceiling is off and the normal thresholds
+  // apply to the base and to every recount.
+  const young = (atual.valid ?? 0) < RULE_C_MIN_VALID;
+  if (young) {
+    const goOn = (why) => ({ side: 'continua', reason: `${why}: o atual segue ate ${RULE_C_MIN_VALID} validas`, recount });
+    if (!earlyCeiling(atual)) return goOn(`atual com ${atual.valid ?? 0} validas e sem teto antecipado`);
+    if (!earlyCeiling(recountLenses(atual, 'semMencao', leitura))) return goOn('o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao)');
+    if (!earlyCeiling(recountLenses(atual, 'failRisco', leitura))) return goOn('o teto antecipado nao se sustenta na recontagem dos failRiscoAceito');
   }
-  const early = young && rawEarly;
+  const early = young;
   const base = decideSideC(atual, unica, early);
   if (base.side === 'sem-unica') throw new UsageError(base.reason);
+  if (base.side === 'continua') return { side: base.side, reason: base.reason, recount };
   recount.base = { side: base.side, reason: base.reason };
   const changed = [];
   for (const mode of ['semMencao', 'failRisco']) {

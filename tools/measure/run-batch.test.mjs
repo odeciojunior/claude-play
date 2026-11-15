@@ -4426,6 +4426,57 @@ test('C4: a failRiscoAceito attempt among the first 6 with the early ceiling hol
   assert.equal(ruleSideC({ atual: totalsOf(...six2) }).side, 'continua');
 });
 
+test('C4: below 10 valid attempts ruleSideC says only an early teto or continua (never piso, inconclusivo, atual, unica or the sem-unica throw)', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const arts = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
+  const young = (label, atual, opts = {}) => {
+    let r;
+    assert.doesNotThrow(() => { r = ruleSideC({ atual, ...opts }); }, label);
+    assert.equal(r.side, 'continua', `${label}: ${JSON.stringify(r)}`);
+    assert.match(r.reason, /10 validas/, label);
+  };
+  // 6 valid at 23 of 24 (one miss): the raw early ceiling is false, and 24 determined is not a piso from 6 attempts
+  young('6 valid 23/24', totalsOf(...arts.slice(0, 6).map((a, i) => vatt(a, i + 1, i === 0 ? { ...ALL, QL2: 'perdido' } : ALL, { capturadoPor: NAMED }))));
+  // 6 valid at 20 of 24 with 4 undetermined
+  young('6 valid 20/24, 4 undetermined', totalsOf(...arts.slice(0, 6).map((a, i) => vatt(a, i + 1, i < 2 ? { ...ALL, QL1: 'indeterminado', QL2: 'indeterminado' } : ALL, { capturadoPor: NAMED }))));
+  // 6 valid at 24 of 24 not interleaved
+  young('6 valid 24/24 not alternating', totalsOf(...['A', 'A', 'B', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED }))));
+  // 8 valid at 31 of 32: neither the 40-opportunity rule nor the sem-unica throw applies, with or without a unica
+  const eight = totalsOf(...arts.slice(0, 8).map((a, i) => vatt(a, i + 1, i === 0 ? { ...ALL, QL2: 'perdido' } : ALL, { capturadoPor: NAMED })));
+  assert.equal(eight.valid, 8);
+  young('8 valid 31/32', eight);
+  young('8 valid 31/32 with a unica', eight, { unica: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.5, single: true }) });
+  // 8 valid at 32 of 32 (the 38 threshold cannot be reached, and the early ceiling holds): early teto
+  const eightAll = totalsOf(...arts.slice(0, 8).map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED })));
+  assert.match(ruleSideC({ atual: eightAll }).reason, /antecipado/);
+  // 9 valid with 4 misses among the first: the 20-capture floor and the 32-determined floor are not read below 10
+  young('9 valid with misses', totalsOf(...arts.slice(0, 9).map((a, i) => vatt(a, i + 1, i < 4 ? { SP1: 'perdido', SP2: 'perdido', QL1: 'perdido', QL2: 'indeterminado' } : ALL, { capturadoPor: NAMED }))));
+});
+
+test('C4: the unica arm (no early ceiling) is judged only at 10 valid attempts: a younger unica gives continua', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const single = { restricted: false, single: true };
+  const unicaOf = (n, outcomes) => {
+    const atts = Array.from({ length: n }, (_, i) => vatt(i % 2 === 0 ? 'A' : 'B', i + 1, outcomes, { capturadoPor: NAMED, costUsd: 0.5, startedAt: `2026-11-17T10:${String(i + 1).padStart(2, '0')}:00Z` }));
+    return armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A'), single), aggOf('B', atts.filter((a) => a.artifact === 'B'), single)]).totals;
+  };
+  // 8 valid of the unica, all captured (32): with 10 it would be compared; at 8 it is neither atual (by determinadas) nor unica
+  for (const unica of [unicaOf(8, ALL), unicaOf(6, ALL), unicaOf(9, { ...ALL, QL2: 'perdido' })]) {
+    assert.ok(unica.valid < 10);
+    const r = ruleSideC({ atual, unica });
+    assert.equal(r.side, 'continua', JSON.stringify(r));
+    assert.match(r.reason, /unica/);
+  }
+  // with atual a teto or a piso at 10 valid the unica is not looked at, young or not
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [19, 1, 0], quality: [19, 1, 0], cost: 0.85 }), unica: unicaOf(4, ALL) }).side, 'teto');
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [10, 4, 6], quality: [9, 5, 6], cost: 0.85 }), unica: unicaOf(4, ALL) }).side, 'piso');
+  // at 10 valid the unica is compared as before
+  assert.equal(unicaOf(10, ALL).valid, 10);
+  assert.notEqual(ruleSideC({ atual, unica: unicaOf(10, ALL) }).side, 'continua');
+});
+
 test('C3: semente-ausente is checked after settleSandbox: a root left on main with feat/E5 held by a release worktree is still valid', async () => {
   const s = setup();
   try {
