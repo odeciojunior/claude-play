@@ -14,7 +14,7 @@ import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { makeScenario, artifactOf, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
+import { makeScenario, artifactOf, manifestEntries, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
@@ -331,6 +331,82 @@ function readSessionJournals(configDir, sessions) {
   return merged;
 }
 
+// Text of a transcript message content: a string, or the text blocks of a list.
+function blocksText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
+}
+
+// The script return ({ ok, ... }) inside a text: the whole text as JSON, else the first balanced {...} that parses to an object with a boolean ok.
+function scriptReturnIn(text) {
+  const whole = parseObject(String(text).trim());
+  if (whole && typeof whole.ok === 'boolean') return whole;
+  const s = String(text);
+  for (let i = s.indexOf('{'); i >= 0; i = s.indexOf('{', i + 1)) {
+    let depth = 0;
+    let inStr = false;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (inStr) {
+        if (c === '\\') j++;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) {
+        const o = parseObject(s.slice(i, j + 1));
+        if (o && typeof o.ok === 'boolean') return o;
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+// B4: what the review-only.js script returned to the main session ({ ok, restricted, verify }), read from the transcript
+// <configDir>/projects/<slug>/<sessionId>.jsonl. The Workflow tool_use is paired with its tool_result by tool_use_id; when the
+// workflow ran in the background the tool_result only says it was launched and the return comes in a later user message.
+// Content may be a string or a list of { type: 'text', text }. Null when no session carries a readable return.
+export function readScriptResult(configDir, sessions) {
+  const root = join(configDir, 'projects');
+  if (!existsSync(root)) return null;
+  const slugs = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  for (const slug of slugs) {
+    for (const sid of sessions) {
+      const file = join(root, slug, `${sid}.jsonl`);
+      if (!existsSync(file)) continue;
+      const pending = new Set();
+      let waiting = false;
+      for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+        const m = line.trim() === '' ? null : parseObject(line);
+        const content = m?.message?.content;
+        if (!m || !content) continue;
+        if (m.type === 'assistant' && Array.isArray(content)) {
+          for (const b of content) if (b && b.type === 'tool_use' && b.name === 'Workflow' && typeof b.id === 'string') pending.add(b.id);
+        } else if (m.type === 'user') {
+          let paired = false;
+          if (Array.isArray(content)) {
+            for (const b of content) {
+              if (b && b.type === 'tool_result' && pending.has(b.tool_use_id)) {
+                paired = true;
+                pending.delete(b.tool_use_id);
+                const found = scriptReturnIn(blocksText(b.content));
+                if (found) return found;
+                waiting = true;
+              }
+            }
+          }
+          if (!paired && waiting) {
+            const found = scriptReturnIn(blocksText(content));
+            if (found) return found;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const INVALID_FORMAT = { valid: false, reason: 'formato-do-diario' };
 const find = (entries, label) => entries.find((e) => e.label === label);
 
@@ -490,15 +566,92 @@ function nativeCounts(attempts) {
 }
 
 // Loop batches: outcomes after the 1st fix, reviews per attempt, ok/stopped and the unverified after-fix SHAs (valid attempts).
-function loopAggregate(attempts) {
+function loopAggregate(attempts, { seededFix = false } = {}) {
   const valid = attempts.filter((a) => a.status === 'valid' && a.loop);
   const reviews = {};
   for (const a of valid) reviews[a.loop.reviews] = (reviews[a.loop.reviews] ?? 0) + 1;
-  return {
+  const out = {
     outcomesAfterFirstFix: totalOutcomes(valid.map((a) => ({ status: 'valid', outcomes: a.afterFirstFix?.outcomes ?? [] }))).outcomes,
     loopSummary: { reviews, ok: valid.filter((a) => a.loop.ok).length, stopped: valid.filter((a) => !a.loop.ok).length },
     afterFirstFixUnverified: valid.filter((a) => a.afterFirstFix && !a.afterFirstFix.verified).length,
   };
+  if (!seededFix) return out;
+  // B4: the auxiliary mention counters of the seeded correction (the outcome itself comes from the sentinels, DEC-737).
+  let capturadoSemMencao = 0;
+  let perdidoDoCorretor = 0;
+  let residuoSemAchadoPai = 0;
+  for (const a of valid) {
+    residuoSemAchadoPai += a.residuoSemAchadoPai ?? 0;
+    for (const o of a.outcomes ?? []) {
+      const mentioned = a.mentionedAfterFix?.[o.id];
+      if (o.outcome === 'capturado' && mentioned === false) capturadoSemMencao += 1;
+      if (o.outcome !== 'capturado' && mentioned === true) perdidoDoCorretor += 1;
+    }
+  }
+  return { ...out, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai, refutouTudo: 0 };
+}
+
+// DEC-737: the report recounted with every capturadoSemMencao as indeterminado (the capture did not come from the reviewer's mention).
+// determinadas = captured + lost (indeterminado is out); `inconclusivo` is true when that moves the count across the 16 of DEC-732
+// (the side of the rule changes, so the result does not decide).
+export function recountWithoutMention(aggregate) {
+  const outcomes = {};
+  let capturadoSemMencao = 0;
+  for (const a of aggregate.attempts ?? []) {
+    if (a.status !== 'valid') continue;
+    for (const o of a.outcomes ?? []) {
+      if (o.detectedBy !== 'reviewer') continue;
+      outcomes[o.id] ??= { class: o.class, detectedBy: 'reviewer', capturado: 0, perdido: 0, indeterminado: 0 };
+      const semMencao = o.outcome === 'capturado' && a.mentionedAfterFix?.[o.id] === false;
+      if (semMencao) capturadoSemMencao += 1;
+      outcomes[o.id][semMencao ? 'indeterminado' : o.outcome] += 1;
+    }
+  }
+  const count = (map) => Object.values(map).reduce((n, v) => n + v.capturado + v.perdido, 0);
+  const before = count(aggregate.outcomes ?? {});
+  const after = count(outcomes);
+  return { outcomes, capturadoSemMencao, determinadas: { antes: before, depois: after }, inconclusivo: before >= 16 !== after >= 16 };
+}
+
+// B4: the reasons that end a batch of attempts: 2 correcao-semeada-ausente, 2 laco-divergente, or more than 2 residues without a parent finding.
+export function batchStopReason(attempts) {
+  const invalid = (r) => attempts.filter((a) => a.status === 'invalid' && a.reason === r).length;
+  if (invalid('correcao-semeada-ausente') >= 2) return 'correcao-semeada-ausente';
+  if (invalid('laco-divergente') >= 2) return 'laco-divergente';
+  if (attempts.filter((a) => a.status === 'valid').reduce((n, a) => n + (a.residuoSemAchadoPai ?? 0), 0) > 2) return 'residuoSemAchadoPai';
+  return null;
+}
+
+// B4: per seeded entry of the correction, whether the reviewer mentioned it after the fix (reviews of round 2 on; in the restricted
+// mode also an open verdict on the id of the parent finding), and the residues whose parent finding review 1 never made.
+// `entries` is the journal of the attempt; `fixIds` the manifest ids seeded in fixSha. The parent finding of a residue is the
+// finding of review 1 that its own `mention` matches.
+export function mentionStats(entries, label, fixIds) {
+  const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
+  const textOf = (i) => [i?.file, i?.description].filter((x) => typeof x === 'string' && x).join(' ');
+  const reviews = entries
+    .map((e) => {
+      const m = new RegExp(`^${label}(\\d+)$`).exec(e.label);
+      return m ? { round: Number(m[1]), r: e.result } : null;
+    })
+    .filter(Boolean);
+  const first = reviews.find((x) => x.round === 1)?.r;
+  const mentionedAfterFix = {};
+  let residuoSemAchadoPai = 0;
+  for (const m of manifest.filter((x) => fixIds.includes(x.id))) {
+    if (typeof m.mention !== 'string') {
+      mentionedAfterFix[m.id] = false;
+      continue;
+    }
+    const rx = new RegExp(m.mention, 'is');
+    const parents = m.residueOf ? (Array.isArray(first?.issues) ? first.issues : []).filter((i) => rx.test(textOf(i))) : [];
+    if (m.residueOf && parents.length === 0) residuoSemAchadoPai += 1;
+    const parentIds = new Set(parents.map((i) => i.id).filter((x) => typeof x === 'string'));
+    mentionedAfterFix[m.id] = reviews.some(
+      (x) => x.round >= 2 && ((Array.isArray(x.r?.issues) ? x.r.issues : []).some((i) => rx.test(textOf(i))) || (Array.isArray(x.r?.verdicts) ? x.r.verdicts : []).some((v) => v?.open === true && parentIds.has(v.id))),
+    );
+  }
+  return { mentionedAfterFix, residuoSemAchadoPai };
 }
 
 function sessionIds(configDir) {
@@ -1186,11 +1339,17 @@ function loopEntries(h, entries) {
 // `entries` is the raw journal (review 1 and its retry 1b as written). Returns { infra: true } when a review or fix the loop
 // asked for is missing or null (laco-infra), and { divergent: true } when the journal holds stage entries the replay did not
 // use, or repeats a stage label (laco-divergente): the replay then is not the run the script went through.
-async function loopResult(h, entries, P) {
+// B4: task-review runs the product's task loop: byId, the truth is taskIssues over the round's own context (restricted from the
+// 2nd review on, with the `was` runReviewLoop passes), reviewTruth with 1 commit minimum over the seeded range.
+// `restrictedRounds` records what restrictedRound said for each round (1b excluded), as the script does.
+export async function loopResult(h, entries, P, scenario = null) {
   const opt = stageLoopFor(h.stage, h.harness.reviewModel);
   const label = h.st.label;
+  const task = h.stage === 'task-review';
   let reviews = 0;
   const fixTiers = [];
+  const restrictedRounds = [];
+  let cx = null;
   const used = new Set();
   const take = (l) => {
     const e = find(entries, l);
@@ -1198,7 +1357,11 @@ async function loopResult(h, entries, P) {
     return e;
   };
   const env = { maxFix: opt.maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: () => {} };
-  const review = async (round) => {
+  const review = async (round, prev, rvModel, was) => {
+    if (task) {
+      cx = { taskReview: { restricted: h.arm === 'restrita' }, was };
+      if (round !== '1b') restrictedRounds.push(!!P.restrictedRound({ taskReview: { restricted: h.arm === 'restrita' }, was }));
+    }
     const e = take(`${label}${round}`);
     if (!e || !e.result) return null;
     reviews += 1;
@@ -1208,18 +1371,68 @@ async function loopResult(h, entries, P) {
     const e = take(`${label}-fix${k}`);
     if (nullResult(e)) return null;
     fixTiers.push(tier);
+    if (task && e.result?.status === 'BLOCKED') return { status: 'BLOCKED', summary: e.result.summary };
     return { status: 'DONE' };
   };
-  const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, (r) => P.reviewTruth(r, 0, 'main..HEAD'), { tier: opt.tier, reviewModel: opt.reviewModel });
+  const truth = task
+    ? (r) => P.reviewTruth({ ...r, issues: P.taskIssues(r, cx) }, 1, `${scenario?.seededCommit ?? 'seeded'}~1..HEAD`)
+    : (r) => P.reviewTruth(r, 0, 'main..HEAD');
+  const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, truth, { tier: opt.tier, reviewModel: opt.reviewModel, ...(task ? { byId: true } : {}) });
   if (res.kind === 'infra') return { infra: true };
   const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(label));
   if (new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !used.has(l))) return { divergent: true };
-  return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null };
+  return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null, ...(task ? { restrictedRounds } : {}) };
+}
+
+// B4: validity of a task-review (or final-review) loop attempt that has its replay: the seeded correction must really have been
+// applied and be the state review 2 measured, CR/CG must be present there, the restricted arm must have restricted, and the
+// replay must agree with what the script returned to the main session (ok and restricted).
+export async function loopValidity(h, journal, scenario, loop, script) {
+  if (loop.fixes === 0) return { valid: false, reason: 'sem-correcao' };
+  const dir = scenario.dir;
+  const fixSha = scenario.fixSha;
+  const resolves = (sha) => {
+    try {
+      return typeof sha === 'string' && /^[0-9a-f]{7,64}$/.test(sha.trim()) && gitOut(dir, 'rev-parse', `${sha.trim()}^{commit}`) === fixSha;
+    } catch {
+      return false;
+    }
+  };
+  const r2 = find(journal.entries, `${h.st.label}2`)?.result?.headSha;
+  if (!fixSha || !resolves(r2) || !gitOk(dir, 'merge-base', '--is-ancestor', fixSha, 'feat/E5')) return { valid: false, reason: 'correcao-semeada-ausente' };
+  for (const e of manifestEntries(scenario.variant)) {
+    let present = null;
+    try {
+      present = (await import(pathToFileURL(join(here, 'defects', e.sentinel)).href)).present(dir, fixSha, e.id);
+    } catch {
+      /* unreadable: counts as absent */
+    }
+    if (present !== true) return { valid: false, reason: 'semente-ausente' };
+  }
+  if (h.arm === 'restrita' && loop.restrictedRounds && loop.restrictedRounds.length >= 2 && loop.restrictedRounds[1] === false) return { valid: false, reason: 'restrita-nao-ativada' };
+  if (!script) return INVALID_FORMAT;
+  if (script.ok !== loop.ok) return { valid: false, reason: 'laco-divergente' };
+  if (h.stage === 'task-review') {
+    const sr = script.restricted;
+    if (!Array.isArray(sr) || sr.length !== loop.restrictedRounds.length || sr.some((x, i) => !!x !== loop.restrictedRounds[i])) return { valid: false, reason: 'laco-divergente' };
+  }
+  return { valid: true, reason: 'ok' };
 }
 
 // The SHA reported by reviewer 2 counts only when it is the state reviewer 2 really measured, right after the 1st fix.
 function afterFixVerified(h, entries, scenario, sha, fixes) {
   const dir = scenario.dir;
+  if (h.st.blobKey === null) {
+    // task and final stages: the state is the seeded correction itself, named by its SHA (no blob to compare)
+    if (!/^[0-9a-f]{7,64}$/.test(sha) || !scenario.fixSha) return false;
+    try {
+      if (gitOut(dir, 'rev-parse', `${sha}^{commit}`) !== scenario.fixSha) return false;
+    } catch {
+      return false;
+    }
+    if (!gitOk(dir, 'merge-base', '--is-ancestor', scenario.fixSha, 'feat/E5')) return false;
+    return !(fixes === 1 && gitOut(dir, 'rev-parse', 'feat/E5') !== scenario.fixSha);
+  }
   const artifact = (scenario.paths ?? E5_PATHS)[h.st.artifact];
   const blob = find(entries, `${h.st.label}2`)?.result?.[h.st.blobKey];
   if (!/^[0-9a-f]{7,64}$/.test(sha) || !gitOk(dir, 'cat-file', '-e', `${sha}^{commit}`)) return false;
@@ -1349,7 +1562,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const attempts = [];
   const privateAttempts = [];
   const validRuns = [];
+  const fixLoop = h?.rounds === 'loop' && (h.stage === 'task-review' || h.stage === 'final-review'); // the batch stop rules of B4 (the A stages keep every attempt)
+  let stoppedBy = null;
   for (let k = 1; k <= runs; k++) {
+    stoppedBy = fixLoop ? batchStopReason(attempts) : null;
+    if (stoppedBy) break;
     const scenario = await makeScenario(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun });
     const sessions = [];
     const cliCosts = [];
@@ -1463,9 +1680,13 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       let v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
       if (h?.rounds === 'loop' && (v.valid || v.reason === 'formato-do-diario') && !journal.formatError) {
         // Review 1 and its retry both null is a loop infra failure, not a journal format error: the replay decides first.
-        loop = await loopResult(h, rawEntries, h.loopFns);
+        loop = await loopResult(h, rawEntries, h.loopFns, scenario);
         if (loop.infra) v = { valid: false, reason: 'laco-infra' };
         else if (v.valid && loop.divergent) v = { valid: false, reason: 'laco-divergente' };
+        else if (v.valid && scenario.fixSha && (h.stage === 'task-review' || h.stage === 'final-review')) {
+          const lv = await loopValidity(h, journal, scenario, loop, readScriptResult(opts.configDir, sessions));
+          if (!lv.valid) v = lv;
+        }
       }
       if (!v.valid) {
         attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
@@ -1540,6 +1761,10 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
+      if (scenario.fixSha) {
+        Object.assign(attempt, mentionStats(journal.entries, h.st.label, scenario.fixEntries));
+        h.harness.seededFix ??= { sha: scenario.fixSha, ids: scenario.fixEntries };
+      }
     }
     if (h && journal && artifactOf(variant)?.set === 'e5-native' && h.st.artifact) {
       attempt.toolCheck = toolCheck(h, scenario, plugin.installPath, reachable);
@@ -1550,6 +1775,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     attempts.push(attempt);
   }
 
+  if (!stoppedBy && fixLoop) stoppedBy = batchStopReason(attempts);
   const status = (s) => attempts.filter((a) => a.status === s).length;
   const invalidReasons = {};
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
@@ -1581,7 +1807,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     },
     ...totalOutcomes(attempts),
     ...(attempts.some((a) => a.status === 'valid' && a.toolCheck) ? nativeCounts(attempts) : {}),
-    ...(h?.rounds === 'loop' ? loopAggregate(attempts) : {}),
+    ...(h?.rounds === 'loop' ? loopAggregate(attempts, { seededFix: /^correcao-semeada-/.test(variant) }) : {}),
+    ...(stoppedBy ? { stoppedBy } : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
   return { dir, aggregate, exitCode: status('denied') + status('invalid') > 0 ? 1 : 0 };

@@ -1,13 +1,13 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, cpSync, mkdirSync, copyFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { redactPaths, runBatch, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
-import { E5_PATHS, NATIVE_PATHS, seedSourceOf } from './make-scenario.mjs';
+import { E5_PATHS, NATIVE_PATHS, seedSourceOf, makeScenario } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'run-batch.mjs');
@@ -2507,4 +2507,358 @@ test('B2: the A1 refusal of task-review loop is narrowed, not removed', async ()
   } finally {
     s.done();
   }
+});
+
+// ---- E26 B4: validity, outcome and replay of the task review loop with the seeded correction ----
+const { loopResult, loopValidity, readScriptResult, mentionStats, recountWithoutMention, buildTaskLoopScript } = await import('./run-batch.mjs');
+const { loadPure } = await import('../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs');
+const AsyncFn = Object.getPrototypeOf(async function () {}).constructor;
+
+const hTask = (arm = 'atual') => ({ stage: 'task-review', arm, st: { label: 'E5:task-review' }, harness: { reviewModel: 'sonnet' } });
+const trv = (issues, head = 'a'.repeat(40), extra = {}) => ({ issues, headSha: head, clean: true, commitsInRange: 3, ...extra });
+const FOUND = (id, d = `[fab] ${id}`, file = 'src/a.mjs') => ({ id, severity: 'important', category: 'defeito', description: d, file });
+const APPLIED_FIX = { status: 'DONE', summary: '[fab] applied', checks: [] };
+// the parent finding of CR1 (its mention matches it), a finding unrelated to the seeded defects, one that mentions CG1
+const F_PARENT = FOUND('F1', 'wordCount empty text case is not tested', 'tests/e5-word-count.test.mjs');
+const F_OTHER = FOUND('F2', 'naming nit about slugify', 'src/slugify.mjs');
+const F_CG1 = FOUND('F2', 'index.mjs no longer exports truncate', 'src/index.mjs');
+const entry = (label, result) => ({ label, result, text: '' });
+
+// Runs the real generated task loop script with a stub agent; returns its return and the journal it would have left.
+async function stubScript({ restricted = false, reviews, fixes = {} }) {
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const scenarioStub = { dir: 'D:/work/correcao-semeada-A-1', seededCommit: 'a'.repeat(40), fixSha: 'b'.repeat(40) };
+  const text = buildTaskLoopScript({ pure: checkLoopWorkflow(wf, 'task-review'), scenario: scenarioStub, opts: { restricted, reviewModel: 'sonnet', pluginRoot: 'D:/cfg/p', work: 'D:/work', title: 'Word count', fixPrompt: 'Fix it.\n{{issues}}' } });
+  const journal = [];
+  let i = 0;
+  const agent = async (prompt, o) => {
+    const out = /-fix\d+$/.test(o.label) ? (o.label in fixes ? fixes[o.label] : APPLIED_FIX) : reviews[Math.min(i++, reviews.length - 1)];
+    journal.push(entry(o.label, out));
+    return out;
+  };
+  const result = await new AsyncFn('agent', text.replace('export const meta', 'const meta'))(agent);
+  return { result, journal, scenario: scenarioStub };
+}
+
+// A Workflow tool_use and its tool_result in the main transcript: direct (string), list (text blocks) or background (a later user message).
+function appendWorkflowReturn(configDir, n, ret, shape) {
+  if (shape === 'none') return;
+  const file = join(configDir, 'projects', 'fab-sandbox', `${sid(n)}.jsonl`);
+  const id = `toolu_fab_${n}`;
+  const usage = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  const text = typeof ret === 'string' ? ret : JSON.stringify(ret);
+  const lines = [{ type: 'assistant', uuid: `00000000-0000-4000-8000-0000000e${String(n).padStart(4, '0')}`, requestId: `req_fab_wf${n}`, message: { id: `msg_fab_wf${n}`, role: 'assistant', model: 'claude-opus-4-1', content: [{ type: 'tool_use', id, name: 'Workflow', input: {} }], usage } }];
+  const content = shape === 'direct' ? text : shape === 'list' ? [{ type: 'text', text }] : '[fab] workflow launched in the background';
+  lines.push({ type: 'user', uuid: `00000000-0000-4000-8000-0000000f${String(n).padStart(4, '0')}`, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] } });
+  if (shape === 'background') lines.push({ type: 'user', uuid: `00000000-0000-4000-8000-0000000d${String(n).padStart(4, '0')}`, message: { role: 'user', content: `[fab] <task-notification> workflow finished: ${text}` } });
+  appendFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+}
+
+// The run, as the simulated claude -p leaves it: the seeded correction applied on feat/E5 (unless told otherwise), the journal, the script return.
+function taskAfterRun(s, spec) {
+  return (cwd, n) => {
+    const fixSha = /const H_FIXSHA = "([0-9a-f]{40})"/.exec(readFileSync(join(cwd, 'review-only.js'), 'utf8'))[1];
+    const sp = spec(n, fixSha);
+    if (sp.apply !== false) {
+      gitq(cwd, 'checkout', '-q', 'feat/E5');
+      gitq(cwd, 'merge', '--ff-only', fixSha);
+    }
+    if (sp.after) sp.after(cwd, fixSha);
+    writeFileSync(journalFileOf(s.configDir, n), jl(...sp.entries(fixSha)));
+    appendWorkflowReturn(s.configDir, n, sp.ret, sp.shape ?? 'direct');
+  };
+}
+// The 2nd fix of the run removes the seeded defects: the clean T1..T3 code in one commit.
+function cleanFix(cwd) {
+  for (const k of [1, 2, 3]) cpSync(join(here, 'scenario', 'e5', 'code', `t${k}`), cwd, { recursive: true });
+  gitq(cwd, 'rm', '-q', '-f', '--ignore-unmatch', 'src/helpers.mjs');
+  gitq(cwd, 'add', '-A');
+  gitq(cwd, 'commit', '-q', '-m', 'E5 T3: fix the review findings');
+}
+const corrBatch = (s, extra = {}) => seededOpts(s, 'correcao-semeada-A', { stage: 'task-review', reviewModel: 'sonnet', pluginDir: REAL_PLUGIN, ...extra });
+const unitScenario = async (s, variant = 'correcao-semeada-A') => {
+  const sc = await makeScenario(join(s.work, `unit-${variant}`), variant, { suite: () => ({ ok: true }) });
+  gitq(sc.dir, 'checkout', '-q', 'feat/E5');
+  return sc;
+};
+
+test('B4: formato-do-diario when E5:task-review1 has no issues list', async () => {
+  const s = setup();
+  try {
+    const afterRun = taskAfterRun(s, () => ({ entries: () => [{ label: 'E5:task-review1', result: { headSha: 'x', clean: true, commitsInRange: 3 } }], ret: { ok: true, restricted: [false] } }));
+    const r = await runBatch(corrBatch(s), { exec: makeFake(s.configDir, { afterRun }).exec, now: NOW });
+    assert.equal(r.aggregate.invalidReasons['formato-do-diario'], 1, JSON.stringify(r.aggregate.invalidReasons));
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: sem-correcao when the replay never called fix1 (loop.fixes === 0)', async () => {
+  const s = setup();
+  try {
+    // a clean 1st review: the script returned ok with no fix, the correction was never applied
+    const afterRun = taskAfterRun(s, () => ({ apply: false, entries: () => [{ label: 'E5:task-review1', result: trv([]) }], ret: { ok: true, restricted: [false] } }));
+    const r = await runBatch(corrBatch(s), { exec: makeFake(s.configDir, { afterRun }).exec, now: NOW });
+    assert.equal(r.aggregate.invalidReasons['sem-correcao'], 1, JSON.stringify(r.aggregate.invalidReasons));
+    // only loop.fixes decides, not a count of BLOCKING
+    const sc = await unitScenario(s);
+    const journal = { entries: [entry('E5:task-review1', trv([FOUND('F1')]))] };
+    assert.deepEqual(await loopValidity(hTask(), journal, sc, { fixes: 0, ok: false, restrictedRounds: [false] }, { ok: false, restricted: [false] }), { valid: false, reason: 'sem-correcao' });
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: correcao-semeada-ausente when review 2 headSha does not resolve to fixSha, or fixSha is not an ancestor of feat/E5', async () => {
+  const s = setup();
+  try {
+    const sc = await unitScenario(s);
+    const seeded = sc.seededCommit;
+    const loop = { fixes: 1, ok: true, restrictedRounds: [false, false] };
+    const script = { ok: true, restricted: [false, false] };
+    const journalAt = (head) => ({ entries: [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review2', trv([], head))] });
+    const ausente = { valid: false, reason: 'correcao-semeada-ausente' };
+    // fixSha is not on feat/E5 yet: not an ancestor
+    assert.deepEqual(await loopValidity(hTask(), journalAt(sc.fixSha), sc, loop, script), ausente);
+    gitq(sc.dir, 'merge', '--ff-only', sc.fixSha);
+    assert.deepEqual(await loopValidity(hTask(), journalAt(sc.fixSha), sc, loop, script), { valid: true, reason: 'ok' });
+    // an abbreviated SHA (7 hex) of fixSha is accepted: it is resolved with git rev-parse <sha>^{commit}
+    assert.deepEqual(await loopValidity(hTask(), journalAt(sc.fixSha.slice(0, 7)), sc, loop, script), { valid: true, reason: 'ok' });
+    // another commit, a missing one, and a non-SHA are not the correction
+    for (const head of [seeded, '0'.repeat(40), 'HEAD', undefined]) assert.deepEqual(await loopValidity(hTask(), journalAt(head), sc, loop, script), ausente, String(head));
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: restrita-nao-ativada when the restrita arm reaches round 2 and restrictedRounds[1] === false', async () => {
+  const s = setup();
+  try {
+    const sc = await unitScenario(s);
+    gitq(sc.dir, 'merge', '--ff-only', sc.fixSha);
+    const journal = { entries: [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review2', trv([], sc.fixSha))] };
+    const off = await loopValidity(hTask('restrita'), journal, sc, { fixes: 1, ok: true, restrictedRounds: [false, false] }, { ok: true, restricted: [false, false] });
+    assert.deepEqual(off, { valid: false, reason: 'restrita-nao-ativada' });
+    const on = await loopValidity(hTask('restrita'), journal, sc, { fixes: 1, ok: true, restrictedRounds: [false, true] }, { ok: true, restricted: [false, true] });
+    assert.deepEqual(on, { valid: true, reason: 'ok' });
+    // the complete arm never restricts: false in round 2 is what it should do
+    assert.equal((await loopValidity(hTask('atual'), journal, sc, { fixes: 1, ok: true, restrictedRounds: [false, false] }, { ok: true, restricted: [false, false] })).valid, true);
+    // the replay computes it in the review callback with the `was` of runReviewLoop, equal to the script's own value
+    const P = loadPure();
+    const noId = { severity: 'critical', category: 'defeito', description: '[fab] no id', file: 'src/a.mjs' };
+    for (const [first, expected] of [[[noId], [false, false]], [[FOUND('F1')], [false, true]]]) {
+      const run = await stubScript({ restricted: true, reviews: [trv(first), trv([], 'a'.repeat(40), { verdicts: [{ id: 'F1', open: false }] })] });
+      assert.deepEqual(run.result.restricted, expected);
+      const replay = await loopResult(hTask('restrita'), run.journal, P, run.scenario);
+      assert.deepEqual(replay.restrictedRounds, run.result.restricted);
+      assert.equal(replay.ok, run.result.ok);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: laco-infra after a null review or fix with the retry', async () => {
+  const P = loadPure();
+  const sc = { seededCommit: 'a'.repeat(40) };
+  assert.deepEqual(await loopResult(hTask(), [entry('E5:task-review1', null), entry('E5:task-review1b', null)], P, sc), { infra: true });
+  assert.deepEqual(await loopResult(hTask(), [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review-fix1', null)], P, sc), { infra: true });
+  assert.deepEqual(await loopResult(hTask(), [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', null), entry('E5:task-review2b', null)], P, sc), { infra: true });
+  // review 1 null and its retry 1b answering is not infra
+  const ok = await loopResult(hTask(), [entry('E5:task-review1', null), entry('E5:task-review1b', trv([]))], P, sc);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.restrictedRounds, [false]); // the retry round 1b is not counted, as in the script
+});
+
+test('B4: laco-divergente when the replay ok differs from the script ok, or the journal has an unused or repeated stage label', async () => {
+  const P = loadPure();
+  const sc = { seededCommit: 'a'.repeat(40) };
+  const clean = entry('E5:task-review1', trv([]));
+  assert.deepEqual(await loopResult(hTask(), [clean, entry('E5:task-review-fix1', APPLIED_FIX)], P, sc), { divergent: true });
+  assert.deepEqual(await loopResult(hTask(), [clean, clean], P, sc), { divergent: true });
+  assert.deepEqual(await loopResult(hTask(), [clean, entry('E5:task-review-extra', {})], P, sc), { divergent: true });
+  // a tampered journal: the script blocked to the end, one verdict was swapped to clean
+  const run = await stubScript({ reviews: [trv([FOUND('F1')]), trv([FOUND('F2')]), trv([FOUND('F3')])] });
+  assert.equal(run.result.ok, false);
+  const tampered = run.journal.map((e) => (e.label === 'E5:task-review3' ? entry(e.label, trv([])) : e));
+  const replay = await loopResult(hTask(), tampered, P, run.scenario);
+  assert.equal(replay.ok, true);
+  const s = setup();
+  try {
+    const sandbox = await unitScenario(s);
+    gitq(sandbox.dir, 'merge', '--ff-only', sandbox.fixSha);
+    const journal = { entries: [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review2', trv([], sandbox.fixSha))] };
+    const div = { valid: false, reason: 'laco-divergente' };
+    const loop = { fixes: 1, ok: true, restrictedRounds: [false, false] };
+    assert.deepEqual(await loopValidity(hTask(), journal, sandbox, loop, { ok: false, restricted: [false, false] }), div);
+    assert.deepEqual(await loopValidity(hTask(), journal, sandbox, loop, { ok: true, restricted: [false, true] }), div);
+    assert.deepEqual(await loopValidity(hTask(), journal, sandbox, loop, { ok: true }), div);
+    // the script return absent: formato-do-diario
+    assert.deepEqual(await loopValidity(hTask(), journal, sandbox, loop, null), { valid: false, reason: 'formato-do-diario' });
+    assert.equal((await loopValidity(hTask(), journal, sandbox, loop, { ok: true, restricted: [false, false] })).valid, true);
+    // The real tool_result format of Workflow is confirmed on the 1st probe; the three shapes below are the ones read.
+    mkdirSync(join(s.configDir, 'projects', 'fab-sandbox'), { recursive: true });
+    ['direct', 'list', 'background'].forEach((shape, i) => {
+      writeFileSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(i + 1)}.jsonl`), '');
+      appendWorkflowReturn(s.configDir, i + 1, { ok: true, restricted: [false, false], verify: null }, shape);
+    });
+    for (const n of [1, 2, 3]) assert.deepEqual(readScriptResult(s.configDir, [sid(n)]), { ok: true, restricted: [false, false], verify: null }, `shape ${n}`);
+    assert.equal(readScriptResult(s.configDir, [sid(9)]), null);
+    writeFileSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(4)}.jsonl`), '');
+    appendWorkflowReturn(s.configDir, 4, 'launched, no return yet', 'direct');
+    assert.equal(readScriptResult(s.configDir, [sid(4)]), null);
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: laco-divergente twice in a batch stops the batch and writes aggregate.stoppedBy', async () => {
+  const s = setup();
+  try {
+    const spec = () => ({ apply: false, entries: () => [{ label: 'E5:task-review1', result: trv([]) }, { label: 'E5:task-review-extra', result: { summary: '[fab]' } }], ret: { ok: true, restricted: [false] } });
+    const r = await runBatch(corrBatch(s, { runs: 4 }), { exec: makeFake(s.configDir, { afterRun: taskAfterRun(s, spec) }).exec, now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.reason), ['laco-divergente', 'laco-divergente']);
+    assert.equal(r.aggregate.stoppedBy, 'laco-divergente');
+    assert.equal(r.aggregate.requested, 4);
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: semente-ausente when afterFirstFix headSha is not fixSha or CR/CG are not present there', async () => {
+  const s = setup();
+  try {
+    const sc = await unitScenario(s);
+    gitq(sc.dir, 'merge', '--ff-only', sc.fixSha);
+    const journal = { entries: [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review2', trv([], sc.fixSha))] };
+    const loop = { fixes: 1, ok: true, restrictedRounds: [false, false] };
+    const script = { ok: true, restricted: [false, false] };
+    assert.equal((await loopValidity(hTask(), journal, sc, loop, script)).valid, true);
+    // the entries of the other artifact are not in this fixSha
+    const other = { ...sc, variant: 'correcao-semeada-B' };
+    assert.deepEqual(await loopValidity(hTask(), journal, other, loop, script), { valid: false, reason: 'semente-ausente' });
+    // with blobKey null the state after the 1st fix is verified by its SHA: review 2 naming fixSha is verified, not "always unverified"
+    const run = taskAfterRun(s, () => ({ entries: (fixSha) => [entry('E5:task-review1', trv([F_PARENT])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', trv([], fixSha))], ret: { ok: true, restricted: [false, false] } }));
+    const r = await runBatch(corrBatch(s), { exec: makeFake(s.configDir, { afterRun: run }).exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+    assert.equal(a.afterFirstFix.verified, true);
+    assert.match(a.afterFirstFix.headSha, /^[0-9a-f]{40}$/);
+    assert.equal(r.aggregate.afterFirstFixUnverified, 0);
+  } finally {
+    s.done();
+  }
+});
+
+// Three attempts of one batch: (1) fix1 then clean; (2) fix1, fix2 that removes the defects, clean; (3) two fixes, stopped, review 2 mentions CG1.
+const threeAttempts = (s) =>
+  taskAfterRun(s, (n) => {
+    const fx = (k) => entry(`E5:task-review-fix${k}`, APPLIED_FIX);
+    if (n === 1) return { entries: (f) => [entry('E5:task-review1', trv([F_PARENT])), fx(1), entry('E5:task-review2', trv([], f.slice(0, 7)))], ret: { ok: true, restricted: [false, false] } };
+    if (n === 2) return { after: (cwd) => cleanFix(cwd), shape: 'background', entries: (f) => [entry('E5:task-review1', trv([F_PARENT])), fx(1), entry('E5:task-review2', trv([F_OTHER], f)), fx(2), entry('E5:task-review3', trv([]))], ret: { ok: true, restricted: [false, false, false] } };
+    return { shape: 'list', entries: (f) => [entry('E5:task-review1', trv([F_PARENT])), fx(1), entry('E5:task-review2', trv([F_CG1], f)), fx(2), entry('E5:task-review3', trv([FOUND('F3', 'other blocking')]))], ret: { ok: false, restricted: [false, false, false] } };
+  });
+
+test('B4: capturado requires fix2', async () => {
+  const s = setup();
+  try {
+    const r = await runBatch(corrBatch(s, { runs: 3 }), { exec: makeFake(s.configDir, { afterRun: threeAttempts(s) }).exec, now: NOW });
+    const [a1, a2, a3] = r.aggregate.attempts;
+    assert.deepEqual([a1.status, a2.status, a3.status], ['valid', 'valid', 'valid'], JSON.stringify(r.aggregate.invalidReasons));
+    // no fix2, approved: the seeds are still there
+    assert.deepEqual(outcomeMap(a1), { CR1: 'perdido', CG1: 'perdido' });
+    // fix2 removes them
+    assert.deepEqual(outcomeMap(a2), { CR1: 'capturado', CG1: 'capturado' });
+    // stopped with the seeds there
+    assert.equal(a3.loop.ok, false);
+    assert.deepEqual(outcomeMap(a3), { CR1: 'indeterminado', CG1: 'indeterminado' });
+  } finally {
+    s.done();
+  }
+});
+
+test('B4: mentionedAfterFix, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai counted on fixture journals', async () => {
+  const entries = (...e) => e.map(([l, r]) => entry(l, r));
+  const ids = ['CR1', 'CG1'];
+  // the mention of CR1 matches the parent finding of review 1; CG1 is mentioned after the fix
+  const withParent = mentionStats(entries(['E5:task-review1', trv([F_PARENT])], ['E5:task-review-fix1', APPLIED_FIX], ['E5:task-review2', trv([F_CG1])]), 'E5:task-review', ids);
+  assert.deepEqual(withParent, { mentionedAfterFix: { CR1: false, CG1: true }, residuoSemAchadoPai: 0 });
+  // without a parent finding in review 1 the residue counts; review 1 never counts as a mention after the fix
+  const noParent = mentionStats(entries(['E5:task-review1', trv([F_OTHER, F_CG1])], ['E5:task-review2', trv([])]), 'E5:task-review', ids);
+  assert.deepEqual(noParent, { mentionedAfterFix: { CR1: false, CG1: false }, residuoSemAchadoPai: 1 });
+  // restricted mode: an open verdict on the id of the parent finding mentions the residue
+  const restrictedOpen = mentionStats(entries(['E5:task-review1', trv([F_PARENT])], ['E5:task-review2', trv([], 'x', { verdicts: [{ id: 'F1', open: true }] })]), 'E5:task-review', ids);
+  assert.equal(restrictedOpen.mentionedAfterFix.CR1, true);
+  const restrictedClosed = mentionStats(entries(['E5:task-review1', trv([F_PARENT])], ['E5:task-review2', trv([], 'x', { verdicts: [{ id: 'F1', open: false }] })]), 'E5:task-review', ids);
+  assert.equal(restrictedClosed.mentionedAfterFix.CR1, false);
+  // the batch counters over three attempts: attempt 2 captured both without mention, attempt 3 kept CG1 and the reviewer mentioned it
+  const s = setup();
+  try {
+    const r = await runBatch(corrBatch(s, { runs: 3 }), { exec: makeFake(s.configDir, { afterRun: threeAttempts(s) }).exec, now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.mentionedAfterFix), [{ CR1: false, CG1: false }, { CR1: false, CG1: false }, { CR1: false, CG1: true }]);
+    assert.equal(r.aggregate.capturadoSemMencao, 2);
+    assert.equal(r.aggregate.perdidoDoCorretor, 1);
+    assert.equal(r.aggregate.residuoSemAchadoPai, 0);
+  } finally {
+    s.done();
+  }
+  // more than 2 attempts with a residue without parent finding stop the batch
+  const s2 = setup();
+  try {
+    const spec = () => ({ entries: (f) => [entry('E5:task-review1', trv([F_OTHER])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', trv([], f))], ret: { ok: true, restricted: [false, false] } });
+    const r = await runBatch(corrBatch(s2, { runs: 6 }), { exec: makeFake(s2.configDir, { afterRun: taskAfterRun(s2, spec) }).exec, now: NOW });
+    assert.equal(r.aggregate.valid, 3, JSON.stringify(r.aggregate.invalidReasons));
+    assert.equal(r.aggregate.residuoSemAchadoPai, 3);
+    assert.equal(r.aggregate.stoppedBy, 'residuoSemAchadoPai');
+    assert.equal(r.aggregate.attempts.length, 3);
+  } finally {
+    s2.done();
+  }
+});
+
+test('B4: replay ok equals the script ok in the task arms (atual and restrita)', async () => {
+  const P = loadPure();
+  const F = (id) => FOUND(id);
+  const sequences = {
+    'clean on the 1st': { reviews: [trv([])] },
+    'fix and clean': { reviews: [trv([F('F1')]), trv([])] },
+    'blocks always': { reviews: [trv([F('F1')]), trv([F('F2')]), trv([F('F3')])] },
+    'repeated finding (escalates)': { reviews: [trv([F('F1')]), trv([F('F1')]), trv([F('F1')]), trv([F('F1')])] },
+  };
+  for (const arm of ['atual', 'restrita']) {
+    for (const [name, seq] of Object.entries(sequences)) {
+      const run = await stubScript({ restricted: arm === 'restrita', ...seq });
+      const replay = await loopResult(hTask(arm), run.journal, P, run.scenario);
+      assert.equal(replay.ok, run.result.ok, `${arm} ${name}`);
+      assert.deepEqual(replay.restrictedRounds, run.result.restricted, `${arm} ${name}`);
+    }
+  }
+});
+
+test('B4: aggregate fields', async () => {
+  const s = setup();
+  try {
+    const r = await runBatch(corrBatch(s, { runs: 3 }), { exec: makeFake(s.configDir, { afterRun: threeAttempts(s) }).exec, now: NOW });
+    const g = r.aggregate;
+    assert.deepEqual(g.harness.taskReview, { restricted: false });
+    assert.match(g.harness.seededFix.sha, /^[0-9a-f]{40}$/);
+    assert.deepEqual(g.harness.seededFix.ids, ['CR1', 'CG1']);
+    assert.deepEqual(g.attempts.map((a) => a.loop.restrictedRounds), [[false, false], [false, false, false], [false, false, false]]);
+    for (const k of ['capturadoSemMencao', 'perdidoDoCorretor', 'residuoSemAchadoPai', 'refutouTudo']) assert.equal(typeof g[k], 'number', k);
+    assert.equal(g.stoppedBy, undefined);
+  } finally {
+    s.done();
+  }
+  // DEC-737: the report recounted with capturadoSemMencao as indeterminado, and inconclusivo when the count crosses the 16 determined
+  const attempt = (n, mentioned) => ({ status: 'valid', n, outcomes: [{ id: 'CR1', class: 'code', detectedBy: 'reviewer', outcome: 'capturado' }, { id: 'CG1', class: 'code', detectedBy: 'reviewer', outcome: 'perdido' }], mentionedAfterFix: { CR1: mentioned, CG1: true } });
+  const attempts = [...Array.from({ length: 8 }, (_, i) => attempt(i + 1, true)), attempt(9, false), attempt(10, false)];
+  const outcomes = { CR1: { class: 'code', detectedBy: 'reviewer', capturado: 10, perdido: 0, indeterminado: 0 }, CG1: { class: 'code', detectedBy: 'reviewer', capturado: 0, perdido: 10, indeterminado: 0 } };
+  const rc = recountWithoutMention({ attempts, outcomes });
+  assert.equal(rc.capturadoSemMencao, 2);
+  assert.deepEqual(rc.outcomes.CR1, { class: 'code', detectedBy: 'reviewer', capturado: 8, perdido: 0, indeterminado: 2 });
+  assert.deepEqual(rc.determinadas, { antes: 20, depois: 18 });
+  assert.equal(rc.inconclusivo, false);
+  const rc2 = recountWithoutMention({ attempts: attempts.map((a) => ({ ...a, mentionedAfterFix: { CR1: false, CG1: true } })), outcomes });
+  assert.deepEqual(rc2.determinadas, { antes: 20, depois: 10 });
+  assert.equal(rc2.inconclusivo, true);
 });
