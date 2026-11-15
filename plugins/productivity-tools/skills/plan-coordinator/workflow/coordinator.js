@@ -957,6 +957,23 @@ function baselineEvent(test, out) {
   return ev
 }
 
+// Why a baseline run cannot be trusted (exit not 0, 0 tests run, 0 passed), or null.
+function baselineProblem(out) {
+  if (out.exit !== 0) return `the baseline test run exited ${out.exit}`
+  let tests = null
+  let pass = null
+  for (const raw of String(out.stdout == null ? '' : out.stdout).split(/\r?\n/)) {
+    const line = raw.trim()
+    const t = /^(?:#|ℹ) tests (\d+)$/.exec(line)
+    const p = /^(?:#|ℹ) pass (\d+)$/.exec(line)
+    if (t) tests = Number(t[1])
+    if (p) pass = Number(p[1])
+  }
+  if (tests === 0) return 'the baseline test run executed 0 tests'
+  if (pass === 0) return 'the baseline test run passed 0 tests'
+  return null
+}
+
 // A command above CMD_CAP is not dispatched.
 function cmdOverCap(cmd) {
   const size = String(cmd).length
@@ -1299,7 +1316,7 @@ const recordReports = (results) => {
 const testCmd = () => S.run.test || A.test || 'none'
 const runTest = (label) => runCmd(`cd ${shq(ROOT)} && ${testCmd()}`, label, { phase: 'Gate', writes: true })
 
-// The tests before the first launch, recorded once in run.baseline ("none" or no command records a green baseline without running).
+// The tests before the first launch, recorded once in run.baseline ("none" or no command records a green baseline without running); a baseline that fails or runs 0 tests stops the run before the first step.
 const ensureBaseline = async () => {
   if (S.run.baseline !== null && S.run.baseline !== undefined) return null
   const test = testCmd()
@@ -1310,7 +1327,14 @@ const ensureBaseline = async () => {
   const out = await runTest('baseline')
   if (!out || !Number.isInteger(out.exit)) return failWith('the baseline test run returned nothing')
   queue(baselineEvent(test, out))
-  return null
+  const why = baselineProblem(out)
+  if (why === null) return null
+  const tail = '); fix the test command, or answer unblock to accept this baseline'
+  const room = GATE_Q_CAP - (why.length + ' (command: '.length + tail.length)
+  const cmd = String(test)
+  const question = `${why} (command: ${cmd.length > room ? cmd.slice(0, Math.max(0, room - 3)) + '...' : cmd}${tail}`
+  queue({ type: 'block', text: question })
+  return stopWith('ask', { question, excerpt: tailOf(out.stdout) })
 }
 
 // `again` is lost with a kill: once per run, before any launch (the worktree then only holds work from before the kill),

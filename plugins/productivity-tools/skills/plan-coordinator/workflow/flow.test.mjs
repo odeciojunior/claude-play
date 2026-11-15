@@ -624,3 +624,36 @@ test('E12: a state of many steps is read in signed pages and the run uses all of
   assert.ok(runnerCmds(sim2).every((c) => c.length <= 6000));
   assert.equal(byAgent(sim2, IMPL).length, 0, 'every step is seen as passed');
 }, { plan: widePlan(40) }));
+
+test('2.0.1 AC1: a red baseline stops before any implementer and unblock accepts it', () => withSandbox(async (sb) => {
+  writeFileSync(sb.check + '.fail', '');
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'stopped', JSON.stringify(r));
+  assert.equal(r.stop.kind, 'ask');
+  assert.match(r.stop.question, /exited 1/);
+  assert.ok(r.stop.question.includes('check.mjs'), r.stop.question);
+  assert.match(r.stop.question, /answer unblock to accept this baseline/);
+  assert.equal(byAgent(sim, IMPL).length, 0);
+  const st = readState(sb);
+  assert.equal(st.run.status, 'blocked');
+  assert.equal(st.run.baseline.exit, 1);
+  assert.deepEqual(st.run.baseline.failedNames, ['new failure']);
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb, { answers: [{ event: 'unblock' }] }));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  assert.ok(sim2.calls.every((c) => c.o.label !== 'baseline'));
+  assert.equal(byAgent(sim2, IMPL).length, 4);
+}));
+
+test('2.0.1 AC1: a baseline that runs 0 tests stops before any implementer', () => withSandbox(async (sb) => {
+  const empty = join(sb.dir, 'empty.mjs');
+  writeFileSync(empty, "console.log('TAP version 13'); console.log('# tests 0'); console.log('# pass 0');\n");
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb, { test: `node ${shq(empty.replace(/\\/g, '/'))}` }));
+  assert.equal(r.status, 'stopped', JSON.stringify(r));
+  assert.equal(r.stop.kind, 'ask');
+  assert.match(r.stop.question, /executed 0 tests/);
+  assert.equal(byAgent(sim, IMPL).length, 0);
+  assert.equal(readState(sb).run.baseline.exit, 0);
+}));
