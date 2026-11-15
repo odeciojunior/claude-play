@@ -16,7 +16,7 @@ Exit codes: 0 done, 1 refused with no change (code on stderr, or in `errors` wit
 | `steps[].files` | paths the step may change (create, modify and test); what a per-step commit stages |
 | `steps[].noCommit` | the plan marks the step as one that is never committed on its own |
 | `steps[].gated` | set when a wave gate ran with the step `pass`; a wave gate is due only when the wave has no open step and a `pass` step is not yet `gated` |
-| `run.baseline` | `{ test, exit, tail, failedNames }` recorded by the `baseline` event; a failing test counts only if its name is not in `failedNames` |
+| `run.baseline` | `{ test, exit, tail, failedNames, failedNamesCut? }` recorded by the `baseline` event; a failing test counts only if its name is not in `failedNames` (at most 50 names; `failedNamesCut` counts the names left out, which then count as new failures) |
 | `finalGate` | `status`, `rounds`, `lastVerdict` |
 | `manual[]` | open or closed holds: `kind`, `step`, `text`, `open` |
 | `history[]` | one line per event, with its time |
@@ -37,7 +37,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 | `block --text q` / `unblock` | `blocked` with the question / back to `in-progress` |
 | `launch --steps n,.. [--tier t] [--agent-id id]` | steps `launched`, attempts + 1; `--tier` raises the level on a repeat |
 | `inline-start --step n` / `inline-result --step n --value pass\|fail` | inline run (haiku, not external, no gate): `launched`, then `pass`, or `pending` as delegated sonnet |
-| `baseline` (batch only) `exit`, `failedNames`, `test`, `tail` | records the test baseline in `run.baseline`; `exit` is an integer and `failedNames` a list of texts |
+| `baseline` (batch only) `exit`, `failedNames`, `test`, `tail` | records the test baseline in `run.baseline`; `exit` is an integer, `failedNames` a list of texts and the optional `failedNamesCut` an integer ≥ 0 |
 | `report --step n --value pass\|fail\|blocked [--text t]` | `pass`: `pass` (in a batch the event may carry `handoff`, stored on the step), or `review-owed` when gated. Otherwise `pending` up to 3 attempts, then held with the text; an external step becomes `stopped` |
 | `no-report --step n` | agent lost: `pending`; an external step becomes `stopped` |
 | `review-result --step n --value pass\|defects\|lost` | `pass`; `defects`: fix-up round (`launched`, 2 rounds, then as a failure; external: `stopped`); `lost`: review again |
