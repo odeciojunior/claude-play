@@ -1,7 +1,7 @@
 # E27, passada C (peça 2): plano de implementação do arnês
 
 **Roadmap:** docs/plans/roadmap-evolucao-skills
-**Spec:** docs/plans/2026-11-15-measure-e27-passada-c-design.md (revisão 1; as escolhas do dono listadas lá são ratificadas antes da T1). Branch `feat/e27-passada-c`, worktree `D:/projects/claude-play-wt/e27c`, base `336b7f8` (`release/roadmap-skills-v2`).
+**Spec:** docs/plans/2026-11-15-measure-e27-passada-c-design.md (revisão 2, com as emendas do dono de 2026-11-15 aplicadas; escolhas aceitas e emendadas na seção "Emendas do dono (2026-11-15)" de lá). Branch `feat/e27-passada-c`, worktree `D:/projects/claude-play-wt/e27c`, base `336b7f8` (`release/roadmap-skills-v2`).
 
 Formato das tarefas: o de `2026-11-15-measure-e26-bloco-b-plan.md`.
 
@@ -72,7 +72,7 @@ Ondas:
 **Testes** (só teste, antes de qualquer edição de `run-batch.mjs`; o golden B2 da rodada única de `codigo-semeado-A`, `run-batch.test.mjs` linha ~2356, já existe e não muda):
 1. `C2: the task loop script of correcao-semeada-A, arm atual, is frozen (golden)`. Monta o `scenario` fixo (`dir` fixo, `seededCommit` de 40 `a`, `fixSha` de 40 `b`), `pure` de uma fixture inline pequena (o golden não depende do workflow real), `opts` fixos (`restricted: false`, `reviewModel: 'sonnet'`, `pluginRoot`, `work`, `title: 'wordCount and the index'`, `fixPrompt` igual ao de `harnessPrompts`), chama `buildTaskLoopScript` e afirma o sha256 inline do texto (LF).
 2. Idem para o braço `restrita` (`restricted: true`).
-3. A conferência do agregado de `correcao-semeada-*` fica na T5 (teste 12): `loopAggregate` não é exportada, e a T1 não edita código.
+3. A conferência do agregado de `correcao-semeada-*` fica na T5 (teste 14): `loopAggregate` não é exportada, e a T1 não edita código.
 
 **Verificação:** `node --test tools/measure/run-batch.test.mjs tools/measure/review-loop.test.mjs` passa sem mudança de código (os hashes são medidos no código de hoje). G1 e linha de base anotadas.
 
@@ -89,18 +89,21 @@ Ondas:
 2. `C1: feat/E5 stays at seededCommit and the seeded diff touches only the three files of Task 3` (`git diff --name-only <seededCommit>~1 <seededCommit>` é subconjunto de `src/word-count.mjs`, `src/index.mjs`, `tests/e5-word-count.test.mjs`).
 3. `C1: the sandbox suite passes at seededCommit` (`runSandboxSuite(dir).ok === true`).
 4. `C1: present is true at seededCommit and false at the clean T3 for every SP and QL`.
-5. `C1: each artifact has 2 entries with lens spec and 2 with lens quality, all with detectedBy reviewer and sentinel sentinels/lentes.mjs`.
-6. `C1: each mention matches its template sentence and none of the other three of its artifact` (frases-modelo inline no teste, uma por id).
-7. `C1: a seed whose anchor the suite flags or present cannot tell is refused with a scenario error` (suíte e sentinela injetados, como B1 teste 7).
-8. `C1: legacy variants are unchanged` (árvore do `seededCommit` de `codigo-semeado-A` e de `correcao-semeada-A` igual ao hash inline medido antes de editar).
-9. `C1: QL1 leaks lastIndex across calls and QL3 overflows the stack at 20,000 words` (`probe` sobre o arquivo semeado: `wordCount('ab')` seguido de `wordCount('x')` dá 0; `wordCount('a '.repeat(20000))` lança `RangeError`), para a âncora não perder o defeito numa reescrita.
+5. `C1: present is behavioural for SP1 to SP4 and QL1 to QL3, textual only for QL4`: com a âncora reescrita sem mudar o comportamento (outros nomes de variável, outra formatação), o `present` comportamental continua verdadeiro; com o comportamento desfeito e o texto parecido, continua falso. A lista de ids com `presentBy: 'text'` no manifesto é igual a `['QL4']` (ou o id que o trocar).
+6. `C1: each artifact has 2 entries with lens spec and 2 with lens quality, all with detectedBy reviewer and sentinel sentinels/lentes.mjs`.
+7. `C1: each artifact has at most 2 seeds per file and touches index, word-count and the test` (contagem por `file` no manifesto e pelo diff do `seededCommit`; A e B: index 1, word-count 2, teste 1).
+8. `C1: each mention matches at least 3 paraphrases of its seed and none of the paraphrases of the other three of its artifact` (paráfrases inline no teste, 3 ou mais por id, pelo menos uma no vocabulário da lente spec, como "the index does not re-export wordCount as the spec says", e uma no da lente quality, como "the module-level regex with the g flag keeps lastIndex between calls"; nenhuma é cópia da `description` do manifesto).
+9. `C1: a seed whose anchor the suite flags or present cannot tell is refused with a scenario error` (suíte e sentinela injetados, como B1 teste 7).
+10. `C1: legacy variants are unchanged` (árvore do `seededCommit` de `codigo-semeado-A` e de `correcao-semeada-A` igual ao hash inline medido antes de editar).
+11. `C1: QL1 leaks lastIndex, QL2 fails outside the repository root and QL3 is quadratic`, para a âncora não perder o defeito numa reescrita: `probe` sobre o arquivo semeado, `wordCount('ab')` seguido de `wordCount('x')` dá 0 (QL1); `node --test <caminho absoluto de tests/e5-word-count.test.mjs>` com `cwd` em `tests/` falha no `seededCommit` e passa na T3 limpa, e o mesmo comando da raiz passa nos dois (QL2); `wordCount('a' + ' '.repeat(60000) + 'b')` passa de 200 ms no semeado e fica abaixo de 20 ms no limpo (QL3; conferido em Node 22.17: ≈ 760 ms contra < 1 ms).
+12. `C1: quality seeds keep the algorithm of Step 3 and add no test`: no `seededCommit` de cada artefato, o arquivo de teste tem os mesmos dois `test(` da T3 limpa; QL1 (módulo novo por chamada) e QL3 dão os mesmos resultados do limpo em `'the quick fox'`, `''`, `'   '` e `' a  b '`; o `word-count.mjs` semeado ainda faz trim, devolve 0 para branco e divide em `/\s+/`.
 
 **Implementação:**
-1. `defects/sentinels/lentes.mjs`: esqueleto de `sentinels/fix.mjs` (`atRef`, `probe`, `lf`, `git`, `fail`, `replaceOnce`); exporta `seed(dir, id)` e `present(dir, ref = 'HEAD', id)` com tabela dos oito ids (`file`, `apply(text)`, `present(dir)`). Âncoras candidatas da spec (C1), com a regra de troca de DEC-724 (id novo com `replaces`, listado no relatório da tarefa). SP3, SP4, QL3 e QL4 compõem sobre o mesmo `src/word-count.mjs`: o `apply` de cada um parte do texto já semeado pelos anteriores do artefato, na ordem do manifesto, e o `present` de cada um olha só a sua marca.
-2. `manifest.json`: 8 entradas (`id`, `class: 'code'`, `set: 'e5-lentes'`, `lens`, `kind`, `artifact`, `file`, `sentinel: 'sentinels/lentes.mjs'`, `detectedBy: 'reviewer'`, `mention`, `description`). Entradas existentes intactas.
+1. `defects/sentinels/lentes.mjs`: esqueleto de `sentinels/fix.mjs` (`atRef`, `probe`, `lf`, `git`, `fail`, `replaceOnce`); exporta `seed(dir, id)` e `present(dir, ref = 'HEAD', id)` com tabela dos oito ids (`file`, `apply(text)`, `present(dir)`). Âncoras candidatas da spec (C1), com a regra de troca de DEC-724 (id novo com `replaces`, listado no relatório da tarefa); a troca respeita o limite de 2 sementes por arquivo por artefato e a classe (quality sem teste a mais e sem mudar o algoritmo do Step 3). SP2 e QL1 (A) e SP4 e QL3 (B) compõem sobre `src/word-count.mjs`: o `apply` de cada um parte do texto já semeado pelos anteriores do artefato, na ordem do manifesto. `present` por comportamento: `probe` (o de `fix.mjs`) em SP1 a SP4, QL1 e QL3 (QL3 com limiar de 200 ms sobre `'a' + ' '.repeat(60000) + 'b'`); para QL2, `runTest(dir, cwd)` roda `node --test` sobre o caminho absoluto do teste com `cwd` em `tests/` e devolve se falhou; marca textual só em QL4.
+2. `manifest.json`: 8 entradas (`id`, `class: 'code'`, `set: 'e5-lentes'`, `lens`, `kind`, `artifact`, `file`, `sentinel: 'sentinels/lentes.mjs'`, `detectedBy: 'reviewer'`, `presentBy: 'behaviour'|'text'`, `mention`, `description`). O `mention` de cada id é escrito para casar as paráfrases do teste 8 (as duas lentes), não só a `description`. Entradas existentes intactas.
 3. `make-scenario.mjs`: `VARIANTS` e `RELEASE_RUN_VARIANTS` ganham as duas; `SEEDED['lentes-semeadas-A'|'-B'] = { class: 'code', artifact, set: 'e5-lentes' }`; o `case` de `makeScenario` copia o de `codigo-semeado-*` (`seedVariant`, prompt `run E5`). Nenhuma mudança no caminho de `codigo-semeado-*` e `correcao-semeada-*`.
 
-**Verificação:** `node --test tools/measure/make-scenario.test.mjs` (antigos e 9 novos passam). G1 e `claude plugin validate .`.
+**Verificação:** `node --test tools/measure/make-scenario.test.mjs` (antigos e 12 novos passam). G1 e `claude plugin validate .`.
 
 **Commit:** `fix(measure): sementes de spec e de quality na tarefa 3 (lentes-semeadas-A/B)`.
 
@@ -165,25 +168,28 @@ Ondas:
 
 **Testes primeiro** (`run-batch.test.mjs`, seção `C3:`, diários de fixture com `jl(...)`):
 1. `C3: replay ok equals the script ok, loop by loop, in both arms` (quatro sequências por braço: limpa na 1ª; corrige e limpa; para no 1º laço; aprova o 1º e para o 2º, só `atual`).
-2. `C3: laco-divergente` quando um laço replayado diverge do `loops[i].ok` do script, quando o script rodou o laço `quality` e o replay parou no `spec` (e o contrário), e com rótulo não usado ou repetido; 2 num lote param o lote (`aggregate.stoppedBy`).
+2. `C3: laco-divergente` quando um laço replayado diverge do `loops[i].ok` do script, quando o script rodou o laço `quality` e o replay parou no `spec` (e o contrário), e com rótulo não usado ou repetido; 2 numa invocação param a invocação (`aggregate.stoppedBy`; a soma do braço é o teste 15).
 3. `C3: formato-do-diario, laco-infra and semente-ausente` (este com `present` falso no `seededCommit`).
 4. `C3: a first review with no hard finding is valid and the four seeds are perdido`.
-5. `C3: bloqueou-sintetico only in unica, only when every fixable item is synthetic; more than 2 in a lot stop the lot`.
+5. `C3: bloqueou-sintetico only when the fixer answers BLOCKED to a fixable list with only synthetic findings`: lista só com sintético e `BLOCKED` dá inválida; a mesma lista com correção `DONE` não dá; mais de 2 numa invocação param a invocação.
 6. `C3: BLOCKED with a synthetic and a real finding is bloqueadoMisto, a valid stopped attempt (indeterminado)`.
-7. `C3: failRiscoAceito counts unica attempts whose loop approved with accepted risks in a round with spec or quality not pass`.
-8. `C3: sinteticoGerado and veredictoAusente counted per round in unica`.
-9. `C3: capturadoPor names the first kind and round whose finding matches the mention; capturadoSemMencao as in B`.
-10. `C3: outcomesByLens splits captures and determined by lens`.
-11. `C3: rolesByLabel puts E5:t3:<kind><r> in review and E5:t3:<kind>-fix<k> in fix`.
-12. `C3: the correcao-semeada replay and validity are unchanged` (diários de fixture de B dão o mesmo resultado de hoje; goldens da T1 intactos).
+7. `C3: a loop stopped without BLOCKED with only synthetic findings open is paradoSoSintetico, a valid stopped attempt (indeterminado)` (`maxFix` esgotado com só o sintético repetido); com um achado real aberto junto não conta.
+8. `C3: failRiscoAceito counts, in both arms, attempts whose loop approved with accepted risks in a round whose verdict is not pass` (`unica`: `spec` ou `quality` diferente de `pass`; `atual`: `clean === false` daquela revisão); aprovação com risco aceito e veredicto `pass` não conta.
+9. `C3: sinteticoGerado and veredictoAusente counted per round in unica`.
+10. `C3: capturadoPor names the first kind and round whose finding matches the mention; capturadoSemMencao as in B`.
+11. `C3: capturadoPorMatriz counts captures by first mentioning loop and design class` (atual: semente de spec pega primeiro no laço `quality` cai na célula `quality × spec`; única: tudo na linha `review`; captura sem menção na coluna própria).
+12. `C3: outcomesByLens splits captures, misses and determined by lens`.
+13. `C3: rolesByLabel puts E5:t3:<kind><r> in review and E5:t3:<kind>-fix<k> in fix`.
+14. `C3: the correcao-semeada replay and validity are unchanged` (diários de fixture de B dão o mesmo resultado de hoje; goldens da T1 intactos).
+15. `C3: armTotals sums the aggregates of A and B of one arm and fires the arm stops`: inválidas, `laco-divergente`, `bloqueou-sintetico`, contadores, `outcomes`, `outcomesByLens` e custo somados; 2 + 1 `bloqueou-sintetico` dá parada (mais de 2 no braço) sem nenhuma invocação parar sozinha; 1 + 1 `laco-divergente` dá parada; 2 + 2 inválidas dá parada (mais de 3); agregados de braços diferentes (`harness.taskReview` distinto) são recusados; a ordem das tentativas válidas por artefato fica nos totais, para `earlyCeiling` (T6).
 
 **Implementação (`run-batch.mjs`):**
 1. `replayLoop`: ramo `lentes` com um `runReviewLoop` por `kind` de `h.kinds`, rótulos por `kind`, `cx = { taskReview: { restricted: false, single: h.arm === 'unica' }, was }`, parada no primeiro laço que não aprova; devolve `loops` (por laço: `ok`, `kind`, revisões, `fixTiers`, `accepted`, listas `fixable` de cada correção, para `bloqueou-sintetico`).
 2. `loopResult`: com `lentes`, `stageLabels` por qualquer prefixo de `labelsFor(h)`; `ok` = todos os laços aprovaram.
 3. `lensValidity(h, journal, scenario, loop, script)` nova (não toca `loopValidity` de B): motivos da spec (C3), na ordem `formato-do-diario`, `semente-ausente`, `laco-infra`, `bloqueou-sintetico`, `laco-divergente`.
-4. Contadores por tentativa e no topo (`loopAggregate` com `{ lenses: true }`): `failRiscoAceito`, `bloqueadoMisto`, `sinteticoGerado`, `veredictoAusente`, `capturadoPor`, `capturadoSemMencao`, `outcomesByLens`, `bloqueouSintetico`, custo por tentativa válida.
+4. Contadores por tentativa e no topo (`loopAggregate` com `{ lenses: true }`): `failRiscoAceito` (nos dois braços), `bloqueadoMisto`, `paradoSoSintetico`, `sinteticoGerado`, `veredictoAusente`, `capturadoPor`, `capturadoPorMatriz`, `capturadoSemMencao`, `outcomesByLens` (com perdidos), `bloqueouSintetico`, custo por tentativa válida, e, por tentativa válida, `artifact` e hora de início (ordem para `earlyCeiling`).
 5. `h.syntheticDescription` (ambiguidade 6) calculado na partida a partir de `h.loopFns.taskIssues`.
-6. Paradas de lote: 2 `laco-divergente`, mais de 2 `bloqueou-sintetico`, mais de 3 inválidas, 2 `semente-ausente`.
+6. Paradas por invocação: 2 `laco-divergente`, mais de 2 `bloqueou-sintetico`, mais de 3 inválidas, 2 `semente-ausente`. As paradas do braço (A + B somados) ficam em `export function armTotals(aggregates)`, pura, que soma os agregados e devolve `{ totals, stop: null | motivo }`; o operador a chama entre invocações (o arnês não vê a outra invocação).
 7. `rolesByLabel`: regra da ambiguidade 3.
 
 **Verificação:** `node --test tools/measure/run-batch.test.mjs`. G1 e `claude plugin validate .`.
@@ -196,15 +202,19 @@ Ondas:
 
 **Arquivos (2):** `tools/measure/run-batch.mjs`, `tools/measure/run-batch.test.mjs`.
 
-**Testes primeiro** (`run-batch.test.mjs`, seção `C4:`; agregados de fixture com `outcomes`, `outcomesByLens`, `capturadoSemMencao`, `failRiscoAceito` e custo):
+**Testes primeiro** (`run-batch.test.mjs`, seção `C4:`; totais de braço de fixture no formato de `armTotals` (T5), com `outcomes`, `outcomesByLens` (capturas, perdidos, determinadas), `capturadoSemMencao`, `failRiscoAceito`, ordem das válidas e custo):
 1. `C4: ruleSideC gives teto when atual has 38 or more of 40` (a única não é olhada).
 2. `C4: ruleSideC gives piso when atual has fewer than 20 of 40 or fewer than 32 determined`.
-3. `C4: ruleSideC gives unica with 32+ determined, at most 2 fewer in total and in each lens, and a lower cost per valid attempt` (atual 36, única 35, lentes 18/17 e 18/18, custo 0,55 contra 0,85).
-4. `C4: ruleSideC gives atual` por total (36 contra 33), por lente (quality 18 contra 15 com total 36 contra 34), por custo (igual ou maior) e por determinadas da única (31).
-5. `C4: ruleSideC gives inconclusivo when the recount with capturadoSemMencao, or with the failRiscoAceito attempts, as indeterminado changes the side`.
-6. `C4: the aggregate of a lenses batch records harness.taskReview, kinds, outcomesByLens and the counters of C3`.
+3. `C4: ruleSideC gives unica with 32+ determined, at most 2 fewer captures and at most 2 more misses in total and in each lens, and a lower cost per valid attempt` (atual 36 capturas e 2 perdidos, única 35 e 3; lentes 18/17 e 18/18 em capturas, perdidos dentro de 2 em cada; custo 0,55 contra 0,85).
+4. `C4: ruleSideC gives atual` por total de capturas (36 contra 33), por lente (quality 18 contra 15 com total 36 contra 34), por custo (igual ou maior) e por determinadas da única (31).
+5. `C4: ruleSideC gives atual by misses even when captures are within 2` (fixture do dono): atual 30 capturas, 2 perdidos, 8 indeterminados (lentes spec 15/1/4 e quality 15/1/4 em capturas/perdidos/indeterminados); única 28 capturas, 12 perdidos, 0 indeterminados (lentes 14/6/0 e 14/6/0), 40 determinadas, custo menor: lado `atual`, motivo `perdidos` (a única não entra).
+6. `C4: ruleSideC gives atual by misses in one lens with the total within 2`: atual perdidos spec 0 e quality 2; única perdidos spec 3 e quality 1 (total 4 contra 2, dentro de 2), capturas, determinadas e custo dentro da regra: lado `atual`, motivo `perdidos por lente (spec)`.
+7. `C4: ruleSideC gives inconclusivo when the recount with capturadoSemMencao, or with the failRiscoAceito attempts of either arm, as indeterminado changes the side`.
+8. `C4: the diary reading prevails over the regex in the recount`: com `leitura` marcando como mencionada uma captura que o regex não casou, ela não é recontada como indeterminada (o lado não muda); com `leitura` marcando como não mencionada uma captura que o regex casou, ela é recontada (e o lado vira `inconclusivo` no caso montado); sem `leitura`, vale o regex.
+9. `C4: earlyCeiling gives teto with the first 6 valid attempts of atual, 3 of A and 3 of B interleaved, at 24 of 24`; não dá com 23/24, com 6 válidas de um artefato só, com A, A, A, B, B, B (não intercaladas), nem quando a 24/24 só aparece olhando além das 6 primeiras (sem extensão); com teto antecipado, `ruleSideC` devolve `teto` sem olhar a única.
+10. `C4: the aggregate of a lenses batch records harness.taskReview, kinds, outcomesByLens and the counters of C3`.
 
-**Implementação (`run-batch.mjs`):** `export function ruleSideC({ atual, unica })` pura, devolvendo `{ side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo', reason, recount }`, com os limiares da spec (C4) como constantes nomeadas no topo da função; `recountLenses(aggregate)` no molde de `recountArm`. O `runBatch` não chama a regra: o relatório do orquestrador a aplica sobre os dois agregados (como `ruleSide` em B).
+**Implementação (`run-batch.mjs`):** `export function ruleSideC({ atual, unica, leitura })` pura, sobre totais de braço (`armTotals`), devolvendo `{ side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo', reason, recount }`, com os limiares da spec (C4) como constantes nomeadas no topo da função (capturas −2 e perdidos +2, no total e por lente; 32 determinadas; teto 38; piso 20); `export function earlyCeiling(atualTotals)` pura (6 primeiras válidas, 3 A + 3 B intercaladas, 24/24); `recountLenses(totals, leitura)` no molde de `recountArm`, com `leitura` (mapa tentativa × semente → mencionada ou não, preenchido pelo orquestrador ao ler o diário) prevalecendo sobre o `capturadoSemMencao` do regex. O `runBatch` não chama a regra: o relatório do orquestrador a aplica sobre os dois agregados (como `ruleSide` em B).
 
 **Verificação:** `node --test tools/measure/run-batch.test.mjs`. G1 completo e `claude plugin validate .`.
 
@@ -224,6 +234,7 @@ Revisão adversarial opus/high sobre `336b7f8..HEAD`: escopo (só `tools/measure
 4. Sonda do braço atual (vale como 1ª tentativa se válida):
    `node tools/measure/run-batch.mjs --variant lentes-semeadas-A --runs 1 --work D:/claude-e27c-work --out D:/claude-e27c-out/sondas --config-dir D:/claude-e17-cfg --permission-mode bypassPermissions --model sonnet --max-budget-usd 3 --stage task-review --rounds loop --arm atual --review-model sonnet --plugin-dir D:/claude-e27c-release/plugins/productivity-tools --stop-on-denial` (rodado de `D:/claude-e27c-release`).
    Parada: custo × 10 acima de US$ 13.
-5. Lote atual: o mesmo comando com `--out D:/claude-e27c-out/atual`, `lentes-semeadas-A` (4 execuções, ou 5 se a sonda foi inválida) e `lentes-semeadas-B` (5), repondo inválidas até as paradas da spec.
-6. Aplicar `ruleSideC` só ao atual: teto ou piso fecham a passada (única com 0 execuções). Senão, sonda e lote da única com `--arm unica` e `--out D:/claude-e27c-out/unica` (parada: soma projetada acima de US$ 25).
+5. Lote atual intercalado: o mesmo comando com `--runs 1` e `--out D:/claude-e27c-out/atual/<artefato>-<k>`, na ordem B, A, B, A, B depois da sonda (A), repondo cada inválida no mesmo artefato antes de seguir. Entre invocações, `armTotals` sobre os agregados do braço: uma parada do braço (A + B somados) para o lote. Depois das 6 primeiras válidas, `earlyCeiling`: 24/24 fecha o braço como teto, sem tentativa extra. Senão, as 4 restantes (2 A e 2 B), até 10 válidas.
+6. Aplicar `ruleSideC` só ao atual: teto (antecipado ou 38/40) ou piso fecham a passada (única com 0 execuções). Senão, sonda e lote da única com `--arm unica`, `--out D:/claude-e27c-out/unica/<artefato>-<k>`, a mesma intercalação e `armTotals` entre invocações (parada: soma projetada acima de US$ 25); o teto antecipado não se aplica à única.
+6a. Na recontagem, o orquestrador lê no diário cada captura (com e sem menção pelo regex) e preenche `leitura` para `ruleSideC`; as correções de leitura vão ao relatório.
 7. Relatório `docs/reports/2026-11-<dd>-E27-passada-C.md` (formato do de B), linha em `measurements.md` e decisão pelo roadmap-tracker para o dono ratificar (card E27, critério 2).
