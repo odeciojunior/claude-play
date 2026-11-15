@@ -1,0 +1,48 @@
+{
+  "schema": "run/1",
+  "spec": {
+    "spec": "641c4bed185c87f4d9faaf8860b5d88419e9b36f"
+  },
+  "plan": {
+    "spec": "641c4bed185c87f4d9faaf8860b5d88419e9b36f",
+    "plan": "efa77595f80c5d72881dad7c2f8ee729711369e2"
+  },
+  "prep": {
+    "targetHead": "ccac3c57f45e8d2cef1b8ee86a86dbd50125d692",
+    "gatesKey": "936533eb",
+    "baseline": {
+      "headSha": "ccac3c57f45e8d2cef1b8ee86a86dbd50125d692",
+      "clean": true,
+      "gates": [
+        {
+          "name": "G1",
+          "ran": true,
+          "exit": 0,
+          "total": 2175,
+          "skipped": 2,
+          "failedNames": []
+        },
+        {
+          "name": "G2",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G3",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G4",
+          "ran": true,
+          "exit": 0
+        },
+        {
+          "name": "G5",
+          "ran": true,
+          "exit": 0
+        }
+      ]
+    }
+  }
+}
