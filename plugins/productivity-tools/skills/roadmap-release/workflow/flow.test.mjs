@@ -2948,7 +2948,7 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
   assert.equal((planP.match(/only reads a local file outside the branch/g) || []).length, 2, 'task rule and evidence-row rule');
   assert.match(calls.find((c) => c.label === 'E1:plan-review1').prompt, /an external effect that the card or the spec requires \(a delivery, a send, a deploy\) and that no task declared external performs/);
   assert.ok(!calls.some((c) => /No task of the plan runs there/.test(c.prompt)), 'not in the common briefing (M6)');
-  assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /in the deliverable worktree \(no task of the plan runs in the integration worktree\)/);
+  assert.match(calls.find((c) => c.label === 'E1:t1:impl').prompt, /in that worktree \(no task of the plan runs in the integration worktree\)/);
 });
 
 // ---------------------------------------------------------------- E18 T3: registro pela CLI (funções puras)

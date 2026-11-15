@@ -458,3 +458,25 @@ test('DEC-715: script-runner agent and runPrompt: answer only after the Bash res
     assert.match(t, /never a placeholder/i);
   }
 });
+
+test('2.0.1 AC3: the task implementation prompt names the absolute worktree first and forbids relative paths, cd and &&', () => {
+  const p = P.buildImplPrompt(ctx, task);
+  const w = p.indexOf('WORKING DIRECTORY: the deliverable worktree /wt/E7.');
+  assert.ok(w > p.indexOf('CURRENT BASELINE OF THE TARGET'));
+  assert.ok(w < p.indexOf('Implement ONLY Task 3'));
+  assert.ok(p.includes('absolute paths under /wt/E7 or git -C "/wt/E7"'));
+  assert.ok(p.includes('never cd, never chain with &&'));
+  assert.ok(p.includes('/wt/E7/docs/plan.md'));
+  assert.ok(P.buildImplPrompt({ ...ctx, wt: 'D:/w t/E9' }, task).includes('git -C "D:/w t/E9"'));
+});
+
+test('2.0.1 AC3: implementer.md states the working directory rule before the modes and forbids || around a check', () => {
+  const agent = readFileSync(join(here, '..', '..', '..', 'agents', 'implementer.md'), 'utf8').replace(/\r\n/g, '\n');
+  const at = agent.indexOf('## Working directory');
+  assert.ok(at > 0 && at < agent.indexOf('## Choosing the mode'));
+  const rest = agent.slice(at + 3);
+  const section = agent.slice(at, rest.includes('\n## ') ? at + 3 + rest.indexOf('\n## ') : undefined);
+  for (const s of ['does not carry to the next call', 'absolute paths', 'git -C <dir>', 'never prefix a command with `cd <dir> &&`', '`command` reports that string']) assert.ok(section.includes(s), s);
+  assert.ok(agent.includes('(no `;`, `&&`, `||` or pipes around it)'));
+  assert.ok(agent.includes('nothing chained after it with `;`, `&&` or `||`'));
+});
