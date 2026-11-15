@@ -7,9 +7,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E27 passada B: bloco B do arnês durante os lotes de E26; lotes depois. Executa: executor.
-2. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
-3. E26: peça 3 com o lote completo de E11; ratificação de E26 ao fim (peças 1 e 2 feitas: fica o laço de spec e de plano). Executa: executor.
+1. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
+2. E26: peça 3 com o lote completo de E11; ratificação de E26 ao fim (peças 1 e 2 feitas: fica o laço de spec e de plano). Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -43,7 +42,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | executando | - | Passo 0 e bloco A de fix/measure-e26; lotes da peça 2 e da peça 1; peça 3 com o lote completo de E11; ratificação ao fim. |
-| E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md` | Passada B (peças 3 e 4) depois do preparo de E26; passada C (peça 2) depois de E28. |
+| E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md` | Passada C (peça 2) depois de E28, braço atual primeiro; sem E28 em E13, linha do dono (DEC-703). |
 | E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
 
@@ -71,7 +70,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) roadmap-release.js mede ~240.863 caracteres LF na ponta da release (cba20c0), teto 250.000 (DEC-647). fix/pasta-wt-permissao não o edita; E28 depois, em série; a folga de 450 de E28 segue atendida.
 - (executor) Na 2ª sonda acceptEdits (ou, se ela não chegar ao registro, no 1º lote completo de E11): conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. Mais de 1 trecho por status pede emenda à meta de E10.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
-- (executor) E27 passada B (peças 3 e 4) depois dos lotes das peças 1 e 2 de E26 e do bloco B de fix/measure-e26; teto US$ 60 (peça 4 até 45). Passada C (peça 2) depois de E28. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731, make-sandbox.mjs:42).
+- (executor) E27 passada C (peça 2) depois de E28: sementes de spec e de quality, braço atual primeiro; teto nele encerra sem o braço da revisão única. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731).
+- (executor) Antes de outro lote com correcao-semeada: parentMention no CR do manifest (CR3 com o texto de C5), lido por mentionStats em run-batch.mjs, com teste. E11 não usa essas variantes.
+- (executor) Nota E11/E28 (E27 B, revisão final): 1ª revisão final vazia em 1 de 22 execuções (adversarial A, 4ª); a 2ª correção escreveu teste afirmando throw para max 0 em 9 de 10 tentativas do B (2 laços parados). Conferir no 1º lote de E11.
 - (executor) Antes das execuções pagas da variante coordinator em E11 (canal integrado em 031c9c1): limitar textos de evento (pergunta do gate a 600, failedNames a 50 + "+N" com flag de lista cortada, tail do baseline), página 0 contando o estado sem passos, runCmd recusando comando > CMD_CAP.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) Nota para E28 (revisão de 2bb59c6): cap() da nota pode cortar um BLQ no meio (um id longo vira o prefixo de outro, seguido de "...") e casar com o regex de outro id; cortar a palavra parcial antes do "..." ou checar só blqIds. Risco baixo: block-open grava o id no início da nota.
