@@ -1,0 +1,2 @@
+Copied from: plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js at commit 9085b1756bb4edc9fe7eaaeecc792f9f6acbeb33
+The plan ends with a json data block in the plan/1 schema, which must stay valid: run node "{{planTool}}" check "{{planAbs}}" --spec "{{specAbs}}" before the commit, one simple command per call. Tasks and evidence rows are read from that block, never from your answer.

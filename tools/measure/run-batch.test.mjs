@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { redactPaths, runBatch, toAttemptCounters, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
-import { E5_PATHS, seedSourceOf } from './make-scenario.mjs';
+import { createHash } from 'node:crypto';
+import { redactPaths, runBatch, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { E5_PATHS, NATIVE_PATHS, seedSourceOf } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, 'run-batch.mjs');
@@ -18,16 +19,19 @@ function setup({ withPlugins = true } = {}) {
   const base = mkdtempSync(join(tmpdir(), 'run-batch-'));
   const dirs = { base, work: join(base, 'work'), out: join(base, 'out'), configDir: join(base, 'cfg') };
   mkdirSync(join(dirs.configDir, 'plugins'), { recursive: true });
+  const installed = join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9');
   if (withPlugins) {
-    const installed = join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9');
     mkdirSync(join(installed, 'agents'), { recursive: true });
     writeFileSync(join(installed, 'agents', 'task-reviewer.md'), '---\nname: task-reviewer\n---\n');
+    // the measured workflow: --stage spec/plan with --arm atual checks the arms against it
+    mkdirSync(join(installed, 'skills', 'roadmap-release', 'workflow'), { recursive: true });
+    copyFileSync(WORKFLOW, join(installed, 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js'));
     writeFileSync(
       join(dirs.configDir, 'plugins', 'installed_plugins.json'),
       JSON.stringify({ version: 2, plugins: { 'productivity-tools@claude-play': [{ version: '9.9.9', gitCommitSha: 'abc1234', installPath: join(base, 'cfg', 'plugins', 'cache', 'claude-play', 'productivity-tools', '9.9.9') }] } }),
     );
   }
-  return { ...dirs, done: () => rmSync(base, { recursive: true, force: true }) };
+  return { ...dirs, installed, done: () => rmSync(base, { recursive: true, force: true }) };
 }
 
 const HEAD = spawnSync('git', ['-C', here, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
@@ -649,7 +653,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
     const sha = first.match(/commit ([0-9a-f]{40})$/)[1];
     const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
     const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
-    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, harnessCommit: HEAD });
+    assert.deepEqual(r.aggregate.harness, { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: sha, armCommits: { review: sha, fix: sha, fixCheck: null }, harnessCommit: HEAD, rounds: 'single' });
     const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
     const scriptText = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
     assert.ok(!scriptText.includes('Copied from:'));
@@ -660,7 +664,7 @@ test('harness aggregate records the arm source and workflow commit', async () =>
       exec: code.exec,
       now: () => new Date('2026-11-10T12:00:05Z'),
     });
-    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium' });
+    assert.deepEqual(rc.aggregate.harness, { stage: 'task-review', arm: 'atual', armSource: 'workflow', workflowCommit: null, armCommits: { review: null, fix: null, fixCheck: null }, harnessCommit: HEAD, reviewModel: 'sonnet', reviewEffort: 'medium', rounds: 'single' });
     assert.equal(rc.aggregate.valid, 1);
 
     const plain = makeFake(s.configDir);
@@ -1590,6 +1594,729 @@ test('aggregate.harness records harnessCommit and a different plugin commit prin
     assert.equal(warn.mock.calls.map((c) => c.arguments.join(' ')).join('\n').includes('harnessCommit'), false);
   } finally {
     warn.mock.restore();
+    s.done();
+  }
+});
+
+// ---- E26 A2: stale arm refusal, armCommits ----
+const { armMatches: armMatchesRB, assertArmsCurrent } = await import('./run-batch.mjs');
+
+function pluginDirWithWorkflow(parent, workflowText) {
+  const dir = pluginDirAt(parent);
+  const wfDir = join(dir, 'skills', 'roadmap-release', 'workflow');
+  mkdirSync(wfDir, { recursive: true });
+  writeFileSync(join(wfDir, 'roadmap-release.js'), workflowText);
+  return dir;
+}
+const claudeCalls = (fake) => fake.calls.filter((c) => c.cmd === 'claude');
+
+test('A2: armMatches lives in run-batch and checkpoint re-exports the same function', async () => {
+  const cp = await import('./checkpoint.mjs');
+  assert.equal(cp.armMatches, armMatchesRB);
+  assert.equal(armMatchesRB('Copied from: x.js at commit abc\nA {{x}} b.\n', 'A 1 b.'), true);
+});
+
+test('A2: assertArmsCurrent refuses a stale arm and names the file', () => {
+  const sha = 'a'.repeat(40);
+  const arm = (t) => ({ text: t, source: { path: 'p', commit: sha } });
+  const h = { stage: 'spec-review', arm: 'atual', review: arm('Review it {{artifactPath}} now.'), fixArm: arm('Fix it {{artifactPath}}\n{{issues}}'), fixCheck: arm('run check {{planTool}}') };
+  const wf = 'x Review it P now. y Fix it Q\nI z run check T';
+  assert.doesNotThrow(() => assertArmsCurrent(h, wf));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Review it', 'Look at')), (e) => e instanceof UsageError && /review/.test(e.message));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Fix it', 'Mend')), (e) => e instanceof UsageError && /fix/.test(e.message));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('run check', 'run nothing')), (e) => e instanceof UsageError && /fixCheck|check/.test(e.message));
+  assert.doesNotThrow(() => assertArmsCurrent({ ...h, fixCheck: null }, wf.replace('run check', 'run nothing')));
+  assert.doesNotThrow(() => assertArmsCurrent({ stage: 'task-review', arm: 'atual', review: null, fixArm: null, fixCheck: null }, 'nothing'));
+  assert.doesNotThrow(() => assertArmsCurrent({ ...h, arm: 'perguntas' }, 'nothing'));
+});
+
+test('A2: a stale arm against the --plugin-dir workflow is refused before any claude call', async () => {
+  const s = setup();
+  try {
+    const stale = pluginDirWithWorkflow(s.base, 'nothing alike');
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: stale }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /plan-review/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    assert.equal(cli.status, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('A2: a current arm passes against the real workflow and the aggregate records armCommits', async () => {
+  const s = setup();
+  try {
+    const dir = pluginDirWithWorkflow(s.base, readFileSync(WORKFLOW, 'utf8'));
+    const sha = norm(readFileSync(join(ARMS, 'plan-review-atual.md'), 'utf8')).split('\n')[0].match(/commit ([0-9a-f]{40})$/)[1];
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.harness.armCommits, { review: sha, fix: sha, fixCheck: null });
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A2 review fixes ----
+const { assertArmCommits } = await import('./run-batch.mjs');
+
+test('A2 review: review and fix must share a commit; the fix-check fragment may come from a later commit', () => {
+  const at = (c) => ({ text: 'x', source: { path: 'p', commit: c.repeat(40) } });
+  assert.doesNotThrow(() => assertArmCommits(at('a'), at('a'), at('b')));
+  assert.doesNotThrow(() => assertArmCommits(at('a'), at('a'), null));
+  assert.throws(() => assertArmCommits(at('a'), at('b'), null), UsageError);
+  assert.throws(() => assertArmCommits(at('a'), at('b'), at('a')), UsageError);
+  // the real arms: plan arms frozen at one commit (DEC-310), the fragment copied later
+  const commit = (f) => readArm(join(ARMS, f), { requireSource: true });
+  assert.notEqual(commit('plan-review-atual.md').source.commit, commit('plan-fix-check-atual.md').source.commit);
+  assert.doesNotThrow(() => assertArmCommits(commit('plan-review-atual.md'), commit('plan-fix-atual.md'), commit('plan-fix-check-atual.md')));
+});
+
+test('A2 review: an installed plugin without roadmap-release.js is refused for --stage spec/plan --arm atual', async () => {
+  const s = setup();
+  try {
+    rmSync(join(s.installed, 'skills'), { recursive: true, force: true });
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review' }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /installed plugin/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+    const none = setup({ withPlugins: false });
+    try {
+      await assert.rejects(runBatch(seededOpts(none, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(none.configDir).exec, now: NOW }), (e) => e instanceof UsageError && /not found/.test(e.message) && !/has no skills/.test(e.message));
+    } finally {
+      none.done();
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1: frozen single-round script (T5) ----
+const sha256Of = (t) => createHash('sha256').update(t).digest('hex');
+// sha256 of the whole review-only.js of plano-semeado-A (single round, arm atual, FIX_PROMPT included) with the sandbox path as <SB>.
+const GOLDEN_SINGLE_PLAN_A = '257bb16e735b611ea8942ea0e773ec7dd957cd63c70472c32412656ce2b471f9';
+
+async function singleScriptOf(s, extra = {}) {
+  const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+  await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual', ...extra }), { exec: fake.exec, now: NOW });
+  const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+  return readFileSync(join(sent.cwd, 'review-only.js'), 'utf8').split(sent.cwd.replace(/\\/g, '/')).join('<SB>');
+}
+
+test('A1: the single-round script of plano-semeado-A is frozen byte for byte (golden, FIX_PROMPT included)', async () => {
+  const s = setup();
+  try {
+    const text = await singleScriptOf(s);
+    assert.ok(text.includes('const FIX_PROMPT = '));
+    assert.ok(!/[A-Za-z]:[\\/]/.test(text), 'no absolute Windows path left');
+    assert.equal(sha256Of(text), GOLDEN_SINGLE_PLAN_A, text);
+    // --rounds single is the default and writes the same bytes
+    const s2 = setup();
+    try {
+      assert.equal(await singleScriptOf(s2, { rounds: 'single' }), text);
+    } finally {
+      s2.done();
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1: --rounds loop (T5) ----
+const REAL_PLUGIN = join(REPO, 'plugins', 'productivity-tools');
+
+test('A1: --rounds loop writes the loop script from the measured workflow and records rounds, pureSha256 and stageOptions', async () => {
+  const s = setup();
+  try {
+    const dir = pluginDirWithWorkflow(s.base, readFileSync(WORKFLOW, 'utf8'));
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const r = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir, rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    const text = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
+    assert.ok(text.includes('async function runReviewLoop('));
+    assert.ok(text.includes('const H_REVIEW_BODY = '));
+    const bodyLine = text.split('\n').find((l) => l.startsWith('const H_REVIEW_BODY = '));
+    assert.ok(!bodyLine.includes('${RM}') && bodyLine.includes('**Roadmap:** docs/plans/roadmap-sandbox/'), bodyLine);
+    assert.ok(text.length <= 200000);
+    const lines = readFileSync(WORKFLOW, 'utf8').split(/\r?\n/);
+    const pure = lines.slice(lines.findIndex((l) => l.trim() === '// <pure>') + 1, lines.findIndex((l) => l.trim() === '// </pure>')).join('\n');
+    assert.equal(r.aggregate.harness.rounds, 'loop');
+    assert.equal(r.aggregate.harness.pureSha256, sha256Of(pure));
+    assert.deepEqual(r.aggregate.harness.stageOptions, { tier: 'sonnet', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 });
+    const single = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    const rs = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: dir, work: join(s.base, 'w2') }), { exec: single.exec, now: () => new Date('2026-11-10T12:00:05Z') });
+    assert.equal(rs.aggregate.harness.rounds, 'single');
+    assert.equal(rs.aggregate.harness.pureSha256, undefined);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: --rounds refusals exit 2 before any claude call', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const good = pluginDirWithWorkflow(s.base, wf);
+    const noLoop = pluginDirWithWorkflow(s.base, wf.replace('async function runReviewLoop(', 'async function otherLoop('));
+    const noMax = pluginDirWithWorkflow(s.base, wf.replace('intArg(A.maxFixRounds, 2, 0)', 'intArg(A.maxFixRounds, 4, 0)'));
+    const at = wf.indexOf("reviewLoop('plan',");
+    const next = wf.indexOf('reviewLoop(', at + 1);
+    const drift = pluginDirWithWorkflow(s.base, wf.slice(0, at) + wf.slice(at, next).replace("{ tier: 'sonnet', reviewModel: 'opus' })", "{ tier: 'opus', reviewModel: 'opus' })") + wf.slice(next));
+    const cases = [
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', noLoop, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', noMax, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', drift, '--rounds', 'loop']],
+      ['codigo-semeado-A', ['--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop']],
+      ['spec-semeado-A', ['--stage', 'spec-review', '--arm', 'perguntas', '--plugin-dir', good, '--rounds', 'loop']],
+      ['plano-semeado-A', ['--stage', 'plan-review', '--plugin-dir', good, '--rounds', 'twice']],
+      ['completo', ['--rounds', 'loop']],
+    ];
+    for (const [variant, extra] of cases) {
+      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+      assert.equal(cli.status, 2, `${variant} ${extra.join(' ')}: ${cli.stderr}`);
+    }
+    for (const [pluginDir, opt] of [[noLoop, {}], [noMax, {}], [drift, {}], [good, { stage: 'task-review', reviewModel: 'sonnet', variant: 'codigo-semeado-A' }]]) {
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(seededOpts(s, opt.variant ?? 'plano-semeado-A', { stage: 'plan-review', pluginDir, rounds: 'loop', ...opt }), { exec: fake.exec, now: NOW }), UsageError);
+      assert.equal(claudeCalls(fake).length, 0);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A1/A2/A3: loop aggregate and native wiring (T6) ----
+const NATIVE_SCEN = join(here, 'scenario', 'e5-native');
+const journalFileOf = (configDir, n) => join(configDir, 'projects', 'fab-sandbox', sid(n), 'subagents', 'workflows', 'wf_fab', 'journal.jsonl');
+const rv = (issues, headSha, key, blob) => ({ issues, headSha, clean: true, commitsInRange: 1, [key]: blob });
+// The fixer of the simulated run: the clean native file comes back in one commit on feat/E5.
+function restoreClean(cwd, kind) {
+  gitq(cwd, 'checkout', '-q', 'feat/E5');
+  writeFileSync(join(cwd, NATIVE_PATHS[kind]), norm(readFileSync(join(NATIVE_SCEN, `${kind}.md`), 'utf8')));
+  gitq(cwd, '-c', 'user.name=fab', '-c', 'user.email=fab@example.invalid', 'commit', '-q', '-am', `docs(${kind}): E5 review fixes`);
+  return gitq(cwd, 'rev-parse', 'feat/E5');
+}
+const nativeOpts = (s, variant, extra = {}) => seededOpts(s, variant, { stage: variant.startsWith('spec') ? 'spec-review' : 'plan-review', pluginDir: REAL_PLUGIN, ...extra });
+const promptConsts = (text) =>
+  Object.fromEntries(
+    text.split('\n').map((l) => /^const (REVIEW_PROMPT|FIX_PROMPT|H_REVIEW_BODY|H_FIX|H_MEASURE) = (.*)$/.exec(l)).filter(Boolean).map((m) => [m[1], JSON.parse(m[2])]),
+  );
+const sentScript = (fake) => {
+  const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+  return { cwd: sent.cwd, text: readFileSync(join(sent.cwd, 'review-only.js'), 'utf8') };
+};
+
+test('A1: loop on plano-nativo-A, blocker then clean: loop record, verified afterFirstFix, toolCheck and the loop summary', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const head1 = gitq(cwd, 'rev-parse', 'feat/E5');
+      const tip = restoreClean(cwd, 'plan');
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], head1, 'measuredPlanBlob', seeded) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab] fixed' } },
+        { label: 'E5:plan-review2', result: rv([], tip, 'measuredPlanBlob', gitq(cwd, 'rev-parse', `${tip}:${NATIVE_PATHS.plan}`)) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.deepEqual(a.loop, { reviews: 2, fixes: 1, fixTiers: ['sonnet'], ok: true, kind: null });
+    assert.deepEqual(outcomeMap(a), { P1: 'capturado', P2: 'capturado', P9: 'capturado', P4: 'capturado' });
+    assert.equal(a.afterFirstFix.verified, true);
+    assert.match(a.afterFirstFix.headSha, /^[0-9a-f]{40}$/);
+    assert.deepEqual(Object.fromEntries(a.afterFirstFix.outcomes.map((o) => [o.id, o.outcome])), { P1: 'capturado', P2: 'capturado', P9: 'capturado', P4: 'capturado' });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    assert.equal(a.humanInputs, undefined);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 2: 1 }, ok: 1, stopped: 0 });
+    assert.equal(r.aggregate.afterFirstFixUnverified, 0);
+    assert.equal(r.aggregate.outcomesAfterFirstFix.P1.capturado, 1);
+    assert.equal(r.aggregate.seedSource.kind, 'nativo-sonda-2');
+    const fragCommit = norm(readFileSync(join(ARMS, 'plan-fix-check-atual.md'), 'utf8')).split('\n')[0].match(/commit ([0-9a-f]{40})$/)[1];
+    assert.equal(r.aggregate.harness.armCommits.fixCheck, fragCommit);
+    const { text } = sentScript(fake);
+    const fix = promptConsts(text).H_FIX;
+    assert.ok(fix.includes(`run node "${REAL_PLUGIN.replace(/\\/g, '/')}/scripts/plan-tool.mjs" check "`), fix);
+    assert.ok(fix.includes(`/${NATIVE_PATHS.plan}" --spec "`), fix);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: afterFirstFix is unverified (all indeterminado) for a missing SHA, a SHA out of range, a different blob and a non-tip SHA after 1 fix', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const fixSha = restoreClean(cwd, 'plan');
+      const fixBlob = gitq(cwd, 'rev-parse', `${fixSha}:${NATIVE_PATHS.plan}`);
+      let head = fixSha;
+      let blob = fixBlob;
+      if (n === 1) head = '0123456789abcdef0123456789abcdef01234567';
+      if (n === 2) head = gitq(cwd, 'rev-parse', 'main');
+      if (n === 3) blob = seeded;
+      if (n === 4) {
+        writeFileSync(join(cwd, 'notes.txt'), 'later\n');
+        gitq(cwd, 'add', 'notes.txt');
+        gitq(cwd, '-c', 'user.name=fab', '-c', 'user.email=fab@example.invalid', 'commit', '-q', '-m', 'chore: later commit');
+      }
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', seeded) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab] fixed' } },
+        { label: 'E5:plan-review2', result: rv([], head, 'measuredPlanBlob', blob) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 4 }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.valid, 4, JSON.stringify(r.aggregate.invalidReasons));
+    for (const a of r.aggregate.attempts) {
+      assert.equal(a.afterFirstFix.verified, false, `attempt ${a.n}`);
+      for (const o of a.afterFirstFix.outcomes) assert.equal(o.outcome, 'indeterminado', `attempt ${a.n} ${o.id}`);
+      assert.equal(a.loop.ok, true);
+    }
+    assert.equal(r.aggregate.afterFirstFixUnverified, 4);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: loop without a blocker: one review, afterFirstFix equals the end; a missing fix is laco-infra; a null review 1 validates on 1b', async () => {
+  const s = setup();
+  try {
+    const seededBlob = (cwd) => gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+    const afterRun = (cwd, n) => {
+      const b = seededBlob(cwd);
+      const text = {
+        1: jl({ label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) }),
+        2: jl({ label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) }),
+        3: jl({ label: 'E5:plan-review1', result: null }, { label: 'E5:plan-review1b', result: rv([minorIssue], 'x', 'measuredPlanBlob', b) }),
+      }[n];
+      writeFileSync(journalFileOf(s.configDir, n), text);
+    };
+    const minorIssue = { severity: 'minor', category: 'defeito', description: '[fab] wording' };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 3 }), { exec: fake.exec, now: NOW });
+    const [a1, a2, a3] = r.aggregate.attempts;
+    assert.equal(a1.status, 'valid');
+    assert.deepEqual(a1.loop, { reviews: 1, fixes: 0, fixTiers: [], ok: true, kind: null });
+    assert.deepEqual(a1.afterFirstFix, { headSha: null, verified: true, outcomes: a1.outcomes });
+    for (const o of a1.outcomes) assert.equal(o.outcome, 'perdido', o.id);
+    assert.deepEqual({ status: a2.status, reason: a2.reason }, { status: 'invalid', reason: 'laco-infra' });
+    assert.equal(a3.status, 'valid', JSON.stringify(a3));
+    assert.equal(a3.loop.ok, true);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 1: 2 }, ok: 2, stopped: 0 });
+  } finally {
+    s.done();
+  }
+});
+
+test('A1: a loop that stops leaves the end stage stopped (outcomes of present defects indeterminado) and counts as stopped', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      // the fixer commits nothing that removes the defects; the same finding comes back twice: sonnet, then opus, then stop
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:plan-review1', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) },
+        { label: 'E5:plan-review-fix1', result: { summary: '[fab]' } },
+        { label: 'E5:plan-review2', result: rv([BLOCKER], gitq(cwd, 'rev-parse', 'feat/E5'), 'measuredPlanBlob', b) },
+        { label: 'E5:plan-review-fix2', result: { summary: '[fab]' } },
+        { label: 'E5:plan-review3', result: rv([BLOCKER], 'x', 'measuredPlanBlob', b) },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.deepEqual(a.loop, { reviews: 3, fixes: 2, fixTiers: ['sonnet', 'opus'], ok: false, kind: 'conteudo' });
+    for (const o of a.outcomes) assert.equal(o.outcome, 'indeterminado', o.id);
+    assert.deepEqual(r.aggregate.loopSummary, { reviews: { 3: 1 }, ok: 0, stopped: 1 });
+  } finally {
+    s.done();
+  }
+});
+
+test('A3: spec-nativo-B records humanInputs from the spec/1 block (seeded and at the end) and the spec-tool check exit', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      restoreClean(cwd, 'spec');
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:spec-review1', result: rv([BLOCKER], 'x', 'measuredSpecBlob', seeded) },
+        { label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B'), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.deepEqual(a.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    assert.equal(a.loop, undefined);
+    assert.equal(a.afterFirstFix, undefined);
+    assert.deepEqual(outcomeMap(a), { SN5: 'capturado', SN6: 'capturado', SN7: 'capturado', SN8: 'capturado' });
+    const fix = promptConsts(sentScript(fake).text).FIX_PROMPT;
+    assert.ok(fix.includes(`run node "${REAL_PLUGIN.replace(/\\/g, '/')}/scripts/spec-tool.mjs" check "`), fix);
+    assert.ok(fix.includes('/docs/plans/roadmap-sandbox"'), fix);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1 review: a journal whose stage labels the replay did not use, or repeats, is laco-divergente', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      const clean = { label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) };
+      const text = {
+        // a clean review 1 ends the loop: a fix and a 2nd review in the journal never belong to it
+        1: jl(clean, { label: 'E5:plan-review-fix1', result: { summary: '[fab]' } }, { label: 'E5:plan-review2', result: rv([], 'x', 'measuredPlanBlob', b) }),
+        2: jl(clean, clean),
+        3: jl(clean, { label: 'E5:plan-review-extra', result: { summary: '[fab]' } }),
+        4: jl({ label: 'E5:plan-review1', result: null }, { label: 'E5:plan-review1b', result: rv([], 'x', 'measuredPlanBlob', b) }),
+      }[n];
+      writeFileSync(journalFileOf(s.configDir, n), text);
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop', runs: 4 }), { exec: fake.exec, now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.reason ?? a.status), ['laco-divergente', 'laco-divergente', 'laco-divergente', 'valid']);
+  } finally {
+    s.done();
+  }
+});
+
+test('A1 review: an unreachable sandbox without a 1st fix keeps afterFirstFix verified (the end outcomes, headSha null)', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const b = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.plan}`);
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:plan-review1', result: rv([], 'x', 'measuredPlanBlob', b) }));
+      gitq(cwd, 'checkout', '-q', 'main');
+      gitq(cwd, 'branch', '-q', '-D', 'feat/E5');
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    for (const o of a.outcomes) assert.equal(o.outcome, 'indeterminado');
+    assert.deepEqual(a.afterFirstFix, { headSha: null, verified: true, outcomes: a.outcomes });
+    assert.equal(r.aggregate.afterFirstFixUnverified, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('A2: no {{ placeholder is left in any generated prompt (every stage, variant and arm; {{issues}} only in the fixer); the check fragment only in plano-nativo', async () => {
+  const s = setup();
+  try {
+    const combos = [
+      ...['spec-nativo-A', 'spec-nativo-B', 'plano-semeado-A', 'plano-semeado-B', 'plano-nativo-A', 'plano-nativo-B'].map((v) => [v, {}]),
+      ...['codigo-semeado-A', 'codigo-semeado-B'].map((v) => [v, { stage: 'task-review', reviewModel: 'sonnet' }]),
+      ...['spec-nativo-A', 'plano-semeado-A', 'plano-nativo-B'].map((v) => [v, { rounds: 'loop' }]),
+    ];
+    let k = 0;
+    for (const [variant, extra] of combos) {
+      k += 1;
+      const fake = makeFake(s.configDir);
+      await runBatch(nativeOpts(s, variant, { work: join(s.base, `w${k}`), ...extra }), { exec: fake.exec, now: () => new Date(Date.UTC(2026, 10, 10, 12, 0, k)) });
+      const c = promptConsts(sentScript(fake).text);
+      const review = c.REVIEW_PROMPT ?? c.H_REVIEW_BODY + c.H_MEASURE;
+      const fix = c.FIX_PROMPT ?? c.H_FIX;
+      const tag = `${variant} ${JSON.stringify(extra)}`;
+      assert.ok(typeof review === 'string' && typeof fix === 'string', tag);
+      assert.ok(!review.includes('{{'), `${tag}: ${review}`);
+      assert.ok(!fix.replace(/\{\{issues\}\}/g, '').includes('{{'), `${tag}: ${fix}`);
+      assert.equal(fix.includes('plan-tool.mjs" check'), variant.startsWith('plano-nativo'), tag);
+      if (variant.startsWith('spec')) assert.ok(review.includes('deliverable E5 ') && review.includes('/docs/plans/roadmap-sandbox/requirements.md'), `${tag}: ${review}`);
+      if (/nativo/.test(variant)) assert.ok(review.includes(NATIVE_PATHS[variant.startsWith('spec') ? 'spec' : 'plan']), tag);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A5: session cost and roles by label (T8) ----
+
+test('A5: sumCliCost adds total_cost_usd across sessions and is null without any value', () => {
+  assert.equal(sumCliCost([0.25, 0.5]), 0.75);
+  assert.equal(sumCliCost([0.1]), 0.1);
+  assert.equal(sumCliCost([]), null);
+});
+
+test('A5: rolesByLabel separates review from fix and keeps the main-session cost beside the agents', () => {
+  const calls = (s) => ({ haiku: 0, sonnet: s, opus: 0, fable: 0, other: 0 });
+  const role = (s, bytes, cost) => ({ calls: calls(s), promptBytes: bytes, tokens: { input: 1, output: 2 }, cost, agents: s });
+  const run = {
+    roles: {
+      'other:spec-review': role(1, 10, 1),
+      'other:spec-review-fix': role(1, 20, 2),
+      'task-fix': role(2, 5, 0.5),
+      'final-review': role(1, 7, 0.25),
+      spec: role(1, 3, 0.125),
+    },
+    main: { cost: 4 },
+  };
+  const r = rolesByLabel(run, 5);
+  assert.equal(r.review.agents, 2);
+  assert.equal(r.review.cost, 1.25);
+  assert.equal(r.review.promptBytes, 17);
+  assert.equal(r.fix.agents, 3);
+  assert.equal(r.fix.cost, 2.5);
+  assert.equal(r.other.agents, 1);
+  assert.equal(r.other.cost, 0.125);
+  assert.deepEqual(r.session, { cliCostUsd: 5, transcriptCostUsd: 4 });
+  assert.equal(rolesByLabel({ roles: {}, main: { cost: null } }, null).review.cost, null);
+});
+
+test('A5: the attempt records the CLI cost, rolesByLabel, and the aggregate sums both with cost.session', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 2 }), { exec: fake.exec, now: NOW });
+    for (const a of r.aggregate.attempts) {
+      assert.deepEqual(a.counters.session, { cliCostUsd: 0.01 });
+      assert.ok(a.rolesByLabel && a.rolesByLabel.session.cliCostUsd === 0.01);
+      assert.ok('transcriptCostUsd' in a.rolesByLabel.session);
+    }
+    assert.equal(r.aggregate.rolesByLabel.session.cliCostUsd, 0.02);
+    assert.deepEqual(r.aggregate.cost.session, { median: 0.01, min: 0.01, max: 0.01 });
+    assert.ok(r.aggregate.rolesByLabel.other.agents > 0);
+    assert.ok(r.aggregate.roles.discovery);
+  } finally {
+    s.done();
+  }
+});
+
+test('A5: without total_cost_usd in the CLI JSON the session cost is null', async () => {
+  const s = setup();
+  try {
+    const base = makeFake(s.configDir);
+    const exec = async (cmd, args, o) => {
+      const r = await base.exec(cmd, args, o);
+      if (cmd === 'claude' && args[0] === '-p') {
+        const { total_cost_usd: _t, ...rest } = JSON.parse(r.stdout);
+        return { ...r, stdout: JSON.stringify(rest) };
+      }
+      return r;
+    };
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.deepEqual(a.counters.session, { cliCostUsd: null });
+    assert.equal(a.rolesByLabel.session.cliCostUsd, null);
+    assert.equal(r.aggregate.rolesByLabel.session.cliCostUsd, null);
+    assert.deepEqual(r.aggregate.cost.session, { median: null, min: null, max: null });
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E26 A4: questions arm (T7) ----
+
+const Q = [{ q: '[fab] which file holds the cache?', whyItChangesThePlan: '[fab] adds a task' }];
+const rq = (questions, key, blob) => ({ questions, headSha: 'x', clean: true, commitsInRange: 1, [key]: blob });
+
+test('A4: --arm perguntas outside spec-review, with --rounds loop, or on another variant is a UsageError before any claude call', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    for (const o of [
+      nativeOpts(s, 'plano-nativo-A', { arm: 'perguntas' }),
+      nativeOpts(s, 'spec-nativo-A', { arm: 'perguntas', rounds: 'loop' }),
+      seededOpts(s, 'codigo-semeado-A', { stage: 'task-review', reviewModel: 'sonnet', arm: 'perguntas' }),
+    ]) {
+      await assert.rejects(runBatch(o, { exec: fake.exec, now: NOW }), /UsageError|--arm perguntas|--rounds loop/);
+    }
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('A4: the perguntas script has the questions schema, a fresh opus/medium reader and exactly one spec-author on questions', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { afterRun: (cwd, n) => writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`)) })) });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-A', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const { text } = sentScript(fake);
+    assert.match(text, /"whyItChangesThePlan"/);
+    assert.match(text, /"questions"/);
+    assert.ok(!text.includes('"issues"'));
+    assert.match(text, /label: 'E5:spec-review1'.*model: 'opus'.*effort: 'medium'/);
+    assert.equal(text.match(/agentType: 'productivity-tools:spec-author'/g).length, 1);
+    assert.match(text, /label: 'E5:spec-review-fix1'/);
+    assert.ok(!/spec-author'[^\n]*model:/.test(text), 'the author takes no explicit model');
+    assert.ok(text.includes('questions.length > 0'));
+    const c = promptConsts(text);
+    assert.ok(!c.REVIEW_PROMPT.includes('{{'), c.REVIEW_PROMPT);
+    const fix = text.split('\n').find((l) => l.startsWith('const FIX_PROMPT = '));
+    const fixText = JSON.parse(fix.slice('const FIX_PROMPT = '.length));
+    assert.ok(fixText.startsWith('mode: unattended\noutput: '), fixText);
+    assert.ok(fixText.includes('{{questions}}'));
+    assert.ok(!fixText.replace('{{questions}}', '').includes('{{'), fixText);
+    assert.ok(fixText.includes('/scripts/spec-tool.mjs"'));
+    assert.equal(r.aggregate.harness.arm, 'perguntas');
+    assert.equal(r.aggregate.harness.armSource, 'modelo');
+  } finally {
+    s.done();
+  }
+});
+
+test('A4: an empty list is approved with review.questions 0; questions plus a fix that removes a defect is approved with humanInputs; a fix that changes nothing is stopped', async () => {
+  const run = async (journalOf, fixed) => {
+    const s = setup();
+    try {
+      const afterRun = (cwd, n) => {
+        const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+        if (fixed) restoreClean(cwd, 'spec');
+        writeFileSync(journalFileOf(s.configDir, n), jl(...journalOf(seeded)));
+      };
+      const fake = makeFake(s.configDir, { afterRun });
+      const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+      return r.aggregate.attempts[0];
+    } finally {
+      s.done();
+    }
+  };
+  const empty = await run((b) => [{ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', b) }], false);
+  assert.equal(empty.status, 'valid', JSON.stringify(empty));
+  assert.deepEqual(empty.review, { questions: 0 });
+  assert.deepEqual(empty.humanInputs, { blockingSeeded: 1, blockingAtEnd: 1 });
+  assert.deepEqual(empty.toolCheck.exit === 0 || empty.toolCheck.exit === 1 || empty.toolCheck.exit === null, true);
+  const asked = [(b) => ({ label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', b) }), () => ({ label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } })];
+  const fixedA = await run((b) => asked.map((f) => f(b)), true);
+  assert.equal(fixedA.status, 'valid', JSON.stringify(fixedA));
+  assert.deepEqual(fixedA.review, { questions: 1 });
+  assert.deepEqual(fixedA.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+  assert.ok(fixedA.outcomes.some((o) => o.outcome === 'capturado'));
+  const idle = await run((b) => asked.map((f) => f(b)), false);
+  assert.deepEqual(idle.review, { questions: 1 });
+  assert.ok(idle.outcomes.every((o) => o.outcome !== 'capturado'));
+});
+
+test('A4: running the generated script with a stub agent: an empty list calls no author, questions call exactly one', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const script = buildQuestionsScript({ reviewPrompt: 'R', fixPrompt: 'mode: unattended\n{{questions}}' }).replace(/^export const meta = \{[\s\S]*?\n\}\n/, '');
+  const exec = async (questions) => {
+    const calls = [];
+    const agent = async (prompt, o) => {
+      calls.push({ prompt, o });
+      return o.label === 'E5:spec-review1' ? { questions } : { summary: 'ok' };
+    };
+    await new AsyncFunction('agent', script)(agent);
+    return calls;
+  };
+  assert.equal((await exec([])).length, 1);
+  const calls = await exec(Q);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].o.agentType, 'productivity-tools:spec-author');
+  assert.ok(calls[1].prompt.includes('1. [fab] which file holds the cache? (changes the plan: [fab] adds a task)'), calls[1].prompt);
+  assert.ok(!calls[1].prompt.includes('{{'));
+});
+
+// ---- Final-gate fixes: author commit, laco-infra, old spec-semeado refusal, batch counts ----
+
+test('gate: the harness commits the author edit (the author never commits) and every reader sees the edited tip', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      gitq(cwd, 'checkout', '-q', 'feat/E5');
+      writeFileSync(join(cwd, NATIVE_PATHS.spec), norm(readFileSync(join(NATIVE_SCEN, 'spec.md'), 'utf8'))); // edited, not committed
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', seeded) },
+        { label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.equal(a.authorCommitted, true);
+    assert.ok(a.outcomes.some((o) => o.outcome === 'capturado'), JSON.stringify(a.outcomes));
+    assert.deepEqual(a.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.equal(gitq(sent.cwd, 'status', '--porcelain', '--', NATIVE_PATHS.spec), '');
+    const fix = JSON.parse(sentScript(fake).text.split(String.fromCharCode(10)).find((l) => l.startsWith('const FIX_PROMPT = ')).slice('const FIX_PROMPT = '.length));
+    assert.ok(!/commit/i.test(fix.replace('Do not commit: the caller commits.', '')), fix);
+    assert.equal(r.aggregate.humanInputsRaised, 0);
+    assert.equal(r.aggregate.toolCheckFailed, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: nothing to commit when the author left the spec clean (authorCommitted false)', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', seeded) }));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].authorCommitted, false);
+    assert.equal(r.aggregate.humanInputsRaised, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: loop with review 1 and 1b both null is laco-infra, not formato-do-diario', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => writeFileSync(journalFileOf(s.configDir, n), jl(
+      { label: 'E5:plan-review1', result: null },
+      { label: 'E5:plan-review1b', result: null },
+    ));
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'laco-infra');
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: --arm atual on the old spec-semeado variants is a UsageError that says why; plano-semeado is untouched', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    for (const v of ['spec-semeado-A', 'spec-semeado-B']) {
+      await assert.rejects(runBatch(seededOpts(s, v, { stage: 'spec-review' }), { exec: fake.exec, now: NOW }), /spec-semeado.*spec\/1|spec\/1.*spec-semeado/);
+    }
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+    const ok = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(s.configDir).exec, now: NOW });
+    assert.ok(ok.aggregate);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: the aggregate counts failed tool checks and raised human inputs', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      gitq(cwd, 'checkout', '-q', 'feat/E5');
+      const f = join(cwd, NATIVE_PATHS.spec);
+      const text = readFileSync(f, 'utf8');
+      const m = /```json data\r?\n([\s\S]*?)\r?\n```/.exec(text);
+      const data = JSON.parse(m[1]);
+      data.needsPerson = [...(data.needsPerson ?? []), { q: 'fab', blocking: true, why: 'fab' }];
+      writeFileSync(f, text.replace(m[1], JSON.stringify(data, null, 2)));
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', seeded) }, { label: 'E5:spec-review-fix1', result: { summary: '[fab]' } }));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.ok(a.humanInputs.blockingAtEnd > a.humanInputs.blockingSeeded, JSON.stringify(a.humanInputs));
+    assert.equal(r.aggregate.humanInputsRaised, 1);
+    assert.equal(r.aggregate.toolCheckFailed, a.toolCheck.exit !== 0 && a.toolCheck.exit !== null ? 1 : 0);
+  } finally {
     s.done();
   }
 });

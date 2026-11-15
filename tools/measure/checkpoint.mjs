@@ -8,31 +8,15 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compare, inputRefusal, median } from './compare.mjs';
 import { measureGoals } from './prose-goals.mjs';
-import { PANEL_VARIANTS, panelMatches } from './run-batch.mjs';
+import { PANEL_VARIANTS, panelMatches, armMatches } from './run-batch.mjs';
+
+export { armMatches };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORKFLOW = 'plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js';
-const ARMS = { planReview: 'tools/measure/arms/plan-review-atual.md', planFix: 'tools/measure/arms/plan-fix-atual.md' };
+const ARMS_DIR = 'tools/measure/arms';
+const ARMS = { planReview: `${ARMS_DIR}/plan-review-atual.md`, planFix: `${ARMS_DIR}/plan-fix-atual.md` };
 const PLAN_CLASS = 'plano-semeado';
-
-const lf = (t) => String(t).replace(/\r\n?/g, '\n');
-
-// The arm template (minus its "Copied from" line) must appear in the workflow, piece by piece in order, byte for byte.
-export function armMatches(armText, workflowText) {
-  const lines = lf(armText).split('\n');
-  // A table-escaped pipe is the same text with or without its escape: the JS source has \\|, the runtime prompt \|, the arm | (DEC-310).
-  const pipe = (t) => t.replace(/\\+\|/g, '|');
-  const body = pipe((/^Copied from:/.test(lines[0]) ? lines.slice(1) : lines).join('\n').trimEnd());
-  const workflow = pipe(lf(workflowText));
-  let at = 0;
-  for (const piece of body.split(/\{\{[^}]*\}\}/)) {
-    if (piece === '') continue;
-    const i = workflow.indexOf(piece, at);
-    if (i < 0) return false;
-    at = i + piece.length;
-  }
-  return true;
-}
 
 const validAttempts = (agg) => (agg?.attempts ?? []).filter((a) => a.status === 'valid');
 const costSide = (agg) => {
@@ -40,7 +24,8 @@ const costSide = (agg) => {
   return xs.length ? { median: median(xs), min: Math.min(...xs), max: Math.max(...xs), n: xs.length } : null;
 };
 
-function armStatus(readAt) {
+// Every *-atual.md arm is checked against the workflow; only the two plan arms decide the plan-class block (spec arms are reported).
+function armStatus(readAt, listAt) {
   const check = (armFile) => {
     try {
       return armMatches(readAt(armFile), readAt(WORKFLOW));
@@ -48,7 +33,18 @@ function armStatus(readAt) {
       return false;
     }
   };
-  return { planReview: check(ARMS.planReview), planFix: check(ARMS.planFix) };
+  let names = [];
+  let listError = null;
+  try {
+    names = listAt(ARMS_DIR).map((f) => f.split('/').pop()).filter((f) => f.endsWith('-atual.md')).sort();
+  } catch (e) {
+    listError = String(e?.message ?? e); // no listing: only the plan arms are known, and the report says so
+  }
+  const files = {};
+  for (const f of names) files[f] = check(`${ARMS_DIR}/${f}`);
+  const planReview = check(ARMS.planReview);
+  const planFix = check(ARMS.planFix);
+  return { planReview, planFix, files, listError };
 }
 
 function safeCompare(before, after, options) {
@@ -69,7 +65,7 @@ export function checkpoint(before, after, { readAt, listAt, margin, attempts, by
   if (attempts !== undefined) options.attempts = attempts;
   if (bytesTolerance !== undefined) options.bytesTolerance = bytesTolerance;
   const blockReasons = [];
-  const arm = armStatus(readAt);
+  const arm = armStatus(readAt, listAt);
 
   const pair = (b, a) => (b && a ? { status: 'comparada', ...safeCompare(b, a, options) } : { status: 'ausente', side: b ? 'antes' : 'depois' });
   const names = (key) => [...new Set([...Object.keys(before[key] ?? {}), ...Object.keys(after[key] ?? {})])];
@@ -160,6 +156,8 @@ function markdown(result, { date, before, after }) {
   L.push('', '## Painel', '', 'Só o lado depois das variantes do release.', '', '| Variante | Tentativa | Situação | Motivos |', '|---|---|---|---|');
   for (const [name, ps] of Object.entries(result.panel)) for (const p of ps) L.push(`| ${name} | ${p.n} | ${p.ok ? 'ok' : 'diferente'} | ${p.reasons.join('; ') || '-'} |`);
   L.push('', '## Braço da classe plano', '', `- plan-review-atual.md casa com o workflow: ${result.arm.planReview ? 'sim' : 'não'}`, `- plan-fix-atual.md casa com o workflow: ${result.arm.planFix ? 'sim' : 'não'}`);
+  for (const [f, ok] of Object.entries(result.arm.files ?? {})) L.push(`- ${f} casa com o workflow: ${ok ? 'sim' : 'não'}`);
+  if (result.arm.listError) L.push(`- a listagem de ${ARMS_DIR} falhou (${result.arm.listError}): só os dois braços de plano foram conferidos`);
   L.push('', '## Metas', '', 'Não bloqueiam (DEC-034).', '', '| Meta | Entregável | Alvo | Medido | Veredito |', '|---|---|---|---|---|');
   for (const g of result.goals) L.push(`| ${g.goal} | ${g.deliverable} | ${g.target == null ? '-' : `${g.target} ${g.unit}`} | ${g.measured ?? '-'} | ${g.verdict} |`);
   L.push('', '## Linhas para roadmap:measurements', '', '| Data | Entregável | Tipo | Detalhe | Registrado | Faturado | Status |', '|---|---|---|---|---|---|---|', ...result.measurementRows, '');
