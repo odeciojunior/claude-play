@@ -26,7 +26,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E8 | card: na-branch; sonda: na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627`, `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
 | E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
-| E11 | nao-iniciado | - | Aguardar E7, E8 e E15 |
+| E11 | executando | `docs/reports/2026-11-15-E11-lote.md` | Peças 2 a 4: ratificação, G1-G5 na ponta, nota de atualização em docs/releases/, conferência do estado JSON na 1.7.0, branch de volta, tag; publicação é ato do dono. Antes: E26 peça 3 (piso, DEC-741). |
 | E12 | na-branch | `55b2b842c15ad1b144de7fe603520cefd5c4c86f` | E12: seguir o fluxo do release após na-branch |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
@@ -62,27 +62,18 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
-- (executor) E11: 11 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E11); ler no spec de E11.
-- (executor) Gate DEC-458: N5-1 e N5-2 conferidos em P4 (docs/reports/2026-11-15-E11-P4-conferencia-N5.md); ler as demais notas da seção Gate DEC-458 em docs/reports/2026-11-13-pendencias-por-entregavel.md antes de publicar plan-writer.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
-- (executor) roadmap-release.js mede ~240.863 caracteres LF na ponta da release (cba20c0), teto 250.000 (DEC-647). fix/pasta-wt-permissao não o edita; E28 depois, em série; a folga de 450 de E28 segue atendida.
-- (executor) Na 2ª sonda acceptEdits (ou, se ela não chegar ao registro, no 1º lote completo de E11): conferir cada trecho do registro (comando ≤ 6.000, confirmado pelo digest) e o acerto por tentativa da cópia; anotar no relatório. Mais de 1 trecho por status pede emenda à meta de E10.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
 - (executor) E27 passada C (peça 2) depois de E28: sementes de spec e de quality, braço atual primeiro; teto nele encerra sem o braço da revisão única. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731).
 - (executor) Antes de outro lote com correcao-semeada: parentMention no CR do manifest (CR3 com o texto de C5), lido por mentionStats em run-batch.mjs, com teste. E11 não usa essas variantes.
-- (executor) Nota E11/E28 (E27 B, revisão final): 1ª revisão final vazia em 1 de 22 execuções (adversarial A, 4ª); a 2ª correção escreveu teste afirmando throw para max 0 em 9 de 10 tentativas do B (2 laços parados). Conferir no 1º lote de E11.
-- (executor) Antes das execuções pagas da variante coordinator em E11 (canal integrado em 031c9c1): limitar textos de evento (pergunta do gate a 600, failedNames a 50 + "+N" com flag de lista cortada, tail do baseline), página 0 contando o estado sem passos, runCmd recusando comando > CMD_CAP.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
-- (executor) Nota para E28 (revisão de 2bb59c6): cap() da nota pode cortar um BLQ no meio (um id longo vira o prefixo de outro, seguido de "...") e casar com o regex de outro id; cortar a palavra parcial antes do "..." ou checar só blqIds. Risco baixo: block-open grava o id no início da nota.
-- (executor) Nota para E28 (revisão de 7ee7f23): verify-run espera o próprio pid se reutilizado (somar m.pid !== process.pid); marca apagada em qualquer throw de runGroup, não só antes do 1º passo; VERIFY_RUN_WAIT_MS sem teto (Math.min com 60.000).
+- (executor) E28: auditoria das cópias por modelo (DEC-715) e notas de revisão (2bb59c6, 7ee7f23, reviews.md do 2º plan-only); roadmap-release.js ~241 mil de 250.000 (DEC-647). Ver seção E28 de docs/reports/2026-11-13-pendencias-por-entregavel.md.
 - (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
-- (executor) Nota da 2ª sonda: T1/T2 não mudaram o cwd para a worktree (teste com caminho absoluto) e T2 saiu com duas linhas Co-Authored-By; conferir no 1º lote de E11.
 - (executor) E26 peça 3: depois do lote completo de E11 e só se o braço opus sair do piso (emenda a DEC-727), braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
-- (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
-- (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título (failed) e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
 - (executor) 2.0.1: o portão final do coordinator e o de gates do release recusam comando de teste cuja base falha ou roda 0 testes; referências de SHA vindas de agente (targetHead, mergeCommit, head de persist*) passam por fullSha (revisão de M′, DEC-762).
+- (executor) 2.0.1 (lote E11): bytes do plan-only (DEC-763); gate-vazio aceitar "N tests, N pass, N fail"; implementadores começam fora da worktree (14 falhas de caminho no lote E11).
 <!-- /roadmap:pending -->
 
 ## Em andamento
