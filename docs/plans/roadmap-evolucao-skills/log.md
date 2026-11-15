@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11 | Sondas P15 (US$ 25,94 com a rodada perdida): defeito do produto no completo (headSha truncado) e fixture do coordinator incompatível com 2.0.0; novo M′, arnês corrigido, teto US$ 160 (DEC-758, DEC-759, DEC-760). | `docs/reports/2026-11-15-E11-P15-sondas.md` |
+| 2026-11-15 | E11 | DEC-758, DEC-759, DEC-760 (E11 sondas P15) decididas pelo dono via Fable; vigentes. | `decisions.md` |
 | 2026-11-15 | E11 | DEC-757 (teto de US$ 5 para planner e tracker) ratificada pelo dono via Fable, sem emenda. | `decisions.md` |
 | 2026-11-15 | E11 | Preparo: branches plugins, batch, native e baseline mescladas (a89c850, 3330ac9, 1216656, c879e79), cada uma com portão opus/high; P4 passou nos 4 itens (US$ 4,25): N5-1 e N5-2 conferidos antes de M; G1 2080/0 (2 skip) e G2-G5 verdes. | `docs/reports/2026-11-15-E11-P4-conferencia-N5.md` |
 | 2026-11-15 | E11 | DEC-756 (C9 substitui o C1 nativo) ratificada pelo dono via Fable, sem emenda. | `decisions.md` |
