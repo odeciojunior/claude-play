@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E28 | Integrado na release (ebc39b7) com as pendências 2.0.1; G1 2112/0, G2-G5 verdes. | `ebc39b7` |
 | 2026-11-15 | - | checker atualizado 1.5.0 -> 1.7.0 | `check-roadmap.mjs` |
 | 2026-11-15 | E11 | Publicação da 2.0.0 pelo executor com autorização explícita do dono: tag anotada productivity-tools--v1.7.0 em 73cd476, main 73cd476..1017db5 por fast-forward, push de main e tag; marketplace atualizado, productivity-tools 1.7.0 → 2.0.0 no cache. | `docs/reports/2026-11-15-E11-roteiro-publicacao.md` |
 | 2026-11-15 | E11 | Pendências 2.0.1 em fix/2.0.1-pendencias (e2e6060, sobre feat/E28): coordinator para com base vermelha ou vazia; fullRef nas referências de SHA de agente (R6 decidida via Fable); implementador com worktree absoluto. G1 2112/0, G2-G5 verdes; portão opus/high com 1 correção. | `docs/plans/correcoes-2.0.1/spec.md` |
