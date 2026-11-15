@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11 | Preparo: branches plugins, batch, native e baseline mescladas (a89c850, 3330ac9, 1216656, c879e79), cada uma com portão opus/high; P4 passou nos 4 itens (US$ 4,25): N5-1 e N5-2 conferidos antes de M; G1 2080/0 (2 skip) e G2-G5 verdes. | `docs/reports/2026-11-15-E11-P4-conferencia-N5.md` |
 | 2026-11-15 | E11 | DEC-756 (C9 substitui o C1 nativo) ratificada pelo dono via Fable, sem emenda. | `decisions.md` |
 | 2026-11-15 | E27 | Passada B em cc0cb15 (US$ 32,28 de 60): peça 3 em teto, fica a revisão completa; peça 4 sem adversarial nem onda única; produto não muda (DEC-752, DEC-753, DEC-754, DEC-755). E27 aberto só pela peça 2 (passada C após E28). | `docs/reports/2026-11-15-E27-passada-B.md` |
 | 2026-11-15 | E27 | DEC-752 a DEC-755 (E27 passada B) decididas pelo dono via Fable; vigentes. | `decisions.md` |

@@ -63,7 +63,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) implementer.md: alinhar as linhas 23, 39 e 40 sobre o prefixo cd <worktree> && antes do comando (admitir ou proibir; RULE_TMP proíbe &&) e pôr || na lista proibida (node --test || true esconde a falha). Achados menores da revisão de 1563d17 e de B4.
 - (executor) Lançar em measurements.md o custo devolvido pela CLI nas 3 execuções de E9 (DEC-567) e conferir o teto de US$ 150 contra a maior execução sã (novo teto: 2 vezes a maior).
 - (executor) E11: 11 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E11); ler no spec de E11.
-- (executor) Gate DEC-458: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção Gate DEC-458); ler antes de publicar plan-writer (DEC-458).
+- (executor) Gate DEC-458: N5-1 e N5-2 conferidos em P4 (docs/reports/2026-11-15-E11-P4-conferencia-N5.md); ler as demais notas da seção Gate DEC-458 em docs/reports/2026-11-13-pendencias-por-entregavel.md antes de publicar plan-writer.
 - (executor) E13: 1 nota arquivada em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E13); ler no spec de E13.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
