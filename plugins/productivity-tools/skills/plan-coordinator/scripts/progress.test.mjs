@@ -1363,7 +1363,7 @@ test('baseline event accepts failedNamesCut', () => {
 // ---------------------------------------------------------------------------
 // Preparo de E11 T-A2: a página 0 conta o estado-base
 // ---------------------------------------------------------------------------
-import { readPages, READ_PAGE_CHARS } from './progress.mjs';
+import { readPages, READ_PAGE_CHARS, main } from './progress.mjs';
 
 test('page 0 may leave empty when the state alone fills it', () => {
   const big = { n: 1, note: 'x'.repeat(19000) };
@@ -1396,15 +1396,16 @@ test('readPages without baseSize is unchanged', () => {
 
 test('read pagination does not depend on the nonce length', () => withSandbox((sb) => {
   initSandbox(sb);
-  for (let pad = 0; pad <= 40; pad++) {
-    const st = bigState(sb);
-    st.manual = [{ kind: 'note', step: 1, text: 'm'.repeat(9000 + pad), open: false }];
-    writeJson(sb.state, st);
-    const first = JSON.parse(cli(['read', sb.state, '--nonce', 'a'.repeat(32), '--json']).out);
-    const steps = first.state.steps.slice();
-    for (let k = 1; k < first.pages; k++) {
-      steps.push(...JSON.parse(cli(['read', sb.state, '--nonce', 'abcd1234-2', '--page', String(k), '--json']).out).steps);
-    }
-    assert.deepEqual(steps.map((x) => x.n), st.steps.map((x) => x.n), 'pad ' + pad);
+  const run = (a) => { let o = ''; main(a, { stdout: { write: (s) => { o += s; } }, stderr: { write: () => {} } }); return o; };
+  const st0 = readJson(sb.state);
+  const base = st0.steps[0];
+  const steps = Array.from({ length: 120 }, (_, i) => ({ ...base, n: i + 1, title: 't' + (i + 1), files: ['src/a' + i + '.mjs', 'tests/a' + i + '.test.mjs'], status: 'pass', note: 'n'.repeat(40), sha: 'a'.repeat(40) }));
+  const S = JSON.stringify(steps[0]).length + 1;
+  for (let pad = 0; pad <= S + 22; pad += 20) {
+    writeJson(sb.state, { ...st0, steps, manual: [{ kind: 'note', step: 1, text: 'm'.repeat(9000 + pad), open: false }] });
+    const first = JSON.parse(run(['read', sb.state, '--nonce', 'a'.repeat(32), '--json']));
+    const got = first.state.steps.map((x) => x.n);
+    for (let k = 1; k < first.pages; k++) got.push(...JSON.parse(run(['read', sb.state, '--nonce', 'abcd1234-2', '--page', String(k), '--json'])).steps.map((x) => x.n));
+    assert.deepEqual(got, steps.map((x) => x.n), 'pad ' + pad);
   }
 }));
