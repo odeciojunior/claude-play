@@ -14,6 +14,7 @@ Dentro:
 - Testes do release: `workflow/review.test.mjs`, `workflow/flow.test.mjs`, `workflow/prompts.test.mjs`, `scripts/preflight.test.mjs` (remoção dos testes de E28 sobre `single`, novo teste de ausência e teste da recusa) (peça 1).
 - `skills/roadmap-release/references/config.md`: linha `taskReview` só com `restricted` e nota da remoção (peça 2).
 - Arnês: `tools/measure/run-batch.mjs` exige os literais do modo único só no braço `unica`; os testes do arnês que rodam o braço `unica` leem uma cópia congelada do workflow anterior à remoção (R4) (peça 2).
+- Cobertura do comportamento que fica (instrução do dono depois do bloqueio BLQ-1): três testes novos, dois em `workflow/prompts.test.mjs` e um em `workflow/flow.test.mjs`, numa tarefa nova do plano posterior às tarefas 1 a 5, que não mudam (R5).
 
 Fora:
 
@@ -30,6 +31,7 @@ O que não fazer:
 - Não remover o modo `review` do `task-reviewer` nem mudar o plan-coordinator.
 - Não aceitar `taskReview.single` em silêncio nem tratá-lo como chave desconhecida genérica.
 - Não fazer push, não tocar em `main` nem na branch de release.
+- Não restaurar nenhum teste do modo único removido, não alterar gate, linha de base, skips nem a contagem do G1 por outro meio que não os três testes novos de R5.
 
 ## Desenho
 
@@ -43,6 +45,8 @@ O que não fazer:
 
 **Arnês de medição ao caminho único (risco do card, R4).** Em `checkLoopWorkflow` de `tools/measure/run-batch.mjs` os literais `TASK_SINGLE_LITERALS` e `TASK_SINGLE_ISSUES_LITERAL` passam a ser exigidos só quando o braço é `unica`: a assinatura ganha `arm` nas opções (`{ lenses, arm }`) e a chamada em `runBatch` passa `h.arm`. O braço `atual` em `lentes-semeadas-A/B` roda contra o workflow novo (é o que E30 usa, trocando só `--review-model`); o braço `unica` contra um workflow sem a chave é recusado na partida pela mensagem de literal ausente de hoje, sem chamada paga. O script do braço `atual` continua gravando `H_TR = {"restricted":false,"single":false}` e `harness.taskReview` com `single: false`, para que os agregados novos tenham a mesma forma dos da passada C em `armTotals`. Os testes que rodam o braço `unica` contra o workflow real (`review-loop.test.mjs`: `lensScript('unica')` e o laço `atual`/`unica` do script de lentes; `run-batch.test.mjs`: `C2: startup refusals on the measured workflow for lentes-semeadas` e os testes C2 e C3 que montam o script de lentes `unica`) passam a ler `tools/measure/fixtures/workflow-com-single/roadmap-release.js`, cópia literal do workflow em `ccac3c5` (ponta da release antes de E29), marcada no topo dos testes como fixture congelada; os testes do braço `atual` continuam no workflow real. O teste de recusa ganha os casos: workflow real com `arm: 'atual'` e `lenses: true` não recusa; workflow real com `arm: 'unica'` recusa citando o literal ausente.
 
+**Cobertura do comportamento que fica (critério 1, R5).** A remoção dos testes de E28 levou junto a cobertura de comportamento que continua no produto, e o G1 da branch ficou com 2172 testes contra 2175 da linha de base (BLQ-1). Uma tarefa nova, de número maior que as existentes, acrescenta três testes sem restaurar nenhum teste do modo único e sem tocar nas tarefas 1 a 5. (1) Em `workflow/prompts.test.mjs`: lê `agents/task-reviewer.md`, recorta a seção `## Review mode` até o próximo título `## ` e confere que contém `both the \`spec\` and the \`quality\` block lists` e `Every \`fail\` comes with a blocking finding`, e que a linha do modo `review` na lista de modos (a que começa por `` - `review`: ``) cita `plan-coordinator`. (2) Em `workflow/prompts.test.mjs`: lê `roadmap-release.js`, recorta o trecho entre `` reviewLoop(`T${t.n}:${kind}` `` e `if (loop.halted)` e confere que a correção vai por `implAgent(` com o briefing `` `${C()} `` e o texto `fix the ${kind} problems`. (3) Em `workflow/flow.test.mjs`: com `exec({ cards: [card('E1')], deliverables: ['E1'], config: { taskReview: { single: true } } })`, chave entregue direto ao workflow sem passar pelo preflight, a tarefa 1 despacha só os rótulos `E1:t1:spec1` e `E1:t1:quality1` com `agentType` `productivity-tools:task-reviewer`, nenhum rótulo contém `review1`, e uma revisão devolvida sem achados e sem os campos `spec`/`quality` não gera chamada de correção (nenhum rótulo `E1:t1:spec-fix` nem `E1:t1:quality-fix`). Cada teste é confirmado falhando com o comportamento quebrado (R5): quebrar temporariamente a frase no agente, o briefing da correção no workflow e o laço (por exemplo voltar a despachar `review` ou gerar achado sintético sem veredicto), rodar o arquivo de teste, ver a falha e restaurar com `git checkout -- <arquivo>`; o resultado vai no relatório da tarefa. Depois do sync com a release o total do G1 da branch tem de ser maior ou igual ao da linha de base do alvo; os três testes cobrem o déficit de três medido em BLQ-1.
+
 **Tamanho.** A remoção só encolhe `roadmap-release.js`; `size.test.mjs` roda sem mudança.
 
 ## Riscos
@@ -50,6 +54,7 @@ O que não fazer:
 - O arnês da passada C deixa de partir no braço `atual` -> literais do modo único exigidos só no braço `unica` (R4) e teste com o workflow real no braço `atual`.
 - Quem tem `taskReview.single` no `release.config.json` para de rodar -> a mensagem diz o que fazer; a nota de atualização de E33 avisa.
 - Remover o modo `review` do agente quebraria o plan-coordinator -> o modo fica, só sai a ligação ao release (R3).
+- O G1 da branch fica abaixo da linha de base porque a remoção levou cobertura do que fica (BLQ-1) -> três testes novos do comportamento que fica, cada um visto falhando com a quebra (R5).
 - A cópia congelada do workflow diverge do que a passada C mediu -> é a ponta da release antes de E29 (`ccac3c5`), que traz o mesmo bloco puro do modo único entregue por E28.
 
 ## Deixado para o plano
@@ -57,6 +62,7 @@ O que não fazer:
 - Ordem das tarefas: workflow e testes do release; preflight, `config.md` e testes; agente; arnês e fixture; gates G1 a G5 na tarefa final.
 - A lista exata dos testes do arnês que passam à fixture e os nomes dos testes novos.
 - O comando que cria a fixture (`git show ccac3c5:plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`), gravada em LF.
+- A tarefa nova dos três testes de R5 (número maior que as existentes, tarefas 1 a 5 sem mudança), os nomes dos testes e a quebra usada para ver cada um falhar; a contagem do G1 conferida depois do sync com a release.
 
 ```json data
 {
@@ -118,6 +124,17 @@ O que não fazer:
       "reversible": true,
       "scope": "local",
       "contradicts": null
+    },
+    {
+      "id": "R5",
+      "question": "Como repor a cobertura do comportamento que fica, levada junto com os testes do modo único, e confirmar que cada teste novo pega a quebra?",
+      "decision": "Uma tarefa nova, de número maior que as existentes, sem mudar as tarefas 1 a 5, cria três testes: dois em workflow/prompts.test.mjs (seção ## Review mode do task-reviewer usada pelo plan-coordinator; correção do laço por tarefa via implAgent com C() e 'fix the ${kind} problems') e um de fluxo em workflow/flow.test.mjs (taskReview { single: true } entregue direto ao workflow despacha só E1:t1:spec1 e E1:t1:quality1 no task-reviewer, nenhum review1, e revisão sem achados nem veredictos não gera correção). Cada teste é visto falhando com uma quebra temporária do comportamento, desfeita com git checkout -- <arquivo>. Nenhum teste do modo único volta; gate, linha de base, skips e contagem não mudam por outro meio.",
+      "basis": "Instrução do dono para E29 depois do bloqueio BLQ-1 (G1 da branch 2172 contra 2175 da linha de base); a quebra temporária no próprio worktree com restauração por git checkout é a forma mais direta de ver o teste falhar sem arquivo extra.",
+      "alternative": "Ver a falha com uma cópia mutada em _tmp e um teste apontado para ela.",
+      "costIfWrong": "low",
+      "reversible": true,
+      "scope": "local",
+      "contradicts": null
     }
   ],
   "needsPerson": [],
@@ -142,6 +159,11 @@ O que não fazer:
       "id": "C4",
       "input": "run-batch em lentes-semeadas-A com --arm unica contra o plugin novo.",
       "expected": "Recusa na partida citando o literal ausente, sem chamada paga."
+    },
+    {
+      "id": "C5",
+      "input": "Workflow chamado direto com config taskReview { single: true }, sem preflight, e revisor que devolve issues vazio sem spec nem quality.",
+      "expected": "A tarefa despacha só E1:t1:spec1 e E1:t1:quality1 no productivity-tools:task-reviewer, nenhum rótulo review1 e nenhuma correção."
     }
   ]
 }
