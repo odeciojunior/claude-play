@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { BASELINE_PLAN, MAX_EXTRA, existingValid, dryRunCommands, runBaseline } from './run-baseline.mjs';
+import { BASELINE_PLAN, E11_PLAN, MAX_EXTRA, existingValid, dryRunCommands, runBaseline } from './run-baseline.mjs';
+import { E11_VARIANTS } from './baseline.mjs';
 import { readText } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -385,6 +386,199 @@ test('the conductor passes stage and arm to runBatch for the plan class and resu
     assert.equal(byVariant['plano-semeado-B'].runs, 3);
     assert.equal(byVariant['plano-semeado-B'].fromRun, '/pasta-inexistente');
     assert.equal(byVariant.tracker.stage, undefined);
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E11 (T-F) ----
+
+const OLD_COMMIT = `e38cb35${'0'.repeat(33)}`;
+const e11Deps = (s, o = {}) => ({
+  ...makeDeps(s, o),
+  readPluginDir: (dir) => ({ version: '2.0.0', commit: dir === '/pasta-antiga' ? (o.oldCommit ?? OLD_COMMIT) : (o.mCommit ?? COMMIT) }),
+});
+const e11Opts = (s, extra = {}) => baseOpts(s, { plan: 'e11', pluginDir: '/pasta-m', pluginDirBefore: '/pasta-antiga', tag: 'M', ...extra });
+
+test('E11_PLAN has the spec list', () => {
+  const brief = E11_PLAN.map(({ variant, runs, side, ratify, stage, arm }) => ({ variant, runs, ...(side ? { side } : {}), ...(ratify ? { ratify } : {}), ...(stage ? { stage, arm } : {}) }));
+  assert.deepEqual(brief, [
+    { variant: 'planner', runs: 1 },
+    { variant: 'tracker', runs: 1 },
+    { variant: 'plan-only', runs: 5 },
+    { variant: 'coordinator', runs: 5 },
+    { variant: 'coordinator', runs: 5, side: '1.7.0' },
+    { variant: 'completo', runs: 3 },
+    { variant: 'parada-retomada', runs: 3, ratify: 'off' },
+    { variant: 'plano-nativo-A', runs: 5, stage: 'plan-review', arm: 'atual' },
+    { variant: 'plano-nativo-B', runs: 5, stage: 'plan-review', arm: 'atual' },
+    { variant: 'codigo-nativo-A', runs: 5 },
+    { variant: 'codigo-nativo-B', runs: 5 },
+  ]);
+  // The M side (no own out) is the list of baseline.mjs.
+  assert.deepEqual(E11_PLAN.filter((p) => !p.side).map(({ variant, runs }) => ({ variant, runs })), E11_VARIANTS);
+});
+
+test('E11_PLAN carries maxBudgetUsd per entry (DEC-749)', async () => {
+  const cap = (v, side) => E11_PLAN.find((p) => p.variant === v && Boolean(p.side) === Boolean(side)).maxBudgetUsd;
+  for (const v of ['completo', 'parada-retomada', 'codigo-nativo-A', 'codigo-nativo-B']) assert.equal(cap(v), 10, v);
+  assert.equal(cap('plan-only'), 5);
+  for (const v of ['plano-nativo-A', 'plano-nativo-B', 'coordinator']) assert.equal(cap(v), 3, v);
+  assert.equal(cap('coordinator', true), 3);
+  const s = setup();
+  try {
+    const deps = e11Deps(s);
+    await runBaseline(e11Opts(s, { dryRun: true, maxBudgetUsd: 99 }), deps);
+    const want = { completo: 10, 'parada-retomada': 10, 'codigo-nativo-A': 10, 'codigo-nativo-B': 10, 'plan-only': 5, 'plano-nativo-A': 3, 'plano-nativo-B': 3, coordinator: 3 };
+    for (const [v, usd] of Object.entries(want)) {
+      const lines = deps.logs.filter((m) => m.includes(`--variant ${v} `));
+      assert.ok(lines.length >= 1, v);
+      for (const m of lines) assert.ok(m.includes(`--max-budget-usd ${usd}`) && !m.includes('--max-budget-usd 99'), m);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('--plan e11 --dry-run: one command per entry with plugin dir, ratify off, fixture and own out', async () => {
+  const s = setup();
+  try {
+    const deps = e11Deps(s);
+    const r = await runBaseline(e11Opts(s, { dryRun: true, coordinatorFixture: 'native' }), deps);
+    assert.equal(r.exitCode, 0);
+    assert.equal(deps.calls.length, 0);
+    assert.equal(deps.logs.length, 11);
+    for (const m of deps.logs) {
+      assert.ok(m.includes('--coordinator-fixture native'), m);
+      assert.ok(!m.includes('--from-run'), m);
+      assert.equal(m.includes('--ratify off'), m.includes('--variant parada-retomada '), m);
+    }
+    const coords = deps.logs.filter((m) => m.includes('--variant coordinator '));
+    assert.equal(coords.length, 2);
+    assert.ok(coords[0].includes('--plugin-dir /pasta-m') && coords[0].includes(`--out ${s.out} `));
+    assert.ok(coords[1].includes('--plugin-dir /pasta-antiga') && coords[1].includes('-1.7.0') && !coords[1].includes(`--out ${s.out} `));
+    for (const m of deps.logs.filter((x) => !x.includes('--variant coordinator '))) assert.ok(m.includes('--plugin-dir /pasta-m'), m);
+    assert.ok(deps.logs.filter((m) => m.includes('--variant plano-nativo')).every((m) => m.includes('--stage plan-review --arm atual')));
+  } finally {
+    s.done();
+  }
+});
+
+test('with --plugin-dir the commit is read from the folder', async () => {
+  const s = setup();
+  try {
+    const ok = e11Deps(s);
+    const r = await runBaseline(e11Opts(s, { only: ['tracker'] }), ok);
+    assert.equal(r.exitCode, 0);
+    assert.equal(ok.calls.length, 1);
+    assert.equal(ok.calls[0].pluginDir, '/pasta-m');
+    const bad = e11Deps(s, { mCommit: 'f'.repeat(40) });
+    const r2 = await runBaseline(e11Opts(s, { only: ['tracker'] }), bad);
+    assert.equal(r2.exitCode, 2);
+    assert.equal(bad.calls.length, 0);
+    // Without --plugin-dir the installed plugin is read, as before.
+    const old = makeDeps(s, { commit: 'f'.repeat(40) });
+    assert.equal((await runBaseline(baseOpts(s, { only: ['tracker'] }), old)).exitCode, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('--plugin-dir-before commit is checked against e38cb35', async () => {
+  const s = setup();
+  try {
+    const wrong = e11Deps(s, { oldCommit: 'a'.repeat(40) });
+    const r = await runBaseline(e11Opts(s), wrong);
+    assert.equal(r.exitCode, 2);
+    assert.equal(wrong.calls.length, 0);
+    assert.ok(wrong.logs.some((m) => m.includes('e38cb35')));
+    const missing = e11Deps(s);
+    const r2 = await runBaseline(e11Opts(s, { pluginDirBefore: undefined }), missing);
+    assert.equal(r2.exitCode, 2);
+    assert.equal(missing.calls.length, 0);
+    assert.ok(missing.logs.some((m) => m.includes('--plugin-dir-before')));
+    // A selection without the 1.7.0 entry does not need it.
+    const none = e11Deps(s);
+    assert.equal((await runBaseline(e11Opts(s, { pluginDirBefore: undefined, only: ['tracker'] }), none)).exitCode, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('existingValid(entry.out) counts the valid attempts of the 1.7.0 side', async () => {
+  const s = setup();
+  try {
+    const own = join(s.base, 'out-antigo');
+    writeAggregate(s.out, 'm', { variant: 'coordinator', valid: 5 });
+    writeAggregate(own, 'a', { variant: 'coordinator', valid: 2 });
+    assert.equal(existingValid(own, 'coordinator'), 2);
+    const deps = e11Deps(s);
+    const r = await runBaseline(e11Opts(s, { only: ['coordinator'], outBefore: own }), deps);
+    assert.equal(r.exitCode, 0);
+    assert.equal(deps.calls.length, 1);
+    assert.equal(deps.calls[0].runs, 3);
+    assert.equal(deps.calls[0].out, own);
+    assert.equal(deps.calls[0].pluginDir, '/pasta-antiga');
+    assert.deepEqual(r.results.map((x) => [x.variant, x.status, x.side ?? null]), [['coordinator', 'pulada', null], ['coordinator', 'completa', '1.7.0']]);
+  } finally {
+    s.done();
+  }
+});
+
+test('retries versus needsFromRun: native variants retry but never need --from-run', async () => {
+  const s = setup();
+  try {
+    const deps = e11Deps(s, { validOf: (v, runs, call) => (call === 1 ? runs - 2 : runs) });
+    const seedCalls = [];
+    const r = await runBaseline(e11Opts(s, { only: ['codigo-nativo-A'], fromRun: '/pasta-inexistente' }), {
+      ...deps,
+      seedSourceOf: (...a) => seedCalls.push(a),
+      makeScenario: async (...a) => seedCalls.push(a),
+    });
+    assert.deepEqual(deps.calls.map((c) => c.runs), [5, 2]);
+    assert.equal(r.results[0].status, 'completa');
+    assert.equal(deps.calls[0].fromRun, undefined);
+    assert.equal(seedCalls.length, 0);
+    // Without --from-run it is not skipped either.
+    const d2 = e11Deps(s);
+    const r2 = await runBaseline(e11Opts(s, { only: ['codigo-nativo-B'] }), d2);
+    assert.equal(r2.results[0].status, 'completa');
+  } finally {
+    s.done();
+  }
+});
+
+test('native code class stops after more than 5 invalid attempts (DEC-745)', async () => {
+  const s = setup();
+  const s2 = setup();
+  try {
+    // 3 invalid in A and 3 in B (sum 6 > 5): the batch stops with DEC-745, B is not retried.
+    const deps = e11Deps(s, { validOf: (v, runs, call) => (call === 1 || call === 3 ? runs - 3 : runs) });
+    const r = await runBaseline(e11Opts(s, { only: ['codigo-nativo-A', 'codigo-nativo-B'] }), deps);
+    assert.equal(r.exitCode, 1);
+    assert.ok(deps.logs.some((m) => m.includes('DEC-745')));
+    assert.equal(deps.calls.filter((c) => c.variant === 'codigo-nativo-B').length, 1);
+    assert.ok(r.results.some((x) => x.variant === 'codigo-nativo-B' && x.status === 'parada'));
+    // 3 + 2 = 5 in total: no stop.
+    const d2 = e11Deps(s2, { validOf: (v, runs, call) => (call === 1 ? runs - 3 : call === 3 ? runs - 2 : runs) });
+    const r2 = await runBaseline(e11Opts(s2, { only: ['codigo-nativo-A', 'codigo-nativo-B'] }), d2);
+    assert.ok(!d2.logs.some((m) => m.includes('DEC-745')));
+    assert.equal(r2.exitCode, 0);
+  } finally {
+    s.done();
+    s2.done();
+  }
+});
+
+test('CLI: --plan needs a valid name and the E11 options are accepted by --dry-run', () => {
+  const s = setup();
+  try {
+    const run = (...a) => spawnSync(process.execPath, [script, ...a], { encoding: 'utf8' });
+    const common = ['--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    assert.equal(run(...common, '--plan', 'zzz').status, 2);
+    const ok = run(...common, '--plan', 'e11', '--plugin-dir', '/m', '--plugin-dir-before', '/antiga', '--coordinator-fixture', 'native', '--dry-run');
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.equal(ok.stdout.trim().split('\n').length, 11);
   } finally {
     s.done();
   }
