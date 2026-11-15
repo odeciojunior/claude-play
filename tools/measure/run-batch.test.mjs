@@ -896,7 +896,7 @@ test('CLI parses --stop-on-denial as a flag (DEC-194)', () => {
 test('releaseRunValidity marks a release run without any subagent as sem-agentes', () => {
   const zero = { total: { calls: { haiku: 0, sonnet: 0, opus: 0, fable: 0, other: 0 } } };
   const some = { total: { calls: { haiku: 0, sonnet: 2, opus: 0, fable: 0, other: 0 } } };
-  for (const v of ['completo', 'parada-retomada']) {
+  for (const v of ['completo', 'parada-retomada', 'coordinator']) {
     assert.deepEqual(releaseRunValidity(v, zero), { valid: false, reason: 'sem-agentes' });
     assert.equal(releaseRunValidity(v, some).valid, true);
   }

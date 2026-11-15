@@ -63,8 +63,8 @@ export function excludeFromGit(dir, name) {
   const old = existsSync(file) ? readFileSync(file, 'utf8') : '';
   if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
 }
-const FIXED_PLAN = 'docs/plans/2026-11-10-fixed-plan.md';
-const COORDINATOR_SPEC = 'docs/plans/coordinator-spec-native.md';
+const FIXED_PLAN = 'docs/plans/fixed-plan/plan.md';
+const COORDINATOR_SPEC = 'docs/plans/fixed-plan/coordinator-spec-native.md';
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
