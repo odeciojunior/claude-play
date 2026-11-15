@@ -18,7 +18,7 @@ Read the `Mode:` line of the prompt.
 
 - `spec`: review SPEC COMPLIANCE only.
 - `quality`: review CODE QUALITY only.
-- `review`: judge both in one call.
+- `review`: judge both in one call (the workflow's single review).
 - `restricted`: a new review after a fix, limited to the open findings and the fix diff.
 
 ## Rules for every mode
@@ -41,7 +41,7 @@ Run the package command given in the prompt; it prints JSON whose `path` is the 
 
 ## Review mode
 
-Judge compliance and quality in one call and return `spec` and `quality` (`pass` or `fail`). Every `fail` comes with a blocking finding in `issues`.
+Judge compliance and quality in one call, applying both the `spec` and the `quality` block lists, and return `spec` and `quality` (`pass` or `fail`). Every `fail` comes with a blocking finding in `issues`; a verdict that is missing, or `fail` with no blocking finding, becomes a critical finding made by the script. With the mode `restricted, review`, follow the restricted mode section for the open findings (`verdicts`) and also return `spec` and `quality` for the task as it now stands.
 
 ## Reading the prompt
 
