@@ -3557,3 +3557,963 @@ test('coordinatorGateVazio: 1.7.0 baseline with 0 passed or any failed is gate-v
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- E27 C2 (T3): options, arms and refusals of the lentes-semeadas task loop ----
+const { prepareHarness } = await import('./run-batch.mjs');
+const lentesOpts = (s, variant, extra = {}) => seededOpts(s, variant, { stage: 'task-review', reviewModel: 'sonnet', ...extra });
+const hOf = (variant, extra = {}) => prepareHarness({ variant, stage: 'task-review', reviewModel: 'sonnet', ...extra });
+
+// A measured plugin whose task-reviewer has (or lacks) the "## Review mode" section.
+function lentesPlugin(parent, workflowText, { reviewMode = true } = {}) {
+  const dir = taskLoopPlugin(parent, workflowText);
+  writeFileSync(join(dir, 'agents', 'task-reviewer.md'), reviewMode ? '# Task reviewer\n\n## Review mode\n\nBoth lists.\n' : '# Task reviewer\n');
+  return dir;
+}
+
+test('C2: --stage task-review --rounds loop accepts lentes-semeadas-A/B with --arm atual|unica and a --review-model', () => {
+  for (const variant of ['lentes-semeadas-A', 'lentes-semeadas-B']) {
+    for (const extra of [{}, { arm: 'atual' }, { rounds: 'loop' }, { arm: 'atual', rounds: 'loop', reviewModel: 'opus' }]) {
+      const h = hOf(variant, extra);
+      assert.equal(h.base, 'atual', variant);
+      assert.equal(h.arm, 'atual');
+      assert.equal(h.rounds, 'loop');
+      assert.deepEqual(h.harness.taskReview, { restricted: false, single: false });
+      assert.deepEqual(h.kinds, ['spec', 'quality']);
+    }
+    const u = hOf(variant, { arm: 'unica', rounds: 'loop' });
+    assert.equal(u.base, 'atual');
+    assert.equal(u.arm, 'unica');
+    assert.equal(u.rounds, 'loop');
+    assert.deepEqual(u.harness.taskReview, { restricted: false, single: true });
+    assert.deepEqual(u.kinds, ['review']);
+    assert.equal(u.harness.reviewModel, 'sonnet');
+  }
+  // correcao-semeada keeps { restricted } only, so its aggregate does not change
+  assert.deepEqual(hOf('correcao-semeada-A', { arm: 'restrita' }).harness.taskReview, { restricted: true });
+  assert.deepEqual(hOf('correcao-semeada-A').harness.taskReview, { restricted: false });
+  assert.equal(hOf('correcao-semeada-A').kinds, null);
+});
+
+test('C2: refusals', () => {
+  const refused = [
+    ['correcao-semeada-A', { arm: 'unica' }, /unica/],
+    ['correcao-semeada-B', { arm: 'unica', rounds: 'loop' }, /unica/],
+    ['correcao-semeada-A', { arm: 'unica', rounds: 'single' }, /unica|loop/],
+    ['codigo-semeado-A', { arm: 'unica' }, /unica/],
+    ['lentes-semeadas-A', { rounds: 'single' }, /loop/],
+    ['lentes-semeadas-B', { arm: 'unica', rounds: 'single' }, /loop/],
+    ['lentes-semeadas-A', { arm: 'restrita' }, /restrita/],
+    ['lentes-semeadas-B', { arm: 'restrita', rounds: 'loop' }, /restrita/],
+    ['lentes-semeadas-A', { arm: 'adversarial' }, /final-review|adversarial/],
+    ['lentes-semeadas-A', { reviewModel: undefined }, /review-model/],
+    ['codigo-semeado-A', { rounds: 'loop' }, /correcao-semeada/],
+  ];
+  for (const [variant, extra, re] of refused) {
+    const opts = { variant, stage: 'task-review', reviewModel: 'sonnet', ...extra };
+    if ('reviewModel' in extra && extra.reviewModel === undefined) delete opts.reviewModel;
+    assert.throws(() => prepareHarness(opts), (e) => e instanceof UsageError && re.test(e.message), `${variant} ${JSON.stringify(extra)}`);
+  }
+  // --arm unica outside task-review
+  assert.throws(() => prepareHarness({ variant: 'spec-nativo-A', stage: 'spec-review', arm: 'unica' }), (e) => e instanceof UsageError && /unica/.test(e.message));
+  assert.throws(() => prepareHarness({ variant: 'correcao-semeada-A', stage: 'final-review', arm: 'unica' }), (e) => e instanceof UsageError && /unica/.test(e.message));
+  // lentes-semeadas only exists in task-review
+  assert.throws(() => prepareHarness({ variant: 'lentes-semeadas-A', stage: 'final-review' }), UsageError);
+  assert.throws(() => prepareHarness({ variant: 'lentes-semeadas-A', stage: 'spec-review' }), UsageError);
+});
+
+test('C2: startup refusals on the measured workflow for lentes-semeadas', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const cases = [
+      ["TR.single ? ['review'] : ['spec', 'quality']", "TR.single ? ['reviewX'] : ['spec', 'quality']"],
+      ['single: tr.single === true', 'single: tr.single'],
+      ['(c.taskReview || {}).single', '(c.taskReview || {}).only'],
+    ];
+    for (const [lit, repl] of cases) {
+      assert.equal(wf.split(lit).length - 1, 1, lit + ' occurs once in the real workflow');
+      const plugin = lentesPlugin(s.base, wf.replace(lit, repl));
+      for (const arm of ['atual', 'unica']) {
+        const fake = makeFake(s.configDir);
+        await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm, pluginDir: plugin, work: join(s.base, 'w-ref') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes(lit), `${arm} ${lit}`);
+        assert.equal(claudeCalls(fake).length, 0, lit);
+      }
+      // the same drift does not refuse correcao-semeada: the rule only applies to the new variants
+      assert.doesNotThrow(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review'), lit);
+      assert.throws(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes(lit), lit);
+    }
+    // the taskIssues literal is searched only inside function taskIssues: a copy elsewhere does not hide the drift
+    const drifted = wf.replace('(c.taskReview || {}).single', '(c.taskReview || {}).other') + '\n// (c.taskReview || {}).single\n';
+    assert.throws(() => checkLoopWorkflow(drifted, 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes('(c.taskReview || {}).single'));
+    assert.doesNotThrow(() => checkLoopWorkflow(wf, 'task-review', { lenses: true }));
+  } finally {
+    s.done();
+  }
+});
+
+test('C2: a measured plugin without "## Review mode" in agents/task-reviewer.md is refused for --arm unica', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const bad = lentesPlugin(s.base, wf, { reviewMode: false });
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm: 'unica', pluginDir: bad, work: join(s.base, 'w-rm') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /## Review mode/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E27 C2 (T4): runBatch picks the lenses script for lentes-semeadas and keeps the correcao-semeada one ----
+test('C2: runBatch picks the lenses script for lentes-semeadas and keeps the correcao-semeada script byte for byte', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const plugin = lentesPlugin(s.base, wf);
+    const sentFor = async (variant, arm) => {
+      const fake = makeFake(s.configDir, { journal: taskJournal() });
+      await runBatch(lentesOpts(s, variant, { arm, pluginDir: plugin, work: join(s.base, `w-${variant}-${arm}`) }), { exec: fake.exec, now: NOW });
+      return readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
+    };
+    const atual = await sentFor('lentes-semeadas-A', 'atual');
+    assert.ok(atual.includes('const H_KINDS = ["spec","quality"]'), atual.slice(0, 400));
+    assert.ok(atual.includes('const H_TR = {"restricted":false,"single":false}'));
+    assert.ok(atual.includes('fix the {{kind}} problems below'));
+    assert.ok(!atual.includes('H_FIXSHA') && !atual.includes('merge --ff-only'), 'no applier: the seed sits before the 1st review');
+    const unica = await sentFor('lentes-semeadas-B', 'unica');
+    assert.ok(unica.includes('const H_KINDS = ["review"]'));
+    assert.ok(unica.includes('const H_TR = {"restricted":false,"single":true}'));
+    // correcao-semeada keeps its single-loop script: no kinds, the same literals as before
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(corrOpts(s, { pluginDir: plugin, work: join(s.base, 'w-corr') }), { exec: fake.exec, now: NOW });
+    const corr = readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
+    assert.ok(!corr.includes('H_KINDS'));
+    assert.ok(corr.includes('const H_TR = {"restricted":false}') && corr.includes('fix the spec problems below'));
+  } finally {
+    s.done();
+  }
+});
+
+test('C2: STAGES[task-review].variant accepts lentes-semeadas-[AB] and STAGE_LOOP of task-review stays the same', () => {
+  for (const v of ['lentes-semeadas-A', 'lentes-semeadas-B']) assert.doesNotThrow(() => hOf(v), v);
+  for (const v of ['lentes-semeadas-C', 'lentes-semeadas-', 'lentes-semeada-A']) assert.throws(() => hOf(v), UsageError, v);
+  assert.deepEqual(stageLoopFor('task-review', 'sonnet'), { tier: 'sonnet', reviewModel: 'sonnet', reviewEffort: 'medium', maxFix: 2, byId: true });
+  assert.deepEqual(hOf('lentes-semeadas-A', { arm: 'unica' }).harness.stageOptions ?? stageLoopFor('task-review', 'sonnet'), stageLoopFor('task-review', 'sonnet'));
+});
+
+// ---- E27 C3 (T5): replay, validity, outcome and counters of the lenses task loop ----
+const { lensValidity, lensAttemptStats, armTotals } = await import('./run-batch.mjs');
+const { manifestEntries: manifestOf } = await import('./make-scenario.mjs');
+
+const SEEDED40 = 'a'.repeat(40);
+const lrv = (issues, spec = 'pass', quality = 'pass', extra = {}) => trv(issues, SEEDED40, { spec, quality, ...extra });
+const hL = (arm = 'atual') => {
+  const h = hOf('lentes-semeadas-A', { arm });
+  h.loopFns = loadPure();
+  return h;
+};
+const lensStub = { dir: 'D:/work/lentes-semeadas-A-1', seededCommit: SEEDED40 };
+const SEEDS_A = manifestOf('lentes-semeadas-A');
+// findings written to match the mention of one seed each (SP1 and SP2 are spec seeds, QL1 and QL2 quality seeds of artifact A)
+const F_SP1 = FOUND('S1', 'the index re-exports wordCount only as countWords, the spec asks for wordCount', 'src/index.mjs');
+const F_SP2 = FOUND('S2', 'wordCount throws a TypeError for non-string input instead of coercing with String(text)', 'src/word-count.mjs');
+const F_QL1 = FOUND('Q1', 'the module-level regex with the g flag keeps lastIndex between calls', 'src/word-count.mjs');
+const F_QL2 = FOUND('Q2', 'the test builds its import path from process.cwd() and fails outside the repo root', 'tests/e5-word-count.test.mjs');
+const RISK = { id: 'R1', severity: 'important', category: 'fora-do-escopo', description: '[fab] out of scope nit', file: 'src/x.mjs' };
+const MINOR_ONLY = { severity: 'minor', category: 'defeito', description: '[fab] typo', file: 'src/x.mjs' };
+
+// Runs the real generated lenses script with a stub agent; returns its return and the journal it would have left.
+async function lensRun({ arm = 'atual', reviews, fixes = {} }) {
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const text = buildTaskLoopScript({
+    pure: checkLoopWorkflow(wf, 'task-review', { lenses: true }),
+    scenario: lensStub,
+    opts: { restricted: false, kinds: arm === 'unica' ? ['review'] : ['spec', 'quality'], single: arm === 'unica', reviewModel: 'sonnet', pluginRoot: 'D:/cfg/p', work: 'D:/work', title: 'Word count', fixPrompt: 'Fix the {{kind}} problems.\n{{issues}}' },
+  });
+  const journal = [];
+  let i = 0;
+  const agent = async (prompt, o) => {
+    const out = /-fix\d+$/.test(o.label) ? (o.label in fixes ? fixes[o.label] : APPLIED_FIX) : reviews[Math.min(i++, reviews.length - 1)];
+    journal.push(entry(o.label, out));
+    return out;
+  };
+  const result = await new AsyncFn('agent', text.replace('export const meta', 'const meta'))(agent);
+  return { result, journal, scenario: lensStub };
+}
+const okOf = (loops) => loops.map((l) => [l.kind, l.ok]);
+
+test('C3: replay ok equals the script ok, loop by loop, in both arms', async () => {
+  const P = loadPure();
+  const sequences = {
+    'clean on the 1st': { reviews: [lrv([])] },
+    'fix and clean': { reviews: [lrv([F_SP1]), lrv([]), lrv([])] },
+    'stops on the 1st loop': { reviews: [lrv([FOUND('F1')]), lrv([FOUND('F2')]), lrv([FOUND('F3')])] },
+    'repeated finding (escalates)': { reviews: [lrv([FOUND('F1')]), lrv([FOUND('F1')]), lrv([FOUND('F1')]), lrv([FOUND('F1')])] },
+    'unica verdict fail, only a minor finding': { reviews: [lrv([MINOR_ONLY], 'pass', 'fail'), lrv([])] },
+  };
+  const atualOnly = { 'approves the 1st loop, stops the 2nd': { reviews: [lrv([]), lrv([FOUND('F1')]), lrv([FOUND('F2')]), lrv([FOUND('F3')])] } };
+  for (const arm of ['atual', 'unica']) {
+    for (const [name, seq] of Object.entries({ ...sequences, ...(arm === 'atual' ? atualOnly : {}) })) {
+      const run = await lensRun({ arm, ...seq });
+      const replay = await loopResult(hL(arm), run.journal, P, run.scenario);
+      assert.equal(replay.ok, run.result.ok, `${arm} ${name}`);
+      assert.deepEqual(okOf(replay.loops), okOf(run.result.loops), `${arm} ${name}`);
+      assert.equal(replay.divergent, undefined, `${arm} ${name}`);
+    }
+  }
+});
+
+test('C3: laco-divergente when a replayed loop differs from the script, or the journal has an unused or repeated label', async () => {
+  const P = loadPure();
+  const spec1 = entry('E5:t3:spec1', lrv([]));
+  const quality1 = entry('E5:t3:quality1', lrv([]));
+  // a label of the task not used by the replay, a repeated one, and a loop the replay never reached
+  assert.equal((await loopResult(hL(), [spec1, quality1, entry('E5:t3:spec-fix1', APPLIED_FIX)], P, lensStub)).divergent, true);
+  assert.equal((await loopResult(hL(), [spec1, spec1, quality1], P, lensStub)).divergent, true);
+  assert.equal((await loopResult(hL(), [spec1, quality1, entry('E5:t3:quality2', lrv([]))], P, lensStub)).divergent, true);
+  const stopped = [entry('E5:t3:spec1', lrv([FOUND('F1')])), entry('E5:t3:spec-fix1', APPLIED_FIX), entry('E5:t3:spec2', lrv([FOUND('F2')])), entry('E5:t3:spec-fix2', APPLIED_FIX), entry('E5:t3:spec3', lrv([FOUND('F3')]))];
+  assert.equal((await loopResult(hL(), [...stopped, quality1], P, lensStub)).divergent, true, 'the script ran quality, the replay stopped at spec');
+  // the old single-loop labels are not stage labels of the lenses branch and the t3 ones of the other arm are
+  assert.equal((await loopResult(hL('unica'), [entry('E5:t3:review1', lrv([])), entry('E5:t3:spec1', lrv([]))], P, lensStub)).divergent, true);
+  // a tampered journal: the script blocked to the end, one verdict was swapped to clean
+  const run = await lensRun({ reviews: [lrv([FOUND('F1')]), lrv([FOUND('F2')]), lrv([FOUND('F3')])] });
+  assert.equal(run.result.ok, false);
+  const tampered = [...run.journal.map((e) => (e.label === 'E5:t3:spec3' ? entry(e.label, lrv([])) : e)), entry('E5:t3:quality1', lrv([]))];
+  const replay = await loopResult(hL(), tampered, P, run.scenario);
+  assert.equal(replay.ok, true);
+  const s = setup();
+  try {
+    const sc = await unitScenario(s, 'lentes-semeadas-A');
+    const journal = { entries: [spec1, quality1] };
+    const good = { ok: true, loops: [{ kind: 'spec', ok: true }, { kind: 'quality', ok: true }] };
+    const loop = await loopResult(hL(), journal.entries, P, sc);
+    const div = { valid: false, reason: 'laco-divergente' };
+    assert.equal((await lensValidity(hL(), journal, sc, loop, good)).valid, true);
+    assert.deepEqual(await lensValidity(hL(), journal, sc, loop, { ...good, ok: false }), div);
+    assert.deepEqual(await lensValidity(hL(), journal, sc, loop, { ok: true, loops: [{ kind: 'spec', ok: true }] }), div, 'the replay ran quality, the script did not');
+    assert.deepEqual(await lensValidity(hL(), journal, sc, loop, { ok: true, loops: [{ kind: 'spec', ok: true }, { kind: 'quality', ok: false }] }), div);
+    assert.deepEqual(await lensValidity(hL(), journal, sc, loop, { ok: true, loops: [{ kind: 'quality', ok: true }, { kind: 'spec', ok: true }] }), div);
+    assert.deepEqual(await lensValidity(hL(), journal, sc, { ...loop, divergent: true }, good), div);
+    assert.deepEqual(await lensValidity(hL(), journal, sc, loop, null), { valid: false, reason: 'formato-do-diario' });
+    // the tampered journal replays as approved while the script reported the stop: laco-divergente
+    assert.deepEqual(await lensValidity(hL(), { entries: tampered }, sc, replay, run.result), div);
+  } finally {
+    s.done();
+  }
+  // 2 in one invocation stop that invocation; 1 does not
+  const inv = (reason, n) => Array.from({ length: n }, () => ({ status: 'invalid', reason }));
+  assert.equal(batchStopReason(inv('laco-divergente', 2), { lenses: true }), 'laco-divergente');
+  assert.equal(batchStopReason(inv('laco-divergente', 1), { lenses: true }), null);
+});
+
+test('C3: formato-do-diario, laco-infra and semente-ausente', async () => {
+  const P = loadPure();
+  const s = setup();
+  try {
+    const sc = await unitScenario(s, 'lentes-semeadas-A');
+    const script = { ok: true, loops: [{ kind: 'spec', ok: true }, { kind: 'quality', ok: true }] };
+    // formato-do-diario: the 1st review of the 1st loop has no issues list
+    const noList = { entries: [entry('E5:t3:spec1', { headSha: 'x', clean: true, commitsInRange: 3 }), entry('E5:t3:quality1', lrv([]))] };
+    const loopNoList = await loopResult(hL(), noList.entries, P, sc);
+    assert.deepEqual(await lensValidity(hL(), noList, sc, loopNoList, script), { valid: false, reason: 'formato-do-diario' });
+    assert.deepEqual(await lensValidity(hL(), { entries: [], formatError: 'journal missing' }, sc, { infra: true }, script), { valid: false, reason: 'formato-do-diario' });
+    // laco-infra: a null review (and its retry) or a null fix
+    const infra = [entry('E5:t3:spec1', null), entry('E5:t3:spec1b', null)];
+    assert.deepEqual(await loopResult(hL(), infra, P, sc), { infra: true });
+    assert.deepEqual(await lensValidity(hL(), { entries: infra }, sc, { infra: true }, script), { valid: false, reason: 'laco-infra' });
+    assert.deepEqual(await loopResult(hL(), [entry('E5:t3:spec1', lrv([FOUND('F1')])), entry('E5:t3:spec-fix1', null)], P, sc), { infra: true });
+    // the retry 1b stands in for review 1 of the 2nd loop too
+    const retried = await loopResult(hL(), [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', null), entry('E5:t3:quality1b', lrv([]))], P, sc);
+    assert.equal(retried.ok, true);
+    assert.equal(retried.divergent, undefined);
+    // semente-ausente: a seed whose present is false at the seededCommit (here the clean T3 right before it), ahead of laco-infra
+    const clean = { ...sc, seededCommit: `${sc.seededCommit}~1` };
+    const good = { entries: [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))] };
+    const loopGood = await loopResult(hL(), good.entries, P, sc);
+    assert.equal((await lensValidity(hL(), good, sc, loopGood, script)).valid, true);
+    assert.deepEqual(await lensValidity(hL(), good, clean, loopGood, script), { valid: false, reason: 'semente-ausente' });
+    assert.deepEqual(await lensValidity(hL(), { entries: infra }, clean, { infra: true }, script), { valid: false, reason: 'semente-ausente' });
+    // the correcao-semeada reasons do not exist here: no fixSha, no sem-correcao
+    assert.equal(sc.fixSha, null);
+  } finally {
+    s.done();
+  }
+  // 2 semente-ausente stop an invocation, and so do more than 3 invalid ones
+  const inv = (reason, n) => Array.from({ length: n }, () => ({ status: 'invalid', reason }));
+  assert.equal(batchStopReason(inv('semente-ausente', 2), { lenses: true }), 'semente-ausente');
+  assert.equal(batchStopReason(inv('semente-ausente', 1), { lenses: true }), null);
+  assert.equal(batchStopReason([...inv('formato-do-diario', 2), ...inv('laco-infra', 2)], { lenses: true }), 'invalidas');
+});
+
+// The run, as the simulated claude -p leaves it for lentes-semeadas: the journal and the script return (the sandbox stays at the seededCommit).
+function lensAfterRun(s, spec) {
+  return (cwd, n) => {
+    const sp = spec(n);
+    if (sp.after) sp.after(cwd);
+    writeFileSync(journalFileOf(s.configDir, n), jl(...sp.entries));
+    appendWorkflowReturn(s.configDir, n, sp.ret, sp.shape ?? 'direct');
+  };
+}
+const lensBatch = (s, arm = 'atual', extra = {}) => seededOpts(s, 'lentes-semeadas-A', { stage: 'task-review', reviewModel: 'sonnet', arm, pluginDir: REAL_PLUGIN, ...extra });
+const cleanLoops = [{ kind: 'spec', ok: true, stop: null, accepted: [] }, { kind: 'quality', ok: true, stop: null, accepted: [] }];
+
+test('C3: a first review with no hard finding is valid and the four seeds are perdido', async () => {
+  const s = setup();
+  try {
+    const spec = () => ({ entries: [entry('E5:t3:spec1', lrv([MINOR_ONLY])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: cleanLoops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+    assert.deepEqual(outcomeMap(a), { SP1: 'perdido', SP2: 'perdido', QL1: 'perdido', QL2: 'perdido' });
+    assert.equal(a.loop.ok, true);
+    assert.equal(a.loop.fixes, 0);
+    assert.equal(r.aggregate.outcomesByLens.spec.perdido, 2);
+    assert.equal(r.aggregate.outcomesByLens.quality.perdido, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('C3: bloqueou-sintetico only when the fixer answers BLOCKED to a fixable list with only synthetic findings', async () => {
+  const P = loadPure();
+  const s = setup();
+  try {
+    const sc = await unitScenario(s, 'lentes-semeadas-A');
+    const synthOnly = lrv([MINOR_ONLY], 'pass', 'fail');
+    const blocked = { status: 'BLOCKED', summary: 'nothing to fix', checks: [] };
+    const run = await lensRun({ arm: 'unica', reviews: [synthOnly, lrv([])], fixes: { 'E5:t3:review-fix1': blocked } });
+    assert.equal(run.result.ok, false);
+    const loop = await loopResult(hL('unica'), run.journal, P, sc);
+    assert.deepEqual(await lensValidity(hL('unica'), { entries: run.journal }, sc, loop, run.result), { valid: false, reason: 'bloqueou-sintetico' });
+    // the same list with a DONE fix is a valid attempt
+    const done = await lensRun({ arm: 'unica', reviews: [synthOnly, lrv([])] });
+    const loopDone = await loopResult(hL('unica'), done.journal, P, sc);
+    assert.equal((await lensValidity(hL('unica'), { entries: done.journal }, sc, loopDone, done.result)).valid, true);
+    // a BLOCKED fix to a list with a real finding is not this reason
+    const real = await lensRun({ arm: 'unica', reviews: [lrv([FOUND('F1')], 'fail', 'pass')], fixes: { 'E5:t3:review-fix1': blocked } });
+    const loopReal = await loopResult(hL('unica'), real.journal, P, sc);
+    assert.equal((await lensValidity(hL('unica'), { entries: real.journal }, sc, loopReal, real.result)).valid, true);
+  } finally {
+    s.done();
+  }
+  // the order of the reasons: bloqueou-sintetico comes before laco-divergente
+  // more than 2 in an invocation stop it, 2 do not
+  const inv = (n) => Array.from({ length: n }, () => ({ status: 'invalid', reason: 'bloqueou-sintetico' }));
+  assert.equal(batchStopReason(inv(3), { lenses: true }), 'bloqueou-sintetico');
+  assert.equal(batchStopReason(inv(2), { lenses: true }), null);
+});
+
+// the attempt-level counters of one replayed attempt (loopResult + lensAttemptStats), the outcomes given by hand
+const statsOf = async (arm, run, outcomes = []) => {
+  const h = hL(arm);
+  const loop = await loopResult(h, run.journal, loadPure(), run.scenario);
+  return lensAttemptStats(h, loop, outcomes, SEEDS_A);
+};
+const oc = (id, outcome) => ({ id, class: 'code', detectedBy: 'reviewer', outcome });
+
+test('C3: BLOCKED with a synthetic and a real finding is bloqueadoMisto, a valid stopped attempt (indeterminado)', async () => {
+  const P = loadPure();
+  const s = setup();
+  try {
+    const sc = await unitScenario(s, 'lentes-semeadas-A');
+    // unica: a failing verdict with no finding gives the synthetic one, and a dirty tree adds a finding of the script itself
+    const mixed = lrv([], 'pass', 'fail', { clean: false });
+    const run = await lensRun({ arm: 'unica', reviews: [mixed], fixes: { 'E5:t3:review-fix1': { status: 'BLOCKED', summary: 'cannot', checks: [] } } });
+    const loop = await loopResult(hL('unica'), run.journal, P, sc);
+    assert.equal(loop.ok, false);
+    const v = await lensValidity(hL('unica'), { entries: run.journal }, sc, loop, run.result);
+    assert.equal(v.valid, true, JSON.stringify(v));
+    const st = await statsOf('unica', run, SEEDS_A.map((e) => oc(e.id, 'indeterminado')));
+    assert.equal(st.bloqueadoMisto, true);
+    assert.equal(st.paradoSoSintetico, false);
+    // a BLOCKED to synthetic findings only is not mixed
+    const only = await lensRun({ arm: 'unica', reviews: [lrv([MINOR_ONLY], 'pass', 'fail')], fixes: { 'E5:t3:review-fix1': { status: 'BLOCKED', summary: 'cannot', checks: [] } } });
+    assert.equal((await statsOf('unica', only)).bloqueadoMisto, false);
+  } finally {
+    s.done();
+  }
+});
+
+test('C3: a loop stopped without BLOCKED with only synthetic findings open is paradoSoSintetico, a valid stopped attempt (indeterminado)', async () => {
+  const P = loadPure();
+  const s = setup();
+  try {
+    const sc = await unitScenario(s, 'lentes-semeadas-A');
+    // the failing verdict never goes away and no finding names it: the synthetic repeats until opus stops the loop
+    const run = await lensRun({ arm: 'unica', reviews: [lrv([MINOR_ONLY], 'pass', 'fail')] });
+    assert.deepEqual(run.journal.map((e) => e.label), ['E5:t3:review1', 'E5:t3:review-fix1', 'E5:t3:review2', 'E5:t3:review-fix2', 'E5:t3:review3']);
+    assert.equal(run.result.ok, false);
+    const loop = await loopResult(hL('unica'), run.journal, P, sc);
+    assert.equal((await lensValidity(hL('unica'), { entries: run.journal }, sc, loop, run.result)).valid, true);
+    const st = await statsOf('unica', run, SEEDS_A.map((e) => oc(e.id, 'indeterminado')));
+    assert.equal(st.paradoSoSintetico, true);
+    assert.equal(st.bloqueadoMisto, false);
+    // with a real finding open next to the synthetic one it does not count
+    const withReal = await lensRun({ arm: 'unica', reviews: [lrv([], 'pass', 'fail', { clean: false })] });
+    assert.equal(withReal.result.ok, false);
+    assert.equal((await statsOf('unica', withReal)).paradoSoSintetico, false);
+    // the atual arm has no synthetic finding: a stopped loop is a real one
+    const atual = await lensRun({ arm: 'atual', reviews: [lrv([FOUND('F1')])] });
+    assert.equal((await statsOf('atual', atual)).paradoSoSintetico, false);
+  } finally {
+    s.done();
+  }
+});
+
+test('C3: failRiscoAceito counts, in both arms, attempts whose loop approved with accepted risks in a round whose verdict is not pass', async () => {
+  // unica: the verdict spec or quality different from pass in the round that approved with the accepted risk
+  for (const [spec, quality, want] of [['pass', 'fail', true], ['fail', 'pass', true], ['pass', 'pass', false]]) {
+    const run = await lensRun({ arm: 'unica', reviews: [lrv([RISK], spec, quality)] });
+    assert.equal(run.result.ok, true);
+    assert.equal(run.result.loops[0].accepted.length, 1);
+    assert.equal((await statsOf('unica', run)).failRiscoAceito, want, `${spec}/${quality}`);
+  }
+  // an approval with no accepted risk never counts, whatever the verdict (the synthetic finding forces a fix)
+  const noRisk = await lensRun({ arm: 'unica', reviews: [lrv([MINOR_ONLY], 'pass', 'fail'), lrv([])] });
+  assert.equal((await statsOf('unica', noRisk)).failRiscoAceito, false);
+  // atual (owner decision, via Fable): a loop approved with a non-empty accepted list counts, whatever `clean` says (a non-hard blocking
+  // finding accepted is equivalent to a fail verdict); an approval with an empty accepted list does not
+  const h = hL('atual');
+  const seeds = SEEDS_A;
+  const lens = (clean, accepted = [RISK]) => ({ loops: [{ kind: 'spec', ok: true, accepted: [], lastReview: lrv([]) }, { kind: 'quality', ok: true, accepted, lastReview: lrv(accepted, 'pass', 'pass', { clean }) }], reviewsLog: [], sinteticoGerado: 0, veredictoAusente: 0 });
+  assert.equal(lensAttemptStats(h, { lens: lens(false) }, [], seeds).failRiscoAceito, true);
+  assert.equal(lensAttemptStats(h, { lens: lens(true) }, [], seeds).failRiscoAceito, true);
+  assert.equal(lensAttemptStats(h, { lens: lens(true, []) }, [], seeds).failRiscoAceito, false);
+  assert.equal(lensAttemptStats(h, { lens: lens(false, []) }, [], seeds).failRiscoAceito, false);
+});
+
+test('C3: atual loop approved with an important pelo-plano finding accepted is failRiscoAceito, kept on the attempt record and undetermined in the failRisco recount', async () => {
+  const P = { severity: 'important', category: 'pelo-plano', description: '[fab] the plan asks for it, not a seed', file: 'src/x.mjs' };
+  const run = await lensRun({ arm: 'atual', reviews: [lrv([P])] });
+  assert.equal(run.result.ok, true);
+  assert.equal(run.result.loops.some((l) => l.accepted.length > 0), true, JSON.stringify(run.result.loops));
+  const st = await statsOf('atual', run, SEEDS_A.map((e) => oc(e.id, 'capturado')));
+  assert.equal(st.failRiscoAceito, true);
+  // the attempt record keeps the accepted list of each loop (it used to be dropped with the lens replay)
+  const s = setup();
+  try {
+    const spec = () => ({ entries: [entry('E5:t3:spec1', lrv([P])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: run.result.loops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+    assert.ok(a.loop.loops.every((l) => Array.isArray(l.accepted)), JSON.stringify(a.loop.loops));
+    assert.equal(a.loop.loops.some((l) => l.accepted.length > 0), true, JSON.stringify(a.loop.loops));
+  } finally {
+    s.done();
+  }
+  // in the recount the attempt becomes undetermined
+  const t = armTotals([aggOf('A', [vatt('A', 1, ALL, { failRiscoAceito: st.failRiscoAceito })])]).totals;
+  const rc = (await import('./run-batch.mjs')).recountLenses(t, 'failRisco');
+  assert.equal(rc.capturas, 0);
+  assert.equal(rc.indeterminados, 4);
+});
+
+test('C3: sinteticoGerado and veredictoAusente counted per round in unica', async () => {
+  // round 1: quality fail and no finding (synthetic); round 2: the quality verdict is missing (synthetic again); round 3 clean
+  const noQuality = { ...lrv([], 'pass'), quality: undefined };
+  const run = await lensRun({ arm: 'unica', reviews: [lrv([], 'pass', 'fail'), noQuality, lrv([])] });
+  assert.equal(run.result.ok, true);
+  const st = await statsOf('unica', run);
+  assert.equal(st.sinteticoGerado, 2);
+  assert.equal(st.veredictoAusente, 1);
+  // the atual arm never generates the synthetic finding and has no verdict to be missing
+  const atual = await statsOf('atual', await lensRun({ arm: 'atual', reviews: [lrv([])] }));
+  assert.equal(atual.sinteticoGerado, 0);
+  assert.equal(atual.veredictoAusente, 0);
+});
+
+test('C3: capturadoPor names the first kind and round whose finding matches the mention; capturadoSemMencao as in B', async () => {
+  // the spec loop: spec1 mentions SP1, spec2 clean; the quality loop: quality1 mentions SP2 (a spec seed seen by the quality lens), quality2 mentions QL1; nobody mentions QL2
+  const run = await lensRun({ arm: 'atual', reviews: [lrv([F_SP1]), lrv([]), lrv([F_SP2]), lrv([F_QL1]), lrv([])] });
+  assert.deepEqual(run.journal.map((e) => e.label), ['E5:t3:spec1', 'E5:t3:spec-fix1', 'E5:t3:spec2', 'E5:t3:quality1', 'E5:t3:quality-fix1', 'E5:t3:quality2', 'E5:t3:quality-fix2', 'E5:t3:quality3']);
+  const outcomes = [oc('SP1', 'capturado'), oc('SP2', 'capturado'), oc('QL1', 'perdido'), oc('QL2', 'capturado')];
+  const st = await statsOf('atual', run, outcomes);
+  assert.deepEqual(st.capturadoPor, { SP1: { kind: 'spec', round: 1 }, SP2: { kind: 'quality', round: 1 }, QL1: { kind: 'quality', round: 2 }, QL2: null });
+  assert.equal(st.capturadoSemMencao, 1); // only QL2 was captured with no review naming it
+  assert.deepEqual(st.mentioned, { SP1: true, SP2: true, QL1: true, QL2: false });
+  // unica: every mention comes from the one loop
+  const u = await statsOf('unica', await lensRun({ arm: 'unica', reviews: [lrv([F_SP1], 'fail', 'pass'), lrv([F_QL2], 'pass', 'fail'), lrv([])] }), outcomes);
+  assert.deepEqual(u.capturadoPor, { SP1: { kind: 'review', round: 1 }, SP2: null, QL1: null, QL2: { kind: 'review', round: 2 } });
+});
+
+const lensOfA = Object.fromEntries(SEEDS_A.map((e) => [e.id, e.lens]));
+// A valid attempt of the lenses batch as runBatch records it (the fields armTotals reads).
+const vatt = (artifact, order, outcomes, extra = {}) => ({
+  n: 1, status: 'valid', artifact, startedAt: `2026-11-16T10:${String(order).padStart(2, '0')}:00Z`, costUsd: 0.5,
+  outcomes: Object.entries(outcomes).map(([id, o]) => oc(id, o)), capturadoPor: {}, failRiscoAceito: false, bloqueadoMisto: false, paradoSoSintetico: false, sinteticoGerado: 0, veredictoAusente: 0, ...extra,
+});
+const iatt = (reason) => ({ n: 1, status: 'invalid', reason });
+const aggOf = (artifact, attempts, taskReview = { restricted: false, single: false }) => ({ variant: `lentes-semeadas-${artifact}`, harness: { arm: taskReview.single ? 'unica' : 'atual', taskReview, kinds: taskReview.single ? ['review'] : ['spec', 'quality'] }, attempts });
+const ALL = { SP1: 'capturado', SP2: 'capturado', QL1: 'capturado', QL2: 'capturado' };
+
+test('C3: capturadoPorMatriz counts captures by first mentioning loop and design class', () => {
+  const a = vatt('A', 1, ALL, { capturadoPor: { SP1: { kind: 'spec', round: 1 }, SP2: { kind: 'quality', round: 1 }, QL1: { kind: 'quality', round: 2 }, QL2: null } });
+  const { totals } = armTotals([aggOf('A', [a])]);
+  // atual: the spec seed caught first by the quality loop is the cell quality x spec; a capture with no mention has its own row
+  assert.deepEqual(totals.capturadoPorMatriz, { spec: { spec: 1, quality: 0 }, quality: { spec: 1, quality: 1 }, semMencao: { spec: 0, quality: 1 } });
+  // a seed that was not captured is not in the matrix, even if a review mentioned it
+  const b = vatt('B', 2, { ...ALL, SP1: 'perdido' }, { capturadoPor: { SP1: { kind: 'spec', round: 1 } } });
+  assert.equal(armTotals([aggOf('A', [b])]).totals.capturadoPorMatriz.spec.spec, 0);
+  // unica: everything sits in the review row
+  const u = vatt('A', 1, ALL, { capturadoPor: { SP1: { kind: 'review', round: 1 }, SP2: { kind: 'review', round: 1 }, QL1: { kind: 'review', round: 2 }, QL2: { kind: 'review', round: 1 } } });
+  assert.deepEqual(armTotals([aggOf('A', [u], { restricted: false, single: true })]).totals.capturadoPorMatriz, { review: { spec: 2, quality: 2 }, semMencao: { spec: 0, quality: 0 } });
+});
+
+test('C3: outcomesByLens splits captures, misses and determined by lens', () => {
+  const a = vatt('A', 1, { SP1: 'capturado', SP2: 'perdido', QL1: 'indeterminado', QL2: 'capturado' });
+  const b = vatt('A', 2, { SP1: 'capturado', SP2: 'capturado', QL1: 'perdido', QL2: 'perdido' });
+  const { totals } = armTotals([aggOf('A', [a, b])]);
+  assert.deepEqual(totals.outcomesByLens.spec, { capturado: 3, perdido: 1, indeterminado: 0, determinadas: 4 });
+  assert.deepEqual(totals.outcomesByLens.quality, { capturado: 1, perdido: 2, indeterminado: 1, determinadas: 3 });
+  assert.deepEqual([totals.capturas, totals.perdidos, totals.indeterminados, totals.determinadas, totals.oportunidades], [4, 3, 1, 7, 8]);
+  assert.equal(lensOfA.SP1, 'spec');
+});
+
+test('C3: rolesByLabel puts E5:t3:<kind><r> in review and E5:t3:<kind>-fix<k> in fix', () => {
+  const calls = (s) => ({ haiku: 0, sonnet: s, opus: 0, fable: 0, other: 0 });
+  const role = (cost) => ({ calls: calls(1), promptBytes: 1, tokens: { input: 1, output: 1 }, cost, agents: 1 });
+  const run = {
+    roles: { 'E5:t3:spec1': role(1), 'E5:t3:quality2': role(2), 'E5:t3:review1': role(4), 'E5:t3:spec-fix1': role(8), 'E5:t3:review-fix2': role(16), 'other:t3:review': role(32), 'E5:task-review1': role(64), 'E5:impl': role(128) },
+    main: { cost: 0 },
+  };
+  const r = rolesByLabel(run, 0);
+  assert.equal(r.review.cost, 1 + 2 + 4 + 32 + 64);
+  assert.equal(r.fix.cost, 8 + 16);
+  assert.equal(r.other.cost, 128);
+});
+
+test('C3: rolesByLabel classifies spec/quality task reviews of every task and their retries (b) as review', () => {
+  const calls = (s) => ({ haiku: 0, sonnet: s, opus: 0, fable: 0, other: 0 });
+  const role = (cost) => ({ calls: calls(1), promptBytes: 1, tokens: { input: 1, output: 1 }, cost, agents: 1 });
+  const run = {
+    roles: { 'E5:t3:spec1b': role(1), 'E5:t4:quality2': role(2), 'E5:t12:spec3': role(4), 'E5:t4:quality1b': role(8), 'E5:t4:spec-fix1': role(16), 'E5:t4:specs': role(32), 'E5:t4:impl': role(64), 'E5:t3:spec': role(128) },
+    main: { cost: 0 },
+  };
+  const r = rolesByLabel(run, 0);
+  assert.equal(r.review.cost, 1 + 2 + 4 + 8);
+  assert.equal(r.fix.cost, 16);
+  assert.equal(r.other.cost, 32 + 64 + 128);
+});
+
+test('C3: the correcao-semeada replay and validity are unchanged', async () => {
+  const P = loadPure();
+  const sc = { seededCommit: 'a'.repeat(40) };
+  const ok = await loopResult(hTask(), [entry('E5:task-review1', trv([FOUND('F1')])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', trv([]))], P, sc);
+  assert.deepEqual(Object.keys(ok), ['reviews', 'fixes', 'fixTiers', 'ok', 'kind', 'restrictedRounds']);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(await loopResult(hTask(), [entry('E5:task-review1', null), entry('E5:task-review1b', null)], P, sc), { infra: true });
+  assert.deepEqual(await loopResult(hTask(), [entry('E5:task-review1', trv([])), entry('E5:task-review-fix1', APPLIED_FIX)], P, sc), { divergent: true });
+  // a t3 label is not a stage label of the correcao-semeada loop
+  assert.equal((await loopResult(hTask(), [entry('E5:task-review1', trv([])), entry('E5:t3:spec1', trv([]))], P, sc)).divergent, undefined);
+  const h = hOf('correcao-semeada-A');
+  assert.equal(h.lenses, false);
+  assert.equal(h.kinds, null);
+});
+
+test('C3: armTotals sums the aggregates of A and B of one arm and fires the arm stops', () => {
+  const A = aggOf('A', [vatt('A', 1, ALL, { failRiscoAceito: true, costUsd: 1, capturadoPor: { SP1: { kind: 'spec', round: 1 } } }), iatt('laco-divergente'), iatt('bloqueou-sintetico'), iatt('bloqueou-sintetico')]);
+  const B = aggOf('B', [vatt('B', 2, { SP3: 'capturado', SP4: 'perdido', QL3: 'capturado', QL4: 'indeterminado' }, { bloqueadoMisto: true, paradoSoSintetico: true, sinteticoGerado: 2, veredictoAusente: 1, costUsd: 0.5 }), iatt('laco-divergente'), iatt('bloqueou-sintetico')]);
+  const r = armTotals([A, B]);
+  assert.equal(r.totals.valid, 2);
+  assert.equal(r.totals.invalid, 5);
+  assert.equal(r.totals.invalidReasons['laco-divergente'], 2);
+  assert.equal(r.totals.invalidReasons['bloqueou-sintetico'], 3);
+  assert.deepEqual([r.totals.failRiscoAceito, r.totals.bloqueadoMisto, r.totals.paradoSoSintetico, r.totals.sinteticoGerado, r.totals.veredictoAusente], [1, 1, 1, 2, 1]);
+  assert.deepEqual([r.totals.capturas, r.totals.perdidos, r.totals.indeterminados, r.totals.oportunidades], [6, 1, 1, 8]);
+  assert.equal(r.totals.costUsd, 1.5);
+  assert.equal(r.totals.costPerValid, 0.75);
+  assert.equal(r.totals.outcomes.SP1.capturado, 1);
+  assert.equal(r.totals.outcomes.SP4.perdido, 1);
+  assert.deepEqual(r.totals.validOrder.map((x) => [x.artifact, x.capturado]), [['A', 4], ['B', 2]]);
+  // an invocation alone never reached its own stop (2 + 1 bloqueou-sintetico), the arm did: more than 2
+  assert.equal(batchStopReason(A.attempts.slice(0, 3), { lenses: true }), null);
+  assert.equal(armTotals([aggOf('A', [iatt('bloqueou-sintetico'), iatt('bloqueou-sintetico')]), aggOf('B', [iatt('bloqueou-sintetico')])]).stop, 'bloqueou-sintetico');
+  assert.equal(batchStopReason([iatt('bloqueou-sintetico'), iatt('bloqueou-sintetico')], { lenses: true }), null);
+  assert.equal(batchStopReason([iatt('bloqueou-sintetico')], { lenses: true }), null);
+  assert.equal(armTotals([aggOf('A', [iatt('bloqueou-sintetico'), iatt('bloqueou-sintetico')]), aggOf('B', [])]).stop, null);
+  // 1 + 1 laco-divergente: the arm stops
+  assert.equal(armTotals([aggOf('A', [iatt('laco-divergente')]), aggOf('B', [iatt('laco-divergente')])]).stop, 'laco-divergente');
+  assert.equal(armTotals([aggOf('A', [iatt('laco-divergente')]), aggOf('B', [])]).stop, null);
+  // 2 + 2 invalid: more than 3 stop the arm, 2 + 1 do not
+  assert.equal(armTotals([aggOf('A', [iatt('formato-do-diario'), iatt('laco-infra')]), aggOf('B', [iatt('formato-do-diario'), iatt('laco-infra')])]).stop, 'invalidas');
+  assert.equal(armTotals([aggOf('A', [iatt('formato-do-diario'), iatt('laco-infra')]), aggOf('B', [iatt('laco-infra')])]).stop, null);
+  // 1 + 1 semente-ausente
+  assert.equal(armTotals([aggOf('A', [iatt('semente-ausente')]), aggOf('B', [iatt('semente-ausente')])]).stop, 'semente-ausente');
+  // aggregates of different arms are refused
+  assert.throws(() => armTotals([aggOf('A', []), aggOf('B', [], { restricted: false, single: true })]), UsageError);
+  assert.throws(() => armTotals([]), UsageError);
+  // the order of the valid attempts of the arm, across A and B, is by start time
+  const order = armTotals([aggOf('A', [vatt('A', 3, ALL), vatt('A', 1, ALL)]), aggOf('B', [vatt('B', 2, ALL)])]).totals.validOrder;
+  assert.deepEqual(order.map((x) => x.artifact), ['A', 'B', 'A']);
+});
+
+test('C3: a lenses aggregate records the counters of C3 and the attempt fields armTotals reads', async () => {
+  const s = setup();
+  try {
+    const spec = () => ({ entries: [entry('E5:t3:spec1', lrv([F_SP1])), entry('E5:t3:spec-fix1', APPLIED_FIX), entry('E5:t3:spec2', lrv([])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: cleanLoops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    const g = r.aggregate;
+    const a = g.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(g.invalidReasons));
+    assert.equal(a.artifact, 'A');
+    assert.equal(a.startedAt, NOW().toISOString());
+    assert.equal(typeof a.costUsd, 'number');
+    assert.deepEqual(a.capturadoPor.SP1, { kind: 'spec', round: 1 });
+    for (const k of ['failRiscoAceito', 'bloqueadoMisto', 'paradoSoSintetico', 'sinteticoGerado', 'veredictoAusente', 'capturadoSemMencao', 'bloqueouSintetico']) assert.equal(typeof g[k], 'number', k);
+    assert.ok(g.capturadoPorMatriz && g.outcomesByLens);
+    assert.deepEqual(g.attempts[0].loop.loops.map((l) => [l.kind, l.ok]), [['spec', true], ['quality', true]]);
+    // armTotals takes the aggregate as runBatch wrote it
+    assert.equal(armTotals([g]).totals.valid, 1);
+  } finally {
+    s.done();
+  }
+});
+
+
+// ---- E27 C4 (T6): ruleSideC, earlyCeiling, recountLenses and the aggregate of a lenses batch ----
+const { ruleSideC, earlyCeiling, recountLenses } = await import('./run-batch.mjs');
+
+// Totals of one arm in the format of armTotals, built from 10 valid attempts (5 of A, 5 of B, interleaved) whose seeds take the
+// outcomes of the pools: spec = [captured, lost, undetermined] of the 20 spec seeds, quality likewise. semMencao: how many captures
+// no review names (by regex); failRisco: how many attempts carry failRiscoAceito.
+function armFrom({ spec, quality, cost, semMencao = 0, failRisco = 0, single = false }) {
+  // the captures come last, so that the first attempts hold the misses (an arm whose first 6 attempts capture all is the early ceiling)
+  const pool = ([c, p, i]) => [...Array(i).fill('indeterminado'), ...Array(p).fill('perdido'), ...Array(c).fill('capturado')];
+  const pools = { spec: pool(spec), quality: pool(quality) };
+  assert.equal(pools.spec.length, 20);
+  assert.equal(pools.quality.length, 20);
+  let unnamed = semMencao;
+  const attempts = Array.from({ length: 10 }, (_, j) => {
+    const art = j % 2 === 0 ? 'A' : 'B';
+    const ids = art === 'A' ? { spec: ['SP1', 'SP2'], quality: ['QL1', 'QL2'] } : { spec: ['SP3', 'SP4'], quality: ['QL3', 'QL4'] };
+    const outcomes = [];
+    const capturadoPor = {};
+    for (const lens of ['spec', 'quality']) {
+      ids[lens].forEach((id, k) => {
+        const o = pools[lens][2 * j + k];
+        outcomes.push(oc(id, o));
+        capturadoPor[id] = o === 'capturado' && unnamed > 0 && unnamed-- ? null : { kind: single ? 'review' : lens, round: 1 };
+      });
+    }
+    // the two arms run on other days: the keys of their attempts (artifact, start time, n) never collide
+    return vatt(art, j + 1, {}, { outcomes, capturadoPor, costUsd: cost, failRiscoAceito: j >= 10 - failRisco, startedAt: `${single ? '2026-11-17' : '2026-11-16'}T10:${String(j + 1).padStart(2, '0')}:00Z` });
+  });
+  return armTotals([aggOf('A', attempts, { restricted: false, single })]).totals;
+}
+// vatt takes an outcomes map; armFrom passes the outcomes list straight (vatt spreads `extra` over its own fields)
+const A_LIMITS = { spec: [18, 1, 1], quality: [18, 1, 1] };
+
+test('C4: ruleSideC gives teto when atual has 38 or more of 40 (the unica is not looked at)', () => {
+  const atual = armFrom({ spec: [19, 1, 0], quality: [19, 1, 0], cost: 0.85 });
+  assert.equal(atual.capturas, 38);
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'teto');
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [20, 0, 0], quality: [20, 0, 0], cost: 0.85 }) }).side, 'teto');
+  // a unica that would lose is never read: it can even be absent or nonsense
+  assert.equal(ruleSideC({ atual, unica: null }).side, 'teto');
+});
+
+test('C4: ruleSideC gives piso when atual has fewer than 20 of 40 or fewer than 32 determined', () => {
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [10, 4, 6], quality: [9, 5, 6], cost: 0.85 }) }).side, 'piso'); // 19 captures
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [15, 0, 5], quality: [15, 0, 5], cost: 0.85 }) }).side, 'piso'); // 30 captures, 30 determined
+  const edge = armFrom({ spec: [10, 5, 5], quality: [10, 6, 4], cost: 0.85 }); // 20 captures, 31 determined
+  assert.equal(edge.capturas, 20);
+  assert.equal(edge.determinadas, 31);
+  assert.equal(ruleSideC({ atual: edge }).side, 'piso');
+  assert.notEqual(ruleSideC({ atual: armFrom({ spec: [10, 6, 4], quality: [10, 6, 4], cost: 0.85 }), unica: armFrom({ spec: [10, 6, 4], quality: [10, 6, 4], cost: 0.5 }) }).side, 'piso'); // 20 captures, 32 determined
+});
+
+test('C4: ruleSideC gives unica with 32+ determined, at most 2 fewer captures and at most 2 more misses in total and in each lens, and a lower cost per valid attempt', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unica = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.deepEqual([atual.capturas, atual.perdidos, unica.capturas, unica.perdidos], [36, 2, 35, 3]);
+  const r = ruleSideC({ atual, unica });
+  assert.equal(r.side, 'unica', JSON.stringify(r));
+  // the boundary values still enter: 2 fewer captures and 2 more misses, in total and in a lens
+  const edge = armFrom({ spec: [16, 3, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.equal(ruleSideC({ atual, unica: edge }).side, 'unica');
+});
+
+test('C4: ruleSideC gives atual by total captures, by lens, by cost and by the determined of the unica', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const side = (unica, a = atual) => ruleSideC({ atual: a, unica });
+  // total captures: 36 against 33
+  const total = side(armFrom({ spec: [17, 1, 2], quality: [16, 1, 3], cost: 0.55, single: true }));
+  assert.deepEqual([total.side, total.reason], ['atual', 'capturas']);
+  // one lens: quality 18 against 15 with the total 36 against 34 inside the margin
+  const lens = side(armFrom({ spec: [19, 1, 0], quality: [15, 1, 4], cost: 0.55, single: true }));
+  assert.deepEqual([lens.side, lens.reason], ['atual', 'capturas por lente (quality)']);
+  // cost: equal or higher
+  assert.deepEqual([side(armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, single: true })).side, side(armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.9, single: true })).reason], ['atual', 'custo']);
+  // the determined of the unica: 31
+  const det = side(armFrom({ spec: [16, 0, 4], quality: [15, 0, 5], cost: 0.55, single: true }));
+  assert.equal(det.side, 'atual');
+  assert.equal(det.reason, 'determinadas');
+});
+
+test('C4: ruleSideC gives atual by misses even when captures are within 2 (the fixture of the owner)', () => {
+  const atual = armFrom({ spec: [15, 1, 4], quality: [15, 1, 4], cost: 0.85 });
+  const unica = armFrom({ spec: [14, 6, 0], quality: [14, 6, 0], cost: 0.55, single: true });
+  assert.deepEqual([atual.capturas, atual.perdidos, atual.indeterminados], [30, 2, 8]);
+  assert.deepEqual([unica.capturas, unica.perdidos, unica.indeterminados, unica.determinadas], [28, 12, 0, 40]);
+  const r = ruleSideC({ atual, unica });
+  assert.deepEqual([r.side, r.reason], ['atual', 'perdidos']);
+});
+
+test('C4: ruleSideC gives atual by misses in one lens with the total within 2', () => {
+  const atual = armFrom({ spec: [15, 0, 5], quality: [15, 2, 3], cost: 0.9 });
+  const unica = armFrom({ spec: [15, 3, 2], quality: [15, 1, 4], cost: 0.5, single: true });
+  assert.deepEqual([atual.perdidos, unica.perdidos, atual.capturas, unica.capturas], [2, 4, 30, 30]);
+  assert.ok(unica.determinadas >= 32);
+  const r = ruleSideC({ atual, unica });
+  assert.deepEqual([r.side, r.reason], ['atual', 'perdidos por lente (spec)']);
+});
+
+test('C4: ruleSideC gives inconclusivo when the recount with capturadoSemMencao, or with the failRiscoAceito attempts of either arm, as indeterminado changes the side', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unica = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.equal(ruleSideC({ atual, unica }).side, 'unica');
+  // 3 captures of the unica no review names: recounted, 32 captures against 36 (the side would be atual)
+  const unnamed = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 3 });
+  const a = ruleSideC({ atual, unica: unnamed });
+  assert.equal(a.side, 'inconclusivo');
+  assert.equal(a.recount.base.side, 'unica');
+  assert.equal(a.recount.semMencao.side, 'atual');
+  assert.equal(a.recount.failRisco.side, 'unica');
+  // attempts of the unica with an accepted risk under a verdict that was not pass: 2 attempts out, the unica falls below 32 determined
+  const risky = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, failRisco: 2 });
+  const b = ruleSideC({ atual, unica: risky });
+  assert.equal(b.side, 'inconclusivo');
+  assert.equal(b.recount.failRisco.side, 'atual');
+  // the atual arm counts too: its captures in the failRiscoAceito attempts fall and the unica enters where it did not
+  const atual2 = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, failRisco: 1 });
+  const unica2 = armFrom({ spec: [16, 2, 2], quality: [16, 2, 2], cost: 0.55, single: true });
+  assert.deepEqual([ruleSideC({ atual: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 }), unica: unica2 }).side], ['atual']);
+  const c = ruleSideC({ atual: atual2, unica: unica2 });
+  assert.equal(c.side, 'inconclusivo', JSON.stringify(c.recount));
+  assert.equal(c.recount.failRisco.side, 'unica');
+  // a recount that does not move the side keeps it
+  const keep = ruleSideC({ atual: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, semMencao: 1 }), unica: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 1 }) });
+  assert.equal(keep.side, 'unica', JSON.stringify(keep));
+  // the recount is pure: the totals given are not changed
+  assert.equal(unnamed.capturas, 35);
+});
+
+test('C4: the diary reading prevails over the regex in the recount', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unnamed = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 3 });
+  const unnamedKeys = unnamed.validOrder.flatMap((v) => v.captured.filter((c) => !c.regexMentioned).map((c) => [v.key, c.id]));
+  assert.equal(unnamedKeys.length, 3);
+  // without the reading the regex rules: 3 not named captures are recounted and the side moves
+  assert.equal(ruleSideC({ atual, unica: unnamed }).side, 'inconclusivo');
+  // the reading says the diary names them: nothing is recounted, the side stays
+  const named = {};
+  for (const [key, id] of unnamedKeys) (named[key] ??= {})[id] = true;
+  const r = ruleSideC({ atual, unica: unnamed, leitura: named });
+  assert.equal(r.side, 'unica', JSON.stringify(r));
+  assert.equal(r.recount.semMencao.unica.capturas, 35);
+  // the reading says a capture the regex matched is not named in the diary: it is recounted (and here the side moves)
+  const matched = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  const hit = matched.validOrder.flatMap((v) => v.captured.map((c) => [v.key, c.id])).slice(0, 3);
+  const notNamed = {};
+  for (const [key, id] of hit) (notNamed[key] ??= {})[id] = false;
+  const r2 = ruleSideC({ atual, unica: matched, leitura: notNamed });
+  assert.equal(r2.side, 'inconclusivo', JSON.stringify(r2));
+  assert.equal(r2.recount.semMencao.unica.capturas, 32);
+  // without the reading the same attempts are all named by the regex: the side stays
+  assert.equal(ruleSideC({ atual, unica: matched }).side, 'unica');
+  // recountLenses on its own: pure, and the reading is keyed by attempt key and seed id
+  const t = recountLenses(matched, 'semMencao', notNamed);
+  assert.equal(t.capturas, 32);
+  assert.equal(t.indeterminados, matched.indeterminados + 3);
+  assert.equal(matched.capturas, 35);
+});
+
+test('C4: earlyCeiling gives teto with the first 6 valid attempts of atual, 3 of A and 3 of B interleaved, at 24 of 24', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const full = (art, order) => vatt(art, order, ALL, { capturadoPor: NAMED });
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const seq = (arts, from = 1) => arts.map((a, i) => full(a, from + i));
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'B', 'A', 'B', 'A', 'B']))), true);
+  assert.equal(earlyCeiling(totalsOf(...seq(['B', 'A', 'B', 'A', 'B', 'A']))), true);
+  // 23 of 24
+  const miss = seq(['A', 'B', 'A', 'B', 'A', 'B']);
+  miss[2] = vatt('A', 3, { ...ALL, QL2: 'perdido' });
+  assert.equal(earlyCeiling(totalsOf(...miss)), false);
+  // 6 valid of one artifact only, and 3 + 3 that are not interleaved
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'A', 'A', 'A', 'A', 'A']))), false);
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'A', 'A', 'B', 'B', 'B']))), false);
+  // fewer than 6 valid
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'B', 'A', 'B', 'A']))), false);
+  // the 24 of 24 that only shows up looking past the first 6 (no extension): 7 valid, the 1st one missed a seed, attempts 2 to 7 are 24 of 24
+  const past = seq(['A', 'B', 'A', 'B', 'A', 'B', 'A']);
+  past[0] = vatt('A', 1, { ...ALL, QL2: 'perdido' });
+  assert.equal(earlyCeiling(totalsOf(...past)), false);
+  // with an early ceiling ruleSideC says teto without looking at the unica
+  const atual = totalsOf(...seq(['A', 'B', 'A', 'B', 'A', 'B']));
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'teto');
+  assert.match(r.reason, /antecipado/);
+  // but the recount of the same 6 attempts still guards it: a failRiscoAceito attempt among them makes the arm continue to 10 valid attempts
+  const risky = seq(['A', 'B', 'A', 'B', 'A', 'B']);
+  risky[0] = vatt('A', 1, ALL, { failRiscoAceito: true, capturadoPor: NAMED });
+  assert.equal(ruleSideC({ atual: totalsOf(...risky) }).side, 'continua');
+  assert.equal(earlyCeiling(null), false);
+});
+
+test('C4: the early ceiling is checked on the totals recounted with the reading of the diary: it stands with a confirmed capture, otherwise the arm continues (never a piso from 6 attempts)', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  // 24 of 24, one capture that no review names by regex
+  const six = ['A', 'B', 'A', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: i === 0 ? { ...NAMED, SP1: null } : NAMED }));
+  const atual = totalsOf(...six);
+  assert.equal(earlyCeiling(atual), true);
+  const key = atual.validOrder[0].key;
+  // the reading of the diary confirms the capture: the early ceiling stands
+  const kept = ruleSideC({ atual, leitura: { [key]: { SP1: true } } });
+  assert.equal(kept.side, 'teto');
+  assert.match(kept.reason, /antecipado/);
+  // the reading denies it (or the regex stands with no reading): not an early ceiling, the arm continues to 10 valid attempts
+  for (const leitura of [{ [key]: { SP1: false } }, {}]) {
+    const r = ruleSideC({ atual, leitura });
+    assert.equal(r.side, 'continua', JSON.stringify(leitura));
+    assert.notEqual(r.side, 'piso');
+    assert.match(r.reason, /10 validas/);
+  }
+});
+
+test('C4: continua ends at 10 valid attempts: the 40-opportunity rule applies, never continua again and never an early teto', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const arts = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
+  // the first 6 capture 24 of 24 (the first capture unnamed by regex); the last 4 capture only SP1 (28 of 40)
+  const tail = { SP1: 'capturado', SP2: 'perdido', QL1: 'perdido', QL2: 'perdido' };
+  const build = (lastOutcomes, unnamedFirst) => arts.map((a, i) => vatt(a, i + 1, i < 6 ? ALL : lastOutcomes, { capturadoPor: i === 0 && unnamedFirst ? { ...NAMED, SP1: null } : NAMED }));
+  const ten = totalsOf(...build(tail, true));
+  assert.equal(ten.valid, 10);
+  assert.equal(ten.capturas, 28);
+  assert.equal(earlyCeiling(ten), true); // raw early ceiling still holds on the first 6
+  const key = ten.validOrder[0].key;
+  // 10 valid, 28 of 40, the reading denies or the regex stands: not continua, and the normal rule asks for the unica (28 is neither teto nor piso)
+  for (const leitura of [{}, { [key]: { SP1: false } }]) assert.throws(() => ruleSideC({ atual: ten, leitura }), /unica/);
+  // the reading confirms the capture at 10 valid with 28 of 40: not a teto (the early ceiling does not apply from 10 valid)
+  assert.throws(() => ruleSideC({ atual: ten, leitura: { [key]: { SP1: true } } }), /unica/);
+  const unica = armFrom({ spec: [14, 4, 2], quality: [14, 4, 2], cost: 0.5, single: true });
+  const withUnica = ruleSideC({ atual: ten, unica, leitura: { [key]: { SP1: true } } });
+  assert.notEqual(withUnica.side, 'continua');
+  assert.notEqual(withUnica.side, 'teto');
+  // 10 valid at 40 of 40: teto by the 38 rule, not by the early ceiling; one unnamed capture (39) still teto
+  const all = totalsOf(...build(ALL, true));
+  for (const leitura of [{}, { [key]: { SP1: true } }]) {
+    const r = ruleSideC({ atual: all, leitura });
+    assert.equal(r.side, 'teto');
+    assert.doesNotMatch(r.reason, /antecipado/);
+  }
+});
+
+test('C4: a failRiscoAceito attempt among the first 6 with the early ceiling holding continues instead of closing the pass at 6 attempts', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const six = ['A', 'B', 'A', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED, failRiscoAceito: i === 2 }));
+  const atual = totalsOf(...six);
+  assert.equal(earlyCeiling(atual), true);
+  assert.equal(earlyCeiling(recountLenses(atual, 'failRisco')), false);
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'continua');
+  assert.match(r.reason, /10 validas/);
+  // the same together with an unnamed capture: still continua
+  const six2 = six.map((a, i) => (i === 0 ? { ...a, capturadoPor: { ...NAMED, SP1: null } } : a));
+  assert.equal(ruleSideC({ atual: totalsOf(...six2) }).side, 'continua');
+});
+
+test('C4: below 10 valid attempts ruleSideC says only an early teto or continua (never piso, inconclusivo, atual, unica or the sem-unica throw)', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const arts = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
+  const young = (label, atual, opts = {}) => {
+    let r;
+    assert.doesNotThrow(() => { r = ruleSideC({ atual, ...opts }); }, label);
+    assert.equal(r.side, 'continua', `${label}: ${JSON.stringify(r)}`);
+    assert.match(r.reason, /10 validas/, label);
+  };
+  // 6 valid at 23 of 24 (one miss): the raw early ceiling is false, and 24 determined is not a piso from 6 attempts
+  young('6 valid 23/24', totalsOf(...arts.slice(0, 6).map((a, i) => vatt(a, i + 1, i === 0 ? { ...ALL, QL2: 'perdido' } : ALL, { capturadoPor: NAMED }))));
+  // 6 valid at 20 of 24 with 4 undetermined
+  young('6 valid 20/24, 4 undetermined', totalsOf(...arts.slice(0, 6).map((a, i) => vatt(a, i + 1, i < 2 ? { ...ALL, QL1: 'indeterminado', QL2: 'indeterminado' } : ALL, { capturadoPor: NAMED }))));
+  // 6 valid at 24 of 24 not interleaved
+  young('6 valid 24/24 not alternating', totalsOf(...['A', 'A', 'B', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED }))));
+  // 8 valid at 31 of 32: neither the 40-opportunity rule nor the sem-unica throw applies, with or without a unica
+  const eight = totalsOf(...arts.slice(0, 8).map((a, i) => vatt(a, i + 1, i === 0 ? { ...ALL, QL2: 'perdido' } : ALL, { capturadoPor: NAMED })));
+  assert.equal(eight.valid, 8);
+  young('8 valid 31/32', eight);
+  young('8 valid 31/32 with a unica', eight, { unica: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.5, single: true }) });
+  // 8 valid at 32 of 32 (the 38 threshold cannot be reached, and the early ceiling holds): early teto
+  const eightAll = totalsOf(...arts.slice(0, 8).map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED })));
+  assert.match(ruleSideC({ atual: eightAll }).reason, /antecipado/);
+  // 9 valid with 4 misses among the first: the 20-capture floor and the 32-determined floor are not read below 10
+  young('9 valid with misses', totalsOf(...arts.slice(0, 9).map((a, i) => vatt(a, i + 1, i < 4 ? { SP1: 'perdido', SP2: 'perdido', QL1: 'perdido', QL2: 'indeterminado' } : ALL, { capturadoPor: NAMED }))));
+});
+
+test('C4: the unica arm (no early ceiling) is judged only at 10 valid attempts: a younger unica gives continua', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const single = { restricted: false, single: true };
+  const unicaOf = (n, outcomes) => {
+    const atts = Array.from({ length: n }, (_, i) => vatt(i % 2 === 0 ? 'A' : 'B', i + 1, outcomes, { capturadoPor: NAMED, costUsd: 0.5, startedAt: `2026-11-17T10:${String(i + 1).padStart(2, '0')}:00Z` }));
+    return armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A'), single), aggOf('B', atts.filter((a) => a.artifact === 'B'), single)]).totals;
+  };
+  // 8 valid of the unica, all captured (32): with 10 it would be compared; at 8 it is neither atual (by determinadas) nor unica
+  for (const unica of [unicaOf(8, ALL), unicaOf(6, ALL), unicaOf(9, { ...ALL, QL2: 'perdido' })]) {
+    assert.ok(unica.valid < 10);
+    const r = ruleSideC({ atual, unica });
+    assert.equal(r.side, 'continua', JSON.stringify(r));
+    assert.match(r.reason, /unica/);
+  }
+  // with atual a teto or a piso at 10 valid the unica is not looked at, young or not
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [19, 1, 0], quality: [19, 1, 0], cost: 0.85 }), unica: unicaOf(4, ALL) }).side, 'teto');
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [10, 4, 6], quality: [9, 5, 6], cost: 0.85 }), unica: unicaOf(4, ALL) }).side, 'piso');
+  // at 10 valid the unica is compared as before
+  assert.equal(unicaOf(10, ALL).valid, 10);
+  assert.notEqual(ruleSideC({ atual, unica: unicaOf(10, ALL) }).side, 'continua');
+});
+
+test('C3: semente-ausente is checked after settleSandbox: a root left on main with feat/E5 held by a release worktree is still valid', async () => {
+  const s = setup();
+  try {
+    const left = (cwd) => {
+      gitq(cwd, 'checkout', '-q', '-B', 'release/sandbox', 'main');
+      gitq(cwd, 'checkout', '-q', 'main');
+      gitq(cwd, 'worktree', 'add', join(cwd, '..', 'release-wt-lens'), 'feat/E5');
+    };
+    const spec = () => ({ after: left, entries: [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: cleanLoops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+  } finally {
+    s.done();
+  }
+});
+
+test('C4: the aggregate of a lenses batch records harness.taskReview, kinds, outcomesByLens and the counters of C3', async () => {
+  for (const arm of ['atual', 'unica']) {
+    const s = setup();
+    try {
+      const loops = arm === 'atual' ? cleanLoops : [{ kind: 'review', ok: true, stop: null, accepted: [] }];
+      const entries = arm === 'atual' ? [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))] : [entry('E5:t3:review1', lrv([]))];
+      const spec = () => ({ entries, ret: { ok: true, kind: null, msg: null, loops, reviews: [], accepted: [] } });
+      const r = await runBatch(lensBatch(s, arm), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+      const g = r.aggregate;
+      assert.equal(g.valid, 1, JSON.stringify(g.invalidReasons));
+      assert.deepEqual(g.harness.taskReview, { restricted: false, single: arm === 'unica' });
+      assert.deepEqual(g.harness.kinds, arm === 'unica' ? ['review'] : ['spec', 'quality']);
+      assert.deepEqual(Object.keys(g.outcomesByLens), ['spec', 'quality']);
+      assert.equal(g.outcomesByLens.spec.perdido + g.outcomesByLens.quality.perdido, 4);
+      for (const k of ['failRiscoAceito', 'bloqueadoMisto', 'paradoSoSintetico', 'sinteticoGerado', 'veredictoAusente', 'capturadoSemMencao', 'bloqueouSintetico']) assert.equal(g[k], 0, k);
+      assert.deepEqual(Object.keys(g.capturadoPorMatriz), [...g.harness.kinds, 'semMencao']);
+      assert.equal(typeof g.costPerValid, 'number');
+      assert.equal(g.stoppedBy, undefined);
+      assert.equal(g.harness.reviewModel, 'sonnet');
+    } finally {
+      s.done();
+    }
+  }
+});

@@ -25,9 +25,9 @@ test('lists every variant of the spec table', () => {
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
     'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
     'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
-    'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B',
+    'lentes-semeadas-A', 'lentes-semeadas-B', 'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B',
   ].sort());
-  assert.equal(VARIANTS.length, 23);
+  assert.equal(VARIANTS.length, 25);
   assert.equal(VARIANTS[VARIANTS.length - 3], 'correcao-semeada-B');
   assert.deepEqual(VARIANTS.slice(-2), ['codigo-nativo-A', 'codigo-nativo-B']);
   assert.equal(VARIANTS[VARIANTS.length - 1], 'codigo-nativo-B');
@@ -1265,4 +1265,332 @@ test('both coordinator fixtures state the full test suite, and the native data b
   const line = 'Full test suite: `node --test`';
   for (const f of [COORD_NATIVE, COORD_LEGACY]) assert.ok(readText(f).includes(line), f);
   assert.ok(readText(COORD_NATIVE).split('```json data')[1].includes(line));
+});
+
+// ---- E27 C1: lentes-semeadas-A/B (two spec seeds and two quality seeds in Task 3) ----
+const LENTES_IDS = { A: ['SP1', 'SP2', 'QL1', 'QL2'], B: ['SP3', 'SP4', 'QL3', 'QL4'] };
+const LENTES_VARIANTS = { A: 'lentes-semeadas-A', B: 'lentes-semeadas-B' };
+const T3_FILES = ['src/index.mjs', 'src/word-count.mjs', 'tests/e5-word-count.test.mjs'];
+const lentesScenarios = {};
+function lentesScenario(art) {
+  lentesScenarios[art] ??= (async () => {
+    const t = tmp('sb');
+    const s = await makeScenario(t.dir, LENTES_VARIANTS[art]);
+    return { t, s };
+  })();
+  return lentesScenarios[art];
+}
+test.after(async () => {
+  for (const p of Object.values(lentesScenarios)) (await p).t.done();
+});
+const lentesSentinel = () => import(pathToFileURL(join(here, 'defects', 'sentinels', 'lentes.mjs')).href);
+let cleanT3Promise;
+function cleanT3() {
+  cleanT3Promise ??= (async () => {
+    const c = tmp('clean');
+    await makeScenario(c.dir, 'completo');
+    prepareE5Branch(c.dir, { withPlan: true, tasks: 3 });
+    return c;
+  })();
+  return cleanT3Promise;
+}
+test.after(async () => {
+  if (cleanT3Promise) (await cleanT3Promise).done();
+});
+// Imports a file of a tree in a child process (fresh module) and evaluates `expr` over it as `m`.
+function evalIn(dir, file, expr) {
+  const code = 'const m = await import(process.argv[1] + "?v=" + Date.now()); console.log(JSON.stringify(await (async () => (' + expr + '))()));';
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', code, pathToFileURL(join(dir, file)).href], { cwd: dir, encoding: 'utf8' }).trim());
+}
+// Runs the Task 3 test file by absolute path with cwd; true when it passes.
+function t3TestPasses(dir, cwd) {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return spawnSync(process.execPath, ['--test', join(dir, 'tests', 'e5-word-count.test.mjs')], { cwd, env, encoding: 'utf8' }).status === 0;
+}
+
+test('C1: VARIANTS, RELEASE_RUN_VARIANTS and SEEDED list lentes-semeadas-A and -B (class code, set e5-lentes)', () => {
+  for (const art of ['A', 'B']) {
+    const v = LENTES_VARIANTS[art];
+    assert.ok(VARIANTS.includes(v), v);
+    assert.ok(RELEASE_RUN_VARIANTS.includes(v), v);
+    assert.deepEqual(artifactOf(v), { class: 'code', artifact: art, set: 'e5-lentes' });
+    assert.deepEqual(manifestEntries(v).map((e) => e.id), LENTES_IDS[art]);
+  }
+  assert.deepEqual(manifestEntries('codigo-semeado-A').map((e) => e.id), ['C1', 'C2', 'C3', 'C4']);
+  assert.deepEqual(manifestEntries('correcao-semeada-B').map((e) => e.id), ['CR3', 'CG2']);
+});
+
+test('C1: feat/E5 stays at seededCommit and the seeded diff touches only the three files of Task 3', async () => {
+  for (const art of ['A', 'B']) {
+    const { t, s } = await lentesScenario(art);
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5'), s.seededCommit);
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    const changed = git(t.dir, 'diff', '--name-only', s.seededCommit + '~1', s.seededCommit).split('\n').filter(Boolean);
+    assert.ok(changed.length > 0);
+    for (const f of changed) assert.ok(T3_FILES.includes(f), f);
+    assert.deepEqual(s.seeded, LENTES_IDS[art]);
+    assert.equal(s.fixSha, null);
+  }
+});
+
+test('C1: the sandbox suite passes at seededCommit', async () => {
+  for (const art of ['A', 'B']) {
+    const { t } = await lentesScenario(art);
+    git(t.dir, 'checkout', '-q', 'feat/E5');
+    try {
+      const r = runSandboxSuite(t.dir);
+      assert.equal(r.ok, true, r.output);
+    } finally {
+      git(t.dir, 'checkout', '-q', 'main');
+    }
+  }
+});
+
+test('C1: present is true at seededCommit and false at the clean T3 for every SP and QL', async () => {
+  const mod = await lentesSentinel();
+  const c = await cleanT3();
+  for (const art of ['A', 'B']) {
+    const { t, s } = await lentesScenario(art);
+    git(t.dir, 'checkout', '-q', 'feat/E5');
+    try {
+      for (const id of LENTES_IDS[art]) assert.equal(mod.present(t.dir, s.seededCommit, id), true, id);
+    } finally {
+      git(t.dir, 'checkout', '-q', 'main');
+    }
+    for (const id of LENTES_IDS[art]) assert.equal(mod.present(c.dir, 'HEAD', id), false, id + ' (clean)');
+  }
+});
+
+// [id, file, equivalent rewrite (same behaviour, other names and formatting), undone behaviour with similar text]
+const IDX = "export { slugify } from './slugify.mjs';\nexport { truncate } from './truncate.mjs';\n";
+const CLEAN_WC = "// Counts whitespace-separated words; empty or blank text has none.\nexport function wordCount(text) {\n  const t = String(text).trim();\n  return t === '' ? 0 : t.split(/\\s+/).length;\n}\n";
+const BEHAVIOUR = [
+  ['SP1', 'src/index.mjs', IDX + "export {\n  wordCount as countWords,\n} from './word-count.mjs';\n", IDX + "export { wordCount } from './word-count.mjs';\n// export { wordCount as countWords } would rename it\n"],
+  ['SP2', 'src/word-count.mjs', "export function wordCount(input) {\n  if (typeof input !== 'string') {\n    throw new TypeError('expected a string');\n  }\n  const trimmed = String(input).trim();\n  return trimmed === '' ? 0 : trimmed.split(/\\s+/).length;\n}\n", CLEAN_WC + "// if (typeof text !== 'string') throw new TypeError('text must be a string');\n"],
+  ['QL1', 'src/word-count.mjs', "const NONBLANK = /\\S/g;\nexport function wordCount(text) {\n  const t = String(text).trim();\n  if (!NONBLANK.test(t)) return 0;\n  return t.split(/\\s+/).length;\n}\n", CLEAN_WC + '// const NB = /\\S/g; keeps lastIndex between calls\n'],
+  ['SP3', 'src/index.mjs', IDX + "export { wordCount } from './word-count.mjs';\nexport function charCount(s) {\n  return String(s).length;\n}\n", IDX + "export { wordCount } from './word-count.mjs';\n// export const charCount = (text) => String(text).length;\n"],
+  ['SP4', 'src/word-count.mjs', "export function wordCount(x) {\n  const t = String(x ?? '').trim();\n  return t === '' ? 0 : t.split(/\\s+/).length;\n}\n", CLEAN_WC + "// String(text ?? '') would make null blank\n"],
+  ['QL3', 'src/word-count.mjs', "export function wordCount(text) {\n  const t = String(text).replace(/\\s+$/g, '').replace(/^\\s+/g, '');\n  return t === '' ? 0 : t.split(/\\s+/).length;\n}\n", CLEAN_WC + "// String(text).replace(/\\s+$/, '') is quadratic\n"],
+];
+const ART_OF = { SP1: 'A', SP2: 'A', QL1: 'A', QL2: 'A', SP3: 'B', SP4: 'B', QL3: 'B', QL4: 'B' };
+
+test('C1: present is behavioural for SP1 to SP4 and QL1 to QL3, textual only for QL4', async () => {
+  const mod = await lentesSentinel();
+  assert.deepEqual(manifest.filter((e) => e.set === 'e5-lentes' && e.presentBy === 'text').map((e) => e.id), ['QL4']);
+  assert.equal(manifest.filter((e) => e.set === 'e5-lentes' && e.presentBy === 'behaviour').length, 7);
+  for (const [id, file, equivalent, undone] of BEHAVIOUR) {
+    const { t } = await lentesScenario(ART_OF[id]);
+    git(t.dir, 'checkout', '-q', 'feat/E5');
+    try {
+      writeFileSync(join(t.dir, file), equivalent);
+      assert.equal(mod.present(t.dir, 'HEAD', id), true, id + ' (equivalent rewrite)');
+      writeFileSync(join(t.dir, file), undone);
+      assert.equal(mod.present(t.dir, 'HEAD', id), false, id + ' (behaviour undone, similar text)');
+    } finally {
+      git(t.dir, 'checkout', '--', '.');
+      git(t.dir, 'checkout', '-q', 'main');
+    }
+  }
+  // QL2 by running the test from another directory
+  const a = await lentesScenario('A');
+  git(a.t.dir, 'checkout', '-q', 'feat/E5');
+  try {
+    const file = join(a.t.dir, 'tests', 'e5-word-count.test.mjs');
+    const clean = readFileSync(join(here, 'scenario', 'e5', 'code', 't3', 'tests', 'e5-word-count.test.mjs'), 'utf8');
+    writeFileSync(file, "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nconst { wordCount } = await import(`file://${process.cwd().split(String.fromCharCode(92)).join('/')}/src/word-count.mjs`);\n\ntest('wordCount counts whitespace-separated words', () => {\n  assert.equal(wordCount('the quick fox'), 3);\n});\n\ntest('wordCount is 0 for empty text', () => {\n  assert.equal(wordCount(''), 0);\n});\n");
+    assert.equal(mod.present(a.t.dir, 'HEAD', 'QL2'), true, 'QL2 (equivalent rewrite)');
+    writeFileSync(file, clean + '// await import(join(process.cwd(), "src/word-count.mjs")) was dropped\n');
+    assert.equal(mod.present(a.t.dir, 'HEAD', 'QL2'), false, 'QL2 (behaviour undone)');
+  } finally {
+    git(a.t.dir, 'checkout', '--', '.');
+    git(a.t.dir, 'checkout', '-q', 'main');
+  }
+});
+
+test('C1: each artifact has 2 entries with lens spec and 2 with lens quality, all with detectedBy reviewer and sentinel sentinels/lentes.mjs', () => {
+  for (const art of ['A', 'B']) {
+    const own = manifestEntries(LENTES_VARIANTS[art]);
+    assert.equal(own.length, 4);
+    assert.equal(own.filter((e) => e.lens === 'spec').length, 2, art);
+    assert.equal(own.filter((e) => e.lens === 'quality').length, 2, art);
+    for (const e of own) {
+      assert.equal(e.class, 'code');
+      assert.equal(e.set, 'e5-lentes');
+      assert.equal(e.detectedBy, 'reviewer');
+      assert.equal(e.sentinel, 'sentinels/lentes.mjs');
+      assert.ok(['behaviour', 'text'].includes(e.presentBy), e.id);
+      assert.ok(typeof e.mention === 'string' && typeof e.description === 'string' && e.kind && e.file, e.id);
+      assert.doesNotThrow(() => new RegExp(e.mention, 'is'), e.id);
+    }
+  }
+});
+
+test('C1: each artifact has at most 2 seeds per file and touches index, word-count and the test', async () => {
+  const cleanDir = (await cleanT3()).dir;
+  for (const art of ['A', 'B']) {
+    const own = manifestEntries(LENTES_VARIANTS[art]);
+    const byFile = {};
+    for (const e of own) byFile[e.file] = (byFile[e.file] ?? 0) + 1;
+    assert.deepEqual(byFile, { 'src/index.mjs': 1, 'src/word-count.mjs': 2, 'tests/e5-word-count.test.mjs': 1 }, art);
+    const { t, s } = await lentesScenario(art);
+    for (const f of T3_FILES) {
+      const seeded = git(t.dir, 'show', s.seededCommit + ':' + f);
+      assert.notEqual(seeded, readFileSync(join(cleanDir, f), 'utf8').replace(/\r\n/g, '\n').trimEnd(), f + ' is seeded');
+    }
+  }
+});
+
+// At least 3 paraphrases per seed, in the vocabulary of the spec lens and of the quality lens; none copies the manifest description.
+const PARAPHRASES = {
+  SP1: [
+    'the index does not re-export wordCount as the spec says',
+    'index.mjs exports wordCount only under the alias countWords, so wordCount is missing from the index',
+    'src/index.mjs renames the wordCount export to countWords, breaking the re-export of the three functions',
+    'the module re-exports wordCount as countWords, which changes the public API name',
+  ],
+  SP2: [
+    'wordCount throws a TypeError for non-string input, but the spec says non-string input is coerced with String(text)',
+    'src/word-count.mjs rejects a number argument with a TypeError instead of coercing it to a string',
+    'wordCount(5) throws; the design decision says String(text) coercion for non-strings',
+    'the type guard added to wordCount makes it throw on non-string values, an unexpected behaviour change',
+  ],
+  QL1: [
+    'the module-level regex with the g flag keeps lastIndex between calls',
+    "wordCount returns 0 for 'x' after calling it with 'ab': the shared global regex is stateful",
+    'the /\\S/g constant is reused across calls, so test() carries lastIndex state and gives wrong counts',
+    'blank text detection must not depend on previous calls; the global flag regex breaks wordCount results',
+  ],
+  QL2: [
+    'the test imports wordCount through process.cwd(), so it fails when run from another directory',
+    'the word count test builds the import path from the working directory instead of a relative import, a fragile test',
+    'the dynamic import depends on the current directory, so the test is not self-contained',
+    "the test should import ../src/word-count.mjs relatively, not through cwd as the plan's Step 1 implies",
+  ],
+  SP3: [
+    'the index exports an extra charCount function that the spec does not ask for',
+    'src/index.mjs adds charCount, scope creep beyond the three re-exports',
+    "the extra export charCount in the index is outside the plan's file list and scope",
+    'unrequested helper charCount defined in index.mjs is not covered by any test',
+  ],
+  SP4: [
+    "wordCount(null) returns 0 while the spec coerces null with String(text) to the word 'null'",
+    "String(text ?? '') turns null and undefined input into empty text, contradicting the String(text) coercion decision",
+    'src/word-count.mjs treats null and undefined as blank instead of coercing them to strings',
+    'the nullish coalescing in wordCount silently hides null input',
+  ],
+  QL3: [
+    'the regex trim /\\s+$/ is quadratic on long whitespace runs (ReDoS)',
+    'wordCount hangs for 60000 internal spaces because the trailing-whitespace regex backtracks',
+    'src/word-count.mjs replaces trim() with replace(/\\s+$/), which has super-linear complexity',
+    'the trim step must be a plain trim, the regex version is unsafe on hostile input',
+  ],
+  QL4: [
+    'the test asserts that wordCount runs in under 50 ms, a timing assertion that is flaky under load',
+    'tests/e5-word-count.test.mjs uses performance.now() inside the test, so it can fail on a slow machine',
+    'a time-based assertion in the word count test makes it brittle',
+    "the test should only assert the word count of 'the quick fox', not elapsed time",
+  ],
+};
+
+test('C1: each mention matches at least 3 paraphrases of its seed and none of the paraphrases of the other three of its artifact', () => {
+  for (const art of ['A', 'B']) {
+    const own = manifestEntries(LENTES_VARIANTS[art]);
+    for (const e of own) {
+      const rx = new RegExp(e.mention, 'is');
+      assert.ok(PARAPHRASES[e.id].length >= 3, e.id);
+      assert.ok(PARAPHRASES[e.id].every((p) => p !== e.description), e.id + ' copies its description');
+      const hits = PARAPHRASES[e.id].filter((p) => rx.test(e.file + ' ' + p));
+      assert.ok(hits.length >= 3, e.id + ' matches ' + hits.length + ' of its paraphrases');
+      for (const other of own.filter((o) => o.id !== e.id)) {
+        for (const p of PARAPHRASES[other.id]) assert.ok(!rx.test(other.file + ' ' + p), `${e.id} mention matches a paraphrase of ${other.id}: ${p}`);
+      }
+    }
+  }
+});
+
+test('C1: a seed whose anchor the suite flags or present cannot tell is refused with a scenario error', async () => {
+  const t = tmp('sb');
+  try {
+    await assert.rejects(
+      makeScenario(t.dir, 'lentes-semeadas-A', { suite: () => ({ ok: false, output: 'not ok 1' }) }),
+      (e) => /SP1/.test(e.message) && /[0-9a-f]{40}/.test(e.message) && /suite/.test(e.message),
+    );
+  } finally {
+    t.done();
+  }
+  const u = tmp('sb');
+  try {
+    await assert.rejects(makeScenario(u.dir, 'lentes-semeadas-B', { suite: () => ({ ok: true }), presentFn: () => true }), /indistinguivel/);
+  } finally {
+    u.done();
+  }
+  const w = tmp('sb');
+  try {
+    await assert.rejects(makeScenario(w.dir, 'lentes-semeadas-B', { suite: () => ({ ok: true }), presentFn: () => false }), /ausente/);
+  } finally {
+    w.done();
+  }
+});
+
+test('C1: legacy variants are unchanged', async () => {
+  const TREE = 'd44dd835d51589b3196ce8ad0303726beb83b91c'; // codigo-semeado-A and correcao-semeada-A share the seeded tree
+  for (const v of ['codigo-semeado-A', 'correcao-semeada-A']) {
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, v);
+      assert.equal(git(t.dir, 'rev-parse', s.seededCommit + '^{tree}'), TREE, v);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('C1: QL1 leaks lastIndex, QL2 fails outside the repository root and QL3 is quadratic', async () => {
+  const c = await cleanT3();
+  const a = await lentesScenario('A');
+  const b = await lentesScenario('B');
+  for (const x of [a, b]) git(x.t.dir, 'checkout', '-q', 'feat/E5');
+  try {
+    // QL1 (A): 'ab' then 'x' gives 0 in the seeded module, 1 in the clean one
+    assert.equal(evalIn(a.t.dir, 'src/word-count.mjs', "(m.wordCount('ab'), m.wordCount('x'))"), 0);
+    assert.equal(evalIn(c.dir, 'src/word-count.mjs', "(m.wordCount('ab'), m.wordCount('x'))"), 1);
+    // QL2 (A): the test fails from tests/ and passes from the root, at the seeded tree; both pass in the clean tree
+    assert.equal(t3TestPasses(a.t.dir, join(a.t.dir, 'tests')), false);
+    assert.equal(t3TestPasses(a.t.dir, a.t.dir), true);
+    assert.equal(t3TestPasses(c.dir, join(c.dir, 'tests')), true);
+    assert.equal(t3TestPasses(c.dir, c.dir), true);
+    // QL3 (B): 60000 internal spaces
+    const slow = "(() => { const t0 = performance.now(); m.wordCount('a' + ' '.repeat(60000) + 'b'); return performance.now() - t0; })()";
+    assert.ok(evalIn(b.t.dir, 'src/word-count.mjs', slow) > 200);
+    assert.ok(evalIn(c.dir, 'src/word-count.mjs', slow) < 20);
+  } finally {
+    for (const x of [a, b]) git(x.t.dir, 'checkout', '-q', 'main');
+  }
+});
+
+test('C1: quality seeds keep the algorithm of Step 3 and add no test', async () => {
+  const c = await cleanT3();
+  const cleanTests = (readFileSync(join(c.dir, 'tests', 'e5-word-count.test.mjs'), 'utf8').match(/^test\(/gm) || []).length;
+  assert.equal(cleanTests, 2);
+  for (const art of ['A', 'B']) {
+    const { t, s } = await lentesScenario(art);
+    const seededTest = git(t.dir, 'show', s.seededCommit + ':tests/e5-word-count.test.mjs');
+    assert.equal((seededTest.match(/^test\(/gm) || []).length, cleanTests, art);
+    git(t.dir, 'checkout', '-q', 'feat/E5');
+    try {
+      // a fresh module per call, so the lastIndex leak of QL1 does not show: the algorithm itself is the one of the plan
+      for (const input of ['the quick fox', '', '   ', ' a  b ']) {
+        const seededResult = evalIn(t.dir, 'src/word-count.mjs', `m.wordCount(${JSON.stringify(input)})`);
+        const cleanResult = evalIn(c.dir, 'src/word-count.mjs', `m.wordCount(${JSON.stringify(input)})`);
+        assert.equal(seededResult, cleanResult, art + ' ' + JSON.stringify(input));
+      }
+      const wc = readFileSync(join(t.dir, 'src', 'word-count.mjs'), 'utf8');
+      assert.match(wc, /\.trim\(\)|replace\(\/\^\\s\+\//, art + ' trims');
+      assert.match(wc, /split\(\/\\s\+\//, art + ' splits on \\s+');
+      assert.match(wc, /=== ''|test\(t\)/, art + ' returns 0 for blank text');
+    } finally {
+      git(t.dir, 'checkout', '-q', 'main');
+    }
+  }
 });

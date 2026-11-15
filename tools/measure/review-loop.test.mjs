@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPure, checkLoopWorkflow, buildLoopScript, buildTaskLoopScript, buildFinalLoopScript, STAGE_LOOP, LOOP_RM, readArm, UsageError } from './run-batch.mjs';
@@ -402,4 +403,147 @@ test('B3: refutou-tudo', async () => {
   assert.ok(!r.seq.some((l) => /fix1/.test(l)));
   assert.equal(r.result.ok, true);
   assert.deepEqual(r.result.verify, { calls: 1, refutedByRound: { 1: 1 } });
+});
+
+// ---- E27 C2 (T1): frozen task loop script of correcao-semeada-A, both arms (LF), before the lenses branch exists ----
+const sha256Lf = (t) => createHash('sha256').update(t.replace(/\r\n/g, '\n')).digest('hex');
+const GOLDEN_TASK_LOOP_ATUAL = 'ad16e5750dcc10842ed067a61ac510aca4dde29e48ddf673a615ab059079b653';
+const GOLDEN_TASK_LOOP_RESTRITA = 'dc937b34850b7ba464e1fe6f222566c9a8a4e7c497a51f6a3eee131cd175d8cc';
+function frozenTaskLoopScript(restricted) {
+  const sb = 'D:/work/correcao-semeada-A-1';
+  const scenario = { dir: sb, seededCommit: 'a'.repeat(40), fixSha: 'b'.repeat(40) };
+  const fixPrompt = `In Task 3 of the plan ${sb}/docs/plans/plan.md, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`;
+  const pure = 'const PURE_FIXTURE = 1\nfunction runReviewLoop() {}\nfunction taskIssues(r) { return r.issues }';
+  return buildTaskLoopScript({ pure, scenario, opts: { restricted, reviewModel: 'sonnet', pluginRoot: 'D:/cfg/plugins/productivity-tools', work: 'D:/work', title: 'wordCount and the index', fixPrompt } });
+}
+
+test('C2: the task loop script of correcao-semeada-A, arm atual, is frozen (golden)', () => {
+  const text = frozenTaskLoopScript(false);
+  assert.equal(sha256Lf(text), GOLDEN_TASK_LOOP_ATUAL, text);
+});
+
+test('C2: the task loop script of correcao-semeada-A, arm restrita, is frozen (golden)', () => {
+  const text = frozenTaskLoopScript(true);
+  assert.equal(sha256Lf(text), GOLDEN_TASK_LOOP_RESTRITA, text);
+});
+
+// ---- E27 C2 (T4): the lenses task loop script (lentes-semeadas: atual runs spec then quality, unica runs one review) ----
+const LENS_FIX = `In Task 3 of the plan ${SB}/docs/plans/plan.md, fix the {{kind}} problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`;
+const lensScenario = { dir: SB, seededCommit: SEEDED };
+const lensScript = (arm = 'atual', over = {}) =>
+  buildTaskLoopScript({
+    pure: checkLoopWorkflow(WF, 'task-review', { lenses: true }),
+    scenario: lensScenario,
+    opts: { restricted: false, kinds: arm === 'unica' ? ['review'] : ['spec', 'quality'], single: arm === 'unica', reviewModel: 'sonnet', pluginRoot: PLUGIN, work: WORK, title: 'Word count', fixPrompt: LENS_FIX, ...over },
+  });
+const vrev = (issues, spec = 'pass', quality = 'pass', verdicts = []) => ({ ...rev(issues, verdicts), spec, quality });
+
+test('C2: the lenses loop script carries the pure block byte for byte, compiles and stays under 200,000 characters on the real workflow', () => {
+  for (const arm of ['atual', 'unica']) {
+    const text = lensScript(arm);
+    assert.ok(text.includes('\n' + PURE + '\n'), arm);
+    assert.ok(text.startsWith('export const meta = {'), arm);
+    assert.ok(text.length <= 200000, `${arm}: ${text.length}`);
+    assert.doesNotMatch(text, /^import /m);
+    new AsyncFunction('agent', text.replace('export const meta', 'const meta'));
+    assert.match(text, /runReviewLoop\(H_env, /);
+    assert.ok(text.includes('const H_KINDS = ' + JSON.stringify(arm === 'unica' ? ['review'] : ['spec', 'quality'])), arm);
+    assert.ok(text.includes(`const H_TR = {"restricted":false,"single":${arm === 'unica'}}`), arm);
+  }
+  // the lenses branch needs no fixSha, and still refuses a missing review model
+  assert.throws(() => lensScript('atual', { reviewModel: undefined }), UsageError);
+});
+
+test('C2: atual runs the spec loop, then the quality loop, with Mode: spec. and Mode: quality.', async () => {
+  const r = await runTask(lensScript('atual'), [rev([found('F1')]), rev([]), rev([])]);
+  assert.deepEqual(r.seq, ['E5:t3:spec1', 'E5:t3:spec-fix1', 'E5:t3:spec2', 'E5:t3:quality1']);
+  for (const l of ['E5:t3:spec1', 'E5:t3:spec2', 'E5:t3:quality1']) {
+    const c = byLabel(r, l);
+    assert.equal(c.agentType, 'productivity-tools:task-reviewer', l);
+    assert.equal(c.model, 'sonnet', l);
+    assert.equal(c.effort, 'medium', l);
+  }
+  assert.ok(byLabel(r, 'E5:t3:spec1').prompt.includes('Mode: spec. Task 3 ("Word count")'));
+  assert.ok(byLabel(r, 'E5:t3:quality1').prompt.includes('Mode: quality. Task 3 ("Word count")'));
+  assert.equal(r.result.ok, true);
+  assert.equal(r.result.loops.length, 2);
+  assert.deepEqual(r.result.loops.map((l) => [l.kind, l.ok]), [['spec', true], ['quality', true]]);
+});
+
+test('C2: when the spec loop stops, no quality label is called', async () => {
+  const r = await runTask(lensScript('atual'), [rev([found('F1')]), rev([found('F1')]), rev([found('F1')])]);
+  assert.deepEqual(r.seq, ['E5:t3:spec1', 'E5:t3:spec-fix1', 'E5:t3:spec2', 'E5:t3:spec-fix2', 'E5:t3:spec3']);
+  assert.ok(!r.seq.some((l) => /quality/.test(l)));
+  assert.equal(r.result.ok, false);
+  assert.equal(r.result.loops.length, 1);
+  assert.deepEqual([r.result.loops[0].kind, r.result.loops[0].ok, r.result.loops[0].stop], ['spec', false, 'conteudo']);
+});
+
+test('C2: unica runs one loop with Mode: review. and labels E5:t3:review<r>', async () => {
+  const r = await runTask(lensScript('unica'), [vrev([found('F1')], 'fail', 'pass'), vrev([])]);
+  assert.deepEqual(r.seq, ['E5:t3:review1', 'E5:t3:review-fix1', 'E5:t3:review2']);
+  assert.ok(byLabel(r, 'E5:t3:review1').prompt.includes('Mode: review. Task 3 ("Word count")'));
+  assert.ok(!r.seq.some((l) => /spec|quality/.test(l)));
+  assert.equal(r.result.ok, true);
+  assert.deepEqual(r.result.loops.map((l) => [l.kind, l.ok]), [['review', true]]);
+});
+
+test('C2: a unica review with quality fail and only a minor finding gets the synthetic finding and a fix', async () => {
+  const r = await runTask(lensScript('unica'), [vrev([minor], 'pass', 'fail'), vrev([])]);
+  assert.deepEqual(r.seq, ['E5:t3:review1', 'E5:t3:review-fix1', 'E5:t3:review2']);
+  const fx = byLabel(r, 'E5:t3:review-fix1');
+  assert.ok(fx.prompt.includes('single review'), fx.prompt);
+  assert.ok(fx.prompt.includes('fix the review problems below'), fx.prompt);
+  // the atual arm never adds the synthetic finding: the same review ends the loop at once
+  const a = await runTask(lensScript('atual'), [rev([minor])]);
+  assert.deepEqual(a.seq, ['E5:t3:spec1', 'E5:t3:quality1']);
+});
+
+test('C2: fix1 is the HEAD fixer in sonnet with the kind in its text, and a BLOCKED fix stops the loop', async () => {
+  const r = await runTask(lensScript('atual'), [rev([found('F1')]), rev([])]);
+  const f1 = byLabel(r, 'E5:t3:spec-fix1');
+  assert.deepEqual([f1.model, f1.effort], ['sonnet', 'medium']);
+  assert.ok(f1.prompt.includes('fix the spec problems below'), f1.prompt);
+  assert.ok(f1.prompt.includes('1. [critical/defeito] src/a.mjs [F1] [fab] F1'), f1.prompt);
+  assert.ok(!/\{\{\w+\}\}/.test(f1.prompt), f1.prompt);
+  assert.ok(f1.schema.properties.status && f1.schema.properties.summary && f1.schema.properties.checks);
+  assert.ok(!r.calls.some((c) => c.model === 'haiku'), 'no haiku applier');
+  // the next review reads the fixer's own summary and checks (H_cur)
+  const p2 = byLabel(r, 'E5:t3:spec2').prompt;
+  assert.ok(p2.includes('Summary: applied') && p2.includes('$ node --test\nexit 0\npass 7'), p2);
+  // the quality fixer names its kind
+  const q = await runTask(lensScript('atual'), [rev([]), rev([found('F2')]), rev([])]);
+  assert.ok(byLabel(q, 'E5:t3:quality-fix1').prompt.includes('fix the quality problems below'));
+  // BLOCKED stops the loop, and the quality loop never starts
+  const b = await runTask(lensScript('atual'), [rev([found('F1')])], { 'E5:t3:spec-fix1': { status: 'BLOCKED', summary: 'nothing to do', checks: [] } });
+  assert.deepEqual(b.seq, ['E5:t3:spec1', 'E5:t3:spec-fix1']);
+  assert.equal(b.result.ok, false);
+  assert.deepEqual(b.result.loops.map((l) => [l.kind, l.ok, l.stop]), [['spec', false, 'conteudo']]);
+});
+
+test('C2: a repeated finding escalates the fixer and the reviewer to opus (quality loop and review loop)', async () => {
+  const q = await runTask(lensScript('atual'), [rev([]), rev([found('F1')]), rev([found('F1')]), rev([found('F1')])]);
+  assert.deepEqual(q.seq, ['E5:t3:spec1', 'E5:t3:quality1', 'E5:t3:quality-fix1', 'E5:t3:quality2', 'E5:t3:quality-fix2', 'E5:t3:quality3']);
+  assert.equal(byLabel(q, 'E5:t3:quality2').model, 'sonnet');
+  assert.equal(byLabel(q, 'E5:t3:quality-fix2').model, 'opus');
+  assert.equal(byLabel(q, 'E5:t3:quality3').model, 'opus');
+  assert.equal(q.result.ok, false);
+  assert.deepEqual(q.result.loops.map((l) => [l.kind, l.ok]), [['spec', true], ['quality', false]]);
+  const u = await runTask(lensScript('unica'), [vrev([found('F1')], 'pass', 'fail'), vrev([found('F1')], 'pass', 'fail'), vrev([found('F1')], 'pass', 'fail')]);
+  assert.deepEqual(u.seq, ['E5:t3:review1', 'E5:t3:review-fix1', 'E5:t3:review2', 'E5:t3:review-fix2', 'E5:t3:review3']);
+  assert.equal(byLabel(u, 'E5:t3:review-fix2').model, 'opus');
+  assert.equal(byLabel(u, 'E5:t3:review3').model, 'opus');
+  assert.equal(u.result.kind, 'conteudo');
+});
+
+test('C2: the lenses script returns ok, kind, msg, loops with the accepted risks of each loop, reviews and accepted', async () => {
+  // a non hard finding (fora-do-escopo, important) is accepted as a risk and the loop approves
+  const risk = { severity: 'important', category: 'fora-do-escopo', description: '[fab] out of scope', file: 'src/x.mjs' };
+  const r = await runTask(lensScript('atual'), [rev([risk]), rev([])]);
+  assert.equal(r.result.ok, true);
+  assert.equal(r.result.loops[0].accepted.length, 1);
+  assert.equal(r.result.loops[1].accepted.length, 0);
+  assert.equal(r.result.accepted.length, 1);
+  assert.equal(r.result.reviews.length, 2);
+  assert.ok('kind' in r.result && 'msg' in r.result);
 });

@@ -209,7 +209,8 @@ export function rolesByLabel(run, cliCostUsd) {
   const out = { review: emptyRole(), fix: emptyRole(), verify: emptyRole(), other: emptyRole() };
   for (const [name, role] of Object.entries(run.roles)) {
     // B3: verify (the adversarial check of the final stage) is its own bucket, ahead of review, so its cost comes out apart
-    const bucket = name.includes('fix') ? 'fix' : name.includes('verify') ? 'verify' : name.includes('review') ? 'review' : 'other';
+    // E27 C3: E5:t3:spec1 and E5:t3:quality2 have no "review" in the label but are task reviews (a "-fix" label went to fix above)
+    const bucket = name.includes('fix') ? 'fix' : name.includes('verify') ? 'verify' : name.includes('review') || /:t\d+:(spec|quality)\d+b?$/.test(name) ? 'review' : 'other';
     addTo(out[bucket], role);
   }
   return { ...out, session: { cliCostUsd, transcriptCostUsd: run.main.cost ?? null } };
@@ -568,7 +569,7 @@ function nativeCounts(attempts) {
 }
 
 // Loop batches: outcomes after the 1st fix, reviews per attempt, ok/stopped and the unverified after-fix SHAs (valid attempts).
-function loopAggregate(attempts, { seededFix = false, singleWaveArm = false } = {}) {
+function loopAggregate(attempts, { seededFix = false, singleWaveArm = false, lenses = false, kinds = [] } = {}) {
   const valid = attempts.filter((a) => a.status === 'valid' && a.loop);
   const reviews = {};
   for (const a of valid) reviews[a.loop.reviews] = (reviews[a.loop.reviews] ?? 0) + 1;
@@ -577,6 +578,25 @@ function loopAggregate(attempts, { seededFix = false, singleWaveArm = false } = 
     loopSummary: { reviews, ok: valid.filter((a) => a.loop.ok).length, stopped: valid.filter((a) => !a.loop.ok).length },
     afterFirstFixUnverified: valid.filter((a) => a.afterFirstFix && !a.afterFirstFix.verified).length,
   };
+  if (lenses) {
+    // E27 C3: the counters of the lenses batch, apart from validity (the outcome itself comes from the sentinels, DEC-737)
+    const lensOf = lensOfSeeds();
+    const n = (f) => valid.reduce((t, a) => t + f(a), 0);
+    const costs = valid.map((a) => a.costUsd).filter((c) => typeof c === 'number');
+    return {
+      ...out,
+      failRiscoAceito: n((a) => (a.failRiscoAceito === true ? 1 : 0)),
+      bloqueadoMisto: n((a) => (a.bloqueadoMisto === true ? 1 : 0)),
+      paradoSoSintetico: n((a) => (a.paradoSoSintetico === true ? 1 : 0)),
+      sinteticoGerado: n((a) => a.sinteticoGerado ?? 0),
+      veredictoAusente: n((a) => a.veredictoAusente ?? 0),
+      capturadoSemMencao: n((a) => a.capturadoSemMencao ?? 0),
+      capturadoPorMatriz: lensMatrix(valid, kinds, lensOf),
+      outcomesByLens: lensOutcomesBy(valid, lensOf),
+      bloqueouSintetico: attempts.filter((a) => a.status === 'invalid' && a.reason === 'bloqueou-sintetico').length,
+      costPerValid: costs.length ? costs.reduce((t, c) => t + c, 0) / costs.length : null,
+    };
+  }
   if (!seededFix) return out;
   // B4: the auxiliary mention counters of the seeded correction (the outcome itself comes from the sentinels, DEC-737).
   let capturadoSemMencao = 0;
@@ -639,12 +659,18 @@ export function recountWithoutMention(completa, restrita) {
   };
 }
 
+// E27 C3: thresholds of the stops of the lenses batch (design C3/C4): more than 2 bloqueou-sintetico, 2 laco-divergente, 2 semente-ausente, more than 3 invalid.
+const LENS_STOP = { bloqueouSintetico: 2, lacoDivergente: 2, sementeAusente: 2, invalidas: 3 };
+
 // B4: the reasons that end a batch of attempts: 2 correcao-semeada-ausente, 2 laco-divergente, or more than 2 residues without a parent finding.
-export function batchStopReason(attempts) {
+// E27 C3 (lenses): also more than 2 bloqueou-sintetico and 2 semente-ausente, per invocation (armTotals applies the same stops to A + B).
+export function batchStopReason(attempts, { lenses = false } = {}) {
   const invalid = (r) => attempts.filter((a) => a.status === 'invalid' && a.reason === r).length;
   if (invalid('correcao-semeada-ausente') >= 2) return 'correcao-semeada-ausente';
   if (invalid('laco-divergente') >= 2) return 'laco-divergente';
   if (attempts.filter((a) => a.status === 'valid').reduce((n, a) => n + (a.residuoSemAchadoPai ?? 0), 0) > 2) return 'residuoSemAchadoPai';
+  if (lenses && invalid('bloqueou-sintetico') > LENS_STOP.bloqueouSintetico) return 'bloqueou-sintetico';
+  if (lenses && invalid('semente-ausente') >= LENS_STOP.sementeAusente) return 'semente-ausente';
   // DEC-725: more than 3 invalid attempts end the batch (refutou-tudo is a measured result of the adversarial arm, not a failure)
   if (attempts.filter((a) => a.status === 'invalid' && a.reason !== 'refutou-tudo').length > 3) return 'invalidas';
   return null;
@@ -730,7 +756,7 @@ function parseClaudeJson(stdout) {
 const STAGES = {
   'spec-review': { variant: /^spec-(semeado|nativo)-[AB]$/, fix: 'spec-fix', label: 'E5:spec-review', blobKey: 'measuredSpecBlob', artifact: 'spec' },
   'plan-review': { variant: /^plano-(semeado|nativo)-[AB]$/, fix: 'plan-fix', label: 'E5:plan-review', blobKey: 'measuredPlanBlob', artifact: 'plan' },
-  'task-review': { variant: /^(codigo-semeado-[AB]|correcao-semeada-[AB])$/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, artifact: null },
+  'task-review': { variant: /^(codigo-semeado-[AB]|correcao-semeada-[AB]|lentes-semeadas-[AB])$/, fix: 'task-fix', label: 'E5:task-review', blobKey: null, artifact: null },
   'final-review': { variant: /^correcao-semeada-[AB]$/, fix: 'final-fix', label: 'E5:final-review', blobKey: null, artifact: null },
 };
 const FINAL_LABEL = 'E5:final-review';
@@ -878,6 +904,10 @@ const FINAL_SLICE_LITERALS = ['FR.adversarial === true && bl.length', "card.crit
 const TASK_SLICE_LITERALS = ['byId: true })', 'taskReview: TR', 'taskIssues(r, cx)', 'revAgent(buildTaskReviewPrompt('];
 // The restricted switch is read before the call (const TR = ...), so it is searched in the whole workflow.
 const TASK_RESTRICTED_LITERAL = 'tr.restricted === true';
+// E27 C2 (lentes-semeadas-* only): the single-review switch and its loop are read before the call, so they are searched in the whole
+// workflow; the synthetic finding of taskIssues is searched only inside function taskIssues of the pure block.
+const TASK_SINGLE_LITERALS = ["TR.single ? ['review'] : ['spec', 'quality']", 'single: tr.single === true'];
+const TASK_SINGLE_ISSUES_LITERAL = '(c.taskReview || {}).single';
 const MAXFIX_LITERAL = 'intArg(A.maxFixRounds, 2, 0)';
 const REVIEW_OPTS_LITERAL = "model: 'opus', effort: 'medium' }";
 const FIX_OPTS_LITERAL = 'model: tier, effort: effortFor(tier) }';
@@ -895,7 +925,7 @@ export function extractPure(workflowText) {
 }
 
 // Refuses a measured workflow the loop harness would not reproduce; returns the pure block.
-export function checkLoopWorkflow(workflowText, stage) {
+export function checkLoopWorkflow(workflowText, stage, { lenses = false } = {}) {
   const sc = STAGE_CALL[stage];
   if (!sc) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review (got ${stage})`);
   const text = lf(workflowText);
@@ -911,6 +941,14 @@ export function checkLoopWorkflow(workflowText, stage) {
     for (const lit of TASK_SLICE_LITERALS) if (!slice.includes(lit)) throw new UsageError(`--rounds loop: the task review loop of the measured workflow no longer has ${lit} (task slice drift)`);
     if (!text.includes(TASK_RESTRICTED_LITERAL)) throw new UsageError(`--rounds loop: ${TASK_RESTRICTED_LITERAL} is gone from the measured workflow (the restricted switch may have changed)`);
     for (const fn of ['restrictedRound', 'taskIssues']) if (!new RegExp(`^function ${fn}\\(`, 'm').test(pure)) throw new UsageError(`--rounds loop: the measured workflow has no function ${fn} in its pure block`);
+    if (lenses) {
+      for (const lit of TASK_SINGLE_LITERALS) if (!text.includes(lit)) throw new UsageError(`--rounds loop on lentes-semeadas: ${lit} is gone from the measured workflow (the single review switch may have changed)`);
+      const at = pure.indexOf('function taskIssues(');
+      const rest = pure.slice(at + 1);
+      const end = rest.search(/\n(?:async )?function /);
+      const body = at < 0 ? '' : pure.slice(at, end < 0 ? pure.length : at + 1 + end);
+      if (!body.includes(TASK_SINGLE_ISSUES_LITERAL)) throw new UsageError(`--rounds loop on lentes-semeadas: ${TASK_SINGLE_ISSUES_LITERAL} is gone from function taskIssues of the measured workflow (the synthetic finding may have changed)`);
+    }
     return pure;
   }
   if (stage === 'final-review') {
@@ -996,6 +1034,7 @@ export function taskApplyPrompt(sb, fixSha) {
 export function buildTaskLoopScript({ pure, scenario, opts }) {
   const opt = stageLoopFor('task-review', opts.reviewModel);
   if (!opt) throw new UsageError(`--stage task-review --rounds loop needs --review-model (got "${opts.reviewModel ?? ''}")`);
+  if (Array.isArray(opts.kinds)) return buildLensesLoopScript({ pure, scenario, opts, opt });
   if (!scenario?.fixSha || !scenario?.seededCommit) throw new UsageError('--stage task-review --rounds loop needs a scenario with a seeded commit and a fixSha (correcao-semeada-A/B)');
   const sb = slash(scenario.dir);
   const work = slash(opts.work).replace(/\/+$/, '');
@@ -1052,6 +1091,70 @@ export function buildTaskLoopScript({ pure, scenario, opts }) {
     "const H_truth = r => reviewTruth({ ...r, issues: taskIssues(r, H_cx) }, 1, H_SEEDED + '~1..HEAD')",
     "const H_result = await runReviewLoop(H_env, 'spec', H_review, H_fix, H_truth, H_OPT)",
     'return { ok: H_result.ok, kind: H_result.kind || null, msg: H_result.msg || null, reviews: H_env.reviews, accepted: H_accepted, restricted: H_restricted }',
+    '',
+  ].join('\n');
+  if (text.length > LOOP_SCRIPT_LIMIT) throw new UsageError(`--rounds loop: the generated script has ${text.length} characters, over the 200,000 limit`);
+  return text;
+}
+
+// E27 C2: the task loop of lentes-semeadas-*. The seed is planted before the 1st review (no applier, no fixSha); each kind of
+// opts.kinds runs its own runReviewLoop in series over the same H_cur, as the product does (['spec', 'quality'] or ['review'] with single).
+// scenario: { dir, seededCommit }. opts: { kinds, single, reviewModel, pluginRoot, work, title, fixPrompt (with {{kind}} and {{issues}}) }.
+function buildLensesLoopScript({ pure, scenario, opts, opt }) {
+  if (!scenario?.seededCommit) throw new UsageError('--stage task-review --rounds loop on lentes-semeadas needs a scenario with a seeded commit');
+  const sb = slash(scenario.dir);
+  const fix = opts.fixPrompt.includes('{{issues}}') ? opts.fixPrompt : opts.fixPrompt + '\n{{issues}}';
+  const text = [
+    'export const meta = {',
+    "  name: 'review-only',",
+    "  description: 'Measurement harness: the task review loops (runReviewLoop of the measured workflow) on seeded spec and quality defects.',",
+    "  phases: [{ title: 'Review', detail: 'task reviewer and fixers, in rounds' }],",
+    '}',
+    pure,
+    `const H_KINDS = ${JSON.stringify(opts.kinds)}`,
+    `const H_TR = ${JSON.stringify({ restricted: false, single: opts.single === true })}`,
+    `const H_SB = ${JSON.stringify(sb)}`,
+    `const H_SEEDED = ${JSON.stringify(scenario.seededCommit)}`,
+    `const H_TITLE = ${JSON.stringify(opts.title)}`,
+    `const H_PLAN = ${JSON.stringify(E5_PATHS.plan)}`,
+    `const H_SPEC = ${JSON.stringify(E5_PATHS.spec)}`,
+    `const H_PLUGIN = ${JSON.stringify(slash(opts.pluginRoot))}`,
+    `const H_RM = ${JSON.stringify(opt.reviewModel)}`,
+    `const H_FIX = ${JSON.stringify(fix)}`,
+    `const H_SCHEMA_TASK = ${JSON.stringify(taskReviewSchema())}`,
+    `const H_SCHEMA_FIX = ${JSON.stringify(TASK_FIX_SCHEMA)}`,
+    `const H_OPT = ${JSON.stringify({ tier: opt.tier, reviewModel: opt.reviewModel, byId: true })}`,
+    'const H_accepted = []',
+    "const H_cur = { summary: 'Task resumed from a previous run: implemented in the seeded commit.', checks: [] }",
+    `const H_env = { maxFix: ${opt.maxFix}, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: (s, iss) => { H_accepted.push(...iss) } }`,
+    'const H_ctxFor = extra => ({',
+    "  base: 'You work in the sandbox ' + H_SB + '. Do NOT perform any external effect.', envFacts: null, baseline: null, E: 'E5', target: 'main',",
+    "  wt: H_SB, planPath: H_PLAN, specPath: H_SPEC, locks: [], start: H_SEEDED + '~1', prev: null, taskReview: H_TR, pluginRoot: H_PLUGIN, ...extra })",
+    'const H_review = (kind, setCx) => (round, prev, rvModel, was) => {',
+    '  const cx = H_ctxFor({ round, prev, was })',
+    '  setCx(cx)',
+    "  return agent(buildTaskReviewPrompt(cx, { n: 3, title: H_TITLE }, kind, H_cur), { agentType: 'productivity-tools:task-reviewer', schema: H_SCHEMA_TASK, label: 'E5:t3:' + kind + round, phase: 'Review', model: rvModel || H_RM, effort: effortFor(rvModel || H_RM) })",
+    '}',
+    'const H_fix = kind => async (iss, k, tier) => {',
+    "  const fx = await agent(H_FIX.split('{{kind}}').join(kind).split('{{issues}}').join(fmt(iss)), { label: 'E5:t3:' + kind + '-fix' + k, phase: 'Review', model: tier, effort: effortFor(tier), schema: H_SCHEMA_FIX })",
+    '  if (!fx) return null',
+    '  if (fx.checks) H_cur.checks = fx.checks',
+    '  if (fx.summary) H_cur.summary = fx.summary',
+    "  return fx.status === 'BLOCKED' ? { status: 'BLOCKED', summary: fx.summary } : { status: 'DONE' }",
+    '}',
+    'const H_loops = []',
+    'const H_acceptedAll = []',
+    'let H_last = { ok: true }',
+    'for (const kind of H_KINDS) {',
+    '  let cx = null',
+    "  const r = await runReviewLoop(H_env, 'T3:' + kind, H_review(kind, c => { cx = c }), H_fix(kind), r => reviewTruth({ ...r, issues: taskIssues(r, cx) }, 1, H_SEEDED + '~1..HEAD'), H_OPT)",
+    '  const accepted = H_accepted.splice(0)',
+    '  H_acceptedAll.push(...accepted)',
+    '  H_loops.push({ kind, ok: r.ok, stop: r.kind || null, accepted })',
+    '  H_last = r',
+    '  if (!r.ok) break',
+    '}',
+    'return { ok: H_last.ok, kind: H_last.kind || null, msg: H_last.msg || null, loops: H_loops, reviews: H_env.reviews, accepted: H_acceptedAll }',
     '',
   ].join('\n');
   if (text.length > LOOP_SCRIPT_LIMIT) throw new UsageError(`--rounds loop: the generated script has ${text.length} characters, over the 200,000 limit`);
@@ -1161,7 +1264,7 @@ export function assertArmCommits(review, fixArm, fixCheck) {
   if (fixCheck && !fixCheck.source?.commit) throw new UsageError('the fix-check arm template has no source commit');
 }
 
-function prepareHarness(opts) {
+export function prepareHarness(opts) {
   const { stage } = opts;
   if (!stage) {
     if (opts.rounds !== undefined) throw new UsageError('--rounds only applies with --stage spec-review or plan-review');
@@ -1183,7 +1286,12 @@ function prepareHarness(opts) {
   // restrita and adversarial are switches of the product's own prompts, not arm files: they run the current arm (h.base).
   if (arm === 'restrita' && stage !== 'task-review') throw new UsageError(`--arm restrita only applies to --stage task-review (got --stage ${stage})`);
   if (arm === 'adversarial' && stage !== 'final-review') throw new UsageError(`--arm adversarial only applies to --stage final-review (got --stage ${stage})`);
-  const base = arm === 'atual' || arm === 'restrita' || arm === 'adversarial' ? 'atual' : arm;
+  // E27 C2: unica is the single review of E28 (taskReview.single) on lentes-semeadas-*; like restrita it is a switch of the product's own prompts.
+  const lenses = stage === 'task-review' && /^lentes-semeadas-/.test(opts.variant);
+  if (arm === 'unica' && !lenses) throw new UsageError(`--arm unica only applies to --stage task-review on lentes-semeadas-A/B (got --stage ${stage} on ${opts.variant})`);
+  if (lenses && arm === 'restrita') throw new UsageError(`--arm restrita does not apply to ${opts.variant}: restricted plus single review is out of scope (DEC-768); use --arm atual or unica`);
+  if (lenses && arm !== 'atual' && arm !== 'unica') throw new UsageError(`--stage task-review on ${opts.variant} takes --arm atual or unica (got "${arm}")`);
+  const base = arm === 'atual' || arm === 'restrita' || arm === 'adversarial' || arm === 'unica' ? 'atual' : arm;
   const current = base === 'atual';
   const taskFix = stage === 'task-review' && /^correcao-semeada-/.test(opts.variant); // the task loop measures the seeded correction
   if (taskFix && arm !== 'atual' && arm !== 'restrita') throw new UsageError(`--stage task-review on ${opts.variant} takes --arm atual or restrita (got "${arm}")`);
@@ -1193,13 +1301,13 @@ function prepareHarness(opts) {
   if (arm === 'perguntas' && stage !== 'spec-review') throw new UsageError(`--arm perguntas only applies to --stage spec-review (got --stage ${stage})`);
   const finalFix = stage === 'final-review'; // B3: the final stage is only the loop on the seeded correction
   if (finalFix && arm !== 'atual' && arm !== 'adversarial') throw new UsageError(`--stage final-review takes --arm atual or adversarial (got "${arm}")`);
-  const rounds = opts.rounds ?? (taskFix || finalFix ? 'loop' : 'single');
+  const rounds = opts.rounds ?? (taskFix || finalFix || lenses ? 'loop' : 'single');
   if (rounds !== 'single' && rounds !== 'loop') throw new UsageError(`--rounds must be loop or single (got "${rounds}")`);
   if (stage === 'task-review') {
     // B2: the loop is the arm comparison on the seeded correction; the legacy seeded code stays single round (golden).
-    if (rounds === 'loop' && !taskFix) throw new UsageError(`--rounds loop on --stage task-review only applies to correcao-semeada-A/B (got "${opts.variant}")`);
+    if (rounds === 'loop' && !taskFix && !lenses) throw new UsageError(`--rounds loop on --stage task-review only applies to correcao-semeada-A/B or lentes-semeadas-A/B (got "${opts.variant}")`);
     if (arm === 'restrita' && rounds !== 'loop') throw new UsageError('--arm restrita only applies with --rounds loop (the restricted round exists from the 2nd review on)');
-    if (rounds === 'single' && taskFix) throw new UsageError(`--stage task-review on ${opts.variant} only runs with --rounds loop`);
+    if (rounds === 'single' && (taskFix || lenses)) throw new UsageError(`--stage task-review on ${opts.variant} only runs with --rounds loop`);
   } else if (finalFix) {
     if (rounds !== 'loop') throw new UsageError(`--stage final-review only runs with --rounds loop (got "${rounds}")`);
   } else if (rounds === 'loop' && (!STAGE_LOOP[stage] || !current)) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review with --arm atual (got --stage ${stage} --arm ${arm})`);
@@ -1224,8 +1332,10 @@ function prepareHarness(opts) {
   const reviewEffort = reviewModel ? reviewEffortFor(reviewModel) : null;
   const reviewer = reviewModel ? { model: reviewModel, effort: reviewEffort } : {};
   const armCommits = { review: review?.source?.commit ?? null, fix: fixArm?.source?.commit ?? null, fixCheck: fixCheck?.source?.commit ?? null };
-  const taskReview = stage === 'task-review' && rounds === 'loop' ? { restricted: arm === 'restrita' } : null;
-  return { stage, arm, base, rounds, st, review, fixArm, fixCheck, reviewer, harness: { stage, arm, armSource, workflowCommit, armCommits, ...(reviewModel ? { reviewModel, reviewEffort } : {}), rounds, ...(taskReview ? { taskReview } : {}), ...(finalFix ? { finalReview: { adversarial: arm === 'adversarial' } } : {}) } };
+  // correcao-semeada-* keeps { restricted } alone (its aggregate does not change); lentes-semeadas-* adds the single switch.
+  const taskReview = stage === 'task-review' && rounds === 'loop' ? { restricted: arm === 'restrita', ...(lenses ? { single: arm === 'unica' } : {}) } : null;
+  const kinds = lenses ? (arm === 'unica' ? ['review'] : ['spec', 'quality']) : null;
+  return { stage, arm, base, rounds, st, review, fixArm, fixCheck, reviewer, lenses, kinds, harness: { stage, arm, armSource, workflowCommit, armCommits, ...(reviewModel ? { reviewModel, reviewEffort } : {}), rounds, ...(taskReview ? { taskReview } : {}), ...(kinds ? { kinds } : {}), ...(finalFix ? { finalReview: { adversarial: arm === 'adversarial' } } : {}) } };
 }
 
 const slash = (p) => p.replace(/\\/g, '/');
@@ -1269,7 +1379,8 @@ function harnessPrompts(h, scenario) {
       ...(h.rounds === 'loop' ? { title } : {}), // the loop script builds each round's prompt itself, from the pure block
       agentType: 'productivity-tools:task-reviewer',
       reviewPrompt: loadPure().buildTaskReviewPrompt(ctx, { n: 3, title }, 'spec', impl),
-      fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
+      // E27 C2: on lentes-semeadas-* the script fills {{kind}} per loop; the other branches keep the text of today (goldens)
+      fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the ${h.lenses ? '{{kind}}' : 'spec'} problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
     };
   }
   const reviewBody = fill(h.review.text, vars).trimEnd();
@@ -1504,7 +1615,7 @@ function harnessValidity(h, variant, journal, scenario) {
     // the harness has no E5:plan agent: the plan is seeded and reused by construction
     return checkValidity(variant, { ...journal, entries: [...journal.entries, { label: 'E5:plan', result: { reused: true }, text: '' }] }, scenario);
   }
-  return Array.isArray(find(journal.entries, `${h.st.label}1`)?.result?.issues) ? { valid: true, reason: 'ok' } : INVALID_FORMAT;
+  return Array.isArray(find(journal.entries, `${firstLabel(h)}1`)?.result?.issues) ? { valid: true, reason: 'ok' } : INVALID_FORMAT;
 }
 
 // approved: the review did not block, or the fixer ran and changed at least one seeded defect.
@@ -1535,11 +1646,17 @@ function nullResult(entry) {
 
 // Loop mode: when review 1 came back null, the retry 1b stands in for it (validity and stage read review 1).
 function loopEntries(h, entries) {
-  const r1 = find(entries, `${h.st.label}1`);
-  const r1b = find(entries, `${h.st.label}1b`);
-  if (r1b && (!r1 || nullResult(r1))) return [{ ...r1b, label: `${h.st.label}1` }, ...entries.filter((e) => e !== r1 && e !== r1b)];
+  const label = firstLabel(h);
+  const r1 = find(entries, `${label}1`);
+  const r1b = find(entries, `${label}1b`);
+  if (r1b && (!r1 || nullResult(r1))) return [{ ...r1b, label: `${label}1` }, ...entries.filter((e) => e !== r1 && e !== r1b)];
   return entries;
 }
+
+// E27 C3: the label prefix of the 1st review of the loop (E5:t3:<first kind> on lentes-semeadas-*, else the stage label) and of every loop.
+const T3_PREFIX = 'E5:t3:';
+const firstLabel = (h) => (h.lenses ? `${T3_PREFIX}${h.kinds[0]}` : h.st.label);
+const labelsFor = (h) => (h.lenses ? h.kinds.map((k) => `${T3_PREFIX}${k}`) : [h.st.label]);
 
 // Replays the measured runReviewLoop over the journal: the same rounds, tiers and stop the script went through.
 // `entries` is the raw journal (review 1 and its retry 1b as written). Returns { infra: true } when a review or fix the loop
@@ -1549,6 +1666,7 @@ function loopEntries(h, entries) {
 // 2nd review on, with the `was` runReviewLoop passes), reviewTruth with 1 commit minimum over the seeded range.
 // `restrictedRounds` records what restrictedRound said for each round (1b excluded), as the script does.
 export async function loopResult(h, entries, P, scenario = null) {
+  if (h.lenses) return lensLoopResult(h, entries, P, scenario);
   const rp = await replayLoop(h, entries, P, scenario, false);
   const { res, used, reviews, fixTiers, restrictedRounds } = rp;
   if (res.kind === 'infra') return { infra: true };
@@ -1557,6 +1675,375 @@ export async function loopResult(h, entries, P, scenario = null) {
   const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(h.st.label) || (final && l.startsWith(FINAL_VERIFY)));
   if (new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !used.has(l))) return { divergent: true };
   return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null, ...(h.stage === 'task-review' ? { restrictedRounds } : {}) };
+}
+
+// E27 C3: the description of the synthetic finding the measured taskIssues adds to an empty review with the single switch on and no
+// verdict: a pure call on the measured block, so the harness copies no text of the product (it recognises the finding by it).
+export function syntheticOf(P) {
+  const added = P.taskIssues({ issues: [] }, { taskReview: { restricted: false, single: true } });
+  return Array.isArray(added) && added.length > 0 ? added[added.length - 1].description : null;
+}
+
+// E27 C3: replays, loop by loop and with the functions of the measured workflow, what the lenses script went through. Returns
+// { infra: true } on a null review or fix, else the loops with what the counters need (see lensAttemptStats) and the labels used.
+async function replayLenses(h, entries, P, scenario) {
+  const opt = stageLoopFor('task-review', h.harness.reviewModel);
+  const single = h.arm === 'unica';
+  const synthetic = h.syntheticDescription ?? syntheticOf(P);
+  const isSynthetic = (i) => synthetic !== null && i?.description === synthetic;
+  const used = new Set();
+  const take = (l) => {
+    const e = find(entries, l);
+    if (e) used.add(l);
+    return e;
+  };
+  const loops = [];
+  const reviewsLog = [];
+  const fixTiers = [];
+  let reviews = 0;
+  let sinteticoGerado = 0;
+  let veredictoAusente = 0;
+  let last = { ok: true };
+  for (const prefix of labelsFor(h)) {
+    const kind = prefix.slice(T3_PREFIX.length);
+    const lp = { kind, ok: false, stop: null, blocked: false, reviews: 0, fixTiers: [], accepted: [], fixes: [], lastReview: null, openHard: [] };
+    let cx = null;
+    const env = { maxFix: opt.maxFix, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: (s, iss) => { lp.accepted.push(...iss); } };
+    const review = async (round, prev, rvModel, was) => {
+      cx = { taskReview: { restricted: false, single }, was };
+      const e = take(`${prefix}${round}`);
+      if (!e || !e.result) return null;
+      reviews += 1;
+      lp.reviews += 1;
+      reviewsLog.push({ kind, round, issues: Array.isArray(e.result.issues) ? e.result.issues : [] });
+      const verdict = (v) => v === 'pass' || v === 'fail';
+      if (single && !(verdict(e.result.spec) && verdict(e.result.quality))) veredictoAusente += 1;
+      lp.lastReview = e.result;
+      return e.result;
+    };
+    const fix = async (iss, k, tier) => {
+      const e = take(`${prefix}-fix${k}`);
+      if (nullResult(e)) return null;
+      lp.fixTiers.push(tier);
+      fixTiers.push(tier);
+      const blocked = e.result?.status === 'BLOCKED';
+      lp.fixes.push({ k, tier, blocked, fixable: iss });
+      return blocked ? { status: 'BLOCKED', summary: e.result.summary } : { status: 'DONE' };
+    };
+    const truth = (r) => {
+      const iss = P.reviewTruth({ ...r, issues: P.taskIssues(r, cx) }, 1, `${scenario?.seededCommit ?? 'seeded'}~1..HEAD`);
+      if (iss.some(isSynthetic)) sinteticoGerado += 1;
+      lp.openHard = iss.filter((i) => P.isHard(i, env.blqIds));
+      return iss;
+    };
+    const res = await P.runReviewLoop(env, `T3:${kind}`, review, fix, truth, { tier: opt.tier, reviewModel: opt.reviewModel, byId: true });
+    if (res.kind === 'infra') return { infra: true };
+    lp.ok = res.ok === true;
+    lp.stop = res.ok ? null : res.kind ?? null;
+    lp.blocked = !res.ok && lp.fixes.length > 0 && lp.fixes[lp.fixes.length - 1].blocked && /fix BLOCKED/.test(res.msg ?? '');
+    loops.push(lp);
+    last = res;
+    if (!lp.ok) break;
+  }
+  return { res: last, used, reviews, fixTiers, loops, reviewsLog, sinteticoGerado, veredictoAusente, synthetic };
+}
+
+async function lensLoopResult(h, entries, P, scenario) {
+  const rp = await replayLenses(h, entries, P, scenario);
+  if (rp.infra) return { infra: true };
+  // a label of the task (E5:t3:...) the replay did not use, or a repeated one, is a divergence (also one of the other arm)
+  const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(T3_PREFIX));
+  const divergent = new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !rp.used.has(l));
+  const compact = rp.loops.map((l) => ({ kind: l.kind, ok: l.ok, stop: l.stop, reviews: l.reviews, fixTiers: l.fixTiers }));
+  return { reviews: rp.reviews, fixes: rp.fixTiers.length, fixTiers: rp.fixTiers, ok: rp.res.ok === true, kind: rp.res.ok ? null : rp.res.kind ?? null, loops: compact, lens: rp, ...(divergent ? { divergent: true } : {}) };
+}
+
+// E27 C3: validity of a lenses attempt, in the order of the design: formato-do-diario, semente-ausente, laco-infra,
+// bloqueou-sintetico, laco-divergente. `loop` is loopResult's answer; `script` the return of the Workflow (null when unreadable).
+export async function lensValidity(h, journal, scenario, loop, script) {
+  if (journal.formatError) return INVALID_FORMAT;
+  // a null 1st review (and retry) is a loop infra failure, not a format error: only a review that came back without a list is
+  if (!loop.infra && !Array.isArray(find(journal.entries, `${firstLabel(h)}1`)?.result?.issues)) return INVALID_FORMAT;
+  for (const e of manifestEntries(scenario.variant)) {
+    let present = null;
+    try {
+      present = (await import(pathToFileURL(join(here, 'defects', e.sentinel)).href)).present(scenario.dir, scenario.seededCommit, e.id);
+    } catch {
+      /* unreadable: counts as absent */
+    }
+    if (present !== true) return { valid: false, reason: 'semente-ausente' };
+  }
+  if (loop.infra) return { valid: false, reason: 'laco-infra' };
+  const synthetic = loop.lens.synthetic;
+  const onlySynthetic = (list) => list.length > 0 && synthetic !== null && list.every((i) => i?.description === synthetic);
+  if (loop.lens.loops.some((l) => l.fixes.some((f) => f.blocked && onlySynthetic(f.fixable)))) return { valid: false, reason: 'bloqueou-sintetico' };
+  if (loop.divergent) return { valid: false, reason: 'laco-divergente' };
+  if (!script) return INVALID_FORMAT;
+  const sl = script.loops;
+  if (script.ok !== loop.ok || !Array.isArray(sl) || sl.length !== loop.loops.length || sl.some((x, i) => x?.kind !== loop.loops[i].kind || x?.ok !== loop.loops[i].ok)) return { valid: false, reason: 'laco-divergente' };
+  return { valid: true, reason: 'ok' };
+}
+
+// E27 C3: the counters of one valid lenses attempt, from the replay (loop.lens), the sentinel outcomes and the manifest entries of the artifact.
+// capturadoPor = per seed the { kind, round } of the first review whose finding (file + description) matches its mention; the verdict
+// of a "not pass" round is spec or quality different from pass (unica). In atual (owner decision, via Fable) a loop approved with
+// a non-empty accepted list counts: a non-hard blocking finding accepted is equivalent to a fail verdict.
+export function lensAttemptStats(h, loop, outcomes, seeds) {
+  const lens = loop.lens;
+  const single = h.arm === 'unica';
+  const synthetic = lens.synthetic ?? null;
+  const isSynthetic = (i) => synthetic !== null && i?.description === synthetic;
+  const textOf = (i) => [i?.file, i?.description].filter((x) => typeof x === 'string' && x).join(' ');
+  const capturadoPor = {};
+  for (const m of seeds) {
+    const rx = typeof m.mention === 'string' ? new RegExp(m.mention, 'is') : null;
+    const hit = rx ? (lens.reviewsLog ?? []).find((r) => r.issues.some((i) => rx.test(textOf(i)))) : null;
+    capturadoPor[m.id] = hit ? { kind: hit.kind, round: hit.round } : null;
+  }
+  const mentioned = Object.fromEntries(Object.entries(capturadoPor).map(([id, v]) => [id, v !== null]));
+  const capturadoSemMencao = outcomes.filter((o) => o.outcome === 'capturado' && capturadoPor[o.id] === null).length;
+  const notPass = (r) => (single ? r?.spec !== 'pass' || r?.quality !== 'pass' : true);
+  const failRiscoAceito = lens.loops.some((l) => l.ok && l.accepted.length > 0 && notPass(l.lastReview));
+  const blockedFixes = lens.loops.flatMap((l) => (l.fixes ?? []).filter((f) => f.blocked));
+  const bloqueadoMisto = blockedFixes.some((f) => f.fixable.some(isSynthetic) && f.fixable.some((i) => !isSynthetic(i)));
+  const paradoSoSintetico = lens.loops.some((l) => !l.ok && !l.blocked && (l.openHard ?? []).length > 0 && l.openHard.every(isSynthetic));
+  return { capturadoPor, mentioned, capturadoSemMencao, failRiscoAceito, bloqueadoMisto, paradoSoSintetico, sinteticoGerado: lens.sinteticoGerado ?? 0, veredictoAusente: lens.veredictoAusente ?? 0 };
+}
+
+// E27 C3: design class (lens) of each seed of the set e5-lentes, from the manifest (ids are unique across artifacts A and B).
+const lensOfSeeds = () => Object.fromEntries(['A', 'B'].flatMap((x) => manifestEntries(`lentes-semeadas-${x}`)).map((e) => [e.id, e.lens]));
+const emptyLensCounts = () => ({ capturado: 0, perdido: 0, indeterminado: 0, determinadas: 0 });
+
+// outcomes of the reviewer's seeds of the valid attempts, split by design class: captured, lost, undetermined and determined (captured + lost).
+function lensOutcomesBy(valid, lensOf) {
+  const out = { spec: emptyLensCounts(), quality: emptyLensCounts() };
+  for (const a of valid) {
+    for (const o of a.outcomes ?? []) {
+      const c = out[lensOf[o.id]];
+      if (!c || o.detectedBy !== 'reviewer') continue;
+      c[o.outcome] += 1;
+      if (o.outcome !== 'indeterminado') c.determinadas += 1;
+    }
+  }
+  return out;
+}
+
+// captures by the loop that first mentioned them (row) and the design class of the seed (column); a capture no review named is in the
+// row semMencao. Rows: the loops of the arm and semMencao.
+function lensMatrix(valid, kinds, lensOf) {
+  const rows = Object.fromEntries([...kinds, 'semMencao'].map((k) => [k, { spec: 0, quality: 0 }]));
+  for (const a of valid) {
+    for (const o of a.outcomes ?? []) {
+      const cls = lensOf[o.id];
+      if (o.outcome !== 'capturado' || o.detectedBy !== 'reviewer' || !cls) continue;
+      const row = a.capturadoPor?.[o.id]?.kind ?? 'semMencao';
+      rows[row] ??= { spec: 0, quality: 0 };
+      rows[row][cls] += 1;
+    }
+  }
+  return rows;
+}
+
+// Cost of a valid attempt as in B: the larger of the CLI total and (main transcript + the agent roles).
+function attemptCostUsd(attempt) {
+  const rl = attempt.rolesByLabel;
+  const roles = rl ? ['review', 'fix', 'verify', 'other'].reduce((n, k) => n + (rl[k]?.cost ?? 0), 0) : 0;
+  return Math.max(attempt.counters?.session?.cliCostUsd ?? 0, (rl?.session?.transcriptCostUsd ?? 0) + roles);
+}
+
+// E27 C3: the aggregates of A and B of ONE arm summed (the harness stops per invocation and sees only one artifact). `stop` is the
+// first stop of the arm that fired (more than 2 bloqueou-sintetico, 2 laco-divergente, 2 semente-ausente, more than 3 invalid) or null.
+// totals.validOrder lists the valid attempts of the arm across A and B by start time, for earlyCeiling, with what the recount of ruleSideC needs.
+export function armTotals(aggregates) {
+  if (!Array.isArray(aggregates) || aggregates.length === 0) throw new UsageError('armTotals needs the aggregates of A and B of one arm');
+  const shape = (g) => JSON.stringify({ taskReview: g.harness?.taskReview ?? null, kinds: g.harness?.kinds ?? null, reviewModel: g.harness?.reviewModel ?? null });
+  const first = shape(aggregates[0]);
+  if (aggregates.some((g) => shape(g) !== first)) throw new UsageError('armTotals: the aggregates are not of the same arm (harness.taskReview, kinds or reviewModel differ)');
+  const lensOf = lensOfSeeds();
+  const attempts = aggregates.flatMap((g) => g.attempts ?? []);
+  const valid = attempts.filter((a) => a.status === 'valid');
+  const invalidReasons = {};
+  for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
+  const outcomes = {};
+  for (const a of valid) {
+    for (const o of a.outcomes ?? []) {
+      if (o.detectedBy !== 'reviewer') continue;
+      outcomes[o.id] ??= { class: o.class, detectedBy: 'reviewer', capturado: 0, perdido: 0, indeterminado: 0 };
+      outcomes[o.id][o.outcome] += 1;
+    }
+  }
+  const sum = (f) => valid.reduce((n, a) => n + f(a), 0);
+  const kinds = aggregates[0].harness?.kinds ?? [];
+  const byLens = lensOutcomesBy(valid, lensOf);
+  const count = (o) => Object.values(outcomes).reduce((n, v) => n + v[o], 0);
+  const costUsd = valid.reduce((n, a) => n + (a.costUsd ?? 0), 0);
+  const validOrder = valid
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => String(x.a.startedAt ?? '').localeCompare(String(y.a.startedAt ?? '')) || x.i - y.i)
+    .map(({ a }) => {
+      const per = lensOutcomesBy([a], lensOf);
+      const reviewer = (a.outcomes ?? []).filter((o) => o.detectedBy === 'reviewer');
+      return {
+        key: `${a.artifact}:${a.startedAt}:${a.n}`,
+        artifact: a.artifact,
+        startedAt: a.startedAt ?? null,
+        n: a.n,
+        capturado: reviewer.filter((o) => o.outcome === 'capturado').length,
+        oportunidades: reviewer.length,
+        failRiscoAceito: a.failRiscoAceito === true,
+        byLens: { spec: { capturado: per.spec.capturado, perdido: per.spec.perdido, indeterminado: per.spec.indeterminado }, quality: { capturado: per.quality.capturado, perdido: per.quality.perdido, indeterminado: per.quality.indeterminado } },
+        // the captured seeds and whether the regex found a review naming each (recountLenses lets the reading of the diary override it)
+        captured: reviewer.filter((o) => o.outcome === 'capturado').map((o) => ({ id: o.id, lens: lensOf[o.id], regexMentioned: a.capturadoPor?.[o.id] != null })),
+      };
+    });
+  const totals = {
+    taskReview: aggregates[0].harness?.taskReview ?? null,
+    kinds,
+    valid: valid.length,
+    invalid: attempts.filter((a) => a.status === 'invalid').length,
+    invalidReasons,
+    bloqueouSintetico: invalidReasons['bloqueou-sintetico'] ?? 0,
+    lacoDivergente: invalidReasons['laco-divergente'] ?? 0,
+    sementeAusente: invalidReasons['semente-ausente'] ?? 0,
+    outcomes,
+    outcomesByLens: byLens,
+    capturas: count('capturado'),
+    perdidos: count('perdido'),
+    indeterminados: count('indeterminado'),
+    determinadas: count('capturado') + count('perdido'),
+    oportunidades: count('capturado') + count('perdido') + count('indeterminado'),
+    failRiscoAceito: sum((a) => (a.failRiscoAceito === true ? 1 : 0)),
+    bloqueadoMisto: sum((a) => (a.bloqueadoMisto === true ? 1 : 0)),
+    paradoSoSintetico: sum((a) => (a.paradoSoSintetico === true ? 1 : 0)),
+    sinteticoGerado: sum((a) => a.sinteticoGerado ?? 0),
+    veredictoAusente: sum((a) => a.veredictoAusente ?? 0),
+    capturadoSemMencao: validOrder.reduce((n, v) => n + v.captured.filter((c) => !c.regexMentioned).length, 0),
+    capturadoPorMatriz: lensMatrix(valid, kinds, lensOf),
+    costUsd,
+    costPerValid: valid.length ? costUsd / valid.length : null,
+    validOrder,
+  };
+  let stop = null;
+  if (totals.lacoDivergente >= LENS_STOP.lacoDivergente) stop = 'laco-divergente';
+  else if (totals.bloqueouSintetico > LENS_STOP.bloqueouSintetico) stop = 'bloqueou-sintetico';
+  else if (totals.sementeAusente >= LENS_STOP.sementeAusente) stop = 'semente-ausente';
+  else if (totals.invalid > LENS_STOP.invalidas) stop = 'invalidas';
+  return { totals, stop };
+}
+
+// ---- E27 C4: the decision rule of the passada C, over the totals of an arm (armTotals) ----
+
+// Thresholds of the rule (design C4), fixed before the batch: per arm 10 valid attempts and 40 seed opportunities (20 per lens).
+const RULE_C = { ceiling: 38, floor: 20, minDeterminadas: 32, capturasMargin: 2, perdidosMargin: 2 };
+// The early ceiling: the first 6 valid attempts of the atual arm, 3 of A and 3 of B interleaved, with every seed captured (24 of 24).
+const EARLY_CEILING = { valid: 6, perArtifact: 3, captured: 24 };
+
+// Early ceiling (fixed before, no extension): true when the first 6 valid attempts of the atual arm (by start time) are 3 of A and
+// 3 of B strictly alternating and capture 24 of 24 seeds. Only those 6 are read: a 24 of 24 further on does not count.
+export function earlyCeiling(atualTotals) {
+  const first = (atualTotals?.validOrder ?? []).slice(0, EARLY_CEILING.valid);
+  if (first.length < EARLY_CEILING.valid) return false;
+  const alternates = first.every((x, i) => i === 0 || x.artifact !== first[i - 1].artifact);
+  const of = (artifact) => first.filter((x) => x.artifact === artifact).length;
+  const captured = first.reduce((n, x) => n + x.capturado, 0);
+  const opportunities = first.reduce((n, x) => n + x.oportunidades, 0);
+  return alternates && of('A') === EARLY_CEILING.perArtifact && of('B') === EARLY_CEILING.perArtifact && captured === EARLY_CEILING.captured && opportunities === EARLY_CEILING.captured;
+}
+
+// DEC-737 for the lenses batch: the totals of one arm recounted with some captures or attempts as indeterminado (a copy; the totals
+// given are not changed). mode 'semMencao': every captured seed no review names; the reading of the diary (`leitura`, { <attempt key>:
+// { <seed id>: named } } filled by the orchestrator) prevails over the regex (regexMentioned). mode 'failRisco': every seed of the
+// attempts with failRiscoAceito.
+export function recountLenses(totals, mode, leitura = {}) {
+  const t = structuredClone(totals);
+  const toIndeterminate = (item, lens, from, n) => {
+    if (n <= 0) return;
+    t.outcomesByLens[lens][from] -= n;
+    t.outcomesByLens[lens].indeterminado += n;
+    t.outcomesByLens[lens].determinadas -= n;
+    t.determinadas -= n;
+    t.indeterminados += n;
+    item.byLens[lens][from] -= n;
+    item.byLens[lens].indeterminado += n;
+    if (from === 'capturado') {
+      t.capturas -= n;
+      item.capturado -= n;
+    } else t.perdidos -= n;
+  };
+  for (const item of t.validOrder ?? []) {
+    if (mode === 'semMencao') {
+      for (const c of item.captured ?? []) {
+        const named = leitura?.[item.key]?.[c.id] ?? c.regexMentioned;
+        if (!named) toIndeterminate(item, c.lens, 'capturado', 1);
+      }
+    } else if (mode === 'failRisco' && item.failRiscoAceito) {
+      for (const lens of ['spec', 'quality']) {
+        toIndeterminate(item, lens, 'capturado', item.byLens[lens].capturado);
+        toIndeterminate(item, lens, 'perdido', item.byLens[lens].perdido);
+      }
+    }
+  }
+  return t;
+}
+
+// The side of the rule for the totals of the atual arm and (unless atual is the ceiling or the floor) of the unica arm.
+// `early` false disables the early ceiling (from 10 valid attempts the 38/20/32 thresholds of the 40 opportunities are the rule).
+// valid attempts an arm needs before the 40-opportunity rule reads it (the atual arm may stop earlier only by the early ceiling)
+const RULE_C_MIN_VALID = 10;
+function decideSideC(atual, unica, early = true) {
+  if (early && earlyCeiling(atual)) return { side: 'teto', reason: 'teto antecipado: as 6 primeiras validas do atual, 3 A e 3 B intercaladas, em 24 de 24' };
+  if (atual.capturas >= RULE_C.ceiling) return { side: 'teto', reason: `atual com ${atual.capturas} capturas (${RULE_C.ceiling} ou mais)` };
+  if (atual.capturas < RULE_C.floor) return { side: 'piso', reason: `atual com ${atual.capturas} capturas (menos de ${RULE_C.floor})` };
+  if (atual.determinadas < RULE_C.minDeterminadas) return { side: 'piso', reason: `atual com ${atual.determinadas} determinadas (menos de ${RULE_C.minDeterminadas})` };
+  if (!unica) return { side: 'sem-unica', reason: 'a unica nao tem totais e o atual nao e teto nem piso' };
+  // the unica has no early ceiling: it is compared only at 10 valid attempts, below that it goes on
+  if ((unica.valid ?? 0) < RULE_C_MIN_VALID) return { side: 'continua', reason: `a unica tem ${unica.valid ?? 0} validas: segue ate ${RULE_C_MIN_VALID} validas` };
+  const stays = (reason) => ({ side: 'atual', reason });
+  if (unica.determinadas < RULE_C.minDeterminadas) return stays('determinadas');
+  if (unica.capturas < atual.capturas - RULE_C.capturasMargin) return stays('capturas');
+  for (const lens of ['spec', 'quality']) if (unica.outcomesByLens[lens].capturado < atual.outcomesByLens[lens].capturado - RULE_C.capturasMargin) return stays(`capturas por lente (${lens})`);
+  if (unica.perdidos > atual.perdidos + RULE_C.perdidosMargin) return stays('perdidos');
+  for (const lens of ['spec', 'quality']) if (unica.outcomesByLens[lens].perdido > atual.outcomesByLens[lens].perdido + RULE_C.perdidosMargin) return stays(`perdidos por lente (${lens})`);
+  if (!(typeof unica.costPerValid === 'number' && typeof atual.costPerValid === 'number' && unica.costPerValid < atual.costPerValid)) return stays('custo');
+  return { side: 'unica', reason: 'a unica entra: determinadas, capturas e perdidos dentro da margem, no total e por lente, e custo menor' };
+}
+
+// The rule of the passada C over the totals of the two arms (armTotals). `unica` may be absent when atual is the ceiling or the floor.
+// The recounts (capturadoSemMencao as indeterminado, then the failRiscoAceito attempts as indeterminado, in both arms) must keep the
+// side, or the answer is inconclusivo and the two loops stay. Returns { side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo'|'continua', reason, recount }
+// ('continua': below 10 valid attempts of atual anything but an early ceiling that holds raw and in both recounts, the atual arm goes
+// on to 10 valid attempts; or a unica below 10 valid attempts when atual at 10 is neither teto nor piso, the unica goes on).
+export function ruleSideC({ atual, unica = null, leitura = {} }) {
+  if (!atual) throw new UsageError('ruleSideC needs the totals of the atual arm');
+  const summary = (t) => (t ? { capturas: t.capturas, perdidos: t.perdidos, indeterminados: t.indeterminados, determinadas: t.determinadas, outcomesByLens: t.outcomesByLens, costPerValid: t.costPerValid } : null);
+  const recount = {};
+  // Below 10 valid attempts of atual the only decision is the early ceiling, and only when it holds in the raw totals AND in the
+  // recounts (the reading of the diary for captures no review names, then the failRiscoAceito attempts as indeterminado); anything else
+  // is continua: the arm goes on to 10 valid attempts (never a piso, inconclusivo, atual/unica or the sem-unica throw from fewer than
+  // 10, whose totals cannot be read against the 40 opportunities). From 10 valid the early ceiling is off and the normal thresholds
+  // apply to the base and to every recount.
+  const young = (atual.valid ?? 0) < RULE_C_MIN_VALID;
+  if (young) {
+    const goOn = (why) => ({ side: 'continua', reason: `${why}: o atual segue ate ${RULE_C_MIN_VALID} validas`, recount });
+    if (!earlyCeiling(atual)) return goOn(`atual com ${atual.valid ?? 0} validas e sem teto antecipado`);
+    if (!earlyCeiling(recountLenses(atual, 'semMencao', leitura))) return goOn('o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao)');
+    if (!earlyCeiling(recountLenses(atual, 'failRisco', leitura))) return goOn('o teto antecipado nao se sustenta na recontagem dos failRiscoAceito');
+  }
+  const early = young;
+  const base = decideSideC(atual, unica, early);
+  if (base.side === 'sem-unica') throw new UsageError(base.reason);
+  if (base.side === 'continua') return { side: base.side, reason: base.reason, recount };
+  recount.base = { side: base.side, reason: base.reason };
+  const changed = [];
+  for (const mode of ['semMencao', 'failRisco']) {
+    const a = recountLenses(atual, mode, leitura);
+    const u = unica ? recountLenses(unica, mode, leitura) : null;
+    const r = decideSideC(a, u, early);
+    recount[mode] = { side: r.side, reason: r.reason, atual: summary(a), unica: summary(u) };
+    if (r.side !== base.side) changed.push(mode);
+  }
+  if (changed.length > 0) return { side: 'inconclusivo', reason: `a recontagem (${changed.join(' e ')}) muda o lado de ${base.side}: ficam os dois laços`, recount };
+  return { side: base.side, reason: base.reason, recount };
 }
 
 // B3: the single wave of the final stage, derived from the journal of the batch (no new call): the same replay with `once: true`
@@ -1765,6 +2252,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   if (h && h.stage === 'task-review' && h.base === 'atual') {
     const agentFile = plugin.installPath && plugin.installPath !== 'unknown' ? join(plugin.installPath, 'agents', 'task-reviewer.md') : null;
     if (!agentFile || !existsSync(agentFile)) throw new UsageError(`task-review with arm atual needs agents/task-reviewer.md in the measured plugin (${pluginDir ? '--plugin-dir' : 'installed plugin'})`);
+    // E27 C2: the single review (--arm unica) is the "## Review mode" of the agent; a plugin without it would measure another thing
+    if (h.arm === 'unica' && !/^## Review mode\s*$/m.test(readFileSync(agentFile, 'utf8'))) throw new UsageError(`--arm unica needs a "## Review mode" section in agents/task-reviewer.md of the measured plugin (${pluginDir ? '--plugin-dir' : 'installed plugin'})`);
   }
   if (h && h.stage === 'task-review' && h.rounds === 'loop') {
     // restrita sends the reviewer to the plugin's own review-package script
@@ -1777,9 +2266,10 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const wfText = readFileSync(wfFile, 'utf8');
       assertArmsCurrent(h, wfText);
       if (h.rounds === 'loop') {
-        h.pure = checkLoopWorkflow(wfText, h.stage);
+        h.pure = checkLoopWorkflow(wfText, h.stage, { lenses: h.lenses === true });
         h.loopFns = loadPure(wfFile); // the loop result is replayed with the measured workflow's own functions
         h.harness.pureSha256 = extractPure(wfText).sha256;
+        if (h.lenses) h.syntheticDescription = syntheticOf(h.loopFns); // the synthetic finding of the measured taskIssues, recognised by its text in the replay
         h.harness.stageOptions = { ...stageLoopFor(h.stage, h.harness.reviewModel) };
       }
     } else if (!wfFile) throw new UsageError(`the measured plugin was not found (installed ${PLUGIN_KEY} missing from installed_plugins.json, or no installPath): cannot check the arm templates`);
@@ -1811,7 +2301,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const fixLoop = h?.rounds === 'loop' && (h.stage === 'task-review' || h.stage === 'final-review'); // the batch stop rules of B4 (the A stages keep every attempt)
   let stoppedBy = null;
   for (let k = 1; k <= runs; k++) {
-    stoppedBy = fixLoop ? batchStopReason(attempts) : null;
+    stoppedBy = fixLoop ? batchStopReason(attempts, { lenses: h.lenses === true }) : null;
     if (stoppedBy) break;
     const scenario = await scenarioFn(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun, coordinatorFixture: opts.coordinatorFixture });
     const sessions = [];
@@ -1834,7 +2324,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const script = h.arm === 'perguntas'
         ? buildQuestionsScript({ reviewPrompt: prompts.reviewPrompt, fixPrompt: prompts.fixPrompt })
         : h.stage === 'task-review' && h.rounds === 'loop'
-        ? buildTaskLoopScript({ pure: h.pure, scenario, opts: { restricted: h.harness.taskReview.restricted, reviewModel: h.harness.reviewModel, pluginRoot: plugin.installPath, work: resolve(opts.work), title: prompts.title, fixPrompt: prompts.fixPrompt } })
+        ? buildTaskLoopScript({ pure: h.pure, scenario, opts: { restricted: h.harness.taskReview.restricted, ...(h.lenses ? { kinds: h.kinds, single: h.harness.taskReview.single } : {}), reviewModel: h.harness.reviewModel, pluginRoot: plugin.installPath, work: resolve(opts.work), title: prompts.title, fixPrompt: prompts.fixPrompt } })
         : h.stage === 'final-review'
         ? buildFinalLoopScript({ pure: h.pure, scenario, opts: { adversarial: h.harness.finalReview.adversarial, review: h.review.text, fix: h.fixArm.text } })
         : h.rounds === 'loop'
@@ -1930,12 +2420,22 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let journal = null;
     let loop = null;
     let singleWave = null;
+    let settled = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
       const rawEntries = journal.entries;
       if (h?.rounds === 'loop') journal = { ...journal, entries: loopEntries(h, journal.entries) };
-      let v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
-      if (h?.rounds === 'loop' && (v.valid || v.reason === 'formato-do-diario') && !journal.formatError) {
+      let v = h?.lenses ? { valid: true, reason: 'ok' } : h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
+      if (h?.lenses) {
+        // E27 C3: the replay and the ordered reasons of lensValidity decide (no fixSha, no loopValidity of B)
+        if (journal.formatError) v = INVALID_FORMAT;
+        else {
+          loop = await loopResult(h, rawEntries, h.loopFns, scenario);
+          // the semente-ausente check reads the tree: settle the sandbox first (a release may leave the root elsewhere or the tree dirty)
+          settled = settleSandbox(scenario.dir, scenario.seededCommit);
+          v = await lensValidity(h, journal, scenario, loop, readScriptResult(opts.configDir, sessions));
+        }
+      } else if (h?.rounds === 'loop' && (v.valid || v.reason === 'formato-do-diario') && !journal.formatError) {
         // Review 1 and its retry both null is a loop infra failure, not a journal format error: the replay decides first.
         loop = await loopResult(h, rawEntries, h.loopFns, scenario);
         if (loop.infra) v = { valid: false, reason: 'laco-infra' };
@@ -2027,16 +2527,23 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       if (h?.arm === 'perguntas') authorCommitted = commitAuthorEdit(scenario);
       // The sentinels read the tip of feat/E5 in the working tree. The stage is read first: settling may recreate the branch.
       const stage = !h ? stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit) : null;
-      reachable = settleSandbox(scenario.dir, scenario.seededCommit);
+      reachable = settled ?? settleSandbox(scenario.dir, scenario.seededCommit);
       // Loop: the stage at the end is the loop's own verdict (approved when it ended ok).
       const stageOf = !h ? () => stage : loop ? () => (loop.ok ? 'approved' : 'stopped') : (presents) => harnessStage(h, journal.entries, presents);
       outcomes = await attemptOutcomes(variant, scenario, journal, stageOf, reachable);
     }
     const cliCostUsd = sumCliCost(cliCosts);
     const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd), piece3: piece3Of(run) };
-    if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${h.st.label}1`) : reviewCounts(journal.entries, `${h.st.label}1`);
+    if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${firstLabel(h)}1`) : reviewCounts(journal.entries, `${firstLabel(h)}1`);
     if (authorCommitted !== null) attempt.authorCommitted = authorCommitted;
-    if (h && journal && loop) {
+    if (h?.lenses && journal && loop) {
+      // E27 C3: a compact loop record, the counters of the attempt and what armTotals reads (artifact, start time, cost)
+      const { lens: _lens, ...compactLoop } = loop;
+      // loop.loops comes from loopResult without `accepted`: keep each loop's accepted list from the replay (failRiscoAceito, report)
+      attempt.loop = { ...compactLoop, loops: compactLoop.loops.map((l, i) => ({ ...l, accepted: loop.lens.loops[i]?.accepted ?? [] })) };
+      Object.assign(attempt, lensAttemptStats(h, loop, outcomes, manifestEntries(variant)), { artifact: artifactOf(variant).artifact, startedAt: now().toISOString() });
+      attempt.costUsd = attemptCostUsd(attempt);
+    } else if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
       if (scenario.fixSha) {
@@ -2055,7 +2562,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     attempts.push(attempt);
   }
 
-  if (!stoppedBy && fixLoop) stoppedBy = batchStopReason(attempts);
+  if (!stoppedBy && fixLoop) stoppedBy = batchStopReason(attempts, { lenses: h.lenses === true });
   const status = (s) => attempts.filter((a) => a.status === s).length;
   const invalidReasons = {};
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
@@ -2087,7 +2594,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     },
     ...totalOutcomes(attempts),
     ...(attempts.some((a) => a.status === 'valid' && a.toolCheck) ? nativeCounts(attempts) : {}),
-    ...(h?.rounds === 'loop' ? loopAggregate(attempts, { seededFix: /^correcao-semeada-/.test(variant), singleWaveArm: h.stage === 'final-review' && h.arm === 'atual' }) : {}),
+    ...(h?.rounds === 'loop' ? loopAggregate(attempts, { seededFix: /^correcao-semeada-/.test(variant), singleWaveArm: h.stage === 'final-review' && h.arm === 'atual', lenses: h.lenses === true, kinds: h.kinds ?? [] }) : {}),
     ...(stoppedBy ? { stoppedBy } : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
@@ -2095,7 +2602,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|unica|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
 
 export function parseCli(argv) {
   const o = { allow: [], addDir: [] };
