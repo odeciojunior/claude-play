@@ -1006,6 +1006,18 @@ test('weak matches are offered, never chosen', () => withPlans({ 'coordinator-ma
   assert.ok(r.question);
 }));
 
+test('query equal to the plan path is a strong match', () => withPlans({ 'fixed-plan': { id: 'F1' } }, (root) => {
+  const want = { choice: 'docs/plans/fixed-plan/plan.md' };
+  assert.deepEqual(selectPlan({ root, query: 'docs/plans/fixed-plan/plan.md' }), want);
+  assert.deepEqual(selectPlan({ root, query: 'DOCS\\Plans\\Fixed-Plan\\plan.md' }), want);
+  assert.deepEqual(selectPlan({ root, query: './docs/plans/fixed-plan/plan.md' }), want);
+  assert.deepEqual(selectPlan({ root, query: path.join(root, 'docs', 'plans', 'fixed-plan', 'plan.md') }), want);
+}));
+
+test('query equal to the plan path stays strong with another plan folder present', () => withPlans({ 'fixed-plan': { id: 'F1' }, 'other-plan': { id: 'O1' } }, (root) => {
+  assert.deepEqual(selectPlan({ root, query: 'docs/plans/fixed-plan/plan.md' }), { choice: 'docs/plans/fixed-plan/plan.md' });
+}));
+
 test('select skips node_modules and .git and exits 0 even for a question', () => withPlans({ 'node_modules/x': { id: 'N' }, '.git/y': { id: 'G' }, z: { id: 'Z' }, w: { id: 'W' } }, (root) => {
   const r = selectCli(root);
   assert.deepEqual([...r.candidates].sort(), ['docs/plans/w/plan.md', 'docs/plans/z/plan.md']);
