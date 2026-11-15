@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyTree, runSandboxSuite } from '../make-scenario.mjs';
 import { makeSandbox } from '../../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
@@ -12,7 +12,8 @@ import { makeSandbox } from '../../../plugins/productivity-tools/skills/roadmap-
 const here = dirname(fileURLToPath(import.meta.url));
 const CODE = join(here, '..', 'scenario', 'e5-native', 'code');
 const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
-const IDS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8'];
+// C9 replaces C1 on the native code (C1 is accused by the native slugify test, DEC-745); the legacy C1 is untouched.
+const IDS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'];
 // sha256 (LF text) of the manifest as it was before the native C entries were appended.
 const LEGACY_SHA256 = '9846541275be7a2d0b7bfdeceebfaaac55de8ed068441225af01844e26e25bf5';
 
@@ -78,6 +79,19 @@ test('C4 extracts helpers from a T3 file without index.mjs', async () => {
   }
 });
 
+test('C9 is not accused by the three native test files', async () => {
+  const r = cleanRepo();
+  try {
+    (await sentinelOf('C9')).seed(r.dir, 'C9');
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const run = spawnSync(process.execPath, ['--test', 'tests/e5-slugify.test.mjs', 'tests/e5-truncate.test.mjs', 'tests/e5-word-count.test.mjs'], { cwd: r.dir, env, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+  } finally {
+    r.done();
+  }
+});
+
 // "Accused" is the sandbox suite going red: a C that code catches is not a reviewer defect (DEC-745).
 test('no C is accused on clean code', { skip: process.env.E11_SANDBOX_SUITE !== '1' }, async () => {
   const base = mkdtempSync(join(tmpdir(), 'native-acc-'));
@@ -112,9 +126,11 @@ test('manifest entries for e5-native have set, sentinel path and a code class', 
 test('legacy manifest entries stay byte for byte and the native ones come last', () => {
   const raw = readFileSync(join(here, 'manifest.json'), 'utf8').replace(/\r\n/g, '\n');
   // The C entries of e5-native start at the first one with set e5-native and class code; everything before is the legacy text.
-  const marker = '{\n    "id": "C1",\n    "class": "code",\n    "kind": "accent-handling",\n    "artifact": "A",\n    "set": "e5-native"';
+  const marker = '{\n    "id": "C2",\n    "class": "code",\n    "kind": "assertionless-test",\n    "artifact": "A",\n    "set": "e5-native"';
   const at = raw.indexOf(marker);
-  assert.ok(at > 0, 'native C1 entry not found');
+  assert.ok(at > 0, 'native C2 entry not found');
+  assert.ok(!manifest.some((e) => e.id === 'C1' && e.set === 'e5-native'), 'C1 must not exist in e5-native');
+  assert.equal(manifest.find((e) => e.id === 'C9').replaces, 'C1');
   const legacy = raw.slice(0, at).replace(/,\s*$/, '');
   assert.equal(createHash('sha256').update(legacy).digest('hex'), LEGACY_SHA256);
   assert.ok(manifest.slice(-IDS.length).every((e) => e.set === 'e5-native' && e.class === 'code'));

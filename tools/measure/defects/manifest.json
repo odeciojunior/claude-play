@@ -557,17 +557,6 @@
     "description": "The fix drops the trim in wordCount, so blank text counts as words"
   },
   {
-    "id": "C1",
-    "class": "code",
-    "kind": "accent-handling",
-    "artifact": "A",
-    "set": "e5-native",
-    "file": "src/slugify.mjs",
-    "sentinel": "sentinels/C1.mjs",
-    "detectedBy": "reviewer",
-    "description": "slugify no longer strips accents"
-  },
-  {
     "id": "C2",
     "class": "code",
     "kind": "assertionless-test",
@@ -643,5 +632,18 @@
     "sentinel": "sentinels/native/C8.mjs",
     "detectedBy": "reviewer",
     "description": "wordCount returns 4 for the two non-empty inputs of its tests and 0 otherwise"
+  },
+  {
+    "id": "C9",
+    "class": "code",
+    "kind": "accent-handling",
+    "artifact": "A",
+    "set": "e5-native",
+    "file": "src/slugify.mjs",
+    "sentinel": "sentinels/native/C9.mjs",
+    "detectedBy": "reviewer",
+    "replaces": "C1",
+    "noteE11": "C1 ported to the native code is caught by the native slugify card example (sandbox suite red), so it is not a reviewer defect (DEC-745); C9 keeps the accent-handling kind but only e-acute is still transliterated, which the native tests do not catch.",
+    "description": "slugify only transliterates e-acute: any other accented letter is dropped or split (Ñandú comes out as and)"
   }
 ]
