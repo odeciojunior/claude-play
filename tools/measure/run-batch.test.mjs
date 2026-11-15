@@ -3557,3 +3557,116 @@ test('coordinatorGateVazio: 1.7.0 baseline with 0 passed or any failed is gate-v
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- E27 C2 (T3): options, arms and refusals of the lentes-semeadas task loop ----
+const { prepareHarness } = await import('./run-batch.mjs');
+const lentesOpts = (s, variant, extra = {}) => seededOpts(s, variant, { stage: 'task-review', reviewModel: 'sonnet', ...extra });
+const hOf = (variant, extra = {}) => prepareHarness({ variant, stage: 'task-review', reviewModel: 'sonnet', ...extra });
+
+// A measured plugin whose task-reviewer has (or lacks) the "## Review mode" section.
+function lentesPlugin(parent, workflowText, { reviewMode = true } = {}) {
+  const dir = taskLoopPlugin(parent, workflowText);
+  writeFileSync(join(dir, 'agents', 'task-reviewer.md'), reviewMode ? '# Task reviewer\n\n## Review mode\n\nBoth lists.\n' : '# Task reviewer\n');
+  return dir;
+}
+
+test('C2: --stage task-review --rounds loop accepts lentes-semeadas-A/B with --arm atual|unica and a --review-model', () => {
+  for (const variant of ['lentes-semeadas-A', 'lentes-semeadas-B']) {
+    for (const extra of [{}, { arm: 'atual' }, { rounds: 'loop' }, { arm: 'atual', rounds: 'loop', reviewModel: 'opus' }]) {
+      const h = hOf(variant, extra);
+      assert.equal(h.base, 'atual', variant);
+      assert.equal(h.arm, 'atual');
+      assert.equal(h.rounds, 'loop');
+      assert.deepEqual(h.harness.taskReview, { restricted: false, single: false });
+      assert.deepEqual(h.kinds, ['spec', 'quality']);
+    }
+    const u = hOf(variant, { arm: 'unica', rounds: 'loop' });
+    assert.equal(u.base, 'atual');
+    assert.equal(u.arm, 'unica');
+    assert.equal(u.rounds, 'loop');
+    assert.deepEqual(u.harness.taskReview, { restricted: false, single: true });
+    assert.deepEqual(u.kinds, ['review']);
+    assert.equal(u.harness.reviewModel, 'sonnet');
+  }
+  // correcao-semeada keeps { restricted } only, so its aggregate does not change
+  assert.deepEqual(hOf('correcao-semeada-A', { arm: 'restrita' }).harness.taskReview, { restricted: true });
+  assert.deepEqual(hOf('correcao-semeada-A').harness.taskReview, { restricted: false });
+  assert.equal(hOf('correcao-semeada-A').kinds, null);
+});
+
+test('C2: refusals', () => {
+  const refused = [
+    ['correcao-semeada-A', { arm: 'unica' }, /unica/],
+    ['correcao-semeada-B', { arm: 'unica', rounds: 'loop' }, /unica/],
+    ['correcao-semeada-A', { arm: 'unica', rounds: 'single' }, /unica|loop/],
+    ['codigo-semeado-A', { arm: 'unica' }, /unica/],
+    ['lentes-semeadas-A', { rounds: 'single' }, /loop/],
+    ['lentes-semeadas-B', { arm: 'unica', rounds: 'single' }, /loop/],
+    ['lentes-semeadas-A', { arm: 'restrita' }, /restrita/],
+    ['lentes-semeadas-B', { arm: 'restrita', rounds: 'loop' }, /restrita/],
+    ['lentes-semeadas-A', { arm: 'adversarial' }, /final-review|adversarial/],
+    ['lentes-semeadas-A', { reviewModel: undefined }, /review-model/],
+    ['codigo-semeado-A', { rounds: 'loop' }, /correcao-semeada/],
+  ];
+  for (const [variant, extra, re] of refused) {
+    const opts = { variant, stage: 'task-review', reviewModel: 'sonnet', ...extra };
+    if ('reviewModel' in extra && extra.reviewModel === undefined) delete opts.reviewModel;
+    assert.throws(() => prepareHarness(opts), (e) => e instanceof UsageError && re.test(e.message), `${variant} ${JSON.stringify(extra)}`);
+  }
+  // --arm unica outside task-review
+  assert.throws(() => prepareHarness({ variant: 'spec-nativo-A', stage: 'spec-review', arm: 'unica' }), (e) => e instanceof UsageError && /unica/.test(e.message));
+  assert.throws(() => prepareHarness({ variant: 'correcao-semeada-A', stage: 'final-review', arm: 'unica' }), (e) => e instanceof UsageError && /unica/.test(e.message));
+  // lentes-semeadas only exists in task-review
+  assert.throws(() => prepareHarness({ variant: 'lentes-semeadas-A', stage: 'final-review' }), UsageError);
+  assert.throws(() => prepareHarness({ variant: 'lentes-semeadas-A', stage: 'spec-review' }), UsageError);
+});
+
+test('C2: startup refusals on the measured workflow for lentes-semeadas', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const cases = [
+      ["TR.single ? ['review'] : ['spec', 'quality']", "TR.single ? ['reviewX'] : ['spec', 'quality']"],
+      ['single: tr.single === true', 'single: tr.single'],
+      ['(c.taskReview || {}).single', '(c.taskReview || {}).only'],
+    ];
+    for (const [lit, repl] of cases) {
+      assert.equal(wf.split(lit).length - 1, 1, lit + ' occurs once in the real workflow');
+      const plugin = lentesPlugin(s.base, wf.replace(lit, repl));
+      for (const arm of ['atual', 'unica']) {
+        const fake = makeFake(s.configDir);
+        await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm, pluginDir: plugin, work: join(s.base, 'w-ref') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes(lit), `${arm} ${lit}`);
+        assert.equal(claudeCalls(fake).length, 0, lit);
+      }
+      // the same drift does not refuse correcao-semeada: the rule only applies to the new variants
+      assert.doesNotThrow(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review'), lit);
+      assert.throws(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes(lit), lit);
+    }
+    // the taskIssues literal is searched only inside function taskIssues: a copy elsewhere does not hide the drift
+    const drifted = wf.replace('(c.taskReview || {}).single', '(c.taskReview || {}).other') + '\n// (c.taskReview || {}).single\n';
+    assert.throws(() => checkLoopWorkflow(drifted, 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes('(c.taskReview || {}).single'));
+    assert.doesNotThrow(() => checkLoopWorkflow(wf, 'task-review', { lenses: true }));
+  } finally {
+    s.done();
+  }
+});
+
+test('C2: a measured plugin without "## Review mode" in agents/task-reviewer.md is refused for --arm unica', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const bad = lentesPlugin(s.base, wf, { reviewMode: false });
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm: 'unica', pluginDir: bad, work: join(s.base, 'w-rm') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /## Review mode/.test(e.message));
+    assert.equal(claudeCalls(fake).length, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('C2: STAGES[task-review].variant accepts lentes-semeadas-[AB] and STAGE_LOOP of task-review stays the same', () => {
+  for (const v of ['lentes-semeadas-A', 'lentes-semeadas-B']) assert.doesNotThrow(() => hOf(v), v);
+  for (const v of ['lentes-semeadas-C', 'lentes-semeadas-', 'lentes-semeada-A']) assert.throws(() => hOf(v), UsageError, v);
+  assert.deepEqual(stageLoopFor('task-review', 'sonnet'), { tier: 'sonnet', reviewModel: 'sonnet', reviewEffort: 'medium', maxFix: 2, byId: true });
+  assert.deepEqual(hOf('lentes-semeadas-A', { arm: 'unica' }).harness.stageOptions ?? stageLoopFor('task-review', 'sonnet'), stageLoopFor('task-review', 'sonnet'));
+});
