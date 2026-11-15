@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E26 | fix/measure-e26 bloco A integrado (DEC-722 a DEC-730): laço do produto no arnês, braços conferidos, sementes nativas P1..P10/SN1..SN8, braço perguntas, custo da sessão. Revisões por tarefa opus, portão opus/high APPROVE. G1 1927/0, G2-G5 ok. Pasta da 2ª sonda renomeada (D:/claude-arquivo-e8q). | `5bb5153` |
 | 2026-11-14 | E26 | Passo 0 (DEC-726): registros reais de revisão. Spec 16 estágios com correção, 5 casos verdadeiros pós-correção: rodada única de spec cai na condição 3. Plano 12 e 0: leitura única elegível (contagem inclusiva; estrita 7). Final 17 e 9 (contexto para E27). | `docs/reports/2026-11-14-E26-passo0-registros-revisao.md` |
 | 2026-11-14 | E8 | BLQ-18 resolvido: 2ª sonda acceptEdits em c5658cf (pasta pelo settings do cenário, sem --add-dir): E5 mesclado em a7005e6, sem FAILED nem ação de operador, 0 negadas no harness; negações espontâneas listadas por estágio no relatório. | `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md` |
 | 2026-11-14 | E8 | fix/pasta-wt-permissao integrada (DEC-719, DEC-720): preflight --wt-root, missingDirs e missingDirsHint (pasta deve existir antes da sessão), SKILL.md com 1 comando simples por chamada, operator.md sem bypass, make-scenario cria <sandbox>-wt. 3 rodadas, portão opus/high APPROVE. G1 1869/0. | `6d698be` |
