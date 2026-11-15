@@ -3,6 +3,7 @@
 //
 //   node verify-run.mjs group <payload>   runs the record commands in order and commits them
 //   node verify-run.mjs check <payload>   measures the git truth and lists what the run claimed against it
+//   node verify-run.mjs procs <payload>   lists and ends the processes of a deliverable (worktree path in the command line, or a listener in its port range)
 //
 // <payload> is encodeURIComponent(JSON) (plus !'()* as %XX) in ONE argument. It carries `nonce` and `digest`,
 // where digest = fnv1a(JSON.stringify(canon(payload without digest))) of lib/plan-digest.mjs, computed by the workflow.
@@ -16,6 +17,8 @@
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
+//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, or that listens on a port in lo..hi; never itself or its ancestors; no marker: ending is idempotent)
+//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
 // ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
@@ -234,6 +237,102 @@ export function runCheck(p) {
   return { tool: TOOL, mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth };
 }
 
+// ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range) ----
+
+const asList = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
+export function parseCimProcs(text) {
+  // A raw control character is never valid inside JSON: the console codepage can emit one (0x1A) for a character it cannot encode.
+  const s = String(text == null ? '' : text).replace(/[\u0000-\u001f]/g, ' ').trim();
+  if (!s) return [];
+  return asList(JSON.parse(s)).filter((o) => o && Number.isInteger(o.ProcessId)).map((o) => ({ pid: o.ProcessId, ppid: Number.isInteger(o.ParentProcessId) ? o.ParentProcessId : 0, cmd: typeof o.CommandLine === 'string' ? o.CommandLine : '' }));
+}
+export function parsePs(text) {
+  const out = [];
+  for (const line of String(text == null ? '' : text).split(/\r?\n/)) {
+    const m = /^\s*(\d+)\s+(\d+)\s*(.*)$/.exec(line);
+    if (m) out.push({ pid: Number(m[1]), ppid: Number(m[2]), cmd: m[3].trim() });
+  }
+  return out;
+}
+export function parseNetstatListen(text) {
+  const out = [];
+  for (const line of String(text == null ? '' : text).split(/\r?\n/)) {
+    const m = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(line);
+    if (m) out.push({ pid: Number(m[2]), port: Number(m[1]) });
+  }
+  return out;
+}
+export function parseLsofListen(text) {
+  const out = [];
+  for (const line of String(text == null ? '' : text).split(/\r?\n/)) {
+    const m = /^\S+\s+(\d+)\s.*:(\d+)\s+\(LISTEN\)\s*$/.exec(line);
+    if (m) out.push({ pid: Number(m[1]), port: Number(m[2]) });
+  }
+  return out;
+}
+
+// [{ pid, why, cmd }]: why is 'path' (the command line holds the worktree path followed by a boundary) or 'port <n>' (listens in the range).
+// The caller (self) and its ancestors are never picked.
+export function selectProcs(procs, listens, { wt, ports, self, platform }) {
+  const fold = (s) => { const t = String(s).replace(/\\/g, '/'); return platform === 'win32' ? t.toLowerCase() : t; };
+  const root = fold(wt).replace(/\/+$/, '');
+  const byPid = new Map(procs.map((q) => [q.pid, q]));
+  const skip = new Set();
+  for (let pid = self; Number.isInteger(pid) && pid > 0 && !skip.has(pid); pid = byPid.has(pid) ? byPid.get(pid).ppid : 0) skip.add(pid);
+  const holdsPath = (cmd) => {
+    if (!root) return false;
+    const c = fold(cmd);
+    for (let i = c.indexOf(root); i >= 0; i = c.indexOf(root, i + 1)) {
+      const next = c[i + root.length];
+      if (next === undefined || next === '/' || next === '"' || next === "'" || /\s/.test(next)) return true;
+    }
+    return false;
+  };
+  const out = new Map();
+  const cut = (cmd) => String(cmd || '').slice(0, 200);
+  for (const q of procs) if (!skip.has(q.pid) && holdsPath(q.cmd)) out.set(q.pid, { pid: q.pid, why: 'path', cmd: cut(q.cmd) });
+  for (const l of listens) {
+    if (skip.has(l.pid) || out.has(l.pid) || !(l.port >= ports[0] && l.port <= ports[1])) continue;
+    out.set(l.pid, { pid: l.pid, why: `port ${l.port}`, cmd: cut(byPid.has(l.pid) ? byPid.get(l.pid).cmd : '') });
+  }
+  return [...out.values()];
+}
+
+const defaultKill = (platform) => (pid) => {
+  if (platform === 'win32') {
+    const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    if (r.error) throw r.error;
+    if (r.status !== 0) throw new Error(cap((r.stderr || r.stdout || `taskkill exit ${r.status}`).trim(), 200));
+  } else process.kill(pid, 'SIGTERM');
+};
+
+export function runProcs(p, { platform = process.platform, run = spawnSync, kill } = {}) {
+  const unchecked = [];
+  const list = (label, cmd, args, parse, okEmptyExit1 = false) => {
+    let r;
+    try { r = run(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); } catch (e) { r = { error: e }; }
+    if (!r || r.error) { unchecked.push(`${label}: not run (${cap((r && r.error && (r.error.code || r.error.message)) || 'no result', 100)})`); return []; }
+    const stdout = typeof r.stdout === 'string' ? r.stdout : '';
+    if (r.status !== 0 && !(okEmptyExit1 && r.status === 1 && !stdout.trim())) { unchecked.push(`${label}: exit ${r.status}`); return []; }
+    try { return parse(stdout); } catch (e) { unchecked.push(`${label}: output not readable (${cap(e.message, 100)})`); return []; }
+  };
+  const win = platform === 'win32';
+  const procs = win
+    ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
+    : list('ps', 'ps', ['-eo', 'pid=,ppid=,args='], parsePs);
+  const listens = win
+    ? list('netstat', 'netstat', ['-ano', '-p', 'tcp'], parseNetstatListen)
+    : list('lsof', 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], parseLsofListen, true);
+  const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform });
+  const end = kill || defaultKill(platform);
+  const ended = [];
+  const failed = [];
+  for (const m of matched) {
+    try { end(m.pid); ended.push(m.pid); } catch (e) { failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
+  }
+  return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };
+}
+
 const MARKER_TTL_MS = 7 * 86400000;
 // Returns { replay: string } | { file } | { error }. Creates the marker with wx; never throws.
 const alive = (pid) => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return !!e && e.code === 'EPERM'; } };
@@ -270,6 +369,7 @@ const REQUIRED = {
   group: (p) => typeof p.cwd === 'string' && p.cwd && Array.isArray(p.steps) && p.steps.every((t) => typeof t === 'string'),
   read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && (p.piece === undefined || typeof p.piece === 'string') && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
   check: (p) => ['repo', 'intwt', 'target'].every((k) => typeof p[k] === 'string' && p[k]) && (p.order === undefined || Array.isArray(p.order)),
+  procs: (p) => typeof p.wt === 'string' && !!p.wt && Array.isArray(p.ports) && p.ports.length === 2 && p.ports.every(Number.isInteger),
 };
 
 function cli(argv) {
@@ -280,7 +380,7 @@ function cli(argv) {
   };
   const [mode, arg] = argv;
   const refuse = (error, nonce) => out({ tool: TOOL, mode, ...(nonce === undefined ? {} : { nonce }), error }, 2);
-  if (!REQUIRED[mode] || argv.length !== 2) return refuse('usage: node verify-run.mjs group|read|check <payload: encodeURIComponent(JSON)>');
+  if (!REQUIRED[mode] || argv.length !== 2) return refuse('usage: node verify-run.mjs group|read|check|procs <payload: encodeURIComponent(JSON)>');
   let p;
   try { p = JSON.parse(decodeURIComponent(arg)); } catch (e) { return refuse(`the payload is not encodeURIComponent(JSON): ${e.message}`); }
   if (!p || typeof p !== 'object' || Array.isArray(p) || typeof p.nonce !== 'string' || !p.nonce || typeof p.digest !== 'string') return refuse('the payload needs nonce and digest');
@@ -294,7 +394,7 @@ function cli(argv) {
     if (marker.replay !== undefined) { process.exitCode = 0; process.stdout.write(marker.replay); return; }
   }
   let result;
-  try { result = mode === 'group' ? runGroup(p) : mode === 'read' ? runRead(p) : runCheck(p); } catch (e) { if (marker) { try { unlinkSync(marker.file); } catch { /* best effort */ } } return refuse(e.message, p.nonce); }
+  try { result = mode === 'group' ? runGroup(p) : mode === 'read' ? runRead(p) : mode === 'procs' ? runProcs(p) : runCheck(p); } catch (e) { if (marker) { try { unlinkSync(marker.file); } catch { /* best effort */ } } return refuse(e.message, p.nonce); }
   if (marker) {
     const line = `${JSON.stringify({ ...result, digest: signDigest(result) })}\n`;
     const body = JSON.stringify({ nonce: p.nonce, digest: p.digest, pid: process.pid, output: line });
