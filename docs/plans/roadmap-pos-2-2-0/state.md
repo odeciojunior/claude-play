@@ -11,7 +11,7 @@ Estratégia v1.0 -- 2026-11-15
 | E29 | bloqueado (BLQ-1) | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` | E29: seguir o fluxo do release após executando |
 | E30 | nao-iniciado | - | - |
 | E31 | nao-iniciado | - | - |
-| E32 | nao-iniciado | - | - |
+| E32 | executando | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md` | E32: seguir o fluxo do release após executando |
 | E33 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
