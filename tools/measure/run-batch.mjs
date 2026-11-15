@@ -1794,9 +1794,10 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
     let ratified = null;
     let resumeFrom = 1;
-    let pendingAtResume = null;
+    let pendingAtResume;
+    let pendingAfterResume;
     const ratifyOff = opts.ratify === 'off' && stop !== null && !h;
-    const extra = () => (ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume ? { pendingAtResume } : {}) } : ratified ? { ratified } : {});
+    const extra = () => (ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume !== undefined ? { pendingAtResume } : {}), ...(pendingAfterResume !== undefined ? { pendingAfterResume } : {}) } : ratified ? { ratified } : {});
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -1821,7 +1822,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         // D2 (E17): the stopped run left executor decisions of E5 pending; the owner's ratification happens here, with no model call.
         if (ratifyOff) {
           // --ratify off: the owner's ratification is not simulated; the resume must stop for the pending decisions (or not).
-          pendingAtResume = pending(scenario.dir, plugin.installPath) ?? [];
+          pendingAtResume = pending(scenario.dir, plugin.installPath);
         } else {
           const rat = ratify(scenario.dir, plugin.installPath);
           if (!rat.ok) {
@@ -1952,6 +1953,20 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         continue;
       }
       if (stop !== null) {
+        // --ratify off: a resume that did not integrate E5 and left E5 decisions pending stopped for a decision. This comes before
+        // the resume validity: the preflight stops before launching any agent when a contract decision is pending.
+        if (ratifyOff && !e5Integrated(scenario.dir)) {
+          pendingAfterResume = pending(scenario.dir, plugin.installPath);
+          if (pendingAfterResume === null) {
+            attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'pendencias-ilegiveis' });
+            continue;
+          }
+          if (pendingAfterResume.length > 0) {
+            attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'parou-por-decisao' });
+            stoppedBy = 'parou-por-decisao';
+            break;
+          }
+        }
         // D3 (E17): the resume session alone must have launched an agent; the whole-attempt total can come from the first session.
         if (sessions.length <= resumeFrom) {
           attempts.push({ n: k, ...extra(), status: 'invalid', reason: resumeRunValidity(undefined).reason });
@@ -1973,12 +1988,6 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         if (!rrv.valid) {
           attempts.push({ n: k, ...extra(), status: 'invalid', reason: rrv.reason });
           continue;
-        }
-        // A valid resume that did not integrate E5 and left E5 decisions pending stopped for a decision (only meaningful with --ratify off).
-        if (ratifyOff && !e5Integrated(scenario.dir) && (pending(scenario.dir, plugin.installPath) ?? []).length > 0) {
-          attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'parou-por-decisao' });
-          stoppedBy = 'parou-por-decisao';
-          break;
         }
       }
     }

@@ -3488,3 +3488,33 @@ test('E11 P10: a valid attempt of completo carries piece3 from the extracted run
     s.done();
   }
 });
+
+test('E11 --ratify off: a stop with no agent launched on resume is parou-por-decisao, not retomada-sem-agentes', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true, noAgentsOn: 2 });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 3, pollMs: 1, ratify: 'off' }), { exec: fake.exec, now: NOW, pending: () => ['DEC-7'] });
+    assert.equal(r.aggregate.attempts.length, 1);
+    assert.equal(r.aggregate.attempts[0].reason, 'parou-por-decisao');
+    assert.deepEqual(r.aggregate.attempts[0].pendingAfterResume, ['DEC-7']);
+    assert.equal(r.aggregate.stoppedBy, 'parou-por-decisao');
+  } finally {
+    s.done();
+  }
+});
+
+test('E11 --ratify off: an unreadable pending list is pendencias-ilegiveis and is recorded as null', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1, ratify: 'off' }), { exec: fake.exec, now: NOW, pending: () => null });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'invalid');
+    assert.equal(a.reason, 'pendencias-ilegiveis');
+    assert.equal(a.pendingAtResume, null);
+    assert.equal(a.pendingAfterResume, null);
+    assert.equal(r.aggregate.stoppedBy, undefined);
+  } finally {
+    s.done();
+  }
+});

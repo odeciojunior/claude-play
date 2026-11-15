@@ -418,7 +418,7 @@ test('piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review',
     { label: 'E5:gates-fix1' },
     { label: 'E5:gates-fix2' },
     { label: 'E5:gates-fix1-review' },
-    { label: 'E5:pre-gates-fix3' },
+    { label: 'E5:regates-fix1' },
   ]);
   assert.equal(piece3Of(r).gateFix, 3);
   assert.equal(piece3Of(piece3Run([{ label: 'E5:gates-fix1-review' }])).gateFix, 0);
