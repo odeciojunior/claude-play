@@ -40,7 +40,7 @@ test('unseeded variants build a sandbox and the expected prompts', async () => {
     'plan-only': ['/productivity-tools:roadmap-release plan-only E1'],
     completo: ['/productivity-tools:roadmap-release run E5'],
     'parada-retomada': ['/productivity-tools:roadmap-release run E5', '/productivity-tools:roadmap-release resume E5'],
-    coordinator: ['/productivity-tools:plan-coordinator docs/plans/2026-11-10-fixed-plan.md'],
+    coordinator: ['/productivity-tools:plan-coordinator docs/plans/fixed-plan/plan.md'],
     planner: ['/productivity-tools:roadmap-planner ' + theme],
     tracker: ['/productivity-tools:roadmap-tracker ' + event],
   };
@@ -56,7 +56,7 @@ test('unseeded variants build a sandbox and the expected prompts', async () => {
       assert.deepEqual(s.seededBlobs, {});
       assert.equal(git(t.dir, 'status', '--porcelain'), '');
       if (variant === 'coordinator') {
-        assert.ok(existsSync(join(t.dir, 'docs/plans/2026-11-10-fixed-plan.md')));
+        assert.ok(existsSync(join(t.dir, 'docs/plans/fixed-plan/plan.md')));
         assert.equal(git(t.dir, 'log', '-1', '--format=%s'), 'docs(plan): fixed plan');
       }
     } finally {
@@ -1199,7 +1199,7 @@ test('E11: codigo-nativo-A/B are in RELEASE_RUN_VARIANTS and use NATIVE_PATHS', 
 });
 
 // E11 T-G (DEC-747): the coordinator variant has a plan/1 fixture and keeps the legacy one byte for byte.
-const FIXED_PLAN_PATH = 'docs/plans/2026-11-10-fixed-plan.md';
+const FIXED_PLAN_PATH = 'docs/plans/fixed-plan/plan.md';
 const COORD_NATIVE = join(here, 'scenario', 'coordinator-plan-native.md');
 const COORD_LEGACY = join(here, 'scenario', 'coordinator-plan.md');
 const stepTitles = (text) => [...text.matchAll(/^### (?:Step|Tarefa) \d+: (.+?)\s*$/gm)].map((m) => m[1]);
@@ -1231,7 +1231,7 @@ test('makeScenario coordinator writes the fixture chosen by coordinatorFixture (
         const r = spawnSync(process.execPath, [PLAN_TOOL, 'check', join(t.dir, FIXED_PLAN_PATH)], { encoding: 'utf8' });
         assert.equal(r.status, 0, 'the committed native plan resolves its spec: ' + r.stdout + r.stderr);
       } else {
-        assert.ok(!existsSync(join(t.dir, 'docs/plans/coordinator-spec-native.md')));
+        assert.ok(!existsSync(join(t.dir, 'docs/plans/fixed-plan/coordinator-spec-native.md')));
       }
     } finally {
       t.done();

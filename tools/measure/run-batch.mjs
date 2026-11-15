@@ -1363,9 +1363,9 @@ export function panelMatches(variant, panel) {
   return { ok: reasons.length === 0, reasons };
 }
 
-// A release run that launched no subagent at all stopped before doing anything (e.g. at preflight).
+// A release or coordinator run that launched no subagent at all stopped before doing anything (e.g. at preflight).
 export function releaseRunValidity(variant, run) {
-  if (variant !== 'completo' && variant !== 'parada-retomada') return { valid: true, reason: 'ok' };
+  if (variant !== 'completo' && variant !== 'parada-retomada' && variant !== 'coordinator') return { valid: true, reason: 'ok' };
   const calls = run?.total?.calls ?? {};
   return sumCalls(calls) === 0 ? { valid: false, reason: 'sem-agentes' } : { valid: true, reason: 'ok' };
 }
