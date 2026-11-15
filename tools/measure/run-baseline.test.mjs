@@ -399,7 +399,38 @@ const e11Deps = (s, o = {}) => ({
   treeDirty: (dir) => (o.dirty ?? []).includes(dir),
   readPluginDir: (dir) => ({ version: '2.0.0', commit: dir === '/pasta-antiga' ? (o.oldCommit ?? OLD_COMMIT) : (o.mCommit ?? COMMIT) }),
 });
-const e11Opts = (s, extra = {}) => baseOpts(s, { plan: 'e11', pluginDir: '/pasta-m', pluginDirBefore: '/pasta-antiga', tag: 'M', ...extra });
+const e11Opts = (s, extra = {}) => baseOpts(s, { plan: 'e11', pluginDir: '/pasta-m', pluginDirBefore: '/pasta-antiga', workBefore: join(s.base, 'wrkb'), tag: 'M', ...extra });
+
+test('--work-before gives the 1.7.0 coordinator its own work folder (dry run and run)', async () => {
+  const s = setup();
+  try {
+    const deps = e11Deps(s);
+    await runBaseline(e11Opts(s, { dryRun: true }), deps);
+    const [m, old] = deps.logs.filter((x) => x.includes('--variant coordinator '));
+    assert.ok(m.includes(`--work ${s.work}/coordinator `), m);
+    assert.ok(old.includes(`--work ${join(s.base, 'wrkb')}/coordinator `), old);
+    assert.ok(!deps.logs.some((x) => x.startsWith('warning')), 'same length: no warning');
+    const run = e11Deps(s);
+    await runBaseline(e11Opts(s, { only: ['coordinator'] }), run);
+    assert.ok(run.calls[0].work.startsWith(s.work) && run.calls[1].work.startsWith(join(s.base, 'wrkb')));
+    // A different length warns on the dry run (paths enter the byte counters, DEC-033).
+    const warn = e11Deps(s);
+    await runBaseline(e11Opts(s, { dryRun: true, workBefore: join(s.base, 'work-antigo') }), warn);
+    assert.ok(warn.logs.some((x) => x.startsWith('warning') && x.includes('--work-before')), warn.logs.join('|'));
+    // Missing or equal to --work: exit 2 before anything.
+    for (const workBefore of [undefined, s.work]) {
+      const bad = e11Deps(s);
+      const r = await runBaseline(e11Opts(s, { workBefore }), bad);
+      assert.equal(r.exitCode, 2);
+      assert.equal(bad.calls.length, 0);
+      assert.ok(bad.logs.some((x) => x.includes('--work-before')));
+    }
+    // Not needed without the 1.7.0 entry.
+    assert.equal((await runBaseline(e11Opts(s, { workBefore: undefined, only: ['tracker'] }), e11Deps(s))).exitCode, 0);
+  } finally {
+    s.done();
+  }
+});
 
 test('E11_PLAN has the spec list', () => {
   const brief = E11_PLAN.map(({ variant, runs, side, ratify, stage, arm }) => ({ variant, runs, ...(side ? { side } : {}), ...(ratify ? { ratify } : {}), ...(stage ? { stage, arm } : {}) }));
@@ -601,7 +632,7 @@ test('CLI: --plan needs a valid name and the E11 options are accepted by --dry-r
     const run = (...a) => spawnSync(process.execPath, [script, ...a], { encoding: 'utf8' });
     const common = ['--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
     assert.equal(run(...common, '--plan', 'zzz').status, 2);
-    const ok = run(...common, '--plan', 'e11', '--plugin-dir', '/m', '--plugin-dir-before', '/antiga', '--coordinator-fixture', 'native', '--dry-run');
+    const ok = run(...common, '--plan', 'e11', '--plugin-dir', '/m', '--plugin-dir-before', '/antiga', '--work-before', join(s.base, 'wrkb'), '--coordinator-fixture', 'native', '--dry-run');
     assert.equal(ok.status, 0, ok.stderr);
     assert.equal(ok.stdout.trim().split('\n').length, 11);
   } finally {

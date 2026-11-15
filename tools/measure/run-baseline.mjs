@@ -91,15 +91,16 @@ const selected = (opts) =>
     .map((p) => ({
       ...p,
       out: p.side ? (opts.outBefore ?? `${resolve(opts.out)}-${p.side}`) : opts.out,
+      work: p.side ? opts.workBefore : opts.work,
       pluginDir: p.side ? opts.pluginDirBefore : opts.pluginDir,
       maxBudgetUsd: p.maxBudgetUsd ?? opts.maxBudgetUsd,
     }));
 
 export function dryRunCommands(opts) {
-  return selected(opts).map(({ variant, runs, stage, arm, out, pluginDir, maxBudgetUsd, ratify }) => {
+  return selected(opts).map(({ variant, runs, stage, arm, out, work, pluginDir, maxBudgetUsd, ratify }) => {
     const parts = [
       'node tools/measure/run-batch.mjs', '--variant', variant, '--runs', runs,
-      '--work', quote(`${opts.work}/${variant}`), '--out', quote(out),
+      '--work', quote(`${work}/${variant}`), '--out', quote(out),
       '--config-dir', quote(opts.configDir), '--permission-mode', opts.permissionMode,
     ];
     for (const a of opts.allow ?? []) parts.push('--allow', quote(a));
@@ -147,6 +148,16 @@ export async function runBaseline(opts, deps = {}) {
   if (plan.some((p) => p.side) && !opts.pluginDirBefore) {
     d.log(`the ${plan.find((p) => p.side).side} side of the coordinator needs --plugin-dir-before <folder of the ${OLD_SIDE_COMMIT} plugin>`);
     return { exitCode: 2, results };
+  }
+  if (plan.some((p) => p.side)) {
+    // The 1.7.0 coordinator would reuse the scenario folders of the M side (<work>/<variant>-<k>) under the same --work.
+    if (!opts.workBefore || resolve(opts.workBefore) === resolve(opts.work)) {
+      d.log('the 1.7.0 side needs --work-before <dir>, different from --work (its scenarios would reuse the folders of the M side)');
+      return { exitCode: 2, results };
+    }
+    if (opts.dryRun && resolve(opts.workBefore).length !== resolve(opts.work).length) {
+      d.log(`warning: --work-before (${resolve(opts.workBefore).length} chars) and --work (${resolve(opts.work).length} chars) differ in length; paths enter the byte counters (DEC-033, tolerance 3%), use paths of equal length`);
+    }
   }
 
   if (opts.dryRun) {
@@ -266,8 +277,9 @@ export async function runBaseline(opts, deps = {}) {
       pass += 1;
       // Unique across invocations: skip numbers whose folder an earlier invocation already used.
       let seq = pass;
-      const workName = side ? `${variant}-${side}` : variant;
-      while (existsSync(join(resolve(opts.work), `${workName}-p${seq}`))) seq += 1;
+      const workName = variant;
+      const workRoot = entry.work;
+      while (existsSync(join(resolve(workRoot), `${workName}-p${seq}`))) seq += 1;
       let r;
       try {
         r = await d.runBatch({
@@ -275,7 +287,7 @@ export async function runBaseline(opts, deps = {}) {
           variant,
           runs: n,
           stopOnDenial: true,
-          work: join(resolve(opts.work), `${workName}-p${seq}`),
+          work: join(resolve(workRoot), `${workName}-p${seq}`),
           out,
           pluginDir: entry.pluginDir,
           ratify: entry.ratify,
@@ -315,7 +327,7 @@ export async function runBaseline(opts, deps = {}) {
 }
 
 const USAGE =
-  'usage: node tools/measure/run-baseline.mjs --work <dir> --out <dir> --config-dir <dir> --permission-mode <mode> [--allow <rule>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--from-run <folder>] [--only v1,v2] [--dry-run] [--tag <name>] [--plan e17|e11] [--plugin-dir <folder>] [--plugin-dir-before <folder>] [--out-before <dir>] [--coordinator-fixture native|legacy]';
+  'usage: node tools/measure/run-baseline.mjs --work <dir> --out <dir> --config-dir <dir> --permission-mode <mode> [--allow <rule>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--from-run <folder>] [--only v1,v2] [--dry-run] [--tag <name>] [--plan e17|e11] [--plugin-dir <folder>] [--plugin-dir-before <folder> --work-before <dir>] [--out-before <dir>] [--coordinator-fixture native|legacy]';
 
 function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -323,7 +335,7 @@ function parseCli(argv) {
     '--work': 'work', '--out': 'out', '--config-dir': 'configDir', '--permission-mode': 'permissionMode',
     '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model', '--max-budget-usd': 'maxBudgetUsd',
     '--from-run': 'fromRun', '--only': 'only', '--tag': 'tag', '--plan': 'plan', '--plugin-dir': 'pluginDir',
-    '--plugin-dir-before': 'pluginDirBefore', '--out-before': 'outBefore', '--coordinator-fixture': 'coordinatorFixture',
+    '--plugin-dir-before': 'pluginDirBefore', '--work-before': 'workBefore', '--out-before': 'outBefore', '--coordinator-fixture': 'coordinatorFixture',
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') {
@@ -358,8 +370,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(USAGE);
     process.exit(2);
   }
-  if (insideRepo(o.work)) {
-    console.error(`run-baseline: --work is inside the repository: ${resolve(o.work)}`);
+  const badWork = [o.work, o.workBefore].find((w) => w && insideRepo(w));
+  if (badWork) {
+    console.error(`run-baseline: --work or --work-before is inside the repository: ${resolve(badWork)}`);
     process.exit(2);
   }
   try {
