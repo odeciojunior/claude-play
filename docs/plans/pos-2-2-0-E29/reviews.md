@@ -35,6 +35,10 @@
 - Rodada 1: revisor opus, correção anterior: nenhuma.
 - Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
 
+### gates-fix1
+- Rodada 1: revisor opus, correção anterior: tier sonnet.
+- Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+
 ## Riscos aceitos
 
 Nenhum.
@@ -55,9 +59,18 @@ Nenhum.
 - T4: The plan did not list one test: `C4: the aggregate of a lenses batch records harness.taskReview ...`, which ran `runBatch` for `unica` against the real plugin. It would be refused now, so I made it use a plugin built from the fixture for `unica`. It stays inside the plan's file list, but it is an addition. The fixture is LF in the blob and git warns it becomes CRLF on checkout. The tests only compare single-line literals and the pure block, which is extracted by line, so line endings do not matter. The checks below were run with absolute paths under the worktree and, apart from the failing run, with output redirected to a file. A plain run of the two-file command exited 0, but its output was too long to quote here.
 - T5: Exit codes: the Bash tool did not print them, so each exit is recorded as 0 from the pass summary or success line, not from a printed code. G2 and G3 were run with the absolute worktree path instead of "." and the plugin path as the canonical form; the path is the same directory. G5 reports one WARN (delegation-protocol.md links state.md) and G3 reports an ICON_MISSING warning; neither is a failure and neither is listed in the baseline. The G1 total moved from the baseline 2175 to 2172, which is explained by the test removals and additions of Tasks 1 to 3 (net -3), not by a failure. A rerun of the G1 test count against the baseline should be read with that in mind.
 
+- gates-fix1: The "gate not green" flag comes from comparing total test counts alone, and there are no failures behind it. E29 deletes three E28 tests that covered the `taskReview.single` mode. Those are `E28 AC1` in flow.test.mjs and `E28 AC2` in prompts.test.mjs, plus some of the single-review tests in review.test.mjs. It also adds new tests. The net is -3, which matches the reviews.md note on T5. Restoring the deleted tests would contradict the spec, so I did not. The workflow's gate comparison could treat a total below baseline as a failure only when a test disappears without a matching removal in the plan. I did not run G1 myself; the figures are the ones quoted in the task.
+
 ## Gates
 
 Registrados nos concerns de T5 (G1 a G5 executados; G1 com 2172 testes contra a linha de base 2175, explicado pelo saldo líquido -3 das Tarefas 1 a 3; sem falhas).
+
+Execução de gates (após gates-fix1):
+- G1: exit 0, total 2172, skipped 2, failing [] (linha de base: exit 0, total 2175, skipped 2, failing []).
+- G2: exit 0 (linha de base: exit 0).
+- G3: exit 0 (linha de base: exit 0).
+- G4: exit 0 (linha de base: exit 0).
+- G5: exit 0 (linha de base: exit 0).
 
 ## Entradas humanas
 
@@ -66,5 +79,9 @@ Nenhuma (what, blq, workaround, blocking: não se aplica).
 ## Textos cortados no registro
 
 - Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md). Texto completo:
+
+  checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
+
+- Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), execução dos gates. Texto completo:
 
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
