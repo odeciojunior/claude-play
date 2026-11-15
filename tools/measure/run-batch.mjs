@@ -210,7 +210,7 @@ export function rolesByLabel(run, cliCostUsd) {
   for (const [name, role] of Object.entries(run.roles)) {
     // B3: verify (the adversarial check of the final stage) is its own bucket, ahead of review, so its cost comes out apart
     // E27 C3: E5:t3:spec1 and E5:t3:quality2 have no "review" in the label but are task reviews (a "-fix" label went to fix above)
-    const bucket = name.includes('fix') ? 'fix' : name.includes('verify') ? 'verify' : name.includes('review') || /t3:(spec|quality)\d*$/.test(name) ? 'review' : 'other';
+    const bucket = name.includes('fix') ? 'fix' : name.includes('verify') ? 'verify' : name.includes('review') || /:t\d+:(spec|quality)\d+b?$/.test(name) ? 'review' : 'other';
     addTo(out[bucket], role);
   }
   return { ...out, session: { cliCostUsd, transcriptCostUsd: run.main.cost ?? null } };
@@ -1786,7 +1786,8 @@ export async function lensValidity(h, journal, scenario, loop, script) {
 
 // E27 C3: the counters of one valid lenses attempt, from the replay (loop.lens), the sentinel outcomes and the manifest entries of the artifact.
 // capturadoPor = per seed the { kind, round } of the first review whose finding (file + description) matches its mention; the verdict
-// of a "not pass" round is spec or quality different from pass (unica) or clean === false (atual).
+// of a "not pass" round is spec or quality different from pass (unica). In atual (owner decision, via Fable) a loop approved with
+// a non-empty accepted list counts: a non-hard blocking finding accepted is equivalent to a fail verdict.
 export function lensAttemptStats(h, loop, outcomes, seeds) {
   const lens = loop.lens;
   const single = h.arm === 'unica';
@@ -1801,7 +1802,7 @@ export function lensAttemptStats(h, loop, outcomes, seeds) {
   }
   const mentioned = Object.fromEntries(Object.entries(capturadoPor).map(([id, v]) => [id, v !== null]));
   const capturadoSemMencao = outcomes.filter((o) => o.outcome === 'capturado' && capturadoPor[o.id] === null).length;
-  const notPass = (r) => (single ? r?.spec !== 'pass' || r?.quality !== 'pass' : r?.clean === false);
+  const notPass = (r) => (single ? r?.spec !== 'pass' || r?.quality !== 'pass' : true);
   const failRiscoAceito = lens.loops.some((l) => l.ok && l.accepted.length > 0 && notPass(l.lastReview));
   const blockedFixes = lens.loops.flatMap((l) => (l.fixes ?? []).filter((f) => f.blocked));
   const bloqueadoMisto = blockedFixes.some((f) => f.fixable.some(isSynthetic) && f.fixable.some((i) => !isSynthetic(i)));
@@ -2004,13 +2005,20 @@ function decideSideC(atual, unica) {
 
 // The rule of the passada C over the totals of the two arms (armTotals). `unica` may be absent when atual is the ceiling or the floor.
 // The recounts (capturadoSemMencao as indeterminado, then the failRiscoAceito attempts as indeterminado, in both arms) must keep the
-// side, or the answer is inconclusivo and the two loops stay. Returns { side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo', reason, recount }.
+// side, or the answer is inconclusivo and the two loops stay. Returns { side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo'|'continua', reason, recount }
+// ('continua': the early ceiling fell in the recount, the atual arm goes on to 10 valid attempts).
 export function ruleSideC({ atual, unica = null, leitura = {} }) {
   if (!atual) throw new UsageError('ruleSideC needs the totals of the atual arm');
   const base = decideSideC(atual, unica);
   if (base.side === 'sem-unica') throw new UsageError(base.reason);
   const summary = (t) => (t ? { capturas: t.capturas, perdidos: t.perdidos, indeterminados: t.indeterminados, determinadas: t.determinadas, outcomesByLens: t.outcomesByLens, costPerValid: t.costPerValid } : null);
   const recount = { base: { side: base.side, reason: base.reason } };
+  // The early ceiling reads the totals recounted with the reading of the diary: a capture no review names (by `leitura`, else by regex)
+  // is indeterminado, so it is no longer 24 of 24 and the arm continues to 10 valid attempts (anything below 24/24 continues).
+  // Never a piso from the first 6 attempts.
+  if (earlyCeiling(atual) && !earlyCeiling(recountLenses(atual, 'semMencao', leitura))) {
+    return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao): o atual segue ate 10 validas', recount };
+  }
   const changed = [];
   for (const mode of ['semMencao', 'failRisco']) {
     const a = recountLenses(atual, mode, leitura);
@@ -2397,6 +2405,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     let journal = null;
     let loop = null;
     let singleWave = null;
+    let settled = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
       const rawEntries = journal.entries;
@@ -2407,6 +2416,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         if (journal.formatError) v = INVALID_FORMAT;
         else {
           loop = await loopResult(h, rawEntries, h.loopFns, scenario);
+          // the semente-ausente check reads the tree: settle the sandbox first (a release may leave the root elsewhere or the tree dirty)
+          settled = settleSandbox(scenario.dir, scenario.seededCommit);
           v = await lensValidity(h, journal, scenario, loop, readScriptResult(opts.configDir, sessions));
         }
       } else if (h?.rounds === 'loop' && (v.valid || v.reason === 'formato-do-diario') && !journal.formatError) {
@@ -2501,7 +2512,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       if (h?.arm === 'perguntas') authorCommitted = commitAuthorEdit(scenario);
       // The sentinels read the tip of feat/E5 in the working tree. The stage is read first: settling may recreate the branch.
       const stage = !h ? stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit) : null;
-      reachable = settleSandbox(scenario.dir, scenario.seededCommit);
+      reachable = settled ?? settleSandbox(scenario.dir, scenario.seededCommit);
       // Loop: the stage at the end is the loop's own verdict (approved when it ended ok).
       const stageOf = !h ? () => stage : loop ? () => (loop.ok ? 'approved' : 'stopped') : (presents) => harnessStage(h, journal.entries, presents);
       outcomes = await attemptOutcomes(variant, scenario, journal, stageOf, reachable);
@@ -2513,7 +2524,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     if (h?.lenses && journal && loop) {
       // E27 C3: a compact loop record, the counters of the attempt and what armTotals reads (artifact, start time, cost)
       const { lens: _lens, ...compactLoop } = loop;
-      attempt.loop = compactLoop;
+      // loop.loops comes from loopResult without `accepted`: keep each loop's accepted list from the replay (failRiscoAceito, report)
+      attempt.loop = { ...compactLoop, loops: compactLoop.loops.map((l, i) => ({ ...l, accepted: loop.lens.loops[i]?.accepted ?? [] })) };
       Object.assign(attempt, lensAttemptStats(h, loop, outcomes, manifestEntries(variant)), { artifact: artifactOf(variant).artifact, startedAt: now().toISOString() });
       attempt.costUsd = attemptCostUsd(attempt);
     } else if (h && journal && loop) {

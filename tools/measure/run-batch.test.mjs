@@ -3971,12 +3971,41 @@ test('C3: failRiscoAceito counts, in both arms, attempts whose loop approved wit
   // an approval with no accepted risk never counts, whatever the verdict (the synthetic finding forces a fix)
   const noRisk = await lensRun({ arm: 'unica', reviews: [lrv([MINOR_ONLY], 'pass', 'fail'), lrv([])] });
   assert.equal((await statsOf('unica', noRisk)).failRiscoAceito, false);
-  // atual: clean === false of that review (the loop lists below are the replay record of a loop that approved with accepted risks)
+  // atual (owner decision, via Fable): a loop approved with a non-empty accepted list counts, whatever `clean` says (a non-hard blocking
+  // finding accepted is equivalent to a fail verdict); an approval with an empty accepted list does not
   const h = hL('atual');
   const seeds = SEEDS_A;
-  const lens = (clean) => ({ loops: [{ kind: 'spec', ok: true, accepted: [], lastReview: lrv([]) }, { kind: 'quality', ok: true, accepted: [RISK], lastReview: lrv([RISK], 'pass', 'pass', { clean }) }], reviewsLog: [], sinteticoGerado: 0, veredictoAusente: 0 });
+  const lens = (clean, accepted = [RISK]) => ({ loops: [{ kind: 'spec', ok: true, accepted: [], lastReview: lrv([]) }, { kind: 'quality', ok: true, accepted, lastReview: lrv(accepted, 'pass', 'pass', { clean }) }], reviewsLog: [], sinteticoGerado: 0, veredictoAusente: 0 });
   assert.equal(lensAttemptStats(h, { lens: lens(false) }, [], seeds).failRiscoAceito, true);
-  assert.equal(lensAttemptStats(h, { lens: lens(true) }, [], seeds).failRiscoAceito, false);
+  assert.equal(lensAttemptStats(h, { lens: lens(true) }, [], seeds).failRiscoAceito, true);
+  assert.equal(lensAttemptStats(h, { lens: lens(true, []) }, [], seeds).failRiscoAceito, false);
+  assert.equal(lensAttemptStats(h, { lens: lens(false, []) }, [], seeds).failRiscoAceito, false);
+});
+
+test('C3: atual loop approved with an important pelo-plano finding accepted is failRiscoAceito, kept on the attempt record and undetermined in the failRisco recount', async () => {
+  const P = { severity: 'important', category: 'pelo-plano', description: '[fab] the plan asks for it, not a seed', file: 'src/x.mjs' };
+  const run = await lensRun({ arm: 'atual', reviews: [lrv([P])] });
+  assert.equal(run.result.ok, true);
+  assert.equal(run.result.loops.some((l) => l.accepted.length > 0), true, JSON.stringify(run.result.loops));
+  const st = await statsOf('atual', run, SEEDS_A.map((e) => oc(e.id, 'capturado')));
+  assert.equal(st.failRiscoAceito, true);
+  // the attempt record keeps the accepted list of each loop (it used to be dropped with the lens replay)
+  const s = setup();
+  try {
+    const spec = () => ({ entries: [entry('E5:t3:spec1', lrv([P])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: run.result.loops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+    assert.ok(a.loop.loops.every((l) => Array.isArray(l.accepted)), JSON.stringify(a.loop.loops));
+    assert.equal(a.loop.loops.some((l) => l.accepted.length > 0), true, JSON.stringify(a.loop.loops));
+  } finally {
+    s.done();
+  }
+  // in the recount the attempt becomes undetermined
+  const t = armTotals([aggOf('A', [vatt('A', 1, ALL, { failRiscoAceito: st.failRiscoAceito })])]).totals;
+  const rc = (await import('./run-batch.mjs')).recountLenses(t, 'failRisco');
+  assert.equal(rc.capturas, 0);
+  assert.equal(rc.indeterminados, 4);
 });
 
 test('C3: sinteticoGerado and veredictoAusente counted per round in unica', async () => {
@@ -4051,6 +4080,19 @@ test('C3: rolesByLabel puts E5:t3:<kind><r> in review and E5:t3:<kind>-fix<k> in
   assert.equal(r.review.cost, 1 + 2 + 4 + 32 + 64);
   assert.equal(r.fix.cost, 8 + 16);
   assert.equal(r.other.cost, 128);
+});
+
+test('C3: rolesByLabel classifies spec/quality task reviews of every task and their retries (b) as review', () => {
+  const calls = (s) => ({ haiku: 0, sonnet: s, opus: 0, fable: 0, other: 0 });
+  const role = (cost) => ({ calls: calls(1), promptBytes: 1, tokens: { input: 1, output: 1 }, cost, agents: 1 });
+  const run = {
+    roles: { 'E5:t3:spec1b': role(1), 'E5:t4:quality2': role(2), 'E5:t12:spec3': role(4), 'E5:t4:quality1b': role(8), 'E5:t4:spec-fix1': role(16), 'E5:t4:specs': role(32), 'E5:t4:impl': role(64), 'E5:t3:spec': role(128) },
+    main: { cost: 0 },
+  };
+  const r = rolesByLabel(run, 0);
+  assert.equal(r.review.cost, 1 + 2 + 4 + 8);
+  assert.equal(r.fix.cost, 16);
+  assert.equal(r.other.cost, 32 + 64 + 128);
 });
 
 test('C3: the correcao-semeada replay and validity are unchanged', async () => {
@@ -4317,6 +4359,43 @@ test('C4: earlyCeiling gives teto with the first 6 valid attempts of atual, 3 of
   risky[0] = vatt('A', 1, ALL, { failRiscoAceito: true, capturadoPor: NAMED });
   assert.equal(ruleSideC({ atual: totalsOf(...risky) }).side, 'inconclusivo');
   assert.equal(earlyCeiling(null), false);
+});
+
+test('C4: the early ceiling is checked on the totals recounted with the reading of the diary: it stands with a confirmed capture, otherwise the arm continues (never a piso from 6 attempts)', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  // 24 of 24, one capture that no review names by regex
+  const six = ['A', 'B', 'A', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: i === 0 ? { ...NAMED, SP1: null } : NAMED }));
+  const atual = totalsOf(...six);
+  assert.equal(earlyCeiling(atual), true);
+  const key = atual.validOrder[0].key;
+  // the reading of the diary confirms the capture: the early ceiling stands
+  const kept = ruleSideC({ atual, leitura: { [key]: { SP1: true } } });
+  assert.equal(kept.side, 'teto');
+  assert.match(kept.reason, /antecipado/);
+  // the reading denies it (or the regex stands with no reading): not an early ceiling, the arm continues to 10 valid attempts
+  for (const leitura of [{ [key]: { SP1: false } }, {}]) {
+    const r = ruleSideC({ atual, leitura });
+    assert.equal(r.side, 'continua', JSON.stringify(leitura));
+    assert.notEqual(r.side, 'piso');
+    assert.match(r.reason, /10 validas/);
+  }
+});
+
+test('C3: semente-ausente is checked after settleSandbox: a root left on main with feat/E5 held by a release worktree is still valid', async () => {
+  const s = setup();
+  try {
+    const left = (cwd) => {
+      gitq(cwd, 'checkout', '-q', '-B', 'release/sandbox', 'main');
+      gitq(cwd, 'checkout', '-q', 'main');
+      gitq(cwd, 'worktree', 'add', join(cwd, '..', 'release-wt-lens'), 'feat/E5');
+    };
+    const spec = () => ({ after: left, entries: [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))], ret: { ok: true, kind: null, msg: null, loops: cleanLoops, reviews: [], accepted: [] } });
+    const r = await runBatch(lensBatch(s), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
+  } finally {
+    s.done();
+  }
 });
 
 test('C4: the aggregate of a lenses batch records harness.taskReview, kinds, outcomesByLens and the counters of C3', async () => {
