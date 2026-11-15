@@ -54,7 +54,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 ## Signed commands
 
 - `token` prints a fresh random token (the workflow's `runToken`).
-- `read <progress.json> --nonce <n> [--page <k>] [--json]` prints the state (history emptied), the repository root and `planChanged`, signed with a `digest` and echoing the nonce, as compact JSON. A big state comes in pages under 30 KB: page 0 carries the state with its first steps, `--page k` carries only steps; `pages` and `stateDigest` (of the whole state) are on every page.
+- `read <progress.json> --nonce <n> [--page <k>] [--json]` prints the state (history emptied), the repository root and `planChanged`, signed with a `digest` and echoing the nonce, as compact JSON. A big state comes in pages under 30 KB: page 0 carries the state with its first steps (possibly none), `--page k` carries only steps; `pages` and `stateDigest` (of the whole state) are on every page.
 - `apply <progress.json> --events <payload> --nonce <n>` applies a list of events in one write. The payload is URL-encoded JSON `{ expect, events, digest }`: `expect` is the `stateDigest` from the last read, `digest` signs the rest. A bad digest changes nothing and exits 2; a stale `expect` is refused as `concurrent-change`; an event refused midway changes nothing and the reply carries its `index` and `code`.
 - The reply is signed output: `tool`, `command`, `nonce`, `now`, `ok`, `code`, `action` (the next action), `stateDigest` and `digest`. Trust it only when the nonce matches and the digest verifies.
 

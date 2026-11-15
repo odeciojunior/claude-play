@@ -1393,3 +1393,18 @@ test('readPages without baseSize is unchanged', () => {
   assert.ok(a[0].length > 0);
   for (const p of a) assert.ok(JSON.stringify(p).length <= READ_PAGE_CHARS + 100);
 });
+
+test('read pagination does not depend on the nonce length', () => withSandbox((sb) => {
+  initSandbox(sb);
+  for (let pad = 0; pad <= 40; pad++) {
+    const st = bigState(sb);
+    st.manual = [{ kind: 'note', step: 1, text: 'm'.repeat(9000 + pad), open: false }];
+    writeJson(sb.state, st);
+    const first = JSON.parse(cli(['read', sb.state, '--nonce', 'a'.repeat(32), '--json']).out);
+    const steps = first.state.steps.slice();
+    for (let k = 1; k < first.pages; k++) {
+      steps.push(...JSON.parse(cli(['read', sb.state, '--nonce', 'abcd1234-2', '--page', String(k), '--json']).out).steps);
+    }
+    assert.deepEqual(steps.map((x) => x.n), st.steps.map((x) => x.n), 'pad ' + pad);
+  }
+}));

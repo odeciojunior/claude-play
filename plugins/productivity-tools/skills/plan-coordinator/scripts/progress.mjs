@@ -385,7 +385,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     // Page 0 carries the state without its steps' tail; the other pages carry only steps. stateDigest is of the whole state, the same on every page.
     const page = opts.page === undefined ? 0 : Number(opts.page);
     const headBase = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, stateDigest: stateDigest(state) };
-    const baseSize = JSON.stringify({ ...headBase, page, pages: 99, state: { ...state, history: [], steps: [] } }).length + 200;
+    const baseSize = JSON.stringify({ ...headBase, nonce: '', page: 0, pages: 0, state: { ...state, history: [], steps: [] } }).length + 400;
     const pages = readPages(state.steps, baseSize);
     if (!Number.isInteger(page) || page < 0 || page >= pages.length) return bad('--page deve ser um inteiro de 0 a ' + (pages.length - 1));
     const head = { ...headBase, page, pages: pages.length };
