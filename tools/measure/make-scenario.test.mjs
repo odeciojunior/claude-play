@@ -687,7 +687,7 @@ test('E26: prepareNativeBranch commits the probe blobs at NATIVE_PATHS on feat/E
     assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.spec), NATIVE_BLOB.spec);
     // The plan differs from the probe blob only by the worktree path, rewritten to the sandbox's own.
     const probePlan = readText(join(NATIVE_DIR, 'plan.md'));
-    assert.equal(git(t.dir, 'show', 'feat/E5:' + NATIVE_PATHS.plan), probePlan.replaceAll('D:/claude-e8q-work/completo/completo-1-wt/E5', resolve(t.dir).split(String.fromCharCode(92)).join('/') + '-wt/E5').trimEnd());
+    assert.equal(git(t.dir, 'show', 'feat/E5:' + NATIVE_PATHS.plan), probePlan.replaceAll('D:/claude-e8q-work/completo/completo-1-wt/E5', resolve(t.dir).split(String.fromCharCode(92)).join('/')).trimEnd());
     assert.deepEqual(git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(plan): E5 text utilities plan', 'docs(spec): E5 text utilities design']);
     assert.equal(git(t.dir, 'status', '--porcelain'), '');
     const roadmap = join(t.dir, 'docs/plans/roadmap-sandbox');
@@ -916,13 +916,19 @@ test('E26: native sentinels capture differently-worded fixes and survive reforma
   }
 });
 
-// E26: the probe worktree path in the native seeds is rewritten to the sandbox's own feat/E5 worktree at seeding time.
+// E26: the probe worktree path in the native seeds is rewritten to the sandbox root (where feat/E5 is checked out) at seeding time.
 test('E26: native seeds name the sandbox worktree, not the probe one, in the committed artifacts', async () => {
   for (const v of ['plano-nativo-A', 'spec-nativo-A']) {
     const t = tmp('sb');
     try {
       const sc = await makeScenario(t.dir, v);
-      const wt = resolve(t.dir).replaceAll(String.fromCharCode(92), '/') + '-wt/E5';
+      const wt = resolve(t.dir).replaceAll(String.fromCharCode(92), '/');
+      // The stage harness runs feat/E5 in the sandbox root (run-batch checks it out there): that is where the path must point.
+      git(t.dir, 'checkout', '-q', 'feat/E5');
+      const wtLines = git(t.dir, 'worktree', 'list', '--porcelain').split(String.fromCharCode(10)).map((l) => l.trim());
+      const at = wtLines.indexOf('branch refs/heads/feat/E5');
+      assert.ok(at > 0, v);
+      assert.equal(wtLines[at - 2], 'worktree ' + wt, v);
       const cls = artifactOf(v).class;
       const file = NATIVE_PATHS[cls];
       const clean = git(t.dir, 'rev-parse', sc.seededCommit + '~1');
@@ -932,7 +938,7 @@ test('E26: native seeds name the sandbox worktree, not the probe one, in the com
       }
       if (cls === 'plan') {
         const text = git(t.dir, 'show', sc.seededCommit + ':' + file);
-        assert.ok(text.includes('**Branch / worktree:** feat/E5 in ' + wt), v);
+        assert.ok(text.includes('**Branch / worktree:** feat/E5 in ' + wt + String.fromCharCode(10)), v);
         assert.ok(text.includes('worktree ' + wt + ' on feat/E5'), v);
       }
     } finally {
