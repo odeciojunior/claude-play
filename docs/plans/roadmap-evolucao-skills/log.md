@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E16 | Peças 2 a 4 preparadas: nenhuma decisão do executor pendente; branch de volta volta/productivity-tools-2.1.1 (557250d) com G1-G5 verdes e diff de 2 linhas contra 1017db5; roteiro de publicação do dono. E16 total US$ 11,71. | `docs/reports/2026-11-15-E16-roteiro-publicacao.md` |
 | 2026-11-15 | E16 | Peça 1: lote M16 (2.1.0) completo ×3 e coordinator ×3, 6/6 válidas, medianas iguais a E11, sem piora; gatilho de DEC-773 disparou (pendência para E13); DEC-764 não. US$ 11,71. | `docs/reports/2026-11-15-E16-lote-M16.md` |
 | 2026-11-15 | E16 | Análise de E16 (opus, grátis): nativos já publicados na 2.0.0; E16 publica a próxima versão. Revisor padrão idêntico entre a árvore medida 41a882a e a release (task-reviewer.md e roadmap-release.js só mudam atrás de single). DEC-774, DEC-775. | `docs/plans/roadmap-evolucao-skills/decisions.md` |
 | 2026-11-15 | E16 | DEC-775 (E16) decidida pelo dono via Fable; vigente. | `decisions.md` |
