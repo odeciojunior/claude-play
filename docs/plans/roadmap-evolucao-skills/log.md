@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11 | Pendências 2.0.1 em fix/2.0.1-pendencias (e2e6060, sobre feat/E28): coordinator para com base vermelha ou vazia; fullRef nas referências de SHA de agente (R6 decidida via Fable); implementador com worktree absoluto. G1 2112/0, G2-G5 verdes; portão opus/high com 1 correção. | `docs/plans/correcoes-2.0.1/spec.md` |
 | 2026-11-15 | E28 | DEC-767 (E28) ratificada com emenda pelo dono via Fable. | `decisions.md` |
 | 2026-11-15 | E28 | DEC-766 e DEC-768 (E28) ratificadas pelo dono via Fable; AC1 também se apoia em flow.test.mjs (achado 4 da revisão final). | `decisions.md` |
 | 2026-11-15 | E28 | Peças 1 e 2 em feat/E28 (91f182a): revisão única desligada por padrão; G1 2099/0, G2-G5 verdes; portão opus/high com 1 correção; teste do revisor 3/3 (US$ 0,84). Decisões DEC-766, DEC-767, DEC-768. Integra após a publicação da 2.0.0. | `docs/plans/evolucao-skills-E28/2026-11-15-E28-revisor-comportamental.md` |

@@ -71,8 +71,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) E28: auditoria das cópias por modelo (DEC-715) e notas de revisão (2bb59c6, 7ee7f23, reviews.md do 2º plan-only); roadmap-release.js ~241 mil de 250.000 (DEC-647). Ver seção E28 de docs/reports/2026-11-13-pendencias-por-entregavel.md.
 - (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
-- (executor) 2.0.1: o portão final do coordinator e o de gates do release recusam comando de teste cuja base falha ou roda 0 testes; referências de SHA vindas de agente (targetHead, mergeCommit, head de persist*) passam por fullSha (revisão de M′, DEC-762).
-- (executor) 2.0.1 (lote E11): bytes do plan-only (DEC-763); gate-vazio aceitar "N tests, N pass, N fail"; implementadores começam fora da worktree (14 falhas de caminho no lote E11).
+- (executor) 2.0.1: portões vazios, fullRef e worktree do implementador prontos em fix/2.0.1-pendencias (e2e6060, sobre feat/E28); integrar com E28 depois da publicação da 2.0.0, decidir a versão e o bump.
+- (executor) 2.0.1 (arnês, lote E11): gate-vazio aceitar "N tests, N pass, N fail"; teto de bytes do plan-only (DEC-763). Correção de tools/measure, fora da branch do produto.
 <!-- /roadmap:pending -->
 
 ## Em andamento
