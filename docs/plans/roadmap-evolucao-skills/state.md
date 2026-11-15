@@ -7,9 +7,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E26: peça 1 (spec): lotes spec-nativo A e B em laço (braço perguntas cortado, DEC-731); depois relatório. Passo 0 e peça 2 feitos (efeito teto). Executa: executor.
-2. E27 passada B: bloco B do arnês durante os lotes de E26; lotes depois. Executa: executor.
-3. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
+1. E27 passada B: bloco B do arnês durante os lotes de E26; lotes depois. Executa: executor.
+2. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
+3. E26: peça 3 com o lote completo de E11; ratificação de E26 ao fim (peças 1 e 2 feitas: fica o laço de spec e de plano). Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
