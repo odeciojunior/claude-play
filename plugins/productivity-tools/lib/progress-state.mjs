@@ -603,7 +603,11 @@ const psHandlers = {
     if (!Array.isArray(ev.failedNames) || ev.failedNames.some((x) => typeof x !== 'string')) {
       return psRefuse('wrong-status', 'failedNames deve ser lista de textos');
     }
+    if (ev.failedNamesCut !== undefined && (!Number.isInteger(ev.failedNamesCut) || ev.failedNamesCut < 0)) {
+      return psRefuse('wrong-status', 'failedNamesCut deve ser inteiro >= 0');
+    }
     state.run.baseline = { test: ev.test ?? null, exit: ev.exit, tail: ev.tail ?? null, failedNames: psClone(ev.failedNames) };
+    if (ev.failedNamesCut !== undefined) state.run.baseline.failedNamesCut = ev.failedNamesCut;
     if (state.run.test === null || state.run.test === undefined) state.run.test = ev.test ?? null;
     return null;
   },

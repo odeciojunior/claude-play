@@ -91,3 +91,42 @@ test('validateArgs restricts answers and test', () => {
   assert.ok(P.validateArgs({ ...ok, answers: [{ step: 3 }] }).error);
   assert.ok(P.validateArgs({ ...ok, test: 5 }).error);
 });
+
+test('capNames keeps 50 names and counts the rest', () => {
+  const many = Array.from({ length: 80 }, (_, i) => `name ${i}`);
+  const r = P.capNames(many);
+  assert.equal(r.names.length, 50);
+  assert.equal(r.cut, 30);
+  assert.ok(r.names.every((n) => !n.includes('+')));
+  assert.deepEqual(P.capNames(['a', 'b', 'c']), { names: ['a', 'b', 'c'], cut: 0 });
+});
+
+test('gateQuestion stays within 600 characters', () => {
+  const many = Array.from({ length: 80 }, (_, i) => `a long failing test name number ${i} with padding`);
+  const q = P.gateQuestion(2, 1, many);
+  assert.ok(q.length <= 600, `length ${q.length}`);
+  assert.ok(q.includes('+30'));
+  assert.ok(q.includes('...'));
+  assert.equal(P.gateQuestion(2, 1, ['x']), 'the gate of wave 2 failed (exit 1, failing: x); the person decides');
+});
+
+test('baselineEvent caps names and tail', () => {
+  const stdout = Array.from({ length: 60 }, (_, i) => `not ok ${i + 1} - bad ${i}`).join('\n') + '\n' + 'z'.repeat(3000);
+  const ev = P.baselineEvent('node --test', { exit: 1, stdout });
+  assert.equal(ev.type, 'baseline');
+  assert.ok(ev.tail.length <= 1500);
+  assert.equal(ev.failedNames.length, 50);
+  assert.equal(ev.failedNamesCut, 10);
+});
+
+test('waveGatePasses with a cut baseline', () => {
+  const names = Array.from({ length: 50 }, (_, i) => `n${i}`);
+  const baseline = { exit: 1, failedNames: names, failedNamesCut: 3 };
+  assert.equal(P.waveGatePasses({ exit: 1, failedNames: names.slice(0, 5) }, baseline), true);
+  assert.equal(P.waveGatePasses({ exit: 1, failedNames: ['n1', 'only-in-cut-part'] }, baseline), false);
+});
+
+test('cmdOverCap refuses a command above CMD_CAP', () => {
+  assert.deepEqual(P.cmdOverCap('x'.repeat(6001)), { refuse: true, size: 6001 });
+  assert.deepEqual(P.cmdOverCap('x'.repeat(6000)), { refuse: false });
+});

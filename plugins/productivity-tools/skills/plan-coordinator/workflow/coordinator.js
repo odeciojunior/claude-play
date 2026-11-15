@@ -636,7 +636,11 @@ const psHandlers = {
     if (!Array.isArray(ev.failedNames) || ev.failedNames.some((x) => typeof x !== 'string')) {
       return psRefuse('wrong-status', 'failedNames deve ser lista de textos');
     }
+    if (ev.failedNamesCut !== undefined && (!Number.isInteger(ev.failedNamesCut) || ev.failedNamesCut < 0)) {
+      return psRefuse('wrong-status', 'failedNamesCut deve ser inteiro >= 0');
+    }
     state.run.baseline = { test: ev.test ?? null, exit: ev.exit, tail: ev.tail ?? null, failedNames: psClone(ev.failedNames) };
+    if (ev.failedNamesCut !== undefined) state.run.baseline.failedNamesCut = ev.failedNamesCut;
     if (state.run.test === null || state.run.test === undefined) state.run.test = ev.test ?? null;
     return null;
   },
@@ -920,6 +924,45 @@ function tailOf(text, n = 1500) {
   return t.length > n ? t.slice(t.length - n) : t
 }
 
+// Event size caps: the gate question, the failed names kept in the baseline and the command sent to the script-runner.
+const GATE_Q_CAP = 600
+const NAMES_CAP = 50
+// Git Bash cuts a `bash -c` string near 8186 characters and the Bash tool wraps about 500 more: an apply command stays under CMD_CAP.
+const CMD_CAP = 6000
+
+// At most NAMES_CAP names; cut counts the rest. The "+N" marker is never part of a name.
+function capNames(list) {
+  const all = Array.isArray(list) ? list : []
+  return { names: all.slice(0, NAMES_CAP), cut: Math.max(0, all.length - NAMES_CAP) }
+}
+
+// The question of a failed wave gate, at most GATE_Q_CAP characters; a cut keeps the "..." mark and the +N count.
+function gateQuestion(wave, exit, failedNames) {
+  const { names, cut } = capNames(failedNames)
+  const more = cut > 0 ? ` +${cut}` : ''
+  const head = `the gate of wave ${wave} failed (exit ${exit}`
+  const tail = '); the person decides'
+  const list = names.length ? `, failing: ${names.join('; ')}` : ', no failing test name recognized'
+  const full = head + list + more + tail
+  if (full.length <= GATE_Q_CAP) return full
+  const keep = GATE_Q_CAP - (head.length + more.length + tail.length + 3)
+  return head + list.slice(0, Math.max(0, keep)) + '...' + more + tail
+}
+
+// The baseline event of a test run: tail and failed names capped, the excess of names counted.
+function baselineEvent(test, out) {
+  const { names, cut } = capNames(failedTestNames(out.stdout))
+  const ev = { type: 'baseline', test, exit: out.exit, tail: tailOf(out.stdout), failedNames: names }
+  if (cut > 0) ev.failedNamesCut = cut
+  return ev
+}
+
+// A command above CMD_CAP is not dispatched.
+function cmdOverCap(cmd) {
+  const size = String(cmd).length
+  return size > CMD_CAP ? { refuse: true, size } : { refuse: false }
+}
+
 // What progress.mjs read, apply --events and the local copy compare: the state without its history.
 function stateDigest(state) { return fnv1a(JSON.stringify(canon({ ...state, history: [] }))) }
 
@@ -1035,8 +1078,12 @@ const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in 
 const runPrompt = (cmd, writes) => `Run this command once and return its exit code and its full stdout, literal${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
-const runCmd = (cmd, label, o = {}) => agent(runPrompt(cmd, o.writes),
-  { agentType: 'productivity-tools:script-runner', label, phase: o.phase, schema: S_RUN, model: o.model || 'haiku', effort: o.effort || 'low' })
+const runCmd = (cmd, label, o = {}) => {
+  const over = cmdOverCap(cmd)
+  if (over.refuse) return Promise.resolve({ exit: -1, stdout: `command of ${over.size} characters, above the limit of ${CMD_CAP}: not dispatched` })
+  return agent(runPrompt(cmd, o.writes),
+    { agentType: 'productivity-tools:script-runner', label, phase: o.phase, schema: S_RUN, model: o.model || 'haiku', effort: o.effort || 'low' })
+}
 
 // ---------------------------------------------------------------- returns
 const resumeArgs = () => {
@@ -1108,8 +1155,6 @@ const readSigned = async (label, first) => {
 
 const divergence = (message) => stopWith('state-divergence', { message })
 
-// Git Bash cuts a `bash -c` string near 8186 characters and the Bash tool wraps about 500 more: an apply command stays under CMD_CAP.
-const CMD_CAP = 6000
 const applyCmd = (expect, events, nonce) => `node ${shq(PROGRESS)} apply ${shq(STATE_FILE)} --events ${shq(eventsPayload(expect, events))} --nonce ${shq(nonce)} --json`
 
 // One signed apply of consecutive events on top of DISK. Returns null when they are on disk, else the result to return.
@@ -1264,7 +1309,7 @@ const ensureBaseline = async () => {
   }
   const out = await runTest('baseline')
   if (!out || !Number.isInteger(out.exit)) return failWith('the baseline test run returned nothing')
-  queue({ type: 'baseline', test, exit: out.exit, tail: tailOf(out.stdout), failedNames: failedTestNames(out.stdout) })
+  queue(baselineEvent(test, out))
   return null
 }
 
@@ -1424,7 +1469,7 @@ try {
           queue({ type: 'wave-gate', value: 'pass' })
           break
         }
-        const question = `the gate of wave ${act.wave} failed (exit ${gate.exit}${gate.failedNames.length ? `, failing: ${gate.failedNames.join('; ')}` : ', no failing test name recognized'}); the person decides`
+        const question = gateQuestion(act.wave, gate.exit, gate.failedNames)
         queue({ type: 'wave-gate', value: 'fail', text: question })
         queue({ type: 'block', text: question })
         return await finish(stopWith('ask', { question, excerpt }))

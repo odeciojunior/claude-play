@@ -1349,3 +1349,13 @@ test('apply --events refuses without writing', () => withSandbox((sb) => {
   assert.ok(typeof jr.code === 'string' && jr.code !== 'concurrent-change');
   assert.ok(fs.readFileSync(sb.state).equals(bytes));
 }));
+
+test('baseline event accepts failedNamesCut', () => {
+  const s = started();
+  const b = { type: 'baseline', test: 'npm t', exit: 1, tail: 'x', failedNames: ['a'] };
+  assert.equal(ok(s, { ...b, failedNamesCut: 3 }).run.baseline.failedNamesCut, 3);
+  assert.equal('failedNamesCut' in ok(s, b).run.baseline, false);
+  refused(s, { ...b, failedNamesCut: 1.5 }, 'wrong-status');
+  refused(s, { ...b, failedNamesCut: -1 }, 'wrong-status');
+  refused(s, { ...b, failedNamesCut: 'x' }, 'wrong-status');
+});
