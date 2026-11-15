@@ -43,11 +43,11 @@ const TABLE = {
     apply: (t) => replaceOnce('CG1', t, "export { truncate } from './truncate.mjs';\n", ''),
     present: (dir) => probe(dir, 'src/index.mjs', "typeof m.truncate === 'undefined'"),
   },
-  // Residue of C5: truncate no longer rejects a non-integer max.
+  // Residue of C5: truncate still returns '' instead of throwing, now for a non-integer max.
   CR3: {
     file: 'src/truncate.mjs',
-    apply: (t) => replaceOnce('CR3', t, '!Number.isInteger(max) || max < 1', 'max < 1'),
-    present: (dir) => probe(dir, 'src/truncate.mjs', "(() => { try { m.truncate('abc', 2.5); return true; } catch { return false; } })()"),
+    apply: (t) => replaceOnce('CR3', t, "    throw new RangeError('max must be an integer of at least 1');", "    if (max > 0) return '';\n    throw new RangeError('max must be an integer of at least 1');"),
+    present: (dir) => probe(dir, 'src/truncate.mjs', "(() => { try { return m.truncate('abc', 2.5) === ''; } catch { return false; } })()"),
   },
   // Regression of the fix: wordCount loses its trim, so blank text counts words.
   CG2: {

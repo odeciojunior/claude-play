@@ -510,6 +510,7 @@
     "kind": "residue-test-gap",
     "artifact": "A",
     "file": "tests/e5-word-count.test.mjs",
+    "introducedBy": "fix",
     "residueOf": "C2",
     "mention": "word-?count.*(empty|blank|test)|(empty|blank).*word-?count|test.*(empty|blank)",
     "description": "The fix restores the wordCount assertions but leaves out the empty-text case"
@@ -533,13 +534,14 @@
     "set": "e5-fix",
     "sentinel": "sentinels/fix.mjs",
     "detectedBy": "reviewer",
-    "kind": "residue-validation",
+    "kind": "residue-swallowed-error",
     "artifact": "B",
     "file": "src/truncate.mjs",
+    "introducedBy": "fix",
     "residueOf": "C5",
     "replaces": "CR2",
     "mention": "truncate.*(integer|non-integer|2\\.5|validation)|(integer|non-integer).*truncate",
-    "description": "The fix keeps max < 1 as an error but truncate no longer rejects a non-integer max"
+    "description": "The fix makes max 0 throw again but truncate still returns '' instead of a RangeError for a non-integer max"
   },
   {
     "id": "CG2",
