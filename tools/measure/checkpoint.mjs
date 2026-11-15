@@ -53,12 +53,25 @@ function safeCompare(before, after, options) {
   return compare(before, after, options);
 }
 
-export function checkpoint(before, after, { readAt, listAt, margin, attempts, bytesTolerance, date } = {}) {
+const SWAP_VARIANT = 'coordinator';
+
+// beforeCoordinator: { baseline, path } swaps the "before" side of the coordinator variant for the one in another baseline.json
+// (E11: the 1.7.0 side, measured in its own --out); every other variant keeps the before side.
+export function checkpoint(before, after, { readAt, listAt, margin, attempts, bytesTolerance, date, deliverable = 'E17', beforeCoordinator } = {}) {
   const empty = { variants: {}, classes: {}, cost: {}, panel: {}, arm: null, goals: [], measurementRows: [], blockReasons: [] };
-  for (const [side, agg] of [['before', before], ['after', after]]) {
+  for (const [side, agg] of [['before', before], ['after', after], ...(beforeCoordinator ? [['before-coordinator', beforeCoordinator.baseline]] : [])]) {
     if (agg?.permissionMode !== 'bypassPermissions') {
       return { exit: 2, reason: `${side} was measured in permission mode "${agg?.permissionMode}", not bypassPermissions`, ...empty };
     }
+  }
+  let sideSwap;
+  if (beforeCoordinator) {
+    const swapped = beforeCoordinator.baseline.variants?.[SWAP_VARIANT];
+    if (!swapped) return { exit: 2, reason: `--before-coordinator has no ${SWAP_VARIANT} variant`, ...empty };
+    const same = swapped.plugin?.commit;
+    if (same && same === after.variants?.[SWAP_VARIANT]?.plugin?.commit) return { exit: 2, reason: '--before-coordinator is the same plugin commit as --after', ...empty };
+    before = { ...before, variants: { ...before.variants, [SWAP_VARIANT]: swapped } };
+    sideSwap = { variant: SWAP_VARIANT, path: beforeCoordinator.path };
   }
   const options = {};
   if (margin !== undefined) options.margin = margin;
@@ -104,16 +117,16 @@ export function checkpoint(before, after, { readAt, listAt, margin, attempts, by
 
   const goals = measureGoals(readAt, listAt);
   const day = date ?? new Date().toISOString().slice(0, 10);
-  const measurementRows = rowsFor({ variants, classes, goals, date: day });
-  return { exit: blockReasons.length ? 1 : 0, variants, classes, cost, panel, arm, goals, measurementRows, blockReasons };
+  const measurementRows = rowsFor({ variants, classes, goals, date: day, deliverable });
+  return { exit: blockReasons.length ? 1 : 0, variants, classes, cost, panel, arm, goals, measurementRows, blockReasons, ...(sideSwap ? { sideSwap } : {}) };
 }
 
 const num = (x) => (x == null ? '-' : Math.round(x * 1e4) / 1e4);
 const usd = (x) => (x == null ? '-' : `US$ ${num(x)}`);
 
-function rowsFor({ variants, classes, goals, date }) {
+function rowsFor({ variants, classes, goals, date, deliverable }) {
   const rows = [];
-  const row = (detail) => `| ${date} | E17 | ponto-de-medicao | ${detail} | - | - | concluído |`;
+  const row = (detail) => `| ${date} | ${deliverable} | ponto-de-medicao | ${detail} | - | - | concluído |`;
   for (const [name, r] of Object.entries(variants)) {
     if (!r.counters) continue;
     for (const [counter, c] of Object.entries(r.counters)) {
@@ -133,6 +146,7 @@ function rowsFor({ variants, classes, goals, date }) {
 
 function markdown(result, { date, before, after }) {
   const L = ['# Ponto de medição', '', `Data: ${date}. Antes: ${before.tagCommit}. Depois: ${after.tagCommit}.`, ''];
+  if (result.sideSwap) L.push(`Troca de lado: ${result.sideSwap.variant} = ${result.sideSwap.path}`, '');
   L.push('## Contadores por variante', '', '| Variante | Contador | Antes | Depois | Veredito |', '|---|---|---|---|---|');
   for (const [name, r] of Object.entries(result.variants)) {
     if (r.status === 'ausente') L.push(`| ${name} | - | - | - | ausente (só no lado ${r.side}) |`);
@@ -173,7 +187,7 @@ function gitReaders(commit) {
   };
 }
 
-const USAGE = 'usage: node checkpoint.mjs --before <baseline.json> --after <baseline.json> --dest <dir> [--date AAAA-MM-DD] [--margin 6] [--attempts 40] [--bytes-tolerance 0.03]';
+const USAGE = 'usage: node checkpoint.mjs --before <baseline.json> --after <baseline.json> --dest <dir> [--date AAAA-MM-DD] [--margin 6] [--attempts 40] [--bytes-tolerance 0.03] [--deliverable E17] [--before-coordinator <baseline.json>]';
 
 function fail(msg) {
   console.error(msg);
@@ -182,7 +196,7 @@ function fail(msg) {
 }
 
 export function main(argv) {
-  const known = new Set(['--before', '--after', '--dest', '--date', '--margin', '--attempts', '--bytes-tolerance']);
+  const known = new Set(['--before', '--after', '--dest', '--date', '--margin', '--attempts', '--bytes-tolerance', '--deliverable', '--before-coordinator']);
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
     if (!known.has(argv[i]) || argv[i + 1] === undefined) return fail(`unknown or incomplete flag: ${argv[i]}`);
@@ -196,16 +210,19 @@ export function main(argv) {
     if (!Number.isFinite(numeric[key])) return fail(`${flag} must be a number`);
   }
   if (opts['--date'] !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(opts['--date'])) return fail('--date must be AAAA-MM-DD');
+  if (opts['--deliverable'] !== undefined && !/^E\d+$/.test(opts['--deliverable'])) return fail('--deliverable must look like E11');
   let before;
   let after;
+  let beforeCoordinator;
   try {
     before = JSON.parse(readFileSync(opts['--before'], 'utf8'));
     after = JSON.parse(readFileSync(opts['--after'], 'utf8'));
+    if (opts['--before-coordinator'] !== undefined) beforeCoordinator = { baseline: JSON.parse(readFileSync(opts['--before-coordinator'], 'utf8')), path: opts['--before-coordinator'] };
   } catch (e) {
     return fail(`cannot read aggregate: ${e.message}`);
   }
   const date = opts['--date'] ?? new Date().toISOString().slice(0, 10);
-  const result = checkpoint(before, after, { ...gitReaders(after.tagCommit), ...numeric, date });
+  const result = checkpoint(before, after, { ...gitReaders(after.tagCommit), ...numeric, date, deliverable: opts['--deliverable'], beforeCoordinator });
   if (result.exit === 2) return fail(result.reason);
   mkdirSync(opts['--dest'], { recursive: true });
   const { exit, ...rest } = result;

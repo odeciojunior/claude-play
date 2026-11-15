@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, cpSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, cpSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { compare } from './compare.mjs';
 import { BASELINE_PLAN } from './run-baseline.mjs';
-import { loadAggregates, mergeVariant, coherenceErrors, classAggregate, privacyFindings, buildBaseline, measurementRows, main } from './baseline.mjs';
+import { loadAggregates, mergeVariant, coherenceErrors, classAggregate, privacyFindings, buildBaseline, measurementRows, main, E11_VARIANTS, CLASS_OF, isPlanVariant } from './baseline.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fx = (name) => join(here, 'fixtures', 'baseline', name);
@@ -328,6 +328,125 @@ test('mergeVariant: o modo de permissão vem só dos agregados com execuções v
   ]);
   assert.equal(merged.permissionMode, 'bypassPermissions');
   assert.equal(mergeVariant([{ ...base, valid: 0, denied: 1, permissionMode: 'default' }]).permissionMode, 'default');
+});
+
+// ---- E11 (T-E) ----
+
+const E11_HARNESS = { stage: 'plan-review', arm: 'atual', armSource: 'copia-do-prompt', workflowCommit: TAG_COMMIT };
+const synthAgg = (variant, valid, extra = {}) => ({
+  variant,
+  requested: valid,
+  valid,
+  invalid: 0,
+  denied: 0,
+  invalidReasons: {},
+  plugin: { version: '2.0.0', commit: TAG_COMMIT },
+  superpowers: { version: '7.0.2', commit: '22f0b46' },
+  cli: '2.1.0',
+  models: ['sonnet'],
+  pricesDate: '2026-11-01',
+  permissionMode: 'bypassPermissions',
+  attempts: [],
+  roles: {},
+  ...(variant.startsWith('plano-nativo') ? { harness: E11_HARNESS } : {}),
+  ...extra,
+});
+function writeAggs(root, list) {
+  list.forEach((a, i) => {
+    const dir = join(root, `${a.variant}-${i}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(a));
+  });
+}
+
+test('--plan e11 filters and checks completeness with E11_PLAN', () => {
+  assert.deepEqual(E11_VARIANTS.map((p) => p.variant), ['planner', 'tracker', 'plan-only', 'coordinator', 'completo', 'parada-retomada', 'plano-nativo-A', 'plano-nativo-B', 'codigo-nativo-A', 'codigo-nativo-B']);
+  withTmp((root) => {
+    const out = join(root, 'out');
+    const list = E11_VARIANTS.filter((p) => p.variant !== 'codigo-nativo-B').map((p) => synthAgg(p.variant, p.runs));
+    list.push(synthAgg('plano-semeado-A', 5, { harness: E11_HARNESS }), synthAgg('codigo-semeado-A', 5));
+    writeAggs(out, list);
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    assert.deepEqual(r.incomplete, ['codigo-nativo-B']);
+    assert.ok(!('plano-semeado-A' in r.baseline.variants) && !('codigo-semeado-A' in r.baseline.variants));
+    assert.ok(r.baseline.variants['plano-nativo-A']);
+    assert.deepEqual(Object.keys(r.baseline.classes), ['plano-semeado']);
+    const dest = join(root, 'dest');
+    const errs = [];
+    assert.equal(main(['--out', out, '--dest', dest, '--date', DATE, '--plan', 'e11'], { ...quiet, err: (m) => errs.push(m) }), 1);
+    assert.deepEqual(JSON.parse(readFileSync(join(dest, 'baseline.json'), 'utf8')).incomplete, ['codigo-nativo-B']);
+    // Without --plan the current plan applies: E15 variants missing, nothing native counted.
+    const d2 = join(root, 'd2');
+    main(['--out', out, '--dest', d2, '--date', DATE], quiet);
+    const inc = JSON.parse(readFileSync(join(d2, 'baseline.json'), 'utf8')).incomplete;
+    assert.ok(inc.includes('plano-semeado-B') && !inc.some((x) => x.includes('nativo')));
+    const d3 = join(root, 'd3');
+    main(['--out', out, '--dest', d3, '--date', DATE, '--plan', 'e17'], quiet);
+    assert.deepEqual(JSON.parse(readFileSync(join(d3, 'baseline.json'), 'utf8')).incomplete, inc);
+    assert.equal(main(['--out', out, '--dest', d3, '--plan', 'zzz'], quiet), 2);
+  });
+});
+
+test('CLASS_OF maps plano-nativo-* to plano-semeado and codigo-nativo-* to codigo-semeado', () => {
+  assert.equal(CLASS_OF['plano-nativo'], 'plano-semeado');
+  assert.equal(CLASS_OF['codigo-nativo'], 'codigo-semeado');
+  assert.equal(CLASS_OF['plano-semeado'], 'plano-semeado');
+  assert.equal(CLASS_OF['codigo-semeado'], 'codigo-semeado');
+});
+
+test('isPlanVariant matches plano-nativo-A/B too', () => {
+  for (const v of ['plano-semeado-A', 'plano-semeado-B', 'plano-nativo-A', 'plano-nativo-B']) assert.ok(isPlanVariant(v), v);
+  for (const v of ['plano-nativo-C', 'codigo-nativo-A', 'plano-nativo']) assert.ok(!isPlanVariant(v), v);
+});
+
+test('superpowers is recorded per variant and divergence needs --accept-superpowers DEC-xxx', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    const list = E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs, p.variant === 'tracker' ? { superpowers: { version: '7.0.0', commit: 'bb92a77' } } : {}));
+    writeAggs(out, list);
+    const bad = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    assert.ok(bad.errors.some((e) => e.includes('superpowers diverges')));
+    assert.equal(bad.baseline.variants.tracker.superpowers.version, '7.0.0');
+    assert.equal(bad.baseline.variants.planner.superpowers.version, '7.0.2');
+    const ok = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS, acceptSuperpowers: 'DEC-747' });
+    assert.deepEqual(ok.errors, []);
+    assert.equal(ok.baseline.acceptedSuperpowers, 'DEC-747');
+    assert.equal(ok.exitCode, 0);
+    const dest = join(root, 'dest');
+    assert.equal(main(['--out', out, '--dest', dest, '--date', DATE, '--plan', 'e11', '--accept-superpowers', 'DEC-747'], quiet), 0);
+    assert.equal(JSON.parse(readFileSync(join(dest, 'baseline.json'), 'utf8')).acceptedSuperpowers, 'DEC-747');
+    assert.equal(main(['--out', out, '--dest', dest, '--accept-superpowers', 'qualquer'], quiet), 2);
+    // Without divergence the flag leaves no trace.
+    const same = join(root, 'same');
+    writeAggs(same, E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs)));
+    assert.equal(buildBaseline({ outDir: same, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS, acceptSuperpowers: 'DEC-747' }).baseline.acceptedSuperpowers, undefined);
+  });
+});
+
+test('measurement rows carry E11 under --plan e11 and E15 otherwise', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    writeAggs(out, E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs)));
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    const lines = r.markdown.split('\n').filter((l) => l.includes('| linha-de-base |'));
+    assert.ok(lines.length > 0);
+    for (const l of lines) assert.ok(l.startsWith(`| ${DATE} | E11 | linha-de-base | `), l);
+    const rows = measurementRows(r.baseline, { date: DATE, plan: E11_VARIANTS, deliverable: 'E11' });
+    assert.ok(rows.every((x) => x.startsWith(`| ${DATE} | E11 |`)));
+    assert.ok(build('completa').markdown.split('\n').filter((l) => l.includes('| linha-de-base |')).every((l) => l.startsWith(`| ${DATE} | E15 |`)));
+  });
+});
+
+test('wfCommits only looks at plan variants of the chosen plan', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    const list = E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs));
+    list.push(synthAgg('plano-semeado-A', 5, { harness: { ...E11_HARNESS, workflowCommit: 'f'.repeat(40) } }));
+    writeAggs(out, list);
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.exitCode, 0);
+  });
 });
 
 test('E17: panel survives the merge of partial aggregates', () => {

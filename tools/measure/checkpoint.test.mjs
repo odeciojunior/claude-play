@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
@@ -309,4 +309,74 @@ test('B3: arm.files lists final-review-atual.md and final-fix-atual.md and both 
   assert.equal(r.arm.files['final-review-atual.md'], false);
   assert.equal(r.arm.planReview && r.arm.planFix, true);
   assert.ok(!r.blockReasons.some((x) => /final-review-atual/.test(x)), JSON.stringify(r.blockReasons));
+});
+
+const cliEnv = () => {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return env;
+};
+const withCoordinator = (over) => ({ ...baseVariants(true), coordinator: variant('coordinator', 3, over) });
+
+test('E11: checkpoint --deliverable E11 writes E11 in measurement rows (default E17)', () => {
+  const v = withCoordinator();
+  const e17 = run(agg(v), agg(v), readOk, { date: '2026-11-20' });
+  assert.ok(e17.measurementRows.length > 0);
+  for (const row of e17.measurementRows) assert.ok(row.startsWith('| 2026-11-20 | E17 | ponto-de-medicao | '), row);
+  const e11 = run(agg(v), agg(v), readOk, { date: '2026-11-20', deliverable: 'E11' });
+  assert.equal(e11.measurementRows.length, e17.measurementRows.length);
+  for (const row of e11.measurementRows) assert.ok(row.startsWith('| 2026-11-20 | E11 | ponto-de-medicao | '), row);
+  const tmp = mkdtempSync(join(tmpdir(), 'cp-'));
+  try {
+    const f = join(tmp, 'b.json');
+    writeFileSync(f, JSON.stringify(agg(v)));
+    const p = spawnSync(process.execPath, [join(here, 'checkpoint.mjs'), '--before', f, '--after', f, '--dest', join(tmp, 'o'), '--date', '2026-11-20', '--deliverable', 'E11'], { encoding: 'utf8', env: cliEnv() });
+    assert.equal(p.status, 0, p.stderr + p.stdout);
+    assert.ok(readFileSync(join(tmp, 'o', 'comparacao.md'), 'utf8').includes('| 2026-11-20 | E11 | ponto-de-medicao | '));
+    const bad = spawnSync(process.execPath, [join(here, 'checkpoint.mjs'), '--before', f, '--after', f, '--dest', join(tmp, 'o2'), '--deliverable', 'x y'], { encoding: 'utf8', env: cliEnv() });
+    assert.equal(bad.status, 2);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('E11: checkpoint --before-coordinator swaps the before side of the coordinator and the report says so', () => {
+  const before = agg(withCoordinator({ bytes: 5000 }));
+  const after = agg(withCoordinator({ bytes: 1000 }));
+  const old17 = agg({ coordinator: variant('coordinator', 3, { bytes: 1000 }) });
+  const plain = run(before, after);
+  assert.equal(plain.variants.coordinator.counters.bytes.before, 5000);
+  const swapped = run(before, after, readOk, { beforeCoordinator: { baseline: old17, path: 'out-antigo/baseline.json' } });
+  assert.equal(swapped.variants.coordinator.counters.bytes.before, 1000);
+  assert.deepEqual(swapped.sideSwap, { variant: 'coordinator', path: 'out-antigo/baseline.json' });
+  assert.equal(before.variants.coordinator.attempts[0].counters.bytes, 5000); // the input is not mutated
+  // Other variants stay on the before side.
+  assert.deepEqual(swapped.variants['plan-only'].counters, plain.variants['plan-only'].counters);
+  const withCommit = (a, commit) => ({ ...a, variants: { ...a.variants, coordinator: { ...a.variants.coordinator, plugin: { commit } } } });
+  const same = run(before, withCommit(after, 'abc1230'), readOk, { beforeCoordinator: { baseline: withCommit(old17, 'abc1230'), path: 'p' } });
+  assert.equal(same.exit, 2);
+  assert.match(same.reason, /--before-coordinator is the same plugin commit as --after/);
+  const differ = run(before, withCommit(after, 'abc1230'), readOk, { beforeCoordinator: { baseline: withCommit(old17, 'def4560'), path: 'p' } });
+  assert.equal(differ.exit, 0);
+  const noCoord = run(before, after, readOk, { beforeCoordinator: { baseline: agg({}), path: 'p' } });
+  assert.equal(noCoord.exit, 2);
+  const otherMode = run(before, after, readOk, { beforeCoordinator: { baseline: { ...old17, permissionMode: 'default' }, path: 'p' } });
+  assert.equal(otherMode.exit, 2);
+  const tmp = mkdtempSync(join(tmpdir(), 'cp-'));
+  try {
+    const [b, a, o] = ['b.json', 'a.json', 'old.json'].map((n) => join(tmp, n));
+    writeFileSync(b, JSON.stringify(before));
+    writeFileSync(a, JSON.stringify(after));
+    writeFileSync(o, JSON.stringify(old17));
+    const p = spawnSync(process.execPath, [join(here, 'checkpoint.mjs'), '--before', b, '--after', a, '--dest', join(tmp, 'out'), '--date', '2026-11-20', '--before-coordinator', o], { encoding: 'utf8', env: cliEnv() });
+    assert.equal(p.status, 0, p.stderr + p.stdout);
+    const md = readFileSync(join(tmp, 'out', 'comparacao.md'), 'utf8');
+    assert.ok(md.includes(`Troca de lado: coordinator = ${o}`), md);
+    const json = JSON.parse(readFileSync(join(tmp, 'out', 'comparacao.json'), 'utf8'));
+    assert.equal(json.sideSwap.variant, 'coordinator');
+    const missing = spawnSync(process.execPath, [join(here, 'checkpoint.mjs'), '--before', b, '--after', a, '--dest', join(tmp, 'o2'), '--before-coordinator', join(tmp, 'nope.json')], { encoding: 'utf8', env: cliEnv() });
+    assert.equal(missing.status, 2);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

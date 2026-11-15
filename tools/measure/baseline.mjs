@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Baseline consolidator: merges the aggregates of --out into baseline.json and linha-de-base.md.
-// Usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>]
+// Usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>] [--plan e17|e11] [--accept-superpowers DEC-xxx]
+//   --plan picks the variant list (default e17); --accept-superpowers lets variants with different superpowers merge, recording the DEC in baseline.json.
 // Exit codes: 0 complete and coherent, 1 coherence errors, missing pieces or private data, 2 usage error.
 // Missing pieces never stop the files from being written (except private data), so the owner sees what is left.
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -15,6 +16,33 @@ const CLASSES = [
   { name: 'plano-semeado', cls: 'plan', label: 'plano' },
   { name: 'codigo-semeado', cls: 'code', label: 'código' },
 ];
+// Class of each variant family: native variants (E11) feed the same detection classes as the seeded ones.
+export const CLASS_OF = {
+  'plano-semeado': 'plano-semeado',
+  'plano-nativo': 'plano-semeado',
+  'codigo-semeado': 'codigo-semeado',
+  'codigo-nativo': 'codigo-semeado',
+};
+const familyOf = (variant) => variant.replace(/-[AB]$/, '');
+const classOfVariant = (variant) => CLASS_OF[familyOf(variant)];
+
+// The E11 plan (names and runs). run-baseline.mjs re-exports the same content as E11_PLAN, checked equal by its test.
+export const E11_VARIANTS = [
+  { variant: 'planner', runs: 1 },
+  { variant: 'tracker', runs: 1 },
+  { variant: 'plan-only', runs: 5 },
+  { variant: 'coordinator', runs: 5 },
+  { variant: 'completo', runs: 3 },
+  { variant: 'parada-retomada', runs: 3 },
+  { variant: 'plano-nativo-A', runs: 5 },
+  { variant: 'plano-nativo-B', runs: 5 },
+  { variant: 'codigo-nativo-A', runs: 5 },
+  { variant: 'codigo-nativo-B', runs: 5 },
+];
+const PLANS = { e17: BASELINE_PLAN, e11: E11_VARIANTS };
+const planOf = (opts) => PLANS[opts?.plan ?? 'e17'];
+const isNativeClass = (plan, name) => plan.some((p) => classOfVariant(p.variant) === name && p.variant.includes('nativo'));
+
 const RECORDED_ONLY = ['planner', 'tracker'];
 const COST_NOTE = 'custo não é comparado nesta skill (DEC-016)';
 const ATTEMPT_TARGET = 40;
@@ -22,7 +50,7 @@ const ATTEMPT_TARGET = 40;
 // ---- Reading and merging ----
 
 // The plan class is measured by the stage harness on the copy of the workflow prompt (DEC-279); the code class by the full pipeline.
-const isPlanVariant = (variant) => /^plano-semeado-[AB]$/.test(variant);
+export const isPlanVariant = (variant) => /^plano-(semeado|nativo)-[AB]$/.test(variant);
 const isPlanHarness = (h) => h?.stage === 'plan-review' && h?.arm === 'atual' && h?.armSource === 'copia-do-prompt';
 
 // Every aggregate.json directly under outDir, in folder-name order. Harness aggregates are left out unless includeHarness is set.
@@ -130,7 +158,7 @@ export function mergeVariant(aggs) {
 const seedKey = (s) => JSON.stringify([s.kind, s.spec, s.plan, s.specSha256, s.planSha256]);
 
 // A baseline has to come from one state: same plugin, superpowers, CLI, price table and seed source.
-export function coherenceErrors(merged, { tagCommit }) {
+export function coherenceErrors(merged, { tagCommit, acceptSuperpowers } = {}) {
   const errors = [];
   const distinct = (fn) => [...new Set(merged.map(fn))];
   const commits = distinct((a) => a.plugin?.commit ?? 'ausente');
@@ -145,7 +173,7 @@ export function coherenceErrors(merged, { tagCommit }) {
   const clis = distinct((a) => a.cli ?? 'ausente');
   if (clis.length > 1) errors.push(`CLI version diverges between variants: ${clis.join(', ')}`);
   const sp = distinct((a) => `${a.superpowers?.version ?? 'ausente'} (${a.superpowers?.commit ?? 'ausente'})`);
-  if (sp.length > 1) errors.push(`superpowers diverges between variants: ${sp.join(', ')}`);
+  if (sp.length > 1 && !acceptSuperpowers) errors.push(`superpowers diverges between variants: ${sp.join(', ')}`);
   const prices = distinct((a) => a.pricesDate ?? 'ausente');
   if (prices.length > 1) errors.push(`pricesDate diverges between variants: ${prices.join(', ')}`);
   const seeds = merged.filter((a) => a.variant.includes('semeado') && a.seedSource);
@@ -270,19 +298,21 @@ function classSection({ name, label, cls }, c, flag) {
   if (c.harness) lines.push(`- Medido pelo harness de etapa: ${c.harness.stage}, braço ${c.harness.arm}, commit do workflow ${c.harness.workflowCommit ?? 'ausente'}.`);
   const s = c.seedSource;
   lines.push(
-    s
-      ? `- Origem da semeadura: ${s.kind}; spec ${s.spec} (sha256 ${s.specSha256}); plano ${s.plan} (sha256 ${s.planSha256}).`
-      : '- Origem da semeadura: ausente no agregado.',
+    c.native
+      ? '- Origem: release nativo (sem semeadura).'
+      : s
+        ? `- Origem da semeadura: ${s.kind}; spec ${s.spec} (sha256 ${s.specSha256}); plano ${s.plan} (sha256 ${s.planSha256}).`
+        : '- Origem da semeadura: ausente no agregado.',
     '',
   );
   return lines;
 }
 
-export function measurementRows(baseline, { date }) {
+export function measurementRows(baseline, { date, plan = BASELINE_PLAN, deliverable = 'E15' }) {
   const rows = [];
-  const row = (detail, cost, status = 'concluído') => `| ${date} | E15 | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | ${status} |`;
+  const row = (detail, cost, status = 'concluído') => `| ${date} | ${deliverable} | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | ${status} |`;
   // `requested` is summed over every pass (extra passes, resumes, stopped batches), so the plan's `runs` is the target.
-  for (const { variant, runs } of BASELINE_PLAN) {
+  for (const { variant, runs } of plan) {
     const agg = baseline.variants?.[variant];
     if (agg) rows.push(row(`${variant}: ${agg.valid}/${runs} execuções válidas`, sumCost(agg), agg.valid < runs ? 'em andamento' : 'concluído'));
   }
@@ -290,13 +320,14 @@ export function measurementRows(baseline, { date }) {
     const agg = baseline.classes?.[name];
     if (!agg) continue;
     const attempts = classAttempts(agg, cls);
-    const synthetic = (baseline.incomplete ?? []).includes(`${name} (semeadura sintética)`) || !agg.seedSource || agg.seedSource.kind === 'sintetico';
+    // A native class has no seed: only the synthetic flag of seeded classes applies.
+    const synthetic = (baseline.incomplete ?? []).includes(`${name} (semeadura sintética)`) || (!agg.native && (!agg.seedSource || agg.seedSource.kind === 'sintetico'));
     rows.push(row(`detecção ${name}: ${attempts} tentativas válidas`, sumCost(agg), attempts < ATTEMPT_TARGET || synthetic ? 'em andamento' : 'concluído'));
   }
   return rows;
 }
 
-function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged }) {
+function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged, plan: planList }) {
   const v = baseline.variants;
   const L = [];
   L.push('# Linha de base', '');
@@ -307,7 +338,7 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged 
     for (const i of incomplete) L.push(`- incompleta: ${i}`);
     L.push('');
   }
-  const plan = Object.fromEntries(BASELINE_PLAN.map((p) => [p.variant, p]));
+  const plan = Object.fromEntries(planList.map((p) => [p.variant, p]));
   const releaseNames = ['plan-only', 'coordinator', 'completo', 'parada-retomada'];
   L.push('## Release e coordinator', '', ...VARIANT_HEAD);
   for (const n of releaseNames) L.push(variantRow(n, plan[n], v[n]));
@@ -324,19 +355,19 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged 
     L.push(`Plano em modo pipeline (fora da classe; dado de DEC-051): ${d.attempts} tentativas, ${d.rewritten} com plano reescrito, ${d.invalid} inválidas (taxa de reescrita ${d.rewriteRate == null ? '-' : Math.round(d.rewriteRate * 1000) / 10 + '%'}).`, '');
   }
   L.push('## Valores de referência para as metas', '', 'Mediana de cada contador por variante, nas execuções válidas.', '');
-  const names = BASELINE_PLAN.map((p) => p.variant).filter((n) => v[n]);
+  const names = planList.map((p) => p.variant).filter((n) => v[n]);
   L.push(`| Contador | ${names.join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`);
   for (const [label, fn] of COUNTERS) {
     L.push(`| ${label} | ${names.map((n) => (label === 'custo' && RECORDED_ONLY.includes(n) ? '-' : num(median(pickNums(v[n], fn))))).join(' | ')} |`);
   }
   L.push('', '## Linhas para roadmap:measurements', '', '| Data | Entregável | Tipo | Detalhe | Registrado | Faturado | Status |', '|---|---|---|---|---|---|---|');
-  L.push(...measurementRows(baseline, { date }), '');
+  L.push(...measurementRows(baseline, { date, plan: planList, deliverable: planList === E11_VARIANTS ? 'E11' : 'E15' }), '');
   return L.join('\n');
 }
 
 // ---- Build ----
 
-export function buildBaseline({ outDir, tagCommit, date }) {
+export function buildBaseline({ outDir, tagCommit, date, plan = BASELINE_PLAN, acceptSuperpowers }) {
   const loaded = loadAggregates(outDir, { includeHarness: true });
   // Pipeline-mode plan aggregates leave the class and feed only the DEC-051 rewrite rate; other harness aggregates are ignored.
   const pipelinePlan = loaded.filter((a) => isPlanVariant(a.variant) && a.harness === undefined);
@@ -344,24 +375,29 @@ export function buildBaseline({ outDir, tagCommit, date }) {
   const groups = {};
   for (const a of raw) (groups[a.variant] ??= []).push(a);
   const variants = {};
-  for (const { variant } of BASELINE_PLAN) if (groups[variant]) variants[variant] = mergeVariant(groups[variant]);
+  for (const { variant } of plan) if (groups[variant]) variants[variant] = mergeVariant(groups[variant]);
 
   // Partials are checked too: a mix of states inside one variant is as wrong as a mix between variants.
-  const errors = coherenceErrors(raw.filter((a) => BASELINE_PLAN.some((p) => p.variant === a.variant)), { tagCommit });
-  const wfCommits = [...new Set(raw.filter((a) => isPlanVariant(a.variant)).map((a) => a.harness?.workflowCommit ?? 'ausente'))];
+  const inPlan = raw.filter((a) => plan.some((p) => p.variant === a.variant));
+  const errors = coherenceErrors(inPlan, { tagCommit, acceptSuperpowers });
+  const spStates = new Set(inPlan.map((a) => `${a.superpowers?.version ?? 'ausente'} (${a.superpowers?.commit ?? 'ausente'})`));
+  const acceptedSuperpowers = acceptSuperpowers && spStates.size > 1 ? acceptSuperpowers : undefined;
+  const wfCommits = [...new Set(raw.filter((a) => isPlanVariant(a.variant) && plan.some((p) => p.variant === a.variant)).map((a) => a.harness?.workflowCommit ?? 'ausente'))];
   if (wfCommits.length > 1) errors.push(`plan harness workflow commit diverges: ${wfCommits.join(', ')}`);
-  const incomplete = BASELINE_PLAN.filter((p) => (variants[p.variant]?.valid ?? 0) < p.runs).map((p) => p.variant);
+  const incomplete = plan.filter((p) => (variants[p.variant]?.valid ?? 0) < p.runs).map((p) => p.variant);
 
   const classes = {};
   const flagged = new Set();
   for (const { name } of CLASSES) {
-    const a = variants[`${name}-A`];
-    const b = variants[`${name}-B`];
+    const sides = plan.map((p) => p.variant).filter((v) => classOfVariant(v) === name);
+    const a = variants[sides.find((v) => v.endsWith('-A'))];
+    const b = variants[sides.find((v) => v.endsWith('-B'))];
     if (!a || !b) continue;
-    classes[name] = classAggregate(name, a, b);
-    // Each side must carry its own seed source: one side cannot borrow the other's.
+    const native = isNativeClass(plan, name);
+    classes[name] = { ...classAggregate(name, a, b), ...(native ? { native: true } : {}) };
+    // Each side must carry its own seed source: one side cannot borrow the other's. Native classes have no seed.
     const unseeded = (x) => !x.seedSource || x.seedSource.kind === 'sintetico';
-    if (unseeded(a) || unseeded(b)) {
+    if (!native && (unseeded(a) || unseeded(b))) {
       flagged.add(name);
       incomplete.push(`${name} (semeadura sintética)`);
     }
@@ -376,23 +412,24 @@ export function buildBaseline({ outDir, tagCommit, date }) {
     cli: first?.cli ?? null,
     pricesDate: first?.pricesDate ?? null,
     permissionMode: first?.permissionMode ?? null,
+    ...(acceptedSuperpowers ? { acceptedSuperpowers } : {}),
     variants,
     classes,
     ...(pipelinePlan.length ? { dec051: pipelineRewriteStats(pipelinePlan) } : {}),
     errors,
     incomplete,
   };
-  const markdown = buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged });
+  const markdown = buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged, plan });
   return { baseline, markdown, errors, incomplete, exitCode: errors.length || incomplete.length ? 1 : 0 };
 }
 
 // ---- CLI ----
 
-const USAGE = 'usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>]';
+const USAGE = 'usage: node tools/measure/baseline.mjs --out <dir> --dest <dir> [--date YYYY-MM-DD] [--tag <name>] [--plan e17|e11] [--accept-superpowers DEC-xxx]';
 
 function parseArgs(argv) {
   const opts = {};
-  const names = { '--out': 'out', '--dest': 'dest', '--date': 'date', '--tag': 'tag' };
+  const names = { '--out': 'out', '--dest': 'dest', '--date': 'date', '--tag': 'tag', '--plan': 'plan', '--accept-superpowers': 'acceptSuperpowers' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = names[argv[i]];
     if (!key || argv[i + 1] === undefined || argv[i + 1].startsWith('--')) return null;
@@ -400,6 +437,8 @@ function parseArgs(argv) {
   }
   if (!opts.out || !opts.dest) return null;
   if (opts.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(opts.date)) return null;
+  if (opts.plan !== undefined && !Object.hasOwn(PLANS, opts.plan)) return null;
+  if (opts.acceptSuperpowers !== undefined && !/^DEC-\d+$/.test(opts.acceptSuperpowers)) return null;
   return opts;
 }
 
@@ -426,7 +465,7 @@ export function main(argv, deps = {}) {
     return 2;
   }
   const date = opts.date ?? new Date().toLocaleDateString('sv-SE');
-  const r = buildBaseline({ outDir: resolve(opts.out), tagCommit, date });
+  const r = buildBaseline({ outDir: resolve(opts.out), tagCommit, date, plan: planOf(opts), acceptSuperpowers: opts.acceptSuperpowers });
   const json = JSON.stringify(r.baseline, null, 2) + '\n';
   const findings = privacyFindings(json);
   if (findings.length) {
