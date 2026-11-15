@@ -1008,6 +1008,7 @@ export function taskApplyPrompt(sb, fixSha) {
 export function buildTaskLoopScript({ pure, scenario, opts }) {
   const opt = stageLoopFor('task-review', opts.reviewModel);
   if (!opt) throw new UsageError(`--stage task-review --rounds loop needs --review-model (got "${opts.reviewModel ?? ''}")`);
+  if (Array.isArray(opts.kinds)) return buildLensesLoopScript({ pure, scenario, opts, opt });
   if (!scenario?.fixSha || !scenario?.seededCommit) throw new UsageError('--stage task-review --rounds loop needs a scenario with a seeded commit and a fixSha (correcao-semeada-A/B)');
   const sb = slash(scenario.dir);
   const work = slash(opts.work).replace(/\/+$/, '');
@@ -1064,6 +1065,70 @@ export function buildTaskLoopScript({ pure, scenario, opts }) {
     "const H_truth = r => reviewTruth({ ...r, issues: taskIssues(r, H_cx) }, 1, H_SEEDED + '~1..HEAD')",
     "const H_result = await runReviewLoop(H_env, 'spec', H_review, H_fix, H_truth, H_OPT)",
     'return { ok: H_result.ok, kind: H_result.kind || null, msg: H_result.msg || null, reviews: H_env.reviews, accepted: H_accepted, restricted: H_restricted }',
+    '',
+  ].join('\n');
+  if (text.length > LOOP_SCRIPT_LIMIT) throw new UsageError(`--rounds loop: the generated script has ${text.length} characters, over the 200,000 limit`);
+  return text;
+}
+
+// E27 C2: the task loop of lentes-semeadas-*. The seed is planted before the 1st review (no applier, no fixSha); each kind of
+// opts.kinds runs its own runReviewLoop in series over the same H_cur, as the product does (['spec', 'quality'] or ['review'] with single).
+// scenario: { dir, seededCommit }. opts: { kinds, single, reviewModel, pluginRoot, work, title, fixPrompt (with {{kind}} and {{issues}}) }.
+function buildLensesLoopScript({ pure, scenario, opts, opt }) {
+  if (!scenario?.seededCommit) throw new UsageError('--stage task-review --rounds loop on lentes-semeadas needs a scenario with a seeded commit');
+  const sb = slash(scenario.dir);
+  const fix = opts.fixPrompt.includes('{{issues}}') ? opts.fixPrompt : opts.fixPrompt + '\n{{issues}}';
+  const text = [
+    'export const meta = {',
+    "  name: 'review-only',",
+    "  description: 'Measurement harness: the task review loops (runReviewLoop of the measured workflow) on seeded spec and quality defects.',",
+    "  phases: [{ title: 'Review', detail: 'task reviewer and fixers, in rounds' }],",
+    '}',
+    pure,
+    `const H_KINDS = ${JSON.stringify(opts.kinds)}`,
+    `const H_TR = ${JSON.stringify({ restricted: false, single: opts.single === true })}`,
+    `const H_SB = ${JSON.stringify(sb)}`,
+    `const H_SEEDED = ${JSON.stringify(scenario.seededCommit)}`,
+    `const H_TITLE = ${JSON.stringify(opts.title)}`,
+    `const H_PLAN = ${JSON.stringify(E5_PATHS.plan)}`,
+    `const H_SPEC = ${JSON.stringify(E5_PATHS.spec)}`,
+    `const H_PLUGIN = ${JSON.stringify(slash(opts.pluginRoot))}`,
+    `const H_RM = ${JSON.stringify(opt.reviewModel)}`,
+    `const H_FIX = ${JSON.stringify(fix)}`,
+    `const H_SCHEMA_TASK = ${JSON.stringify(taskReviewSchema())}`,
+    `const H_SCHEMA_FIX = ${JSON.stringify(TASK_FIX_SCHEMA)}`,
+    `const H_OPT = ${JSON.stringify({ tier: opt.tier, reviewModel: opt.reviewModel, byId: true })}`,
+    'const H_accepted = []',
+    "const H_cur = { summary: 'Task resumed from a previous run: implemented in the seeded commit.', checks: [] }",
+    `const H_env = { maxFix: ${opt.maxFix}, blqIds: new Set(), reviews: [], concerns: [], acceptRisks: (s, iss) => { H_accepted.push(...iss) } }`,
+    'const H_ctxFor = extra => ({',
+    "  base: 'You work in the sandbox ' + H_SB + '. Do NOT perform any external effect.', envFacts: null, baseline: null, E: 'E5', target: 'main',",
+    "  wt: H_SB, planPath: H_PLAN, specPath: H_SPEC, locks: [], start: H_SEEDED + '~1', prev: null, taskReview: H_TR, pluginRoot: H_PLUGIN, ...extra })",
+    'const H_review = (kind, setCx) => (round, prev, rvModel, was) => {',
+    '  const cx = H_ctxFor({ round, prev, was })',
+    '  setCx(cx)',
+    "  return agent(buildTaskReviewPrompt(cx, { n: 3, title: H_TITLE }, kind, H_cur), { agentType: 'productivity-tools:task-reviewer', schema: H_SCHEMA_TASK, label: 'E5:t3:' + kind + round, phase: 'Review', model: rvModel || H_RM, effort: effortFor(rvModel || H_RM) })",
+    '}',
+    'const H_fix = kind => async (iss, k, tier) => {',
+    "  const fx = await agent(H_FIX.split('{{kind}}').join(kind).split('{{issues}}').join(fmt(iss)), { label: 'E5:t3:' + kind + '-fix' + k, phase: 'Review', model: tier, effort: effortFor(tier), schema: H_SCHEMA_FIX })",
+    '  if (!fx) return null',
+    '  if (fx.checks) H_cur.checks = fx.checks',
+    '  if (fx.summary) H_cur.summary = fx.summary',
+    "  return fx.status === 'BLOCKED' ? { status: 'BLOCKED', summary: fx.summary } : { status: 'DONE' }",
+    '}',
+    'const H_loops = []',
+    'const H_acceptedAll = []',
+    'let H_last = { ok: true }',
+    'for (const kind of H_KINDS) {',
+    '  let cx = null',
+    "  const r = await runReviewLoop(H_env, 'T3:' + kind, H_review(kind, c => { cx = c }), H_fix(kind), r => reviewTruth({ ...r, issues: taskIssues(r, cx) }, 1, H_SEEDED + '~1..HEAD'), H_OPT)",
+    '  const accepted = H_accepted.splice(0)',
+    '  H_acceptedAll.push(...accepted)',
+    '  H_loops.push({ kind, ok: r.ok, stop: r.kind || null, accepted })',
+    '  H_last = r',
+    '  if (!r.ok) break',
+    '}',
+    'return { ok: H_last.ok, kind: H_last.kind || null, msg: H_last.msg || null, loops: H_loops, reviews: H_env.reviews, accepted: H_acceptedAll }',
     '',
   ].join('\n');
   if (text.length > LOOP_SCRIPT_LIMIT) throw new UsageError(`--rounds loop: the generated script has ${text.length} characters, over the 200,000 limit`);
@@ -1288,7 +1353,8 @@ function harnessPrompts(h, scenario) {
       ...(h.rounds === 'loop' ? { title } : {}), // the loop script builds each round's prompt itself, from the pure block
       agentType: 'productivity-tools:task-reviewer',
       reviewPrompt: loadPure().buildTaskReviewPrompt(ctx, { n: 3, title }, 'spec', impl),
-      fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
+      // E27 C2: on lentes-semeadas-* the script fills {{kind}} per loop; the other branches keep the text of today (goldens)
+      fixPrompt: `In Task 3 of the plan ${sb}/${E5_PATHS.plan}, fix the ${h.lenses ? '{{kind}}' : 'spec'} problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`,
     };
   }
   const reviewBody = fill(h.review.text, vars).trimEnd();
@@ -1855,7 +1921,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const script = h.arm === 'perguntas'
         ? buildQuestionsScript({ reviewPrompt: prompts.reviewPrompt, fixPrompt: prompts.fixPrompt })
         : h.stage === 'task-review' && h.rounds === 'loop'
-        ? buildTaskLoopScript({ pure: h.pure, scenario, opts: { restricted: h.harness.taskReview.restricted, reviewModel: h.harness.reviewModel, pluginRoot: plugin.installPath, work: resolve(opts.work), title: prompts.title, fixPrompt: prompts.fixPrompt } })
+        ? buildTaskLoopScript({ pure: h.pure, scenario, opts: { restricted: h.harness.taskReview.restricted, ...(h.lenses ? { kinds: h.kinds, single: h.harness.taskReview.single } : {}), reviewModel: h.harness.reviewModel, pluginRoot: plugin.installPath, work: resolve(opts.work), title: prompts.title, fixPrompt: prompts.fixPrompt } })
         : h.stage === 'final-review'
         ? buildFinalLoopScript({ pure: h.pure, scenario, opts: { adversarial: h.harness.finalReview.adversarial, review: h.review.text, fix: h.fixArm.text } })
         : h.rounds === 'loop'

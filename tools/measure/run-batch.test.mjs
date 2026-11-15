@@ -3664,6 +3664,36 @@ test('C2: a measured plugin without "## Review mode" in agents/task-reviewer.md 
   }
 });
 
+// ---- E27 C2 (T4): runBatch picks the lenses script for lentes-semeadas and keeps the correcao-semeada one ----
+test('C2: runBatch picks the lenses script for lentes-semeadas and keeps the correcao-semeada script byte for byte', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const plugin = lentesPlugin(s.base, wf);
+    const sentFor = async (variant, arm) => {
+      const fake = makeFake(s.configDir, { journal: taskJournal() });
+      await runBatch(lentesOpts(s, variant, { arm, pluginDir: plugin, work: join(s.base, `w-${variant}-${arm}`) }), { exec: fake.exec, now: NOW });
+      return readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
+    };
+    const atual = await sentFor('lentes-semeadas-A', 'atual');
+    assert.ok(atual.includes('const H_KINDS = ["spec","quality"]'), atual.slice(0, 400));
+    assert.ok(atual.includes('const H_TR = {"restricted":false,"single":false}'));
+    assert.ok(atual.includes('fix the {{kind}} problems below'));
+    assert.ok(!atual.includes('H_FIXSHA') && !atual.includes('merge --ff-only'), 'no applier: the seed sits before the 1st review');
+    const unica = await sentFor('lentes-semeadas-B', 'unica');
+    assert.ok(unica.includes('const H_KINDS = ["review"]'));
+    assert.ok(unica.includes('const H_TR = {"restricted":false,"single":true}'));
+    // correcao-semeada keeps its single-loop script: no kinds, the same literals as before
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(corrOpts(s, { pluginDir: plugin, work: join(s.base, 'w-corr') }), { exec: fake.exec, now: NOW });
+    const corr = readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
+    assert.ok(!corr.includes('H_KINDS'));
+    assert.ok(corr.includes('const H_TR = {"restricted":false}') && corr.includes('fix the spec problems below'));
+  } finally {
+    s.done();
+  }
+});
+
 test('C2: STAGES[task-review].variant accepts lentes-semeadas-[AB] and STAGE_LOOP of task-review stays the same', () => {
   for (const v of ['lentes-semeadas-A', 'lentes-semeadas-B']) assert.doesNotThrow(() => hOf(v), v);
   for (const v of ['lentes-semeadas-C', 'lentes-semeadas-', 'lentes-semeada-A']) assert.throws(() => hOf(v), UsageError, v);
