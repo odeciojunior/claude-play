@@ -13,13 +13,14 @@ import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-releas
 const here = dirname(fileURLToPath(import.meta.url));
 const SCEN = join(here, 'scenario');
 const DEFECTS = join(here, 'defects');
+const NATIVE_CODE = join(SCEN, 'e5-native', 'code');
 
 export const VARIANTS = [
   'plan-only', 'completo', 'parada-retomada', 'coordinator', 'planner', 'tracker',
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
   'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
   'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
-  'correcao-semeada-A', 'correcao-semeada-B',
+  'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B',
 ];
 
 // KNOWN GAP (E8, for E11 criterion 1): the roadmap-release workflow now reads and writes the native spec and plan at
@@ -52,7 +53,7 @@ const RELEASE = '/productivity-tools:roadmap-release';
 // The release skill's preflight reads permission rules only from settings files (never from CLI
 // --allowedTools), so the "run" variants carry them in an excluded settings.local.json.
 export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)'];
-const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B', 'correcao-semeada-A', 'correcao-semeada-B'];
+export const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B', 'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B'];
 const LOCAL_SETTINGS = '.claude/settings.local.json';
 
 export function excludeFromGit(dir, name) {
@@ -63,6 +64,7 @@ export function excludeFromGit(dir, name) {
   if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
 }
 const FIXED_PLAN = 'docs/plans/2026-11-10-fixed-plan.md';
+const COORDINATOR_SPEC = 'docs/plans/coordinator-spec-native.md';
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -137,8 +139,9 @@ export function readNativeSeeds(scenDir = join(SCEN, 'e5-native'), expect = {}) 
   return out;
 }
 
-// Creates feat/E5 from main with the native spec and, optionally, the native plan at NATIVE_PATHS.
-export function prepareNativeBranch(dir, { withPlan, expect } = {}) {
+// Creates feat/E5 from main with the native spec and, optionally, the native plan at NATIVE_PATHS and,
+// with `code`, the native clean code of T1..T3 in three commits `E5 T<n>: <title>` (the plan titles).
+export function prepareNativeBranch(dir, { withPlan, code, expect } = {}) {
   const seeds = readNativeSeeds(undefined, expect); // sha256 is checked on the copy, before the rewrite
   const wt = sandboxFeatWorktree(dir);
   const spec = seeds.spec.replaceAll(NATIVE_PROBE_WORKTREE, wt);
@@ -151,6 +154,14 @@ export function prepareNativeBranch(dir, { withPlan, expect } = {}) {
     writeIn(dir, NATIVE_PATHS.plan, plan);
     git(dir, 'add', NATIVE_PATHS.plan);
     git(dir, 'commit', '-q', '-m', 'docs(plan): E5 text utilities plan');
+  }
+  if (code) {
+    const titles = taskTitles(plan);
+    for (const k of [1, 2, 3]) {
+      copyTree(join(NATIVE_CODE, `t${k}`), dir);
+      git(dir, 'add', '-A');
+      git(dir, 'commit', '-q', '-m', `E5 T${k}: ${titles[k] ?? 'task ' + k}`);
+    }
   }
 }
 
@@ -174,9 +185,18 @@ export function seedSourceOf(fromRun, { set } = {}) {
   };
 }
 
-function taskTitles(plan) {
+export function taskTitles(plan) {
   const titles = {};
-  for (const m of plan.matchAll(/^### Task (\d+): (.+?)\s*$/gm)) titles[Number(m[1])] = m[2];
+  for (const m of plan.matchAll(/^### (?:Task|Tarefa) (\d+): (.+?)\s*$/gm)) titles[Number(m[1])] = m[2];
+  // A task without a heading takes the title of the json data block.
+  const block = /```json data\n([\s\S]*?)\n```/.exec(plan);
+  if (block) {
+    try {
+      for (const t of JSON.parse(block[1]).tasks ?? []) {
+        if (titles[t.n] === undefined && typeof t.title === 'string') titles[t.n] = t.title;
+      }
+    } catch { /* an unparsable block leaves the heading titles as they are */ }
+  }
   return titles;
 }
 
@@ -216,6 +236,9 @@ const SEEDED = {
   // B1: the C defects of codigo-semeado-* (baseSet) are seeded on feat/E5; set names the fix entries (CR, CG) of the fix commit.
   'correcao-semeada-A': { class: 'code', artifact: 'A', set: 'e5-fix', baseSet: 'e5' },
   'correcao-semeada-B': { class: 'code', artifact: 'B', set: 'e5-fix', baseSet: 'e5' },
+  // E11 P5: native clean code (scenario/e5-native/code) with the C entries of set e5-native seeded on feat/E5.
+  'codigo-nativo-A': { class: 'code', artifact: 'A', set: 'e5-native' },
+  'codigo-nativo-B': { class: 'code', artifact: 'B', set: 'e5-native' },
 };
 
 export function artifactOf(variant) {
@@ -289,12 +312,13 @@ async function seedVariant(dir, variant, fromRun, fixOpts) {
     if (fromRun) throw new Error('--from-run does not apply to the native seeds');
     const expect = {};
     for (const e of entries) expect[e.class] = e.seedSha256;
-    prepareNativeBranch(dir, { withPlan: a.class === 'plan', expect });
+    prepareNativeBranch(dir, { withPlan: a.class !== 'spec', code: isCode, expect });
   } else {
     prepareE5Branch(dir, { withPlan: a.class !== 'spec', tasks: isCode ? 2 : 0, fromRun });
   }
   // Code: task 3 is committed with its own files and the defects applied, in a single commit.
-  if (isCode) copyTree(join(SCEN, 'e5', 'code', 't3'), dir);
+  // (native: T1..T3 are already committed by prepareNativeBranch and the defects amend the T3 commit)
+  if (isCode && a.set !== 'e5-native') copyTree(join(SCEN, 'e5', 'code', 't3'), dir);
   for (const e of entries) {
     const mod = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
     mod.seed(dir, e.id);
@@ -302,8 +326,13 @@ async function seedVariant(dir, variant, fromRun, fixOpts) {
   const files = [...new Set(entries.map((e) => e.file))];
   if (isCode) {
     git(dir, 'add', '-A');
-    const { plan } = e5Texts(fromRun);
-    git(dir, 'commit', '-q', '-m', `E5 T3: ${taskTitles(plan)[3] ?? 'task 3'}`);
+    if (a.set === 'e5-native') {
+      // The release counts E5 T<n> commits: the defects join the commit of T3, not a fourth one.
+      git(dir, 'commit', '-q', '--amend', '--no-edit');
+    } else {
+      const { plan } = e5Texts(fromRun);
+      git(dir, 'commit', '-q', '-m', `E5 T3: ${taskTitles(plan)[3] ?? 'task 3'}`);
+    }
   } else {
     git(dir, 'add', ...files);
     git(dir, 'commit', '-q', '-m', a.class === 'spec' ? 'docs(spec): E5 clarify design' : 'docs(plan): E5 refine plan');
@@ -331,8 +360,10 @@ export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
 }
 
 // suite and presentFn are test seams of the correcao-semeada checks (default: runSandboxSuite and the sentinel's present).
-export async function makeScenario(dir, variant, { fromRun, suite, presentFn } = {}) {
+// coordinatorFixture ('native' by default, or 'legacy') picks the plan the coordinator variant runs (DEC-747).
+export async function makeScenario(dir, variant, { fromRun, suite, presentFn, coordinatorFixture = 'native' } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
+  if (!['native', 'legacy'].includes(coordinatorFixture)) throw new Error(`coordinatorFixture must be native or legacy: ${coordinatorFixture}`);
   if (/semeado|nativo/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
   const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, fixSha: null, fixEntries: [], paths: { ...E5_PATHS } };
@@ -361,6 +392,11 @@ export async function makeScenario(dir, variant, { fromRun, suite, presentFn } =
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
       scenario.prompts = [`${RELEASE} run E5`];
       break;
+    case 'codigo-nativo-A':
+    case 'codigo-nativo-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun), { paths: { ...NATIVE_PATHS } });
+      scenario.prompts = [`${RELEASE} run E5`];
+      break;
     case 'correcao-semeada-A':
     case 'correcao-semeada-B':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun, { suite, presentFn }));
@@ -377,8 +413,16 @@ export async function makeScenario(dir, variant, { fromRun, suite, presentFn } =
       scenario.stopResume = STOP_RESUME;
       break;
     case 'coordinator':
-      writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan.md')));
-      git(sandbox, 'add', FIXED_PLAN);
+      scenario.fixture = coordinatorFixture;
+      if (coordinatorFixture === 'native') {
+        // The plan/1 block points to a spec that sits beside the plan (plan-tool and progress.mjs resolve it from there).
+        writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan-native.md')));
+        writeIn(sandbox, COORDINATOR_SPEC, readText(join(SCEN, 'coordinator-spec-native.md')));
+        git(sandbox, 'add', FIXED_PLAN, COORDINATOR_SPEC);
+      } else {
+        writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan.md')));
+        git(sandbox, 'add', FIXED_PLAN);
+      }
       git(sandbox, 'commit', '-q', '-m', 'docs(plan): fixed plan');
       scenario.prompts = [`/productivity-tools:plan-coordinator ${FIXED_PLAN}`];
       break;
