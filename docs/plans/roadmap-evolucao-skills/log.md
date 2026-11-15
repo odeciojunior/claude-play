@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E13 | Análise de E13 (opus, grátis): independência parcial no teste (1 ocorrência em operator.md:48), plano fixo no formato novo já em E11, 0 decisões pendentes, metas atingidas salvo E10. DEC-776, DEC-777. | `docs/plans/roadmap-evolucao-skills/decisions.md` |
+| 2026-11-15 | E13 | DEC-777 (E13) decidida pelo dono via Fable; vigente. | `decisions.md` |
+| 2026-11-15 | E13 | DEC-776 (E13) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E16 | productivity-tools 2.1.0 publicada pelo executor com autorização explícita do dono: tag productivity-tools--v2.0.0 em 1017db5, main 1017db5..779bae0 por fast-forward, push, update; cache 2.1.0 conferido. | `docs/reports/2026-11-15-E16-roteiro-publicacao.md` |
 | 2026-11-15 | E16 | Peças 2 a 4 preparadas: nenhuma decisão do executor pendente; branch de volta volta/productivity-tools-2.1.1 (557250d) com G1-G5 verdes e diff de 2 linhas contra 1017db5; roteiro de publicação do dono. E16 total US$ 11,71. | `docs/reports/2026-11-15-E16-roteiro-publicacao.md` |
 | 2026-11-15 | E16 | Peça 1: lote M16 (2.1.0) completo ×3 e coordinator ×3, 6/6 válidas, medianas iguais a E11, sem piora; gatilho de DEC-773 disparou (pendência para E13); DEC-764 não. US$ 11,71. | `docs/reports/2026-11-15-E16-lote-M16.md` |

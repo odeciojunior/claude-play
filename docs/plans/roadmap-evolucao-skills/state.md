@@ -28,7 +28,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E10 | publicado | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
 | E11 | publicado | `docs/reports/2026-11-15-E11-lote.md`, `docs/reports/2026-11-15-E11-roteiro-publicacao.md`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado em main 1017db5 (2.0.0); tag productivity-tools--v1.7.0 em 73cd476 no remoto. |
 | E12 | publicado | `55b2b842c15ad1b144de7fe603520cefd5c4c86f`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
-| E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
+| E13 | spec | `docs/plans/roadmap-evolucao-skills/decisions.md` | Teste de independência no plugin inteiro, operator.md, diagramas, 2.2.0; lote final (parada-retomada ×3, completo sem superpowers ×1, teto US$ 20); volta 2.2.1; roteiro. |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E15 | publicado | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E16 | publicado | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E16-lote-M16.md`, `779bae0b7969a5124569cdbede618e5df3ca12de` | - |
