@@ -2368,3 +2368,143 @@ test('B2: the single-round task-review script of codigo-semeado-A is frozen (gol
     s.done();
   }
 });
+
+// ---- E26 B2: task-review loop options, refusals and wiring ----
+const { stageLoopFor, checkLoopWorkflow } = await import('./run-batch.mjs');
+const corrOpts = (s, extra = {}) => seededOpts(s, 'correcao-semeada-A', { stage: 'task-review', reviewModel: 'sonnet', ...extra });
+
+// A measured plugin with the task reviewer, the given workflow text and (unless told otherwise) the review-package script.
+function taskLoopPlugin(parent, workflowText, { pkg = true } = {}) {
+  const dir = pluginDirWithWorkflow(parent, workflowText);
+  if (pkg) {
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, 'scripts', 'review-package.mjs'), '// fab\n');
+  }
+  return dir;
+}
+
+test('B2: --stage task-review --rounds loop accepts only correcao-semeada-A/B with --arm atual|restrita and a --review-model', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const good = taskLoopPlugin(s.base, wf);
+    const refused = [
+      ['codigo-semeado-A', { rounds: 'loop' }, /correcao-semeada/],
+      ['codigo-semeado-B', { rounds: 'loop', arm: 'restrita' }, /correcao-semeada/],
+      ['correcao-semeada-A', { rounds: 'single' }, /loop/],
+      ['correcao-semeada-B', { rounds: 'single', arm: 'restrita' }, /loop/],
+      ['correcao-semeada-A', { arm: 'adversarial' }, /final-review/],
+      ['correcao-semeada-A', { arm: 'perguntas' }, /perguntas/],
+      ['correcao-semeada-A', { reviewModel: undefined }, /review-model/],
+      ['correcao-semeada-A', { reviewModel: 'gpt' }, /review-model/],
+      ['codigo-semeado-A', { arm: 'restrita' }, /restrita|loop/],
+    ];
+    for (const [variant, extra, re] of refused) {
+      const fake = makeFake(s.configDir);
+      const opts = seededOpts(s, variant, { stage: 'task-review', reviewModel: 'sonnet', pluginDir: good, ...extra });
+      if (extra.reviewModel === undefined && 'reviewModel' in extra) delete opts.reviewModel;
+      await assert.rejects(runBatch(opts, { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && re.test(e.message), `${variant} ${JSON.stringify(extra)}`);
+      assert.equal(claudeCalls(fake).length, 0);
+    }
+    // the same refusals through the CLI end in exit code 2 before any claude call
+    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'task-review', '--review-model', 'sonnet', '--rounds', 'single', '--plugin-dir', good, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    assert.equal(cli.status, 2, cli.stderr);
+    // restrita outside task-review and adversarial outside final-review are refused too
+    for (const [variant, stage, arm] of [['spec-nativo-A', 'spec-review', 'restrita'], ['plano-semeado-A', 'plan-review', 'adversarial']]) {
+      await assert.rejects(runBatch(seededOpts(s, variant, { stage, arm, pluginDir: good }), { exec: makeFake(s.configDir).exec, now: NOW }), UsageError);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('B2: stageLoopFor(task-review) is { tier: sonnet, reviewModel, reviewEffort, maxFix: 2, byId: true } and the harness records taskReview', async () => {
+  assert.deepEqual(stageLoopFor('task-review', 'sonnet'), { tier: 'sonnet', reviewModel: 'sonnet', reviewEffort: 'medium', maxFix: 2, byId: true });
+  assert.deepEqual(stageLoopFor('task-review', 'opus'), { tier: 'sonnet', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2, byId: true });
+  assert.deepEqual(stageLoopFor('task-review', 'haiku'), { tier: 'sonnet', reviewModel: 'haiku', reviewEffort: 'low', maxFix: 2, byId: true });
+  assert.equal(stageLoopFor('task-review', undefined), null);
+  assert.equal(stageLoopFor('task-review', 'gpt'), null);
+  assert.deepEqual(stageLoopFor('spec-review'), { tier: 'opus', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 });
+  assert.deepEqual(stageLoopFor('plan-review'), { tier: 'sonnet', reviewModel: 'opus', reviewEffort: 'medium', maxFix: 2 });
+  const s = setup();
+  try {
+    const good = taskLoopPlugin(s.base, readFileSync(WORKFLOW, 'utf8'));
+    for (const [arm, model] of [['atual', 'sonnet'], ['restrita', 'opus']]) {
+      const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+      const r = await runBatch(corrOpts(s, { arm, reviewModel: model, pluginDir: good, work: join(s.base, `w-${arm}`) }), { exec: fake.exec, now: NOW });
+      const h = r.aggregate.harness;
+      assert.equal(h.arm, arm);
+      assert.equal(h.rounds, 'loop');
+      assert.deepEqual(h.taskReview, { restricted: arm === 'restrita' });
+      assert.deepEqual(h.stageOptions, stageLoopFor('task-review', model));
+      assert.match(h.pureSha256, /^[0-9a-f]{64}$/);
+      assert.ok(r.dir.includes(`correcao-semeada-A-task-review-${arm}-${model}-loop-`), r.dir);
+      // the launched script is the task loop, with the arm's switch and the seeded correction
+      const sent = firstClaudeP(fake);
+      assert.ok(sent.args.join(' ').includes('review-only.js'));
+      const text = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8');
+      assert.ok(text.includes(`const H_TR = {"restricted":${arm === 'restrita'}}`), text.slice(0, 300));
+      assert.match(text, /const H_FIXSHA = "[0-9a-f]{40}"/);
+      assert.match(text, /merge --ff-only [0-9a-f]{40}/);
+      assert.ok(text.includes('runReviewLoop(H_env, '));
+      assert.ok(text.includes(`const H_RM = "${model}"`));
+      assert.ok(existsSync(join(resolve(s.base, `w-${arm}`), '_tmp')), 'the diff directory sits next to the sandboxes, outside them');
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('B2: startup refusals on the task slice', async () => {
+  const s = setup();
+  try {
+    const wf = readFileSync(WORKFLOW, 'utf8');
+    const cases = [
+      ['byId: true })', 'byId: false })'],
+      ['taskReview: TR', 'taskReview: null'],
+      ['taskIssues(r, cx)', 'r.issues'],
+      ['revAgent(buildTaskReviewPrompt(', 'revAgent(buildTaskReviewPromptX('],
+      ['(CFG.taskReview || {}).restricted === true', '(CFG.taskReview || {}).restricted'],
+      ['function restrictedRound(', 'function restrictedRoundX('],
+      ['function taskIssues(', 'function taskIssuesX('],
+    ];
+    for (const [lit, repl] of cases) {
+      assert.ok(wf.includes(lit), lit);
+      const plugin = taskLoopPlugin(s.base, wf.replace(lit, repl));
+      const fake = makeFake(s.configDir);
+      const needle = lit.replace(/\($/, '');
+      await assert.rejects(runBatch(corrOpts(s, { pluginDir: plugin, work: join(s.base, 'w-ref') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes(needle), lit);
+      assert.equal(claudeCalls(fake).length, 0, lit);
+    }
+    // a plugin without scripts/review-package.mjs cannot run the restricted arm: refused for both arms
+    const noPkg = taskLoopPlugin(s.base, wf, { pkg: false });
+    for (const arm of ['atual', 'restrita']) {
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(corrOpts(s, { arm, pluginDir: noPkg, work: join(s.base, 'w-nopkg') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /review-package\.mjs/.test(e.message));
+      assert.equal(claudeCalls(fake).length, 0);
+    }
+    // the literal that sits in the slice drifts only when it leaves the task slice: a copy elsewhere does not hide it
+    const at = wf.indexOf('reviewLoop(`T${t.n}:${kind}`,');
+    const tail = wf.slice(at);
+    const drifted = wf.slice(0, at) + tail.replace('byId: true })', 'x })') + '\n// byId: true })\n';
+    assert.throws(() => checkLoopWorkflow(drifted, 'task-review'), (e) => e instanceof UsageError && /byId: true \}\)/.test(e.message));
+  } finally {
+    s.done();
+  }
+});
+
+test('B2: the A1 refusal of task-review loop is narrowed, not removed', async () => {
+  const s = setup();
+  try {
+    const good = taskLoopPlugin(s.base, readFileSync(WORKFLOW, 'utf8'));
+    // legacy seeded code in a loop is still refused (exit 2 through the CLI)
+    const cli = spawnSync(process.execPath, [script, '--variant', 'codigo-semeado-A', '--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    assert.equal(cli.status, 2, cli.stderr);
+    // and its single round is the frozen script: no loop constants
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(taskOpts(s, { pluginDir: good }), { exec: fake.exec, now: NOW });
+    assert.ok(!readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8').includes('H_FIXSHA'));
+  } finally {
+    s.done();
+  }
+});
