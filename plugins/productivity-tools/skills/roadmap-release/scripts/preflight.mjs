@@ -26,8 +26,10 @@ export function validateReleaseConfig(cfg) {
   if (cfg.taskReview != null) {
     if (typeof cfg.taskReview !== 'object' || Array.isArray(cfg.taskReview)) errors.push('taskReview must be an object');
     else {
-      for (const k of Object.keys(cfg.taskReview)) if (k !== 'restricted') errors.push(`taskReview.${k} is not a supported key (only taskReview.restricted)`);
-      if (cfg.taskReview.restricted != null && typeof cfg.taskReview.restricted !== 'boolean') errors.push('taskReview.restricted must be a boolean');
+      for (const k of Object.keys(cfg.taskReview)) {
+        if (k !== 'restricted' && k !== 'single') errors.push(`taskReview.${k} is not a supported key (only taskReview.restricted and taskReview.single)`);
+        else if (cfg.taskReview[k] != null && typeof cfg.taskReview[k] !== 'boolean') errors.push(`taskReview.${k} must be a boolean`);
+      }
     }
   }
   if (cfg.finalReview != null) {
