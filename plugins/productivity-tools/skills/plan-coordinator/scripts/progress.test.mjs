@@ -1359,3 +1359,37 @@ test('baseline event accepts failedNamesCut', () => {
   refused(s, { ...b, failedNamesCut: -1 }, 'wrong-status');
   refused(s, { ...b, failedNamesCut: 'x' }, 'wrong-status');
 });
+
+// ---------------------------------------------------------------------------
+// Preparo de E11 T-A2: a página 0 conta o estado-base
+// ---------------------------------------------------------------------------
+import { readPages, READ_PAGE_CHARS } from './progress.mjs';
+
+test('page 0 may leave empty when the state alone fills it', () => {
+  const big = { n: 1, note: 'x'.repeat(19000) };
+  const pages = readPages([big], 8000);
+  assert.equal(pages.length, 2);
+  assert.deepEqual(pages[0], []);
+  assert.deepEqual(pages[1], [big]);
+});
+
+test('page 0 output stays under READ_PAGE_CHARS', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const st = bigState(sb);
+  st.manual = [{ kind: 'note', step: 1, text: 'm'.repeat(12000), open: false }];
+  writeJson(sb.state, st);
+  const r = cli(['read', sb.state, '--nonce', 'N', '--json']);
+  assert.equal(r.code, 0, r.err);
+  const j = JSON.parse(r.out);
+  assert.ok(j.pages > 1);
+  assert.ok(r.out.length < READ_PAGE_CHARS + 1500, 'page 0 has ' + r.out.length + ' characters');
+}));
+
+test('readPages without baseSize is unchanged', () => {
+  const steps = Array.from({ length: 30 }, (_, i) => ({ n: i + 1, note: 'y'.repeat(1000) }));
+  const a = readPages(steps);
+  assert.deepEqual(a, readPages(steps, 0));
+  assert.ok(a.length > 1);
+  assert.ok(a[0].length > 0);
+  for (const p of a) assert.ok(JSON.stringify(p).length <= READ_PAGE_CHARS + 100);
+});

@@ -86,12 +86,13 @@ function defaultBase(cwd) {
 
 // Groups steps in pages whose compact JSON stays under READ_PAGE_CHARS (a step alone above it gets a page of its own).
 export const READ_PAGE_CHARS = 20000;
-export function readPages(steps) {
+// baseSize is what page 0 already carries (the state without steps): it counts only for the first page, which may stay empty.
+export function readPages(steps, baseSize = 0) {
   const pages = [[]];
-  let size = 0;
+  let size = baseSize;
   for (const st of steps) {
     const n = JSON.stringify(st).length + 1;
-    if (size + n > READ_PAGE_CHARS && pages[pages.length - 1].length > 0) { pages.push([]); size = 0; }
+    if (size + n > READ_PAGE_CHARS && (pages.length > 1 || baseSize > 0 || pages[0].length > 0)) { pages.push([]); size = 0; }
     pages[pages.length - 1].push(st);
     size += n;
   }
@@ -383,9 +384,11 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     // The output stays under 30 KB (the Bash tool spills more to a file): compact JSON, and the steps split into pages of READ_PAGE_CHARS.
     // Page 0 carries the state without its steps' tail; the other pages carry only steps. stateDigest is of the whole state, the same on every page.
     const page = opts.page === undefined ? 0 : Number(opts.page);
-    const pages = readPages(state.steps);
+    const headBase = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, stateDigest: stateDigest(state) };
+    const baseSize = JSON.stringify({ ...headBase, page, pages: 99, state: { ...state, history: [], steps: [] } }).length + 200;
+    const pages = readPages(state.steps, baseSize);
     if (!Number.isInteger(page) || page < 0 || page >= pages.length) return bad('--page deve ser um inteiro de 0 a ' + (pages.length - 1));
-    const head = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, page, pages: pages.length, stateDigest: stateDigest(state) };
+    const head = { ...headBase, page, pages: pages.length };
     const body = page === 0 ? { ...head, state: { ...state, history: [], steps: pages[0] } } : { ...head, steps: pages[page] };
     out(JSON.stringify(signed(body)));
     return 0;
