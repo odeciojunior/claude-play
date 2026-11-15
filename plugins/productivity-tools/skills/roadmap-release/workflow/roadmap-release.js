@@ -189,6 +189,14 @@ function gateSubset(xs, base) {
 function gateShaMatch(x, y) {
   return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
 }
+// A headSha only counts as a reference when it is a full SHA (a copy error from the model yields a wrong length).
+function fullSha(x) {
+  return typeof x === 'string' && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(x)
+}
+// An agent may copy a SHA with a trailing newline or in uppercase; compare it trimmed and lowercase.
+function normSha(x) {
+  return typeof x === 'string' ? x.trim().toLowerCase() : x
+}
 function gateResult(m, name) {
   return ((m && m.gates) || []).find(g => g && g.name === name)
 }
@@ -199,8 +207,12 @@ function gateCoherent(def, r) {
 }
 // A measure only counts if taken on a clean tree, at the expected commit, with every gate present and exit/failed names agreeing.
 function validMeasure(m, expectedSha, gateDefs) {
-  return !!m && m.clean === true && (!expectedSha || gateShaMatch(m.headSha, expectedSha))
+  return !!m && m.clean === true && fullSha(normSha(m.headSha)) && (!expectedSha || gateShaMatch(normSha(m.headSha), normSha(expectedSha)))
     && (gateDefs || []).every(def => gateCoherent(def, gateResult(m, def.name)))
+}
+// Evidence measure: clean, at a full SHA matching exp (when given), and the state preparation ok when it is required.
+function validEvidence(x, exp, needsBefore) {
+  return !!x && x.clean === true && fullSha(normSha(x.headSha)) && (!exp || gateShaMatch(normSha(x.headSha), normSha(exp))) && (!needsBefore || x.beforeOk === true)
 }
 function gatePasses(def, result, baselineResult) {
   if (!result || result.ran === false) return false
@@ -612,7 +624,8 @@ function measureProblems(m, expectedSha, gateDefs) {
   if (!m) return ['no measure returned']
   const out = []
   if (m.clean !== true) out.push('dirty tree')
-  if (expectedSha && !gateShaMatch(m.headSha, expectedSha)) out.push('measured at commit ' + m.headSha + ', expected ' + expectedSha)
+  if (!fullSha(normSha(m.headSha))) out.push('headSha is not a full SHA: ' + m.headSha)
+  if (expectedSha && !gateShaMatch(normSha(m.headSha), normSha(expectedSha))) out.push('measured at commit ' + m.headSha + ', expected ' + expectedSha)
   for (const def of gateDefs || []) {
     const r = gateResult(m, def.name)
     if (!r) out.push('gate ' + def.name + ' missing from the measure')
@@ -1657,7 +1670,7 @@ PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only step
 1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
 2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. ${foreignRule} If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort only in ${WT}/_integracao, never elsewhere. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
 3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Only if step 2 did not stop. Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
-4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (git rev-parse HEAD). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES)}`}
+4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES)}`}
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (e.g. CRLF, scripts that require bash).
 Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : `, recorded (raw stdout of step 4's first command, verbatim, as a string; then no baseline) or baseline { headSha, clean, gates } (none when step 2 stopped)`}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
@@ -1706,7 +1719,7 @@ INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN
 const snapshotBase = () => JSON.parse(JSON.stringify(BASE))
 const gateOnce = (g, dir, label, ph, range) => withLocks(g.locks, () => agent(`${COMMON_SLIM()}
 
-MEASURE the gates below in ${dir} (fix nothing). ${lockNote(g.locks)} First, BEFORE any command: clean (git status --porcelain empty; line-ending-only differences: git checkout -- <file>) and headSha (git rev-parse HEAD). Install first if a dependency manifest changed${INSTALL ? ` (${INSTALL})` : ''}.
+MEASURE the gates below in ${dir} (fix nothing). ${lockNote(g.locks)} First, BEFORE any command: clean (git status --porcelain empty; line-ending-only differences: git checkout -- <file>) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first if a dependency manifest changed${INSTALL ? ` (${INSTALL})` : ''}.
 ${measureTxt(g.defs)}
 Also return changedFiles = git diff --name-only ${range}, and in log the relevant part of each failing output.`,
   { label, phase: ph, schema: S_MEASURE, model: 'sonnet', effort: 'medium' }))
@@ -1714,7 +1727,7 @@ Also return changedFiles = git diff --name-only ${range}, and in log the relevan
 const measuredGroup = async (g, dir, label, ph, exp, range) => {
   for (const suffix of ['', '-retry']) {
     const r = await gateOnce(g, dir, label + suffix, ph, range)
-    if (validMeasure(r, exp, g.defs)) return r
+    if (validMeasure(r, exp, g.defs)) return { ...r, headSha: normSha(r.headSha) }
   }
   return null
 }
@@ -2694,11 +2707,11 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier,
   const runEvidence = async exp => {
     const rows = acExec()
     if (!rows.length && !BEFORE_EVIDENCE.length) return { ok: true, summary: '' }
-    const validEv = x => !!x && x.clean === true && (!exp || gateShaMatch(x.headSha, exp)) && (!BEFORE_EVIDENCE.length || x.beforeOk === true)
+    const validEv = x => validEvidence(x, exp, BEFORE_EVIDENCE.length > 0)
     const once = label => withLocks(TASK_LOCKS, () => agent(`${Cs()}
 
 ${lockNote(TASK_LOCKS)} Fix nothing. In the worktree ${wt}:
-1. BEFORE any command: clean (git status --porcelain empty) and headSha.
+1. BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex).
 2. ${BEFORE_EVIDENCE.length ? `Bring the state up, in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. beforeOk=true only if every command exited 0.` : 'No state to prepare (beforeOk=true).'}
 3. Run each command below in the resulting state and return results [{ac, command, exit, log (excerpt)}], in order, copying ac and command verbatim from its line ("<ac>: <command>"):
 ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p => p.external !== false) ? `\nThe person AUTHORIZED the external effect of these criteria; for each one, first apply its duplicate check: ${rows.filter(p => p.external !== false).map(p => `${p.ac}: ${p.externalDedupe || 'none declared'}`).join('; ')}` : ''}`,

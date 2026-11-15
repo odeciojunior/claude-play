@@ -182,6 +182,15 @@ export function selectPlan({ root, query = null }) {
 
   if (query !== null && String(query).trim() !== '') {
     const q = String(query).trim().toLowerCase();
+    // O caminho do plano (relativo, com ./ ou absoluto dentro da raiz) é escolha forte.
+    let qRel = q;
+    if (path.isAbsolute(String(query).trim())) {
+      qRel = slash(path.relative(root, path.resolve(String(query).trim()))).toLowerCase();
+    } else {
+      qRel = slash(q).replace(/^(\.\/)+/, '');
+    }
+    const byPath = items.find((i) => i.rel.toLowerCase() === qRel);
+    if (byPath) return { choice: byPath.rel };
     const strong = items.filter((i) => {
       const folder = i.folder.toLowerCase();
       return folder === q || (ID_SHAPE.test(q) && folder.endsWith('-' + q)) || (i.id !== null && i.id.toLowerCase() === q);

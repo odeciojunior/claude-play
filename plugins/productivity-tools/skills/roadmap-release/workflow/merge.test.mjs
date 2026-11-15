@@ -26,12 +26,15 @@ test('needsDeltaReview: true with any other file', () => {
 
 test('measureProblems names the offending gate and the tree/sha problems', () => {
   const defs = [{ name: 'unit', kind: 'tests' }, { name: 'lint', kind: 'exit' }];
-  const m = { headSha: 'abc1234', clean: true, gates: [res('unit', { exit: 1 })] };
+  const F = 'abc1234'.padEnd(40, '0');
+  const m = { headSha: F, clean: true, gates: [res('unit', { exit: 1 })] };
   const p = measureProblems(m, 'abc1234', defs);
   assert.equal(p.length, 2);
   assert.match(p.join('|'), /unit/);
   assert.match(p.join('|'), /lint/);
-  assert.deepEqual(measureProblems({ headSha: 'abc1234', clean: true, gates: [res('unit'), res('lint')] }, 'abc', defs), []);
+  assert.deepEqual(measureProblems({ headSha: F, clean: true, gates: [res('unit'), res('lint')] }, 'abc', defs), []);
+  assert.match(measureProblems({ headSha: 'a'.repeat(36), clean: true, gates: [] }, null, []).join('|'), /headSha is not a full SHA: a{36}/);
+  assert.deepEqual(measureProblems({ headSha: F.toUpperCase() + '\n', clean: true, gates: [] }, 'abc', []), []);
   assert.match(measureProblems({ headSha: 'abc', clean: false, gates: [] }, 'fff', []).join('|'), /dirty/);
   assert.match(measureProblems({ headSha: 'abc', clean: true, gates: [] }, 'fff', []).join('|'), /commit/);
   assert.equal(measureProblems(null, 'a', defs).length, 1);
