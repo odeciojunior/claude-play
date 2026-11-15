@@ -54,3 +54,10 @@ test('plan-author step 4 marks "added" or "derived"', () => {
 test('plan-writer keeps APPROVAL QUESTION fallback', () => {
   assert.ok(read(SKILL).includes('APPROVAL QUESTION:'));
 });
+
+test('E32: plan-author step 7 describes the lean emit', () => {
+  const line = read(AGENT).split('\n').find((l) => l.startsWith('7. Your last message'));
+  assert.ok(line, 'sem passo 7 do autor');
+  assert.ok(line.includes('{tool, schema, path, source, plan, digest}'));
+  assert.ok(!line.includes('path, data}'));
+});

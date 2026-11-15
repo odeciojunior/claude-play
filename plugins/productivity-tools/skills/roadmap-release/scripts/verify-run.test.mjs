@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync, utimesSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync, utimesSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -474,4 +474,144 @@ test('DEC-714: a live pid without output is waited for, then the output is repla
     assert.equal(late.exit, 2);
     assert.ok(Date.now() - t >= 1000);
   } finally { child.kill(); }
+});
+
+// ---- E32: procs mode (list and end the processes of a deliverable) ----
+
+test('E32 procs: parsers read fixed outputs', async () => {
+  const { parseCimProcs, parsePs, parseNetstatListen, parseLsofListen } = await import('./verify-run.mjs');
+  assert.deepEqual(parseCimProcs('{"ProcessId":10,"ParentProcessId":4,"CommandLine":null}'), [{ pid: 10, ppid: 4, cmd: '' }]);
+  assert.deepEqual(
+    parseCimProcs('[{"ProcessId":11,"ParentProcessId":10,"CommandLine":"node a.js"},{"ProcessId":12,"ParentProcessId":10,"CommandLine":null}]'),
+    [{ pid: 11, ppid: 10, cmd: 'node a.js' }, { pid: 12, ppid: 10, cmd: '' }],
+  );
+  assert.deepEqual(parseCimProcs(''), []);
+  // a raw control character from the console codepage (0x1A) and the final CRLF do not break the parse
+  assert.deepEqual(parseCimProcs('[{"ProcessId":13,"ParentProcessId":1,"CommandLine":"a \u001a b"}]\r\n'), [{ pid: 13, ppid: 1, cmd: 'a   b' }]);
+  assert.deepEqual(parsePs('    1     0 /sbin/init splash\n  200   1 node /x/server.js --port 5212\n\n'), [{ pid: 1, ppid: 0, cmd: '/sbin/init splash' }, { pid: 200, ppid: 1, cmd: 'node /x/server.js --port 5212' }]);
+  const net = [
+    'Active Connections', '', '  Proto  Local Address          Foreign Address        State           PID',
+    '  TCP    0.0.0.0:5212           0.0.0.0:0              LISTENING       4242',
+    '  TCP    [::]:5213              [::]:0                 LISTENING       4243',
+    '  TCP    127.0.0.1:5214         127.0.0.1:60000        ESTABLISHED     4244',
+  ].join('\r\n');
+  assert.deepEqual(parseNetstatListen(net), [{ pid: 4242, port: 5212 }, { pid: 4243, port: 5213 }]);
+  const lsof = [
+    'COMMAND   PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME',
+    'node     4242   me   23u  IPv4 0x1234      0t0  TCP *:5214 (LISTEN)',
+    'node     4243   me   24u  IPv6 0x1235      0t0  TCP [::1]:5215 (LISTEN)',
+    'node     4244   me   25u  IPv4 0x1236      0t0  TCP 127.0.0.1:8080->127.0.0.1:5000 (ESTABLISHED)',
+  ].join('\n');
+  assert.deepEqual(parseLsofListen(lsof), [{ pid: 4242, port: 5214 }, { pid: 4243, port: 5215 }]);
+});
+
+const procsOf = (cmds) => cmds.map((cmd, i) => ({ pid: 100 + i, ppid: 1, cmd }));
+
+test('E32 procs: selectProcs matches the worktree path followed by a boundary', async () => {
+  const { selectProcs } = await import('./verify-run.mjs');
+  const pick = (cmds, wt, platform) => selectProcs(procsOf(cmds), [], { wt, ports: [5210, 5219], self: 9999, platform }).map((m) => m.cmd);
+  const ok = ['node d:\\x\\e3\\server.js', 'node "D:/x/E3"', 'node D:/x/E3/server.js', 'node D:\\x\\E3', "node 'D:/x/E3' --flag", 'node D:/x/E3 --flag'];
+  assert.deepEqual(pick(ok, 'D:/x/E3', 'win32'), ok);
+  assert.equal(pick(['node D:/projects/claude-play-wt/E3/server.js', 'node "D:/projects/claude-play-wt/E3"'], 'D:/projects/claude-play-wt/E3', 'win32').length, 2);
+  assert.deepEqual(pick(['node D:/projects/claude-play-wt/E32/server.js', 'node D:/x/E32/server.js', 'node D:/x/E3x'], 'D:/x/E3', 'win32'), []);
+  assert.deepEqual(pick(['node D:/projects/claude-play-wt/E32/server.js'], 'D:/projects/claude-play-wt/E3', 'win32'), []);
+  // linux: case counts
+  assert.deepEqual(pick(['node /x/e3/s.js'], '/x/E3', 'linux'), []);
+  assert.deepEqual(pick(['node /x/E3/s.js'], '/x/E3', 'linux'), ['node /x/E3/s.js']);
+  // a trailing slash on wt is normalized
+  assert.equal(pick(['node D:/x/E3/server.js', 'node D:/x/E3'], 'D:/x/E3/', 'win32').length, 2);
+  assert.equal(pick(['node D:/x/E3/server.js'], 'D:\\x\\E3\\', 'win32').length, 1);
+  const m = selectProcs(procsOf(['node D:/x/E3/' + 'a'.repeat(400)]), [], { wt: 'D:/x/E3', ports: [5210, 5219], self: 9999, platform: 'win32' });
+  assert.equal(m[0].why, 'path');
+  assert.equal(m[0].cmd.length, 200);
+});
+
+test('E32 procs: selectProcs matches listeners inside the port range only', async () => {
+  const { selectProcs } = await import('./verify-run.mjs');
+  const procs = [{ pid: 10, ppid: 1, cmd: 'a' }, { pid: 11, ppid: 1, cmd: 'b' }, { pid: 12, ppid: 1, cmd: 'c' }, { pid: 13, ppid: 1, cmd: 'd' }, { pid: 14, ppid: 1, cmd: 'e' }];
+  const listens = [{ pid: 10, port: 5209 }, { pid: 11, port: 5210 }, { pid: 12, port: 5215 }, { pid: 13, port: 5219 }, { pid: 14, port: 5220 }];
+  const m = selectProcs(procs, listens, { wt: 'D:/x/E3', ports: [5210, 5219], self: 9999, platform: 'win32' });
+  assert.deepEqual(m.map((x) => [x.pid, x.why]), [[11, 'port 5210'], [12, 'port 5215'], [13, 'port 5219']]);
+});
+
+test('E32 procs: selectProcs never picks itself or its ancestors', async () => {
+  const { selectProcs } = await import('./verify-run.mjs');
+  const wt = 'D:/x/E3';
+  const procs = [
+    { pid: 1, ppid: 0, cmd: 'init D:/x/E3/root' },
+    { pid: 20, ppid: 1, cmd: 'bash D:/x/E3' },
+    { pid: 30, ppid: 20, cmd: 'node D:/x/E3/verify-run.mjs procs' },
+    { pid: 31, ppid: 20, cmd: 'node D:/x/E3/sibling.js' },
+  ];
+  const listens = [{ pid: 20, port: 5212 }, { pid: 30, port: 5213 }, { pid: 1, port: 5214 }];
+  const m = selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32' });
+  assert.deepEqual(m.map((x) => x.pid), [31]);
+  // a ppid cycle does not hang
+  const cyc = [{ pid: 5, ppid: 6, cmd: 'x' }, { pid: 6, ppid: 5, cmd: 'D:/x/E3' }, { pid: 7, ppid: 1, cmd: 'D:/x/E3' }];
+  assert.deepEqual(selectProcs(cyc, [], { wt, ports: [5210, 5219], self: 5, platform: 'win32' }).map((x) => x.pid), [7]);
+});
+
+test('E32 procs: refuses a payload without wt or with invalid ports', () => {
+  for (const extra of [{ ports: [5210, 5219] }, { wt: '', ports: [5210, 5219] }, { wt: 'D:/x/E3' }, { wt: 'D:/x/E3', ports: [5210] }, { wt: 'D:/x/E3', ports: [5210, 'x'] }, { wt: 'D:/x/E3', ports: [5210.5, 5219] }]) {
+    const o = run('procs', sign({ nonce: NONCE, ...extra }));
+    assert.equal(o.exit, 2, o.stdout);
+    assert.match(o.json.error, /the procs payload is missing a required field/);
+    assert.equal(o.json.ended, undefined);
+  }
+  const usage = run('nope', sign({ nonce: NONCE }));
+  assert.match(usage.json.error, /group\|read\|check\|procs/);
+});
+
+test('E32 procs: a missing listing goes to unchecked and the command still succeeds', async () => {
+  const { runProcs } = await import('./verify-run.mjs');
+  const killed = [];
+  const kill = (pid) => { killed.push(pid); };
+  const p = { nonce: NONCE, wt: '/x/E3', ports: [5210, 5219] };
+  const lin = (cmd) => (cmd === 'lsof' ? { error: { code: 'ENOENT' } } : { status: 0, stdout: '  900 1 node /x/E3/s.js\n  901 1 node /elsewhere\n' });
+  const a = runProcs(p, { platform: 'linux', run: lin, kill });
+  assert.equal(a.mode, 'procs');
+  assert.equal(a.unchecked.length, 1);
+  assert.match(a.unchecked[0], /lsof/);
+  assert.deepEqual(a.matched.map((m) => [m.pid, m.why]), [[900, 'path']]);
+  assert.deepEqual(a.ended, [900]);
+  assert.deepEqual(a.failed, []);
+  assert.deepEqual(killed, [900]);
+  const win = (cmd) => (/powershell/i.test(cmd) ? { status: 0, stdout: '[{"ProcessId":910,"ParentProcessId":1,"CommandLine":"node D:\\\\x\\\\E3\\\\s.js"}]' } : { error: { code: 'ENOENT' } });
+  const b = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: win, kill });
+  assert.equal(b.unchecked.length, 1);
+  assert.match(b.unchecked[0], /netstat/);
+  assert.deepEqual(b.ended, [910]);
+  const none = runProcs(p, { platform: 'win32', run: () => ({ error: { code: 'ENOENT' } }), kill });
+  assert.equal(none.unchecked.length, 2);
+  assert.match(none.unchecked.join('|'), /powershell/);
+  assert.match(none.unchecked.join('|'), /netstat/);
+  assert.deepEqual(none.matched, []);
+  // a kill that throws goes to failed, the others still end
+  const bad = runProcs(p, { platform: 'linux', run: (cmd) => (cmd === 'lsof' ? { status: 0, stdout: '' } : { status: 0, stdout: '  900 1 node /x/E3/a\n  901 1 node /x/E3/b\n' }), kill: (pid) => { if (pid === 900) throw new Error('EPERM'); } });
+  assert.deepEqual(bad.ended, [901]);
+  assert.deepEqual(bad.failed, [{ pid: 900, error: 'EPERM' }]);
+});
+
+test('E32 procs: end to end ends a child whose command line carries the worktree', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vr-procs-'));
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', dir], { stdio: 'ignore' });
+  const exited = new Promise((res) => child.once('exit', res));
+  try {
+    const { createServer } = await import('node:net');
+    const port = await new Promise((res, rej) => { const s = createServer(); s.once('error', rej); s.listen(0, '127.0.0.1', () => { const { port: q } = s.address(); s.close(() => res(q)); }); });
+    await new Promise((res) => setTimeout(res, 500)); // let the child's command line settle
+    const o = await new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, 'procs', enc(sign({ nonce: NONCE, wt: dir, ports: [port, port] }))], { stdio: ['ignore', 'pipe', 'pipe'] }); let s = ''; c.stdout.on('data', (d) => { s += d; }); c.on('close', (code) => res({ code, s })); });
+    const json = JSON.parse(o.s);
+    assert.equal(o.code, 0, o.s);
+    assert.equal(json.mode, 'procs');
+    assert.equal(json.nonce, NONCE);
+    assert.ok(json.ended.includes(child.pid), o.s);
+    assert.ok(json.matched.some((m) => m.pid === child.pid && m.why === 'path'), o.s);
+    assert.deepEqual(json.failed, []);
+    assert.ok(outDigest(json));
+    await Promise.race([exited, new Promise((_, rej) => setTimeout(() => rej(new Error('the child did not exit within 10 s')), 10000))]);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
