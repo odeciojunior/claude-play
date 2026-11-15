@@ -904,8 +904,9 @@ const FINAL_SLICE_LITERALS = ['FR.adversarial === true && bl.length', "card.crit
 const TASK_SLICE_LITERALS = ['byId: true })', 'taskReview: TR', 'taskIssues(r, cx)', 'revAgent(buildTaskReviewPrompt('];
 // The restricted switch is read before the call (const TR = ...), so it is searched in the whole workflow.
 const TASK_RESTRICTED_LITERAL = 'tr.restricted === true';
-// E27 C2 (lentes-semeadas-* only): the single-review switch and its loop are read before the call, so they are searched in the whole
-// workflow; the synthetic finding of taskIssues is searched only inside function taskIssues of the pure block.
+// E27 C2 (lentes-semeadas-*, --arm unica only; E29 removed the single mode from the product, so the atual arm no longer needs them):
+// the single-review switch and its loop are read before the call, so they are searched in the whole workflow; the synthetic finding
+// of taskIssues is searched only inside function taskIssues of the pure block.
 const TASK_SINGLE_LITERALS = ["TR.single ? ['review'] : ['spec', 'quality']", 'single: tr.single === true'];
 const TASK_SINGLE_ISSUES_LITERAL = '(c.taskReview || {}).single';
 const MAXFIX_LITERAL = 'intArg(A.maxFixRounds, 2, 0)';
@@ -925,7 +926,7 @@ export function extractPure(workflowText) {
 }
 
 // Refuses a measured workflow the loop harness would not reproduce; returns the pure block.
-export function checkLoopWorkflow(workflowText, stage, { lenses = false } = {}) {
+export function checkLoopWorkflow(workflowText, stage, { lenses = false, arm } = {}) {
   const sc = STAGE_CALL[stage];
   if (!sc) throw new UsageError(`--rounds loop only applies to --stage spec-review or plan-review (got ${stage})`);
   const text = lf(workflowText);
@@ -941,7 +942,7 @@ export function checkLoopWorkflow(workflowText, stage, { lenses = false } = {}) 
     for (const lit of TASK_SLICE_LITERALS) if (!slice.includes(lit)) throw new UsageError(`--rounds loop: the task review loop of the measured workflow no longer has ${lit} (task slice drift)`);
     if (!text.includes(TASK_RESTRICTED_LITERAL)) throw new UsageError(`--rounds loop: ${TASK_RESTRICTED_LITERAL} is gone from the measured workflow (the restricted switch may have changed)`);
     for (const fn of ['restrictedRound', 'taskIssues']) if (!new RegExp(`^function ${fn}\\(`, 'm').test(pure)) throw new UsageError(`--rounds loop: the measured workflow has no function ${fn} in its pure block`);
-    if (lenses) {
+    if (lenses && arm === 'unica') {
       for (const lit of TASK_SINGLE_LITERALS) if (!text.includes(lit)) throw new UsageError(`--rounds loop on lentes-semeadas: ${lit} is gone from the measured workflow (the single review switch may have changed)`);
       const at = pure.indexOf('function taskIssues(');
       const rest = pure.slice(at + 1);
@@ -2266,7 +2267,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const wfText = readFileSync(wfFile, 'utf8');
       assertArmsCurrent(h, wfText);
       if (h.rounds === 'loop') {
-        h.pure = checkLoopWorkflow(wfText, h.stage, { lenses: h.lenses === true });
+        h.pure = checkLoopWorkflow(wfText, h.stage, { lenses: h.lenses === true, arm: h.arm });
         h.loopFns = loadPure(wfFile); // the loop result is replayed with the measured workflow's own functions
         h.harness.pureSha256 = extractPure(wfText).sha256;
         if (h.lenses) h.syntheticDescription = syntheticOf(h.loopFns); // the synthetic finding of the measured taskIssues, recognised by its text in the replay
