@@ -7,9 +7,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E16: spec, plano e medição (dependências E11, E15 e E21 publicadas ou concluídas); lote pago nunca junto de outro lote, de G1 ou do release. Executa: executor.
-2. Próxima publicação (E28, pendências 2.0.1 e relatório da passada C de E27): versão e bump decididos pelo dono via Fable; push e publicação são atos do dono. Executa: dono.
-3. E13: medição final depois de E16. Executa: executor.
+1. E13: medição final sobre a 2.1.0 publicada (inclui o laço quality, gatilho de DEC-773 disparado em E16); remoção do modo single decidida no fechamento (DEC-773). Executa: executor.
+2. Ratificação final do roadmap. Executa: dono.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -32,7 +31,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E15 | publicado | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E16 | executando | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E16-lote-M16.md` | Branch de volta 2.1.1 com G1-G5; roteiro de publicação do dono (tag 2.0.0 em 1017db5, main por ff, push, update, cache 2.1.0). |
+| E16 | publicado | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E16-lote-M16.md`, `779bae0b7969a5124569cdbede618e5df3ca12de` | - |
 | E17 | publicado | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E18 | publicado | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; G1 a G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E19 | publicado | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
@@ -43,8 +42,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E24 | publicado | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | medido | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | - |
-| E27 | na-branch | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md`, `docs/reports/2026-11-15-E27-passada-C.md, 94ce9b6bb5a31313b8cc5500edd2d1a817eb1c1f` | Fechado pelo dono via Fable (DEC-773): vira medido quando o relatório da passada C chegar a main na próxima publicação. |
-| E28 | na-branch | `91f182af47174b8a0c77a2e6c47eaf3347e1aa1c`, `ebc39b7` | Na release (ebc39b7) com as pendências 2.0.1; vira integrado/publicado na próxima publicação (versão a decidir). Libera a passada C de E27. |
+| E27 | medido | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md`, `docs/reports/2026-11-15-E27-passada-C.md, 94ce9b6bb5a31313b8cc5500edd2d1a817eb1c1f`, `779bae0b7969a5124569cdbede618e5df3ca12de` | - |
+| E28 | publicado | `91f182af47174b8a0c77a2e6c47eaf3347e1aa1c`, `ebc39b7`, `91f182af47174b8a0c77a2e6c47eaf3347e1aa1c, 779bae0b7969a5124569cdbede618e5df3ca12de` | - |
 <!-- /roadmap:panel -->
 
 ## Bloqueios
