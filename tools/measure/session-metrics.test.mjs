@@ -388,3 +388,57 @@ test('task fixers and final reviews carry the roles and rounds of the real label
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+// ---- E11 P10: piece-3 counters per attempt
+import { piece3Of } from './session-metrics.mjs';
+import { rolesByLabel } from './run-batch.mjs';
+
+function piece3Run(agents) {
+  const { base, sid } = realLabelRoot(agents);
+  try {
+    return extract({ root: base, prices, sessions: [sid] }).runs[0];
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+test('piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels', () => {
+  const r = piece3Run([
+    { label: 'E5:t1:spec-fix1' },
+    { label: 'E5:t1:quality-fix1' },
+    { label: 'E5:t3:spec-fix1' },
+    { label: 'E5:t3:spec1' },
+    { label: 'E5:t3:impl' },
+  ]);
+  assert.deepEqual(piece3Of(r).taskFixByTask, { 1: 2, 3: 1 });
+});
+
+test('piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review', () => {
+  const r = piece3Run([
+    { label: 'E5:gates-fix1' },
+    { label: 'E5:gates-fix2' },
+    { label: 'E5:gates-fix1-review' },
+    { label: 'E5:pre-gates-fix3' },
+  ]);
+  assert.equal(piece3Of(r).gateFix, 3);
+  assert.equal(piece3Of(piece3Run([{ label: 'E5:gates-fix1-review' }])).gateFix, 0);
+});
+
+test('piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels', () => {
+  const withPlan = piece3Run([{ label: 'E5:plan', model: 'claude-opus-4-5' }, { label: 'E5:spec', model: 'claude-sonnet-4-5' }]);
+  assert.equal(piece3Of(withPlan).planAuthorModel, 'opus');
+  assert.equal(withPlan.agents.plan.calls, 1);
+  assert.equal(withPlan.agents.plan.model, 'opus');
+  const noPlan = piece3Run([{ label: 'E5:spec' }]);
+  assert.deepEqual(piece3Of(noPlan), { taskFixByTask: {}, gateFix: 0, planAuthorModel: null });
+  assert.deepEqual(piece3Of({}), { taskFixByTask: {}, gateFix: 0, planAuthorModel: null });
+});
+
+test('rolesByLabel keeps the gates role that joins gate and gate-fix', () => {
+  const r = piece3Run([{ label: 'E5:gates1' }, { label: 'E5:gates-fix1' }, { label: 'E5:t1:spec-fix1' }]);
+  assert.equal(r.roles.gates.agents, 2);
+  const rl = rolesByLabel(r, null);
+  assert.equal(rl.fix.agents, 1);
+  assert.equal(rl.other.agents, 2);
+  assert.deepEqual(Object.keys(rl).sort(), ['fix', 'other', 'review', 'session', 'verify']);
+});

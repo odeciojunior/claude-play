@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { makeScenario, artifactOf, manifestEntries, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
+import { piece3Of } from './session-metrics.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
@@ -1995,7 +1996,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       outcomes = await attemptOutcomes(variant, scenario, journal, stageOf, reachable);
     }
     const cliCostUsd = sumCliCost(cliCosts);
-    const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd) };
+    const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd), piece3: piece3Of(run) };
     if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${h.st.label}1`) : reviewCounts(journal.entries, `${h.st.label}1`);
     if (authorCommitted !== null) attempt.authorCommitted = authorCommitted;
     if (h && journal && loop) {

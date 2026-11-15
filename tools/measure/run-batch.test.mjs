@@ -3473,3 +3473,18 @@ test('E11 pendingE5 lists the pending E5 contract decisions through the tracker 
     s.done();
   }
 });
+
+test('E11 P10: a valid attempt of completo carries piece3 from the extracted run', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { variant: 'completo', runs: 1 }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid');
+    assert.deepEqual(Object.keys(a.piece3).sort(), ['gateFix', 'planAuthorModel', 'taskFixByTask']);
+    assert.equal(typeof a.piece3.gateFix, 'number');
+    assert.equal(typeof a.piece3.taskFixByTask, 'object');
+  } finally {
+    s.done();
+  }
+});
