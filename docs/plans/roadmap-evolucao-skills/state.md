@@ -7,8 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E13: medição final sobre a 2.1.0 publicada (inclui o laço quality, gatilho de DEC-773 disparado em E16); remoção do modo single decidida no fechamento (DEC-773). Executa: executor.
-2. Ratificação final do roadmap. Executa: dono.
+1. Roadmap concluído (DEC-779). Próximo passo, quando o dono mandar: roadmap leve pós-2.2.0 com o entregável dos pendentes. Executa: dono.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -23,12 +22,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E5 | publicado | `8685133067f25af8ed6a53cfa720af0aaeb59445`; `docs/superpowers/specs/2026-11-11-E5-formato-ferramenta-spec-design.md`; `docs/superpowers/plans/2026-11-11-E5-formato-ferramenta-spec.md`; `docs/superpowers/reviews/2026-11-11-E5-formato-ferramenta-spec-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E6 | publicado | `db19e0e37dcef2965d210f9c20732b6184b55239`; `docs/superpowers/specs/2026-11-11-E6-formato-ferramenta-plano-design.md`; `docs/superpowers/plans/2026-11-11-E6-formato-ferramenta-plano.md`; `docs/superpowers/reviews/2026-11-11-E6-formato-ferramenta-plano-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E7 | publicado | `docs/superpowers/specs/2026-11-12-E7-coordinator-mapa-estado-codigo-design.md`, `docs/superpowers/plans/2026-11-12-E7-coordinator-mapa-estado-codigo.md`, `ae16fa55b143503921f58a5041b40b9113a47b77`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
-| E8 | card: na-branch; sonda: na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627`, `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md` | E8: seguir o fluxo do release após na-branch |
+| E8 | publicado | `37234367718719ba7e155d07efee76356e734627`, `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md`, `b5812b3bf6630157ae1b53322552d653bb0762e6` | - |
 | E9 | publicado | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
 | E10 | publicado | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
 | E11 | publicado | `docs/reports/2026-11-15-E11-lote.md`, `docs/reports/2026-11-15-E11-roteiro-publicacao.md`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado em main 1017db5 (2.0.0); tag productivity-tools--v1.7.0 em 73cd476 no remoto. |
 | E12 | publicado | `55b2b842c15ad1b144de7fe603520cefd5c4c86f`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
-| E13 | executando | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E13-roteiro-publicacao.md` | Publicação da 2.2.0 pelo dono (roteiro); depois publicado e ratificação final. |
+| E13 | publicado | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E13-roteiro-publicacao.md`, `b5812b3bf6630157ae1b53322552d653bb0762e6` | - |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E15 | publicado | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E16 | publicado | `docs/plans/roadmap-evolucao-skills/decisions.md`, `docs/reports/2026-11-15-E16-lote-M16.md`, `779bae0b7969a5124569cdbede618e5df3ca12de` | - |
@@ -56,7 +55,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Pendentes
 
 <!-- roadmap:pending -->
-- (dono) Operar os pontos de medição E17, E11 e E16, as medições de política E26 e E27 e a medição final de E13, e publicar em E17, E11, E16 e E13 (DEC-014, DEC-017).
 - (executor) Planner e tracker: a cópia do checker a partir do cache é negada no modo padrão (achado 2 de E15). Trocar o cp por um subcomando Node do plugin que grava a cópia na pasta do roadmap, com teste. Atribuir a E8 ou ao próximo entregável que tocar o CLI.
 - (dono) Depois da publicação: sair da conta em D:\claude-e17-cfg e só então apagar a pasta; apagar D:\claude-e17-work e o clone bare D:\claude-e17-srv.
 - (executor) DEC-571/573: T3 de E23 r1 (vermelho por | grep, exit do grep) é o caso 1 de 2 de testFirstGap em tarefa legítima. Com o 2º caso, propor ao dono nova tentativa única do implementador ou chave de comando mais tolerante.
