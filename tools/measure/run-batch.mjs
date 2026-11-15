@@ -1987,8 +1987,9 @@ export function recountLenses(totals, mode, leitura = {}) {
 }
 
 // The side of the rule for the totals of the atual arm and (unless atual is the ceiling or the floor) of the unica arm.
-function decideSideC(atual, unica) {
-  if (earlyCeiling(atual)) return { side: 'teto', reason: 'teto antecipado: as 6 primeiras validas do atual, 3 A e 3 B intercaladas, em 24 de 24' };
+// `early` false disables the early ceiling (from 10 valid attempts the 38/20/32 thresholds of the 40 opportunities are the rule).
+function decideSideC(atual, unica, early = true) {
+  if (early && earlyCeiling(atual)) return { side: 'teto', reason: 'teto antecipado: as 6 primeiras validas do atual, 3 A e 3 B intercaladas, em 24 de 24' };
   if (atual.capturas >= RULE_C.ceiling) return { side: 'teto', reason: `atual com ${atual.capturas} capturas (${RULE_C.ceiling} ou mais)` };
   if (atual.capturas < RULE_C.floor) return { side: 'piso', reason: `atual com ${atual.capturas} capturas (menos de ${RULE_C.floor})` };
   if (atual.determinadas < RULE_C.minDeterminadas) return { side: 'piso', reason: `atual com ${atual.determinadas} determinadas (menos de ${RULE_C.minDeterminadas})` };
@@ -2009,21 +2010,31 @@ function decideSideC(atual, unica) {
 // ('continua': the early ceiling fell in the recount, the atual arm goes on to 10 valid attempts).
 export function ruleSideC({ atual, unica = null, leitura = {} }) {
   if (!atual) throw new UsageError('ruleSideC needs the totals of the atual arm');
-  const base = decideSideC(atual, unica);
-  if (base.side === 'sem-unica') throw new UsageError(base.reason);
   const summary = (t) => (t ? { capturas: t.capturas, perdidos: t.perdidos, indeterminados: t.indeterminados, determinadas: t.determinadas, outcomesByLens: t.outcomesByLens, costPerValid: t.costPerValid } : null);
-  const recount = { base: { side: base.side, reason: base.reason } };
-  // The early ceiling reads the totals recounted with the reading of the diary: a capture no review names (by `leitura`, else by regex)
-  // is indeterminado, so it is no longer 24 of 24 and the arm continues to 10 valid attempts (anything below 24/24 continues).
-  // Never a piso from the first 6 attempts.
-  if (earlyCeiling(atual) && !earlyCeiling(recountLenses(atual, 'semMencao', leitura))) {
-    return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao): o atual segue ate 10 validas', recount };
+  const recount = {};
+  // The early ceiling only applies below 10 valid attempts, and only when it holds in the raw totals AND in the recounts (the reading of
+  // the diary for captures no review names, then the failRiscoAceito attempts as indeterminado). When it holds raw but not in a recount
+  // the arm continues to 10 valid attempts (never a piso or inconclusivo from 6 attempts, which cannot reach the 32 determined). From
+  // 10 valid the early ceiling is off and the normal thresholds apply to the base and to every recount.
+  const young = (atual.valid ?? 0) < 10;
+  const rawEarly = earlyCeiling(atual);
+  if (young && rawEarly) {
+    if (!earlyCeiling(recountLenses(atual, 'semMencao', leitura))) {
+      return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem com a leitura do diario (captura sem mencao): o atual segue ate 10 validas', recount };
+    }
+    if (!earlyCeiling(recountLenses(atual, 'failRisco', leitura))) {
+      return { side: 'continua', reason: 'o teto antecipado nao se sustenta na recontagem dos failRiscoAceito: o atual segue ate 10 validas', recount };
+    }
   }
+  const early = young && rawEarly;
+  const base = decideSideC(atual, unica, early);
+  if (base.side === 'sem-unica') throw new UsageError(base.reason);
+  recount.base = { side: base.side, reason: base.reason };
   const changed = [];
   for (const mode of ['semMencao', 'failRisco']) {
     const a = recountLenses(atual, mode, leitura);
     const u = unica ? recountLenses(unica, mode, leitura) : null;
-    const r = decideSideC(a, u);
+    const r = decideSideC(a, u, early);
     recount[mode] = { side: r.side, reason: r.reason, atual: summary(a), unica: summary(u) };
     if (r.side !== base.side) changed.push(mode);
   }

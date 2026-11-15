@@ -4354,10 +4354,10 @@ test('C4: earlyCeiling gives teto with the first 6 valid attempts of atual, 3 of
   const r = ruleSideC({ atual });
   assert.equal(r.side, 'teto');
   assert.match(r.reason, /antecipado/);
-  // but the recount of the same 6 attempts still guards it: a failRiscoAceito attempt among them makes it inconclusivo
+  // but the recount of the same 6 attempts still guards it: a failRiscoAceito attempt among them makes the arm continue to 10 valid attempts
   const risky = seq(['A', 'B', 'A', 'B', 'A', 'B']);
   risky[0] = vatt('A', 1, ALL, { failRiscoAceito: true, capturadoPor: NAMED });
-  assert.equal(ruleSideC({ atual: totalsOf(...risky) }).side, 'inconclusivo');
+  assert.equal(ruleSideC({ atual: totalsOf(...risky) }).side, 'continua');
   assert.equal(earlyCeiling(null), false);
 });
 
@@ -4380,6 +4380,50 @@ test('C4: the early ceiling is checked on the totals recounted with the reading 
     assert.notEqual(r.side, 'piso');
     assert.match(r.reason, /10 validas/);
   }
+});
+
+test('C4: continua ends at 10 valid attempts: the 40-opportunity rule applies, never continua again and never an early teto', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const arts = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
+  // the first 6 capture 24 of 24 (the first capture unnamed by regex); the last 4 capture only SP1 (28 of 40)
+  const tail = { SP1: 'capturado', SP2: 'perdido', QL1: 'perdido', QL2: 'perdido' };
+  const build = (lastOutcomes, unnamedFirst) => arts.map((a, i) => vatt(a, i + 1, i < 6 ? ALL : lastOutcomes, { capturadoPor: i === 0 && unnamedFirst ? { ...NAMED, SP1: null } : NAMED }));
+  const ten = totalsOf(...build(tail, true));
+  assert.equal(ten.valid, 10);
+  assert.equal(ten.capturas, 28);
+  assert.equal(earlyCeiling(ten), true); // raw early ceiling still holds on the first 6
+  const key = ten.validOrder[0].key;
+  // 10 valid, 28 of 40, the reading denies or the regex stands: not continua, and the normal rule asks for the unica (28 is neither teto nor piso)
+  for (const leitura of [{}, { [key]: { SP1: false } }]) assert.throws(() => ruleSideC({ atual: ten, leitura }), /unica/);
+  // the reading confirms the capture at 10 valid with 28 of 40: not a teto (the early ceiling does not apply from 10 valid)
+  assert.throws(() => ruleSideC({ atual: ten, leitura: { [key]: { SP1: true } } }), /unica/);
+  const unica = armFrom({ spec: [14, 4, 2], quality: [14, 4, 2], cost: 0.5, single: true });
+  const withUnica = ruleSideC({ atual: ten, unica, leitura: { [key]: { SP1: true } } });
+  assert.notEqual(withUnica.side, 'continua');
+  assert.notEqual(withUnica.side, 'teto');
+  // 10 valid at 40 of 40: teto by the 38 rule, not by the early ceiling; one unnamed capture (39) still teto
+  const all = totalsOf(...build(ALL, true));
+  for (const leitura of [{}, { [key]: { SP1: true } }]) {
+    const r = ruleSideC({ atual: all, leitura });
+    assert.equal(r.side, 'teto');
+    assert.doesNotMatch(r.reason, /antecipado/);
+  }
+});
+
+test('C4: a failRiscoAceito attempt among the first 6 with the early ceiling holding continues instead of closing the pass at 6 attempts', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const six = ['A', 'B', 'A', 'B', 'A', 'B'].map((a, i) => vatt(a, i + 1, ALL, { capturadoPor: NAMED, failRiscoAceito: i === 2 }));
+  const atual = totalsOf(...six);
+  assert.equal(earlyCeiling(atual), true);
+  assert.equal(earlyCeiling(recountLenses(atual, 'failRisco')), false);
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'continua');
+  assert.match(r.reason, /10 validas/);
+  // the same together with an unnamed capture: still continua
+  const six2 = six.map((a, i) => (i === 0 ? { ...a, capturadoPor: { ...NAMED, SP1: null } } : a));
+  assert.equal(ruleSideC({ atual: totalsOf(...six2) }).side, 'continua');
 });
 
 test('C3: semente-ausente is checked after settleSandbox: a root left on main with feat/E5 held by a release worktree is still valid', async () => {
