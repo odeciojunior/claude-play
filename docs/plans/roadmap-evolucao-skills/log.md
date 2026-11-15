@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E28 | DEC-767 (E28) ratificada com emenda pelo dono via Fable. | `decisions.md` |
+| 2026-11-15 | E28 | DEC-766 e DEC-768 (E28) ratificadas pelo dono via Fable; AC1 também se apoia em flow.test.mjs (achado 4 da revisão final). | `decisions.md` |
+| 2026-11-15 | E28 | Peças 1 e 2 em feat/E28 (91f182a): revisão única desligada por padrão; G1 2099/0, G2-G5 verdes; portão opus/high com 1 correção; teste do revisor 3/3 (US$ 0,84). Decisões DEC-766, DEC-767, DEC-768. Integra após a publicação da 2.0.0. | `docs/plans/evolucao-skills-E28/2026-11-15-E28-revisor-comportamental.md` |
 | 2026-11-15 | E11 | Peças 3 e 4 preparadas: nota de atualização em docs/releases/ (link no README), critério 6 conferido (US$ 1,05), branch de volta volta/productivity-tools-2.0.1 (7082c60) com G1-G5 verdes (DEC-765), roteiro de publicação do dono. E11 total US$ 114,09. | `docs/reports/2026-11-15-E11-roteiro-publicacao.md` |
 | 2026-11-15 | E11 | DEC-765 (branch de volta 2.0.1) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E11 | Peça 2 (ratificação): pending-decisions sem decisões pendentes ({"decisions":[]}). E26 concluído (DEC-764). | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` |
