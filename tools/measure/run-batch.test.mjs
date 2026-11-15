@@ -2348,3 +2348,23 @@ test('B3: the final arm placeholders are the ones the harness fills', () => {
   assert.deepEqual(placeholdersOf(text('final-review-atual.md')), ['TARGET', 'cardRef', 'lens', 'planPath', 'specPath', 'wt']);
   assert.deepEqual(placeholdersOf(text('final-fix-atual.md')), ['E', 'issues', 'lockNote', 'noSpecEdit']);
 });
+
+// ---- E26 B2: frozen single-round task-review script (DEC-735) ----
+// sha256 of the whole review-only.js of codigo-semeado-A (task-review, single round, arm atual, sonnet) with the sandbox path as <SB>.
+const GOLDEN_SINGLE_TASK_A = 'aca0874220b8c981035bad89e01eb6a7d20990303966804662b4ff97a4e0a0ba';
+
+test('B2: the single-round task-review script of codigo-semeado-A is frozen (golden)', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
+    await runBatch(taskOpts(s), { exec: fake.exec, now: NOW });
+    const sent = firstClaudeP(fake);
+    const text = readFileSync(join(sent.cwd, 'review-only.js'), 'utf8').split(sent.cwd.replace(/\\/g, '/')).join('<SB>').replace(/[0-9a-f]{40}/g, '<SHA>'); // the seeded commit sha differs per run (commit dates)
+    assert.ok(text.includes('const FIX_PROMPT = '));
+    assert.ok(text.includes('<SHA>~1'), 'the seeded commit is named in the review range');
+    assert.ok(!/[A-Za-z]:[\\/]/.test(text), 'no absolute Windows path left');
+    assert.equal(sha256Of(text), GOLDEN_SINGLE_TASK_A, text);
+  } finally {
+    s.done();
+  }
+});
