@@ -31,8 +31,8 @@ export const BASELINE_PLAN = [
 // E11 plan: native release at M. maxBudgetUsd per entry (DEC-749): pipeline 10, plan-only 5, stage harness and coordinator 3.
 // The coordinator appears twice: at M and on the 1.7.0 side (side '1.7.0'), which runs from --plugin-dir-before with its own out.
 export const E11_PLAN = [
-  { variant: 'planner', runs: 1 },
-  { variant: 'tracker', runs: 1 },
+  { variant: 'planner', runs: 1, maxBudgetUsd: 5 },
+  { variant: 'tracker', runs: 1, maxBudgetUsd: 5 },
   { variant: 'plan-only', runs: 5, maxBudgetUsd: 5 },
   { variant: 'coordinator', runs: 5, maxBudgetUsd: 3 },
   { variant: 'coordinator', runs: 5, maxBudgetUsd: 3, side: '1.7.0' },
@@ -120,6 +120,15 @@ function resolveTagReal(tag) {
   return execFileSync('git', ['rev-parse', `${tag}^{commit}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
+// True when git sees uncommitted changes in the folder; a folder that is not a repo is left to the commit check (it has no commit).
+function treeDirtyReal(dir) {
+  try {
+    return execFileSync('git', ['-C', dir, 'status', '--porcelain', '--', '.'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() !== '';
+  } catch {
+    return false;
+  }
+}
+
 export async function runBaseline(opts, deps = {}) {
   const d = {
     runBatch: realRunBatch,
@@ -127,6 +136,7 @@ export async function runBaseline(opts, deps = {}) {
     seedSourceOf: realSeedSourceOf,
     readPlugin: realReadPlugin,
     readPluginDir: realReadPluginDir,
+    treeDirty: treeDirtyReal,
     resolveTag: resolveTagReal,
     log: (m) => console.log(m),
     ...deps,
@@ -152,6 +162,10 @@ export async function runBaseline(opts, deps = {}) {
     d.log(`tag ${tag} could not be resolved: ${e.message}`);
     return { exitCode: 2, results };
   }
+  if (opts.plan === 'e11' && !opts.pluginDir) {
+    d.log('--plan e11 needs --plugin-dir <folder of M> (the installed plugin is not the measured one)');
+    return { exitCode: 2, results };
+  }
   let found;
   try {
     found = opts.pluginDir ? d.readPluginDir(opts.pluginDir).commit : d.readPlugin(opts.configDir).commit;
@@ -164,6 +178,13 @@ export async function runBaseline(opts, deps = {}) {
       ? `--plugin-dir commit ${found} is not the commit of ${tag} (${expected})`
       : `installed plugin commit ${found} is not the commit of ${tag} (${expected}); install the start version first`);
     return { exitCode: 2, results };
+  }
+  // DEC-744: the folder must be the committed tree (plugins/ equal to M), with no uncommitted change.
+  for (const [flag, dir] of [['--plugin-dir', opts.pluginDir], ['--plugin-dir-before', plan.some((p) => p.side) ? opts.pluginDirBefore : undefined]]) {
+    if (dir && d.treeDirty(dir)) {
+      d.log(`${flag} has uncommitted changes (git status --porcelain is not empty); the measured plugin must equal its commit (DEC-744)`);
+      return { exitCode: 2, results };
+    }
   }
   if (plan.some((p) => p.side)) {
     let before;

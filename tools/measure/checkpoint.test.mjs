@@ -352,6 +352,12 @@ test('E11: checkpoint --before-coordinator swaps the before side of the coordina
   assert.equal(before.variants.coordinator.attempts[0].counters.bytes, 5000); // the input is not mutated
   // Other variants stay on the before side.
   assert.deepEqual(swapped.variants['plan-only'].counters, plain.variants['plan-only'].counters);
+  const withCommit = (a, commit) => ({ ...a, variants: { ...a.variants, coordinator: { ...a.variants.coordinator, plugin: { commit } } } });
+  const same = run(before, withCommit(after, 'abc1230'), readOk, { beforeCoordinator: { baseline: withCommit(old17, 'abc1230'), path: 'p' } });
+  assert.equal(same.exit, 2);
+  assert.match(same.reason, /--before-coordinator is the same plugin commit as --after/);
+  const differ = run(before, withCommit(after, 'abc1230'), readOk, { beforeCoordinator: { baseline: withCommit(old17, 'def4560'), path: 'p' } });
+  assert.equal(differ.exit, 0);
   const noCoord = run(before, after, readOk, { beforeCoordinator: { baseline: agg({}), path: 'p' } });
   assert.equal(noCoord.exit, 2);
   const otherMode = run(before, after, readOk, { beforeCoordinator: { baseline: { ...old17, permissionMode: 'default' }, path: 'p' } });

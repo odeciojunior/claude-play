@@ -396,6 +396,7 @@ test('the conductor passes stage and arm to runBatch for the plan class and resu
 const OLD_COMMIT = `e38cb35${'0'.repeat(33)}`;
 const e11Deps = (s, o = {}) => ({
   ...makeDeps(s, o),
+  treeDirty: (dir) => (o.dirty ?? []).includes(dir),
   readPluginDir: (dir) => ({ version: '2.0.0', commit: dir === '/pasta-antiga' ? (o.oldCommit ?? OLD_COMMIT) : (o.mCommit ?? COMMIT) }),
 });
 const e11Opts = (s, extra = {}) => baseOpts(s, { plan: 'e11', pluginDir: '/pasta-m', pluginDirBefore: '/pasta-antiga', tag: 'M', ...extra });
@@ -423,6 +424,8 @@ test('E11_PLAN carries maxBudgetUsd per entry (DEC-749)', async () => {
   const cap = (v, side) => E11_PLAN.find((p) => p.variant === v && Boolean(p.side) === Boolean(side)).maxBudgetUsd;
   for (const v of ['completo', 'parada-retomada', 'codigo-nativo-A', 'codigo-nativo-B']) assert.equal(cap(v), 10, v);
   assert.equal(cap('plan-only'), 5);
+  assert.equal(cap('planner'), 5);
+  assert.equal(cap('tracker'), 5);
   for (const v of ['plano-nativo-A', 'plano-nativo-B', 'coordinator']) assert.equal(cap(v), 3, v);
   assert.equal(cap('coordinator', true), 3);
   const s = setup();
@@ -479,6 +482,28 @@ test('with --plugin-dir the commit is read from the folder', async () => {
     // Without --plugin-dir the installed plugin is read, as before.
     const old = makeDeps(s, { commit: 'f'.repeat(40) });
     assert.equal((await runBaseline(baseOpts(s, { only: ['tracker'] }), old)).exitCode, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('a dirty plugin tree or a missing --plugin-dir under --plan e11 exits 2 before any run (DEC-744)', async () => {
+  const s = setup();
+  try {
+    for (const dirty of [['/pasta-m'], ['/pasta-antiga']]) {
+      const deps = e11Deps(s, { dirty });
+      const r = await runBaseline(e11Opts(s), deps);
+      assert.equal(r.exitCode, 2, dirty.join());
+      assert.equal(deps.calls.length, 0);
+      assert.ok(deps.logs.some((m) => m.includes('DEC-744')), deps.logs.join('|'));
+    }
+    const none = e11Deps(s);
+    const r2 = await runBaseline(e11Opts(s, { pluginDir: undefined, only: ['tracker'] }), none);
+    assert.equal(r2.exitCode, 2);
+    assert.equal(none.calls.length, 0);
+    assert.ok(none.logs.some((m) => m.includes('--plugin-dir')));
+    // A clean tree runs.
+    assert.equal((await runBaseline(e11Opts(s, { only: ['tracker'] }), e11Deps(s))).exitCode, 0);
   } finally {
     s.done();
   }

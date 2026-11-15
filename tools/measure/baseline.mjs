@@ -308,9 +308,9 @@ function classSection({ name, label, cls }, c, flag) {
   return lines;
 }
 
-export function measurementRows(baseline, { date, plan = BASELINE_PLAN }) {
+export function measurementRows(baseline, { date, plan = BASELINE_PLAN, deliverable = 'E15' }) {
   const rows = [];
-  const row = (detail, cost, status = 'concluído') => `| ${date} | E15 | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | ${status} |`;
+  const row = (detail, cost, status = 'concluído') => `| ${date} | ${deliverable} | linha-de-base | ${detail} | ${usd(cost)} (custo devolvido pela CLI) | - | ${status} |`;
   // `requested` is summed over every pass (extra passes, resumes, stopped batches), so the plan's `runs` is the target.
   for (const { variant, runs } of plan) {
     const agg = baseline.variants?.[variant];
@@ -361,7 +361,7 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged,
     L.push(`| ${label} | ${names.map((n) => (label === 'custo' && RECORDED_ONLY.includes(n) ? '-' : num(median(pickNums(v[n], fn))))).join(' | ')} |`);
   }
   L.push('', '## Linhas para roadmap:measurements', '', '| Data | Entregável | Tipo | Detalhe | Registrado | Faturado | Status |', '|---|---|---|---|---|---|---|');
-  L.push(...measurementRows(baseline, { date, plan: planList }), '');
+  L.push(...measurementRows(baseline, { date, plan: planList, deliverable: planList === E11_VARIANTS ? 'E11' : 'E15' }), '');
   return L.join('\n');
 }
 

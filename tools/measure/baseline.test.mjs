@@ -423,6 +423,20 @@ test('superpowers is recorded per variant and divergence needs --accept-superpow
   });
 });
 
+test('measurement rows carry E11 under --plan e11 and E15 otherwise', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    writeAggs(out, E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs)));
+    const r = buildBaseline({ outDir: out, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS });
+    const lines = r.markdown.split('\n').filter((l) => l.includes('| linha-de-base |'));
+    assert.ok(lines.length > 0);
+    for (const l of lines) assert.ok(l.startsWith(`| ${DATE} | E11 | linha-de-base | `), l);
+    const rows = measurementRows(r.baseline, { date: DATE, plan: E11_VARIANTS, deliverable: 'E11' });
+    assert.ok(rows.every((x) => x.startsWith(`| ${DATE} | E11 |`)));
+    assert.ok(build('completa').markdown.split('\n').filter((l) => l.includes('| linha-de-base |')).every((l) => l.startsWith(`| ${DATE} | E15 |`)));
+  });
+});
+
 test('wfCommits only looks at plan variants of the chosen plan', () => {
   withTmp((root) => {
     const out = join(root, 'out');

@@ -68,6 +68,8 @@ export function checkpoint(before, after, { readAt, listAt, margin, attempts, by
   if (beforeCoordinator) {
     const swapped = beforeCoordinator.baseline.variants?.[SWAP_VARIANT];
     if (!swapped) return { exit: 2, reason: `--before-coordinator has no ${SWAP_VARIANT} variant`, ...empty };
+    const same = swapped.plugin?.commit;
+    if (same && same === after.variants?.[SWAP_VARIANT]?.plugin?.commit) return { exit: 2, reason: '--before-coordinator is the same plugin commit as --after', ...empty };
     before = { ...before, variants: { ...before.variants, [SWAP_VARIANT]: swapped } };
     sideSwap = { variant: SWAP_VARIANT, path: beforeCoordinator.path };
   }
