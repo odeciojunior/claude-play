@@ -7,8 +7,9 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E11: publicação da 2.0.0 pelo dono, pelo roteiro em docs/reports/2026-11-15-E11-roteiro-publicacao.md. Executa: dono.
-2. E28: spec, plano e branch própria; integra na release só depois da publicação da 2.0.0 (vai na 2.0.1 com as pendências 2.0.1). Executa: executor.
+1. E16: spec, plano e medição (dependências E11, E15 e E21 publicadas ou concluídas); lote pago nunca junto de outro lote, de G1 ou do release. Executa: executor.
+2. Próxima publicação (E28, pendências 2.0.1 e relatório da passada C de E27): versão e bump decididos pelo dono via Fable; push e publicação são atos do dono. Executa: dono.
+3. E13: medição final depois de E16. Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -42,7 +43,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E24 | publicado | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E26 | medido | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | - |
-| E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md` | Passada C (peça 2) depois de E28, braço atual primeiro; sem E28 em E13, linha do dono (DEC-703). |
+| E27 | na-branch | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md`, `docs/reports/2026-11-15-E27-passada-C.md, 94ce9b6bb5a31313b8cc5500edd2d1a817eb1c1f` | Fechado pelo dono via Fable (DEC-773): vira medido quando o relatório da passada C chegar a main na próxima publicação. |
 | E28 | na-branch | `91f182af47174b8a0c77a2e6c47eaf3347e1aa1c`, `ebc39b7` | Na release (ebc39b7) com as pendências 2.0.1; vira integrado/publicado na próxima publicação (versão a decidir). Libera a passada C de E27. |
 <!-- /roadmap:panel -->
 
@@ -66,7 +67,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E28 ou próxima edição do release workflow: 6 notas arquivadas em docs/reports/2026-11-13-pendencias-por-entregavel.md (seção E28 ou próxima edição do release workflow); ler no spec de E28 ou na próxima edição de roadmap-release.js.
 - (executor) Achados menores da revisão de fix/status-releitura: recordVerdict com linha ausente diz has no panel em vez de no segment (perde deliverable-unknown); SKILL.md e references do tracker não citam --deliverable. Próxima edição do release ou do tracker.
 - (executor) Achados menores de fix/registro-8k e da sessão C: relatório não diz que o check foi pulado por tamanho; mensagem de passo acima do teto sem próximo passo; nome do teste E10 AC3 ainda diz 28000; plan-coordinator não informa a regra de permissão do workflow (3 de 3 sessões C).
-- (executor) E27 passada C (peça 2) depois de E28: sementes de spec e de quality, braço atual primeiro; teto nele encerra sem o braço da revisão única. Lote pago nunca junto de outro lote, de G1 ou do release (porta 48731).
 - (executor) Antes de outro lote com correcao-semeada: parentMention no CR do manifest (CR3 com o texto de C5), lido por mentionStats em run-batch.mjs, com teste. E11 não usa essas variantes.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) E28: auditoria das cópias por modelo (DEC-715) e notas de revisão (2bb59c6, 7ee7f23, reviews.md do 2º plan-only); roadmap-release.js ~241 mil de 250.000 (DEC-647). Ver seção E28 de docs/reports/2026-11-13-pendencias-por-entregavel.md.

@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E27 | Passada C medida (US$ 6,32): lado atual pela regra (spec 11 contra 15 na única, custo maior). E27 concluído (DEC-773); single segue desligado. | `docs/reports/2026-11-15-E27-passada-C.md` |
+| 2026-11-15 | E27 | DEC-773 (fechamento de E27) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E27 | Passada C: arnês T1-T6 em feat/e27-passada-c (999a293..e32eb3c), G1 2166/0; portão opus/high pediu mudanças (pastas de trabalho por invocação, teto antecipado com recontagem, failRiscoAceito no atual: DEC-772); rodada de correção em curso. Nada pago. | `docs/plans/2026-11-15-measure-e27-passada-c-plan.md` |
 | 2026-11-15 | E27 | DEC-772 (failRiscoAceito no braço atual, passada C) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E27 | Passada C: desenho e plano em feat/e27-passada-c (bdea253); dono via Fable deu go condicional com 8 correções de desenho e emendas às escolhas 4, 5 e 6 (DEC-770, DEC-771). Nada pago ainda. | `docs/plans/2026-11-15-measure-e27-passada-c-design.md` |
