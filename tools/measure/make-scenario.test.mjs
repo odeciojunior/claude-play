@@ -25,9 +25,10 @@ test('lists every variant of the spec table', () => {
     'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
     'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
     'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
+    'correcao-semeada-A', 'correcao-semeada-B',
   ].sort());
-  assert.equal(VARIANTS.length, 19);
-  assert.equal(VARIANTS[VARIANTS.length - 1], 'plano-nativo-B');
+  assert.equal(VARIANTS.length, 21);
+  assert.equal(VARIANTS[VARIANTS.length - 1], 'correcao-semeada-B');
 });
 
 test('unseeded variants build a sandbox and the expected prompts', async () => {
@@ -955,5 +956,165 @@ test('E26: the sha check still refuses a modified native seed (before the path r
     assert.throws(() => readNativeSeeds(t.dir), /plan.*sha256/);
   } finally {
     t.done();
+  }
+});
+
+// ---- B1: correcao semeada (CR residue and CG regression on a commit parentless of refs) ----
+const FIX_IDS = { A: ['CR1', 'CG1'], B: ['CR3', 'CG2'] };
+const FIX_VARIANTS = { A: 'correcao-semeada-A', B: 'correcao-semeada-B' };
+const fixScenarios = {};
+function fixScenario(art) {
+  fixScenarios[art] ??= (async () => {
+    const t = tmp('sb');
+    const s = await makeScenario(t.dir, FIX_VARIANTS[art]);
+    return { t, s };
+  })();
+  return fixScenarios[art];
+}
+test.after(async () => {
+  for (const p of Object.values(fixScenarios)) (await p).t.done();
+});
+const fixSentinel = () => import(pathToFileURL(join(here, 'defects', 'sentinels', 'fix.mjs')).href);
+
+test('B1: VARIANTS and SEEDED list correcao-semeada-A and correcao-semeada-B (class code, set e5-fix, baseSet e5)', () => {
+  for (const art of ['A', 'B']) {
+    const v = FIX_VARIANTS[art];
+    assert.ok(VARIANTS.includes(v));
+    assert.deepEqual(artifactOf(v), { class: 'code', artifact: art, set: 'e5-fix', baseSet: 'e5' });
+    assert.deepEqual(manifestEntries(v).map((e) => e.id), FIX_IDS[art]);
+  }
+  assert.deepEqual(manifestEntries('codigo-semeado-A').map((e) => e.id), ['C1', 'C2', 'C3', 'C4']);
+  assert.deepEqual(manifestEntries('codigo-semeado-B').map((e) => e.id), ['C5', 'C6', 'C7', 'C8']);
+});
+
+test('B1: feat/E5 stays at seededCommit and fixSha is a parentless-of-refs child', async () => {
+  for (const art of ['A', 'B']) {
+    const { t, s } = await fixScenario(art);
+    assert.match(s.fixSha, /^[0-9a-f]{40}$/);
+    assert.equal(git(t.dir, 'rev-parse', 'feat/E5'), s.seededCommit);
+    assert.equal(git(t.dir, 'rev-parse', s.fixSha + '^'), s.seededCommit);
+    assert.equal(git(t.dir, 'for-each-ref', '--contains', s.fixSha), '');
+    assert.ok(!git(t.dir, 'reflog', '--all').includes(s.fixSha.slice(0, 7)));
+    assert.doesNotThrow(() => git(t.dir, 'cat-file', '-e', s.fixSha + '^{commit}'));
+    assert.equal(git(t.dir, 'config', 'gc.auto'), '0');
+    assert.equal(git(t.dir, 'log', '-1', '--format=%s', s.fixSha), 'E5 T3: fix review findings');
+    assert.deepEqual(s.fixEntries, FIX_IDS[art]);
+    assert.deepEqual(s.seeded, art === 'A' ? ['C1', 'C2', 'C3', 'C4'] : ['C5', 'C6', 'C7', 'C8']);
+    assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+  }
+});
+
+test('B1: the sandbox suite passes at fixSha', async () => {
+  for (const art of ['A', 'B']) {
+    const { t, s } = await fixScenario(art);
+    git(t.dir, 'checkout', '-q', '--detach', s.fixSha);
+    try {
+      const r = runSandboxSuite(t.dir);
+      assert.equal(r.ok, true, r.output);
+    } finally {
+      git(t.dir, 'checkout', '-q', 'main');
+    }
+    assert.equal(git(t.dir, 'status', '--porcelain'), '');
+  }
+});
+
+test('B1: present is true at fixSha and false at the clean T3 for every CR and CG', async () => {
+  const mod = await fixSentinel();
+  for (const art of ['A', 'B']) {
+    const { t, s } = await fixScenario(art);
+    for (const id of FIX_IDS[art]) assert.equal(mod.present(t.dir, s.fixSha, id), true, id);
+    const c = tmp('clean');
+    try {
+      await makeScenario(c.dir, 'completo');
+      prepareE5Branch(c.dir, { withPlan: true, tasks: 3 });
+      for (const id of FIX_IDS[art]) assert.equal(mod.present(c.dir, 'HEAD', id), false, id + ' (clean)');
+    } finally {
+      c.done();
+    }
+  }
+});
+
+test('B1: the C sentinels C1..C8 read absent at fixSha, except the C whose sentinel coincides with the residue', async () => {
+  const coincide = [];
+  for (const art of ['A', 'B']) {
+    const { t, s } = await fixScenario(art);
+    for (const e of manifestEntries(art === 'A' ? 'codigo-semeado-A' : 'codigo-semeado-B')) {
+      if ((await sentinel(e)).present(t.dir, s.fixSha, e.id)) coincide.push(e.id);
+    }
+  }
+  assert.deepEqual(coincide, []);
+});
+
+test('B1: each artifact has exactly 1 residue and 1 regression in the manifest', () => {
+  const MODEL = {
+    CR1: 'the wordCount tests no longer cover empty text',
+    CG1: 'index.mjs does not re-export truncate any more',
+    CR3: 'truncate accepts a non-integer max and no longer throws',
+    CG2: 'wordCount of blank text is not 0 because trim was dropped',
+  };
+  for (const art of ['A', 'B']) {
+    const own = manifest.filter((e) => e.set === 'e5-fix' && e.artifact === art);
+    assert.equal(own.length, 2, art);
+    assert.equal(own.filter((e) => e.residueOf).length, 1, art);
+    assert.equal(own.filter((e) => e.introducedBy === 'fix' && !e.residueOf).length, 1, art);
+    for (const e of own) {
+      assert.equal(e.class, 'code');
+      assert.equal(e.detectedBy, 'reviewer');
+      assert.equal(e.sentinel, 'sentinels/fix.mjs');
+      assert.ok(FIX_IDS[art].includes(e.id), e.id);
+      assert.match(MODEL[e.id], new RegExp(e.mention, 'i'), e.id);
+    }
+  }
+});
+
+test('B1: a CR or CG whose anchor the suite flags or present cannot tell is refused with a scenario error', async () => {
+  const t = tmp('sb');
+  try {
+    await assert.rejects(
+      makeScenario(t.dir, 'correcao-semeada-A', { suite: () => ({ ok: false, output: 'not ok 1' }) }),
+      (e) => /CR1/.test(e.message) && /[0-9a-f]{40}/.test(e.message) && /suite/.test(e.message),
+    );
+  } finally {
+    t.done();
+  }
+  const u = tmp('sb');
+  try {
+    await assert.rejects(
+      makeScenario(u.dir, 'correcao-semeada-B', { suite: () => ({ ok: true }), presentFn: () => true }),
+      /indistinguivel/,
+    );
+  } finally {
+    u.done();
+  }
+});
+
+test('B1: legacy variants are unchanged', async () => {
+  const TREES = { 'codigo-semeado-A': 'd44dd835d51589b3196ce8ad0303726beb83b91c', 'codigo-semeado-B': '49f3cee70d2b5f4b0987cbea53c7a7e791ae9c22' };
+  for (const [v, tree] of Object.entries(TREES)) {
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, v);
+      assert.equal(git(t.dir, 'rev-parse', s.seededCommit + '^{tree}'), tree, v);
+      assert.equal(s.fixSha, null);
+      assert.deepEqual(s.fixEntries, []);
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('B1: CR, CG seeds are anchored on the files the spec names', async () => {
+  const mod = await fixSentinel();
+  const FILES = { CR1: 'tests/e5-word-count.test.mjs', CG1: 'src/index.mjs', CR3: 'src/truncate.mjs', CG2: 'src/word-count.mjs' };
+  for (const [id, file] of Object.entries(FILES)) {
+    assert.equal(manifest.find((e) => e.id === id)?.file, file, id);
+    const t = tmp('x');
+    try {
+      mkdirSync(dirname(join(t.dir, file)), { recursive: true });
+      writeFileSync(join(t.dir, file), 'nothing to anchor on\n');
+      assert.throws(() => mod.seed(t.dir, id), /anchor not found/, id);
+    } finally {
+      t.done();
+    }
   }
 });

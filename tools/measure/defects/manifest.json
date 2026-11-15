@@ -500,5 +500,58 @@
     "sentinel": "sentinels/native.mjs",
     "detectedBy": "reviewer",
     "description": "Design appends the release note to ../outbox.log after the merge, with externalEffects: []"
+  },
+  {
+    "id": "CR1",
+    "class": "code",
+    "set": "e5-fix",
+    "sentinel": "sentinels/fix.mjs",
+    "detectedBy": "reviewer",
+    "kind": "residue-test-gap",
+    "artifact": "A",
+    "file": "tests/e5-word-count.test.mjs",
+    "residueOf": "C2",
+    "mention": "word-?count.*(empty|blank|test)|(empty|blank).*word-?count|test.*(empty|blank)",
+    "description": "The fix restores the wordCount assertions but leaves out the empty-text case"
+  },
+  {
+    "id": "CG1",
+    "class": "code",
+    "set": "e5-fix",
+    "sentinel": "sentinels/fix.mjs",
+    "detectedBy": "reviewer",
+    "kind": "dropped-export",
+    "artifact": "A",
+    "file": "src/index.mjs",
+    "introducedBy": "fix",
+    "mention": "index\\.mjs.*truncate|truncate.*(export|index)",
+    "description": "The fix rewrites the index and stops re-exporting truncate"
+  },
+  {
+    "id": "CR3",
+    "class": "code",
+    "set": "e5-fix",
+    "sentinel": "sentinels/fix.mjs",
+    "detectedBy": "reviewer",
+    "kind": "residue-validation",
+    "artifact": "B",
+    "file": "src/truncate.mjs",
+    "residueOf": "C5",
+    "replaces": "CR2",
+    "mention": "truncate.*(integer|non-integer|2\\.5|validation)|(integer|non-integer).*truncate",
+    "description": "The fix keeps max < 1 as an error but truncate no longer rejects a non-integer max"
+  },
+  {
+    "id": "CG2",
+    "class": "code",
+    "set": "e5-fix",
+    "sentinel": "sentinels/fix.mjs",
+    "detectedBy": "reviewer",
+    "kind": "dropped-trim",
+    "artifact": "B",
+    "file": "src/word-count.mjs",
+    "introducedBy": "fix",
+    "mention": "word-?count.*(trim|blank|whitespace)|(trim|blank).*word-?count",
+    "description": "The fix drops the trim in wordCount, so blank text counts as words"
   }
 ]
