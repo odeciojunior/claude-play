@@ -7,7 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E26: passo 0 (registros reais de revisão) e bloco A de fix/measure-e26; depois lotes da peça 2 e da peça 1. Executa: executor.
+1. E26: peça 1 (spec): sonda spec-nativo-A em laço, lotes spec-nativo A e B em laço, depois o braço perguntas. Passo 0 e peça 2 feitos (efeito teto). Executa: executor.
 2. E27 passada B: bloco B do arnês durante os lotes de E26; lotes depois. Executa: executor.
 3. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
 <!-- /roadmap:now -->

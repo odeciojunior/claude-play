@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-14 | E26 | Peça 2 em e2b7e11: 10/10 válidas, laço 40/40 e leitura única 40/40 (sementes pegas na 1ª rodada, 2ª revisão limpa em todas). Pela DEC-726 é efeito teto, não equivalência: fica o laço atual de plano. Peça 2 com sondas: US$ 8,71 de 15. | `docs/reports/2026-11-15-E26-peca2-plan-review.md` |
 | 2026-11-14 | E26 | Sonda da peça 2 (plano-nativo-A, laço, c46df52): válida, verificada, toolCheck 0, 4/4 capturados no fim e após a 1ª correção, US$ 0,91; o cabeçalho citava a worktree da 2ª sonda e virou bloqueante extra: make-scenario passa a reescrever o caminho para o sandbox; sonda repete. | `docs/reports/2026-11-14-E26-passo0-registros-revisao.md` |
 | 2026-11-14 | E26 | fix/measure-e26 bloco A integrado (DEC-722 a DEC-730): laço do produto no arnês, braços conferidos, sementes nativas P1..P10/SN1..SN8, braço perguntas, custo da sessão. Revisões por tarefa opus, portão opus/high APPROVE. G1 1927/0, G2-G5 ok. Pasta da 2ª sonda renomeada (D:/claude-arquivo-e8q). | `5bb5153` |
 | 2026-11-14 | E26 | Passo 0 (DEC-726): registros reais de revisão. Spec 16 estágios com correção, 5 casos verdadeiros pós-correção: rodada única de spec cai na condição 3. Plano 12 e 0: leitura única elegível (contagem inclusiva; estrita 7). Final 17 e 9 (contexto para E27). | `docs/reports/2026-11-14-E26-passo0-registros-revisao.md` |
