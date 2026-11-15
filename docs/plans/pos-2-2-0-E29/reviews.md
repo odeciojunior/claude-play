@@ -39,6 +39,10 @@
 - Rodada 1: revisor opus, correção anterior: tier sonnet.
 - Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
 
+### gates-fix2
+- Rodada 1: revisor opus, correção anterior: tier sonnet.
+- Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+
 ## Riscos aceitos
 
 Nenhum.
@@ -61,11 +65,20 @@ Nenhum.
 
 - gates-fix1: The "gate not green" flag comes from comparing total test counts alone, and there are no failures behind it. E29 deletes three E28 tests that covered the `taskReview.single` mode. Those are `E28 AC1` in flow.test.mjs and `E28 AC2` in prompts.test.mjs, plus some of the single-review tests in review.test.mjs. It also adds new tests. The net is -3, which matches the reviews.md note on T5. Restoring the deleted tests would contradict the spec, so I did not. The workflow's gate comparison could treat a total below baseline as a failure only when a test disappears without a matching removal in the plan. I did not run G1 myself; the figures are the ones quoted in the task.
 
+- gates-fix2: The gate comparison treats a lower test total as a failure even when every test passes. I did not re-run G1 myself. I relied on the reported run (2172 tests, 2170 pass, 0 fail, 2 skipped) and on the diff, which shows the removals match spec E29. I did not change the baseline or any gate.
+
 ## Gates
 
 Registrados nos concerns de T5 (G1 a G5 executados; G1 com 2172 testes contra a linha de base 2175, explicado pelo saldo líquido -3 das Tarefas 1 a 3; sem falhas).
 
 Execução de gates (após gates-fix1):
+- G1: exit 0, total 2172, skipped 2, failing [] (linha de base: exit 0, total 2175, skipped 2, failing []).
+- G2: exit 0 (linha de base: exit 0).
+- G3: exit 0 (linha de base: exit 0).
+- G4: exit 0 (linha de base: exit 0).
+- G5: exit 0 (linha de base: exit 0).
+
+Execução de gates (após gates-fix2):
 - G1: exit 0, total 2172, skipped 2, failing [] (linha de base: exit 0, total 2175, skipped 2, failing []).
 - G2: exit 0 (linha de base: exit 0).
 - G3: exit 0 (linha de base: exit 0).
@@ -83,5 +96,9 @@ Nenhuma (what, blq, workaround, blocking: não se aplica).
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
 
 - Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), execução dos gates. Texto completo:
+
+  checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
+
+- Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), registro dos gates (gates-fix2). Texto completo:
 
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
