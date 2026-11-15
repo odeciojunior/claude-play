@@ -6,7 +6,7 @@ import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { redactPaths, runBatch, parseCli, pendingE5, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, parseCli, pendingE5, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, coordinatorGateVazio, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, NATIVE_PATHS, seedSourceOf, makeScenario } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -3517,4 +3517,43 @@ test('E11 --ratify off: an unreadable pending list is pendencias-ilegiveis and i
   } finally {
     s.done();
   }
+});
+
+// E11 gate-vazio: a coordinator attempt whose recorded baseline measured nothing is invalid (fixtures copied from the real probes).
+const GATE_FIX = join(here, 'fixtures', 'coordinator-gate');
+
+test('coordinatorGateVazio: 2.0.0 probe whose baseline ran `node --test tests/` (exit 1, 0 pass) is gate-vazio', () => {
+  const r = coordinatorGateVazio(join(GATE_FIX, 'n-2.0.0'));
+  assert.equal(r.vazio, true);
+  assert.match(r.why, /baseline/);
+});
+
+test('coordinatorGateVazio: 1.7.0 probe that ran a real suite (2 passed, 0 failed) stays valid', () => {
+  assert.equal(coordinatorGateVazio(join(GATE_FIX, 'b-1.7.0')).vazio, false);
+});
+
+test('coordinatorGateVazio: 2.0.0 baseline with exit 0 and passing tests is valid; 0 tests is gate-vazio; nothing recorded is not judged', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const put = (baseline) => writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline } }));
+    put({ test: 'node --test', exit: 0, tail: '# tests 2\n# pass 2\n# fail 0' });
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
+    put({ test: 'node --test', exit: 0, tail: '# tests 0\n# pass 0\n# fail 0' });
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+    put(undefined);
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
+    assert.equal(coordinatorGateVazio(join(dir, 'nada')).vazio, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: 1.7.0 baseline with 0 passed or any failed is gate-vazio', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    for (const [line, want] of [['2 passed, 0 failed (tests/baseline.test.mjs)', false], ['0 passed, 1 failed (tests)', true], ['0 passed, 0 failed', true], ['3 passed, 1 failed', true]]) {
+      writeFileSync(join(dir, 'docs/plans/fixed-plan/progress-plan.md'), `## Recovery State\n**Test:** node --test\n**Baseline:** ${line}\n`);
+      assert.equal(coordinatorGateVazio(dir).vazio, want, line);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -1204,8 +1204,8 @@ const COORD_NATIVE = join(here, 'scenario', 'coordinator-plan-native.md');
 const COORD_LEGACY = join(here, 'scenario', 'coordinator-plan.md');
 const stepTitles = (text) => [...text.matchAll(/^### (?:Step|Tarefa) \d+: (.+?)\s*$/gm)].map((m) => m[1]);
 
-test('coordinator-plan.md is unchanged', () => {
-  assert.equal(execFileSync('git', ['hash-object', '--no-filters', COORD_LEGACY], { encoding: 'utf8' }).trim(), '7559c658787ba78c188cabfb4aeda51339f21a1e');
+test('coordinator-plan.md is pinned (legacy steps plus the full-suite line)', () => {
+  assert.equal(execFileSync('git', ['hash-object', '--no-filters', COORD_LEGACY], { encoding: 'utf8' }).trim(), 'be426f342b4096a82b2b7a2f1d1b34d56f9cf667');
 });
 
 test('coordinator-plan-native.md passes plan-tool check', () => {
@@ -1259,4 +1259,10 @@ test('B1: CR, CG seeds are anchored on the files the spec names', async () => {
       t.done();
     }
   }
+});
+
+test('both coordinator fixtures state the full test suite, and the native data block carries it too', () => {
+  const line = 'Full test suite: `node --test`';
+  for (const f of [COORD_NATIVE, COORD_LEGACY]) assert.ok(readText(f).includes(line), f);
+  assert.ok(readText(COORD_NATIVE).split('```json data')[1].includes(line));
 });
