@@ -685,7 +685,9 @@ test('E26: prepareNativeBranch commits the probe blobs at NATIVE_PATHS on feat/E
     prepareNativeBranch(t.dir, { withPlan: true });
     assert.equal(git(t.dir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feat/E5');
     assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.spec), NATIVE_BLOB.spec);
-    assert.equal(git(t.dir, 'rev-parse', 'feat/E5:' + NATIVE_PATHS.plan), NATIVE_BLOB.plan);
+    // The plan differs from the probe blob only by the worktree path, rewritten to the sandbox's own.
+    const probePlan = readText(join(NATIVE_DIR, 'plan.md'));
+    assert.equal(git(t.dir, 'show', 'feat/E5:' + NATIVE_PATHS.plan), probePlan.replaceAll('D:/claude-e8q-work/completo/completo-1-wt/E5', resolve(t.dir).split(String.fromCharCode(92)).join('/')).trimEnd());
     assert.deepEqual(git(t.dir, 'log', '--format=%s', 'main..feat/E5').split('\n'), ['docs(plan): E5 text utilities plan', 'docs(spec): E5 text utilities design']);
     assert.equal(git(t.dir, 'status', '--porcelain'), '');
     const roadmap = join(t.dir, 'docs/plans/roadmap-sandbox');
@@ -909,6 +911,48 @@ test('E26: native sentinels capture differently-worded fixes and survive reforma
       assert.equal(native.present(t.dir, 'HEAD', id), want, id + ' ' + name);
       git(t.dir, 'reset', '-q', '--hard', clean);
     }
+  } finally {
+    t.done();
+  }
+});
+
+// E26: the probe worktree path in the native seeds is rewritten to the sandbox root (where feat/E5 is checked out) at seeding time.
+test('E26: native seeds name the sandbox worktree, not the probe one, in the committed artifacts', async () => {
+  for (const v of ['plano-nativo-A', 'spec-nativo-A']) {
+    const t = tmp('sb');
+    try {
+      const sc = await makeScenario(t.dir, v);
+      const wt = resolve(t.dir).replaceAll(String.fromCharCode(92), '/');
+      // The stage harness runs feat/E5 in the sandbox root (run-batch checks it out there): that is where the path must point.
+      git(t.dir, 'checkout', '-q', 'feat/E5');
+      const wtLines = git(t.dir, 'worktree', 'list', '--porcelain').split(String.fromCharCode(10)).map((l) => l.trim());
+      const at = wtLines.indexOf('branch refs/heads/feat/E5');
+      assert.ok(at > 0, v);
+      assert.equal(wtLines[at - 2], 'worktree ' + wt, v);
+      const cls = artifactOf(v).class;
+      const file = NATIVE_PATHS[cls];
+      const clean = git(t.dir, 'rev-parse', sc.seededCommit + '~1');
+      for (const rev of [sc.seededCommit, clean]) {
+        const text = git(t.dir, 'show', rev + ':' + file);
+        assert.ok(!text.includes('claude-e8q-work'), v + ' ' + rev);
+      }
+      if (cls === 'plan') {
+        const text = git(t.dir, 'show', sc.seededCommit + ':' + file);
+        assert.ok(text.includes('**Branch / worktree:** feat/E5 in ' + wt + String.fromCharCode(10)), v);
+        assert.ok(text.includes('worktree ' + wt + ' on feat/E5'), v);
+      }
+    } finally {
+      t.done();
+    }
+  }
+});
+
+test('E26: the sha check still refuses a modified native seed (before the path rewrite)', () => {
+  const t = tmp('seeds');
+  try {
+    mkdirSync(t.dir, { recursive: true });
+    for (const k of ['spec', 'plan']) writeFileSync(join(t.dir, k + '.md'), readFileSync(join(NATIVE_DIR, k + '.md'), 'utf8').replace(/^/, k === 'plan' ? 'x' : ''));
+    assert.throws(() => readNativeSeeds(t.dir), /plan.*sha256/);
   } finally {
     t.done();
   }
