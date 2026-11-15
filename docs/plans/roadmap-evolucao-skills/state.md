@@ -7,8 +7,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E11: preparo depois de E27 B; a peça 3 de E26 roda com o lote completo. Executa: executor.
-2. E26: peça 3 com o lote completo de E11; ratificação de E26 ao fim (peças 1 e 2 feitas: fica o laço de spec e de plano). Executa: executor.
+1. E11: peças 3 e 4 (conferência do estado JSON na 1.7.0, nota de atualização, G1-G5, branch de volta, roteiro do dono); publicação é ato do dono. Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -41,7 +40,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
 | E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E26 | executando | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` | Ratificação de E26 (peças 1 a 3 feitas: laço de spec e de plano, autor opus). |
+| E26 | executando | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` | Medição concluída e decidida (DEC-764); vira medido quando a release entrar na main (publicação, ato do dono). |
 | E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md` | Passada C (peça 2) depois de E28, braço atual primeiro; sem E28 em E13, linha do dono (DEC-703). |
 | E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
