@@ -189,6 +189,10 @@ function gateSubset(xs, base) {
 function gateShaMatch(x, y) {
   return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
 }
+// A headSha only counts as a reference when it is a full SHA (a copy error from the model yields a wrong length).
+function fullSha(x) {
+  return typeof x === 'string' && /^[0-9a-f]{40}$/.test(x)
+}
 function gateResult(m, name) {
   return ((m && m.gates) || []).find(g => g && g.name === name)
 }
@@ -199,8 +203,12 @@ function gateCoherent(def, r) {
 }
 // A measure only counts if taken on a clean tree, at the expected commit, with every gate present and exit/failed names agreeing.
 function validMeasure(m, expectedSha, gateDefs) {
-  return !!m && m.clean === true && (!expectedSha || gateShaMatch(m.headSha, expectedSha))
+  return !!m && m.clean === true && fullSha(m.headSha) && (!expectedSha || gateShaMatch(m.headSha, expectedSha))
     && (gateDefs || []).every(def => gateCoherent(def, gateResult(m, def.name)))
+}
+// Evidence measure: clean, at a full SHA matching exp (when given), and the state preparation ok when it is required.
+function validEvidence(x, exp, needsBefore) {
+  return !!x && x.clean === true && fullSha(x.headSha) && (!exp || gateShaMatch(x.headSha, exp)) && (!needsBefore || x.beforeOk === true)
 }
 function gatePasses(def, result, baselineResult) {
   if (!result || result.ran === false) return false
@@ -2694,7 +2702,7 @@ ${fmt(iss)}`, { label: `${E}:final-fix${k}`, phase: 'Final review', model: tier,
   const runEvidence = async exp => {
     const rows = acExec()
     if (!rows.length && !BEFORE_EVIDENCE.length) return { ok: true, summary: '' }
-    const validEv = x => !!x && x.clean === true && (!exp || gateShaMatch(x.headSha, exp)) && (!BEFORE_EVIDENCE.length || x.beforeOk === true)
+    const validEv = x => validEvidence(x, exp, BEFORE_EVIDENCE.length > 0)
     const once = label => withLocks(TASK_LOCKS, () => agent(`${Cs()}
 
 ${lockNote(TASK_LOCKS)} Fix nothing. In the worktree ${wt}:

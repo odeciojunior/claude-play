@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 
-const { validMeasure, gatePasses, allPass, isRedBaseline, mergeFloor } = loadPure();
+const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor } = loadPure();
 const T = { name: 'unit', kind: 'tests' };
 const X = { name: 'lint', kind: 'exit' };
 const INV = { name: 'drift', kind: 'exit', invariant: true };
 const res = (name, o = {}) => ({ name, ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...o });
-const meas = (gates, o = {}) => ({ headSha: 'abc1234', clean: true, gates, ...o });
+const meas = (gates, o = {}) => ({ headSha: 'abc1234'.padEnd(40, '0'), clean: true, gates, ...o });
 
 test('validMeasure: tests with exit 1 and no failed names is invalid and does not pass', () => {
   const bad = res('unit', { exit: 1 });
@@ -23,6 +23,28 @@ test('validMeasure: dirty tree, other sha or missing result is invalid; prefix s
   assert.equal(validMeasure(meas(g), 'fff9999', [T]), false);
   assert.equal(validMeasure(meas(g), 'abc1234', [T, X]), false);
   assert.equal(validMeasure(null, 'abc1234', [T]), false);
+});
+
+test('validMeasure: without expectedSha only a full 40-hex headSha counts', () => {
+  const g = [res('unit')];
+  const sha40 = 'a'.repeat(40);
+  const sha36 = 'a'.repeat(36);
+  assert.equal(validMeasure(meas(g, { headSha: sha36 }), null, [T]), false);
+  assert.equal(validMeasure(meas(g, { headSha: sha40 }), null, [T]), true);
+  assert.equal(validMeasure(meas(g, { headSha: sha40 }), '', [T]), true);
+});
+
+test('validEvidence: needs clean, full headSha, matching exp and beforeOk when required', () => {
+  const sha40 = 'b'.repeat(40);
+  const ev = (o = {}) => ({ clean: true, headSha: sha40, beforeOk: true, ...o });
+  assert.equal(validEvidence(ev({ headSha: 'b'.repeat(36) }), null, false), false);
+  assert.equal(validEvidence(ev(), null, false), true);
+  assert.equal(validEvidence(ev(), sha40, false), true);
+  assert.equal(validEvidence(ev(), 'c'.repeat(40), false), false);
+  assert.equal(validEvidence(ev({ clean: false }), null, false), false);
+  assert.equal(validEvidence(ev({ beforeOk: false }), null, true), false);
+  assert.equal(validEvidence(ev({ beforeOk: false }), null, false), true);
+  assert.equal(validEvidence(null, null, false), false);
 });
 
 test('tests: failures subset of baseline pass; new failure fails', () => {

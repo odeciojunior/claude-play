@@ -17,7 +17,7 @@ const run = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budg
 const B1 = '3f2a9c1d8e7b6a5f4c3d2e1f0a9b8c7d6e5f4a3b';
 const B2 = '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d';
 const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }];
-const gm = (head, over = {}) => ({ headSha: head, clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
+const gm = (head, over = {}) => ({ headSha: head.padEnd(40, '0'), clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
 // The Workflow runtime's resume cache: an agent() call is keyed on (prompt, opts, previous key); while every call so far
@@ -85,11 +85,11 @@ function planLoadOf(old, E, over = {}) {
   }));
   const evidence = (old.ac || []).map((a) => ({ ac: a.ac, kind: a.kind, command: a.command === undefined ? null : a.command, testRef: a.testRef === undefined ? null : a.testRef, blq: a.blq === undefined ? null : a.blq, external: a.external, externalDedupe: a.externalDedupe === undefined ? null : a.externalDedupe }));
   const emit = planEmitOf({ id: E, roadmap: 'docs/plans/roadmap-x/', tasks, evidence });
-  return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: old.planBlob, head: 'h1', clean: true, ...over };
+  return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: old.planBlob, head: 'a1', clean: true, ...over };
 }
 
 const np = (o) => ({ id: 'P1', blocking: false, ...o });
-const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'h1' });
+const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'a1' });
 const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
 const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
 // What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
@@ -113,7 +113,7 @@ function groupStdout(prompt, results, nonce = verifyArg(prompt, 'group').nonce) 
   return signedOut({ tool: 'verify-run', mode: 'group', nonce, steps, stopped, commit: true, head: 'abc1234' });
 }
 // What verify-run.mjs check prints: the divergences come from truthDivergences over the payload, as the script computes them.
-const TRUTH_OK = { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] };
+const TRUTH_OK = { targetHead: 'm2', clean: true, lastGoodReachable: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'e1', reachable: true }] };
 function checkStdout(prompt, truth = TRUTH_OK) {
   const p = verifyArg(prompt, 'check');
   const divergences = truthDivergences(truth, p.reported, p.claims, p.target, p.lastGood, p.integBroken);
@@ -183,6 +183,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     const v = await answerOf(prompt, o);
     const id = (/^(E\d+):/.exec(o.label) || [])[1];
     if (/:plan(-fix\d+)?$/.test(o.label) && v && typeof v === 'object' && Array.isArray(v.tasks) && v.tasks.length) { planOf[id] = v; return 'plan written'; }
+    // The workflow only trusts a full 40-hex headSha on an evidence measure; the fixtures name short commits.
+    if (v && typeof v === 'object' && Array.isArray(v.results) && typeof v.headSha === 'string') return { ...v, headSha: v.headSha.padEnd(40, '0') };
     return v;
   };
   const answerOf = async (prompt, o) => {
@@ -193,37 +195,37 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (l === 'discovery' || /^discovery-retry\d$/.test(l)) return { exit: 0, stdout: discStdout(nonceOf(prompt), { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
     if (l === 'discovery-donot') return { donotHolds: [] };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
-    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
+    if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return 'spec written';
     if (/:spec-load\d$/.test(l)) return specLoadOk(E, { acceptance: ((typeof cards === 'function' ? cards() : cards).find((c) => c.id === E) || {}).acceptance || [] });
-    if (/:spec-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
+    if (/:spec-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/:plan-load\d$/.test(l)) return planLoadOf(planOf[E] || OLD_DEFAULT_PLAN, E);
-    if (/:plan-commit$/.test(l)) return { ok: true, head: 'h1', commit: 'c1' };
-    if (/plan-review/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
+    if (/:plan-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
+    if (/plan-review/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
-    if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 };
-    if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 };
+    if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
     if (/:status-.*-read(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, recMock.read(E)) };
     if (/:docs-read\d(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, { ...recMock.read(E), pendingDecisions: '', head: 'm2' }) };
     if (/:status-/.test(l)) return { exit: 0, stdout: groupStdout(prompt, recMock.run(prompt, E).runs) };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
-    if (/:sync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
-    if (/:resync$/.test(l)) return { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
+    if (/:sync$/.test(l)) return { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
+    if (/:resync$/.test(l)) return { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
     if (/test-integrity$/.test(l)) return { deletedTests: [], removedAsserts: 0, skipsAdded: 0, prodChanged: 1, assertsAdded: 1 };
-    if (/merge-gates/.test(l)) return gm('m1');
-    if (/gates\d/.test(l) && !/fix/.test(l)) return gm(/:regates/.test(l) ? 'h3' : 'h2');
-    if (/:evidence/.test(l)) return { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
+    if (/merge-gates/.test(l)) return gm('e1');
+    if (/gates\d/.test(l) && !/fix/.test(l)) return gm(/:regates/.test(l) ? 'a3' : 'a2');
+    if (/:evidence/.test(l)) return { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
     if (/:pre-merge$/.test(l)) return { head: 'abc1234', clean: true, branchHasTarget: false, branchMerged: false };
-    if (/:delta-review/.test(l)) return { issues: [], headSha: 'h3', clean: true, commitsInRange: 0 };
-    if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 0, clean: true };
+    if (/:delta-review/.test(l)) return { issues: [], headSha: 'a3', clean: true, commitsInRange: 0 };
+    if (/:merge$/.test(l)) return { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'a3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
     if (/:docs-measure/.test(l)) return { measureOk: true, measureDetails: '' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
-    if (/:merge-locate$/.test(l)) return { mergeSha: 'm0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
-    if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'm9', clean: true, commitsInRange: 1 };
-    if (/:merge-risks$/.test(l)) return { head: 'm1', commit: 'm1' };
+    if (/:merge-locate$/.test(l)) return { mergeSha: 'e0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
+    if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'e9', clean: true, commitsInRange: 1 };
+    if (/:merge-risks$/.test(l)) return { head: 'e1', commit: 'e1' };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
     if (l === 'report') return reportOf(prompt);
@@ -231,7 +233,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:awaiting-person$/.test(l)) return { ok: true };
     if (/:launching$/.test(l)) return { ok: true, head: 'L1' };
     if (/:effect-completed$/.test(l)) return { ok: true };
-    if (/:merge-effects$/.test(l)) return { head: 'm1', commit: 'm1' };
+    if (/:merge-effects$/.test(l)) return { head: 'e1', commit: 'e1' };
     if (/review-log/.test(l)) return 'ok';
     throw new Error('unmocked ' + l);
   };
@@ -261,7 +263,7 @@ test('sync schema requires deltaFiles and targetTip', async () => {
 
 test('a merge whose second parent is not the validated head is rolled back', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (/:merge$/.test(l) ? { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'zzz9999', conflicts: 0, clean: true } : undefined) });
+    over: (l) => (/:merge$/.test(l) ? { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'zzz9999', conflicts: 0, clean: true } : undefined) });
   assert.equal(r.results[0].merged, false);
   assert.match(r.results[0].error, /second parent/);
   assert.ok(labels.includes('E1:rollback'));
@@ -271,11 +273,11 @@ test('gates-fix review is logged and the log is committed before re-measuring', 
   let n = 0;
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
-      if (l === 'E1:gates1-1' && n++ === 0) return gm('h2', { exit: 1, failedNames: ['new'] });
+      if (l === 'E1:gates1-1' && n++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
       if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
-      if (l === 'E1:gates-fix1-review') return { issues: [{ severity: 'minor', description: 'm' }], headSha: 'h2b', clean: true, commitsInRange: 1 };
-      if (l === 'E1:gates2-1') return gm('h2c');
-      if (l === 'E1:evidence2') return { headSha: 'h2c', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
+      if (l === 'E1:gates-fix1-review') return { issues: [{ severity: 'minor', description: 'm' }], headSha: 'a2b', clean: true, commitsInRange: 1 };
+      if (/^E1:gates2-/.test(l)) return gm('a2c');
+      if (l === 'E1:evidence1') return { headSha: 'a2c', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
       return undefined;
     } });
   assert.equal(r.results[0].merged, true);
@@ -290,10 +292,10 @@ test('a null review-log agent is recorded as a concern', async () => {
 });
 
 test('finish-merge: unvalidated merge on the target sets integBroken, is reported merged, and stops later merges', async () => {
-  const unfinished = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+  const unfinished = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0' });
   const { r } = await exec({ cards: [unfinished, card('E2')], deliverables: ['E1', 'E2'],
     over: (l) => {
-      if (/^E1:merge-gates1/.test(l)) return gm('m0', { exit: 1, failedNames: ['new'] });
+      if (/^E1:merge-gates1/.test(l)) return gm('e0', { exit: 1, failedNames: ['new'] });
       if (l === 'E1:merge-fix') return null;
       return undefined;
     } });
@@ -309,7 +311,7 @@ test('finish-merge: unvalidated merge on the target sets integBroken, is reporte
 // I6 (a) of the assertion map: the check output the report agent copied, confirmed by tool, nonce and digest, with a validated-tip divergence becomes an operator action.
 test('E10 AC2: a confirmed check with a validated-tip divergence becomes a divergence operator action', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l, prompt) => (l === 'report' ? reportOf(prompt, { targetHead: 'm2', clean: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'm1', reachable: true }] }) : undefined) });
+    over: (l, prompt) => (l === 'report' ? reportOf(prompt, { targetHead: 'm2', clean: true, mergedIds: ['E1'], claims: [{ id: 'E1', commit: 'e1', reachable: true }] }) : undefined) });
   assert.ok(r.operatorActions.some((o) => o.kind === 'divergence' && /validated tip/.test(o.what)));
   assert.equal(r.truth.targetHead, 'm2', 'the truth of the result is the one of the confirmed output');
 });
@@ -340,9 +342,9 @@ test('E10 AC2: plan-only runs no verification and the report call carries no che
   assert.equal(r.report, 'REPORT');
 });
 
-const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+const unfinished = () => card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0' });
 test('item 9: a resumed merge keeps the human act of the card tag', async () => {
-  const c = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0', acceptance: [{ id: 'AC1', text: 'ok {verify: human; evidence: owner approves}' }] });
+  const c = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0', acceptance: [{ id: 'AC1', text: 'ok {verify: human; evidence: owner approves}' }] });
   const { r } = await exec({ cards: [c], deliverables: ['E1'] });
   const act = r.operatorActions.find((o) => o.kind === 'human-act' && o.deliverable === 'E1');
   assert.ok(act);
@@ -379,7 +381,7 @@ test('finish-merge with merge-fix commits: approved review closes ok', async () 
 test('finish-merge with merge-fix commits: rejected review stays broken, names the commits, stops E2', async () => {
   const { r } = await resume((l) => {
     if (/:merge-fix-probe$/.test(l)) return fixCommits;
-    if (/:resume-fix-review$/.test(l)) return { issues: [{ severity: 'critical', category: 'defeito', description: 'masks a test' }], headSha: 'm9', clean: true, commitsInRange: 1 };
+    if (/:resume-fix-review$/.test(l)) return { issues: [{ severity: 'critical', category: 'defeito', description: 'masks a test' }], headSha: 'e9', clean: true, commitsInRange: 1 };
     return undefined;
   });
   const e1 = r.results.find((x) => x.id === 'E1');
@@ -438,7 +440,7 @@ test('the report schema requires truthStdout and its prompt starts with the chec
 
 const probeWith = (commits, extra = {}) => (l) => (/:merge-fix-probe$/.test(l) ? { commits, rangeOk: true, ...extra } : undefined);
 const e1Of = (r) => r.results.find((x) => x.id === 'E1');
-const reviewOf = (over) => (l) => (/:resume-fix-review$/.test(l) ? { issues: [], headSha: 'm9', clean: true, commitsInRange: 2, ...over } : undefined);
+const reviewOf = (over) => (l) => (/:resume-fix-review$/.test(l) ? { issues: [], headSha: 'e9', clean: true, commitsInRange: 2, ...over } : undefined);
 const both = (...fs) => (l, p, o) => { for (const f of fs) { const v = f(l, p, o); if (v !== undefined) return v; } return undefined; };
 
 test('finish-merge: a fix commit with a non-prefixed subject is reviewed; the probe does not filter by subject', async () => {
@@ -500,8 +502,8 @@ const mergedProbe = (l) => {
 test('branchMerged: fixes after the located merge are reviewed and the located merge is used', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, probeWith([{ sha: 'f1', subject: 'x' }]), reviewOf({ commitsInRange: 1 })) });
   assert.ok(labels.includes('E1:resume-fix-review'));
-  assert.match(calls.find((c) => c.label === 'E1:merge-fix-probe').prompt, /m0\.\.HEAD/);
-  assert.match(calls.find((c) => /:docs1$/.test(c.label)).prompt, /merge m0/);
+  assert.match(calls.find((c) => c.label === 'E1:merge-fix-probe').prompt, /e0\.\.HEAD/);
+  assert.match(calls.find((c) => /:docs1$/.test(c.label)).prompt, /merge e0/);
   assert.equal(r.results[0].merged, true);
   assert.ok(!r.results[0].broken && !r.results[0].error);
 });
@@ -518,7 +520,7 @@ test('finish-merge: the integrity of the merge is measured on its own range and 
   assert.equal(e1Of(r).broken, true);
   assert.ok(r.operatorActions.some((o) => o.deliverable === 'E1' && /t\/a\.test\.js/.test(o.what)));
   const p = calls.find((c) => c.label === 'E1:resume-test-integrity').prompt;
-  assert.match(p, /m0\^1/);
+  assert.match(p, /e0\^1/);
   assert.match(p, /--detach/);
 });
 
@@ -562,7 +564,7 @@ test('finish-merge: removed assertions and added skips stay broken', async () =>
 });
 
 test('acceptIntegrityAlerts with the matching deliverable and SHA closes ok with a concern naming the acceptance', async () => {
-  const { r } = await resumeArgs({ acceptIntegrityAlerts: { E1: 'm0' } });
+  const { r } = await resumeArgs({ acceptIntegrityAlerts: { E1: 'e0' } });
   assert.equal(e1Of(r).merged, true);
   assert.ok(!e1Of(r).broken && !e1Of(r).error);
   assert.ok(e1Of(r).concerns.some((c) => /operator/i.test(c) && /acceptIntegrityAlerts/.test(c) && /t\/a\.test\.js/.test(c)));
@@ -571,9 +573,9 @@ test('acceptIntegrityAlerts with the matching deliverable and SHA closes ok with
 test('acceptIntegrityAlerts is ignored for another SHA, another deliverable, a SHA prefix or when it comes from config', async () => {
   const cases = [
     [{ acceptIntegrityAlerts: { E1: 'other' } }, {}],
-    [{ acceptIntegrityAlerts: { E2: 'm0' } }, {}],
+    [{ acceptIntegrityAlerts: { E2: 'e0' } }, {}],
     [{ acceptIntegrityAlerts: { E1: 'm' } }, {}],
-    [{}, { acceptIntegrityAlerts: { E1: 'm0' } }],
+    [{}, { acceptIntegrityAlerts: { E1: 'e0' } }],
   ];
   for (const [args, config] of cases) {
     const { r } = await resumeArgs(args, hardInteg, config);
@@ -608,7 +610,7 @@ test('resume integrity: the temporary worktree is removed before the add and alw
 });
 
 test('branchMerged: a located commit whose second parent is not the branch counts as not located', async () => {
-  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, (l) => (/:merge-locate$/.test(l) ? { mergeSha: 'm0', rangeOk: true, secondParent: 'zz', branchTip: 'b9' } : undefined)) });
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(mergedProbe, (l) => (/:merge-locate$/.test(l) ? { mergeSha: 'e0', rangeOk: true, secondParent: 'zz', branchTip: 'b9' } : undefined)) });
   assert.equal(r.results[0].broken, true);
   assert.ok(!labels.includes('E1:merge-fix-probe'));
   const loc = calls.find((c) => c.label === 'E1:merge-locate');
@@ -622,7 +624,7 @@ test('result returns lastGood (the validated tip)', async () => {
 });
 
 const three = () => [unfinished(), card('E2'), card('E3')];
-const breakE1 = (l) => { if (/^E1:merge-gates1/.test(l)) return gm('m0', { exit: 1, failedNames: ['new'] }); if (l === 'E1:merge-fix') return null; return undefined; };
+const breakE1 = (l) => { if (/^E1:merge-gates1/.test(l)) return gm('e0', { exit: 1, failedNames: ['new'] }); if (l === 'E1:merge-fix') return null; return undefined; };
 
 test('C1: resumeArgs keeps a broken merge, so the next run validates it first', async () => {
   const { r } = await exec({ cards: three(), deliverables: ['E1', 'E2', 'E3'], over: breakE1 });
@@ -651,7 +653,7 @@ test('C1: dry-run and plan-only do not merge, so they only note the interrupted 
 const planAc = (ac, command = 'npm test -- a') => (l) => (/:plan$/.test(l) ? { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac, kind: 'test', command, external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] } : undefined);
 
 test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces still counts', async () => {
-  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planAc('AC1: works'), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: '  npm test -- a ', exit: 0 }] } : undefined)) });
   assert.equal(r.results[0].merged, true);
   const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
   assert.match(p, /^AC1: npm test -- a$/m);
@@ -659,7 +661,7 @@ test('I1: a plan row "AC1: text" is run as AC1 and an agent echo with spaces sti
 });
 
 test('I1: a command that was not run still fails the evidence', async () => {
-  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { maxFixRounds: 0 }, over: (l) => (/:evidence/.test(l) ? { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: 'something else', exit: 0 }] } : undefined) });
+  const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { maxFixRounds: 0 }, over: (l) => (/:evidence/.test(l) ? { headSha: 'a2', clean: true, results: [{ ac: 'AC1', command: 'something else', exit: 0 }] } : undefined) });
   assert.equal(r.results[0].merged, false);
   assert.match(r.results[0].error, /command not run/);
 });
@@ -912,7 +914,7 @@ test('m4: paths are quoted in the docs measure, the integrity run and the cleanu
 });
 
 // A plan the reviewer keeps rejecting: the deliverable stops with a content defect (it replaces the old plan without the **Roadmap:** header, which the code no longer reads).
-const noHeader = (l) => (/^E1:plan-review\d$/.test(l) ? { issues: [{ severity: 'critical', category: 'defeito', description: 'plan rejected' }], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix\d$/.test(l) ? 'plan fixed' : undefined);
+const noHeader = (l) => (/^E1:plan-review\d$/.test(l) ? { issues: [{ severity: 'critical', category: 'defeito', description: 'plan rejected' }], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix\d$/.test(l) ? 'plan fixed' : undefined);
 
 test('m5: the blocked status falls back to the default word of the roadmap formats', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: noHeader });
@@ -1032,7 +1034,7 @@ test('authorized external task runs and the authorization survives fix rounds', 
   const tasks = [tk(1, false), tk(2, true)];
   let n = 0;
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T2'] },
-    over: withPlan(tasks, (l) => (l === 'E1:t2:spec1' && n++ === 0 ? { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 2 } : l === 'E1:t2:spec-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
+    over: withPlan(tasks, (l) => (l === 'E1:t2:spec1' && n++ === 0 ? { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'a1', clean: true, commitsInRange: 2 } : l === 'E1:t2:spec-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
   assert.ok(labels.includes('E1:t2:impl'));
   assert.ok(labels.includes('E1:t2:spec-fix1'));
   assert.equal(ext(r).length, 0);
@@ -1065,7 +1067,7 @@ test('same blob with retranscribed externalDedupe keeps the authorization; anoth
   assert.ok(a.labels.includes('E1:t2:impl'));
   assert.equal(ext(a.r).length, 0);
   const b = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: auth },
-    over: (l) => (l === 'E1:plan' ? { ...planWith(resumed), planBlob: B2 } : /plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B2 } : undefined) });
+    over: (l) => (l === 'E1:plan' ? { ...planWith(resumed), planBlob: B2 } : /plan-review/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B2 } : undefined) });
   assert.ok(!b.labels.includes('E1:t2:impl'));
   assert.equal(ext(b.r)[0].item, 'E1:T2@' + PU.planFingerprint(resumed, B2));
 });
@@ -1073,7 +1075,7 @@ test('same blob with retranscribed externalDedupe keeps the authorization; anoth
 test('a plan review that measures another blob opens a gap and a missing measurement too', async () => {
   for (const m of [B2, undefined]) {
     const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-      over: (l) => (l === 'E1:plan-review1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, ...(m ? { measuredPlanBlob: m } : {}) } : undefined) });
+      over: (l) => (l === 'E1:plan-review1' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, ...(m ? { measuredPlanBlob: m } : {}) } : undefined) });
     assert.ok(labels.includes('E1:plan-fix1'));
     assert.match(calls.find((c) => c.label === 'E1:plan-fix1').prompt, new RegExp(m ? B2 : 'did not measure'));
   }
@@ -1190,7 +1192,7 @@ test('item 6: with the checkout authorized the merge runs', async () => {
 });
 
 test("item 6: an interrupted merge is not finished in the person's checkout without authorization", async () => {
-  const unf = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0' });
+  const unf = card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0' });
   const { r, labels } = await exec({ cards: [unf], deliverables: ['E1'], over: foreignPre });
   assert.ok(!labels.some((l) => /^E1:merge-gates/.test(l)));
   assert.ok(r.operatorActions.some((o) => o.item === 'checkout:integracao/x'));
@@ -1216,7 +1218,7 @@ test("item 6: the report never commits in the person's checkout when the budget 
   assert.equal(a[0].deliverable, null);
 });
 
-const interrupted = (extra = {}) => card('E2', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm0', ...extra });
+const interrupted = (extra = {}) => card('E2', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0', ...extra });
 
 test('item 1: the gates of an interrupted merge run before a new deliverable merges', async () => {
   const { labels } = await exec({ cards: [card('E1'), interrupted()], deliverables: ['E1', 'E2'] });
@@ -1227,7 +1229,7 @@ test('item 1: the gates of an interrupted merge run before a new deliverable mer
 test('item 1: a new deliverable does not merge when the interrupted one ends broken', async () => {
   const { r, labels } = await exec({ cards: [card('E1'), interrupted()], deliverables: ['E1', 'E2'],
     over: (l) => {
-      if (/^E2:merge-gates1/.test(l)) return gm('m0', { exit: 1, failedNames: ['new'] });
+      if (/^E2:merge-gates1/.test(l)) return gm('e0', { exit: 1, failedNames: ['new'] });
       if (l === 'E2:merge-fix') return null;
       return undefined;
     } });
@@ -1301,9 +1303,9 @@ test('item 7: the owner notes never reach the record or the docs prompts', async
 test('item 7: the merge-fix prompts carry no owner notes', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'API_KEY=sk-live-123' } },
     over: (l) => {
-      if (/^E1:merge-gates1/.test(l)) return gm('m1', { exit: 1, failedNames: ['t'] });
+      if (/^E1:merge-gates1/.test(l)) return gm('e1', { exit: 1, failedNames: ['t'] });
       if (/:merge-fix$/.test(l)) return { status: 'DONE', summary: 's', checks: [] };
-      if (/:merge-fix-review$/.test(l)) return { issues: [], headSha: 'm1', clean: true, commitsInRange: 1 };
+      if (/:merge-fix-review$/.test(l)) return { issues: [], headSha: 'e1', clean: true, commitsInRange: 1 };
       return undefined;
     } });
   const fixes = calls.filter((c) => /:merge-fix(-review)?$/.test(c.label));
@@ -1374,8 +1376,8 @@ const deploy = 'curl -X POST https://prod.example/deploy';
 const extRow = { ac: 'AC1', kind: 'smoke', command: deploy, external: true, externalDedupe: 'GET /deploys first' };
 const safeTasks = [tk(1, false)];
 const planRows = (ac, tasks = safeTasks, blob = B1) => (l) => (l === 'E1:plan' ? { ...planWith(tasks), planBlob: blob, ac } : undefined);
-const blobReview = (blob, fn) => (l, p, o) => (/plan-review/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: blob } : fn(l, p, o));
-const evOk = (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] } : undefined);
+const blobReview = (blob, fn) => (l, p, o) => (/plan-review/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: blob } : fn(l, p, o));
+const evOk = (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] } : undefined);
 
 test('I2: an unauthorized external evidence row is held before any final review, gate or evidence run', async () => {
   const fp = fpOf(safeTasks);
@@ -1512,7 +1514,7 @@ test('I5: a human plan row gives the same action on resume as in the normal path
 });
 
 const needsHuman = { status: 'NEEDS_HUMAN', summary: 'needs a key', checks: [], humanInputs: [{ what: 'prod key' }] };
-const zeroCommits = (l) => (/:t\d+:(spec|quality)/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 0 } : undefined);
+const zeroCommits = (l) => (/:t\d+:(spec|quality)/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 0 } : undefined);
 
 test('minor 1: an authorized external task that needs a human with zero commits holds the merge and keeps the authorization', async () => {
   const tasks = [tk(1, true)];
@@ -1613,7 +1615,7 @@ test('resume: without the authorization the pending task is held, not relaunched
 });
 
 // Reviews count commits as git would: only a range from the task's own first parent holds the earlier commits.
-const rerunRange = (l, prompt) => (/:t1:(spec|quality)\d/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: prompt.includes('log -p p..HEAD') ? 3 : 0 } : undefined);
+const rerunRange = (l, prompt) => (/:t1:(spec|quality)\d/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: prompt.includes('log -p p..HEAD') ? 3 : 0 } : undefined);
 
 test('resume: a re-run that completes with no new commit passes, spends no fix and records the effect', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: both((l) => (l === 'E1:plan' ? planWith(ext1) : undefined), pendingProgress, rerunRange) });
@@ -1663,7 +1665,7 @@ test('a mark agent that rejects still ends in the human stop, with the warning',
   assert.match(x.r.operatorActions.find((o) => o.kind === 'human-input').doNow, /launch stays open/);
 });
 
-const reviewIssue = (l) => (l === 'E1:t1:spec1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 } : undefined);
+const reviewIssue = (l) => (l === 'E1:t1:spec1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'a1', clean: true, commitsInRange: 2 } : undefined);
 
 test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at once', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs,
@@ -1682,7 +1684,7 @@ test('a fix round that ends in NEEDS_HUMAN stops an authorized external task at 
 
 test('a fix round with NEEDS_HUMAN on a non-external task keeps the normal path', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 's', checks: [] } : l === 'E1:t1:spec2' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : reviewIssue(l))) });
+    over: withPlan([tk(1, false)], (l) => (l === 'E1:t1:spec-fix1' ? { status: 'NEEDS_HUMAN', summary: 's', checks: [] } : l === 'E1:t1:spec2' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2 } : reviewIssue(l))) });
   assert.equal(x.r.results[0].merged, true);
   assert.ok(x.labels.includes('E1:t1:spec2'));
 });
@@ -1751,10 +1753,10 @@ test('rereview minor 1: the evidence doNow lists every re-run of the command', a
 });
 
 const evidenceFailsOnce = (l) => {
-  if (l === 'E1:evidence1') return { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'x' }] };
+  if (l === 'E1:evidence1') return { headSha: 'a2', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'x' }] };
   if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
-  if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'h2', clean: true, commitsInRange: 1 };
-  if (/:evidence/.test(l)) return { headSha: l === 'E1:evidence2' ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] };
+  if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'a2', clean: true, commitsInRange: 1 };
+  if (/:evidence/.test(l)) return { headSha: l === 'E1:evidence2' ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 0 }] };
   return undefined;
 };
 
@@ -1767,9 +1769,9 @@ test('rereview minor 2: the gates fix prompt carries the duplicate check of an e
 
 test('rereview minor 2: a local evidence command adds no such clause', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
-    if (l === 'E1:evidence1') return { headSha: 'h2', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 1, log: 'x' }] };
+    if (l === 'E1:evidence1') return { headSha: 'a2', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 1, log: 'x' }] };
     if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
-    if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'h2', clean: true, commitsInRange: 1 };
+    if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'a2', clean: true, commitsInRange: 1 };
     return undefined;
   } });
   assert.doesNotMatch(calls.find((c) => c.label === 'E1:gates-fix1').prompt, /duplicate check/);
@@ -1811,8 +1813,8 @@ const riskIssue = { severity: 'important', category: 'fora-do-escopo', descripti
 
 test('minor 13: a risk accepted on the conflict review is committed before the post-merge gates', async () => {
   const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
-    if (/:merge$/.test(l)) return { mergeCommit: 'm1', firstParent: 'abc1234', secondParent: 'h3', conflicts: 1, clean: true };
-    if (l === 'E1:merge-review') return { issues: [riskIssue], headSha: 'm1', clean: true, commitsInRange: 1 };
+    if (/:merge$/.test(l)) return { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'a3', conflicts: 1, clean: true };
+    if (l === 'E1:merge-review') return { issues: [riskIssue], headSha: 'e1', clean: true, commitsInRange: 1 };
     return undefined;
   } });
   const at = labels.indexOf('E1:merge-risks');
@@ -1824,11 +1826,11 @@ test('minor 13: a risk accepted on the conflict review is committed before the p
 test('minor 13: a risk accepted on the merge fix is committed, and the next measure expects that head', async () => {
   let n = 0;
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
-    if (/^E1:merge-gates1/.test(l)) return gm('m1', { exit: 1, failedNames: ['t'] });
+    if (/^E1:merge-gates1/.test(l)) return gm('e1', { exit: 1, failedNames: ['t'] });
     if (l === 'E1:merge-fix') return { status: 'DONE', summary: 's', checks: [] };
     if (l === 'E1:merge-fix-review') return { issues: [riskIssue], headSha: 'm8', clean: true, commitsInRange: 1 };
-    if (l === 'E1:merge-risks') { n++; return { head: 'm9', commit: 'm9' }; }
-    if (/^E1:merge-gates2/.test(l)) return gm('m9');
+    if (l === 'E1:merge-risks') { n++; return { head: 'e9', commit: 'e9' }; }
+    if (/^E1:merge-gates2/.test(l)) return gm('e9');
     return undefined;
   } });
   assert.equal(n, 1);
@@ -1907,7 +1909,7 @@ test('ledger: the report does not attribute the origin of an effect without evid
 
 test('ledger: a reused native plan without the external declarations goes to the plan fixer', async () => {
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true }
+    over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true }
       : l === 'E1:plan-load1' ? planLoadOf({ ...OLD_DEFAULT_PLAN, tasks: [{ n: 1, title: 't', tier: 'sonnet' }] }, 'E1')
       : l === 'E1:plan-fix1' ? planWith([tk(1, false)]) : undefined) });
   assert.ok(!labels.includes('E1:plan'));
@@ -1924,7 +1926,7 @@ test('fix 2: a fix on a committed external task is told not to perform the effec
   const tasks = [tk(1, true), tk(2, false)];
   let n = 0;
   const { calls, labels } = await resumedRun(withPlan(tasks, (l) => {
-    if (l === 'E1:t1:spec1' && n++ === 0) return { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (l === 'E1:t1:spec1' && n++ === 0) return { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'a1', clean: true, commitsInRange: 2 };
     if (l === 'E1:t1:spec-fix1') return { status: 'DONE', summary: 'f', checks: [] };
     return undefined;
   }), { authorizeExternal: ['E1:T1'] });
@@ -1940,7 +1942,7 @@ test('minor 2: the plan fixer returns a table-escaped pipe as the pipe that must
 });
 
 test('minor 3: a reused worktree with no committed task also restores the log', async () => {
-  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, reused: true } : loggedRun(l)) });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, reused: true } : loggedRun(l)) });
   assert.ok(calls.find((c) => c.label === 'E1:docs1').prompt.includes('RISK-X'));
   assert.ok(r.ownerReview.acceptedRisks.some((x) => x.description === 'RISK-X'));
 });
@@ -1963,7 +1965,7 @@ test('fix round 2: a wrapped command is dispatched and shown unwrapped', async (
   const held = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(planRows([cmdRow(wrapped)])) });
   assert.ok(!ext(held.r)[0].what.includes('`echo'));
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(wrapped)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(wrapped)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: 'echo echo PWNED', exit: 0 }] } : undefined)) });
   const p = calls.find((c) => c.label === 'E1:evidence1').prompt;
   assert.match(p, /^AC1: echo echo PWNED$/m);
 });
@@ -2016,7 +2018,7 @@ test('I2: an authorized task with DONE_WITH_CONCERNS and a commit is recorded', 
 test('I2: evidence that exited non-zero is not an effect that ran, and its request stays bare', async () => {
   const what = 'Write permission on the shared outbox for ' + deploy;
   const impl = (l) => (l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }], humanInputs: [{ what }] } : undefined);
-  const evFail = (l) => (/gates-fix/.test(l) ? { status: 'BLOCKED', summary: 'no access' } : /:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'EACCES' }] } : undefined);
+  const evFail = (l) => (/gates-fix/.test(l) ? { status: 'BLOCKED', summary: 'no access' } : /:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: deploy, exit: 1, log: 'EACCES' }] } : undefined);
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), impl, evFail) });
   assert.ok(calls.some((c) => /:evidence/.test(c.label)));
   assert.ok(!calls.find((c) => c.label === 'report').prompt.includes('"item":"E1:AC1"'));
@@ -2057,7 +2059,7 @@ test('real run: programs that need a directory are run with cd, since a Bash cal
   assert.ok(m.includes('cd "/wt/_integracao" && node "/wt/_tmp/E1-docs-measure.cjs"'));
   assert.ok(!m.includes('check.mjs'));
   const res = await exec({ cards: [unfinished()], deliverables: ['E1'] });
-  assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "m0^1"'));
+  assert.ok(res.calls.find((c) => c.label === 'E1:resume-test-integrity').prompt.includes('cd "/wt/_tmp/E1-integrity-wt" && node "/wt/_tmp/E1-integrity.cjs" "e0^1"'));
 });
 
 // ---- leva 3, bloco A
@@ -2094,7 +2096,7 @@ test('resume: the range note names the spec and the plan of the resume', async (
 test('decision 3: a quoted command is dispatched with its quotes', async () => {
   const q = '"./my tool"';
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] },
-    over: both(planRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'h2' : 'h3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
+    over: both(planRows([cmdRow(q)]), (l) => (/:evidence/.test(l) ? { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: q, exit: 0 }] } : undefined)) });
   assert.equal(r.results[0].merged, true);
   assert.match(calls.find((c) => c.label === 'E1:evidence1').prompt, /^AC1: "\.\/my tool"$/m);
 });
@@ -2132,7 +2134,7 @@ test('the docs stage explains the mark: a fulfilled request leaves pending, any 
 });
 
 // ---- A2/A4: review model by task, plan-fix tier
-const issueRev = (iss) => ({ issues: iss, headSha: 'h1', clean: true, commitsInRange: 2 });
+const issueRev = (iss) => ({ issues: iss, headSha: 'a1', clean: true, commitsInRange: 2 });
 const defect = { severity: 'critical', category: 'defeito', description: 'same defect', file: 'a.js' };
 const modelOf = (calls, label) => calls.find((c) => c.label === label).opts;
 
@@ -2255,7 +2257,7 @@ test('N7: the review range starts after the launch mark, so the marks do not sta
 });
 
 test('N7: an implementer that reports DONE with only the completion mark in the range is a defect', async () => {
-  const onlyMark = (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'nothing to commit', checks: [] } : undefined);
+  const onlyMark = (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'nothing to commit', checks: [] } : undefined);
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, onlyMark) });
   assert.ok(x.labels.includes('E1:t1:spec-fix1'));
   assert.equal(x.r.results[0].merged, false);
@@ -2320,7 +2322,7 @@ test('B4: without a runToken the progress read may be a cached result, so an aut
 
 test('B4/I1: a kill after the merge of E3, then a resume with the same cache: the fresh discovery sees the merge and the unfinished-merge guard fires', async () => {
   const git = { e3merged: false };
-  const cards = () => [git.e3merged ? card('E3', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'm1' }) : card('E3'), card('E4')];
+  const cards = () => [git.e3merged ? card('E3', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e1' }) : card('E3'), card('E4')];
   const merges = (l) => { if (l === 'E3:merge') git.e3merged = true; return undefined; };
   const j = makeJournal();
   await exec({ cards, deliverables: ['E3'], args: { runToken: 'pf-1' }, over: merges, journal: j.start(/^E3:merge-gates1/) }).catch(() => null);
@@ -2352,7 +2354,7 @@ const startedRepo = (git) => (l, p) => {
 };
 
 // B5: a task whose plan lists no file makes no commit of its own; only the marks may be in its range.
-const rev = (n) => ({ issues: [], headSha: 'h1', clean: true, commitsInRange: n });
+const rev = (n) => ({ issues: [], headSha: 'a1', clean: true, commitsInRange: n });
 test('B5: an external task with no files passes with only its started and completion marks in the range, no fix round', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan([tk(1, true, { files: [], noCommit: true })], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? rev(2) : undefined)) });
   assert.ok(!x.labels.some((l) => /^E1:t1:.*fix/.test(l)), x.labels.join(','));
@@ -2395,9 +2397,9 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
   let g = 0;
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
-      if (l === 'E1:gates1-1' && g++ === 0) return gm('h2', { exit: 1, failedNames: ['new'] });
+      if (l === 'E1:gates1-1' && g++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
       if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
-      if (l === 'E1:final-1-r1') return { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2 };
+      if (l === 'E1:final-1-r1') return { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'a1', clean: true, commitsInRange: 2 };
       if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
       return undefined;
     } });
@@ -2416,7 +2418,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
 
 test('R3/I-2: the post-merge fixer may not edit the spec or the plan, and its review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (/^E1:merge-gates1/.test(l) ? gm('m1', { exit: 1, failedNames: ['new'] }) : l === 'E1:merge-fix' ? { status: 'DONE', summary: 'x', checks: [] } : undefined) });
+    over: (l) => (/^E1:merge-gates1/.test(l) ? gm('e1', { exit: 1, failedNames: ['new'] }) : l === 'E1:merge-fix' ? { status: 'DONE', summary: 'x', checks: [] } : undefined) });
   assert.match(x.calls.find((c) => c.label === 'E1:merge-fix').prompt, /Do not mask failures\. Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:merge-fix-review').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan/);
 });
@@ -2470,14 +2472,14 @@ test('PF/I3 and M1, M5, M10, M11: the docs point to CLAUDE.md, agree on the fix 
 
 test('PF/M2: the late-sync fixer may not edit the spec or the plan, and its re-review blocks it', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (l === 'E1:delta-review1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h3', clean: true, commitsInRange: 0 } : l === 'E1:delta-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined) });
+    over: (l) => (l === 'E1:delta-review1' ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'a3', clean: true, commitsInRange: 0 } : l === 'E1:delta-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined) });
   assert.match(x.calls.find((c) => c.label === 'E1:delta-fix1').prompt, /Never edit the spec docs\/plans\/x-E1\/spec\.md or the plan docs\/plans\/x-E1\/plan\.md to satisfy a finding/);
   assert.match(x.calls.find((c) => c.label === 'E1:delta-review2').prompt, /Blocks \(defeito\):[^\n]*an edit to the spec or the plan made by a fix round/);
 });
 
 test('PF/M3: the plan fix returns files and noCommit with the plan stage rule', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (/^E1:plan-review1$/.test(l) ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'h1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix/.test(l) ? planWith([tk(1, false)]) : undefined) });
+    over: (l) => (/^E1:plan-review1$/.test(l) ? { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 } : /^E1:plan-fix/.test(l) ? planWith([tk(1, false)]) : undefined) });
   assert.match(x.calls.find((c) => c.label === 'E1:plan-fix1').prompt, /tasks \(full list, with files copied from the plan, noCommit \(same rule as the plan stage\), tier, reviewTier, needsLock, external and externalDedupe\)/);
 });
 
@@ -2500,7 +2502,7 @@ test('PF/M7, M8, M9: report wording for unreviewed entries, one entry per task i
   assert.equal((rep.match(/External effects authorized and run: (.*)/)[1].match(/"item":"E1:T1"/g) || []).length, 1);
   const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'no', checks: [] } : l === 'E1:t1:spec1' ? undefined : undefined)) });
   assert.match(y.r.results[0].error, /its launch mark stays open: before running again add `E1 T1 awaiting person: confirmed not run` if the effect did not start/);
-  const z = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  const z = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 1 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   assert.match(z.calls.find((c) => c.label === 'report').prompt, /has not passed review in this run \(it may not have been reviewed yet\)/);
 });
 
@@ -2513,9 +2515,9 @@ test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fi
   const hi = run1.r.operatorActions.find((o) => o.kind === 'human-input');
   assert.match(hi.doNow, /stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again \(pass the bare `E1:T1` in your own message to re-authorize together with the answer\)/);
   const { config, ...rw } = hi.resumeWith;
-  const reused = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }
-    : l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: '' }
-    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: '' }
+  const reused = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }
+    : l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '' }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: '' }
     : l === 'E1:plan-load1' ? planLoadOf(planWith(ext1), 'E1')
     : l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
   const run2 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...rw, notes: { E1: 'the key is in DEPLOY_KEY' }, runToken: 'pf-2' }, over: reused });
@@ -2622,8 +2624,8 @@ test('FF/M8: a local task that waited for a person closes with a neutral mark, w
 
 // Fable review 2 (F2).
 test('F2/I-A: a note that changed no file stays in resumeWith; a note written into the plan is consumed', async () => {
-  const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
-    : l === 'E1:plan-commit' ? { ok: true, head: 'h1', commit: v ? '' : 'c1' }
+  const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1' }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1' }
     : l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'stop', checks: [] } : undefined);
   const kept = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(true) });
   assert.equal(kept.r.resumeArgs.notes && kept.r.resumeArgs.notes.E1, 'the key is in DEPLOY_KEY');
@@ -2652,7 +2654,7 @@ test('F2/m3, m5: wtRoot is defined in step 1, before step 3 uses it; step 6.6 po
 });
 
 test('F2/m4: a first sync that resolved conflicts goes through the conflict review, like the late sync', async () => {
-  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 2, targetTip: 'abc1234', deltaFiles: [] } : l === 'E1:sync-review' ? { issues: [], headSha: 'h2', clean: true, commitsInRange: 0 } : undefined) });
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 2, targetTip: 'abc1234', deltaFiles: [] } : l === 'E1:sync-review' ? { issues: [], headSha: 'a2', clean: true, commitsInRange: 0 } : undefined) });
   assert.ok(x.labels.includes('E1:sync-review'), x.labels.join(','));
   assert.ok(x.labels.indexOf('E1:sync-review') < x.labels.indexOf('E1:test-integrity'));
 });
@@ -2702,9 +2704,9 @@ test('B4/I2: the started mark is a launch mark for the progress read, bookkeepin
   assert.match(p, /launchOpen = the n whose newest such commit starts "E1 T<n> launching", "E1 T<n> started"/);
   assert.match(x.calls.find((c) => c.label === 'E1:t1:spec1').prompt, /"E1 T1 started"/);
   // launch mark .. HEAD holds started + the task commit + the completion mark: two commits are a defect, three pass.
-  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
+  const two = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (l === 'E1:t1:spec1' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2 } : l === 'E1:t1:spec-fix1' ? { status: 'BLOCKED', summary: 'x', checks: [] } : undefined)) });
   assert.ok(two.labels.includes('E1:t1:spec-fix1'));
-  const three = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (/^E1:t1:(spec|quality)1$/.test(l) ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 3 } : undefined)) });
+  const three = await exec({ cards: [card('E1')], deliverables: ['E1'], args: extArgs, over: withPlan(ext1, (l) => (/^E1:t1:(spec|quality)1$/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 } : undefined)) });
   assert.ok(!three.labels.includes('E1:t1:spec-fix1'));
   assert.equal(three.r.results[0].merged, true);
 });
@@ -2782,7 +2784,7 @@ test('N8: the resume reads the log and the report does not ask again for what ra
 });
 
 // ---- final-gate corrections
-const evMock = (l) => (l === 'E1:merge-effects' ? { head: 'm1', commit: 'm1' } : undefined);
+const evMock = (l) => (l === 'E1:merge-effects' ? { head: 'e1', commit: 'e1' } : undefined);
 test('I1: an external evidence effect reaches the log on the target right after the merge', async () => {
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:AC1'] }, over: both(planRows([extRow]), evOk, evMock) });
   assert.ok(x.labels.indexOf('E1:merge') < x.labels.indexOf('E1:merge-effects'));
@@ -2888,7 +2890,7 @@ const notRun = (l) => (l === 'E1:progress' ? { head: 'h9', clean: true, done: [{
 const staleLog = (l) => (l === 'E1:resume-review-log' ? { found: true, acceptedRisks: [], humanInputs: [{ what: 'approve E1:T1 please [already authorized and run in this run: E1:T1]' }], ac: [], externalRun: [{ item: 'E1:T1', title: 't1', status: 'DONE', reviewed: false }] } : undefined);
 
 test('I4: after confirmed not run the restored entry and its human mark are gone', async () => {
-  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(ext1, both(notRun, staleLog, (l) => (/:setup$/.test(l) ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, reused: true } : undefined))) });
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan(ext1, both(notRun, staleLog, (l) => (/:setup$/.test(l) ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, reused: true } : undefined))) });
   assert.equal(x.r.results[0].failKind, 'externo');
   const rep = x.calls.find((c) => c.label === 'report').prompt;
   assert.match(rep, /External effects authorized and run: \[\]/);
@@ -4076,7 +4078,7 @@ test('frozenTaskDiffs flags a changed or missing committed task and ignores the 
 });
 
 test('AC2: a branch with task commits and no native spec stops with previous-version and writes no spec', async () => {
-  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 2, committedTasks: [1, 2], nativeSpec: false, nativePlan: false } : undefined) });
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 2, committedTasks: [1, 2], nativeSpec: false, nativePlan: false } : undefined) });
   assert.equal(r.results.find((x) => x.id === 'E1').failKind, 'conteudo');
   const o = r.operatorActions.filter((x) => x.kind === 'previous-version' && x.deliverable === 'E1');
   assert.equal(o.length, 1);
@@ -4086,7 +4088,7 @@ test('AC2: a branch with task commits and no native spec stops with previous-ver
 });
 
 test('a branch with an old superpowers spec and no task commit is not stopped', async () => {
-  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false } : undefined) });
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false } : undefined) });
   assert.ok(labels.includes('E1:spec'));
   assert.ok(!r.operatorActions.some((x) => x.kind === 'previous-version'));
 });
@@ -4217,7 +4219,7 @@ test('a failed spec check is a critical issue of the review, fixed by the correc
 
 test('a reused native spec without owner note calls no author and records no duplicate decision', async () => {
   seenDecisions.clear();
-  const nativeSetup = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: false } : undefined);
+  const nativeSetup = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: false } : undefined);
   const over = both(nativeSetup, specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.' })] }));
   const one = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' }, over });
   for (const l of ['E1:spec', 'E1:spec-commit']) assert.ok(!one.labels.includes(l), l);
@@ -4231,7 +4233,7 @@ test('a reused native spec without owner note calls no author and records no dup
 });
 
 test('the spec fixer keeps its text and adds the block sentence', async () => {
-  const issue = { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'h1', clean: true, commitsInRange: 1 };
+  const issue = { issues: [{ severity: 'critical', category: 'defeito', description: 'x' }], headSha: 'a1', clean: true, commitsInRange: 1 };
   const { calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:spec-review1' ? issue : l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined) });
   const p = calls.find((c) => c.label === 'E1:spec-fix1').prompt;
   const keep = 'Fix the spec docs/plans/x-E1/spec.md according to the review below, in autonomous mode, and commit. Stop after the commit.';
@@ -4266,7 +4268,7 @@ test('checkSpecLoad separates a failed check from a failed load', () => {
 });
 
 // ---- E8 T6: native plan stage, load with digest, dispatch by route
-const planSetup = (over = {}) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false, ...over } : undefined);
+const planSetup = (over = {}) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false, ...over } : undefined);
 const withDigestOff = (load) => ({ ...load, emitStdout: JSON.stringify({ ...JSON.parse(load.emitStdout), digest: '00000000' }) });
 const evRow1 = { ac: 'AC1', kind: 'test', command: 'npm test -- a', testRef: null, blq: null, external: false, externalDedupe: null };
 const zero = { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 };
@@ -4644,7 +4646,7 @@ test('E23: recordCmd builds the approve command', () => {
 test('E23: recordedBaseline accepts only a matching valid measure', () => {
   const pure = loadPure();
   const defs = [{ name: 'g1', kind: 'exit' }];
-  const baseline = { clean: true, headSha: 'abc1234', gates: [{ name: 'g1', ran: true, exit: 0 }] };
+  const baseline = { clean: true, headSha: 'abc1234'.padEnd(40, '0'), gates: [{ name: 'g1', ran: true, exit: 0 }] };
   const out = JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline });
   assert.deepEqual(pure.recordedBaseline(out, 'abc1234', 'k', defs), baseline);
   assert.equal(pure.recordedBaseline(out, 'def5678', 'k', defs), null);
@@ -4657,13 +4659,13 @@ test('E23: recordedBaseline accepts only a matching valid measure', () => {
 
 // ---- E23 T4: setup reads the record; the spec and plan reviews are skipped; the approval is written by the progress and review-log agents.
 const RUN_REC = { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' } };
-const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'h1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);
+const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);
 const RR_PATH = '/p/productivity-tools/scripts/run-record.mjs';
 const approvePrefix = (stages) => `node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 ${stages} - '`;
 const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.indexOf(" - '") + 4, prompt.indexOf("'", prompt.indexOf(" - '") + 4))));
 
 const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
-const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
+const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
 
 test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
@@ -4696,7 +4698,7 @@ test('AC1: a resume with every recorded value skips the spec, plan and final rev
   assert.ok(sync.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
   assert.ok(sync.opts.schema.properties.record);
   // a different tree after the sync: the final review runs
-  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'h2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: 's1', plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: 's1', plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
   assert.ok(moved.labels.includes('E1:final-1-r1'));
 });
 
@@ -4719,7 +4721,7 @@ test('E23: progress records spec and plan only after a review ran', async () => 
   assert.equal(typeof pay.trailer, 'string');
   assert.equal(pay.prep.targetHead, 'abc1234');
   assert.equal(pay.prep.gatesKey, loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES))));
-  assert.equal(pay.prep.baseline.headSha, 'abc1234');
+  assert.equal(pay.prep.baseline.headSha, 'abc1234'.padEnd(40, '0'));
   const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
   assert.ok(skipped.calls.find((c) => c.label === 'E1:progress').prompt.startsWith('Read-only'));
   assert.ok(!skipped.calls.find((c) => c.label === 'E1:progress').prompt.includes('run-record.mjs'));
@@ -4800,11 +4802,11 @@ test('E23 final-fix F2: a spec fix round in this run forces the plan review even
 test('E24 AC3: the default final review calls no final-verify; singleWave makes one final-fix1 and one final re-review', async () => {
   const issue = { severity: 'important', category: 'defeito', description: 'd' };
   const over = (l) => {
-    if (/^E1:final-1-r[12]$/.test(l)) return { issues: [{ ...issue, description: `d${l.slice(-1)}` }], headSha: 'h1', clean: true, commitsInRange: 2 };
+    if (/^E1:final-1-r[12]$/.test(l)) return { issues: [{ ...issue, description: `d${l.slice(-1)}` }], headSha: 'a1', clean: true, commitsInRange: 2 };
     if (/^E1:final-fix\d$/.test(l)) return { status: 'DONE', summary: 'f', checks: [] };
     return undefined;
   };
-  const dflt = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:final-1-r2' ? { issues: [], headSha: 'h1', clean: true, commitsInRange: 2 } : over(l)) });
+  const dflt = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:final-1-r2' ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 2 } : over(l)) });
   assert.ok(dflt.labels.includes('E1:final-fix1'));
   assert.ok(!dflt.labels.some((l) => /:final-verify/.test(l)));
   const one = await exec({ cards: [card('E1')], deliverables: ['E1'], over, config: { finalReview: { singleWave: true } } });
@@ -4817,7 +4819,7 @@ test('E24 AC3: the default final review calls no final-verify; singleWave makes 
 // ---- E24 T4: adversarial verification of the final review
 const finalAdv = { finalReview: { adversarial: true } };
 const finalIssue = (description, severity = 'important') => ({ severity, category: 'defeito', description });
-const finalRev = (issues) => ({ issues, headSha: 'h1', clean: true, commitsInRange: 2 });
+const finalRev = (issues) => ({ issues, headSha: 'a1', clean: true, commitsInRange: 2 });
 const loggedReviews = (x) => JSON.parse(/Data: (\{.*\})\r?\nCommit only that file/.exec(x.calls.find((c) => c.label === 'E1:review-log').prompt)[1]).reviews;
 const verdictsOf = (...v) => ({ verdicts: v.map(([n, refuted, reason]) => ({ n, refuted, reason })) });
 
