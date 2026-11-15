@@ -284,3 +284,18 @@ test('E20: a roadmap deliverable spec keeps id E<n> so the tracker can close it'
   assert.match(read('skills/spec-writer/SKILL.md'), /then `topic: E<n>`/);
   assert.doesNotMatch(read('agents/spec-author.md'), /E<n>` when the topic ends/);
 });
+
+// E13: nenhum arquivo do plugin (fora de testes) cita "superpowers".
+// Allowlist de documentos de credito (DEC-019): vazia por padrao.
+const CREDIT_ALLOWLIST = [];
+
+test('E13: no file of the plugin mentions superpowers', () => {
+  const hits = [];
+  for (const rel of filesUnder('.')) {
+    const path = rel.replace(/^\.\//, '');
+    if (path.endsWith('.test.mjs') || CREDIT_ALLOWLIST.includes(path)) continue;
+    const lines = read(path).split('\n');
+    lines.forEach((l, i) => { if (/superpowers/i.test(l)) hits.push(`${path}:${i + 1}`); });
+  }
+  assert.deepEqual(hits, []);
+});
