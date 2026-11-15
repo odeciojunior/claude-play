@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E26 | Peça 3: braço opus (3 válidas de completo do lote E11) no piso, 0 correções por tarefa e 0 falhas de gate; sonnet com 0 execuções, autor do plano fica opus (DEC-741). | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` |
 | 2026-11-15 | E11 | Peça 1 (linha de base) concluída: 43/43 válidas, detecção 80/80, US$ 67,96 (E11 US$ 113,04 de 160); plan-only acima do teto aceito (DEC-763); conferências do registro, revisão final e cwd feitas. | `docs/reports/2026-11-15-E11-lote.md` |
 | 2026-11-15 | E11 | DEC-763 (E11 lote, plan-only) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E11 | Sondas em M′ 2b8c56e (US$ 13,25), 5 válidas, completo integrou; P16 e portão vazio do coordinator (DEC-761, DEC-762); E11 em US$ 43,44 de 160. | `docs/reports/2026-11-15-E11-P15-sondas.md` |

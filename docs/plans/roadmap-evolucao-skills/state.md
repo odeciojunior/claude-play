@@ -41,7 +41,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E23 | na-branch | `docs/plans/evolucao-skills-E23/spec.md`, `docs/plans/evolucao-skills-E23/plan.md`, `9f62a7e1b51fbae5ea883723346ed44a6e3bd365` | E23: seguir o fluxo do release após na-branch |
 | E24 | na-branch | `docs/plans/evolucao-skills-E24/spec.md`, `docs/plans/evolucao-skills-E24/plan.md`, `4308baaa13175b1ab3549f9c15f075814ef87919` | E24: seguir o fluxo do release após na-branch |
 | E25 | publicado | `docs/superpowers/specs/2026-11-12-E25-release-lancado-pelo-nome-design.md`, `docs/superpowers/plans/2026-11-12-E25-release-lancado-pelo-nome.md`, `1524260022d7e955bb9c1406cf717b9f74189f30`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E26 | executando | - | Passo 0 e bloco A de fix/measure-e26; lotes da peça 2 e da peça 1; peça 3 com o lote completo de E11; ratificação ao fim. |
+| E26 | executando | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` | Ratificação de E26 (peças 1 a 3 feitas: laço de spec e de plano, autor opus). |
 | E27 | executando | `docs/reports/2026-11-13-E27-revisor-por-tarefa.md`, `docs/reports/2026-11-15-E27-passada-B.md` | Passada C (peça 2) depois de E28, braço atual primeiro; sem E28 em E13, linha do dono (DEC-703). |
 | E28 | nao-iniciado | - | Aguardar E21 e 450 caracteres de folga medida em roadmap-release.js |
 <!-- /roadmap:panel -->
@@ -71,7 +71,6 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) E28: auditoria das cópias por modelo (DEC-715) e notas de revisão (2bb59c6, 7ee7f23, reviews.md do 2º plan-only); roadmap-release.js ~241 mil de 250.000 (DEC-647). Ver seção E28 de docs/reports/2026-11-13-pendencias-por-entregavel.md.
 - (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
-- (executor) E26 peça 3: depois do lote completo de E11 e só se o braço opus sair do piso (emenda a DEC-727), braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
 - (executor) 2.0.1: o portão final do coordinator e o de gates do release recusam comando de teste cuja base falha ou roda 0 testes; referências de SHA vindas de agente (targetHead, mergeCommit, head de persist*) passam por fullSha (revisão de M′, DEC-762).
 - (executor) 2.0.1 (lote E11): bytes do plan-only (DEC-763); gate-vazio aceitar "N tests, N pass, N fail"; implementadores começam fora da worktree (14 falhas de caminho no lote E11).
 <!-- /roadmap:pending -->
