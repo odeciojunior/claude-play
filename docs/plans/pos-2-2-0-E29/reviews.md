@@ -85,6 +85,17 @@ Execução de gates (após gates-fix2):
 - G4: exit 0 (linha de base: exit 0).
 - G5: exit 0 (linha de base: exit 0).
 
+Execução de gates (registro final, execução falhou):
+- G1: exit 0, total 2172, skipped 2, failing [] (linha de base: exit 0, total 2175, skipped 2, failing []).
+- G2: exit 0 (linha de base: exit 0).
+- G3: exit 0 (linha de base: exit 0).
+- G4: exit 0 (linha de base: exit 0).
+- G5: exit 0 (linha de base: exit 0).
+
+## Falha da execução
+
+branch gates did not pass: gates not green (G1): G1: exit 0, total 2172, skipped 2, failing [] (baseline: exit 0, total 2175, skipped 2, failing []) | G2: exit 0 (baseline: exit 0) | G3: exit 0 (baseline: exit 0) | G4: exit 0 (baseline: exit 0) | G5: exit 0 (baseline: exit 0)
+
 ## Entradas humanas
 
 Nenhuma (what, blq, workaround, blocking: não se aplica).
@@ -100,5 +111,9 @@ Nenhuma (what, blq, workaround, blocking: não se aplica).
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
 
 - Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), registro dos gates (gates-fix2). Texto completo:
+
+  checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
+
+- Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), registro da falha (execução falhou). Texto completo:
 
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
