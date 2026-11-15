@@ -11,7 +11,7 @@ Estratégia v1.0 -- 2026-11-15
 | E29 | bloqueado (BLQ-1) | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` | E29: seguir o fluxo do release após executando |
 | E30 | nao-iniciado | - | - |
 | E31 | nao-iniciado | - | - |
-| E32 | nao-iniciado | - | - |
+| E32 | executando | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md` | E32: seguir o fluxo do release após executando |
 | E33 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
@@ -22,9 +22,11 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:pending -->
 - (dono) Logar uma config descartável nova para as medições de E30 e E31 (a anterior foi apagada na limpeza).
 - (executor) Ler as transcrições de E30 e E31 antes de apagar qualquer config descartável.
+- (dono) O dono confere o relatório de triagem docs/reports/2026-11-15-E32-triagem-backlog.md (critério 1).
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
 | feat/E29 | viva | E29 em execução pelo release |
+| feat/E32 | viva | E32 em execução pelo release |
 <!-- /roadmap:inflight -->
