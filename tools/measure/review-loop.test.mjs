@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPure, checkLoopWorkflow, buildLoopScript, buildTaskLoopScript, buildFinalLoopScript, STAGE_LOOP, LOOP_RM, readArm, UsageError } from './run-batch.mjs';
@@ -402,4 +403,26 @@ test('B3: refutou-tudo', async () => {
   assert.ok(!r.seq.some((l) => /fix1/.test(l)));
   assert.equal(r.result.ok, true);
   assert.deepEqual(r.result.verify, { calls: 1, refutedByRound: { 1: 1 } });
+});
+
+// ---- E27 C2 (T1): frozen task loop script of correcao-semeada-A, both arms (LF), before the lenses branch exists ----
+const sha256Lf = (t) => createHash('sha256').update(t.replace(/\r\n/g, '\n')).digest('hex');
+const GOLDEN_TASK_LOOP_ATUAL = 'ad16e5750dcc10842ed067a61ac510aca4dde29e48ddf673a615ab059079b653';
+const GOLDEN_TASK_LOOP_RESTRITA = 'dc937b34850b7ba464e1fe6f222566c9a8a4e7c497a51f6a3eee131cd175d8cc';
+function frozenTaskLoopScript(restricted) {
+  const sb = 'D:/work/correcao-semeada-A-1';
+  const scenario = { dir: sb, seededCommit: 'a'.repeat(40), fixSha: 'b'.repeat(40) };
+  const fixPrompt = `In Task 3 of the plan ${sb}/docs/plans/plan.md, fix the spec problems below, run the task's checks and commit "E5 T3: fix ...". Do NOT perform any external effect. STOP after this fix. Never edit the spec or the plan to satisfy a finding. Report in "checks" every verification you ran, with the exact command, real output and exit code.\n{{issues}}`;
+  const pure = 'const PURE_FIXTURE = 1\nfunction runReviewLoop() {}\nfunction taskIssues(r) { return r.issues }';
+  return buildTaskLoopScript({ pure, scenario, opts: { restricted, reviewModel: 'sonnet', pluginRoot: 'D:/cfg/plugins/productivity-tools', work: 'D:/work', title: 'wordCount and the index', fixPrompt } });
+}
+
+test('C2: the task loop script of correcao-semeada-A, arm atual, is frozen (golden)', () => {
+  const text = frozenTaskLoopScript(false);
+  assert.equal(sha256Lf(text), GOLDEN_TASK_LOOP_ATUAL, text);
+});
+
+test('C2: the task loop script of correcao-semeada-A, arm restrita, is frozen (golden)', () => {
+  const text = frozenTaskLoopScript(true);
+  assert.equal(sha256Lf(text), GOLDEN_TASK_LOOP_RESTRITA, text);
 });
