@@ -2012,9 +2012,9 @@ test('A2: no {{ placeholder is left in any generated prompt (every stage, varian
   const s = setup();
   try {
     const combos = [
-      ...['spec-semeado-A', 'spec-semeado-B', 'spec-nativo-A', 'spec-nativo-B', 'plano-semeado-A', 'plano-semeado-B', 'plano-nativo-A', 'plano-nativo-B'].map((v) => [v, {}]),
+      ...['spec-nativo-A', 'spec-nativo-B', 'plano-semeado-A', 'plano-semeado-B', 'plano-nativo-A', 'plano-nativo-B'].map((v) => [v, {}]),
       ...['codigo-semeado-A', 'codigo-semeado-B'].map((v) => [v, { stage: 'task-review', reviewModel: 'sonnet' }]),
-      ...['spec-semeado-A', 'spec-nativo-A', 'plano-semeado-A', 'plano-nativo-B'].map((v) => [v, { rounds: 'loop' }]),
+      ...['spec-nativo-A', 'plano-semeado-A', 'plano-nativo-B'].map((v) => [v, { rounds: 'loop' }]),
     ];
     let k = 0;
     for (const [variant, extra] of combos) {
@@ -2213,4 +2213,110 @@ test('A4: running the generated script with a stub agent: an empty list calls no
   assert.equal(calls[1].o.agentType, 'productivity-tools:spec-author');
   assert.ok(calls[1].prompt.includes('1. [fab] which file holds the cache? (changes the plan: [fab] adds a task)'), calls[1].prompt);
   assert.ok(!calls[1].prompt.includes('{{'));
+});
+
+// ---- Final-gate fixes: author commit, laco-infra, old spec-semeado refusal, batch counts ----
+
+test('gate: the harness commits the author edit (the author never commits) and every reader sees the edited tip', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      gitq(cwd, 'checkout', '-q', 'feat/E5');
+      writeFileSync(join(cwd, NATIVE_PATHS.spec), norm(readFileSync(join(NATIVE_SCEN, 'spec.md'), 'utf8'))); // edited, not committed
+      writeFileSync(journalFileOf(s.configDir, n), jl(
+        { label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', seeded) },
+        { label: 'E5:spec-review-fix1', result: { summary: '[fab] fixed' } },
+      ));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.equal(a.authorCommitted, true);
+    assert.ok(a.outcomes.some((o) => o.outcome === 'capturado'), JSON.stringify(a.outcomes));
+    assert.deepEqual(a.humanInputs, { blockingSeeded: 1, blockingAtEnd: 0 });
+    assert.deepEqual(a.toolCheck, { exit: 0 });
+    const sent = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.equal(gitq(sent.cwd, 'status', '--porcelain', '--', NATIVE_PATHS.spec), '');
+    const fix = JSON.parse(sentScript(fake).text.split(String.fromCharCode(10)).find((l) => l.startsWith('const FIX_PROMPT = ')).slice('const FIX_PROMPT = '.length));
+    assert.ok(!/commit/i.test(fix.replace('Do not commit: the caller commits.', '')), fix);
+    assert.equal(r.aggregate.humanInputsRaised, 0);
+    assert.equal(r.aggregate.toolCheckFailed, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: nothing to commit when the author left the spec clean (authorCommitted false)', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq([], 'measuredSpecBlob', seeded) }));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].authorCommitted, false);
+    assert.equal(r.aggregate.humanInputsRaised, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: loop with review 1 and 1b both null is laco-infra, not formato-do-diario', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => writeFileSync(journalFileOf(s.configDir, n), jl(
+      { label: 'E5:plan-review1', result: null },
+      { label: 'E5:plan-review1b', result: null },
+    ));
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'plano-nativo-A', { rounds: 'loop' }), { exec: fake.exec, now: NOW });
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'laco-infra');
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: --arm atual on the old spec-semeado variants is a UsageError that says why; plano-semeado is untouched', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    for (const v of ['spec-semeado-A', 'spec-semeado-B']) {
+      await assert.rejects(runBatch(seededOpts(s, v, { stage: 'spec-review' }), { exec: fake.exec, now: NOW }), /spec-semeado.*spec\/1|spec\/1.*spec-semeado/);
+    }
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+    const ok = await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review' }), { exec: makeFake(s.configDir).exec, now: NOW });
+    assert.ok(ok.aggregate);
+  } finally {
+    s.done();
+  }
+});
+
+test('gate: the aggregate counts failed tool checks and raised human inputs', async () => {
+  const s = setup();
+  try {
+    const afterRun = (cwd, n) => {
+      const seeded = gitq(cwd, 'rev-parse', `feat/E5:${NATIVE_PATHS.spec}`);
+      gitq(cwd, 'checkout', '-q', 'feat/E5');
+      const f = join(cwd, NATIVE_PATHS.spec);
+      const text = readFileSync(f, 'utf8');
+      const m = /```json data\r?\n([\s\S]*?)\r?\n```/.exec(text);
+      const data = JSON.parse(m[1]);
+      data.needsPerson = [...(data.needsPerson ?? []), { q: 'fab', blocking: true, why: 'fab' }];
+      writeFileSync(f, text.replace(m[1], JSON.stringify(data, null, 2)));
+      writeFileSync(journalFileOf(s.configDir, n), jl({ label: 'E5:spec-review1', result: rq(Q, 'measuredSpecBlob', seeded) }, { label: 'E5:spec-review-fix1', result: { summary: '[fab]' } }));
+    };
+    const fake = makeFake(s.configDir, { afterRun });
+    const r = await runBatch(nativeOpts(s, 'spec-nativo-B', { arm: 'perguntas' }), { exec: fake.exec, now: NOW });
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid', JSON.stringify(a));
+    assert.ok(a.humanInputs.blockingAtEnd > a.humanInputs.blockingSeeded, JSON.stringify(a.humanInputs));
+    assert.equal(r.aggregate.humanInputsRaised, 1);
+    assert.equal(r.aggregate.toolCheckFailed, a.toolCheck.exit !== 0 && a.toolCheck.exit !== null ? 1 : 0);
+  } finally {
+    s.done();
+  }
 });

@@ -480,6 +480,15 @@ function totalOutcomes(attempts) {
   return { outcomes, deteccaoPorCodigo: byCode };
 }
 
+// Native batches: attempts whose tool check exited non-zero, and attempts that ended with more blocking human inputs than they started with.
+function nativeCounts(attempts) {
+  const valid = attempts.filter((a) => a.status === 'valid');
+  return {
+    toolCheckFailed: valid.filter((a) => a.toolCheck && a.toolCheck.exit !== null && a.toolCheck.exit !== 0).length,
+    humanInputsRaised: valid.filter((a) => a.humanInputs && a.humanInputs.blockingSeeded !== null && a.humanInputs.blockingAtEnd !== null && a.humanInputs.blockingAtEnd > a.humanInputs.blockingSeeded).length,
+  };
+}
+
 // Loop batches: outcomes after the 1st fix, reviews per attempt, ok/stopped and the unverified after-fix SHAs (valid attempts).
 function loopAggregate(attempts) {
   const valid = attempts.filter((a) => a.status === 'valid' && a.loop);
@@ -763,6 +772,9 @@ function prepareHarness(opts) {
   if (!/^[A-Za-z0-9_-]+$/.test(arm)) throw new UsageError(`invalid --arm: ${arm}`);
   const armsDir = resolve(opts.armsDir ?? join(here, 'arms'));
   const current = arm === 'atual';
+  if (current && stage === 'spec-review' && /^spec-semeado-/.test(opts.variant)) {
+    throw new UsageError(`--stage spec-review --arm atual does not accept ${opts.variant}: its spec has no spec/1 data block, but the current fixer is told to run spec-tool check on it, so the result would not compare with the 19ab712 baseline; use spec-nativo-A/B`);
+  }
   if (arm === 'perguntas' && stage !== 'spec-review') throw new UsageError(`--arm perguntas only applies to --stage spec-review (got --stage ${stage})`);
   const rounds = opts.rounds ?? 'single';
   if (rounds !== 'single' && rounds !== 'loop') throw new UsageError(`--rounds must be loop or single (got "${rounds}")`);
@@ -1127,6 +1139,20 @@ function toolCheck(h, scenario, installPath, reachable) {
   return { exit: typeof r.status === 'number' ? r.status : null };
 }
 
+// The spec-author never commits (the product's commitAgent does): when the spec is dirty after the session, commit it here.
+function commitAuthorEdit(scenario) {
+  const spec = (scenario.paths ?? E5_PATHS).spec;
+  try {
+    gitOut(scenario.dir, 'checkout', '-q', 'feat/E5');
+    if (gitOut(scenario.dir, 'status', '--porcelain', '--', spec).trim() === '') return false;
+    gitOut(scenario.dir, 'add', '--', spec);
+    gitOut(scenario.dir, '-c', 'user.name=measure', '-c', 'user.email=measure@example.invalid', 'commit', '-q', '-m', 'E5: spec', '--', spec);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Blocking needsPerson items of the spec/1 json data block at a ref, or null when the block cannot be read.
 function blockingHumanInputs(scenario, ref) {
   try {
@@ -1298,10 +1324,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       const rawEntries = journal.entries;
       if (h?.rounds === 'loop') journal = { ...journal, entries: loopEntries(h, journal.entries) };
       let v = h ? harnessValidity(h, variant, journal, scenario) : checkValidity(variant, journal, scenario);
-      if (v.valid && h?.rounds === 'loop') {
+      if (h?.rounds === 'loop' && (v.valid || v.reason === 'formato-do-diario') && !journal.formatError) {
+        // Review 1 and its retry both null is a loop infra failure, not a journal format error: the replay decides first.
         loop = await loopResult(h, rawEntries, h.loopFns);
         if (loop.infra) v = { valid: false, reason: 'laco-infra' };
-        else if (loop.divergent) v = { valid: false, reason: 'laco-divergente' };
+        else if (v.valid && loop.divergent) v = { valid: false, reason: 'laco-divergente' };
       }
       if (!v.valid) {
         attempts.push({ n: k, ...extra(), status: 'invalid', reason: v.reason });
@@ -1359,7 +1386,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     validRuns.push(run);
     let outcomes = [];
     let reachable = false;
+    let authorCommitted = null;
     if (journal) {
+      if (h?.arm === 'perguntas') authorCommitted = commitAuthorEdit(scenario);
       // The sentinels read the tip of feat/E5 in the working tree. The stage is read first: settling may recreate the branch.
       const stage = !h ? stageResult(variant, journal.entries, scenario.dir, scenario.seededCommit) : null;
       reachable = settleSandbox(scenario.dir, scenario.seededCommit);
@@ -1370,6 +1399,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const cliCostUsd = sumCliCost(cliCosts);
     const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd) };
     if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${h.st.label}1`) : reviewCounts(journal.entries, `${h.st.label}1`);
+    if (authorCommitted !== null) attempt.authorCommitted = authorCommitted;
     if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
@@ -1413,6 +1443,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       session: sessionCosts.length ? { median: median(sessionCosts), min: Math.min(...sessionCosts), max: Math.max(...sessionCosts) } : { median: null, min: null, max: null },
     },
     ...totalOutcomes(attempts),
+    ...(attempts.some((a) => a.status === 'valid' && a.toolCheck) ? nativeCounts(attempts) : {}),
     ...(h?.rounds === 'loop' ? loopAggregate(attempts) : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
