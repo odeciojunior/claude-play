@@ -592,9 +592,8 @@ function loopAggregate(attempts, { seededFix = false } = {}) {
 }
 
 // DEC-737: the report recounted with every capturadoSemMencao as indeterminado (the capture did not come from the reviewer's mention).
-// determinadas = captured + lost (indeterminado is out); `inconclusivo` is true when that moves the count across the 16 of DEC-732
-// (the side of the rule changes, so the result does not decide).
-export function recountWithoutMention(aggregate) {
+// Per arm (internal): outcomes recounted, capturadoSemMencao, and { det, capt } before and after (det = captured + lost).
+function recountArm(aggregate) {
   const outcomes = {};
   let capturadoSemMencao = 0;
   for (const a of aggregate.attempts ?? []) {
@@ -607,10 +606,28 @@ export function recountWithoutMention(aggregate) {
       outcomes[o.id][semMencao ? 'indeterminado' : o.outcome] += 1;
     }
   }
-  const count = (map) => Object.values(map).reduce((n, v) => n + v.capturado + v.perdido, 0);
-  const before = count(aggregate.outcomes ?? {});
-  const after = count(outcomes);
-  return { outcomes, capturadoSemMencao, determinadas: { antes: before, depois: after }, inconclusivo: before >= 16 !== after >= 16 };
+  const tally = (map) => Object.values(map).reduce((t, v) => ({ det: t.det + v.capturado + v.perdido, capt: t.capt + v.capturado }), { det: 0, capt: 0 });
+  return { outcomes, capturadoSemMencao, antes: tally(aggregate.outcomes ?? {}), depois: tally(outcomes) };
+}
+
+// The side of the rule of DEC-732 for the two arms ({ c, r } = { det, capt } of the complete and of the restricted): both at 19+
+// captures is the ceiling and a complete below 10 is the floor (completa stays); otherwise the restricted enters with 16+ determined
+// in both arms and at most 2 captures fewer than the complete.
+const ruleSide = ({ c, r }) => ((c.capt >= 19 && r.capt >= 19) || c.capt < 10 ? 'completa' : c.det >= 16 && r.det >= 16 && r.capt >= c.capt - 2 ? 'restrita' : 'completa');
+
+// Takes the aggregates of BOTH arms (completa, restrita): the rule has two sides, so one arm alone cannot say whether the recount
+// changes it. Run the batches separately and call this in the analysis between arms. inconclusivo is true when the side changes.
+export function recountWithoutMention(completa, restrita) {
+  const c = recountArm(completa);
+  const r = recountArm(restrita);
+  const side = { antes: ruleSide({ c: c.antes, r: r.antes }), depois: ruleSide({ c: c.depois, r: r.depois }) };
+  return {
+    completa: { outcomes: c.outcomes, antes: c.antes, depois: c.depois },
+    restrita: { outcomes: r.outcomes, antes: r.antes, depois: r.depois },
+    capturadoSemMencao: { completa: c.capturadoSemMencao, restrita: r.capturadoSemMencao },
+    side,
+    inconclusivo: side.antes !== side.depois,
+  };
 }
 
 // B4: the reasons that end a batch of attempts: 2 correcao-semeada-ausente, 2 laco-divergente, or more than 2 residues without a parent finding.

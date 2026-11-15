@@ -2849,16 +2849,52 @@ test('B4: aggregate fields', async () => {
   } finally {
     s.done();
   }
-  // DEC-737: the report recounted with capturadoSemMencao as indeterminado, and inconclusivo when the count crosses the 16 determined
-  const attempt = (n, mentioned) => ({ status: 'valid', n, outcomes: [{ id: 'CR1', class: 'code', detectedBy: 'reviewer', outcome: 'capturado' }, { id: 'CG1', class: 'code', detectedBy: 'reviewer', outcome: 'perdido' }], mentionedAfterFix: { CR1: mentioned, CG1: true } });
-  const attempts = [...Array.from({ length: 8 }, (_, i) => attempt(i + 1, true)), attempt(9, false), attempt(10, false)];
-  const outcomes = { CR1: { class: 'code', detectedBy: 'reviewer', capturado: 10, perdido: 0, indeterminado: 0 }, CG1: { class: 'code', detectedBy: 'reviewer', capturado: 0, perdido: 10, indeterminado: 0 } };
-  const rc = recountWithoutMention({ attempts, outcomes });
-  assert.equal(rc.capturadoSemMencao, 2);
-  assert.deepEqual(rc.outcomes.CR1, { class: 'code', detectedBy: 'reviewer', capturado: 8, perdido: 0, indeterminado: 2 });
-  assert.deepEqual(rc.determinadas, { antes: 20, depois: 18 });
-  assert.equal(rc.inconclusivo, false);
-  const rc2 = recountWithoutMention({ attempts: attempts.map((a) => ({ ...a, mentionedAfterFix: { CR1: false, CG1: true } })), outcomes });
-  assert.deepEqual(rc2.determinadas, { antes: 20, depois: 10 });
-  assert.equal(rc2.inconclusivo, true);
+  // DEC-737 / DEC-732: the recount takes the two arms and says inconclusivo when the side of the rule changes
+  const arm = (capt, lost, semMencao) => {
+    const attempts = Array.from({ length: capt + lost }, (_, i) => ({ status: 'valid', n: i + 1, outcomes: [{ id: 'CR1', class: 'code', detectedBy: 'reviewer', outcome: i < capt ? 'capturado' : 'perdido' }], mentionedAfterFix: { CR1: i >= semMencao } }));
+    return { attempts, outcomes: { CR1: { class: 'code', detectedBy: 'reviewer', capturado: capt, perdido: lost, indeterminado: 0 } } };
+  };
+  // (a) determined counts stay fixed (20 each), the restricted captures fall to 3 below the complete: restrita enters before, not after
+  const a = recountWithoutMention(arm(10, 10, 0), arm(8, 12, 1));
+  assert.deepEqual([a.restrita.antes, a.restrita.depois], [{ det: 20, capt: 8 }, { det: 19, capt: 7 }]);
+  assert.deepEqual(a.completa.depois, { det: 20, capt: 10 });
+  assert.deepEqual(a.side, { antes: 'restrita', depois: 'completa' });
+  assert.equal(a.inconclusivo, true);
+  // (b) both at 19 captures is the ceiling (completa); one falling to 18 moves the side
+  const b = recountWithoutMention(arm(19, 1, 1), arm(19, 1, 0));
+  assert.deepEqual(b.side, { antes: 'completa', depois: 'restrita' });
+  assert.equal(b.inconclusivo, true);
+  assert.equal(b.capturadoSemMencao.completa, 1);
+  // (c) a recount that keeps the side
+  const c = recountWithoutMention(arm(10, 10, 0), arm(10, 10, 0));
+  assert.equal(c.inconclusivo, false);
+  assert.equal(recountWithoutMention(arm(12, 8, 1), arm(12, 8, 1)).inconclusivo, false);
+});
+
+test('B4: restrita-nao-ativada: findings that decide whether round 2 restricts', async () => {
+  const P = loadPure();
+  const minor = { severity: 'minor', category: 'defeito', description: 'nit', file: 'x' };
+  const verdict = { verdicts: [{ id: 'F1', open: false }] };
+  // a minor stays out of fixable, so every fixable issue has an id: restricted
+  const one = await stubScript({ restricted: true, reviews: [trv([FOUND('F1'), minor]), trv([], 'a'.repeat(40), verdict)] });
+  assert.deepEqual(one.result.restricted, [false, true]);
+  assert.deepEqual((await loopResult(hTask('restrita'), one.journal, P, one.scenario)).restrictedRounds, [false, true]);
+  // fewer commits than expected adds a synthetic issue without id to fixable: not restricted
+  const two = await stubScript({ restricted: true, reviews: [trv([FOUND('F1')], 'a'.repeat(40), { commitsInRange: 0 }), trv([])] });
+  assert.deepEqual(two.result.restricted, [false, false]);
+  assert.deepEqual((await loopResult(hTask('restrita'), two.journal, P, two.scenario)).restrictedRounds, [false, false]);
+});
+
+test('B4: correcao-semeada-ausente twice in a batch stops the batch', async () => {
+  const s = setup();
+  try {
+    // review 2 names fixSha and fix1 ran, but the correction was never applied on feat/E5
+    const spec = () => ({ apply: false, entries: (f) => [entry('E5:task-review1', trv([F_PARENT])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', trv([], f))], ret: { ok: true, restricted: [false, false] } });
+    const r = await runBatch(corrBatch(s, { runs: 4 }), { exec: makeFake(s.configDir, { afterRun: taskAfterRun(s, spec) }).exec, now: NOW });
+    assert.equal(r.aggregate.attempts.length, 2);
+    assert.deepEqual(r.aggregate.attempts.map((x) => x.reason), ['correcao-semeada-ausente', 'correcao-semeada-ausente']);
+    assert.equal(r.aggregate.stoppedBy, 'correcao-semeada-ausente');
+  } finally {
+    s.done();
+  }
 });
