@@ -40,6 +40,10 @@ export const NATIVE_SEEDS = {
   plan: { file: 'scenario/e5-native/plan.md', sha256: '6d486e526820c082cfe008a63765acbc1377236ff69334285979f7c145c0da30' },
 };
 const NATIVE_PROBE_COMMIT = 'c5658cf';
+// Worktree of the run the native seeds were copied from; rewritten to the sandbox's own feat/E5 worktree when seeding.
+const NATIVE_PROBE_WORKTREE = 'D:/claude-e8q-work/completo/completo-1-wt/E5';
+// The worktree the release SETUP creates for feat/E5 in `dir` (forward slashes).
+export const sandboxWorktree = (dir) => resolve(dir).split(String.fromCharCode(92)).join('/') + '-wt/E5';
 
 const RELEASE = '/productivity-tools:roadmap-release';
 
@@ -133,7 +137,10 @@ export function readNativeSeeds(scenDir = join(SCEN, 'e5-native'), expect = {}) 
 
 // Creates feat/E5 from main with the native spec and, optionally, the native plan at NATIVE_PATHS.
 export function prepareNativeBranch(dir, { withPlan, expect } = {}) {
-  const { spec, plan } = readNativeSeeds(undefined, expect);
+  const seeds = readNativeSeeds(undefined, expect); // sha256 is checked on the copy, before the rewrite
+  const wt = sandboxWorktree(dir);
+  const spec = seeds.spec.replaceAll(NATIVE_PROBE_WORKTREE, wt);
+  const plan = seeds.plan.replaceAll(NATIVE_PROBE_WORKTREE, wt);
   git(dir, 'checkout', '-q', '-b', 'feat/E5', 'main');
   writeIn(dir, NATIVE_PATHS.spec, spec);
   git(dir, 'add', NATIVE_PATHS.spec);
