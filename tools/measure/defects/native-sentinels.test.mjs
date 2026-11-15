@@ -133,5 +133,6 @@ test('legacy manifest entries stay byte for byte and the native ones come last',
   assert.equal(manifest.find((e) => e.id === 'C9').replaces, 'C1');
   const legacy = raw.slice(0, at).replace(/,\s*$/, '');
   assert.equal(createHash('sha256').update(legacy).digest('hex'), LEGACY_SHA256);
-  assert.ok(manifest.slice(-IDS.length).every((e) => e.set === 'e5-native' && e.class === 'code'));
+  // E27 C1 appends the e5-lentes entries after the native ones; the native C entries are the last of the rest.
+  assert.ok(manifest.filter((e) => e.set !== 'e5-lentes').slice(-IDS.length).every((e) => e.set === 'e5-native' && e.class === 'code'));
 });

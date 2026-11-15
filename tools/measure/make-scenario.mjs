@@ -20,6 +20,7 @@ export const VARIANTS = [
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
   'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
   'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
+  'lentes-semeadas-A', 'lentes-semeadas-B',
   'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B',
 ];
 
@@ -53,7 +54,7 @@ const RELEASE = '/productivity-tools:roadmap-release';
 // The release skill's preflight reads permission rules only from settings files (never from CLI
 // --allowedTools), so the "run" variants carry them in an excluded settings.local.json.
 export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)'];
-export const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B', 'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B'];
+export const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B', 'lentes-semeadas-A', 'lentes-semeadas-B', 'correcao-semeada-A', 'correcao-semeada-B', 'codigo-nativo-A', 'codigo-nativo-B'];
 const LOCAL_SETTINGS = '.claude/settings.local.json';
 
 export function excludeFromGit(dir, name) {
@@ -227,6 +228,9 @@ const SEEDED = {
   'plano-semeado-codigo': { class: 'plan', artifact: 'C', set: 'e5' },
   'codigo-semeado-A': { class: 'code', artifact: 'A', set: 'e5' },
   'codigo-semeado-B': { class: 'code', artifact: 'B', set: 'e5' },
+  // E27 C1: two spec seeds and two quality seeds in the three files of Task 3 (set e5-lentes, sentinels/lentes.mjs).
+  'lentes-semeadas-A': { class: 'code', artifact: 'A', set: 'e5-lentes' },
+  'lentes-semeadas-B': { class: 'code', artifact: 'B', set: 'e5-lentes' },
   'spec-semeado-A': { class: 'spec', artifact: 'A', set: 'e5' },
   'spec-semeado-B': { class: 'spec', artifact: 'B', set: 'e5' },
   'spec-nativo-A': { class: 'spec', artifact: 'A', set: 'e5-native' },
@@ -346,6 +350,41 @@ async function seedVariant(dir, variant, fromRun, fixOpts) {
   return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs, ...fix };
 }
 
+// E27 C1: the checks of lentes-semeadas-*, run after seeding (feat/E5 is at seededCommit): the sandbox suite passes there, every seed
+// is present at seededCommit and absent from the clean T3 (a commit object no ref points to, like the clean one of makeFixCommit).
+// Leaves the tree on main. suite and presentFn are test seams (default: runSandboxSuite and the sentinel's present).
+async function checkLentesSeeds(dir, variant, seededCommit, { suite = runSandboxSuite, presentFn } = {}) {
+  const entries = manifestEntries(variant);
+  const ids = entries.map((e) => e.id);
+  const mods = {};
+  for (const e of entries) mods[e.id] = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
+  const isPresent = presentFn ?? ((mod, d, ref, id) => mod.present(d, ref, id));
+  const author = ['-c', 'user.name=measure', '-c', 'user.email=measure@example.invalid'];
+  git(dir, 'checkout', '-q', 'feat/E5');
+  try {
+    const r = suite(dir);
+    if (!r.ok) throw new Error(`lentes-semeadas: a suite acusa as sementes (seededCommit ${seededCommit}; ${ids.join(', ')}): ${String(r.output ?? '').slice(-600)}`);
+    for (const e of entries) {
+      if (isPresent(mods[e.id], dir, seededCommit, e.id) !== true) throw new Error(`lentes-semeadas: ${e.id} ausente em seededCommit ${seededCommit}`);
+    }
+    // the clean T3: the files of Task 3 as the plan writes them, without a ref
+    for (const k of [1, 2, 3]) copyTree(join(SCEN, 'e5', 'code', `t${k}`), dir);
+    git(dir, 'add', '-A');
+    const cleanTree = git(dir, 'write-tree');
+    const cleanSha = git(dir, ...author, 'commit-tree', cleanTree, '-p', seededCommit, '-m', 'E5 T3: clean tasks');
+    git(dir, 'reset', '-q', '--hard', seededCommit);
+    for (const e of entries) {
+      if (isPresent(mods[e.id], dir, cleanSha, e.id) !== false) throw new Error(`lentes-semeadas: ${e.id} indistinguivel entre seededCommit ${seededCommit} e o codigo limpo`);
+    }
+  } finally {
+    git(dir, 'checkout', '-q', '-f', 'feat/E5');
+    git(dir, 'reset', '-q', '--hard', seededCommit);
+    git(dir, 'checkout', '-q', 'main');
+    git(dir, 'reflog', 'expire', '--expire=now', '--all');
+    git(dir, 'prune', '--expire=now');
+  }
+}
+
 // Runs the whole sandbox suite (it binds a shared local port); retries up to 3 times while the output says EADDRINUSE.
 export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
   const env = { ...process.env };
@@ -390,6 +429,12 @@ export async function makeScenario(dir, variant, { fromRun, suite, presentFn, co
     case 'codigo-semeado-A':
     case 'codigo-semeado-B':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      scenario.prompts = [`${RELEASE} run E5`];
+      break;
+    case 'lentes-semeadas-A':
+    case 'lentes-semeadas-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      await checkLentesSeeds(sandbox, variant, scenario.seededCommit, { suite, presentFn });
       scenario.prompts = [`${RELEASE} run E5`];
       break;
     case 'codigo-nativo-A':
