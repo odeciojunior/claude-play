@@ -1198,6 +1198,48 @@ test('E11: codigo-nativo-A/B are in RELEASE_RUN_VARIANTS and use NATIVE_PATHS', 
   }
 });
 
+// E11 T-G (DEC-747): the coordinator variant has a plan/1 fixture and keeps the legacy one byte for byte.
+const FIXED_PLAN_PATH = 'docs/plans/2026-11-10-fixed-plan.md';
+const COORD_NATIVE = join(here, 'scenario', 'coordinator-plan-native.md');
+const COORD_LEGACY = join(here, 'scenario', 'coordinator-plan.md');
+const stepTitles = (text) => [...text.matchAll(/^### (?:Step|Tarefa) \d+: (.+?)\s*$/gm)].map((m) => m[1]);
+
+test('coordinator-plan.md is unchanged', () => {
+  assert.equal(execFileSync('git', ['hash-object', '--no-filters', COORD_LEGACY], { encoding: 'utf8' }).trim(), '7559c658787ba78c188cabfb4aeda51339f21a1e');
+});
+
+test('coordinator-plan-native.md passes plan-tool check', () => {
+  const r = spawnSync(process.execPath, [join(here, '..', '..', 'plugins', 'productivity-tools', 'scripts', 'plan-tool.mjs'), 'check', COORD_NATIVE], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('native fixture has the same 3 steps', () => {
+  assert.deepEqual(stepTitles(readText(COORD_NATIVE)), ['sum', 'mean', 'median']);
+  assert.deepEqual(stepTitles(readText(COORD_NATIVE)), stepTitles(readText(COORD_LEGACY)));
+});
+
+test('makeScenario coordinator writes the fixture chosen by coordinatorFixture (native by default)', async () => {
+  for (const [opts, file, name] of [[{ coordinatorFixture: 'native' }, COORD_NATIVE, 'native'], [{}, COORD_NATIVE, 'native'], [{ coordinatorFixture: 'legacy' }, COORD_LEGACY, 'legacy']]) {
+    const t = tmp('sb');
+    try {
+      const s = await makeScenario(t.dir, 'coordinator', opts);
+      assert.equal(s.fixture, name);
+      assert.equal(readText(join(t.dir, FIXED_PLAN_PATH)), readText(file));
+      assert.deepEqual(s.prompts, ['/productivity-tools:plan-coordinator ' + FIXED_PLAN_PATH]);
+      assert.equal(git(t.dir, 'status', '--porcelain'), '');
+      if (name === 'native') {
+        const r = spawnSync(process.execPath, [PLAN_TOOL, 'check', join(t.dir, FIXED_PLAN_PATH)], { encoding: 'utf8' });
+        assert.equal(r.status, 0, 'the committed native plan resolves its spec: ' + r.stdout + r.stderr);
+      } else {
+        assert.ok(!existsSync(join(t.dir, 'docs/plans/coordinator-spec-native.md')));
+      }
+    } finally {
+      t.done();
+    }
+  }
+  await assert.rejects(() => makeScenario(tmp('sb').dir, 'coordinator', { coordinatorFixture: 'other' }), /coordinatorFixture/);
+});
+
 test('B1: CR, CG seeds are anchored on the files the spec names', async () => {
   const mod = await fixSentinel();
   const FILES = { CR1: 'tests/e5-word-count.test.mjs', CG1: 'src/index.mjs', CR3: 'src/truncate.mjs', CG2: 'src/word-count.mjs' };

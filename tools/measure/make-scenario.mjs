@@ -64,6 +64,7 @@ export function excludeFromGit(dir, name) {
   if (!old.split(/\r?\n/).includes(name)) writeFileSync(file, old + (old === '' || old.endsWith('\n') ? '' : '\n') + name + '\n');
 }
 const FIXED_PLAN = 'docs/plans/2026-11-10-fixed-plan.md';
+const COORDINATOR_SPEC = 'docs/plans/coordinator-spec-native.md';
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -359,8 +360,10 @@ export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
 }
 
 // suite and presentFn are test seams of the correcao-semeada checks (default: runSandboxSuite and the sentinel's present).
-export async function makeScenario(dir, variant, { fromRun, suite, presentFn } = {}) {
+// coordinatorFixture ('native' by default, or 'legacy') picks the plan the coordinator variant runs (DEC-747).
+export async function makeScenario(dir, variant, { fromRun, suite, presentFn, coordinatorFixture = 'native' } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
+  if (!['native', 'legacy'].includes(coordinatorFixture)) throw new Error(`coordinatorFixture must be native or legacy: ${coordinatorFixture}`);
   if (/semeado|nativo/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
   const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, fixSha: null, fixEntries: [], paths: { ...E5_PATHS } };
@@ -410,8 +413,16 @@ export async function makeScenario(dir, variant, { fromRun, suite, presentFn } =
       scenario.stopResume = STOP_RESUME;
       break;
     case 'coordinator':
-      writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan.md')));
-      git(sandbox, 'add', FIXED_PLAN);
+      scenario.fixture = coordinatorFixture;
+      if (coordinatorFixture === 'native') {
+        // The plan/1 block points to a spec that sits beside the plan (plan-tool and progress.mjs resolve it from there).
+        writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan-native.md')));
+        writeIn(sandbox, COORDINATOR_SPEC, readText(join(SCEN, 'coordinator-spec-native.md')));
+        git(sandbox, 'add', FIXED_PLAN, COORDINATOR_SPEC);
+      } else {
+        writeIn(sandbox, FIXED_PLAN, readText(join(SCEN, 'coordinator-plan.md')));
+        git(sandbox, 'add', FIXED_PLAN);
+      }
       git(sandbox, 'commit', '-q', '-m', 'docs(plan): fixed plan');
       scenario.prompts = [`/productivity-tools:plan-coordinator ${FIXED_PLAN}`];
       break;
