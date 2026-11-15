@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E27 | Passada B em cc0cb15 (US$ 32,28 de 60): peça 3 em teto, fica a revisão completa; peça 4 sem adversarial nem onda única; produto não muda (DEC-752, DEC-753, DEC-754, DEC-755). E27 aberto só pela peça 2 (passada C após E28). | `docs/reports/2026-11-15-E27-passada-B.md` |
+| 2026-11-15 | E27 | DEC-752 a DEC-755 (E27 passada B) decididas pelo dono via Fable; vigentes. | `decisions.md` |
 | 2026-11-15 | E11, E20 | DEC-744 a DEC-750 (preparo de E11) decididas pelo dono via Fable; vigentes. | `decisions.md` |
 | 2026-11-15 | E8 | DEC-719 ratificada pelo dono | `decisions.md` |
 | 2026-11-15 | E8 | Ratificação de E8 por delegação (Fable): DEC-711 (releitura assinada) e DEC-714 (grupo idempotente por nonce) sem emenda. | `decisions.md` |
