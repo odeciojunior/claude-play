@@ -28,6 +28,8 @@ claude plugin update <plugin>@claude-play
 | [mcp-sql-server](plugins/mcp-sql-server/) | Automated MCP SQL Server setup — connects Claude Code to SQL Server databases | developer-tools | 1.3.0 |
 | [marketplace-tools](plugins/marketplace-tools/) | Maintainer tools: scaffold new plugins and validate plugin quality | developer-tools | 1.3.0 |
 
+Upgrading to productivity-tools 2.0.0 (breaking format changes)? Read the [upgrade note](docs/releases/2026-11-15-productivity-tools-2.0.0.md) (in Portuguese).
+
 ## Contributing
 
 We welcome plugin contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.

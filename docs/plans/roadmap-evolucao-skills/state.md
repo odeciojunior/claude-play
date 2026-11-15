@@ -7,7 +7,8 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 ## Agora
 
 <!-- roadmap:now -->
-1. E11: peças 3 e 4 (conferência do estado JSON na 1.7.0, nota de atualização, G1-G5, branch de volta, roteiro do dono); publicação é ato do dono. Executa: executor.
+1. E11: publicação da 2.0.0 pelo dono, pelo roteiro em docs/reports/2026-11-15-E11-roteiro-publicacao.md. Executa: dono.
+2. E28: spec, plano e branch própria; integra na release só depois da publicação da 2.0.0 (vai na 2.0.1 com as pendências 2.0.1). Executa: executor.
 <!-- /roadmap:now -->
 
 ## Painel
@@ -25,7 +26,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E8 | card: na-branch; sonda: na-branch | `docs/superpowers/specs/2026-11-12-E8-release-spec-plano-nativos-paradas-design.md`, `docs/superpowers/plans/2026-11-12-E8-release-spec-plano-nativos-paradas.md`, `37234367718719ba7e155d07efee76356e734627`, `docs/reports/2026-11-14-E8-sonda-acceptEdits-2.md` | E8: seguir o fluxo do release após na-branch |
 | E9 | na-branch | `docs/plans/evolucao-skills-E9/spec.md`, `docs/plans/evolucao-skills-E9/plan.md`, `2d1c5e1ed83190e968ead9977c6f428779721e2b` | E9: seguir o fluxo do release após na-branch |
 | E10 | na-branch | `docs/plans/evolucao-skills-E10/spec.md`, `docs/plans/evolucao-skills-E10/plan.md`, `c1d6647796f8f49c788eeae07d11600ed03c76e0` | E10: seguir o fluxo do release após na-branch |
-| E11 | executando | `docs/reports/2026-11-15-E11-lote.md` | Peças 2 a 4: ratificação, G1-G5 na ponta, nota de atualização em docs/releases/, conferência do estado JSON na 1.7.0, branch de volta, tag; publicação é ato do dono. Antes: E26 peça 3 (piso, DEC-741). |
+| E11 | executando | `docs/reports/2026-11-15-E11-lote.md`, `docs/reports/2026-11-15-E11-roteiro-publicacao.md` | Publicação pelo dono (roteiro: tag 1.7.0, main por ff, push, update); depois publicado no tracker. E28 só integra na release após a publicação (DEC-764 contexto, card E11). |
 | E12 | na-branch | `55b2b842c15ad1b144de7fe603520cefd5c4c86f` | E12: seguir o fluxo do release após na-branch |
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |

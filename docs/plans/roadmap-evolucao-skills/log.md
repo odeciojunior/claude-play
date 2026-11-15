@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11 | Peças 3 e 4 preparadas: nota de atualização em docs/releases/ (link no README), critério 6 conferido (US$ 1,05), branch de volta volta/productivity-tools-2.0.1 (7082c60) com G1-G5 verdes (DEC-765), roteiro de publicação do dono. E11 total US$ 114,09. | `docs/reports/2026-11-15-E11-roteiro-publicacao.md` |
+| 2026-11-15 | E11 | DEC-765 (branch de volta 2.0.1) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E11 | Peça 2 (ratificação): pending-decisions sem decisões pendentes ({"decisions":[]}). E26 concluído (DEC-764). | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` |
 | 2026-11-15 | E26 | DEC-764 (fechamento de E26) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E26 | Peça 3: braço opus (3 válidas de completo do lote E11) no piso, 0 correções por tarefa e 0 falhas de gate; sonnet com 0 execuções, autor do plano fica opus (DEC-741). | `docs/reports/2026-11-15-E26-peca3-autor-do-plano.md` |
