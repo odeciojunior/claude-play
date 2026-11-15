@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E13 | Peças 1 e 2: independência provada por teste sobre o plugin inteiro e completo sem superpowers; medição final US$ 10,03; critério 2 assinado com exceção nomeada (DEC-778); metas 6 de 7, E10 aceita. | `docs/reports/2026-11-15-E13-medicao-final.md` |
+| 2026-11-15 | E13 | DEC-778 (fechamento da medição de E13) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E13 | Análise de E13 (opus, grátis): independência parcial no teste (1 ocorrência em operator.md:48), plano fixo no formato novo já em E11, 0 decisões pendentes, metas atingidas salvo E10. DEC-776, DEC-777. | `docs/plans/roadmap-evolucao-skills/decisions.md` |
 | 2026-11-15 | E13 | DEC-777 (E13) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E13 | DEC-776 (E13) decidida pelo dono via Fable; vigente. | `decisions.md` |

@@ -73,6 +73,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) 2.0.1: portões vazios, fullRef e worktree do implementador prontos em fix/2.0.1-pendencias (e2e6060, sobre feat/E28); integrar com E28 depois da publicação da 2.0.0, decidir a versão e o bump.
 - (executor) 2.0.1 (arnês, lote E11): gate-vazio aceitar "N tests, N pass, N fail"; teto de bytes do plan-only (DEC-763). Correção de tools/measure, fora da branch do produto.
 - (executor) E13: gatilho de DEC-773 disparou no lote de E16 (laço quality sem correção por tarefa nas 3 tentativas de completo): medir o laço quality depois da versão final.
+- (executor) Entregável pós-2.2.0 (DEC-773, DEC-777, DEC-778): remover taskReview.single, medir revisor sonnet contra opus nas sementes de C, decidir o laço quality e apurar nas transcrições pagas a correção de parada-retomada.
 <!-- /roadmap:pending -->
 
 ## Em andamento
