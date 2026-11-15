@@ -5016,3 +5016,26 @@ test('releitura: readBack compares its command with CMD_CAP before the first dis
   assert.ok(!labels.some((l) => /-read/.test(l)), 'nothing is read when the commands are over the cap');
   assert.ok(r.results[0].error || r.results[0].concerns.length, 'and the run says so');
 });
+
+// ---- E28 T2: taskReview.single on the task-reviewer agent ----
+test('E28 AC1: taskReview.single runs one review call per round on the task-reviewer agent', async () => {
+  const pass = { issues: [], spec: 'pass', quality: 'pass', headSha: 'a1', clean: true, commitsInRange: 3 };
+  const singleRun = (config, review) => exec({ cards: [card('E1')], deliverables: ['E1'], config, over: withPlan([tk(1, false)], (l) => (/^E1:t1:review\d$/.test(l) ? review(l) : l === 'E1:t1:review-fix1' ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
+  const ours = (x) => x.calls.filter((c) => /^E1:t1:(spec|quality|review)\d$/.test(c.label));
+  const dflt = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withPlan([tk(1, false)]) });
+  const one = await singleRun({ taskReview: { single: true } }, () => pass);
+  assert.deepEqual(ours(one).map((c) => c.label), ['E1:t1:review1']);
+  const call = ours(one)[0];
+  assert.equal(call.opts.agentType, 'productivity-tools:task-reviewer');
+  assert.equal(call.opts.model, dflt.calls.find((c) => c.label === 'E1:t1:spec1').opts.model);
+  assert.match(call.prompt, /Mode: review\./);
+  let n = 0;
+  const miss = await singleRun({ taskReview: { single: true } }, () => (n++ === 0 ? { ...pass, quality: undefined } : pass));
+  assert.ok(miss.labels.includes('E1:t1:review-fix1'));
+  assert.ok(miss.labels.includes('E1:t1:review2'));
+  const fix = miss.calls.find((c) => c.label === 'E1:t1:review-fix1').prompt;
+  assert.match(fix, /single review/);
+  assert.match(fix, /fix the review problems/);
+  const text = await singleRun({ taskReview: { single: 'true' } }, () => pass);
+  assert.deepEqual(ours(text).map((c) => c.label), ['E1:t1:spec1', 'E1:t1:quality1']);
+});
