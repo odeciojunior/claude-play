@@ -6,7 +6,7 @@ import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { redactPaths, runBatch, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, parseCli, pendingE5, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
 import { E5_PATHS, NATIVE_PATHS, seedSourceOf, makeScenario } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -3367,4 +3367,109 @@ test('gate: verifyStats counts refutedRound1', () => {
   // the retry 1b counts as round 1
   const b = [entry('E5:final-review1b', trv([F_PARENT])), entry('E5:final-verify1b', refuteAll(1))];
   assert.equal(verifyStats(b, ['CR1'], P).refutedRound1, 1);
+});
+
+// ---- E11 preparo: --ratify between|off, parou-por-decisao, --coordinator-fixture
+const CLI_BASE = ['--variant', 'completo', '--runs', '1', '--work', 'w', '--out', 'o', '--config-dir', 'c', '--permission-mode', 'acceptEdits'];
+
+test('E11 parseCli accepts --ratify between|off, default between', () => {
+  assert.equal(parseCli(CLI_BASE).ratify, 'between');
+  assert.equal(parseCli([...CLI_BASE, '--ratify', 'off']).ratify, 'off');
+  assert.equal(parseCli([...CLI_BASE, '--ratify', 'between']).ratify, 'between');
+  assert.throws(() => parseCli([...CLI_BASE, '--ratify', 'x']), UsageError);
+});
+
+test('E11 parseCli accepts --coordinator-fixture native|legacy and runBatch hands it to makeScenario', async () => {
+  assert.equal(parseCli(CLI_BASE).coordinatorFixture, 'native');
+  assert.equal(parseCli([...CLI_BASE, '--coordinator-fixture', 'legacy']).coordinatorFixture, 'legacy');
+  assert.throws(() => parseCli([...CLI_BASE, '--coordinator-fixture', 'x']), UsageError);
+  const s = setup();
+  try {
+    const seen = [];
+    const scenarioFn = (dir, variant, o) => {
+      seen.push(o);
+      return makeScenario(dir, variant, o);
+    };
+    const fake = makeFake(s.configDir);
+    await runBatch(baseOpts(s, { variant: 'completo', runs: 1, coordinatorFixture: 'legacy' }), { exec: fake.exec, now: NOW, scenarioFn });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].coordinatorFixture, 'legacy');
+  } finally {
+    s.done();
+  }
+});
+
+test('E11 with --ratify off the ratify function is not called between sessions and pendingAtResume is recorded', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    let ratifyCalls = 0;
+    const ratify = () => {
+      ratifyCalls++;
+      return { ok: true, ratified: [] };
+    };
+    const pendingCalls = [];
+    const pending = (sandbox, installPath) => {
+      pendingCalls.push(installPath);
+      return pendingCalls.length === 1 ? ['DEC-7'] : [];
+    };
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1, ratify: 'off' }), { exec: fake.exec, now: NOW, ratify, pending });
+    assert.equal(ratifyCalls, 0);
+    const a = r.aggregate.attempts[0];
+    assert.equal(a.status, 'valid');
+    assert.equal(a.ratify, 'off');
+    assert.deepEqual(a.ratified, []);
+    assert.deepEqual(a.pendingAtResume, ['DEC-7']);
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 2);
+  } finally {
+    s.done();
+  }
+});
+
+test('E11 a resume that stops for a pending decision is parou-por-decisao and ends the variant', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    const pending = () => ['DEC-7'];
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 3, pollMs: 1, ratify: 'off' }), { exec: fake.exec, now: NOW, ratify: () => assert.fail('ratify must not run'), pending });
+    assert.equal(r.aggregate.attempts.length, 1);
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'parou-por-decisao');
+    assert.equal(r.aggregate.stoppedBy, 'parou-por-decisao');
+    assert.deepEqual(r.aggregate.invalidReasons, { 'parou-por-decisao': 1 });
+  } finally {
+    s.done();
+  }
+});
+
+test('E11 with between (default) behavior is unchanged: ratify runs, no pending read, no stop', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { stopResume: true });
+    let ratifyCalls = 0;
+    const ratify = () => {
+      ratifyCalls++;
+      return { ok: true, ratified: ['DEC-1'] };
+    };
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1 }), { exec: fake.exec, now: NOW, ratify, pending: () => assert.fail('pending must not run') });
+    assert.equal(ratifyCalls, 1);
+    assert.equal(r.aggregate.valid, 1);
+    assert.equal(r.aggregate.stoppedBy, undefined);
+    assert.equal(r.aggregate.attempts[0].ratify, undefined);
+    assert.deepEqual(r.aggregate.attempts[0].ratified, ['DEC-1']);
+  } finally {
+    s.done();
+  }
+});
+
+test('E11 pendingE5 lists the pending E5 contract decisions through the tracker CLI', () => {
+  const s = setup();
+  try {
+    const { sandbox } = ratifySandbox(s);
+    const t = fakeTracker([dec('DEC-501', 'E5', 'contract'), dec('DEC-502', 'E5', 'executor'), dec('DEC-503', 'E6', 'contract')]);
+    assert.deepEqual(pendingE5(sandbox, '/inst', { exec: t.exec }), ['DEC-501']);
+    assert.equal(pendingE5(sandbox, '/inst', { exec: () => ({ status: 2, stdout: '' }) }), null);
+  } finally {
+    s.done();
+  }
 });

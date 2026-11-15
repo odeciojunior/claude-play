@@ -1385,6 +1385,49 @@ function releaseWorktreeOf(sandbox) {
   return null;
 }
 
+// Pending E5 contract decisions (ids) read with the tracker CLI through `run(args)`; throws on a CLI failure or a malformed answer.
+function pendingIn(run, folder) {
+  let json;
+  try {
+    json = JSON.parse(run(['pending-decisions', folder, '--json']).stdout ?? '');
+  } catch (e) {
+    throw new Error(e instanceof SyntaxError ? 'pending-decisions printed no JSON' : e.message);
+  }
+  const list = json.result?.decisions ?? json.decisions;
+  if (!Array.isArray(list)) throw new Error('pending-decisions has no decisions list');
+  return list.filter((d) => d.scope === 'contract' && /\bE5\b/.test(String(d.deliverable ?? ''))).map((d) => d.id);
+}
+
+// Read-only variant of the same query for a sandbox: the ids of the pending E5 contract decisions, or null when it cannot be read.
+// Uses the worktree that holds release/sandbox, or a temporary one. Never throws.
+export function pendingE5(sandbox, installPath, { exec = spawnSync } = {}) {
+  let tmp = null;
+  try {
+    if (!gitOk(sandbox, 'rev-parse', '--verify', '-q', 'refs/heads/release/sandbox')) return null;
+    let cwd = releaseWorktreeOf(sandbox);
+    if (cwd === null) {
+      tmp = mkdtempSync(join(tmpdir(), 'pending-'));
+      cwd = join(tmp, 'wt');
+      gitOut(sandbox, 'worktree', 'add', '-q', '--detach', cwd, 'refs/heads/release/sandbox');
+    }
+    const script = join(installPath, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs');
+    const run = (args) => {
+      const r = exec(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+      if (!r || r.status !== 0) throw new Error(`roadmap.mjs ${args[0]} exited ${r?.status ?? 'without status'}`);
+      return r;
+    };
+    return pendingIn(run, 'docs/plans/roadmap-sandbox');
+  } catch (e) {
+    console.error(`pending E5: ${redactPaths(String(e?.message ?? e))}`);
+    return null;
+  } finally {
+    if (tmp) {
+      try { gitOut(sandbox, 'worktree', 'remove', '--force', join(tmp, 'wt')); } catch { /* never created */ }
+      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
+  }
+}
+
 // D2 (E17): between the stop and the resume of parada-retomada, ratifies the pending E5 decisions of contract scope with the
 // measured plugin's own tracker CLI (same install path and roadmap folder as readPanel), in the release/sandbox worktree, and
 // commits there. No model call. Never throws: { ok: true, ratified: [DEC...] } or { ok: false, reason }.
@@ -1406,21 +1449,10 @@ export function ratifyE5Contract(sandbox, installPath, { exec = spawnSync } = {}
       if (!r || r.status !== 0) throw new Error(`roadmap.mjs ${args[0]} exited ${r?.status ?? 'without status'}`);
       return r;
     };
-    const pendingE5 = () => {
-      let json;
-      try {
-        json = JSON.parse(run(['pending-decisions', folder, '--json']).stdout ?? '');
-      } catch (e) {
-        throw new Error(e instanceof SyntaxError ? 'pending-decisions printed no JSON' : e.message);
-      }
-      const list = json.result?.decisions ?? json.decisions;
-      if (!Array.isArray(list)) throw new Error('pending-decisions has no decisions list');
-      return list.filter((d) => d.scope === 'contract' && /\bE5\b/.test(String(d.deliverable ?? ''))).map((d) => d.id);
-    };
-    const ids = pendingE5();
+    const ids = pendingIn(run, folder);
     if (ids.length === 0) return { ok: true, ratified: [] };
     run(['ratify', folder, ...ids, '--json']);
-    if (pendingE5().length > 0) return { ok: false, reason: 'decisao-pendente-apos-ratificar' };
+    if (pendingIn(run, folder).length > 0) return { ok: false, reason: 'decisao-pendente-apos-ratificar' };
     gitOut(cwd, 'add', '-A', '--', folder);
     gitOut(cwd, '-c', 'user.name=measure', '-c', 'user.email=measure@example.invalid', 'commit', '-q', '-m', `chore(sandbox): ratify E5 contract decisions ${ids.join(' ')}`);
     return { ok: true, ratified: ids };
@@ -1693,7 +1725,7 @@ function blockingHumanInputs(scenario, ref) {
   }
 }
 
-export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract } = {}) {
+export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract, pending = pendingE5, scenarioFn = makeScenario } = {}) {
   const { variant, runs } = opts;
   const seeded = /semead[oa]|nativo/.test(variant);
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
@@ -1752,7 +1784,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   for (let k = 1; k <= runs; k++) {
     stoppedBy = fixLoop ? batchStopReason(attempts) : null;
     if (stoppedBy) break;
-    const scenario = await makeScenario(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun });
+    const scenario = await scenarioFn(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun, coordinatorFixture: opts.coordinatorFixture });
     const sessions = [];
     const cliCosts = [];
     let denied = false;
@@ -1761,7 +1793,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
     let ratified = null;
     let resumeFrom = 1;
-    const extra = () => (ratified ? { ratified } : {});
+    let pendingAtResume = null;
+    const ratifyOff = opts.ratify === 'off' && stop !== null && !h;
+    const extra = () => (ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume ? { pendingAtResume } : {}) } : ratified ? { ratified } : {});
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -1784,13 +1818,18 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     for (let i = 0; i < scenario.prompts.length; i++) {
       if (stop !== null && i === 1 && !h) {
         // D2 (E17): the stopped run left executor decisions of E5 pending; the owner's ratification happens here, with no model call.
-        const rat = ratify(scenario.dir, plugin.installPath);
-        if (!rat.ok) {
-          failed = true;
-          failReason = rat.reason;
-          break;
+        if (ratifyOff) {
+          // --ratify off: the owner's ratification is not simulated; the resume must stop for the pending decisions (or not).
+          pendingAtResume = pending(scenario.dir, plugin.installPath) ?? [];
+        } else {
+          const rat = ratify(scenario.dir, plugin.installPath);
+          if (!rat.ok) {
+            failed = true;
+            failReason = rat.reason;
+            break;
+          }
+          ratified = rat.ratified ?? [];
         }
-        ratified = rat.ratified ?? [];
         resumeFrom = sessions.length; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
       }
       const args = promptArgs(scenario.prompts[i], launchOpts);
@@ -1934,6 +1973,12 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
           attempts.push({ n: k, ...extra(), status: 'invalid', reason: rrv.reason });
           continue;
         }
+        // A valid resume that did not integrate E5 and left E5 decisions pending stopped for a decision (only meaningful with --ratify off).
+        if (ratifyOff && !e5Integrated(scenario.dir) && (pending(scenario.dir, plugin.installPath) ?? []).length > 0) {
+          attempts.push({ n: k, ...extra(), status: 'invalid', reason: 'parou-por-decisao' });
+          stoppedBy = 'parou-por-decisao';
+          break;
+        }
       }
     }
     validRuns.push(run);
@@ -2012,15 +2057,16 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
 
-function parseCli(argv) {
+export function parseCli(argv) {
   const o = { allow: [], addDir: [] };
   const names = {
     '--variant': 'variant', '--runs': 'runs', '--work': 'work', '--out': 'out', '--config-dir': 'configDir',
     '--permission-mode': 'permissionMode', '--allow': 'allow', '--add-dir': 'addDir', '--model': 'model',
     '--max-budget-usd': 'maxBudgetUsd', '--stage': 'stage', '--arm': 'arm', '--arms-dir': 'armsDir', '--from-run': 'fromRun',
     '--review-model': 'reviewModel', '--plugin-dir': 'pluginDir', '--rounds': 'rounds',
+    '--ratify': 'ratify', '--coordinator-fixture': 'coordinatorFixture',
   };
   for (let i = 0; i < argv.length; i += 2) {
     if (argv[i] === '--stop-on-denial') {
@@ -2035,6 +2081,10 @@ function parseCli(argv) {
   }
   const runs = Number(o.runs);
   if (!o.variant || !o.work || !o.out || !o.configDir || !o.permissionMode || !Number.isInteger(runs) || runs < 1) return null;
+  o.ratify ??= 'between';
+  o.coordinatorFixture ??= 'native';
+  if (o.ratify !== 'between' && o.ratify !== 'off') throw new UsageError(`--ratify must be between or off (got "${o.ratify}")`);
+  if (o.coordinatorFixture !== 'native' && o.coordinatorFixture !== 'legacy') throw new UsageError(`--coordinator-fixture must be native or legacy (got "${o.coordinatorFixture}")`);
   return { ...o, runs };
 }
 
@@ -2046,7 +2096,14 @@ function insideRepo(target) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const o = parseCli(process.argv.slice(2));
+  let o;
+  try {
+    o = parseCli(process.argv.slice(2));
+  } catch (e) {
+    if (!(e instanceof UsageError)) throw e;
+    console.error(e.message);
+    process.exit(2);
+  }
   if (!o) {
     console.error(USAGE);
     process.exit(2);
