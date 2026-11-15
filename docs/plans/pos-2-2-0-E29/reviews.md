@@ -117,3 +117,20 @@ Nenhuma (what, blq, workaround, blocking: não se aplica).
 - Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md), registro da falha (execução falhou). Texto completo:
 
   checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
+
+- Origem: block-open --what (fonte: docs/plans/pos-2-2-0-E29/reviews.md), registro do bloqueio (blocked-record). Texto completo:
+
+  E29 bloqueado: automatic execution stopped (conteudo): branch gates did not pass: gates not green (G1): G1: exit 0, total 2172, skipped 2, failing [] (baseline: exit 0, total 2175, skipped 2, failing []) | G2: exit 0 (baseline: exit 0) | G3: exit 0 (baseline: exit 0) | G4: exit 0 (baseline: exit 0) | G5: exit 0 (baseline: exit 0); branch feat/E29 kept at D:/projects/claude-play-wt/E29
+
+## Registro do bloqueio (blocked-record)
+
+Execução registrada como bloqueada: a execução automática parou (conteudo) porque os gates da branch não passaram (G1 não verde pela comparação do total de testes, 2172 contra a linha de base 2175, sem falhas). A branch feat/E29 foi mantida em D:/projects/claude-play-wt/E29.
+
+Revisões desta execução (dados iguais aos registrados acima): spec (opus, rodadas 1 e 2; correção da rodada 2 em tier opus), plan (opus, rodada 1), T1 a T5 spec e quality (sonnet, rodada 1 cada), final (opus, rodada 1), gates-fix1 e gates-fix2 (opus, rodada 1, correção anterior em tier sonnet). Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum. Riscos aceitos: nenhum. Entradas humanas: nenhuma.
+
+Gates (registro do bloqueio):
+- G1: exit 0, total 2172, skipped 2, failing [] (linha de base: exit 0, total 2175, skipped 2, failing []).
+- G2: exit 0 (linha de base: exit 0).
+- G3: exit 0 (linha de base: exit 0).
+- G4: exit 0 (linha de base: exit 0).
+- G5: exit 0 (linha de base: exit 0).
