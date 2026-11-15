@@ -24,7 +24,7 @@ Regras de leitura: `obsoleta` leva prova (hash, DEC do log anterior, ou arquivo 
 | S2-10 | (executor) Antes de outro lote com correcao-semeada: parentMention no CR do manifest (CR3 com o texto de C5), lido por mentio… | pendente | Dono E30, destino E30 (R5). `parentMention` não existe em `tools/measure` (busca sem resultado); é do arnês usado nos lotes. |
 | S2-11 | (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do … | corrigida | `1f5df47`; teste `E32: a review-owed step resumed without its report tells the reviewer it was resumed` (`plan-coordinator/workflow/flow.test.mjs`). |
 | S2-12 | (executor) E28: auditoria das cópias por modelo (DEC-715) e notas de revisão (2bb59c6, 7ee7f23, reviews.md do 2º plan-only);… | pendente | Dono executor, destino roadmap futuro. Auditoria e notas de revisão sobre `roadmap-release.js` (arquivo de E29, no teto de DEC-647). |
-| S2-13 | (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-… | corrigida | `7f0323d` (modo `procs`, testes `E32 procs: ...` em `verify-run.test.mjs`) e `e0def99` (teste `E32: the cleanup prompt ends processes through verify-run procs` em `cleanup.test.mjs`). A parte da limpeza que lista processos por PowerShell, tasklist e netstat passa a rodar por Node; a spec fecha a nota por essa peça. |
+| S2-13 | (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-… | pendente | Dono executor, destino roadmap futuro (R9). A nota tem quatro partes. A parte 4 (limpeza que lista processos por PowerShell, tasklist e netstat) está corrigida em `7f0323d` (modo `procs`, testes `E32 procs: ...` em `verify-run.test.mjs`) e `e0def99` (teste `E32: the cleanup prompt ends processes through verify-run procs` em `cleanup.test.mjs`). Seguem sem commit e sem prova: (1) prompts que acrescentam "; echo exit=$?" (spec-commit, progress), (2) Grep na pasta de scripts do plugin (spec, plan), (3) `sed -i`. |
 | S2-14 | (executor) 2.0.1: portões vazios, fullRef e worktree do implementador prontos em fix/2.0.1-pendencias (e2e6060, sobre feat/E2… | obsoleta | `git branch -a --contains e2e6060` lista `main` e `release/pos-2.2.0`: o commit já está integrado. |
 | S2-15 | (executor) 2.0.1 (arnês, lote E11): gate-vazio aceitar "N tests, N pass, N fail"; teto de bytes do plan-only (DEC-763). Corr… | pendente | Dono E30, destino E30 (R5). O teto do plan-only já está decidido em DEC-763 (90.000), mas `coordinatorGateVazio` em `tools/measure/run-batch.mjs:1492` ainda lê só `# tests 0`/`# pass 0`, não o resumo "N tests, N pass, N fail". |
 | S2-16 | (executor) E13: gatilho de DEC-773 disparou no lote de E16 (laço quality sem correção por tarefa nas 3 tentativas de comple… | pendente | Dono E30, destino E30 (C5: laço quality). |
@@ -69,11 +69,11 @@ Regras de leitura: `obsoleta` leva prova (hash, DEC do log anterior, ou arquivo 
 
 | Fonte | Linhas | obsoleta | corrigida | pendente |
 |---|---|---|---|---|
-| SRC-02 | 17 | 4 | 2 | 11 |
+| SRC-02 | 17 | 4 | 1 | 12 |
 | SRC-03 | 30 | 5 | 0 | 25 |
-| Total | 47 | 9 | 2 | 36 |
+| Total | 47 | 9 | 1 | 37 |
 
-9 + 2 + 36 = 47. Nenhuma nota corrigida sem commit e nenhuma obsoleta sem prova. Correções de código ou texto desta branch: quatro (`procs` com a limpeza, T3, T4, T5), dentro do teto de oito (R4). T4 e T5 corrigem só uma parte de S3-26 e S2-08, que por isso seguem pendentes (R9).
+9 + 1 + 37 = 47. Nenhuma nota corrigida sem commit e nenhuma obsoleta sem prova. Correções de código ou texto desta branch: quatro (`procs` com a limpeza, T3, T4, T5), dentro do teto de oito (R4). `procs`, T4 e T5 corrigem só uma parte de S2-13, S3-26 e S2-08, que por isso seguem pendentes (R9).
 
 ## Pendências com dono
 
@@ -82,4 +82,4 @@ Regras de leitura: `obsoleta` leva prova (hash, DEC do log anterior, ou arquivo 
 - E31: S2-17 (parada-retomada), S3-08.
 - E33: S2-02, S3-01 (dono).
 - Dono, roadmap futuro: S3-13.
-- Executor, roadmap futuro: as demais pendentes (S2-01, S2-03, S2-05, S2-08, S2-09, S2-12, S3-04, S3-05, S3-16, S3-18 a S3-23, S3-25 a S3-30).
+- Executor, roadmap futuro: as demais pendentes (S2-01, S2-03, S2-05, S2-08, S2-09, S2-12, S2-13 (partes 1 a 3), S3-04, S3-05, S3-16, S3-18 a S3-23, S3-25 a S3-30).
