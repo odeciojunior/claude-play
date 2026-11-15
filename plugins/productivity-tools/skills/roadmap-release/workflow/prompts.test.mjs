@@ -467,6 +467,7 @@ test('2.0.1 AC3: the task implementation prompt names the absolute worktree firs
   assert.ok(p.includes('absolute paths under /wt/E7 or git -C "/wt/E7"'));
   assert.ok(p.includes('never cd, never chain with &&'));
   assert.ok(p.includes('/wt/E7/docs/plan.md'));
+  assert.ok(p.includes("the tool's own directory flag (npm --prefix /wt/E7, make -C /wt/E7, go -C /wt/E7, node --test /wt/E7/tests/...)"));
   assert.ok(P.buildImplPrompt({ ...ctx, wt: 'D:/w t/E9' }, task).includes('git -C "D:/w t/E9"'));
 });
 
@@ -477,6 +478,7 @@ test('2.0.1 AC3: implementer.md states the working directory rule before the mod
   const rest = agent.slice(at + 3);
   const section = agent.slice(at, rest.includes('\n## ') ? at + 3 + rest.indexOf('\n## ') : undefined);
   for (const s of ['does not carry to the next call', 'absolute paths', 'git -C <dir>', 'never prefix a command with `cd <dir> &&`', '`command` reports that string']) assert.ok(section.includes(s), s);
+  assert.ok(section.includes("the tool's own directory flag (`npm --prefix <dir>`, `make -C <dir>`, `go -C <dir>`, `node --test <dir>/tests/...`)"));
   assert.ok(agent.includes('(no `;`, `&&`, `||` or pipes around it)'));
   assert.ok(agent.includes('nothing chained after it with `;`, `&&` or `||`'));
 });

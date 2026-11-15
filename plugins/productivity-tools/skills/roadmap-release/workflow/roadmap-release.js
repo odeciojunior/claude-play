@@ -590,7 +590,7 @@ function noFiles(task) {
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
 
-WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); never cd, never chain with &&.
+WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); a command that depends on the current directory uses the tool's own directory flag (npm --prefix ${ctx.wt}, make -C ${ctx.wt}, go -C ${ctx.wt}, node --test ${ctx.wt}/tests/...); never cd, never chain with &&.
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, in that worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
 Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}`
@@ -2858,8 +2858,10 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', model: tier, effort
 MERGE STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}).${FOREIGN ? ` The operator authorized ${FOREIGN_ITEM}: this merge may be done in that checkout.` : ''} Run: git merge --no-ff ${br} -m "merge: ${E} in ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource.
 Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-parse HEAD^1), secondParent (git rev-parse HEAD^2), conflicts (how many files), clean (status --porcelain empty at the end), details. If you cannot finish, git merge --abort.`,
       { label: `${E}:merge`, phase: 'Merge', schema: S_MERGE, model: 'sonnet', effort: 'medium' })
+    const rawMc = mg && typeof mg.mergeCommit === 'string' ? mg.mergeCommit.trim() : ''
     if (mg) mg.mergeCommit = fullRef(mg.mergeCommit)
-    if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? (mg.mergeCommit ? mg.details : 'mergeCommit is not a full SHA') : 'null agent'}`, !mg || !mg.mergeCommit ? 'infra' : 'conteudo')
+    const badMc = !!mg && !mg.mergeCommit && !!rawMc
+    if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? (badMc ? `mergeCommit is not a full SHA: ${rawMc}` : mg.details) : 'null agent'}`, !mg || badMc ? 'infra' : 'conteudo')
     if (!mergeParentsOk(mg, preSha, validatedHead)) return rollback(`the merge commit ${mg.mergeCommit} has first parent ${mg.firstParent} and second parent ${mg.secondParent}, expected ${preSha} and the validated head ${validatedHead}: the second parent does not match`, 'conteudo')
     let firstExp = mg.mergeCommit
     if (mg.conflicts !== 0) {

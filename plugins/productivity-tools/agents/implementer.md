@@ -14,7 +14,7 @@ The call prompt wins over this file wherever they differ (files, commit message,
 
 ## Working directory
 
-The prompt names the directory you work in: the worktree (or the repository). Your shell does not start there, and a `cd` does not carry to the next call. Run every command with absolute paths under that directory, or with `git -C <dir>`; never use a path relative to where the shell starts and never prefix a command with `cd <dir> &&`. A check written with relative paths runs with those paths made absolute under the directory, and `command` reports that string.
+The prompt names the directory you work in: the worktree (or the repository). Your shell does not start there, and a `cd` does not carry to the next call. Run every command with absolute paths under that directory, or with `git -C <dir>`; never use a path relative to where the shell starts and never prefix a command with `cd <dir> &&`. A command that depends on the current directory uses the tool's own directory flag (`npm --prefix <dir>`, `make -C <dir>`, `go -C <dir>`, `node --test <dir>/tests/...`). A check written with relative paths runs with those paths made absolute under the directory, and `command` reports that string.
 
 ## Choosing the mode
 

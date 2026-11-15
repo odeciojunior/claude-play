@@ -5065,6 +5065,20 @@ test('2.0.1 AC2: a mergeCommit that is not a full SHA rolls the merge back as in
   }
 });
 
+test('2.0.1 AC2: an aborted merge keeps conteudo with the agent details; only a non-empty bad mergeCommit is infra with the raw value', async () => {
+  const mergeOf = (o) => (l) => (/:merge$/.test(l) ? { mergeCommit: FULL('e1'), firstParent: 'abc1234', secondParent: 'a3', conflicts: 0, clean: true, ...o } : undefined);
+  const empty = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mergeOf({ mergeCommit: '', details: 'merge aborted by agent' }) });
+  assert.ok(empty.labels.includes('E1:rollback'));
+  assert.equal(empty.r.results[0].failKind, 'conteudo');
+  assert.match(empty.r.results[0].error, /merge aborted by agent/);
+  const dirty = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mergeOf({ clean: false, details: 'tree left dirty' }) });
+  assert.equal(dirty.r.results[0].failKind, 'conteudo');
+  assert.match(dirty.r.results[0].error, /tree left dirty/);
+  const short = await exec({ cards: [card('E1')], deliverables: ['E1'], over: mergeOf({ mergeCommit: 'e1', details: 'ignored' }) });
+  assert.equal(short.r.results[0].failKind, 'infra');
+  assert.match(short.r.results[0].error, /mergeCommit is not a full SHA: e1/);
+});
+
 test('2.0.1 AC2: a merge-risks head that is not a full SHA leaves the next measure without an expected commit', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
     if (/^E1:merge-gates1/.test(l)) return gm('e1', { exit: 1, failedNames: ['t'] });

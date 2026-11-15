@@ -1329,7 +1329,7 @@ const ensureBaseline = async () => {
   queue(baselineEvent(test, out))
   const why = baselineProblem(out)
   if (why === null) return null
-  const tail = '); fix the test command, or answer unblock to accept this baseline'
+  const tail = '); fix the command and recreate the state with progress.mjs init <plan> --restart (nothing has launched yet), or answer unblock to accept this baseline'
   const room = GATE_Q_CAP - (why.length + ' (command: '.length + tail.length)
   const cmd = String(test)
   const question = `${why} (command: ${cmd.length > room ? cmd.slice(0, Math.max(0, room - 3)) + '...' : cmd}${tail}`

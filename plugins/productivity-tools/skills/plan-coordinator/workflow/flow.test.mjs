@@ -634,6 +634,8 @@ test('2.0.1 AC1: a red baseline stops before any implementer and unblock accepts
   assert.match(r.stop.question, /exited 1/);
   assert.ok(r.stop.question.includes('check.mjs'), r.stop.question);
   assert.match(r.stop.question, /answer unblock to accept this baseline/);
+  assert.match(r.stop.question, /progress\.mjs init <plan> --restart \(nothing has launched yet\)/);
+  assert.doesNotMatch(r.stop.question, /relaunch/);
   assert.equal(byAgent(sim, IMPL).length, 0);
   const st = readState(sb);
   assert.equal(st.run.status, 'blocked');
