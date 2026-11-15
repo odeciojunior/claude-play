@@ -1370,6 +1370,34 @@ export function releaseRunValidity(variant, run) {
   return sumCalls(calls) === 0 ? { valid: false, reason: 'sem-agentes' } : { valid: true, reason: 'ok' };
 }
 
+// gate-vazio: the coordinator's final gate compares against the baseline, so a baseline that measured nothing (the session passed
+// a test command that fails identically before and after, e.g. `node --test tests/` on Node 22) lets the gate pass without running
+// a test. Read the baseline the coordinator recorded in the sandbox after the run:
+//  - 2.0.0: docs/plans/fixed-plan/progress.json, run.baseline = { exit, tail } of the baseline run. Fixture sandboxes have a clean
+//    suite, so exit != 0 or a TAP summary with 0 tests/0 pass means the command measured nothing.
+//  - 1.7.0: docs/plans/fixed-plan/progress-*.md, Recovery State line "**Baseline:** N passed, F failed (...)". Same rule: N == 0 or F > 0.
+// Neither version records the final gate's own test output (2.0.0 keeps only finalGate.status), so the baseline is the one reliable
+// signal. Nothing recorded (no file, no baseline) is not judged here; sem-agentes and the other checks cover runs that stopped early.
+export function coordinatorGateVazio(dir) {
+  const plan = join(dir, 'docs', 'plans', 'fixed-plan');
+  const json = join(plan, 'progress.json');
+  if (existsSync(json)) {
+    let b;
+    try { b = JSON.parse(readFileSync(json, 'utf8'))?.run?.baseline; } catch { return { vazio: false, why: 'progress.json unreadable' }; }
+    if (b && typeof b === 'object') {
+      const tail = String(b.tail ?? '');
+      if (b.exit !== 0) return { vazio: true, why: `baseline "${b.test}" exited ${b.exit}` };
+      if (/^# tests 0\b/m.test(tail) || /^# pass 0\b/m.test(tail)) return { vazio: true, why: `baseline "${b.test}" ran no passing test` };
+    }
+  }
+  const md = existsSync(plan) ? readdirSync(plan).find((f) => /^progress-.*\.md$/.test(f)) : undefined;
+  if (md) {
+    const m = /^\*\*Baseline:\*\*\s*(\d+) passed,\s*(\d+) failed/m.exec(readFileSync(join(plan, md), 'utf8'));
+    if (m && (Number(m[1]) === 0 || Number(m[2]) > 0)) return { vazio: true, why: `baseline ran ${m[1]} passed, ${m[2]} failed` };
+  }
+  return { vazio: false, why: 'ok' };
+}
+
 // A resume session that launched no subagent did not resume anything (E15 finding 11, analogous to sem-agentes).
 // `run` holds the metrics of the resume session alone.
 export function resumeRunValidity(run) {

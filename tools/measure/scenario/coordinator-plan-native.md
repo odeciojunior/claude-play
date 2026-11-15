@@ -2,6 +2,8 @@
 
 Goal: add three pure functions, one per step, each with its own test. Run every command from the repository root. No dependencies.
 
+Full test suite: `node --test` (run from the repository root).
+
 ### Tarefa 1: sum
 
 - Create `src/sum.mjs` exporting `sum(numbers)`, which returns the total of an array of numbers (0 for an empty array).
@@ -40,7 +42,8 @@ Goal: add three pure functions, one per step, each with its own test. Run every 
   "roadmap": null,
   "constraints": [
     "Pure functions: no I/O and no dependency.",
-    "Run every command from the repository root."
+    "Run every command from the repository root.",
+    "Full test suite: `node --test` (run from the repository root)."
   ],
   "tasks": [
     {

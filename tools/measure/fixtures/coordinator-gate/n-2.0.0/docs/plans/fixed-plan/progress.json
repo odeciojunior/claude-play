@@ -1,0 +1,259 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/fixed-plan/plan.md",
+    "id": "stats-helpers",
+    "digest": "c3f7b49e",
+    "maxWidth": 4,
+    "roadmap": null,
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 3,
+    "worktree": null,
+    "branch": null,
+    "base": "2a47633c863dd7992b777224524dd39a574fa762",
+    "test": "node --test tests/",
+    "baseline": {
+      "test": "node --test tests/",
+      "exit": 1,
+      "tail": "TAP version 13\n# node:internal/modules/cjs/loader:1404\n#   throw err;\n#   ^\n# Error: Cannot find module 'D:\\\\projects\\\\claude-play-wt\\\\_baseline-e11\\\\coordinator\\\\coordinator-1\\\\tests'\n#     at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\n#     at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\n#     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\n#     at Function._load (node:internal/modules/cjs/loader:1211:37)\n#     at TracingChannel.traceSync (node:diagnostics_channel:322:14)\n#     at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\n#     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n#     at node:internal/main/run_main_module:36:49 {\n#   code: 'MODULE_NOT_FOUND',\n#   requireStack: []\n# }\n# Node.js v22.17.1\n# Subtest: tests\nnot ok 1 - tests\n  ---\n  duration_ms: 31.6962\n  type: 'test'\n  location: 'D:\\\\projects\\\\claude-play-wt\\\\_baseline-e11\\\\coordinator\\\\coordinator-1\\\\tests:1:1'\n  failureType: 'testCodeFailure'\n  exitCode: 1\n  signal: ~\n  error: 'test failed'\n  code: 'ERR_TEST_FAILURE'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 36.1916",
+      "failedNames": [
+        "tests"
+      ]
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-15T09:09:58.429Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "sum",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "src/sum.mjs",
+        "tests/coord-sum.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Step T1 (sum) is complete. src/sum.mjs exports sum(numbers), which returns the total via reduce and 0 for an empty array. tests/coord-sum.test.mjs covers sum([1,2,3]) === 6 and sum([]) === 0. Downstream steps can import { sum } from src/sum.mjs. Nothing was committed, per the orchestrator's rule.",
+      "sha": "d137e52771105b447d8589924f99f53f9696332a",
+      "replacedBy": null,
+      "note": "Step T1 (sum) is complete. src/sum.mjs exports sum(numbers), which returns the total via reduce and 0 for an empty array. tests/coord-sum.test.mjs covers sum([1,2,3]) === 6 and sum([]) === 0. Downstream steps can import { sum } from src/sum.mjs. Nothing was committed, per the orchestrator's rule.",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "mean",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "src/mean.mjs",
+        "tests/coord-mean.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added src/mean.mjs exporting mean(numbers), which returns sum(numbers) / numbers.length using sum from src/sum.mjs (T1); an empty array yields NaN because 0/0 is NaN. Added tests/coord-mean.test.mjs covering mean([2,4,6]) === 4 and mean([]) being NaN. Downstream steps can import { mean } from src/mean.mjs. Nothing was committed or staged.",
+      "sha": "2a884d245419677d1388e1d02112ab79ab7b10ea",
+      "replacedBy": null,
+      "note": "Added src/mean.mjs exporting mean(numbers), which returns sum(numbers) / numbers.length using sum from src/sum.mjs (T1); an empty array yields NaN because 0/0 is NaN. Added tests/coord-mean.test.mjs covering mean([2,4,6]) === 4 and mean([]) being NaN. Downstream steps can import { mean } from src/mean.mjs. Nothing was committed or staged.",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "median",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "src/median.mjs",
+        "tests/coord-median.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added src/median.mjs exporting median(numbers): returns the middle value of a sorted copy (average of the two middle values for an even count), NaN for an empty array, and never mutates its input. Added tests/coord-median.test.mjs with 4 tests (odd, even, empty, non-mutation). Downstream steps can import { median } from src/median.mjs. Nothing staged or committed; no dependencies on other files.",
+      "sha": "ab66b5510bb98108d438c81417e2afe758f74c3f",
+      "replacedBy": null,
+      "note": "Added src/median.mjs exporting median(numbers): returns the middle value of a sorted copy (average of the two middle values for an even count), NaN for an empty array, and never mutates its input. Added tests/coord-median.test.mjs with 4 tests (odd, even, empty, non-mutation). Downstream steps can import { median } from src/median.mjs. Nothing staged or committed; no dependencies on other files.",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-15T09:07:24.852Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "2a47633c863dd7992b777224524dd39a574fa762",
+      "at": "2026-11-15T09:07:24.852Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-15T09:07:30.713Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-15T09:07:30.713Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-15T09:07:30.713Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-15T09:07:48.594Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-15T09:08:04.866Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-15T09:08:22.351Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-15T09:08:22.351Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-15T09:08:22.351Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-15T09:08:32.708Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-15T09:08:51.342Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-15T09:09:09.558Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-15T09:09:09.558Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-15T09:09:09.558Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-15T09:09:18.957Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-15T09:09:38.233Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-15T09:09:58.429Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-15T09:09:58.429Z"
+    }
+  ]
+}

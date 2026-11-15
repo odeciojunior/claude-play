@@ -2,6 +2,8 @@
 
 Goal: add three pure functions, one per step, each with its own test. Run every command from the repository root. No dependencies.
 
+Full test suite: `node --test` (run from the repository root).
+
 ### Step 1: sum
 
 - Create `src/sum.mjs` exporting `sum(numbers)`, which returns the total of an array of numbers (0 for an empty array).
