@@ -3071,7 +3071,7 @@ test('B3: validity of the final stage', async () => {
     r = await runBatch(finOpts(s, { arm: 'adversarial', work: join(s.base, 'w4') }), { exec: makeFake(s.configDir, { afterRun }).exec, now: NOW });
     const a = r.aggregate.attempts[0];
     assert.equal(a.status, 'valid', JSON.stringify(r.aggregate.invalidReasons));
-    assert.deepEqual(a.verify, { calls: 1, refutedTotal: 0, refutedSeeded: 0, refutedByRound: { 1: 0 } });
+    assert.deepEqual(a.verify, { calls: 1, refutedTotal: 0, refutedSeeded: 0, refutedRound1: 0, refutedByRound: { 1: 0 } });
     assert.equal(a.loop.fixes, 1);
   } finally {
     s.done();
@@ -3087,12 +3087,12 @@ test('B3: refutedTotal, refutedSeeded and refutedByRound', () => {
     entry('E5:final-review2', trv([F_CG1, FOUND('F3', 'unrelated thing')])),
     entry('E5:final-verify2', { verdicts: [{ n: 1, refuted: true, reason: '[fab] it still exports it' }, { n: 2, refuted: false, reason: '[fab] real' }] }),
   ];
-  assert.deepEqual(verifyStats(entries, ['CR1', 'CG1'], P), { calls: 2, refutedTotal: 3, refutedSeeded: 2, refutedByRound: { 1: 2, 2: 1 } });
+  assert.deepEqual(verifyStats(entries, ['CR1', 'CG1'], P), { calls: 2, refutedTotal: 3, refutedSeeded: 2, refutedRound1: 2, refutedByRound: { 1: 2, 2: 1 } });
   // a verdict without a reason refutes nothing (splitRefuted), a refuted unrelated finding is not seeded
   const e2 = [entry('E5:final-review1', trv([F_PARENT, F_OTHER])), entry('E5:final-verify1', { verdicts: [{ n: 1, refuted: true }, { n: 2, refuted: true, reason: '[fab] nit only' }] })];
-  assert.deepEqual(verifyStats(e2, ['CR1', 'CG1'], P), { calls: 1, refutedTotal: 1, refutedSeeded: 0, refutedByRound: { 1: 1 } });
+  assert.deepEqual(verifyStats(e2, ['CR1', 'CG1'], P), { calls: 1, refutedTotal: 1, refutedSeeded: 0, refutedRound1: 1, refutedByRound: { 1: 1 } });
   // the atual arm has no verify entries: zero
-  assert.deepEqual(verifyStats([entry('E5:final-review1', trv([F_PARENT]))], ['CR1', 'CG1'], P), { calls: 0, refutedTotal: 0, refutedSeeded: 0, refutedByRound: {} });
+  assert.deepEqual(verifyStats([entry('E5:final-review1', trv([F_PARENT]))], ['CR1', 'CG1'], P), { calls: 0, refutedTotal: 0, refutedSeeded: 0, refutedRound1: 0, refutedByRound: {} });
 });
 
 // ---- E26 B3: final replay and the single wave derived from the batch ----
@@ -3323,4 +3323,48 @@ test('B3: whole aggregate keeps the A shapes for the old stages', async () => {
   } finally {
     s.done();
   }
+});
+
+// ---- E26 gate fixes: stop by invalid attempts, CR1 mention by description, refutedRound1 ----
+const { batchStopReason } = await import('./run-batch.mjs');
+
+test('gate: batchStopReason stops on more than 3 invalid attempts, refutou-tudo not counted', () => {
+  const inv = (reason, n) => Array.from({ length: n }, () => ({ status: 'invalid', reason }));
+  assert.equal(batchStopReason(inv('sem-correcao', 4)), 'invalidas');
+  assert.equal(batchStopReason(inv('sem-correcao', 3)), null);
+  assert.equal(batchStopReason([...inv('sem-correcao', 3), ...inv('refutou-tudo', 5)]), null);
+  assert.equal(batchStopReason([...inv('sem-correcao', 3), ...inv('formato-do-diario', 1)]), 'invalidas');
+  // the more specific reasons keep their names
+  assert.equal(batchStopReason(inv('laco-divergente', 2)), 'laco-divergente');
+});
+
+test('gate: a round 2 finding counts as a mention of CR1 by its description, not by its file', () => {
+  const ids = ['CR1', 'CG1'];
+  const file = 'tests/e5-word-count.test.mjs';
+  const run = (r2) => mentionStats([entry('E5:task-review1', trv([F_PARENT])), entry('E5:task-review-fix1', APPLIED_FIX), entry('E5:task-review2', trv([r2]))], 'E5:task-review', ids);
+  const semi = run(FOUND('F9', 'Missing semicolon', file));
+  assert.equal(semi.mentionedAfterFix.CR1, false);
+  const blank = run(FOUND('F9', 'wordCount still lacks the blank string case', file));
+  assert.equal(blank.mentionedAfterFix.CR1, true);
+  // review 1 keeps matching file and description: its parent finding is still found (no residuoSemAchadoPai)
+  const byFile = mentionStats([entry('E5:task-review1', trv([FOUND('F1', 'Missing semicolon', file)])), entry('E5:task-review2', trv([]))], 'E5:task-review', ids);
+  assert.equal(byFile.residuoSemAchadoPai, 0);
+});
+
+test('gate: verifyStats counts refutedRound1', () => {
+  const P = loadPure();
+  const entries = [
+    entry('E5:final-review1', trv([F_PARENT, F_OTHER])),
+    entry('E5:final-verify1', refuteAll(1, 2)),
+    entry('E5:final-review-fix1', APPLIED_FIX),
+    entry('E5:final-review2', trv([F_CG1])),
+    entry('E5:final-verify2', refuteAll(1)),
+  ];
+  const v = verifyStats(entries, ['CR1', 'CG1'], P);
+  assert.equal(v.refutedRound1, 2);
+  assert.equal(v.refutedTotal, 3);
+  assert.equal(verifyStats([entry('E5:final-review1', trv([F_PARENT]))], ['CR1', 'CG1'], P).refutedRound1, 0);
+  // the retry 1b counts as round 1
+  const b = [entry('E5:final-review1b', trv([F_PARENT])), entry('E5:final-verify1b', refuteAll(1))];
+  assert.equal(verifyStats(b, ['CR1'], P).refutedRound1, 1);
 });

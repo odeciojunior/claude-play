@@ -644,6 +644,8 @@ export function batchStopReason(attempts) {
   if (invalid('correcao-semeada-ausente') >= 2) return 'correcao-semeada-ausente';
   if (invalid('laco-divergente') >= 2) return 'laco-divergente';
   if (attempts.filter((a) => a.status === 'valid').reduce((n, a) => n + (a.residuoSemAchadoPai ?? 0), 0) > 2) return 'residuoSemAchadoPai';
+  // DEC-725: more than 3 invalid attempts end the batch (refutou-tudo is a measured result of the adversarial arm, not a failure)
+  if (attempts.filter((a) => a.status === 'invalid' && a.reason !== 'refutou-tudo').length > 3) return 'invalidas';
   return null;
 }
 
@@ -673,7 +675,7 @@ export function mentionStats(entries, label, fixIds) {
     if (m.residueOf && parents.length === 0) residuoSemAchadoPai += 1;
     const parentIds = new Set(parents.map((i) => i.id).filter((x) => typeof x === 'string'));
     mentionedAfterFix[m.id] = reviews.some(
-      (x) => x.round >= 2 && ((Array.isArray(x.r?.issues) ? x.r.issues : []).some((i) => rx.test(textOf(i))) || (Array.isArray(x.r?.verdicts) ? x.r.verdicts : []).some((v) => v?.open === true && parentIds.has(v.id))),
+      (x) => x.round >= 2 && ((Array.isArray(x.r?.issues) ? x.r.issues : []).some((i) => rx.test(typeof i?.description === 'string' ? i.description : '')) || (Array.isArray(x.r?.verdicts) ? x.r.verdicts : []).some((v) => v?.open === true && parentIds.has(v.id))),
     );
   }
   return { mentionedAfterFix, residuoSemAchadoPai };
@@ -687,7 +689,7 @@ export function verifyStats(entries, fixIds, P) {
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
   const mentions = manifest.filter((m) => fixIds.includes(m.id) && typeof m.mention === 'string').map((m) => new RegExp(m.mention, 'is'));
   const textOf = (i) => [i?.file, i?.description].filter((x) => typeof x === 'string' && x).join(' ');
-  const out = { calls: 0, refutedTotal: 0, refutedSeeded: 0, refutedByRound: {} };
+  const out = { calls: 0, refutedTotal: 0, refutedSeeded: 0, refutedRound1: 0, refutedByRound: {} };
   for (const v of entries) {
     const m = /^E5:final-verify(\d+b?)$/.exec(v.label);
     if (!m) continue;
@@ -698,6 +700,7 @@ export function verifyStats(entries, fixIds, P) {
     out.refutedTotal += refuted.length;
     out.refutedSeeded += refuted.filter((i) => mentions.some((rx) => rx.test(textOf(i)))).length;
     out.refutedByRound[round] = (out.refutedByRound[round] ?? 0) + refuted.length;
+    if (round === '1' || round === '1b') out.refutedRound1 += refuted.length;
   }
   return out;
 }
