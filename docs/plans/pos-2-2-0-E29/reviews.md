@@ -134,3 +134,14 @@ Gates (registro do bloqueio):
 - G3: exit 0 (linha de base: exit 0).
 - G4: exit 0 (linha de base: exit 0).
 - G5: exit 0 (linha de base: exit 0).
+
+## Nova execução (falhou no carregamento do plano)
+
+### Revisões desta execução
+- spec: rodada 1, revisor opus, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+
+Riscos aceitos: nenhum. Concerns: nenhum. Gates: não executados nesta execução. Entradas humanas: nenhuma (what, blq, workaround, blocking: não se aplica).
+
+### Falha da execução
+
+plan load: integrity digest not confirmed (plan-tool emit exited 1: { "tool": "plan-tool", "schema": "plan/1", "path": "D:/projects/claude-play-wt/E29/docs/plans/pos-2-2-0-E29/plan.md", "errors": [ { "code": "edge-case-uncovered", "ref": "C5", "message": "nenhuma tarefa cobre o caso de borda C5" } ], "warnings": [], "summary": { "errors": 1, "warnings": 0, "exitCode": 1 } })
