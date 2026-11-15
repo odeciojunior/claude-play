@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11 | Sondas em M′ 2b8c56e (US$ 13,25), 5 válidas, completo integrou; P16 e portão vazio do coordinator (DEC-761, DEC-762); E11 em US$ 43,44 de 160. | `docs/reports/2026-11-15-E11-P15-sondas.md` |
+| 2026-11-15 | E11 | DEC-761, DEC-762 (E11 P16 e portão vazio) decididas pelo dono via Fable; vigentes. | `decisions.md` |
 | 2026-11-15 | E11 | Sondas P15 (US$ 25,94 com a rodada perdida): defeito do produto no completo (headSha truncado) e fixture do coordinator incompatível com 2.0.0; novo M′, arnês corrigido, teto US$ 160 (DEC-758, DEC-759, DEC-760). | `docs/reports/2026-11-15-E11-P15-sondas.md` |
 | 2026-11-15 | E11 | DEC-758, DEC-759, DEC-760 (E11 sondas P15) decididas pelo dono via Fable; vigentes. | `decisions.md` |
 | 2026-11-15 | E11 | DEC-757 (teto de US$ 5 para planner e tracker) ratificada pelo dono via Fable, sem emenda. | `decisions.md` |

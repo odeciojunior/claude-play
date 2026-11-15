@@ -82,6 +82,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) E26 peça 3: depois do lote completo de E11 e só se o braço opus sair do piso (emenda a DEC-727), braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
 - (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
 - (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título (failed) e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
+- (executor) 2.0.1: o portão final do coordinator e o de gates do release recusam comando de teste cuja base falha ou roda 0 testes; referências de SHA vindas de agente (targetHead, mergeCommit, head de persist*) passam por fullSha (revisão de M′, DEC-762).
 <!-- /roadmap:pending -->
 
 ## Em andamento
