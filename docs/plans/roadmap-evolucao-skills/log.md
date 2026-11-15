@@ -3,6 +3,15 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E27 | DEC-707 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E27 | Ratificação de E27 por delegação (Fable): DEC-708, DEC-729 e DEC-732 a DEC-737 sem emenda (fix do task-reviewer, desenho e regras da passada B, fixadas antes do lote). | `decisions.md` |
+| 2026-11-15 | E26 | DEC-731 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E26 | DEC-727 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E26 | DEC-726 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E26 | DEC-724 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E26 | Ratificação de E26 por delegação (Fable): DEC-722, DEC-723, DEC-725, DEC-728 e DEC-730 sem emenda (preparo do arnês, laço do produto, n das peças 1 e 2, ordem e tetos). | `decisions.md` |
+| 2026-11-15 | E8 | DEC-712 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E8 | Ratificação de E8 por delegação (Fable): DEC-709, DEC-710, DEC-713, DEC-715 a DEC-718, DEC-720 e DEC-721 sem emenda (trio do sandbox, lotes em série, fixes do grupo e da pasta de worktrees). | `decisions.md` |
 | 2026-11-15 | E27 | Bloco B de fix/measure-e26 mesclado (cc0cb15): correção semeada nas peças 3 e 4, laço de task-review completa x restrita, estágio final atual x adversarial, onda única derivada, validade e paradas por DEC-732..737. Portão opus/high APPROVE; G1 1990/0. | `docs/plans/2026-11-15-measure-e26-bloco-b-plan.md` |
 | 2026-11-14 | E26 | Peça 1 em e2b7e11: 10/10 válidas, laço 39/40 e rodada única 39/40 (o mesmo SN2 perdido). Condição 3 de DEC-726 falha pelo passo 0 e o lote dá teto: fica o laço atual de spec; perguntas cortado (DEC-731). Peça 1: US$ 8,19 de 30. Peça 3 espera E11. | `docs/reports/2026-11-15-E26-peca1-spec-review.md` |
 | 2026-11-14 | E26 | Peça 2 em e2b7e11: 10/10 válidas, laço 40/40 e leitura única 40/40 (sementes pegas na 1ª rodada, 2ª revisão limpa em todas). Pela DEC-726 é efeito teto, não equivalência: fica o laço atual de plano. Peça 2 com sondas: US$ 8,71 de 15. | `docs/reports/2026-11-15-E26-peca2-plan-review.md` |

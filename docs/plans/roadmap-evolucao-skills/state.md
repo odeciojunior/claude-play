@@ -75,12 +75,12 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 - (executor) Antes das execuções pagas da variante coordinator em E11 (canal integrado em 031c9c1): limitar textos de evento (pergunta do gate a 600, failedNames a 50 + "+N" com flag de lista cortada, tail do baseline), página 0 contando o estado sem passos, runCmd recusando comando > CMD_CAP.
 - (executor) Nota E11/E28: a retomada review-owed do coordinator manda (no checks reported) sem marca de retomada; a regra do task-reviewer então a trata como defeito.
 - (executor) Nota para E28 (revisão de 2bb59c6): cap() da nota pode cortar um BLQ no meio (um id longo vira o prefixo de outro, seguido de "...") e casar com o regex de outro id; cortar a palavra parcial antes do "..." ou checar só blqIds. Risco baixo: block-open grava o id no início da nota.
-- (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título "(failed)" e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
-- (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
 - (executor) Nota para E28 (revisão de 7ee7f23): verify-run espera o próprio pid se reutilizado (somar m.pid !== process.pid); marca apagada em qualquer throw de runGroup, não só antes do 1º passo; VERIFY_RUN_WAIT_MS sem teto (Math.min com 60.000).
 - (executor) E28 ou fix próprio (2ª sonda, c5658cf): negações espontâneas sem parar o run: prompts com "; echo exit=$?" (spec-commit, progress), Grep nos scripts da pasta do plugin (spec, plan), sed -i, e o cleanup listando processos por PowerShell/tasklist/netstat (limpeza incompleta). Sem bypass.
 - (executor) Nota da 2ª sonda: T1/T2 não mudaram o cwd para a worktree (teste com caminho absoluto) e T2 saiu com duas linhas Co-Authored-By; conferir no 1º lote de E11.
-- (executor) E26 peça 3: depois do lote completo de E11, braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
+- (executor) E26 peça 3: depois do lote completo de E11 e só se o braço opus sair do piso (emenda a DEC-727), braço sonnet (3 válidas, mesmo SHA e comando, cópia de medição com plan-author.md em sonnet), teto US$ 25; conferir o modelo do autor no .meta.json da 1ª execução antes das outras.
+- (executor) E28: auditoria das cópias por modelo sem repetição (DEC-715): truthStdout do relatório, estágio de docs (stdout de escrita sem assinatura), docs-measure, agentes haiku de commit/marca/sonda; listar quais reprovam entregável e levar ao grupo idempotente ou à leitura assinada.
+- (executor) Nota para E28: no 2º plan-only (b734c12) restaram reviews.md com título (failed) e o relatório mandando rodar de novo como infraestrutura quando só a cópia falhou; tratar na auditoria das cópias por modelo (DEC-715).
 <!-- /roadmap:pending -->
 
 ## Em andamento
