@@ -4127,3 +4127,219 @@ test('C3: a lenses aggregate records the counters of C3 and the attempt fields a
   }
 });
 
+
+// ---- E27 C4 (T6): ruleSideC, earlyCeiling, recountLenses and the aggregate of a lenses batch ----
+const { ruleSideC, earlyCeiling, recountLenses } = await import('./run-batch.mjs');
+
+// Totals of one arm in the format of armTotals, built from 10 valid attempts (5 of A, 5 of B, interleaved) whose seeds take the
+// outcomes of the pools: spec = [captured, lost, undetermined] of the 20 spec seeds, quality likewise. semMencao: how many captures
+// no review names (by regex); failRisco: how many attempts carry failRiscoAceito.
+function armFrom({ spec, quality, cost, semMencao = 0, failRisco = 0, single = false }) {
+  // the captures come last, so that the first attempts hold the misses (an arm whose first 6 attempts capture all is the early ceiling)
+  const pool = ([c, p, i]) => [...Array(i).fill('indeterminado'), ...Array(p).fill('perdido'), ...Array(c).fill('capturado')];
+  const pools = { spec: pool(spec), quality: pool(quality) };
+  assert.equal(pools.spec.length, 20);
+  assert.equal(pools.quality.length, 20);
+  let unnamed = semMencao;
+  const attempts = Array.from({ length: 10 }, (_, j) => {
+    const art = j % 2 === 0 ? 'A' : 'B';
+    const ids = art === 'A' ? { spec: ['SP1', 'SP2'], quality: ['QL1', 'QL2'] } : { spec: ['SP3', 'SP4'], quality: ['QL3', 'QL4'] };
+    const outcomes = [];
+    const capturadoPor = {};
+    for (const lens of ['spec', 'quality']) {
+      ids[lens].forEach((id, k) => {
+        const o = pools[lens][2 * j + k];
+        outcomes.push(oc(id, o));
+        capturadoPor[id] = o === 'capturado' && unnamed > 0 && unnamed-- ? null : { kind: single ? 'review' : lens, round: 1 };
+      });
+    }
+    // the two arms run on other days: the keys of their attempts (artifact, start time, n) never collide
+    return vatt(art, j + 1, {}, { outcomes, capturadoPor, costUsd: cost, failRiscoAceito: j >= 10 - failRisco, startedAt: `${single ? '2026-11-17' : '2026-11-16'}T10:${String(j + 1).padStart(2, '0')}:00Z` });
+  });
+  return armTotals([aggOf('A', attempts, { restricted: false, single })]).totals;
+}
+// vatt takes an outcomes map; armFrom passes the outcomes list straight (vatt spreads `extra` over its own fields)
+const A_LIMITS = { spec: [18, 1, 1], quality: [18, 1, 1] };
+
+test('C4: ruleSideC gives teto when atual has 38 or more of 40 (the unica is not looked at)', () => {
+  const atual = armFrom({ spec: [19, 1, 0], quality: [19, 1, 0], cost: 0.85 });
+  assert.equal(atual.capturas, 38);
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'teto');
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [20, 0, 0], quality: [20, 0, 0], cost: 0.85 }) }).side, 'teto');
+  // a unica that would lose is never read: it can even be absent or nonsense
+  assert.equal(ruleSideC({ atual, unica: null }).side, 'teto');
+});
+
+test('C4: ruleSideC gives piso when atual has fewer than 20 of 40 or fewer than 32 determined', () => {
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [10, 4, 6], quality: [9, 5, 6], cost: 0.85 }) }).side, 'piso'); // 19 captures
+  assert.equal(ruleSideC({ atual: armFrom({ spec: [15, 0, 5], quality: [15, 0, 5], cost: 0.85 }) }).side, 'piso'); // 30 captures, 30 determined
+  const edge = armFrom({ spec: [10, 5, 5], quality: [10, 6, 4], cost: 0.85 }); // 20 captures, 31 determined
+  assert.equal(edge.capturas, 20);
+  assert.equal(edge.determinadas, 31);
+  assert.equal(ruleSideC({ atual: edge }).side, 'piso');
+  assert.notEqual(ruleSideC({ atual: armFrom({ spec: [10, 6, 4], quality: [10, 6, 4], cost: 0.85 }), unica: armFrom({ spec: [10, 6, 4], quality: [10, 6, 4], cost: 0.5 }) }).side, 'piso'); // 20 captures, 32 determined
+});
+
+test('C4: ruleSideC gives unica with 32+ determined, at most 2 fewer captures and at most 2 more misses in total and in each lens, and a lower cost per valid attempt', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unica = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.deepEqual([atual.capturas, atual.perdidos, unica.capturas, unica.perdidos], [36, 2, 35, 3]);
+  const r = ruleSideC({ atual, unica });
+  assert.equal(r.side, 'unica', JSON.stringify(r));
+  // the boundary values still enter: 2 fewer captures and 2 more misses, in total and in a lens
+  const edge = armFrom({ spec: [16, 3, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.equal(ruleSideC({ atual, unica: edge }).side, 'unica');
+});
+
+test('C4: ruleSideC gives atual by total captures, by lens, by cost and by the determined of the unica', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const side = (unica, a = atual) => ruleSideC({ atual: a, unica });
+  // total captures: 36 against 33
+  const total = side(armFrom({ spec: [17, 1, 2], quality: [16, 1, 3], cost: 0.55, single: true }));
+  assert.deepEqual([total.side, total.reason], ['atual', 'capturas']);
+  // one lens: quality 18 against 15 with the total 36 against 34 inside the margin
+  const lens = side(armFrom({ spec: [19, 1, 0], quality: [15, 1, 4], cost: 0.55, single: true }));
+  assert.deepEqual([lens.side, lens.reason], ['atual', 'capturas por lente (quality)']);
+  // cost: equal or higher
+  assert.deepEqual([side(armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, single: true })).side, side(armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.9, single: true })).reason], ['atual', 'custo']);
+  // the determined of the unica: 31
+  const det = side(armFrom({ spec: [16, 0, 4], quality: [15, 0, 5], cost: 0.55, single: true }));
+  assert.equal(det.side, 'atual');
+  assert.equal(det.reason, 'determinadas');
+});
+
+test('C4: ruleSideC gives atual by misses even when captures are within 2 (the fixture of the owner)', () => {
+  const atual = armFrom({ spec: [15, 1, 4], quality: [15, 1, 4], cost: 0.85 });
+  const unica = armFrom({ spec: [14, 6, 0], quality: [14, 6, 0], cost: 0.55, single: true });
+  assert.deepEqual([atual.capturas, atual.perdidos, atual.indeterminados], [30, 2, 8]);
+  assert.deepEqual([unica.capturas, unica.perdidos, unica.indeterminados, unica.determinadas], [28, 12, 0, 40]);
+  const r = ruleSideC({ atual, unica });
+  assert.deepEqual([r.side, r.reason], ['atual', 'perdidos']);
+});
+
+test('C4: ruleSideC gives atual by misses in one lens with the total within 2', () => {
+  const atual = armFrom({ spec: [15, 0, 5], quality: [15, 2, 3], cost: 0.9 });
+  const unica = armFrom({ spec: [15, 3, 2], quality: [15, 1, 4], cost: 0.5, single: true });
+  assert.deepEqual([atual.perdidos, unica.perdidos, atual.capturas, unica.capturas], [2, 4, 30, 30]);
+  assert.ok(unica.determinadas >= 32);
+  const r = ruleSideC({ atual, unica });
+  assert.deepEqual([r.side, r.reason], ['atual', 'perdidos por lente (spec)']);
+});
+
+test('C4: ruleSideC gives inconclusivo when the recount with capturadoSemMencao, or with the failRiscoAceito attempts of either arm, as indeterminado changes the side', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unica = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  assert.equal(ruleSideC({ atual, unica }).side, 'unica');
+  // 3 captures of the unica no review names: recounted, 32 captures against 36 (the side would be atual)
+  const unnamed = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 3 });
+  const a = ruleSideC({ atual, unica: unnamed });
+  assert.equal(a.side, 'inconclusivo');
+  assert.equal(a.recount.base.side, 'unica');
+  assert.equal(a.recount.semMencao.side, 'atual');
+  assert.equal(a.recount.failRisco.side, 'unica');
+  // attempts of the unica with an accepted risk under a verdict that was not pass: 2 attempts out, the unica falls below 32 determined
+  const risky = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, failRisco: 2 });
+  const b = ruleSideC({ atual, unica: risky });
+  assert.equal(b.side, 'inconclusivo');
+  assert.equal(b.recount.failRisco.side, 'atual');
+  // the atual arm counts too: its captures in the failRiscoAceito attempts fall and the unica enters where it did not
+  const atual2 = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, failRisco: 1 });
+  const unica2 = armFrom({ spec: [16, 2, 2], quality: [16, 2, 2], cost: 0.55, single: true });
+  assert.deepEqual([ruleSideC({ atual: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 }), unica: unica2 }).side], ['atual']);
+  const c = ruleSideC({ atual: atual2, unica: unica2 });
+  assert.equal(c.side, 'inconclusivo', JSON.stringify(c.recount));
+  assert.equal(c.recount.failRisco.side, 'unica');
+  // a recount that does not move the side keeps it
+  const keep = ruleSideC({ atual: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85, semMencao: 1 }), unica: armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 1 }) });
+  assert.equal(keep.side, 'unica', JSON.stringify(keep));
+  // the recount is pure: the totals given are not changed
+  assert.equal(unnamed.capturas, 35);
+});
+
+test('C4: the diary reading prevails over the regex in the recount', () => {
+  const atual = armFrom({ spec: [18, 1, 1], quality: [18, 1, 1], cost: 0.85 });
+  const unnamed = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true, semMencao: 3 });
+  const unnamedKeys = unnamed.validOrder.flatMap((v) => v.captured.filter((c) => !c.regexMentioned).map((c) => [v.key, c.id]));
+  assert.equal(unnamedKeys.length, 3);
+  // without the reading the regex rules: 3 not named captures are recounted and the side moves
+  assert.equal(ruleSideC({ atual, unica: unnamed }).side, 'inconclusivo');
+  // the reading says the diary names them: nothing is recounted, the side stays
+  const named = {};
+  for (const [key, id] of unnamedKeys) (named[key] ??= {})[id] = true;
+  const r = ruleSideC({ atual, unica: unnamed, leitura: named });
+  assert.equal(r.side, 'unica', JSON.stringify(r));
+  assert.equal(r.recount.semMencao.unica.capturas, 35);
+  // the reading says a capture the regex matched is not named in the diary: it is recounted (and here the side moves)
+  const matched = armFrom({ spec: [17, 2, 1], quality: [18, 1, 1], cost: 0.55, single: true });
+  const hit = matched.validOrder.flatMap((v) => v.captured.map((c) => [v.key, c.id])).slice(0, 3);
+  const notNamed = {};
+  for (const [key, id] of hit) (notNamed[key] ??= {})[id] = false;
+  const r2 = ruleSideC({ atual, unica: matched, leitura: notNamed });
+  assert.equal(r2.side, 'inconclusivo', JSON.stringify(r2));
+  assert.equal(r2.recount.semMencao.unica.capturas, 32);
+  // without the reading the same attempts are all named by the regex: the side stays
+  assert.equal(ruleSideC({ atual, unica: matched }).side, 'unica');
+  // recountLenses on its own: pure, and the reading is keyed by attempt key and seed id
+  const t = recountLenses(matched, 'semMencao', notNamed);
+  assert.equal(t.capturas, 32);
+  assert.equal(t.indeterminados, matched.indeterminados + 3);
+  assert.equal(matched.capturas, 35);
+});
+
+test('C4: earlyCeiling gives teto with the first 6 valid attempts of atual, 3 of A and 3 of B interleaved, at 24 of 24', () => {
+  const NAMED = Object.fromEntries(Object.keys(ALL).map((id) => [id, { kind: 'review', round: 1 }]));
+  const full = (art, order) => vatt(art, order, ALL, { capturadoPor: NAMED });
+  const totalsOf = (...atts) => armTotals([aggOf('A', atts.filter((a) => a.artifact === 'A')), aggOf('B', atts.filter((a) => a.artifact === 'B'))]).totals;
+  const seq = (arts, from = 1) => arts.map((a, i) => full(a, from + i));
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'B', 'A', 'B', 'A', 'B']))), true);
+  assert.equal(earlyCeiling(totalsOf(...seq(['B', 'A', 'B', 'A', 'B', 'A']))), true);
+  // 23 of 24
+  const miss = seq(['A', 'B', 'A', 'B', 'A', 'B']);
+  miss[2] = vatt('A', 3, { ...ALL, QL2: 'perdido' });
+  assert.equal(earlyCeiling(totalsOf(...miss)), false);
+  // 6 valid of one artifact only, and 3 + 3 that are not interleaved
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'A', 'A', 'A', 'A', 'A']))), false);
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'A', 'A', 'B', 'B', 'B']))), false);
+  // fewer than 6 valid
+  assert.equal(earlyCeiling(totalsOf(...seq(['A', 'B', 'A', 'B', 'A']))), false);
+  // the 24 of 24 that only shows up looking past the first 6 (no extension): 7 valid, the 1st one missed a seed, attempts 2 to 7 are 24 of 24
+  const past = seq(['A', 'B', 'A', 'B', 'A', 'B', 'A']);
+  past[0] = vatt('A', 1, { ...ALL, QL2: 'perdido' });
+  assert.equal(earlyCeiling(totalsOf(...past)), false);
+  // with an early ceiling ruleSideC says teto without looking at the unica
+  const atual = totalsOf(...seq(['A', 'B', 'A', 'B', 'A', 'B']));
+  const r = ruleSideC({ atual });
+  assert.equal(r.side, 'teto');
+  assert.match(r.reason, /antecipado/);
+  // but the recount of the same 6 attempts still guards it: a failRiscoAceito attempt among them makes it inconclusivo
+  const risky = seq(['A', 'B', 'A', 'B', 'A', 'B']);
+  risky[0] = vatt('A', 1, ALL, { failRiscoAceito: true, capturadoPor: NAMED });
+  assert.equal(ruleSideC({ atual: totalsOf(...risky) }).side, 'inconclusivo');
+  assert.equal(earlyCeiling(null), false);
+});
+
+test('C4: the aggregate of a lenses batch records harness.taskReview, kinds, outcomesByLens and the counters of C3', async () => {
+  for (const arm of ['atual', 'unica']) {
+    const s = setup();
+    try {
+      const loops = arm === 'atual' ? cleanLoops : [{ kind: 'review', ok: true, stop: null, accepted: [] }];
+      const entries = arm === 'atual' ? [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))] : [entry('E5:t3:review1', lrv([]))];
+      const spec = () => ({ entries, ret: { ok: true, kind: null, msg: null, loops, reviews: [], accepted: [] } });
+      const r = await runBatch(lensBatch(s, arm), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+      const g = r.aggregate;
+      assert.equal(g.valid, 1, JSON.stringify(g.invalidReasons));
+      assert.deepEqual(g.harness.taskReview, { restricted: false, single: arm === 'unica' });
+      assert.deepEqual(g.harness.kinds, arm === 'unica' ? ['review'] : ['spec', 'quality']);
+      assert.deepEqual(Object.keys(g.outcomesByLens), ['spec', 'quality']);
+      assert.equal(g.outcomesByLens.spec.perdido + g.outcomesByLens.quality.perdido, 4);
+      for (const k of ['failRiscoAceito', 'bloqueadoMisto', 'paradoSoSintetico', 'sinteticoGerado', 'veredictoAusente', 'capturadoSemMencao', 'bloqueouSintetico']) assert.equal(g[k], 0, k);
+      assert.deepEqual(Object.keys(g.capturadoPorMatriz), [...g.harness.kinds, 'semMencao']);
+      assert.equal(typeof g.costPerValid, 'number');
+      assert.equal(g.stoppedBy, undefined);
+      assert.equal(g.harness.reviewModel, 'sonnet');
+    } finally {
+      s.done();
+    }
+  }
+});

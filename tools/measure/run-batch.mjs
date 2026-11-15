@@ -1930,6 +1930,99 @@ export function armTotals(aggregates) {
   return { totals, stop };
 }
 
+// ---- E27 C4: the decision rule of the passada C, over the totals of an arm (armTotals) ----
+
+// Thresholds of the rule (design C4), fixed before the batch: per arm 10 valid attempts and 40 seed opportunities (20 per lens).
+const RULE_C = { ceiling: 38, floor: 20, minDeterminadas: 32, capturasMargin: 2, perdidosMargin: 2 };
+// The early ceiling: the first 6 valid attempts of the atual arm, 3 of A and 3 of B interleaved, with every seed captured (24 of 24).
+const EARLY_CEILING = { valid: 6, perArtifact: 3, captured: 24 };
+
+// Early ceiling (fixed before, no extension): true when the first 6 valid attempts of the atual arm (by start time) are 3 of A and
+// 3 of B strictly alternating and capture 24 of 24 seeds. Only those 6 are read: a 24 of 24 further on does not count.
+export function earlyCeiling(atualTotals) {
+  const first = (atualTotals?.validOrder ?? []).slice(0, EARLY_CEILING.valid);
+  if (first.length < EARLY_CEILING.valid) return false;
+  const alternates = first.every((x, i) => i === 0 || x.artifact !== first[i - 1].artifact);
+  const of = (artifact) => first.filter((x) => x.artifact === artifact).length;
+  const captured = first.reduce((n, x) => n + x.capturado, 0);
+  const opportunities = first.reduce((n, x) => n + x.oportunidades, 0);
+  return alternates && of('A') === EARLY_CEILING.perArtifact && of('B') === EARLY_CEILING.perArtifact && captured === EARLY_CEILING.captured && opportunities === EARLY_CEILING.captured;
+}
+
+// DEC-737 for the lenses batch: the totals of one arm recounted with some captures or attempts as indeterminado (a copy; the totals
+// given are not changed). mode 'semMencao': every captured seed no review names; the reading of the diary (`leitura`, { <attempt key>:
+// { <seed id>: named } } filled by the orchestrator) prevails over the regex (regexMentioned). mode 'failRisco': every seed of the
+// attempts with failRiscoAceito.
+export function recountLenses(totals, mode, leitura = {}) {
+  const t = structuredClone(totals);
+  const toIndeterminate = (item, lens, from, n) => {
+    if (n <= 0) return;
+    t.outcomesByLens[lens][from] -= n;
+    t.outcomesByLens[lens].indeterminado += n;
+    t.outcomesByLens[lens].determinadas -= n;
+    t.determinadas -= n;
+    t.indeterminados += n;
+    item.byLens[lens][from] -= n;
+    item.byLens[lens].indeterminado += n;
+    if (from === 'capturado') {
+      t.capturas -= n;
+      item.capturado -= n;
+    } else t.perdidos -= n;
+  };
+  for (const item of t.validOrder ?? []) {
+    if (mode === 'semMencao') {
+      for (const c of item.captured ?? []) {
+        const named = leitura?.[item.key]?.[c.id] ?? c.regexMentioned;
+        if (!named) toIndeterminate(item, c.lens, 'capturado', 1);
+      }
+    } else if (mode === 'failRisco' && item.failRiscoAceito) {
+      for (const lens of ['spec', 'quality']) {
+        toIndeterminate(item, lens, 'capturado', item.byLens[lens].capturado);
+        toIndeterminate(item, lens, 'perdido', item.byLens[lens].perdido);
+      }
+    }
+  }
+  return t;
+}
+
+// The side of the rule for the totals of the atual arm and (unless atual is the ceiling or the floor) of the unica arm.
+function decideSideC(atual, unica) {
+  if (earlyCeiling(atual)) return { side: 'teto', reason: 'teto antecipado: as 6 primeiras validas do atual, 3 A e 3 B intercaladas, em 24 de 24' };
+  if (atual.capturas >= RULE_C.ceiling) return { side: 'teto', reason: `atual com ${atual.capturas} capturas (${RULE_C.ceiling} ou mais)` };
+  if (atual.capturas < RULE_C.floor) return { side: 'piso', reason: `atual com ${atual.capturas} capturas (menos de ${RULE_C.floor})` };
+  if (atual.determinadas < RULE_C.minDeterminadas) return { side: 'piso', reason: `atual com ${atual.determinadas} determinadas (menos de ${RULE_C.minDeterminadas})` };
+  if (!unica) return { side: 'sem-unica', reason: 'a unica nao tem totais e o atual nao e teto nem piso' };
+  const stays = (reason) => ({ side: 'atual', reason });
+  if (unica.determinadas < RULE_C.minDeterminadas) return stays('determinadas');
+  if (unica.capturas < atual.capturas - RULE_C.capturasMargin) return stays('capturas');
+  for (const lens of ['spec', 'quality']) if (unica.outcomesByLens[lens].capturado < atual.outcomesByLens[lens].capturado - RULE_C.capturasMargin) return stays(`capturas por lente (${lens})`);
+  if (unica.perdidos > atual.perdidos + RULE_C.perdidosMargin) return stays('perdidos');
+  for (const lens of ['spec', 'quality']) if (unica.outcomesByLens[lens].perdido > atual.outcomesByLens[lens].perdido + RULE_C.perdidosMargin) return stays(`perdidos por lente (${lens})`);
+  if (!(typeof unica.costPerValid === 'number' && typeof atual.costPerValid === 'number' && unica.costPerValid < atual.costPerValid)) return stays('custo');
+  return { side: 'unica', reason: 'a unica entra: determinadas, capturas e perdidos dentro da margem, no total e por lente, e custo menor' };
+}
+
+// The rule of the passada C over the totals of the two arms (armTotals). `unica` may be absent when atual is the ceiling or the floor.
+// The recounts (capturadoSemMencao as indeterminado, then the failRiscoAceito attempts as indeterminado, in both arms) must keep the
+// side, or the answer is inconclusivo and the two loops stay. Returns { side: 'teto'|'piso'|'unica'|'atual'|'inconclusivo', reason, recount }.
+export function ruleSideC({ atual, unica = null, leitura = {} }) {
+  if (!atual) throw new UsageError('ruleSideC needs the totals of the atual arm');
+  const base = decideSideC(atual, unica);
+  if (base.side === 'sem-unica') throw new UsageError(base.reason);
+  const summary = (t) => (t ? { capturas: t.capturas, perdidos: t.perdidos, indeterminados: t.indeterminados, determinadas: t.determinadas, outcomesByLens: t.outcomesByLens, costPerValid: t.costPerValid } : null);
+  const recount = { base: { side: base.side, reason: base.reason } };
+  const changed = [];
+  for (const mode of ['semMencao', 'failRisco']) {
+    const a = recountLenses(atual, mode, leitura);
+    const u = unica ? recountLenses(unica, mode, leitura) : null;
+    const r = decideSideC(a, u);
+    recount[mode] = { side: r.side, reason: r.reason, atual: summary(a), unica: summary(u) };
+    if (r.side !== base.side) changed.push(mode);
+  }
+  if (changed.length > 0) return { side: 'inconclusivo', reason: `a recontagem (${changed.join(' e ')}) muda o lado de ${base.side}: ficam os dois laços`, recount };
+  return { side: base.side, reason: base.reason, recount };
+}
+
 // B3: the single wave of the final stage, derived from the journal of the batch (no new call): the same replay with `once: true`
 // (review 1, fix 1, review 2). Returns { ok, calls } with the labels the replay asked for, in order; what the loop did after review 2
 // stays unused here (the divergence check belongs to loopResult). A journal without fix 1 gives ok false: the attempt is invalid anyway.
