@@ -555,5 +555,49 @@
     "introducedBy": "fix",
     "mention": "word-?count.*(trim|blank|whitespace)|(trim|blank).*word-?count",
     "description": "The fix drops the trim in wordCount, so blank text counts as words"
+  },
+  {
+    "id": "C1",
+    "class": "code",
+    "kind": "accent-handling",
+    "artifact": "A",
+    "set": "e5-native",
+    "file": "src/slugify.mjs",
+    "sentinel": "sentinels/C1.mjs",
+    "detectedBy": "reviewer",
+    "description": "slugify no longer strips accents"
+  },
+  {
+    "id": "C2",
+    "class": "code",
+    "kind": "assertionless-test",
+    "artifact": "A",
+    "set": "e5-native",
+    "file": "tests/e5-word-count.test.mjs",
+    "sentinel": "sentinels/native/C2.mjs",
+    "detectedBy": "reviewer",
+    "description": "The wordCount test calls the function without asserting anything"
+  },
+  {
+    "id": "C3",
+    "class": "code",
+    "kind": "off-by-one",
+    "artifact": "A",
+    "set": "e5-native",
+    "file": "src/truncate.mjs",
+    "sentinel": "sentinels/native/C3.mjs",
+    "detectedBy": "reviewer",
+    "description": "truncate returns max + 1 code points for even max"
+  },
+  {
+    "id": "C4",
+    "class": "code",
+    "kind": "out-of-scope-file",
+    "artifact": "A",
+    "set": "e5-native",
+    "file": "src/helpers.mjs",
+    "sentinel": "sentinels/native/C4.mjs",
+    "detectedBy": "reviewer",
+    "description": "A helpers module outside the task file list is created and imported by the wordCount module (no index.mjs in the native plan)"
   }
 ]
