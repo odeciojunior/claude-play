@@ -567,7 +567,7 @@ function nativeCounts(attempts) {
 }
 
 // Loop batches: outcomes after the 1st fix, reviews per attempt, ok/stopped and the unverified after-fix SHAs (valid attempts).
-function loopAggregate(attempts, { seededFix = false } = {}) {
+function loopAggregate(attempts, { seededFix = false, singleWaveArm = false } = {}) {
   const valid = attempts.filter((a) => a.status === 'valid' && a.loop);
   const reviews = {};
   for (const a of valid) reviews[a.loop.reviews] = (reviews[a.loop.reviews] ?? 0) + 1;
@@ -591,7 +591,12 @@ function loopAggregate(attempts, { seededFix = false } = {}) {
   }
   // B3: refutou-tudo attempts are invalid (no correction happened), so they are counted over every attempt, apart from the infra ones.
   const refutouTudo = attempts.filter((a) => a.status === 'invalid' && a.reason === 'refutou-tudo').length;
-  return { ...out, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai, refutouTudo };
+  // B3: the single wave derived from the atual arm of the final stage (apart from the adversarial arm, which has none)
+  const waves = valid.filter((a) => a.singleWave);
+  const single = singleWaveArm
+    ? { outcomesSingleWave: totalOutcomes(waves.map((a) => ({ status: 'valid', outcomes: a.singleWave.outcomes }))).outcomes, singleWaveStopped: waves.filter((a) => !a.singleWave.ok).length }
+    : {};
+  return { ...out, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai, refutouTudo, ...single };
 }
 
 // DEC-737: the report recounted with every capturadoSemMencao as indeterminado (the capture did not come from the reviewer's mention).
@@ -1480,6 +1485,25 @@ function loopEntries(h, entries) {
 // 2nd review on, with the `was` runReviewLoop passes), reviewTruth with 1 commit minimum over the seeded range.
 // `restrictedRounds` records what restrictedRound said for each round (1b excluded), as the script does.
 export async function loopResult(h, entries, P, scenario = null) {
+  const rp = await replayLoop(h, entries, P, scenario, false);
+  const { res, used, reviews, fixTiers, restrictedRounds } = rp;
+  if (res.kind === 'infra') return { infra: true };
+  // the verify labels of the final stage belong to the stage: one the replay did not use, or a repeated one, is a divergence too
+  const final = h.stage === 'final-review';
+  const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(h.st.label) || (final && l.startsWith(FINAL_VERIFY)));
+  if (new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !used.has(l))) return { divergent: true };
+  return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null, ...(h.stage === 'task-review' ? { restrictedRounds } : {}) };
+}
+
+// B3: the single wave of the final stage, derived from the journal of the batch (no new call): the same replay with `once: true`
+// (review 1, fix 1, review 2). Returns { ok, calls } with the labels the replay asked for, in order; what the loop did after review 2
+// stays unused here (the divergence check belongs to loopResult). A journal without fix 1 gives ok false: the attempt is invalid anyway.
+export async function singleWaveReplay(h, entries, P, scenario = null) {
+  const { res, calls } = await replayLoop(h, entries, P, scenario, true);
+  return { ok: res.ok === true, calls };
+}
+
+async function replayLoop(h, entries, P, scenario, once) {
   const opt = stageLoopFor(h.stage, h.harness.reviewModel);
   const label = h.st.label;
   const task = h.stage === 'task-review';
@@ -1489,6 +1513,7 @@ export async function loopResult(h, entries, P, scenario = null) {
   const restrictedRounds = [];
   let cx = null;
   const used = new Set();
+  const calls = [];
   const take = (l) => {
     const e = find(entries, l);
     if (e) used.add(l);
@@ -1500,6 +1525,7 @@ export async function loopResult(h, entries, P, scenario = null) {
       cx = { taskReview: { restricted: h.arm === 'restrita' }, was };
       if (round !== '1b') restrictedRounds.push(!!P.restrictedRound({ taskReview: { restricted: h.arm === 'restrita' }, was }));
     }
+    calls.push(`${label}${round}`);
     const e = take(`${label}${round}`);
     if (!e || !e.result) return null;
     reviews += 1;
@@ -1515,6 +1541,7 @@ export async function loopResult(h, entries, P, scenario = null) {
     return e.result;
   };
   const fix = async (iss, k, tier) => {
+    calls.push(`${label}-fix${k}`);
     const e = take(`${label}-fix${k}`);
     if (nullResult(e)) return null;
     fixTiers.push(tier);
@@ -1526,12 +1553,8 @@ export async function loopResult(h, entries, P, scenario = null) {
     : final
     ? (r) => P.reviewTruth(r, 1, 'main..HEAD')
     : (r) => P.reviewTruth(r, 0, 'main..HEAD');
-  const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, truth, { tier: opt.tier, reviewModel: opt.reviewModel, ...(task ? { byId: true } : {}) });
-  if (res.kind === 'infra') return { infra: true };
-  // the verify labels of the final stage belong to the stage: one the replay did not use, or a repeated one, is a divergence too
-  const stageLabels = entries.map((e) => e.label).filter((l) => l.startsWith(label) || (final && l.startsWith(FINAL_VERIFY)));
-  if (new Set(stageLabels).size !== stageLabels.length || stageLabels.some((l) => !used.has(l))) return { divergent: true };
-  return { reviews, fixes: fixTiers.length, fixTiers, ok: res.ok === true, kind: res.ok ? null : res.kind ?? null, ...(task ? { restrictedRounds } : {}) };
+  const res = await P.runReviewLoop(env, STAGE_CALL[h.stage].name, review, fix, truth, { tier: opt.tier, reviewModel: opt.reviewModel, ...(task ? { byId: true } : {}), ...(once ? { once: true } : {}) });
+  return { res, used, calls, reviews, fixTiers, restrictedRounds };
 }
 
 // B4: validity of a task-review (or final-review) loop attempt that has its replay: the seeded correction must really have been
@@ -1834,6 +1857,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
     let journal = null;
     let loop = null;
+    let singleWave = null;
     if (scenario.seeded?.length > 0) {
       journal = readSessionJournals(opts.configDir, sessions);
       const rawEntries = journal.entries;
@@ -1856,6 +1880,13 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
           console.error(`journal format: ${n} attempt(s) invalid`);
         }
         continue;
+      }
+      // B3: the single wave of the final stage, only in the atual arm and only from a valid attempt (it has fix1, so CR and CG were applied)
+      if (loop && h.stage === 'final-review' && h.arm === 'atual' && scenario.fixSha) {
+        const sw = await singleWaveReplay(h, rawEntries, h.loopFns, scenario);
+        const outcome = sw.ok ? 'perdido' : 'indeterminado';
+        const seeded = manifestEntries(variant).filter((e) => scenario.fixEntries.includes(e.id));
+        singleWave = { ok: sw.ok, outcomes: seeded.map((e) => ({ id: e.id, class: e.class, detectedBy: e.detectedBy === 'code' ? 'codigo' : 'reviewer', outcome })) };
       }
     }
     const runsFile = join(priv, `attempts-${k}.json`);
@@ -1926,6 +1957,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         Object.assign(attempt, mentionStats(journal.entries, h.st.label, scenario.fixEntries));
         h.harness.seededFix ??= { sha: scenario.fixSha, ids: scenario.fixEntries };
         if (h.stage === 'final-review') attempt.verify = verifyStats(journal.entries, scenario.fixEntries, h.loopFns);
+        if (singleWave) attempt.singleWave = singleWave;
       }
     }
     if (h && journal && artifactOf(variant)?.set === 'e5-native' && h.st.artifact) {
@@ -1969,7 +2001,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     },
     ...totalOutcomes(attempts),
     ...(attempts.some((a) => a.status === 'valid' && a.toolCheck) ? nativeCounts(attempts) : {}),
-    ...(h?.rounds === 'loop' ? loopAggregate(attempts, { seededFix: /^correcao-semeada-/.test(variant) }) : {}),
+    ...(h?.rounds === 'loop' ? loopAggregate(attempts, { seededFix: /^correcao-semeada-/.test(variant), singleWaveArm: h.stage === 'final-review' && h.arm === 'atual' }) : {}),
     ...(stoppedBy ? { stoppedBy } : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
