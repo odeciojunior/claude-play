@@ -18,6 +18,7 @@ const B1 = '3f2a9c1d8e7b6a5f4c3d2e1f0a9b8c7d6e5f4a3b';
 const B2 = '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d';
 const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }];
 const gm = (head, over = {}) => ({ headSha: head.padEnd(40, '0'), clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
+const FULL = (s) => s.padEnd(40, '0');
 const card = (id, extra = {}) => ({ id, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, acceptance: [{ id: 'AC1', text: 'works' }], ...extra });
 
 // The Workflow runtime's resume cache: an agent() call is keyed on (prompt, opts, previous key); while every call so far
@@ -194,7 +195,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     const E = (/^(E\d+):/.exec(l) || [])[1];
     if (l === 'discovery' || /^discovery-retry\d$/.test(l)) return { exit: 0, stdout: discStdout(nonceOf(prompt), { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
     if (l === 'discovery-donot') return { donotHolds: [] };
-    if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') };
+    if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return 'spec written';
     if (/:spec-load\d$/.test(l)) return specLoadOk(E, { acceptance: ((typeof cards === 'function' ? cards() : cards).find((c) => c.id === E) || {}).acceptance || [] });
@@ -219,7 +220,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:evidence/.test(l)) return { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
     if (/:pre-merge$/.test(l)) return { head: 'abc1234', clean: true, branchHasTarget: false, branchMerged: false };
     if (/:delta-review/.test(l)) return { issues: [], headSha: 'a3', clean: true, commitsInRange: 0 };
-    if (/:merge$/.test(l)) return { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'a3', conflicts: 0, clean: true };
+    if (/:merge$/.test(l)) return { mergeCommit: FULL('e1'), firstParent: 'abc1234', secondParent: 'a3', conflicts: 0, clean: true };
     if (/:docs\d$/.test(l)) return recMock.run(prompt, E);
     if (/:docs-measure/.test(l)) return { measureOk: true, measureDetails: '' };
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
@@ -263,7 +264,7 @@ test('sync schema requires deltaFiles and targetTip', async () => {
 
 test('a merge whose second parent is not the validated head is rolled back', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (/:merge$/.test(l) ? { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'zzz9999', conflicts: 0, clean: true } : undefined) });
+    over: (l) => (/:merge$/.test(l) ? { mergeCommit: FULL('e1'), firstParent: 'abc1234', secondParent: 'zzz9999', conflicts: 0, clean: true } : undefined) });
   assert.equal(r.results[0].merged, false);
   assert.match(r.results[0].error, /second parent/);
   assert.ok(labels.includes('E1:rollback'));
@@ -894,7 +895,7 @@ test('I3: args.repo wins over the discovered repo and stands in for it', async (
   assert.match(calls.find((c) => c.label === 'preflight').prompt, /git -C "\/given"/);
 });
 
-const redBase = (over) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: over } : undefined);
+const redBase = (over) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: over } : undefined);
 
 test('I5: a tests gate with total 0 is not offered acceptRedBaseline', async () => {
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: redBase(gm('abc1234', { total: 0 })) });
@@ -921,7 +922,7 @@ test('m2: the docs are not ok when the panel does not show the status after the 
 });
 
 test('m4: paths are quoted in the docs measure, the integrity run and the cleanup', async () => {
-  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: '/w t' }, over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/w t/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined), config: { docsStage: { instructions: 'x', measure: 'm' } } });
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { wtRoot: '/w t' }, over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/w t/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined), config: { docsStage: { instructions: 'x', measure: 'm' } } });
   assert.ok(calls.find((c) => c.label === 'E1:docs-measure1').prompt.includes('node "/w t/_tmp/E1-docs-measure.cjs"'));
   assert.ok(calls.find((c) => c.label === 'E1:test-integrity').prompt.includes('node "/w t/_tmp/E1-integrity.cjs" "integracao/x"'));
   const clean = calls.find((c) => c.label === 'E1:cleanup').prompt;
@@ -1152,7 +1153,7 @@ test('restricted gate is not measured without authorization and is offered as an
   assert.equal(act.deliverable, null);
   assert.deepEqual(act.resumeWith.authorizeExternal, ['gate:e2e']);
   const b = await exec({ cards: [card('E1')], deliverables: ['E1'], config: cfg, args: { authorizeExternal: ['gate:e2e'] },
-    over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: { ...gm('abc1234'), gates: [...gm('abc1234').gates, { name: 'e2e', ran: true, exit: 0 }] } } : undefined) });
+    over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: { ...gm('abc1234'), gates: [...gm('abc1234').gates, { name: 'e2e', ran: true, exit: 0 }] } } : undefined) });
   assert.match(b.calls.find((c) => c.label === 'preflight').prompt, /npm run e2e/);
   assert.equal(ext(b.r).length, 0);
 });
@@ -1188,7 +1189,7 @@ test('the restricted-gate action keeps bound items of unfinished deliverables an
   assert.equal(r.results.find((x) => x.id === 'E2').held, 'E2:T3@' + fpOf(t2));
 });
 
-const foreignPre = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined);
+const foreignPre = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined);
 
 test("item 6: a target checked out in the person's checkout holds every merge", async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignPre });
@@ -1360,7 +1361,7 @@ test('item 11: the record and docs prompts forbid a strategy revision', async ()
 });
 
 // ---- final-review fixes (I1-I5, minors)
-const foreignNoBase = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: 'abc1234', clean: true, envFacts: 'x' } : undefined);
+const foreignNoBase = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/r', targetHead: FULL('abc1234'), clean: true, envFacts: 'x' } : undefined);
 
 test('I1: an unauthorized foreign checkout returns no baseline and only the hold follows', async () => {
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignNoBase });
@@ -1829,7 +1830,7 @@ const riskIssue = { severity: 'important', category: 'fora-do-escopo', descripti
 
 test('minor 13: a risk accepted on the conflict review is committed before the post-merge gates', async () => {
   const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
-    if (/:merge$/.test(l)) return { mergeCommit: 'e1', firstParent: 'abc1234', secondParent: 'a3', conflicts: 1, clean: true };
+    if (/:merge$/.test(l)) return { mergeCommit: FULL('e1'), firstParent: 'abc1234', secondParent: 'a3', conflicts: 1, clean: true };
     if (l === 'E1:merge-review') return { issues: [riskIssue], headSha: 'e1', clean: true, commitsInRange: 1 };
     return undefined;
   } });
@@ -4735,7 +4736,7 @@ test('E23: progress records spec and plan only after a review ran', async () => 
   assert.ok(!p.startsWith('Read-only'));
   const pay = payloadOf(p);
   assert.equal(typeof pay.trailer, 'string');
-  assert.equal(pay.prep.targetHead, 'abc1234');
+  assert.equal(pay.prep.targetHead, FULL('abc1234'));
   assert.equal(pay.prep.gatesKey, loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES))));
   assert.equal(pay.prep.baseline.headSha, 'abc1234'.padEnd(40, '0'));
   const skipped = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
@@ -4759,11 +4760,11 @@ test('E23: plan-only records spec and plan in the review log', async () => {
 });
 
 // ---- E23 T6: the preflight reuses the recorded gates baseline when the target did not move.
-const recordedPre = (rec) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: rec } : undefined);
+const recordedPre = (rec) => (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', recorded: rec } : undefined);
 
 test('AC3: an unchanged target reuses the recorded gates baseline', async () => {
   const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
-  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
+  const prep = { targetHead: FULL('abc1234'), gatesKey: key, baseline: gm('abc1234') };
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedPre(JSON.stringify(prep)) });
   assert.ok(calls.find((c) => c.label === 'preflight').prompt.includes('run-record.mjs" baseline'));
   const pp = calls.find((c) => c.label === 'preflight').prompt;
@@ -4780,8 +4781,8 @@ test('AC3: an unchanged target reuses the recorded gates baseline', async () => 
 
 test('AC3: a recorded baseline wins over a partial baseline returned by the preflight', async () => {
   const key = loadPure().fnv1a(JSON.stringify(loadPure().canon(GATES)));
-  const prep = { targetHead: 'abc1234', gatesKey: key, baseline: gm('abc1234') };
-  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: JSON.stringify(prep), baseline: { headSha: 'abc1234', clean: true, gates: [] } } : undefined);
+  const prep = { targetHead: FULL('abc1234'), gatesKey: key, baseline: gm('abc1234') };
+  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', recorded: JSON.stringify(prep), baseline: { headSha: 'abc1234', clean: true, gates: [] } } : undefined);
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.ok(!r.operatorActions.some((o) => /^preflight:/.test(o.kind)), JSON.stringify(r.operatorActions));
   assert.ok(calls.some((c) => c.label === 'E1:setup'));
@@ -4789,7 +4790,7 @@ test('AC3: a recorded baseline wins over a partial baseline returned by the pref
 
 // fix/pos-E23 (P5 fase 2): a recorded value the workflow rejects never falls back to the agent's own copy.
 test('AC3: recorded in prose with a copied baseline stops at the preflight, no gate accepted', async () => {
-  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', recorded: 'The baseline command printed the recorded measure; reused it.', baseline: gm('abc1234') } : undefined);
+  const over = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', recorded: 'The baseline command printed the recorded measure; reused it.', baseline: gm('abc1234') } : undefined);
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
   assert.ok(r.operatorActions.some((o) => o.kind === 'preflight:other'), JSON.stringify(r.operatorActions));
   assert.ok(!labels.some((l) => /^E1:/.test(l)), labels.join(','));
@@ -5038,4 +5039,53 @@ test('E28 AC1: taskReview.single runs one review call per round on the task-revi
   assert.match(fix, /fix the review problems/);
   const text = await singleRun({ taskReview: { single: 'true' } }, () => pass);
   assert.deepEqual(ours(text).map((c) => c.label), ['E1:t1:spec1', 'E1:t1:quality1']);
+});
+
+test('2.0.1 AC2: a preflight targetHead that is not a full SHA stops before any deliverable work', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: 'abc1234', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined) });
+  assert.equal(r.status, 'needs-operator');
+  assert.ok(r.operatorActions.some((o) => /^preflight:/.test(o.kind) && o.what.includes('targetHead is not a full SHA: abc1234')), JSON.stringify(r.operatorActions));
+  assert.ok(!labels.includes('E1:setup'));
+});
+
+test('2.0.1 AC2: a full targetHead in uppercase with a newline is accepted normalized', async () => {
+  const { labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234').toUpperCase() + '\n', clean: true, envFacts: 'x', baseline: gm('abc1234') } : undefined) });
+  assert.ok(labels.includes('E1:setup'));
+  assert.ok(calls.find((c) => c.label === 'E1:setup').prompt.includes(FULL('abc1234')));
+});
+
+test('2.0.1 AC2: a mergeCommit that is not a full SHA rolls the merge back as infra before any post-merge gate', async () => {
+  for (const bad of ['e1', 'sha ' + FULL('e1')]) {
+    const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:merge$/.test(l) ? { mergeCommit: bad, firstParent: 'abc1234', secondParent: 'a3', conflicts: 0, clean: true } : undefined) });
+    assert.ok(labels.includes('E1:rollback'), bad);
+    assert.ok(!labels.some((l) => /merge-gates/.test(l)), bad);
+    assert.equal(r.results[0].merged, false, bad);
+    assert.match(r.results[0].error, /mergeCommit is not a full SHA/);
+    assert.equal(r.results[0].failKind, 'infra');
+  }
+});
+
+test('2.0.1 AC2: a merge-risks head that is not a full SHA leaves the next measure without an expected commit', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
+    if (/^E1:merge-gates1/.test(l)) return gm('e1', { exit: 1, failedNames: ['t'] });
+    if (l === 'E1:merge-fix') return { status: 'DONE', summary: 's', checks: [] };
+    if (l === 'E1:merge-fix-review') return { issues: [riskIssue], headSha: 'm8', clean: true, commitsInRange: 1 };
+    if (l === 'E1:merge-risks') return { head: 'commit ' + FULL('e9'), commit: 'x' };
+    if (/^E1:merge-gates2/.test(l)) return gm('e9');
+    return undefined;
+  } });
+  assert.ok(!labels.includes('E1:rollback'));
+  assert.equal(r.results[0].merge.docsOk, true);
+});
+
+test('2.0.1 AC2: a merge-fix review headSha that is not a full SHA does not reject the next measure', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => {
+    if (/^E1:merge-gates1/.test(l)) return gm('e1', { exit: 1, failedNames: ['t'] });
+    if (l === 'E1:merge-fix') return { status: 'DONE', summary: 's', checks: [] };
+    if (l === 'E1:merge-fix-review') return { issues: [], headSha: 'HEAD', clean: true, commitsInRange: 1 };
+    if (/^E1:merge-gates2/.test(l)) return gm('f7');
+    return undefined;
+  } });
+  assert.ok(!labels.includes('E1:rollback'));
+  assert.equal(r.results[0].merge.docsOk, true);
 });

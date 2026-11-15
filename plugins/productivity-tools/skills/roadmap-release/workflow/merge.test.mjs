@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { loadPure } from './load-pure.mjs';
 import { truthDivergences } from '../scripts/verify-run.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const { needsDeltaReview, measureProblems, gateGroups, refreshBaseline, integrityAlerts, gateSummary, postMergeFixArgs, postMergeFixes, integrityHardAlerts, integrityHeuristicAlerts, integrityAckMatches, isOwnWorktree } = loadPure();
 const RM = 'docs/plans/roadmap-x/';
@@ -161,4 +162,18 @@ test('isOwnWorktree: only <wtRoot>/_integracao, slash- and drive-case-insensitiv
   assert.equal(isOwnWorktree('/wt/E1', '/wt/'), false);
   assert.equal(isOwnWorktree('/wt', '/wt/'), false);
   assert.equal(isOwnWorktree('D:\\wt\\_integracao', 'd:/wt/'), true);
+});
+
+test('2.0.1 AC2: fullRef keeps a full SHA normalized and nothing else', () => {
+  const { fullRef } = loadPure();
+  assert.equal(fullRef('a'.repeat(40)), 'a'.repeat(40));
+  assert.equal(fullRef('b'.repeat(64)), 'b'.repeat(64));
+  assert.equal(fullRef('ABC' + 'd'.repeat(37) + '\n'), 'abc' + 'd'.repeat(37));
+  for (const bad of ['abc1234', 'a'.repeat(39), 'commit ' + 'a'.repeat(40), 'HEAD', '', undefined, null, 123]) assert.equal(fullRef(bad), null, String(bad));
+});
+
+test('2.0.1 AC2: both persist steps hand back fullRef of the head they read', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(src.split('return fullRef(w.head)').length - 1, 2);
+  assert.equal(src.split('persistMergeRisks(riskFrom, fullRef(rr.headSha))').length - 1, 1);
 });
