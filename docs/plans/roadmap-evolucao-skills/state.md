@@ -32,7 +32,7 @@ Retrato. Sobrescrito a cada atualização; o histórico vai para `log.md`.
 | E13 | nao-iniciado | - | Aguardar os entregáveis de que depende (ver a estratégia) |
 | E14 | publicado | `baa77bf`; `docs/reports/2026-11-10-e14-sondas-resultados.md`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E15 | publicado | `edeb2b9e7c10b5154f4a40c3c095377b11b08322`; `docs/superpowers/specs/2026-11-11-E15-linha-de-base-design.md`; `docs/superpowers/plans/2026-11-11-E15-linha-de-base.md`; `docs/superpowers/reviews/2026-11-11-E15-linha-de-base-reviews.md`; G1; G2; G3; G4; G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
-| E16 | nao-iniciado | - | Aguardar E11, E15 e E21 |
+| E16 | spec | `docs/plans/roadmap-evolucao-skills/decisions.md` | Bump 2.1.0 e nota; lote M16 (completo ×3, coordinator ×3, teto US$ 15); comparador; branch de volta 2.1.1; roteiro de publicação do dono. |
 | E17 | publicado | `docs/superpowers/specs/2026-11-12-E17-ponto-medicao-primeira-publicacao-design.md`, `docs/superpowers/plans/2026-11-12-E17-ponto-medicao-primeira-publicacao.md`, `452a841354acf7f3bbe72c5d115c61c6167b84ba`, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E18 | publicado | `48f2c0b3c413774c4683d4720e912311a5826610`; `docs/superpowers/specs/2026-11-11-E18-registro-release-cli-preflight-design.md`; `docs/superpowers/plans/2026-11-11-E18-registro-release-cli-preflight.md`; G1 a G5, `73cd476` | Publicado no 1.7.0 (main 73cd476) |
 | E19 | publicado | `docs/superpowers/specs/2026-11-12-E19-autor-spec-skill-interativa-design.md`, `docs/superpowers/plans/2026-11-12-E19-autor-spec-skill-interativa.md`, `a03329f62ee1c76ece45767d218f3ba326cfe7bb`, `1017db59b9cedf116ec8a8d3f20b89cd506d74ca` | Publicado na 2.0.0 (main 1017db5). |
