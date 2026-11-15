@@ -19,6 +19,7 @@ export const VARIANTS = [
   'plano-semeado-A', 'plano-semeado-B', 'codigo-semeado-A', 'codigo-semeado-B',
   'spec-semeado-A', 'spec-semeado-B', 'plano-semeado-codigo', 'spec-author', 'plan-author',
   'spec-nativo-A', 'spec-nativo-B', 'plano-nativo-A', 'plano-nativo-B',
+  'correcao-semeada-A', 'correcao-semeada-B',
 ];
 
 // KNOWN GAP (E8, for E11 criterion 1): the roadmap-release workflow now reads and writes the native spec and plan at
@@ -51,7 +52,7 @@ const RELEASE = '/productivity-tools:roadmap-release';
 // The release skill's preflight reads permission rules only from settings files (never from CLI
 // --allowedTools), so the "run" variants carry them in an excluded settings.local.json.
 export const SANDBOX_RELEASE_RULES = ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)'];
-const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B'];
+const RELEASE_RUN_VARIANTS = ['completo', 'parada-retomada', 'codigo-semeado-A', 'codigo-semeado-B', 'correcao-semeada-A', 'correcao-semeada-B'];
 const LOCAL_SETTINGS = '.claude/settings.local.json';
 
 export function excludeFromGit(dir, name) {
@@ -212,6 +213,9 @@ const SEEDED = {
   'spec-nativo-B': { class: 'spec', artifact: 'B', set: 'e5-native' },
   'plano-nativo-A': { class: 'plan', artifact: 'A', set: 'e5-native' },
   'plano-nativo-B': { class: 'plan', artifact: 'B', set: 'e5-native' },
+  // B1: the C defects of codigo-semeado-* (baseSet) are seeded on feat/E5; set names the fix entries (CR, CG) of the fix commit.
+  'correcao-semeada-A': { class: 'code', artifact: 'A', set: 'e5-fix', baseSet: 'e5' },
+  'correcao-semeada-B': { class: 'code', artifact: 'B', set: 'e5-fix', baseSet: 'e5' },
 };
 
 export function artifactOf(variant) {
@@ -229,10 +233,57 @@ export function manifestEntries(variant) {
   return loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact && (e.set ?? 'e5') === a.set);
 }
 
-// Applies every defect of the variant's artifact in one neutral commit on feat/E5.
-async function seedVariant(dir, variant, fromRun) {
+// Entries seeded on feat/E5 itself: those of baseSet when the variant has one (correcao-semeada-*), else manifestEntries.
+export function baseEntries(variant) {
   const a = artifactOf(variant);
-  const entries = manifestEntries(variant);
+  if (!a) return [];
+  const set = a.baseSet ?? a.set;
+  return loadManifest().filter((e) => e.class === a.class && e.artifact === a.artifact && (e.set ?? 'e5') === set);
+}
+
+// B1: builds the fix commit (clean T1..T3 plus the CR and CG seeds) as a child of seededCommit that no ref points to.
+// feat/E5 and the work tree stay at seededCommit; gc.auto 0 keeps the unreferenced object alive.
+async function makeFixCommit(dir, variant, seededCommit, { suite = runSandboxSuite, presentFn } = {}) {
+  const fixEntries = manifestEntries(variant);
+  const ids = fixEntries.map((e) => e.id);
+  const mods = {};
+  for (const e of fixEntries) mods[e.id] = await import(pathToFileURL(join(DEFECTS, e.sentinel)).href);
+  const isPresent = presentFn ?? ((mod, d, ref, id) => mod.present(d, ref, id));
+  const author = ['-c', 'user.name=measure', '-c', 'user.email=measure@example.invalid'];
+  // (a) clean T1..T3; files that only exist because of a C (src/helpers.mjs of C4) leave the index.
+  for (const k of [1, 2, 3]) copyTree(join(SCEN, 'e5', 'code', `t${k}`), dir);
+  git(dir, 'rm', '-q', '-f', '--ignore-unmatch', 'src/helpers.mjs');
+  git(dir, 'add', '-A');
+  const cleanTree = git(dir, 'write-tree');
+  // (b) the residue and the regression of the fix
+  for (const e of fixEntries) mods[e.id].seed(dir, e.id);
+  git(dir, 'add', '-A');
+  const fixTree = git(dir, 'write-tree');
+  // (c) commit objects without refs; the clean one is a throwaway used only to read the sentinels on the clean code
+  const fixSha = git(dir, ...author, 'commit-tree', fixTree, '-p', seededCommit, '-m', 'E5 T3: fix review findings');
+  const cleanSha = git(dir, ...author, 'commit-tree', cleanTree, '-p', seededCommit, '-m', 'E5 T3: clean tasks');
+  // (d) back to the seeded commit, (e) keep the unreferenced objects
+  git(dir, 'reset', '-q', '--hard', seededCommit);
+  git(dir, 'config', 'gc.auto', '0');
+  // (f) the whole sandbox suite must be green at fixSha
+  git(dir, 'checkout', '-q', '--detach', fixSha);
+  const r = suite(dir);
+  git(dir, 'checkout', '-q', 'feat/E5');
+  if (!r.ok) throw new Error(`correcao-semeada: a suite acusa a correcao semeada (fixSha ${fixSha}; ${ids.join(', ')}): ${String(r.output ?? '').slice(-600)}`);
+  // (g) every CR and CG is present at fixSha and absent on the clean code
+  for (const e of fixEntries) {
+    if (isPresent(mods[e.id], dir, fixSha, e.id) !== true) throw new Error(`correcao-semeada: ${e.id} ausente em fixSha ${fixSha}`);
+    if (isPresent(mods[e.id], dir, cleanSha, e.id) !== false) throw new Error(`correcao-semeada: ${e.id} indistinguivel entre fixSha ${fixSha} e o codigo limpo`);
+  }
+  // (i) checkouts and sentinel reads leave fixSha in the HEAD reflog
+  git(dir, 'reflog', 'expire', '--expire-unreachable=now', '--all');
+  return { fixSha, fixEntries: ids };
+}
+
+// Applies every defect of the variant's artifact in one neutral commit on feat/E5.
+async function seedVariant(dir, variant, fromRun, fixOpts) {
+  const a = artifactOf(variant);
+  const entries = baseEntries(variant);
   const isCode = a.class === 'code';
   if (a.set === 'e5-native') {
     if (fromRun) throw new Error('--from-run does not apply to the native seeds');
@@ -260,9 +311,10 @@ async function seedVariant(dir, variant, fromRun) {
   const seededCommit = git(dir, 'rev-parse', 'HEAD');
   const seededBlobs = {};
   for (const f of files) seededBlobs[f] = git(dir, 'rev-parse', seededCommit + ':' + f);
+  const fix = a.baseSet ? await makeFixCommit(dir, variant, seededCommit, fixOpts) : {};
   // The release SETUP runs `git worktree add <wt> feat/E5`, which fails while the root has the branch checked out.
   git(dir, 'checkout', '-q', 'main');
-  return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs };
+  return { seeded: entries.map((e) => e.id), seededCommit, seededBlobs, ...fix };
 }
 
 // Runs the whole sandbox suite (it binds a shared local port); retries up to 3 times while the output says EADDRINUSE.
@@ -278,11 +330,12 @@ export function runSandboxSuite(dir, { spawn = spawnSync } = {}) {
   }
 }
 
-export async function makeScenario(dir, variant, { fromRun } = {}) {
+// suite and presentFn are test seams of the correcao-semeada checks (default: runSandboxSuite and the sentinel's present).
+export async function makeScenario(dir, variant, { fromRun, suite, presentFn } = {}) {
   if (!VARIANTS.includes(variant)) throw new Error(`unknown variant: ${variant}`);
   if (/semeado|nativo/.test(variant) && !artifactOf(variant)) throw new Error(`variant not implemented yet: ${variant}`);
   const sandbox = makeSandbox(dir);
-  const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, paths: { ...E5_PATHS } };
+  const scenario = { dir: sandbox, variant, prompts: [], stopResume: null, seeded: [], seededCommit: null, seededBlobs: {}, fixSha: null, fixEntries: [], paths: { ...E5_PATHS } };
   switch (variant) {
     case 'plano-semeado-A':
     case 'plano-semeado-B':
@@ -306,6 +359,11 @@ export async function makeScenario(dir, variant, { fromRun } = {}) {
     case 'codigo-semeado-A':
     case 'codigo-semeado-B':
       Object.assign(scenario, await seedVariant(sandbox, variant, fromRun));
+      scenario.prompts = [`${RELEASE} run E5`];
+      break;
+    case 'correcao-semeada-A':
+    case 'correcao-semeada-B':
+      Object.assign(scenario, await seedVariant(sandbox, variant, fromRun, { suite, presentFn }));
       scenario.prompts = [`${RELEASE} run E5`];
       break;
     case 'plan-only':

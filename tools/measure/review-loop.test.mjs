@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractPure, checkLoopWorkflow, buildLoopScript, STAGE_LOOP, LOOP_RM, readArm, UsageError } from './run-batch.mjs';
+import { extractPure, checkLoopWorkflow, buildLoopScript, buildTaskLoopScript, buildFinalLoopScript, STAGE_LOOP, LOOP_RM, readArm, UsageError } from './run-batch.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WORKFLOW = join(here, '..', '..', 'plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js');
@@ -153,7 +153,8 @@ test('A1: refusals: no runReviewLoop, no intArg(A.maxFixRounds, 2, 0), stage lit
   const sNext = WF.indexOf('reviewLoop(', sAt + 1);
   const sDrift = WF.slice(0, sAt) + WF.slice(sAt, sNext).replace("{ tier: 'opus', reviewModel: 'opus' })", "{ tier: 'sonnet', reviewModel: 'opus' })") + WF.slice(sNext);
   assert.throws(() => checkLoopWorkflow(sDrift, 'spec-review'), UsageError);
-  assert.throws(() => checkLoopWorkflow(WF, 'task-review'), UsageError);
+  assert.doesNotThrow(() => checkLoopWorkflow(WF, 'final-review')); // the final stage has its loop since B3, as task-review since B2
+  assert.throws(() => checkLoopWorkflow(WF, 'not-a-stage'), UsageError);
 });
 
 test('A1 review: a reviewer or fixer model/effort change inside the stage slice is drift too', () => {
@@ -177,4 +178,228 @@ test('A1 review: a reviewer or fixer model/effort change inside the stage slice 
 test('A1: a generated script over 200,000 characters is refused', () => {
   const pure = checkLoopWorkflow(WF, 'spec-review') + '\n// ' + 'x'.repeat(200000);
   assert.throws(() => buildLoopScript({ stage: 'spec-review', pure, reviewBody: 'R', measure: MEASURE, fixPrompt: 'F {{issues}}' }), (e) => e instanceof UsageError && /200,?000/.test(e.message));
+});
+
+// ---- E26 B2: the task review loop script (correcao-semeada, restrita against atual) ----
+const SEEDED = 'a'.repeat(40);
+const FIXSHA = 'b'.repeat(40);
+const SB = 'D:/work/correcao-semeada-A-1';
+const WORK = 'D:/work';
+const PLUGIN = 'D:/cfg/plugins/productivity-tools/9.9.9';
+const scenario = { dir: SB, seededCommit: SEEDED, fixSha: FIXSHA };
+const taskScript = (extra = {}, over = {}) =>
+  buildTaskLoopScript({
+    pure: checkLoopWorkflow(WF, 'task-review'),
+    scenario,
+    opts: { restricted: false, reviewModel: 'sonnet', pluginRoot: PLUGIN, work: WORK, title: 'Word count', fixPrompt: 'Fix it.\n{{issues}}\nCommit.', ...extra },
+    ...over,
+  });
+const found = (id, d = '[fab] ' + id) => ({ severity: 'critical', category: 'defeito', description: d, file: 'src/a.mjs', id });
+const rev = (issues, verdicts = []) => ({ issues, verdicts, headSha: SEEDED, clean: true, commitsInRange: 3 });
+const APPLIED = { status: 'DONE', summary: 'applied', checks: [{ command: 'node --test', exit: 0, output: 'pass 7' }] };
+
+// reviews answer from `reviews` in order; fixes return `fixes[label]` or a DONE with checks
+async function runTask(text, reviews, fixes = {}) {
+  const calls = [];
+  let i = 0;
+  const agent = async (prompt, o) => {
+    calls.push({ prompt, ...o });
+    if (/-fix\d+$/.test(o.label)) return o.label in fixes ? fixes[o.label] : APPLIED;
+    const r = reviews[Math.min(i, reviews.length - 1)];
+    i += 1;
+    return r;
+  };
+  const result = await new AsyncFunction('agent', text.replace('export const meta', 'const meta'))(agent);
+  return { calls, result, seq: calls.map((c) => c.label) };
+}
+const byLabel = (r, l) => r.calls.find((c) => c.label === l);
+
+test('B2: the task loop script carries the pure block byte for byte, compiles and stays under 200,000 characters on the real workflow', () => {
+  const text = taskScript();
+  assert.ok(text.includes('\n' + PURE + '\n'));
+  assert.ok(text.startsWith('export const meta = {'));
+  assert.ok(text.length <= 200000, String(text.length));
+  assert.doesNotMatch(text, /^import /m);
+  new AsyncFunction('agent', text.replace('export const meta', 'const meta'));
+  assert.match(text, /runReviewLoop\(H_env, /);
+});
+
+test('B2: restrita arm, round 2 prompt has Mode: restricted, spec and review-package.mjs <seededCommit> HEAD', async () => {
+  const r = await runTask(taskScript({ restricted: true }), [rev([found('F1')]), rev([found('F2')], [{ id: 'F1', open: false }]), rev([], [{ id: 'F2', open: false }])]);
+  assert.deepEqual(r.seq, ['E5:task-review1', 'E5:task-review-fix1', 'E5:task-review2', 'E5:task-review-fix2', 'E5:task-review3']);
+  const p2 = byLabel(r, 'E5:task-review2').prompt;
+  assert.ok(p2.includes('Mode: restricted, spec'), p2);
+  assert.ok(p2.includes(`node "${PLUGIN}/scripts/review-package.mjs" "${SB}" ${SEEDED} HEAD "${WORK}/_tmp/E5-t3-spec2.diff"`), p2);
+  assert.ok(!byLabel(r, 'E5:task-review1').prompt.includes('restricted'));
+  assert.equal(r.result.ok, true);
+});
+
+test('B2: atual arm, round 2 prompt has the full Range log -p', async () => {
+  const r = await runTask(taskScript({ restricted: false }), [rev([found('F1')]), rev([])]);
+  const p2 = byLabel(r, 'E5:task-review2').prompt;
+  assert.ok(p2.includes(`Range: git -C "${SB}" log -p ${SEEDED}~1..HEAD`), p2);
+  assert.ok(!p2.includes('review-package.mjs'));
+  assert.ok(p2.includes('Mode: spec. Task 3 ("Word count")'), p2);
+});
+
+test('B2: fix1 is the haiku applier with merge --ff-only <fixSha>, fix2 is the HEAD fixer in sonnet', async () => {
+  const r = await runTask(taskScript(), [rev([found('F1')]), rev([found('F2')]), rev([])]);
+  assert.deepEqual(r.seq, ['E5:task-review1', 'E5:task-review-fix1', 'E5:task-review2', 'E5:task-review-fix2', 'E5:task-review3']);
+  const f1 = byLabel(r, 'E5:task-review-fix1');
+  assert.equal(f1.model, 'haiku');
+  assert.equal(f1.effort, 'low');
+  assert.ok(f1.prompt.includes(`git -C "${SB}" merge --ff-only ${FIXSHA}`), f1.prompt);
+  assert.ok(f1.prompt.includes('node --test'));
+  assert.ok(f1.schema.properties.checks && f1.schema.required.includes('checks'));
+  const f2 = byLabel(r, 'E5:task-review-fix2');
+  assert.equal(f2.model, 'sonnet');
+  assert.equal(f2.effort, 'medium');
+  assert.ok(f2.prompt.includes('1. [critical/defeito] src/a.mjs [F2] [fab] F2'), f2.prompt);
+  assert.ok(!f2.prompt.includes('{{issues}}'));
+  // the reviewer after the applier reads the applier's real checks and the fixed finding ids
+  const p2 = byLabel(r, 'E5:task-review2').prompt;
+  assert.ok(p2.includes('Fixed the findings F1'), p2);
+  assert.ok(p2.includes('$ node --test\nexit 0\npass 7'), p2);
+  assert.equal(r.result.ok, true);
+});
+
+test('B2: a repeated finding escalates the fixer and the reviewer to opus', async () => {
+  const r = await runTask(taskScript(), [rev([found('F1')]), rev([found('F1')]), rev([found('F1')])]);
+  assert.deepEqual(r.seq, ['E5:task-review1', 'E5:task-review-fix1', 'E5:task-review2', 'E5:task-review-fix2', 'E5:task-review3']);
+  assert.equal(byLabel(r, 'E5:task-review2').model, 'sonnet');
+  assert.equal(byLabel(r, 'E5:task-review-fix2').model, 'opus');
+  assert.equal(byLabel(r, 'E5:task-review3').model, 'opus');
+  assert.equal(r.result.ok, false);
+  assert.equal(r.result.kind, 'conteudo');
+});
+
+test('B2: the script returns restricted per round and ok', async () => {
+  const seq = [rev([found('F1')]), rev([found('F2')], [{ id: 'F1', open: false }]), rev([], [{ id: 'F2', open: false }])];
+  const restr = await runTask(taskScript({ restricted: true }), seq);
+  assert.deepEqual(restr.result.restricted, [false, true, true]);
+  const atual = await runTask(taskScript({ restricted: false }), seq);
+  assert.deepEqual(atual.result.restricted, [false, false, false]);
+  assert.equal(atual.result.ok, true);
+  // a finding without id in round 1 keeps round 2 complete even in the restrita arm
+  const noId = await runTask(taskScript({ restricted: true }), [rev([{ severity: 'critical', category: 'defeito', description: '[fab] no id', file: 'src/a.mjs' }]), rev([])]);
+  assert.deepEqual(noId.result.restricted, [false, false]);
+  assert.ok(!byLabel(noId, 'E5:task-review2').prompt.includes('restricted'));
+});
+
+test('B2: the diff path is outside the sandbox', async () => {
+  const r = await runTask(taskScript({ restricted: true }), [rev([found('F1')]), rev([])]);
+  const m = /review-package\.mjs" "[^"]+" \S+ HEAD "([^"]+)"/.exec(byLabel(r, 'E5:task-review2').prompt);
+  assert.ok(m, 'restricted round 2 names a diff path');
+  assert.ok(m[1].startsWith(WORK + '/_tmp/'), m[1]);
+  assert.ok(!m[1].startsWith(SB + '/'), m[1]);
+});
+
+test('B2: the task loop script refuses a scenario without fixSha and a missing review model', () => {
+  assert.throws(() => taskScript({}, { scenario: { dir: SB, seededCommit: SEEDED, fixSha: null } }), UsageError);
+  assert.throws(() => taskScript({ reviewModel: undefined }), UsageError);
+});
+
+// ---- E26 B3: the final review loop script (correcao-semeada, atual against adversarial) ----
+const finalScript = (extra = {}) =>
+  buildFinalLoopScript({
+    pure: checkLoopWorkflow(WF, 'final-review'),
+    scenario,
+    opts: { adversarial: false, review: readArm(join(here, 'arms', 'final-review-atual.md')).text, fix: readArm(join(here, 'arms', 'final-fix-atual.md')).text, ...extra },
+  });
+const fnd = (d, severity = 'critical') => ({ severity, category: 'defeito', description: d, file: 'src/a.mjs' });
+const frev = (issues) => ({ issues, headSha: SEEDED, clean: true, commitsInRange: 3 });
+const refute = (...ns) => ({ verdicts: ns.map((n) => ({ n, refuted: true, reason: '[fab] it is fine' })) });
+
+// reviews answer from `reviews` in order, verifies from `verifies` in order; fixes return `fixes[label]` or a DONE
+async function runFinal(text, reviews, { verifies = [], fixes = {} } = {}) {
+  const calls = [];
+  let i = 0;
+  let v = 0;
+  const agent = async (prompt, o) => {
+    calls.push({ prompt, ...o });
+    if (/-fix\d+$/.test(o.label)) return o.label in fixes ? fixes[o.label] : APPLIED;
+    if (/^E5:final-verify/.test(o.label)) return verifies[Math.min(v++, verifies.length - 1)];
+    return reviews[Math.min(i++, reviews.length - 1)];
+  };
+  const result = await new AsyncFunction('agent', text.replace('export const meta', 'const meta'))(agent);
+  return { calls, result, seq: calls.map((c) => c.label) };
+}
+
+test('B3: the final loop script carries the pure block byte for byte, compiles and stays under 200,000 characters', () => {
+  for (const adversarial of [false, true]) {
+    const text = finalScript({ adversarial });
+    assert.ok(text.includes('\n' + PURE + '\n'));
+    assert.ok(text.startsWith('export const meta = {'));
+    assert.ok(text.length <= 200000, String(text.length));
+    assert.doesNotMatch(text, /^import /m);
+    new AsyncFunction('agent', text.replace('export const meta', 'const meta'));
+    assert.match(text, /runReviewLoop\(H_env, /);
+    assert.ok(text.includes(`const H_ADVERSARIAL = ${adversarial}`));
+  }
+  assert.throws(() => buildFinalLoopScript({ pure: 'x', scenario: { dir: SB, seededCommit: SEEDED, fixSha: null }, opts: {} }), UsageError);
+});
+
+test('B3: the atual arm never calls verify', async () => {
+  const r = await runFinal(finalScript({ adversarial: false }), [frev([fnd('[fab] first')]), frev([fnd('[fab] second')]), frev([])], { verifies: [refute(1)] });
+  assert.deepEqual(r.seq, ['E5:final-review1', 'E5:final-review-fix1', 'E5:final-review2', 'E5:final-review-fix2', 'E5:final-review3']);
+  assert.ok(!r.calls.some((c) => /final-verify/.test(c.label)));
+  assert.equal(r.result.ok, true);
+  assert.equal(r.result.verify, null);
+});
+
+test('B3: the adversarial arm calls E5:final-verify<r> only with a blocking issue and drops the refuted ones through splitRefuted', async () => {
+  const text = finalScript({ adversarial: true });
+  // no blocking issue: no verify
+  const clean = await runFinal(text, [frev([fnd('[fab] nit', 'minor')])], { verifies: [refute(1)] });
+  assert.deepEqual(clean.seq, ['E5:final-review1']);
+  // two blocking issues, the first refuted: the fixer round and the next review's "Previous issues" carry only the second
+  const r = await runFinal(text, [frev([fnd('[fab] first'), fnd('[fab] second')]), frev([])], { verifies: [refute(1)] });
+  assert.deepEqual(r.seq, ['E5:final-review1', 'E5:final-verify1', 'E5:final-review-fix1', 'E5:final-review2']);
+  const v = byLabel(r, 'E5:final-verify1');
+  assert.ok(v.prompt.includes('Mode: verify.\n1. [critical/defeito] src/a.mjs [fab] first\n2. [critical/defeito] src/a.mjs [fab] second'), v.prompt);
+  assert.ok(v.schema.properties.verdicts && v.schema.required.includes('verdicts'));
+  assert.deepEqual([v.model, v.effort, v.agentType], ['opus', 'high', 'productivity-tools:final-reviewer']);
+  const p2 = byLabel(r, 'E5:final-review2').prompt;
+  assert.ok(p2.includes('[fab] second') && !p2.includes('[fab] first'), p2);
+  assert.deepEqual(r.result.verify, { calls: 1, refutedByRound: { 1: 1 } });
+  assert.equal(r.result.ok, true);
+  // a verdict without a reason refutes nothing
+  const noReason = await runFinal(text, [frev([fnd('[fab] first')]), frev([])], { verifies: [{ verdicts: [{ n: 1, refuted: true }] }] });
+  assert.deepEqual(noReason.seq, ['E5:final-review1', 'E5:final-verify1', 'E5:final-review-fix1', 'E5:final-review2']);
+});
+
+test('B3: fix1 is the haiku applier and fix2 is the final-fix-atual arm in sonnet', async () => {
+  const r = await runFinal(finalScript(), [frev([fnd('[fab] first')]), frev([fnd('[fab] second')]), frev([])]);
+  const f1 = byLabel(r, 'E5:final-review-fix1');
+  assert.deepEqual([f1.model, f1.effort], ['haiku', 'low']);
+  assert.ok(f1.prompt.includes(`git -C "${SB}" merge --ff-only ${FIXSHA}`), f1.prompt);
+  const f2 = byLabel(r, 'E5:final-review-fix2');
+  assert.deepEqual([f2.model, f2.effort], ['sonnet', 'medium']);
+  assert.ok(f2.prompt.startsWith('Fix the final review problems below and commit "E5 final-fix: ...".'), f2.prompt);
+  assert.ok(f2.prompt.includes('You hold no lock.') && f2.prompt.includes('Never edit the spec'), f2.prompt);
+  assert.ok(f2.prompt.includes('1. [critical/defeito] src/a.mjs [fab] second'), f2.prompt);
+  assert.ok(!/\{\{\w+\}\}/.test(f2.prompt), f2.prompt);
+  assert.equal(r.result.ok, true);
+});
+
+test('B3: one review per round with lens all and the prefix is briefing(ctx)', async () => {
+  const r = await runFinal(finalScript(), [frev([fnd('[fab] first')]), frev([])]);
+  assert.equal(r.calls.filter((c) => /^E5:final-review\d/.test(c.label)).length, 2);
+  const p1 = byLabel(r, 'E5:final-review1');
+  assert.ok(p1.prompt.includes(`Mode: review, lens: all. Diff: git -C "${SB}" diff main...HEAD`), p1.prompt);
+  assert.ok(!p1.prompt.includes('Previous issues'));
+  assert.ok(p1.prompt.startsWith(`You work in the worktree ${SB}, on the branch feat/E5, with the target main.`), p1.prompt);
+  assert.ok(p1.prompt.includes('ENVIRONMENT MEASURED IN THE PREFLIGHT:') && p1.prompt.includes('CURRENT BASELINE OF THE TARGET'));
+  assert.deepEqual([p1.model, p1.effort, p1.agentType, p1.phase], ['opus', 'high', 'productivity-tools:final-reviewer', 'Final review']);
+  const p2 = byLabel(r, 'E5:final-review2').prompt;
+  assert.ok(p2.includes(`Previous issues (${REPEAT}`), p2);
+  assert.ok(p2.includes('1. [critical/defeito] src/a.mjs [fab] first'), p2);
+});
+
+test('B3: refutou-tudo', async () => {
+  const r = await runFinal(finalScript({ adversarial: true }), [frev([fnd('[fab] first')])], { verifies: [refute(1)] });
+  assert.deepEqual(r.seq, ['E5:final-review1', 'E5:final-verify1']);
+  assert.ok(!r.seq.some((l) => /fix1/.test(l)));
+  assert.equal(r.result.ok, true);
+  assert.deepEqual(r.result.verify, { calls: 1, refutedByRound: { 1: 1 } });
 });

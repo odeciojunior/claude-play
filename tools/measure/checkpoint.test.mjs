@@ -296,3 +296,17 @@ test('E26 A2: the plan arms stay byte-identical (DEC-310 keeps plan-fix-atual.md
   assert.equal(sha('plan-fix-atual.md'), '5e9c89b4d5679be50611907319519466b0c5e4b70f1001a0096f29d6d7b23906');
   assert.equal(sha('plan-review-atual.md'), '0069d96612ea1db2c3b978569b85633de61e8eb343b18322cb49251eb75e5d6d');
 });
+
+test('B3: arm.files lists final-review-atual.md and final-fix-atual.md and both are true; a stale one is false and does not block the plan class', () => {
+  const names = readdirSync(join(root, 'tools/measure/arms')).filter((f) => f.endsWith('-atual.md')).sort();
+  assert.ok(names.includes('final-review-atual.md') && names.includes('final-fix-atual.md'));
+  const cls = { variant: 'plano-semeado', harness: { stage: 'plan-review', arm: 'atual' }, attempts: attemptsOf(3), deteccaoPorCodigo: {} };
+  const ok = run(agg(baseVariants(true), { 'plano-semeado': cls }), agg(baseVariants(true), { 'plano-semeado': cls }));
+  assert.equal(ok.arm.files['final-review-atual.md'], true);
+  assert.equal(ok.arm.files['final-fix-atual.md'], true);
+  const stale = { ...readOk, readAt: (rel) => (rel.endsWith('/final-review-atual.md') ? 'Copied from: x at commit y\nNo such sentence anywhere.\n' : goodReadAt(rel)) };
+  const r = run(agg(baseVariants(true), { 'plano-semeado': cls }), agg(baseVariants(true), { 'plano-semeado': cls }), stale);
+  assert.equal(r.arm.files['final-review-atual.md'], false);
+  assert.equal(r.arm.planReview && r.arm.planFix, true);
+  assert.ok(!r.blockReasons.some((x) => /final-review-atual/.test(x)), JSON.stringify(r.blockReasons));
+});
