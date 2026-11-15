@@ -16,6 +16,6 @@
 ## Conflitos
 
 <!-- roadmap:conflicts -->
-- SRC-02 vs SRC-04: state.md ainda lista itens de entregável 28 do roadmap anterior e da 2.0.1 como futuros, mas decisão 779 do roadmap anterior registra entregável 28 do roadmap anterior e as versões 2.x publicadas; a triagem (E4) decide quais estão obsoletos.
-- SRC-07 (2.2.0) vs SRC-07 (2.1.0) e SRC-04 (decisão 751 do roadmap anterior): a nota da 2.2.0 não repete a lacuna da limpeza de processos, que segue aberta; a triagem (E4) trata.
+- SRC-02 vs SRC-04: state.md ainda lista itens de entregável 28 do roadmap anterior e da 2.0.1 como futuros, mas decisão 779 do roadmap anterior registra entregável 28 do roadmap anterior e as versões 2.x publicadas; a triagem (E32) decide quais estão obsoletos.
+- SRC-07 (2.2.0) vs SRC-07 (2.1.0) e SRC-04 (decisão 751 do roadmap anterior): a nota da 2.2.0 não repete a lacuna da limpeza de processos, que segue aberta; a triagem (E32) trata.
 <!-- /roadmap:conflicts -->

@@ -2,15 +2,15 @@
 
 ```mermaid
 graph LR
-  E1
-  E2
-  E3
-  E4
-  E5
-  E1 --> E5
-  E2 --> E5
-  E3 --> E5
-  E4 --> E5
+  E29
+  E30
+  E31
+  E32
+  E33
+  E29 --> E33
+  E30 --> E33
+  E31 --> E33
+  E32 --> E33
 ```
 
-Caminho crítico: E1 -> E5. Próximo gate por trilha: ver `state.md`.
+Caminho crítico: E29 -> E33. Próximo gate por trilha: ver `state.md`.
