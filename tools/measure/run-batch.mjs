@@ -1506,7 +1506,7 @@ export async function loopResult(h, entries, P, scenario = null) {
     if (final) {
       // B3: as the product does, the verifier's refutations leave the round's issues before the truth is taken
       const bl = P.blocking(e.result);
-      const v = bl.length ? take(`${FINAL_VERIFY}${round}`) : undefined;
+      const v = bl.length && h.arm === 'adversarial' ? take(`${FINAL_VERIFY}${round}`) : undefined; // the atual arm never verifies: a stray entry stays unused
       if (v) {
         const s = P.splitRefuted(bl, v.result);
         return { ...e.result, issues: [...e.result.issues.filter((i) => !bl.includes(i)), ...s.keep] };
@@ -1518,7 +1518,7 @@ export async function loopResult(h, entries, P, scenario = null) {
     const e = take(`${label}-fix${k}`);
     if (nullResult(e)) return null;
     fixTiers.push(tier);
-    if (task && e.result?.status === 'BLOCKED') return { status: 'BLOCKED', summary: e.result.summary };
+    if ((task || final) && e.result?.status === 'BLOCKED') return { status: 'BLOCKED', summary: e.result.summary };
     return { status: 'DONE' };
   };
   const truth = task
@@ -1541,9 +1541,9 @@ export async function loopValidity(h, journal, scenario, loop, script) {
   if (loop.fixes === 0) {
     // B3: in the adversarial arm a blocking 1st review whose findings were all refuted is not "no correction needed": it is damage (DEC-737)
     if (h.stage === 'final-review' && h.arm === 'adversarial') {
-      const P = loadPure();
+      const P = h.loopFns ?? loadPure();
       const bl = P.blocking(find(journal.entries, `${h.st.label}1`)?.result);
-      const v = find(journal.entries, `${FINAL_VERIFY}1`);
+      const v = find(journal.entries, `${FINAL_VERIFY}1`) ?? find(journal.entries, `${FINAL_VERIFY}1b`);
       if (bl.length > 0 && v && P.splitRefuted(bl, v.result).keep.length === 0) return { valid: false, reason: 'refutou-tudo' };
     }
     return { valid: false, reason: 'sem-correcao' };

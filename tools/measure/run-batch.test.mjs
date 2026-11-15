@@ -3055,6 +3055,17 @@ test('B3: validity of the final stage', async () => {
     // the replay applies the verify like the product: the refuted finding leaves the round's issues
     const rep = await loopResult(hFinal('adversarial'), [entry('E5:final-review1', F1), entry('E5:final-verify1', refuteAll(1))], P, none);
     assert.deepEqual([rep.reviews, rep.fixes, rep.ok], [1, 0, true]);
+    // a BLOCKED fixer ends the final loop with conteudo, as in the task stage (not infra)
+    const blocked = await loopResult(hFinal(), [entry('E5:final-review1', F1), entry('E5:final-review-fix1', { status: 'BLOCKED', summary: '[fab] cannot apply' })], P, none);
+    assert.deepEqual([blocked.ok, blocked.kind], [false, 'conteudo']);
+    // a stray verify entry in the atual arm is a divergence; in the adversarial arm it is used
+    const strayAtual = [entry('E5:final-review1', F1), entry('E5:final-verify1', { verdicts: [] }), entry('E5:final-review-fix1', APPLIED_FIX), entry('E5:final-review2', trv([]))];
+    assert.deepEqual(await loopResult(hFinal('atual'), strayAtual, P, none), { divergent: true });
+    assert.equal((await loopResult(hFinal('adversarial'), strayAtual, P, none)).ok, true);
+    // refutou-tudo when review 1 came from the retry 1b (its verify is E5:final-verify1b), with the replay's own functions
+    const h1b = { ...hFinal('adversarial'), loopFns: P };
+    const viaRetry = { entries: [entry('E5:final-review1', F1), entry('E5:final-verify1b', refuteAll(1))] };
+    assert.deepEqual(await loopValidity(h1b, viaRetry, sc, loop0, null), { valid: false, reason: 'refutou-tudo' });
     // a full valid adversarial attempt: nothing refuted, fix1 applied, review 2 clean
     afterRun = taskAfterRun(s, () => ({ entries: (f) => [entry('E5:final-review1', F1), entry('E5:final-verify1', { verdicts: [] }), entry('E5:final-review-fix1', APPLIED_FIX), entry('E5:final-review2', trv([], f))], ret: { ok: true, verify: { calls: 1, refutedByRound: { 1: 0 } } } }));
     r = await runBatch(finOpts(s, { arm: 'adversarial', work: join(s.base, 'w4') }), { exec: makeFake(s.configDir, { afterRun }).exec, now: NOW });
