@@ -1237,7 +1237,12 @@ test('makeScenario coordinator writes the fixture chosen by coordinatorFixture (
       t.done();
     }
   }
-  await assert.rejects(() => makeScenario(tmp('sb').dir, 'coordinator', { coordinatorFixture: 'other' }), /coordinatorFixture/);
+  const x = tmp('sb');
+  try {
+    await assert.rejects(() => makeScenario(x.dir, 'coordinator', { coordinatorFixture: 'other' }), /coordinatorFixture/);
+  } finally {
+    x.done();
+  }
 });
 
 test('B1: CR, CG seeds are anchored on the files the spec names', async () => {

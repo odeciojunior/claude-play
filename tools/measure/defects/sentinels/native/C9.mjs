@@ -37,5 +37,5 @@ export function seed(dir) {
 }
 
 export function present(dir, ref = 'HEAD') {
-  return atRef(dir, ref, () => probe(dir, "m.slugify('\\u00d1and\\u00fa') !== 'nandu'"));
+  return atRef(dir, ref, () => probe(dir, "m.slugify('\\u00d1and\\u00fa \\u00e0 \\u00c7a') !== 'nandu-a-ca'"));
 }
