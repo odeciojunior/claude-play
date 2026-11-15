@@ -6,12 +6,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyTree } from '../make-scenario.mjs';
+import { copyTree, runSandboxSuite } from '../make-scenario.mjs';
+import { makeSandbox } from '../../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CODE = join(here, '..', 'scenario', 'e5-native', 'code');
 const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
-const IDS = ['C1', 'C2', 'C3', 'C4'];
+const IDS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8'];
 // sha256 (LF text) of the manifest as it was before the native C entries were appended.
 const LEGACY_SHA256 = '9846541275be7a2d0b7bfdeceebfaaac55de8ed068441225af01844e26e25bf5';
 
@@ -74,6 +75,27 @@ test('C4 extracts helpers from a T3 file without index.mjs', async () => {
     assert.equal(wordCount('a b c'), 3);
   } finally {
     r.done();
+  }
+});
+
+// "Accused" is the sandbox suite going red: a C that code catches is not a reviewer defect (DEC-745).
+test('no C is accused on clean code', { skip: process.env.E11_SANDBOX_SUITE !== '1' }, async () => {
+  const base = mkdtempSync(join(tmpdir(), 'native-acc-'));
+  try {
+    const run = async (name, id) => {
+      const dir = makeSandbox(join(base, name));
+      for (const t of ['t1', 't2', 't3']) copyTree(join(CODE, t), dir);
+      if (id) (await sentinelOf(id)).seed(dir, id);
+      return runSandboxSuite(dir);
+    };
+    const clean = await run('clean');
+    assert.equal(clean.status, 0, clean.output);
+    for (const id of IDS) {
+      const r = await run(id);
+      assert.equal(r.status, 0, id + ' is accused by the sandbox suite:\n' + r.output);
+    }
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });
 

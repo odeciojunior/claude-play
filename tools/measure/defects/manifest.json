@@ -599,5 +599,49 @@
     "sentinel": "sentinels/native/C4.mjs",
     "detectedBy": "reviewer",
     "description": "A helpers module outside the task file list is created and imported by the wordCount module (no index.mjs in the native plan)"
+  },
+  {
+    "id": "C5",
+    "class": "code",
+    "kind": "swallowed-error",
+    "artifact": "B",
+    "set": "e5-native",
+    "file": "src/truncate.mjs",
+    "sentinel": "sentinels/native/C5.mjs",
+    "detectedBy": "reviewer",
+    "description": "truncate swallows the RangeError and returns an empty string when max is 0"
+  },
+  {
+    "id": "C6",
+    "class": "code",
+    "kind": "stray-artifact",
+    "artifact": "B",
+    "set": "e5-native",
+    "file": "tests/e5-word-count.test.mjs",
+    "sentinel": "sentinels/native/C6.mjs",
+    "detectedBy": "reviewer",
+    "description": "The wordCount test writes wc-debug.log into the working directory"
+  },
+  {
+    "id": "C7",
+    "class": "code",
+    "kind": "weakened-assertion",
+    "artifact": "B",
+    "set": "e5-native",
+    "file": "tests/e5-slugify.test.mjs",
+    "sentinel": "sentinels/native/C7.mjs",
+    "detectedBy": "reviewer",
+    "description": "The slugify card-example test only checks that the result is truthy"
+  },
+  {
+    "id": "C8",
+    "class": "code",
+    "kind": "hardcoded-result",
+    "artifact": "B",
+    "set": "e5-native",
+    "file": "src/word-count.mjs",
+    "sentinel": "sentinels/native/C8.mjs",
+    "detectedBy": "reviewer",
+    "description": "wordCount returns 4 for the two non-empty inputs of its tests and 0 otherwise"
   }
 ]
