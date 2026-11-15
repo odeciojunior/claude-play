@@ -2320,3 +2320,31 @@ test('gate: the aggregate counts failed tool checks and raised human inputs', as
     s.done();
   }
 });
+
+// ---- E26 B3: final-stage arms ----
+const FINAL_ARMS = ['final-review-atual.md', 'final-fix-atual.md'];
+const placeholdersOf = (t) => [...new Set([...t.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))].sort();
+
+test('B3: final-review-atual.md and final-fix-atual.md match the workflow in HEAD', () => {
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  for (const f of FINAL_ARMS) {
+    const arm = readArm(join(here, 'arms', f), { requireSource: true });
+    assert.match(arm.source.commit, /^[0-9a-f]{40}$/, f);
+    assert.equal(armMatchesRB(arm.text, wf), true, f);
+  }
+});
+
+test('B3: a stale final arm is a UsageError', () => {
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const [arm1, arm2] = FINAL_ARMS.map((f) => readArm(join(here, 'arms', f), { requireSource: true }));
+  const h = { arm: 'atual', base: 'atual', review: arm1, fixArm: arm2, fixCheck: null };
+  assert.doesNotThrow(() => assertArmsCurrent(h, wf));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Mode: review, lens:', 'Mode: look, lens:')), (e) => e instanceof UsageError && /review/.test(e.message));
+  assert.throws(() => assertArmsCurrent(h, wf.replace('Fix the final review problems below', 'Mend the final review problems below')), (e) => e instanceof UsageError && /fix/.test(e.message));
+});
+
+test('B3: the final arm placeholders are the ones the harness fills', () => {
+  const text = (f) => readFileSync(join(here, 'arms', f), 'utf8');
+  assert.deepEqual(placeholdersOf(text('final-review-atual.md')), ['TARGET', 'cardRef', 'lens', 'planPath', 'specPath', 'wt']);
+  assert.deepEqual(placeholdersOf(text('final-fix-atual.md')), ['E', 'issues', 'lockNote', 'noSpecEdit']);
+});
