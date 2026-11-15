@@ -3,6 +3,11 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E27 | Passada C: arnês T1-T6 em feat/e27-passada-c (999a293..e32eb3c), G1 2166/0; portão opus/high pediu mudanças (pastas de trabalho por invocação, teto antecipado com recontagem, failRiscoAceito no atual: DEC-772); rodada de correção em curso. Nada pago. | `docs/plans/2026-11-15-measure-e27-passada-c-plan.md` |
+| 2026-11-15 | E27 | DEC-772 (failRiscoAceito no braço atual, passada C) decidida pelo dono via Fable; vigente. | `decisions.md` |
+| 2026-11-15 | E27 | Passada C: desenho e plano em feat/e27-passada-c (bdea253); dono via Fable deu go condicional com 8 correções de desenho e emendas às escolhas 4, 5 e 6 (DEC-770, DEC-771). Nada pago ainda. | `docs/plans/2026-11-15-measure-e27-passada-c-design.md` |
+| 2026-11-15 | E27 | DEC-771 (passada C de E27) decidida pelo dono via Fable; vigente. | `decisions.md` |
+| 2026-11-15 | E27 | DEC-770 (passada C de E27) decidida pelo dono via Fable; vigente. | `decisions.md` |
 | 2026-11-15 | E28 | Integrado na release (ebc39b7) com as pendências 2.0.1; G1 2112/0, G2-G5 verdes. | `ebc39b7` |
 | 2026-11-15 | - | checker atualizado 1.5.0 -> 1.7.0 | `check-roadmap.mjs` |
 | 2026-11-15 | E11 | Publicação da 2.0.0 pelo executor com autorização explícita do dono: tag anotada productivity-tools--v1.7.0 em 73cd476, main 73cd476..1017db5 por fast-forward, push de main e tag; marketplace atualizado, productivity-tools 1.7.0 → 2.0.0 no cache. | `docs/reports/2026-11-15-E11-roteiro-publicacao.md` |
