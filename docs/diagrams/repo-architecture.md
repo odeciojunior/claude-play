@@ -15,6 +15,9 @@ mindmap
         report-analyzer
         roadmap-planner
         roadmap-tracker
+        spec-writer
+        plan-writer
+        roadmap-release
         plan-coordinator
         mermaid-designer
         excalidraw-designer
@@ -47,7 +50,7 @@ mindmap
       Research Reports
 ```
 
-**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Four plugins ship with the repo: `productivity-tools` (8 skills for research, analysis, planning, diagramming, and system health), `marketplace-tools` (2 skills for scaffolding and validation), `sql-server-tools` (5 specialized agents + 1 routing skill for SQL Server work), and `mcp-sql-server` (setup skill + bash script for automated MCP server installation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
+**Description:** The claude-play repository is a community-driven Claude Code plugin marketplace. At its core is a marketplace registry (`marketplace.json`) that catalogs installable plugins. Four plugins ship with the repo: `productivity-tools` (11 skills for research, analysis, planning, spec and plan writing, roadmap release, diagramming, and system health, plus 7 agents and 2 workflows), `marketplace-tools` (2 skills for scaffolding and validation), `sql-server-tools` (5 specialized agents + 1 routing skill for SQL Server work), and `mcp-sql-server` (setup skill + bash script for automated MCP server installation). Automation hooks protect the template directory and validate the marketplace catalog on every edit. A `plugin-reviewer` agent provides 3-phase quality reviews. The `_template` directory gives contributors a starting point for new plugins.
 
 ---
 
@@ -76,6 +79,11 @@ flowchart TB
     md["mermaid-designer"]
     ed["excalidraw-designer"]
     wh["wsl-health-check"]
+    sw["spec-writer"]
+    pw["plan-writer"]
+    rr["roadmap-release"]
+    pagents["7 agents: spec-author, plan-author, implementer,<br/>task-reviewer, final-reviewer, test-integrity, script-runner"]
+    pwf["2 workflows: roadmap-release.js, coordinator.js"]
   end
 
   subgraph Mkt["marketplace-tools plugin"]
@@ -114,7 +122,7 @@ flowchart TB
   mktjson -->|"registers"| Sql
   mktjson -->|"registers"| Mcp
 
-  prod_pj --- dr & ra & rp & rt & pc & md & ed & wh
+  prod_pj --- dr & ra & rp & rt & pc & md & ed & wh & sw & pw & rr & pagents & pwf
   mkt_pj --- np & vp
   sql_pj --- spm & ssd & spt & ts & scr & stk
   mcp_pj --- mss & sh
