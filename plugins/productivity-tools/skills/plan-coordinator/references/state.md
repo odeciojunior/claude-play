@@ -16,7 +16,7 @@ Exit codes: 0 done, 1 refused with no change (code on stderr, or in `errors` wit
 | `steps[].files` | paths the step may change (create, modify and test); what a per-step commit stages |
 | `steps[].noCommit` | the plan marks the step as one that is never committed on its own |
 | `steps[].gated` | set when a wave gate ran with the step `pass`; a wave gate is due only when the wave has no open step and a `pass` step is not yet `gated` |
-| `run.baseline` | `{ test, exit, tail, failedNames }` recorded by the `baseline` event; a failing test counts only if its name is not in `failedNames` |
+| `run.baseline` | `{ test, exit, tail, failedNames, failedNamesCut? }` recorded by the `baseline` event; a failing test counts only if its name is not in `failedNames` (at most 50 names; `failedNamesCut` counts the names left out, which then count as new failures) |
 | `finalGate` | `status`, `rounds`, `lastVerdict` |
 | `manual[]` | open or closed holds: `kind`, `step`, `text`, `open` |
 | `history[]` | one line per event, with its time |
@@ -37,7 +37,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 | `block --text q` / `unblock` | `blocked` with the question / back to `in-progress` |
 | `launch --steps n,.. [--tier t] [--agent-id id]` | steps `launched`, attempts + 1; `--tier` raises the level on a repeat |
 | `inline-start --step n` / `inline-result --step n --value pass\|fail` | inline run (haiku, not external, no gate): `launched`, then `pass`, or `pending` as delegated sonnet |
-| `baseline` (batch only) `exit`, `failedNames`, `test`, `tail` | records the test baseline in `run.baseline`; `exit` is an integer and `failedNames` a list of texts |
+| `baseline` (batch only) `exit`, `failedNames`, `test`, `tail` | records the test baseline in `run.baseline`; `exit` is an integer, `failedNames` a list of texts and the optional `failedNamesCut` an integer ≥ 0 |
 | `report --step n --value pass\|fail\|blocked [--text t]` | `pass`: `pass` (in a batch the event may carry `handoff`, stored on the step), or `review-owed` when gated. Otherwise `pending` up to 3 attempts, then held with the text; an external step becomes `stopped` |
 | `no-report --step n` | agent lost: `pending`; an external step becomes `stopped` |
 | `review-result --step n --value pass\|defects\|lost` | `pass`; `defects`: fix-up round (`launched`, 2 rounds, then as a failure; external: `stopped`); `lost`: review again |
@@ -54,7 +54,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 ## Signed commands
 
 - `token` prints a fresh random token (the workflow's `runToken`).
-- `read <progress.json> --nonce <n> [--page <k>] [--json]` prints the state (history emptied), the repository root and `planChanged`, signed with a `digest` and echoing the nonce, as compact JSON. A big state comes in pages under 30 KB: page 0 carries the state with its first steps, `--page k` carries only steps; `pages` and `stateDigest` (of the whole state) are on every page.
+- `read <progress.json> --nonce <n> [--page <k>] [--json]` prints the state (history emptied), the repository root and `planChanged`, signed with a `digest` and echoing the nonce, as compact JSON. A big state comes in pages under 30 KB: page 0 carries the state with its first steps (possibly none), `--page k` carries only steps; `pages` and `stateDigest` (of the whole state) are on every page.
 - `apply <progress.json> --events <payload> --nonce <n>` applies a list of events in one write. The payload is URL-encoded JSON `{ expect, events, digest }`: `expect` is the `stateDigest` from the last read, `digest` signs the rest. A bad digest changes nothing and exits 2; a stale `expect` is refused as `concurrent-change`; an event refused midway changes nothing and the reply carries its `index` and `code`.
 - The reply is signed output: `tool`, `command`, `nonce`, `now`, `ok`, `code`, `action` (the next action), `stateDigest` and `digest`. Trust it only when the nonce matches and the digest verifies.
 

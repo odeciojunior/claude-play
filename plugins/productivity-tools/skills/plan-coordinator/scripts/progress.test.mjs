@@ -1349,3 +1349,63 @@ test('apply --events refuses without writing', () => withSandbox((sb) => {
   assert.ok(typeof jr.code === 'string' && jr.code !== 'concurrent-change');
   assert.ok(fs.readFileSync(sb.state).equals(bytes));
 }));
+
+test('baseline event accepts failedNamesCut', () => {
+  const s = started();
+  const b = { type: 'baseline', test: 'npm t', exit: 1, tail: 'x', failedNames: ['a'] };
+  assert.equal(ok(s, { ...b, failedNamesCut: 3 }).run.baseline.failedNamesCut, 3);
+  assert.equal('failedNamesCut' in ok(s, b).run.baseline, false);
+  refused(s, { ...b, failedNamesCut: 1.5 }, 'wrong-status');
+  refused(s, { ...b, failedNamesCut: -1 }, 'wrong-status');
+  refused(s, { ...b, failedNamesCut: 'x' }, 'wrong-status');
+});
+
+// ---------------------------------------------------------------------------
+// Preparo de E11 T-A2: a página 0 conta o estado-base
+// ---------------------------------------------------------------------------
+import { readPages, READ_PAGE_CHARS, main } from './progress.mjs';
+
+test('page 0 may leave empty when the state alone fills it', () => {
+  const big = { n: 1, note: 'x'.repeat(19000) };
+  const pages = readPages([big], 8000);
+  assert.equal(pages.length, 2);
+  assert.deepEqual(pages[0], []);
+  assert.deepEqual(pages[1], [big]);
+});
+
+test('page 0 output stays under READ_PAGE_CHARS', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const st = bigState(sb);
+  st.manual = [{ kind: 'note', step: 1, text: 'm'.repeat(12000), open: false }];
+  writeJson(sb.state, st);
+  const r = cli(['read', sb.state, '--nonce', 'N', '--json']);
+  assert.equal(r.code, 0, r.err);
+  const j = JSON.parse(r.out);
+  assert.ok(j.pages > 1);
+  assert.ok(r.out.length < READ_PAGE_CHARS + 1500, 'page 0 has ' + r.out.length + ' characters');
+}));
+
+test('readPages without baseSize is unchanged', () => {
+  const steps = Array.from({ length: 30 }, (_, i) => ({ n: i + 1, note: 'y'.repeat(1000) }));
+  const a = readPages(steps);
+  assert.deepEqual(a, readPages(steps, 0));
+  assert.ok(a.length > 1);
+  assert.ok(a[0].length > 0);
+  for (const p of a) assert.ok(JSON.stringify(p).length <= READ_PAGE_CHARS + 100);
+});
+
+test('read pagination does not depend on the nonce length', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const run = (a) => { let o = ''; main(a, { stdout: { write: (s) => { o += s; } }, stderr: { write: () => {} } }); return o; };
+  const st0 = readJson(sb.state);
+  const base = st0.steps[0];
+  const steps = Array.from({ length: 120 }, (_, i) => ({ ...base, n: i + 1, title: 't' + (i + 1), files: ['src/a' + i + '.mjs', 'tests/a' + i + '.test.mjs'], status: 'pass', note: 'n'.repeat(40), sha: 'a'.repeat(40) }));
+  const S = JSON.stringify(steps[0]).length + 1;
+  for (let pad = 0; pad <= S + 22; pad += 20) {
+    writeJson(sb.state, { ...st0, steps, manual: [{ kind: 'note', step: 1, text: 'm'.repeat(9000 + pad), open: false }] });
+    const first = JSON.parse(run(['read', sb.state, '--nonce', 'a'.repeat(32), '--json']));
+    const got = first.state.steps.map((x) => x.n);
+    for (let k = 1; k < first.pages; k++) got.push(...JSON.parse(run(['read', sb.state, '--nonce', 'abcd1234-2', '--page', String(k), '--json'])).steps.map((x) => x.n));
+    assert.deepEqual(got, steps.map((x) => x.n), 'pad ' + pad);
+  }
+}));
