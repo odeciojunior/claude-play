@@ -1502,3 +1502,10 @@ test('close-from-state refuses state-schema, roadmap-mismatch and deliverable-un
     assert.deepEqual(snapshot(r.dir), before, code);
   }
 });
+
+test('E32: SKILL.md names status --deliverable for one card', () => {
+  const skill = fs.readFileSync(path.join(here, '..', 'SKILL.md'), 'utf8');
+  const line = skill.split(/\r?\n/).find((l) => l.startsWith('Read-only query'));
+  assert.ok(line, 'linha "Read-only query" ausente');
+  assert.ok(line.includes('roadmap.mjs status "<folder>" --deliverable E<n>'), line);
+});
