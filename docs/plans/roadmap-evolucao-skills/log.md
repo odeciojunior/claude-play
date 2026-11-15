@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E11, E20 | DEC-744 a DEC-750 (preparo de E11) decididas pelo dono via Fable; vigentes. | `decisions.md` |
+| 2026-11-15 | E8 | DEC-719 ratificada pelo dono | `decisions.md` |
+| 2026-11-15 | E8 | Ratificação de E8 por delegação (Fable): DEC-711 (releitura assinada) e DEC-714 (grupo idempotente por nonce) sem emenda. | `decisions.md` |
 | 2026-11-15 | E27 | DEC-707 ratificada pelo dono | `decisions.md` |
 | 2026-11-15 | E27 | Ratificação de E27 por delegação (Fable): DEC-708, DEC-729 e DEC-732 a DEC-737 sem emenda (fix do task-reviewer, desenho e regras da passada B, fixadas antes do lote). | `decisions.md` |
 | 2026-11-15 | E26 | DEC-731 ratificada pelo dono | `decisions.md` |
