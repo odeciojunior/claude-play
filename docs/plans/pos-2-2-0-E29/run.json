@@ -44,5 +44,11 @@
         }
       ]
     }
+  },
+  "final": {
+    "spec": "5552481671f64046afc2bdc775474ef798feda97",
+    "plan": "719aac33dec2206c3cea73e00d8b9d0f0e79f447",
+    "tree": "0d29bcc4924f797e275e61f566e7bf5576d723855fb40de1e24f1ec36ee9ccd6",
+    "target": "2cbce3e933fb8f6dfb7b4a0add0bf21da4f62521"
   }
 }
