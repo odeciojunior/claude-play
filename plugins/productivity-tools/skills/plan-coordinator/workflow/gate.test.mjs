@@ -119,6 +119,19 @@ test('baselineEvent caps names and tail', () => {
   assert.equal(ev.failedNamesCut, 10);
 });
 
+test('2.0.1 AC1: baselineProblem names a failing or empty baseline and lets a plain green run through', () => {
+  assert.match(P.baselineProblem({ exit: 1, stdout: 'not ok 1 - x' }), /exited 1/);
+  assert.match(P.baselineProblem({ exit: 2, stdout: '' }), /exited 2/);
+  assert.match(P.baselineProblem({ exit: 0, stdout: 'TAP version 13\n# tests 0\n# suites 0\n# pass 0\n# fail 0\n' }), /executed 0 tests/);
+  assert.match(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 0\nℹ pass 0\n' }), /executed 0 tests/);
+  assert.match(P.baselineProblem({ exit: 0, stdout: '  # tests 3  \n# pass 0\n# skipped 3\n' }), /passed 0 tests/);
+  assert.match(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 2\r\nℹ pass 0\r\n' }), /passed 0 tests/);
+  assert.equal(P.baselineProblem({ exit: 0, stdout: 'ok 1 - fine' }), null);
+  assert.equal(P.baselineProblem({ exit: 0, stdout: '# tests 2\n# pass 2\n' }), null);
+  assert.equal(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 5\nℹ pass 5\n' }), null);
+  assert.equal(P.baselineProblem({ exit: 0, stdout: undefined }), null);
+});
+
 test('waveGatePasses with a cut baseline', () => {
   const names = Array.from({ length: 50 }, (_, i) => `n${i}`);
   const baseline = { exit: 1, failedNames: names, failedNamesCut: 3 };

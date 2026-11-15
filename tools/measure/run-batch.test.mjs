@@ -2464,7 +2464,7 @@ test('B2: startup refusals on the task slice', async () => {
       ['taskReview: TR', 'taskReview: null'],
       ['taskIssues(r, cx)', 'r.issues'],
       ['revAgent(buildTaskReviewPrompt(', 'revAgent(buildTaskReviewPromptX('],
-      ['(CFG.taskReview || {}).restricted === true', '(CFG.taskReview || {}).restricted'],
+      ['tr.restricted === true', 'tr.restricted'],
       ['function restrictedRound(', 'function restrictedRoundX('],
       ['function taskIssues(', 'function taskIssuesX('],
     ];

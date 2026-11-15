@@ -781,16 +781,19 @@ test('the workflow rule warning says the skill launch needs no rule', () => {
   assert.doesNotMatch(w, /claude -p[^.]*denied/);
 });
 
-test('E21: validateReleaseConfig accepts a missing taskReview and restricted only, refuses other shapes and keys', () => {
+test('E28: validateReleaseConfig accepts taskReview.restricted and taskReview.single booleans and names any other key', () => {
   assert.deepEqual(validateReleaseConfig(good()), []);
-  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: true } }), []);
-  assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: { restricted: false } }), []);
+  for (const tr of [{}, { restricted: true }, { restricted: false }, { single: true }, { single: false }, { restricted: true, single: true }]) {
+    assert.deepEqual(validateReleaseConfig({ ...good(), taskReview: tr }), [], JSON.stringify(tr));
+  }
   for (const bad of [true, [], { restricted: 'yes' }]) {
     assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => /taskReview/.test(e)), JSON.stringify(bad));
   }
-  for (const bad of [{ single: true }, { single: 1 }, { restricted: true, single: false }, { other: true }]) {
-    const key = Object.keys(bad).find((k) => k !== 'restricted');
-    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => e.includes(`taskReview.${key}`)), JSON.stringify(bad));
+  for (const bad of [{ single: 1 }, { single: 'true' }]) {
+    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).includes('taskReview.single must be a boolean'), JSON.stringify(bad));
+  }
+  for (const [bad, key] of [[{ other: true }, 'other'], [{ restricted: true, foo: 1 }, 'foo']]) {
+    assert.ok(validateReleaseConfig({ ...good(), taskReview: bad }).some((e) => e.includes(`taskReview.${key}`) && e.includes('taskReview.single')), JSON.stringify(bad));
   }
 });
 
@@ -807,6 +810,9 @@ test('E21: the review-package.mjs rule is required only with taskReview.restrict
   assert.deepEqual(off.errors, []);
   assert.ok(!off.missingRules.includes(rule), off.missingRules.join());
   assert.ok(!run({ restricted: false }).missingRules.includes(rule));
+  const single = run({ single: true });
+  assert.deepEqual(single.errors, []);
+  assert.ok(!single.missingRules.includes(rule));
   const on = run({ restricted: true });
   assert.deepEqual(on.errors, []);
   assert.ok(on.missingRules.includes(rule), on.missingRules.join());

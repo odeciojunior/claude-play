@@ -197,6 +197,8 @@ function fullSha(x) {
 function normSha(x) {
   return typeof x === 'string' ? x.trim().toLowerCase() : x
 }
+// A SHA an agent returns as a reference: the normalized full SHA, or null.
+function fullRef(x) { const s = normSha(x); return fullSha(s) ? s : null }
 function gateResult(m, name) {
   return ((m && m.gates) || []).find(g => g && g.name === name)
 }
@@ -395,11 +397,15 @@ function restrictedRound(c) {
   const p = c.was && c.was.iss, t = c.taskReview
   return t && t.restricted && p && p.length && p.every(i => i.id)
 }
-// Restricted: new findings and open ones no verdict closed.
+// Restricted: new findings and open ones no verdict closed. Single: a missing or failing verdict with no blocking finding is a finding.
 function taskIssues(r, c) {
-  if (!restrictedRound(c)) return r.issues
-  const now = r.issues || [], gone = [...(r.verdicts || []).filter(v => !v.open), ...now]
-  return [...now, ...c.was.iss.filter(p => !gone.some(i => i.id === p.id))]
+  let iss = r.issues
+  if (restrictedRound(c)) {
+    const now = r.issues || [], gone = [...(r.verdicts || []).filter(v => !v.open), ...now]
+    iss = [...now, ...c.was.iss.filter(p => !gone.some(i => i.id === p.id))]
+  }
+  if ((c.taskReview || {}).single && (r.spec !== 'pass' || r.quality !== 'pass') && !blocking({ issues: iss }).length) return [...(iss || []), { severity: 'critical', category: 'defeito', description: 'single review: spec or quality verdict missing or fail, no blocking finding' }]
+  return iss
 }
 function compact(iss) {
   return { blocking: (iss || []).filter(i => SEV(i.severity)), minor: (iss || []).filter(i => !SEV(i.severity)).length }
@@ -584,7 +590,8 @@ function noFiles(task) {
 function buildImplPrompt(ctx, task) {
   return `${briefing(ctx)}
 
-Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.planPath}, in the deliverable worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
+WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); a command that depends on the current directory uses the tool's own directory flag (npm --prefix ${ctx.wt}, make -C ${ctx.wt}, go -C ${ctx.wt}, node --test ${ctx.wt}/tests/...); never cd, never chain with &&.
+Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, in that worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
 Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}`
 }
@@ -1674,14 +1681,16 @@ PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only step
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (e.g. CRLF, scripts that require bash).
 Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : `, recorded (raw stdout of step 4's first command, verbatim, as a string; then no baseline) or baseline { headSha, clean, gates } (none when step 2 stopped)`}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
+const rawHead = pre && pre.targetHead
+if (pre) pre.targetHead = fullRef(pre.targetHead)
 // Rejected record: no baseline (stop).
 if (pre && MODE === 'run' && pre.recorded) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES)
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
 // Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
-if (!pre || !pre.ok || !pre.integrationWorktree || (MODE !== 'plan-only' && !pre.baseline && !foreignHold)) {
+if (!pre || !pre.ok || !pre.integrationWorktree || (MODE !== 'plan-only' && !pre.baseline && !foreignHold) || (MODE !== 'plan-only' && !foreignHold && !pre.targetHead)) {
   const kind = pre ? pre.errorKind || 'other' : 'other'
-  op(`preflight:${kind}`, null, pre ? pre.error || 'incomplete preflight' : 'null preflight agent',
+  op(`preflight:${kind}`, null, pre ? pre.error || (pre.ok && !pre.targetHead ? `targetHead is not a full SHA: ${rawHead}` : 'incomplete preflight') : 'null preflight agent',
     kind === 'dirty' ? `Clean or commit the listed files in the integration worktree of ${TARGET}` : kind === 'setup' ? 'Fix the environment setup command and run again' : 'Read the error and fix the environment',
     { ...A })
   return mkResult('needs-operator', { selection })
@@ -1933,7 +1942,7 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
   }
 
   // A risk accepted after the merge commit lives only in memory until the docs stage: commit it to the log on the target, where a finish-merge reads it.
-  // Returns the head the next measure must expect.
+  // Returns the head the next measure must expect (null when the head is not a full SHA: then it expects no commit).
   const persistMergeRisks = async (from, exp) => {
     const fresh = out.acceptedRisks.slice(from)
     if (!fresh.length) return exp
@@ -1943,10 +1952,10 @@ Integration worktree ${INTWT} (branch ${TARGET}). Risks were accepted during the
 Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev-parse HEAD after the commit) and commit.`,
       { label: `${E}:merge-risks`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
     if (!w || !w.head) { out.concerns.push(`merge-stage accepted risks not committed to the review log: ${fresh.map(fmtRisk).join('; ')}`); return exp }
-    return w.head
+    return fullRef(w.head)
   }
 
-  // Evidence effects run after the last branch log: commit them on the target, where a finish-merge reads them. Returns the head the next measure must expect.
+  // Evidence effects run after the last branch log: commit them on the target, where a finish-merge reads them. Returns the head the next measure must expect (null when the head is not a full SHA: then it expects no commit).
   const persistMergeEffects = async exp => {
     const ran = out.externalRun.filter(e => e.command)
     if (!ran.length) return exp
@@ -1956,7 +1965,7 @@ Integration worktree ${INTWT} (branch ${TARGET}). In the section "External effec
 Commit only that file ("${E}: external effects of the acceptance evidence"). Return head (git rev-parse HEAD after the commit) and commit.`,
       { label: `${E}:merge-effects`, phase: 'Merge', schema: S_LOGGED, model: 'sonnet', effort: 'medium' })
     if (!w || !w.head) { out.concerns.push(`external effects not committed to the review log, so a resume of this merge would not know they ran: ${ran.map(e => e.item).join(', ')}`); return exp }
-    return w.head
+    return fullRef(w.head)
   }
 
   // Post-merge gates (one reviewed fix), baseline refresh and docs. Runs inside the merge lock.
@@ -1983,7 +1992,7 @@ Review (read-only) the post-merge fix: git -C "${INTWT}" diff ${preFix}..HEAD. B
       if (!rr || blocking(rr).filter(i => isHard(i, blqIds)).length) return onBad(`post-merge fix rejected: ${rr ? fmt(blocking(rr)) : 'null agent'}`, rr ? 'conteudo' : 'infra')
       const riskFrom = out.acceptedRisks.length
       acceptRisks('merge-fix', blocking(rr))
-      exp = await persistMergeRisks(riskFrom, rr.headSha)
+      exp = await persistMergeRisks(riskFrom, fullRef(rr.headSha))
     }
     Object.assign(BASE, refreshBaseline(BASE, GATES, g.m, g.m.changedFiles))
     lastGood = g.m.headSha
@@ -2610,8 +2619,8 @@ ${NO_ASK}`,
     if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null
-    const TR = { restricted: (CFG.taskReview || {}).restricted === true }
-    for (const kind of ['spec', 'quality']) {
+    const tr = CFG.taskReview || {}, TR = { restricted: tr.restricted === true, single: tr.single === true }
+    for (const kind of TR.single ? ['review'] : ['spec', 'quality']) {
       let cx
       const loop = await reviewLoop(`T${t.n}:${kind}`,
         (round, prev, rvModel, was) => revAgent(buildTaskReviewPrompt(cx = ctxFor({ locks, start, round, prev, rangeNote, taskReview: TR, pluginRoot, was, diffPath: `${WT}/_tmp/${E}-t${t.n}-${kind}${round}.diff` }), t, kind, cur),
@@ -2849,7 +2858,10 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', model: tier, effort
 MERGE STAGE of deliverable ${E} in the integration worktree ${INTWT} (branch ${TARGET}).${FOREIGN ? ` The operator authorized ${FOREIGN_ITEM}: this merge may be done in that checkout.` : ''} Run: git merge --no-ff ${br} -m "merge: ${E} in ${TARGET}". Conflicts: keep both parts.${conflictTxt} Do not use any shared resource.
 Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-parse HEAD^1), secondParent (git rev-parse HEAD^2), conflicts (how many files), clean (status --porcelain empty at the end), details. If you cannot finish, git merge --abort.`,
       { label: `${E}:merge`, phase: 'Merge', schema: S_MERGE, model: 'sonnet', effort: 'medium' })
-    if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? mg.details : 'null agent'}`, mg ? 'conteudo' : 'infra')
+    const rawMc = mg && typeof mg.mergeCommit === 'string' ? mg.mergeCommit.trim() : ''
+    if (mg) mg.mergeCommit = fullRef(mg.mergeCommit)
+    const badMc = !!mg && !mg.mergeCommit && !!rawMc
+    if (!mg || !mg.clean || !mg.mergeCommit || gateShaMatch(mg.mergeCommit, preSha)) return rollback(`the merge did not complete: ${mg ? (badMc ? `mergeCommit is not a full SHA: ${rawMc}` : mg.details) : 'null agent'}`, !mg || badMc ? 'infra' : 'conteudo')
     if (!mergeParentsOk(mg, preSha, validatedHead)) return rollback(`the merge commit ${mg.mergeCommit} has first parent ${mg.firstParent} and second parent ${mg.secondParent}, expected ${preSha} and the validated head ${validatedHead}: the second parent does not match`, 'conteudo')
     let firstExp = mg.mergeCommit
     if (mg.conflicts !== 0) {

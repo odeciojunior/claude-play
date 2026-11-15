@@ -602,16 +602,20 @@ test('AC2: taskReview is normalized once in runDeliverable and only true turns a
   assert.equal((SRC.match(/CFG\.taskReview/g) || []).length, 1);
   assert.equal((SRC.match(/restricted === true/g) || []).length, 1);
   const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
-  const norm = body.match(/const (TR = \{ restricted: [^\r\n]*\})(?=\r?\n)/);
+  assert.equal((SRC.match(/single === true/g) || []).length, 1);
+  const norm = body.match(/const (tr = CFG\.taskReview \|\| \{\}, TR = \{ restricted: [^\r\n]*\})(?=\r?\n)/);
   assert.ok(norm, 'one normalization in runDeliverable');
   assert.ok(body.indexOf(norm[0]) < body.indexOf('reviewLoop(`T${t.n}:${kind}`'), 'normalized before the per-task loop');
   const run = taskReview => new Function('CFG', `const ${norm[1]}; return TR`)({ taskReview });
-  assert.deepEqual(run(undefined), { restricted: false });
-  assert.deepEqual(run({}), { restricted: false });
-  assert.deepEqual(run({ restricted: false }), { restricted: false });
-  assert.deepEqual(run({ restricted: 'yes' }), { restricted: false });
-  assert.deepEqual(run({ restricted: 1 }), { restricted: false });
-  assert.deepEqual(run({ restricted: true }), { restricted: true });
+  assert.deepEqual(run(undefined), { restricted: false, single: false });
+  assert.deepEqual(run({}), { restricted: false, single: false });
+  assert.deepEqual(run({ restricted: false }), { restricted: false, single: false });
+  assert.deepEqual(run({ restricted: 'yes' }), { restricted: false, single: false });
+  assert.deepEqual(run({ restricted: 1 }), { restricted: false, single: false });
+  assert.deepEqual(run({ restricted: true }), { restricted: true, single: false });
+  assert.deepEqual(run({ single: 'true' }), { restricted: false, single: false });
+  assert.deepEqual(run({ single: true }), { restricted: false, single: true });
+  assert.deepEqual(run({ restricted: true, single: true }), { restricted: true, single: true });
 });
 
 test('AC2: runReviewLoop hands the next review the previous findings and the measured head', async () => {
@@ -627,14 +631,57 @@ test('AC2: runReviewLoop hands the next review the previous findings and the mea
 // ---- E21 T11: default half of AC3 (spec and quality reviews) ----
 test("AC3: by default each task gets the spec and quality reviews on today's model", () => {
   const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
-  assert.match(body, /for \(const kind of \['spec', 'quality'\]\)/);
-  assert.doesNotMatch(body, /\.single\b/);
+  assert.match(body, /for \(const kind of TR\.single \? \['review'\] : \['spec', 'quality'\]\)/);
   assert.match(SRC, /const revAgent = \(p, o\) => agent\(p, \{ agentType: 'productivity-tools:task-reviewer'/);
   const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
   const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
   assert.match(at, /revAgent\(/);
   assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
   assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
+});
+
+// ---- E28 T2: single review with two verdicts, off by default ----
+test('E28 AC1: taskIssues fails a single review with a missing or failing verdict and no blocking finding', () => {
+  const S = (o = {}) => rCtx({ taskReview: { restricted: false, single: true }, ...o });
+  for (const r of [{ issues: [], spec: 'pass' }, { issues: [], spec: 'pass', quality: 'fail' }, { issues: [], spec: 'fail', quality: 'pass' }, { issues: [] }]) {
+    const out = P2.taskIssues(r, S());
+    assert.equal(out.length, 1, JSON.stringify(r));
+    assert.equal(out[0].severity, 'critical');
+    assert.equal(out[0].category, 'defeito');
+    assert.match(out[0].description, /single review/);
+  }
+  assert.deepEqual(P2.taskIssues({ issues: [], spec: 'pass', quality: 'pass' }, S()), []);
+  assert.deepEqual(P2.taskIssues({ issues: [F('F1')], spec: 'pass', quality: 'fail' }, S()), [F('F1')]);
+  assert.equal(P2.taskIssues({ issues: [{ severity: 'minor', description: 'm' }], spec: 'pass', quality: 'fail' }, S()).length, 2);
+  const B = rCtx({ taskReview: { restricted: true, single: true }, was: { iss: [F('F1')], head: 'h1' } });
+  assert.deepEqual(P2.taskIssues({ issues: [], verdicts: [], spec: 'pass', quality: 'pass' }, B), [F('F1')]);
+  const closed = P2.taskIssues({ issues: [], verdicts: [{ id: 'F1', open: false }] }, B);
+  assert.equal(closed.length, 1);
+  assert.match(closed[0].description, /single review/);
+});
+
+test("E28 AC1: with taskReview.single the per-task loop makes one review call per round on today's model", () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  assert.match(body, /for \(const kind of TR\.single \? \['review'\] : \['spec', 'quality'\]\)/);
+  assert.match(body, /const tr = CFG\.taskReview \|\| \{\}, TR = \{ restricted: tr\.restricted === true, single: tr\.single === true \}/);
+  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
+  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
+  assert.match(at, /revAgent\(/);
+  assert.match(at, /model: rvModel \|\| reviewModelFor\(t\)/);
+  assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
+});
+
+test('E28 AC3: by default the per-task review keeps two loops and does not read taskReview.single', () => {
+  assert.doesNotMatch(SRC, /taskReview\.single/);
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable'));
+  const lines = body.split(/\r?\n/).filter(l => /\.single\b/.test(l));
+  assert.equal(lines.length, 2, lines.join('\n'));
+  assert.ok(lines.some(l => l.includes('const tr = CFG.taskReview')));
+  assert.ok(lines.some(l => l.includes('for (const kind of TR.single')));
+  for (const c of [rCtx({}), rCtx({ taskReview: undefined }), rCtx({ taskReview: { restricted: false, single: false } })]) {
+    const r = { issues: [] };
+    assert.equal(P2.taskIssues(r, c), r.issues);
+  }
 });
 
 // ---- E24 T3: single wave of the final review ----
