@@ -750,3 +750,21 @@ test('AC2: a confirmed finding or a null verification goes to the fix', async ()
     assert.deepEqual(fixed, ['F1']);
   }
 });
+
+test('E29 AC1: the release, the preflight and the task-reviewer carry no single review', () => {
+  const here3 = dirname(fileURLToPath(import.meta.url));
+  const pre = readFileSync(join(here3, '..', 'scripts', 'preflight.mjs'), 'utf8');
+  const agent = readFileSync(join(here3, '..', '..', '..', 'agents', 'task-reviewer.md'), 'utf8');
+  assert.doesNotMatch(SRC, /taskReview\.single|TR\.single|\['review'\]|single review/);
+  for (const line of SRC.split(/\r?\n/)) {
+    if (/taskReview/.test(line)) assert.doesNotMatch(line, /\.single ===/);
+  }
+  const hits = pre.match(/taskReview\.single/g) || [];
+  assert.equal(hits.length, 1);
+  const line = pre.split(/\r?\n/).find(l => l.includes('taskReview.single'));
+  assert.ok(line.includes('was removed: the per-task review always runs the spec and quality loops'));
+  assert.ok(!agent.includes('single review'));
+  assert.ok(!agent.includes("the workflow's single review"));
+  assert.ok(!agent.includes('restricted, review'));
+  assert.match(SRC.slice(SRC.indexOf('async function runDeliverable')), /for \(const kind of \['spec', 'quality'\]\)/);
+});

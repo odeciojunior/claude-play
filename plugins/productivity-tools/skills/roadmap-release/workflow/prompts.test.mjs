@@ -191,34 +191,6 @@ test('minor 1: externalNote says the person authorized it and that no humanInput
   assert.match(n, /already given/);
 });
 
-test('E28 AC2: single review prompts cite no superpowers and forbid asking', () => {
-  const agentText = reviewerAgent();
-  const script = readFileSync(join(here, 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
-  const noAsk = script.match(/const NO_ASK = '([^']*)'/)[1];
-  const single = { ...ctx, taskReview: { restricted: false, single: true } };
-  const p = P.buildTaskReviewPrompt(single, task, 'review', impl);
-  assert.ok(p.startsWith(ctx.base), 'single prompt opens with the briefing');
-  assert.match(p, /Mode: review\./);
-  assert.doesNotMatch(p, /superpowers/i);
-  const both = { ...single, taskReview: { restricted: true, single: true }, was: { iss: [{ severity: 'critical', category: 'defeito', id: 'F1', file: 'a.js', description: 'bug' }], head: 'h1' }, pluginRoot: '/plug', diffPath: '/wt/_tmp/x.diff' };
-  const q = P.buildTaskReviewPrompt(both, task, 'review', impl);
-  assert.ok(q.startsWith(ctx.base), 'restricted single prompt opens with the briefing');
-  assert.match(q, /Mode: restricted, review\./);
-  assert.match(q, /review-package\.mjs/);
-  assert.doesNotMatch(q, /superpowers/i);
-  const sec = (agentText.match(/## Review mode\n([\s\S]*?)(?=\n## |$)/) || [])[1] || '';
-  assert.match(sec, /both the `spec` and the `quality` block lists/);
-  assert.match(sec, /Every `fail` comes with a blocking finding/);
-  assert.match(sec, /`restricted, review`[\s\S]*`verdicts`[\s\S]*`spec` and `quality`/);
-  assert.doesNotMatch(agentText, /superpowers/i);
-  assert.ok(agentText.includes(noAsk), 'NO_ASK sentence is in the agent body');
-  const body = script.slice(script.indexOf('async function runDeliverable'));
-  const loop = body.slice(body.indexOf('reviewLoop(`T${t.n}:${kind}`'));
-  const at = loop.slice(0, loop.indexOf('if (loop.halted)'));
-  assert.ok(at.includes('implAgent(`${C()}'));
-  assert.ok(at.includes('fix the ${kind} problems'));
-});
-
 test('minor 3: the reviewer does not re-run a check with an external effect', () => {
   assert.match(reviewerAgent(), /do not re-run a check with an external effect/i);
 });
