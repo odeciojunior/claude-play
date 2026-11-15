@@ -22,9 +22,11 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:pending -->
 - (dono) Logar uma config descartável nova para as medições de E30 e E31 (a anterior foi apagada na limpeza).
 - (executor) Ler as transcrições de E30 e E31 antes de apagar qualquer config descartável.
+- (dono) O dono confere o relatório de triagem docs/reports/2026-11-15-E32-triagem-backlog.md (critério 1).
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
 | feat/E29 | viva | E29 em execução pelo release |
+| feat/E32 | viva | E32 em execução pelo release |
 <!-- /roadmap:inflight -->
