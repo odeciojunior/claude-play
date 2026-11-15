@@ -877,7 +877,7 @@ const FINAL_SLICE_LITERALS = ['FR.adversarial === true && bl.length', "card.crit
 // Literals the product keeps inside the task slice (between its reviewLoop call and the next one) that the harness relies on.
 const TASK_SLICE_LITERALS = ['byId: true })', 'taskReview: TR', 'taskIssues(r, cx)', 'revAgent(buildTaskReviewPrompt('];
 // The restricted switch is read before the call (const TR = ...), so it is searched in the whole workflow.
-const TASK_RESTRICTED_LITERAL = '(CFG.taskReview || {}).restricted === true';
+const TASK_RESTRICTED_LITERAL = 'tr.restricted === true';
 const MAXFIX_LITERAL = 'intArg(A.maxFixRounds, 2, 0)';
 const REVIEW_OPTS_LITERAL = "model: 'opus', effort: 'medium' }";
 const FIX_OPTS_LITERAL = 'model: tier, effort: effortFor(tier) }';
