@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-15 | E29 | E29 passou para na-branch | `a563e48710c42e1b1adbed3815941d36835a584c`, `gates G1, G2, G3, G4, G5`, `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `docs/plans/pos-2-2-0-E29/reviews.md` |
 | 2026-11-15 | E29 | E29 passou para executando | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` |
 | 2026-11-15 | E29 | BLQ-1 resolvido: desbloqueio de E29 pelo release | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` |
 | 2026-11-15 | E32 | E32 passou para na-branch | `92096976de66b3ab0f8af81c96b7da08b55f3e19`, `gates G1, G2, G3, G4, G5`, `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `docs/plans/pos-2-2-0-E32/reviews.md` |

@@ -8,7 +8,7 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E29 | executando | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` | E29: seguir o fluxo do release após executando |
+| E29 | na-branch | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `a563e48710c42e1b1adbed3815941d36835a584c` | E29: seguir o fluxo do release após na-branch |
 | E30 | nao-iniciado | - | - |
 | E31 | nao-iniciado | - | - |
 | E32 | na-branch | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19` | E32: seguir o fluxo do release após na-branch |
@@ -27,5 +27,4 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
-| feat/E29 | viva | E29 em execução pelo release |
 <!-- /roadmap:inflight -->
