@@ -23,6 +23,8 @@ Estratégia v1.0 -- 2026-11-15
 - (executor) Ler as transcrições de E30 e E31 antes de apagar qualquer config descartável.
 - (dono) O dono confere o relatório de triagem docs/reports/2026-11-15-E32-triagem-backlog.md (critério 1).
 - (dono) E32: critério AC1 sem evidência automática (human)
+- (executor) Workflow do release: gate tests recusa total menor mesmo com remoção declarada; aceitar remoção revisada (nomes que somem na spec/plano) e parar o gates-fix na 1ª rodada quando a única falha é o total. Destino: roadmap futuro.
+- (executor) Workflow do release: na retomada com notes, a carga do plano congelado sem --spec ainda lê a spec pelo campo spec do plano e falha (edge-case-uncovered) antes do autor rodar; contornado à mão no E29. Destino: roadmap futuro.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
