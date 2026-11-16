@@ -477,6 +477,8 @@ test('code seeded validity requires resumed tasks and the task 3 review', async 
 const REPO = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: here, encoding: 'utf8' }).stdout.trim();
 const WORKFLOW_REL = 'plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js';
 const WORKFLOW = join(REPO, WORKFLOW_REL);
+// fixture congelada: roadmap-release.js em ccac3c5, antes de E29; só o braço unica a lê
+const WORKFLOW_SINGLE = join(REPO, 'tools/measure/fixtures/workflow-com-single/roadmap-release.js');
 const ARMS = join(here, 'arms');
 const ARM_FILES = ['spec-review-atual.md', 'plan-review-atual.md', 'spec-fix-atual.md', 'plan-fix-atual.md'];
 const norm = (s) => s.replace(/\r\n/g, '\n');
@@ -3624,28 +3626,38 @@ test('C2: refusals', () => {
 test('C2: startup refusals on the measured workflow for lentes-semeadas', async () => {
   const s = setup();
   try {
-    const wf = readFileSync(WORKFLOW, 'utf8');
+    const wf = readFileSync(WORKFLOW_SINGLE, 'utf8');
+    const real = readFileSync(WORKFLOW, 'utf8');
     const cases = [
       ["TR.single ? ['review'] : ['spec', 'quality']", "TR.single ? ['reviewX'] : ['spec', 'quality']"],
       ['single: tr.single === true', 'single: tr.single'],
       ['(c.taskReview || {}).single', '(c.taskReview || {}).only'],
     ];
     for (const [lit, repl] of cases) {
-      assert.equal(wf.split(lit).length - 1, 1, lit + ' occurs once in the real workflow');
-      const plugin = lentesPlugin(s.base, wf.replace(lit, repl));
-      for (const arm of ['atual', 'unica']) {
-        const fake = makeFake(s.configDir);
-        await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm, pluginDir: plugin, work: join(s.base, 'w-ref') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes(lit), `${arm} ${lit}`);
-        assert.equal(claudeCalls(fake).length, 0, lit);
-      }
-      // the same drift does not refuse correcao-semeada: the rule only applies to the new variants
-      assert.doesNotThrow(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review'), lit);
-      assert.throws(() => checkLoopWorkflow(wf.replace(lit, repl), 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes(lit), lit);
+      assert.equal(wf.split(lit).length - 1, 1, lit + ' occurs once in the frozen workflow');
+      const drift = wf.replace(lit, repl);
+      // the frozen workflow with a drifted literal is refused for --arm unica, with no paid call
+      const plugin = lentesPlugin(s.base, drift);
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm: 'unica', pluginDir: plugin, work: join(s.base, 'w-ref') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes(lit), `unica ${lit}`);
+      assert.equal(claudeCalls(fake).length, 0, lit);
+      assert.throws(() => checkLoopWorkflow(drift, 'task-review', { lenses: true, arm: 'unica' }), (e) => e instanceof UsageError && e.message.includes(lit), lit);
+      // the same drift does not refuse the atual arm nor correcao-semeada: the literals only apply to --arm unica
+      assert.doesNotThrow(() => checkLoopWorkflow(drift, 'task-review', { lenses: true, arm: 'atual' }), lit);
+      assert.doesNotThrow(() => checkLoopWorkflow(drift, 'task-review'), lit);
     }
-    // the taskIssues literal is searched only inside function taskIssues: a copy elsewhere does not hide the drift
+    // the taskIssues literal is searched only inside function taskIssues: a copy elsewhere does not hide the drift in the unica arm
     const drifted = wf.replace('(c.taskReview || {}).single', '(c.taskReview || {}).other') + '\n// (c.taskReview || {}).single\n';
-    assert.throws(() => checkLoopWorkflow(drifted, 'task-review', { lenses: true }), (e) => e instanceof UsageError && e.message.includes('(c.taskReview || {}).single'));
-    assert.doesNotThrow(() => checkLoopWorkflow(wf, 'task-review', { lenses: true }));
+    assert.throws(() => checkLoopWorkflow(drifted, 'task-review', { lenses: true, arm: 'unica' }), (e) => e instanceof UsageError && e.message.includes('(c.taskReview || {}).single'));
+    assert.doesNotThrow(() => checkLoopWorkflow(wf, 'task-review', { lenses: true, arm: 'unica' }));
+    // C3: the real workflow (no single mode) starts the atual arm without refusal
+    assert.doesNotThrow(() => checkLoopWorkflow(real, 'task-review', { lenses: true, arm: 'atual' }));
+    // C4: the real workflow refuses the unica arm at startup, citing the missing literal, with no paid call
+    assert.throws(() => checkLoopWorkflow(real, 'task-review', { lenses: true, arm: 'unica' }), (e) => e instanceof UsageError && e.message.includes("TR.single ? ['review'] : ['spec', 'quality']"));
+    const realPlugin = lentesPlugin(s.base, real);
+    const fake = makeFake(s.configDir);
+    await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm: 'unica', pluginDir: realPlugin, work: join(s.base, 'w-real') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && e.message.includes("TR.single ? ['review'] : ['spec', 'quality']"));
+    assert.equal(claudeCalls(fake).length, 0);
   } finally {
     s.done();
   }
@@ -3654,7 +3666,7 @@ test('C2: startup refusals on the measured workflow for lentes-semeadas', async 
 test('C2: a measured plugin without "## Review mode" in agents/task-reviewer.md is refused for --arm unica', async () => {
   const s = setup();
   try {
-    const wf = readFileSync(WORKFLOW, 'utf8');
+    const wf = readFileSync(WORKFLOW_SINGLE, 'utf8');
     const bad = lentesPlugin(s.base, wf, { reviewMode: false });
     const fake = makeFake(s.configDir);
     await assert.rejects(runBatch(lentesOpts(s, 'lentes-semeadas-A', { arm: 'unica', pluginDir: bad, work: join(s.base, 'w-rm') }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /## Review mode/.test(e.message));
@@ -3670,9 +3682,10 @@ test('C2: runBatch picks the lenses script for lentes-semeadas and keeps the cor
   try {
     const wf = readFileSync(WORKFLOW, 'utf8');
     const plugin = lentesPlugin(s.base, wf);
+    const pluginSingle = lentesPlugin(s.base, readFileSync(WORKFLOW_SINGLE, 'utf8'));
     const sentFor = async (variant, arm) => {
       const fake = makeFake(s.configDir, { journal: taskJournal() });
-      await runBatch(lentesOpts(s, variant, { arm, pluginDir: plugin, work: join(s.base, `w-${variant}-${arm}`) }), { exec: fake.exec, now: NOW });
+      await runBatch(lentesOpts(s, variant, { arm, pluginDir: arm === 'unica' ? pluginSingle : plugin, work: join(s.base, `w-${variant}-${arm}`) }), { exec: fake.exec, now: NOW });
       return readFileSync(join(firstClaudeP(fake).cwd, 'review-only.js'), 'utf8');
     };
     const atual = await sentFor('lentes-semeadas-A', 'atual');
@@ -3707,9 +3720,11 @@ const { manifestEntries: manifestOf } = await import('./make-scenario.mjs');
 
 const SEEDED40 = 'a'.repeat(40);
 const lrv = (issues, spec = 'pass', quality = 'pass', extra = {}) => trv(issues, SEEDED40, { spec, quality, ...extra });
+// the unica arm replays with the functions of the frozen workflow (it has the single mode), the atual arm with the real one
+const pOf = (arm) => (arm === 'unica' ? loadPure(WORKFLOW_SINGLE) : loadPure());
 const hL = (arm = 'atual') => {
   const h = hOf('lentes-semeadas-A', { arm });
-  h.loopFns = loadPure();
+  h.loopFns = pOf(arm);
   return h;
 };
 const lensStub = { dir: 'D:/work/lentes-semeadas-A-1', seededCommit: SEEDED40 };
@@ -3724,9 +3739,9 @@ const MINOR_ONLY = { severity: 'minor', category: 'defeito', description: '[fab]
 
 // Runs the real generated lenses script with a stub agent; returns its return and the journal it would have left.
 async function lensRun({ arm = 'atual', reviews, fixes = {} }) {
-  const wf = readFileSync(WORKFLOW, 'utf8');
+  const wf = readFileSync(arm === 'unica' ? WORKFLOW_SINGLE : WORKFLOW, 'utf8');
   const text = buildTaskLoopScript({
-    pure: checkLoopWorkflow(wf, 'task-review', { lenses: true }),
+    pure: checkLoopWorkflow(wf, 'task-review', { lenses: true, arm }),
     scenario: lensStub,
     opts: { restricted: false, kinds: arm === 'unica' ? ['review'] : ['spec', 'quality'], single: arm === 'unica', reviewModel: 'sonnet', pluginRoot: 'D:/cfg/p', work: 'D:/work', title: 'Word count', fixPrompt: 'Fix the {{kind}} problems.\n{{issues}}' },
   });
@@ -3743,7 +3758,6 @@ async function lensRun({ arm = 'atual', reviews, fixes = {} }) {
 const okOf = (loops) => loops.map((l) => [l.kind, l.ok]);
 
 test('C3: replay ok equals the script ok, loop by loop, in both arms', async () => {
-  const P = loadPure();
   const sequences = {
     'clean on the 1st': { reviews: [lrv([])] },
     'fix and clean': { reviews: [lrv([F_SP1]), lrv([]), lrv([])] },
@@ -3755,7 +3769,7 @@ test('C3: replay ok equals the script ok, loop by loop, in both arms', async () 
   for (const arm of ['atual', 'unica']) {
     for (const [name, seq] of Object.entries({ ...sequences, ...(arm === 'atual' ? atualOnly : {}) })) {
       const run = await lensRun({ arm, ...seq });
-      const replay = await loopResult(hL(arm), run.journal, P, run.scenario);
+      const replay = await loopResult(hL(arm), run.journal, pOf(arm), run.scenario);
       assert.equal(replay.ok, run.result.ok, `${arm} ${name}`);
       assert.deepEqual(okOf(replay.loops), okOf(run.result.loops), `${arm} ${name}`);
       assert.equal(replay.divergent, undefined, `${arm} ${name}`);
@@ -3774,7 +3788,7 @@ test('C3: laco-divergente when a replayed loop differs from the script, or the j
   const stopped = [entry('E5:t3:spec1', lrv([FOUND('F1')])), entry('E5:t3:spec-fix1', APPLIED_FIX), entry('E5:t3:spec2', lrv([FOUND('F2')])), entry('E5:t3:spec-fix2', APPLIED_FIX), entry('E5:t3:spec3', lrv([FOUND('F3')]))];
   assert.equal((await loopResult(hL(), [...stopped, quality1], P, lensStub)).divergent, true, 'the script ran quality, the replay stopped at spec');
   // the old single-loop labels are not stage labels of the lenses branch and the t3 ones of the other arm are
-  assert.equal((await loopResult(hL('unica'), [entry('E5:t3:review1', lrv([])), entry('E5:t3:spec1', lrv([]))], P, lensStub)).divergent, true);
+  assert.equal((await loopResult(hL('unica'), [entry('E5:t3:review1', lrv([])), entry('E5:t3:spec1', lrv([]))], pOf('unica'), lensStub)).divergent, true);
   // a tampered journal: the script blocked to the end, one verdict was swapped to clean
   const run = await lensRun({ reviews: [lrv([FOUND('F1')]), lrv([FOUND('F2')]), lrv([FOUND('F3')])] });
   assert.equal(run.result.ok, false);
@@ -3875,7 +3889,7 @@ test('C3: a first review with no hard finding is valid and the four seeds are pe
 });
 
 test('C3: bloqueou-sintetico only when the fixer answers BLOCKED to a fixable list with only synthetic findings', async () => {
-  const P = loadPure();
+  const P = pOf('unica');
   const s = setup();
   try {
     const sc = await unitScenario(s, 'lentes-semeadas-A');
@@ -3906,13 +3920,13 @@ test('C3: bloqueou-sintetico only when the fixer answers BLOCKED to a fixable li
 // the attempt-level counters of one replayed attempt (loopResult + lensAttemptStats), the outcomes given by hand
 const statsOf = async (arm, run, outcomes = []) => {
   const h = hL(arm);
-  const loop = await loopResult(h, run.journal, loadPure(), run.scenario);
+  const loop = await loopResult(h, run.journal, pOf(arm), run.scenario);
   return lensAttemptStats(h, loop, outcomes, SEEDS_A);
 };
 const oc = (id, outcome) => ({ id, class: 'code', detectedBy: 'reviewer', outcome });
 
 test('C3: BLOCKED with a synthetic and a real finding is bloqueadoMisto, a valid stopped attempt (indeterminado)', async () => {
-  const P = loadPure();
+  const P = pOf('unica');
   const s = setup();
   try {
     const sc = await unitScenario(s, 'lentes-semeadas-A');
@@ -3935,7 +3949,7 @@ test('C3: BLOCKED with a synthetic and a real finding is bloqueadoMisto, a valid
 });
 
 test('C3: a loop stopped without BLOCKED with only synthetic findings open is paradoSoSintetico, a valid stopped attempt (indeterminado)', async () => {
-  const P = loadPure();
+  const P = pOf('unica');
   const s = setup();
   try {
     const sc = await unitScenario(s, 'lentes-semeadas-A');
@@ -4500,7 +4514,9 @@ test('C4: the aggregate of a lenses batch records harness.taskReview, kinds, out
       const loops = arm === 'atual' ? cleanLoops : [{ kind: 'review', ok: true, stop: null, accepted: [] }];
       const entries = arm === 'atual' ? [entry('E5:t3:spec1', lrv([])), entry('E5:t3:quality1', lrv([]))] : [entry('E5:t3:review1', lrv([]))];
       const spec = () => ({ entries, ret: { ok: true, kind: null, msg: null, loops, reviews: [], accepted: [] } });
-      const r = await runBatch(lensBatch(s, arm), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
+      // the unica arm runs on the frozen workflow (the real one has no single mode)
+      const extra = arm === 'unica' ? { pluginDir: lentesPlugin(s.base, readFileSync(WORKFLOW_SINGLE, 'utf8')) } : {};
+      const r = await runBatch(lensBatch(s, arm, extra), { exec: makeFake(s.configDir, { afterRun: lensAfterRun(s, spec) }).exec, now: NOW });
       const g = r.aggregate;
       assert.equal(g.valid, 1, JSON.stringify(g.invalidReasons));
       assert.deepEqual(g.harness.taskReview, { restricted: false, single: arm === 'unica' });

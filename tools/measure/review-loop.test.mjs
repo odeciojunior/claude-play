@@ -10,6 +10,8 @@ import { extractPure, checkLoopWorkflow, buildLoopScript, buildTaskLoopScript, b
 const here = dirname(fileURLToPath(import.meta.url));
 const WORKFLOW = join(here, '..', '..', 'plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js');
 const WF = readFileSync(WORKFLOW, 'utf8');
+// fixture congelada: roadmap-release.js em ccac3c5, antes de E29; só o braço unica a lê
+const WF_SINGLE = readFileSync(join(here, 'fixtures', 'workflow-com-single', 'roadmap-release.js'), 'utf8');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 // The pure block by the loadPure rule, computed here independently of run-batch.
@@ -432,7 +434,7 @@ const LENS_FIX = `In Task 3 of the plan ${SB}/docs/plans/plan.md, fix the {{kind
 const lensScenario = { dir: SB, seededCommit: SEEDED };
 const lensScript = (arm = 'atual', over = {}) =>
   buildTaskLoopScript({
-    pure: checkLoopWorkflow(WF, 'task-review', { lenses: true }),
+    pure: checkLoopWorkflow(arm === 'unica' ? WF_SINGLE : WF, 'task-review', { lenses: true, arm }),
     scenario: lensScenario,
     opts: { restricted: false, kinds: arm === 'unica' ? ['review'] : ['spec', 'quality'], single: arm === 'unica', reviewModel: 'sonnet', pluginRoot: PLUGIN, work: WORK, title: 'Word count', fixPrompt: LENS_FIX, ...over },
   });
@@ -441,7 +443,7 @@ const vrev = (issues, spec = 'pass', quality = 'pass', verdicts = []) => ({ ...r
 test('C2: the lenses loop script carries the pure block byte for byte, compiles and stays under 200,000 characters on the real workflow', () => {
   for (const arm of ['atual', 'unica']) {
     const text = lensScript(arm);
-    assert.ok(text.includes('\n' + PURE + '\n'), arm);
+    assert.ok(text.includes('\n' + (arm === 'unica' ? extractPure(WF_SINGLE).pure : PURE) + '\n'), arm);
     assert.ok(text.startsWith('export const meta = {'), arm);
     assert.ok(text.length <= 200000, `${arm}: ${text.length}`);
     assert.doesNotMatch(text, /^import /m);
