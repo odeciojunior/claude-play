@@ -5080,3 +5080,13 @@ test('2.0.1 AC2: a merge-fix review headSha that is not a full SHA does not reje
   assert.ok(!labels.includes('E1:rollback'));
   assert.equal(r.results[0].merge.docsOk, true);
 });
+
+// ---- E29 T6: comportamento que fica depois da remoção do modo único ----
+test('E29 C5: taskReview.single given straight to the workflow runs only spec1 and quality1 on the task-reviewer and no fix for an empty review', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { taskReview: { single: true } }, over: withPlan([tk(1, false)], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 } : undefined)) });
+  const reviews = calls.filter((c) => /^E1:t1:(spec|quality|review)\d$/.test(c.label)).map((c) => c.label);
+  assert.deepEqual(reviews, ['E1:t1:spec1', 'E1:t1:quality1']);
+  for (const c of calls.filter((x) => /^E1:t1:(spec|quality)\d$/.test(x.label))) assert.equal(c.opts.agentType, 'productivity-tools:task-reviewer');
+  assert.ok(!calls.some((c) => /^E1:t1:.*review1/.test(c.label)), 'no single review label on the task');
+  for (const p of ['E1:t1:spec-fix', 'E1:t1:quality-fix', 'E1:t1:review-fix']) assert.ok(!calls.some((c) => c.label.startsWith(p)), `no fix ${p}`);
+});

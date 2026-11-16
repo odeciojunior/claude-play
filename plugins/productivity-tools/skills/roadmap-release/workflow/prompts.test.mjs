@@ -454,3 +454,28 @@ test('2.0.1 AC3: implementer.md states the working directory rule before the mod
   assert.ok(agent.includes('(no `;`, `&&`, `||` or pipes around it)'));
   assert.ok(agent.includes('nothing chained after it with `;`, `&&` or `||`'));
 });
+
+// ---- E29 T6: comportamento que fica depois da remoção do modo único ----
+test('E29 AC1: the task-reviewer Review mode, used by the plan-coordinator, applies both block lists and a blocking finding per fail', () => {
+  const t = reviewerAgent();
+  const at = t.indexOf('\n## Review mode');
+  assert.ok(at >= 0, 'the Review mode section exists');
+  const rest = t.slice(at + 1);
+  const section = rest.slice(0, rest.indexOf('\n## ') >= 0 ? rest.indexOf('\n## ') : undefined);
+  assert.ok(section.includes('both the `spec` and the `quality` block lists'));
+  assert.ok(section.includes('Every `fail` comes with a blocking finding'));
+  const mode = t.split('\n').find((l) => l.startsWith('- `review`: '));
+  assert.ok(mode, 'the review line of the mode list exists');
+  assert.match(mode, /plan-coordinator/);
+});
+
+test('E29 AC1: the per-task fix goes through implAgent with the C() briefing and fix the ${kind} problems', () => {
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
+  const start = src.indexOf('reviewLoop(`T${t.n}:${kind}`');
+  assert.ok(start > -1, 'the per-task review loop exists');
+  const halted = src.indexOf('if (loop.halted)', start);
+  assert.ok(halted > start, 'the loop is followed by the halted check');
+  const seg = src.slice(start, halted);
+  assert.ok(seg.includes('implAgent(`${C()}'), 'the fix opens with the C() briefing');
+  assert.ok(seg.includes('fix the ${kind} problems'), 'the fix names the kind of the loop');
+});
