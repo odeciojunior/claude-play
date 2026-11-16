@@ -659,3 +659,24 @@ test('2.0.1 AC1: a baseline that runs 0 tests stops before any implementer', () 
   assert.equal(byAgent(sim, IMPL).length, 0);
   assert.equal(readState(sb).run.baseline.exit, 0);
 }));
+
+test('E32: a review-owed step resumed without its report tells the reviewer it was resumed', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { review: () => { throw new Error('killed in review'); } });
+  await assert.rejects(sim.go(launchArgs(sb)), /killed/);
+  assert.ok(readState(sb).steps.some((s) => s.status === 'review-owed'), 'a step is review-owed after the kill');
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const first = byAgent(sim2, REVIEWER).find((c) => /^T\d+:review1$/.test(c.o.label));
+  assert.ok(first, 'a review1 is dispatched on the resume');
+  assert.match(first.prompt, /resumed from a previous run/);
+  assert.doesNotMatch(first.prompt, /Summary: \(no summary\)/);
+  // without a resume the reviewer still gets the implementer summary
+  await withSandbox(async (sb2) => {
+    const sim3 = makeSim(sb2);
+    await sim3.go(launchArgs(sb2));
+    const rv = byAgent(sim3, REVIEWER)[0];
+    assert.match(rv.prompt, /Summary: T2 done/);
+    assert.doesNotMatch(rv.prompt, /resumed from a previous run/);
+  });
+}));

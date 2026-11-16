@@ -1268,7 +1268,7 @@ const reviewPrompt = (s, rep) => {
     `Review step T${s.n} of plan ${S.plan.id}: ${s.title}, in ${ROOT}. Read-only: never edit, stage or commit.`,
     `Brief of the step (what it must do): ${briefOf(s)}.`,
     `Range: the step is not committed yet. Run git -C ${shq(ROOT)} status --porcelain -- ${paths} and git -C ${shq(ROOT)} diff HEAD -- ${paths}, then read each file of the step.`,
-    `Summary: ${rep && rep.summary ? rep.summary : '(no summary)'}`,
+    `Summary: ${!rep ? 'resumed from a previous run: the implementer report of this step was lost with that run; run the step verification commands from the plan yourself' : rep.summary ? rep.summary : '(no summary)'}`,
     checks,
     'Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty (false is expected while the step is uncommitted); commitsInRange = 0.',
   ].join('\n')

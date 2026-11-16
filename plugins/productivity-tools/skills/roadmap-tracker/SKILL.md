@@ -47,7 +47,7 @@ Never write a file from memory. If the contract cannot be read, stop and report 
 6. **Revision** (end of piece or phase, or an unabsorbed contradiction): propose strategy vN+1 in the conversation, write it only after approval (rule 6); procedure in `events/09-revision.md`.
 7. **Hand back** with the report below.
 
-Read-only query ("roadmap status"): `roadmap.mjs status "<folder>"` plus the checker; write nothing; report a stale checker or format mismatch as a warning only.
+Read-only query ("roadmap status"): `roadmap.mjs status "<folder>"` (one card's panel row: `roadmap.mjs status "<folder>" --deliverable E<n>`) plus the checker; write nothing; report a stale checker or format mismatch as a warning only.
 
 ## Events
 
