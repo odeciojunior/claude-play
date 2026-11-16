@@ -8,7 +8,7 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E29 | bloqueado (BLQ-1) | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` | E29: seguir o fluxo do release após executando |
+| E29 | executando | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md` | E29: seguir o fluxo do release após executando |
 | E30 | nao-iniciado | - | - |
 | E31 | nao-iniciado | - | - |
 | E32 | na-branch | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19` | E32: seguir o fluxo do release após na-branch |
@@ -17,7 +17,6 @@ Estratégia v1.0 -- 2026-11-15
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
 |---|---|---|---|---|
-| BLQ-1 | E29 bloqueado: automatic execution stopped (conteudo): branch gates did not pass: gates not green (G1): G1: exit 0, total 2172, skipped 2, failing [] (baseline: exit 0, total 2175, skipped 2, failing []) \| G2: exit 0 [...] texto completo em docs/plans/pos-2-2-0-E29/reviews.md | E29 | 2026-11-15 | quando o bloqueio de E29 for resolvido; restaura E29 para executando |
 <!-- /roadmap:blockers -->
 <!-- roadmap:pending -->
 - (dono) Logar uma config descartável nova para as medições de E30 e E31 (a anterior foi apagada na limpeza).
