@@ -145,3 +145,56 @@ Riscos aceitos: nenhum. Concerns: nenhum. Gates: não executados nesta execuçã
 ### Falha da execução
 
 plan load: integrity digest not confirmed (plan-tool emit exited 1: { "tool": "plan-tool", "schema": "plan/1", "path": "D:/projects/claude-play-wt/E29/docs/plans/pos-2-2-0-E29/plan.md", "errors": [ { "code": "edge-case-uncovered", "ref": "C5", "message": "nenhuma tarefa cobre o caso de borda C5" } ], "warnings": [], "summary": { "errors": 1, "warnings": 0, "exitCode": 1 } })
+
+## Nova execução (tarefas 4 a 6 e revisão final)
+
+### Revisões desta execução
+- spec: rodada 1, revisor opus, correção anterior: nenhuma; rodada 2, revisor opus, correção anterior: tier opus. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- plan: rodada 1, revisor opus, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 2. Não resolvidos: nenhum.
+- T4:spec: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- T4:quality: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- T5:spec: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- T5:quality: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 1. Não resolvidos: nenhum.
+- T6:spec: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- T6:quality: rodada 1, revisor sonnet, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+- final: rodada 1, revisor opus, correção anterior: nenhuma. Críticos/importantes: nenhum. Menores: 0. Não resolvidos: nenhum.
+
+Riscos aceitos: nenhum.
+
+### Tarefas desta execução
+
+| N | Título | Status | Commits |
+|---|---|---|---|
+| 1 | Workflow com o caminho único spec e quality | RESUMED (already reviewed) | |
+| 2 | Preflight recusa taskReview.single | RESUMED (already reviewed) | |
+| 3 | task-reviewer sem a ligação ao release e teste de ausência | RESUMED (already reviewed) | |
+| 4 | Arnês de medição ao caminho único com fixture congelada | DONE | 14 |
+| 5 | Gates | DONE_WITH_CONCERNS | 0 |
+| 6 | Testes do comportamento que fica (R5 da spec, C5) | DONE_WITH_CONCERNS | 1 |
+
+### Concerns desta execução
+
+- T5: 1. G1 total is 2172, below the target baseline of 2186 (skipped 2, fail 0). The owner requires the total after the sync with release to be >= baseline. This branch has not been synced yet, so the gap may close then. It must be verified at the record or merge stage, not by changing the gate, baseline, skips or count. 2. The exit codes for G1, G2 and G3 were not printed by the tool. The outputs show pass or fail 0, but the code itself was not read. 3. G5 reports 1 WARN (plan-coordinator/references/delegation-protocol.md links to state.md, one level too deep). It is not a FAIL, so exit 0 holds. It is a pre-existing item to check whether it belongs to this deliverable. 4. G3 reports one plugin-directory warning, ICON_MISSING. The validator still passes. 5. Mid-run, E29 was not given any task 6 work. No file was changed and no commit was made.
+- T6: G1 before the sync: 2175 tests, 2173 pass, 0 fail, 2 skipped. Break E fails first on the label list, not on the spec-fix1 prefix check. The no-review1 assertion is scoped to E1:t1: labels because E1:plan-review1 is a legitimate label.
+
+### Gates desta execução
+
+Linha de base (alvo, head 19a04305fc569876c27cdb47492571214fe882b1): G1 exit 0, total 2186, skipped 2, failing []; G2, G3, G4, G5 exit 0. Registrado nos concerns: G1 com 2172 testes na branch (skipped 2, fail 0) e, após a tarefa 6 e antes da sincronização, 2175 testes (2173 pass, 0 fail, 2 skipped). A branch ainda não foi sincronizada com a release; a verificação do total contra a linha de base cabe ao registro ou à integração. G5 com 1 WARN e G3 com 1 aviso ICON_MISSING, sem falha.
+
+### Entradas humanas
+
+Nenhuma (what, blq, workaround, blocking: não se aplica).
+
+### Falha da execução
+
+Nenhuma.
+
+### Textos cortados no registro (esta execução)
+
+- Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md). Texto completo:
+
+  checkLoopWorkflow exige os literais do modo único só no braço unica (opção arm); o braço atual roda no workflow novo e mantém H_TR e harness.taskReview com single: false; os testes do braço unica leem a cópia congelada tools/measure/fixtures/workflow-com-single/roadmap-release.js (workflow em ccac3c5).
+
+- Origem: add-decision --decision (fonte: docs/plans/pos-2-2-0-E29/reviews.md). Texto completo:
+
+  Uma tarefa nova, de número maior que as existentes, sem mudar as tarefas 1 a 5, cria três testes: dois em workflow/prompts.test.mjs (seção ## Review mode do task-reviewer usada pelo plan-coordinator; correção do laço por tarefa via implAgent com C() e 'fix the ${kind} problems') e um de fluxo em workflow/flow.test.mjs (taskReview { single: true } entregue direto ao workflow despacha só E1:t1:spec1 e E1:t1:quality1 no task-reviewer, nenhum review1, e revisão sem achados nem veredictos não gera correção). Cada teste é visto falhando com uma quebra temporária do comportamento, desfeita com git checkout -- <arquivo>. Nenhum teste do modo único volta; gate, linha de base, skips e contagem não mudam por outro meio.
