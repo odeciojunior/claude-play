@@ -75,7 +75,7 @@ Testes novos, no fim de cada arquivo, com o comentário `// ---- E29 T6: comport
 
 1. `prompts.test.mjs`, `E29 AC1: the task-reviewer Review mode, used by the plan-coordinator, applies both block lists and a blocking finding per fail`: de `reviewerAgent()`, recorta de `## Review mode` até o próximo `\n## ` (ou o fim); confere que o recorte existe e contém `` both the `spec` and the `quality` block lists `` e `` Every `fail` comes with a blocking finding ``; e que a linha da lista de modos que começa por `` - `review`: `` existe e contém `plan-coordinator`.
 2. `prompts.test.mjs`, `E29 AC1: the per-task fix goes through implAgent with the C() briefing and fix the ${kind} problems`: lê `roadmap-release.js` (LF), recorta de `` reviewLoop(`T${t.n}:${kind}` `` até o primeiro `if (loop.halted)` depois dele (os dois índices maiores que -1, o fim depois do início); confere que o recorte contém `` implAgent(`${C()} `` e `fix the ${kind} problems` (texto literal, sem interpolar).
-3. `flow.test.mjs`, `E29 C5: taskReview.single given straight to the workflow runs only spec1 and quality1 on the task-reviewer and no fix for an empty review`: `exec({ cards: [card('E1')], deliverables: ['E1'], config: { taskReview: { single: true } }, over: withPlan([tk(1, false)], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 } : undefined)) })` (revisão sem achados e sem `spec`/`quality`); as chamadas com rótulo que casa `/^E1:t1:(spec|quality|review)\d$/` são exatamente `['E1:t1:spec1', 'E1:t1:quality1']`, as duas com `opts.agentType` `productivity-tools:task-reviewer`; nenhum rótulo contém `review1`; nenhum rótulo é `E1:t1:spec-fix1` nem `E1:t1:quality-fix1` (nenhum rótulo casa `/^E1:t1:(spec|quality|review)-fix\d$/`).
+3. `flow.test.mjs`, `E29 C5: taskReview.single given straight to the workflow runs only spec1 and quality1 on the task-reviewer and no fix for an empty review`: `exec({ cards: [card('E1')], deliverables: ['E1'], config: { taskReview: { single: true } }, over: withPlan([tk(1, false)], (l) => (/^E1:t1:(spec|quality)\d$/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 } : undefined)) })` (revisão sem achados e sem `spec`/`quality`); as chamadas com rótulo que casa `/^E1:t1:(spec|quality|review)\d$/` são exatamente `['E1:t1:spec1', 'E1:t1:quality1']`, as duas com `opts.agentType` `productivity-tools:task-reviewer`; nenhum rótulo contém `review1`; nenhum rótulo começa por `E1:t1:spec-fix`, `E1:t1:quality-fix` ou `E1:t1:review-fix` (conferência por prefixo, com `startsWith`, porque o workflow rotula a correção `` `${E}:t${t.n}:${kind}-fix${k}` ``, como `E1:t1:spec-fix1`).
 
 Rodar `node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs` e `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs`: os três passam no código atual (o comportamento já existe; o teste primeiro aqui é a prova de falha abaixo).
 
@@ -85,7 +85,7 @@ Prova de falha de cada teste, uma quebra por vez, cada uma desfeita com `git -C 
 - Teste 2: em `roadmap-release.js` trocar `fix the ${kind} problems` por `fix the problems` no trecho; rodar `prompts.test.mjs`, ver o teste 2 falhar; restaurar.
 - Teste 3: em `roadmap-release.js` trocar o laço por `for (const kind of ['review']) {`; rodar `flow.test.mjs`, ver o teste 3 falhar; restaurar. Depois, em `taskIssues`, fazer a função devolver um achado crítico sintético quando `r.spec` e `r.quality` faltam e não há achado; rodar `flow.test.mjs`, ver o teste 3 falhar (rótulo `E1:t1:spec-fix1`); restaurar.
 
-Depois das quebras, `git -C D:/projects/claude-play-wt/E29 status --porcelain` lista só os dois arquivos de teste. Rodar o G1 `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` e relatar as linhas `# tests`, `# pass`, `# skipped`: exit 0, `# tests` maior ou igual a 2175 (linha de base da release; a branch estava com 2172 em BLQ-1) e `# skipped` igual a 2. A comparação vale para a branch depois do sync com a release, que o chamador faz antes dos gates; se o sync trouxer testes novos da release, a linha de base é a do alvo no mesmo sync. Commit `E29 T6: testes do comportamento que fica sem o modo único`, só com os dois arquivos.
+Depois das quebras, `git -C D:/projects/claude-play-wt/E29 status --porcelain` lista só os dois arquivos de teste. Rodar o G1 `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` e relatar as linhas `# tests`, `# pass`, `# skipped`: exit 0, `# tests` maior ou igual ao total do G1 da linha de base do alvo e `# skipped` igual a 2. A comparação vale para a branch depois do sync com a release, que o chamador faz antes dos gates, contra a linha de base do alvo medida no mesmo sync: 2186 testes e 2 pulados no preflight desta rodada (em BLQ-1 eram 2175 contra 2172 da branch). Antes do sync a branch fica 3 testes acima do que tinha em BLQ-1; o que a release trouxe depois entra pelo sync. Commit `E29 T6: testes do comportamento que fica sem o modo único`, só com os dois arquivos.
 
 ## Evidência dos critérios
 
@@ -93,10 +93,9 @@ Depois das quebras, `git -C D:/projects/claude-play-wt/E29 status --porcelain` l
 |---|---|---|---|
 | AC1 | test | `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` | `E29 AC1: the release, the preflight and the task-reviewer carry no single review` e `E29 AC1: taskIssues ignores verdicts and returns the restricted join or r.issues` (`review.test.mjs`), `AC3: by default each task gets the spec and quality reviews on today's model` |
 | AC2 | test | `node --test plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs` | `E29: validateReleaseConfig accepts only taskReview.restricted and refuses taskReview.single with the removal message` |
-
 | C5 | test | `node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs` | `E29 C5: taskReview.single given straight to the workflow runs only spec1 and quality1 on the task-reviewer and no fix for an empty review` (`flow.test.mjs`) |
 
-Os dois comandos só leem arquivos do worktree: não externos.
+Os três comandos só leem arquivos do worktree: não externos.
 
 Os testes 1 e 2 da Tarefa 6 (`E29 AC1: the task-reviewer Review mode, ...` e `E29 AC1: the per-task fix goes through implAgent ...`, em `prompts.test.mjs`) entram na evidência de AC1 pelo G1 da linha AC1. A linha C5 roda o arquivo inteiro (sai 0 só se todos os testes dele passam, o de C5 incluído) e só lê arquivos do worktree: não externa.
 
@@ -107,7 +106,7 @@ Os testes 1 e 2 da Tarefa 6 (`E29 AC1: the task-reviewer Review mode, ...` e `E2
 - R7: os testes do braço `unica` listados na T4 leem a fixture; a fixture é criada pelo `git show` do blob de `ccac3c5` e conferida pelo `git hash-object`.
 - R8: a nota de `config.md` sai em inglês, como o arquivo; o sentido é o da spec.
 - R9: nenhuma tarefa precisa de navegador, servidor, trava ou efeito externo.
-- R10: a Tarefa 6 acrescenta os três testes de R5 da spec depois das Tarefas 1 a 5, que não mudam; depende de T1 e T3; cada teste é visto falhando com uma quebra temporária desfeita por `git checkout -- <arquivo>`; o G1 depois do sync fica com `# tests` maior ou igual à linha de base, sem mexer em gate, linha de base nem skips.
+- R10: a Tarefa 6 acrescenta os três testes de R5 da spec depois das Tarefas 1 a 5, que não mudam; depende de T1 e T3; cada teste é visto falhando com uma quebra temporária desfeita por `git checkout -- <arquivo>`; o G1 depois do sync fica com `# tests` maior ou igual à linha de base do alvo no mesmo sync (2186 no preflight desta rodada), sem mexer em gate, linha de base nem skips; a ausência de correção no teste de fluxo é conferida por prefixo do rótulo (`E1:t1:spec-fix`, `E1:t1:quality-fix`), como na spec.
 
 ## Bloco de dados
 
@@ -298,7 +297,7 @@ Os testes 1 e 2 da Tarefa 6 (`E29 AC1: the task-reviewer Review mode, ...` e `E2
       "checks": [
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs", "expect": "exit 0" },
         { "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs", "expect": "exit 0" },
-        { "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"", "expect": "exit 0 (G1); # tests >= 2175 (linha de base) depois do sync com a release; # skipped = 2" },
+        { "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"", "expect": "exit 0 (G1); # tests >= total do G1 da linha de base do alvo no mesmo sync (2186 no preflight desta rodada) depois do sync com a release; # skipped = 2" },
         { "cmd": "git -C D:/projects/claude-play-wt/E29 status --porcelain", "expect": "só os dois arquivos de teste antes do commit; vazio depois" }
       ],
       "locks": [],
@@ -392,7 +391,7 @@ Os testes 1 e 2 da Tarefa 6 (`E29 AC1: the task-reviewer Review mode, ...` e `E2
     {
       "id": "R10",
       "question": "Como a cobertura do comportamento que fica entra no plano sem mudar as tarefas já comitadas?",
-      "decision": "Tarefa 6, depois das Tarefas 1 a 5 (que não mudam), depende de T1 e T3, só toca prompts.test.mjs e flow.test.mjs e cria os três testes de R5 da spec; cada teste é visto falhando com uma quebra temporária (frase do agente, briefing da correção, laço com ['review'] e achado sintético em taskIssues) desfeita por git checkout -- <arquivo>; o G1 depois do sync fica com # tests >= 2175 e # skipped = 2, sem mexer em gate, linha de base nem skips.",
+      "decision": "Tarefa 6, depois das Tarefas 1 a 5 (que não mudam), depende de T1 e T3, só toca prompts.test.mjs e flow.test.mjs e cria os três testes de R5 da spec; cada teste é visto falhando com uma quebra temporária (frase do agente, briefing da correção, laço com ['review'] e achado sintético em taskIssues) desfeita por git checkout -- <arquivo>; o G1 depois do sync fica com # tests >= o total da linha de base do alvo no mesmo sync (2186 no preflight desta rodada) e # skipped = 2, sem mexer em gate, linha de base nem skips; no teste de fluxo a ausência de correção é conferida por prefixo do rótulo (E1:t1:spec-fix, E1:t1:quality-fix).",
       "basis": "Instrução do dono depois de BLQ-1 (2172 contra 2175); R5 e C5 da spec; T6 roda fora da ordem de T5 porque T1 a T5 estão congeladas.",
       "alternative": "Ver a falha com uma cópia mutada em _tmp e um teste apontado para ela.",
       "costIfWrong": "low",
