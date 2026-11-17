@@ -528,10 +528,59 @@ test('E32 procs: selectProcs matches the worktree path followed by a boundary', 
 
 test('E32 procs: selectProcs matches listeners inside the port range only', async () => {
   const { selectProcs } = await import('./verify-run.mjs');
-  const procs = [{ pid: 10, ppid: 1, cmd: 'a' }, { pid: 11, ppid: 1, cmd: 'b' }, { pid: 12, ppid: 1, cmd: 'c' }, { pid: 13, ppid: 1, cmd: 'd' }, { pid: 14, ppid: 1, cmd: 'e' }];
+  // every listener descends from a process whose command line carries the worktree
+  const procs = [{ pid: 50, ppid: 1, cmd: 'npm --prefix D:/x/E3 run dev' }, ...[10, 11, 12, 13, 14].map((pid) => ({ pid, ppid: 50, cmd: 'vite' }))];
   const listens = [{ pid: 10, port: 5209 }, { pid: 11, port: 5210 }, { pid: 12, port: 5215 }, { pid: 13, port: 5219 }, { pid: 14, port: 5220 }];
   const m = selectProcs(procs, listens, { wt: 'D:/x/E3', ports: [5210, 5219], self: 9999, platform: 'win32' });
-  assert.deepEqual(m.map((x) => [x.pid, x.why]), [[11, 'port 5210'], [12, 'port 5215'], [13, 'port 5219']]);
+  assert.deepEqual(m.map((x) => [x.pid, x.why]), [[50, 'path'], [11, 'port 5210'], [12, 'port 5215'], [13, 'port 5219']]);
+});
+
+test('E33 procs: a port match needs the worktree on the listener or an ancestor; otherwise it is only reported', async () => {
+  const { selectProcs } = await import('./verify-run.mjs');
+  const wt = 'D:/x/E3';
+  const procs = [
+    { pid: 1, ppid: 0, cmd: 'wininit' },
+    { pid: 20, ppid: 1, cmd: 'bash D:/x/E3' }, // ancestor of self: never picked, never evidence
+    { pid: 30, ppid: 20, cmd: 'node verify-run.mjs procs' },
+    { pid: 40, ppid: 20, cmd: 'node other-server.js' },
+    { pid: 60, ppid: 1, cmd: '"C:\\Program Files\\Docker\\com.docker.backend.exe" --secret=abc' },
+    { pid: 61, ppid: 1, cmd: 'wslrelay.exe --mode 2' },
+    { pid: 70, ppid: 1, cmd: 'node D:/x/E3x/server.js' }, // no boundary: not the worktree
+    { pid: 71, ppid: 70, cmd: 'vite' },
+    { pid: 80, ppid: 1, cmd: 'node D:/x/E3/dev.js' },
+    { pid: 81, ppid: 80, cmd: 'esbuild --service' },
+    { pid: 82, ppid: 81, cmd: 'vite --port 5212 --secret=xyz' },
+    { pid: 90, ppid: 555, cmd: 'orphan' }, // its parent is gone
+  ];
+  const listens = [{ pid: 40, port: 5211 }, { pid: 60, port: 5213 }, { pid: 60, port: 5214 }, { pid: 61, port: 5215 }, { pid: 71, port: 5216 }, { pid: 82, port: 5212 }, { pid: 90, port: 5217 }];
+  const unchecked = [];
+  const m = selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32', unchecked });
+  assert.deepEqual(m, [{ pid: 80, why: 'path', cmd: 'node D:/x/E3/dev.js' }, { pid: 82, why: 'port 5212' }]);
+  assert.ok(!('cmd' in m[1]), 'a port match never returns a command line');
+  assert.deepEqual(unchecked, [40, 60, 61, 71, 90].map((pid) => {
+    const port = listens.find((l) => l.pid === pid).port;
+    return `pid ${pid} listens on port ${port} in the range, but neither it nor an ancestor carries the worktree path: not ended`;
+  }));
+  assert.ok(!unchecked.join('|').includes('secret'));
+  // without an unchecked array the call still works
+  assert.deepEqual(selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32' }).map((x) => x.pid), [80, 82]);
+});
+
+test('E33 procs: taskkill ends a path match with its tree and a port match without /T', async () => {
+  const { runProcs } = await import('./verify-run.mjs');
+  const kills = [];
+  const run = (cmd, args) => {
+    if (cmd === 'taskkill') { kills.push(args); return { status: 0, stdout: 'SUCCESS', stderr: '' }; }
+    const script = args.join(' ');
+    if (/Get-CimInstance/.test(script)) return { status: 0, stdout: JSON.stringify([{ ProcessId: 80, ParentProcessId: 1, CommandLine: 'node D:/x/E3/dev.js' }, { ProcessId: 82, ParentProcessId: 80, CommandLine: 'vite' }, { ProcessId: 60, ParentProcessId: 1, CommandLine: 'docker' }]) };
+    if (cmd === 'netstat') return { status: 0, stdout: '  TCP    0.0.0.0:5212    0.0.0.0:0    LISTENING    82\r\n  TCP    0.0.0.0:5213    0.0.0.0:0    LISTENING    60\r\n' };
+    return { status: 0, stdout: JSON.stringify([{ LocalPort: 5212, OwningProcess: 82 }, { LocalPort: 5213, OwningProcess: 60 }]) };
+  };
+  const o = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run });
+  assert.deepEqual(kills, [['/PID', '80', '/T', '/F'], ['/PID', '82', '/F']]);
+  assert.deepEqual(o.ended, [80, 82]);
+  assert.deepEqual(o.matched, [{ pid: 80, why: 'path', cmd: 'node D:/x/E3/dev.js' }, { pid: 82, why: 'port 5212' }]);
+  assert.deepEqual(o.unchecked, ['pid 60 listens on port 5213 in the range, but neither it nor an ancestor carries the worktree path: not ended']);
 });
 
 test('E32 procs: selectProcs never picks itself or its ancestors', async () => {

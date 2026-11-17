@@ -3,7 +3,7 @@
 //
 //   node verify-run.mjs group <payload>   runs the record commands in order and commits them
 //   node verify-run.mjs check <payload>   measures the git truth and lists what the run claimed against it
-//   node verify-run.mjs procs <payload>   lists and ends the processes of a deliverable (worktree path in the command line, or a listener in its port range)
+//   node verify-run.mjs procs <payload>   lists and ends the processes of a deliverable (worktree path in the command line, or a listener in its port range that descends from such a process)
 //
 // <payload> is encodeURIComponent(JSON) (plus !'()* as %XX) in ONE argument. It carries `nonce` and `digest`,
 // where digest = fnv1a(JSON.stringify(canon(payload without digest))) of lib/plan-digest.mjs, computed by the workflow.
@@ -17,8 +17,8 @@
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
-//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, or that listens on a port in lo..hi; never itself or its ancestors; no marker: ending is idempotent)
-//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; the exit code stays 0)
+//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match is ended without its children and carries no cmd); never itself or its ancestors; no marker: ending is idempotent)
+//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
 // ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
@@ -237,7 +237,7 @@ export function runCheck(p) {
   return { tool: TOOL, mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth };
 }
 
-// ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range) ----
+// ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range and descends from one that does) ----
 
 const asList = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 export function parseCimProcs(text) {
@@ -271,9 +271,10 @@ export function parseLsofListen(text) {
   return out;
 }
 
-// [{ pid, why, cmd }]: why is 'path' (the command line holds the worktree path followed by a boundary) or 'port <n>' (listens in the range).
-// The caller (self) and its ancestors are never picked.
-export function selectProcs(procs, listens, { wt, ports, self, platform }) {
+// [{ pid, why, cmd? }]: why is 'path' (the command line holds the worktree path followed by a boundary) or 'port <n>' (listens in the range
+// AND the listener or one of its ancestors holds the path; a port match carries no cmd, it may be someone else's command line).
+// A listener in the range without that proof goes to `unchecked`, never ended. The caller (self) and its ancestors are never picked nor taken as proof.
+export function selectProcs(procs, listens, { wt, ports, self, platform, unchecked = [] }) {
   const fold = (s) => { const t = String(s).replace(/\\/g, '/'); return platform === 'win32' ? t.toLowerCase() : t; };
   const root = fold(wt).replace(/\/+$/, '');
   const byPid = new Map(procs.map((q) => [q.pid, q]));
@@ -291,16 +292,24 @@ export function selectProcs(procs, listens, { wt, ports, self, platform }) {
   const out = new Map();
   const cut = (cmd) => String(cmd || '').slice(0, 200);
   for (const q of procs) if (!skip.has(q.pid) && holdsPath(q.cmd)) out.set(q.pid, { pid: q.pid, why: 'path', cmd: cut(q.cmd) });
+  const inWt = (pid) => {
+    const seen = new Set();
+    for (let q = byPid.get(pid); q && !seen.has(q.pid) && !skip.has(q.pid); q = byPid.get(q.ppid)) { seen.add(q.pid); if (holdsPath(q.cmd)) return true; }
+    return false;
+  };
+  const told = new Set();
   for (const l of listens) {
     if (skip.has(l.pid) || out.has(l.pid) || !(l.port >= ports[0] && l.port <= ports[1])) continue;
-    out.set(l.pid, { pid: l.pid, why: `port ${l.port}`, cmd: cut(byPid.has(l.pid) ? byPid.get(l.pid).cmd : '') });
+    if (inWt(l.pid)) out.set(l.pid, { pid: l.pid, why: `port ${l.port}` });
+    else if (!told.has(l.pid)) { told.add(l.pid); unchecked.push(`pid ${l.pid} listens on port ${l.port} in the range, but neither it nor an ancestor carries the worktree path: not ended`); }
   }
   return [...out.values()];
 }
 
-const defaultKill = (platform) => (pid) => {
+// tree: end the process with its children (taskkill /T); only a path match asks for it, a port match never does.
+const defaultKill = (platform, run) => (pid, tree) => {
   if (platform === 'win32') {
-    const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = run('taskkill', ['/PID', String(pid), ...(tree ? ['/T'] : []), '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.error) throw r.error;
     if (r.status !== 0) throw new Error(cap((r.stderr || r.stdout || `taskkill exit ${r.status}`).trim(), 200));
   } else process.kill(pid, 'SIGTERM');
@@ -323,12 +332,12 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   const listens = win
     ? list('netstat', 'netstat', ['-ano', '-p', 'tcp'], parseNetstatListen)
     : list('lsof', 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], parseLsofListen, true);
-  const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform });
-  const end = kill || defaultKill(platform);
+  const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform, unchecked });
+  const end = kill || defaultKill(platform, run);
   const ended = [];
   const failed = [];
   for (const m of matched) {
-    try { end(m.pid); ended.push(m.pid); } catch (e) { failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
+    try { end(m.pid, m.why === 'path'); ended.push(m.pid); } catch (e) { failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
   return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };
 }
