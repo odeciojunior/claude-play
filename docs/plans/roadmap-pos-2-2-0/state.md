@@ -29,6 +29,7 @@ Estratégia v1.0 -- 2026-11-15
 - (executor) verify-run procs: o caminho Linux (ps, lsof, SIGTERM) só rodou com fakes; conferir num host Linux ou WSL real. Destino: roadmap futuro.
 - (dono) E33: na primeira tag publicada, conferir a receita de fixar a loja numa tag (S3-01 de docs/reports/2026-11-15-E32-triagem-backlog.md).
 - (executor) Estratégia v1.1 (fim da fase): trocar a premissa de custo de parada-retomada de US$ 2,26 para cerca de 4,39 por execução (2,26 era só a sessão de retomada).
+- (executor) Roadmap futuro: spec para o revisor por tarefa opus (E30 R2 aprovou: 28 contra 20 capturas, custo 1,56x) e regra da R3 para 1 captura marginal por braço. Fonte: docs/reports/2026-11-17-E30-revisor-opus.md.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
