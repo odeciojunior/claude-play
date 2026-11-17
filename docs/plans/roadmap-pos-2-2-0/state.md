@@ -28,6 +28,7 @@ Estratégia v1.0 -- 2026-11-15
 - (executor) Roadmap futuro: as 22 notas com dono executor e a S3-13 (dono) da seção Pendências com dono de docs/reports/2026-11-15-E32-triagem-backlog.md entram como fonte do próximo roadmap.
 - (executor) verify-run procs: o caminho Linux (ps, lsof, SIGTERM) só rodou com fakes; conferir num host Linux ou WSL real. Destino: roadmap futuro.
 - (dono) E33: na primeira tag publicada, conferir a receita de fixar a loja numa tag (S3-01 de docs/reports/2026-11-15-E32-triagem-backlog.md).
+- (executor) Estratégia v1.1 (fim da fase): trocar a premissa de custo de parada-retomada de US$ 2,26 para cerca de 4,39 por execução (2,26 era só a sessão de retomada).
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |

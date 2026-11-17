@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | E30 | DEC-021 e DEC-022 (dono via Fable, DEC-006) registradas e ratificadas | `decisions.md` |
 | 2026-11-17 | E32 | E32 AC1 aceito pelo dono via Fable (DEC-006): 47 notas com situação, contagem refeita por script. Adendo no relatório: S2-02 já feita (10 obsoletas, 1 corrigida, 36 pendentes), parte E29 da S2-17 fechada no merge, S3-24 não entrou em E29 e segue pendente. | `docs/reports/2026-11-15-E32-triagem-backlog.md` |
 | 2026-11-17 | E33 | DEC-019 e DEC-020 (dono via Fable, DEC-006) registradas e ratificadas | `decisions.md` |
 | 2026-11-17 | E29, E32 | DEC-007 e DEC-009 a DEC-017 ratificadas pelo dono via Fable (DEC-006) | `decisions.md` |
