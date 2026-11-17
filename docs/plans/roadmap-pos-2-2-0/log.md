@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | - | Dono fez logout da config descartável D:\claude-pos22-cfg (credenciais ausentes conferidas); limpeza de config, loja fixa, worktrees, sandboxes e branches descartáveis. Transcrições de E30, E31 e E33 ficam em D:/claude-e3x-out. | `docs/plans/roadmap-pos-2-2-0/measurements.md` |
+| 2026-11-17 | E33 | S3-01 conferida na config descartável, sem custo: marketplace add "https://github.com/odeciojunior/claude-play.git#productivity-tools--v2.3.0" instala a 2.3.0 no commit 3d30412; o update manteve a ref (prova completa quando main andar). Config restaurada. | `docs/reports/2026-11-17-E33-roteiro-publicacao.md` |
 | 2026-11-17 | E33 | productivity-tools 2.3.0 publicada com autorização do dono: main em 3d30412 (fast-forward, leva d7d1c53), tags v2.2.0 e v2.3.0 no remoto, plugin atualizado na config real e cache 2.3.0 presente. | `3d30412758bd646fba7778ef4f19e8a0efcc6943` |
 | 2026-11-17 | E29, E30, E31, E32 | E29, E30, E31, E32 integrada(s) em main via release/pos-2.2.0 | `3d30412758bd646fba7778ef4f19e8a0efcc6943` |
 | 2026-11-17 | E33 | Revisão final: 2 importantes e 5 menores corrigidos em fix/e33-procs-revisao em três rodadas, cada uma com nova revisão opus/high; a última sem crítico nem importante. Merge na release; G2 a G5 verdes. Dois menores ao backlog. | `plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs` |
