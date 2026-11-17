@@ -18,7 +18,7 @@
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
 //   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match is ended without its children and carries no cmd); never itself or its ancestors; no marker: ending is idempotent)
-//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; a pid already gone, taskkill exit 128 or ESRCH, counts as ended; the exit code stays 0)
+//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid] (port matches are ended first, then the path trees), failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; a pid already gone, taskkill exit 128 or ESRCH, counts as ended; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
 // ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
@@ -340,7 +340,8 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   const end = kill || defaultKill(platform, run);
   const ended = [];
   const failed = [];
-  for (const m of matched) {
+  // Port matches first, each on its own (no /T): a path tree killed before would take the listener with it unseen.
+  for (const m of [...matched.filter((x) => x.why !== 'path'), ...matched.filter((x) => x.why === 'path')]) {
     try { end(m.pid, m.why === 'path'); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
   return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };

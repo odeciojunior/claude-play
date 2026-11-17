@@ -593,6 +593,38 @@ test('E33 procs: win32 lists listeners with Get-NetTCPConnection; an unreadable 
   assert.deepEqual(bad.matched.map((m) => m.pid), [80]);
 });
 
+test('E33 procs: on Windows a live listener reached only through its ancestor is ended by its own port kill, without /T', { skip: process.platform !== 'win32' }, async () => {
+  const { runProcs } = await import('./verify-run.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'vr-procs6p-'));
+  const childSrc = "const s=require('net').createServer();s.listen(0,'::1',()=>{process.stdout.write(String(s.address().port))});";
+  const parentSrc = `const c=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(childSrc)}],{stdio:['ignore','pipe','ignore']});c.stdout.on('data',d=>process.stdout.write(c.pid+' '+d+'\\n'));setInterval(()=>{},1000);`;
+  const parent = spawn(process.execPath, ['-e', parentSrc, dir], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let childPid = 0;
+  try {
+    const line = await new Promise((res, rej) => { let s = ''; parent.stdout.on('data', (d) => { s += d; if (s.includes('\n')) res(s.trim()); }); setTimeout(() => rej(new Error('no port within 10 s')), 10000); });
+    const [cp, port] = line.split(' ').map(Number);
+    childPid = cp;
+    // the real listings and the real taskkill, recorded on the way
+    const kills = [];
+    const run = (cmd, args, opts) => { const r = spawnSync(cmd, args, opts); if (cmd === 'taskkill') kills.push({ args, status: r.status }); return r; };
+    const o = runProcs({ nonce: NONCE, wt: dir, ports: [port, port] }, { platform: 'win32', run });
+    assert.deepEqual(o.unchecked, [], JSON.stringify(o));
+    assert.ok(o.matched.some((m) => m.pid === childPid && m.why === `port ${port}` && !('cmd' in m)), JSON.stringify(o));
+    // the listener's own kill ran while it was alive (exit 0, not 128 "not found") and without /T
+    assert.deepEqual(kills.find((k) => k.args[1] === String(childPid)), { args: ['/PID', String(childPid), '/F'], status: 0 }, JSON.stringify(kills));
+    assert.deepEqual(kills.find((k) => k.args[1] === String(parent.pid)), { args: ['/PID', String(parent.pid), '/T', '/F'], status: 0 }, JSON.stringify(kills));
+    assert.ok(o.ended.includes(childPid) && o.ended.includes(parent.pid), JSON.stringify(o));
+    assert.deepEqual(o.failed, []);
+    let gone = false;
+    try { process.kill(childPid, 0); } catch (e) { gone = e.code === 'ESRCH'; }
+    assert.ok(gone, 'the listener is no longer running');
+  } finally {
+    if (parent.exitCode === null && parent.signalCode === null) parent.kill();
+    if (childPid) { try { process.kill(childPid); } catch { /* already gone */ } }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('E33 procs: on Windows a listener on ::1 is found through its ancestor and ended', { skip: process.platform !== 'win32' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vr-procs6-'));
   const childSrc = "const s=require('net').createServer();s.listen(0,'::1',()=>{process.stdout.write(String(s.address().port))});";
@@ -646,8 +678,9 @@ test('E33 procs: taskkill ends a path match with its tree and a port match witho
     return { status: 0, stdout: JSON.stringify([{ LocalPort: 5212, OwningProcess: 82 }, { LocalPort: 5213, OwningProcess: 60 }]) };
   };
   const o = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run });
-  assert.deepEqual(kills, [['/PID', '80', '/T', '/F'], ['/PID', '82', '/F']]);
-  assert.deepEqual(o.ended, [80, 82]);
+  // the port match goes first, on its own; then the path match with its tree
+  assert.deepEqual(kills, [['/PID', '82', '/F'], ['/PID', '80', '/T', '/F']]);
+  assert.deepEqual(o.ended, [82, 80]);
   assert.deepEqual(o.matched, [{ pid: 80, why: 'path', cmd: 'node D:/x/E3/dev.js' }, { pid: 82, why: 'port 5212' }]);
   assert.deepEqual(o.unchecked, ['pid 60 listens on port 5213 in the range, but neither it nor an ancestor carries the worktree path: not ended']);
 });
