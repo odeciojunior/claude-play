@@ -83,3 +83,15 @@ Regras de leitura: `obsoleta` leva prova (hash, DEC do log anterior, ou arquivo 
 - E33: S2-02, S3-01 (dono).
 - Dono, roadmap futuro: S3-13.
 - Executor, roadmap futuro: as demais pendentes (S2-01, S2-03, S2-05, S2-08, S2-09, S2-12, S2-13 (partes 1 a 3), S3-04, S3-05, S3-16, S3-18 a S3-23, S3-25 a S3-30).
+
+## Adendo de aceitação (2026-11-17)
+
+Critério 1 de E32 aceito pelo dono via Fable (DEC-006 do roadmap pos-2.2.0). As 47 linhas foram recontadas por script e conferem com o quadro e com as fontes (17 e 30 notas). Três linhas mudam depois da data do relatório:
+
+| Id | Situação nova | Prova |
+|---|---|---|
+| S2-02 | obsoleta (feita) | Config deslogada e pastas apagadas (informado pelo orquestrador); em 2026-11-17 `Test-Path` devolve False para `D:\claude-e17-cfg`, `D:\claude-e17-work` e `D:\claude-e17-srv`. Não vai para E33. |
+| S2-17 | pendente, dono E30 e E31 | A parte de E29 (remover `taskReview.single`) fechou no merge `a563e48`. Seguem as partes de E30 e E31 (R9). |
+| S3-24 | pendente, dono executor, depois do lote de E30 | E29 não trouxe a linha: o diff de `a563e48` em `plugins/productivity-tools/agents/task-reviewer.md` só troca a ligação ao release e tira a frase do achado do script. A linha toca os modos `spec` e `quality`, que o lote de E30 mede. |
+
+Quadro corrigido: SRC-02 com 5 obsoletas, 1 corrigida e 11 pendentes; total 10 obsoletas, 1 corrigida e 36 pendentes (47). Pendências com dono: E29 sem nenhuma; E33 só com S3-01.
