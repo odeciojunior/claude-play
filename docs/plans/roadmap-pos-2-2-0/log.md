@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | E31 | E31 passou para executando | `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md` |
 | 2026-11-17 | E31 | Lote de E31: 3 válidas (x1, x2, x4) e 1 inválida por causa externa (x3), US$ 13,24 de 15; reserva não usada. x4 com 2 correções opus de achado sintético (spec não commitada; exit code de carga mal transcrito). Causa provável (n=1), defeito do produto. | `docs/reports/2026-11-17-E31-parada-retomada.md` |
 | 2026-11-17 | E31 | DEC-025, DEC-026 e DEC-027 (fecho de E31, dono via Fable) ratificadas | `decisions.md` |
 | 2026-11-17 | E31 | DEC-024 (x3 inválida e x4 de E31, dono via Fable) ratificada | `decisions.md` |
