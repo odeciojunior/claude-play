@@ -18,7 +18,7 @@
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
 //   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match is ended without its children and carries no cmd); never itself or its ancestors; no marker: ending is idempotent)
-//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; the exit code stays 0)
+//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; a pid already gone, taskkill exit 128 or ESRCH, counts as ended; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
 // ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
@@ -311,6 +311,8 @@ const defaultKill = (platform, run) => (pid, tree) => {
   if (platform === 'win32') {
     const r = run('taskkill', ['/PID', String(pid), ...(tree ? ['/T'] : []), '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.error) throw r.error;
+    // 128: the process is not there (already ended with the tree of an earlier match); the message itself is localized
+    if (r.status === 128) throw Object.assign(new Error(`pid ${pid} not found`), { code: 'ESRCH' });
     if (r.status !== 0) throw new Error(cap((r.stderr || r.stdout || `taskkill exit ${r.status}`).trim(), 200));
   } else process.kill(pid, 'SIGTERM');
 };
@@ -337,7 +339,7 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   const ended = [];
   const failed = [];
   for (const m of matched) {
-    try { end(m.pid, m.why === 'path'); ended.push(m.pid); } catch (e) { failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
+    try { end(m.pid, m.why === 'path'); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
   return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };
 }

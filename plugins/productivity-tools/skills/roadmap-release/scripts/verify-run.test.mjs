@@ -566,6 +566,24 @@ test('E33 procs: a port match needs the worktree on the listener or an ancestor;
   assert.deepEqual(selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32' }).map((x) => x.pid), [80, 82]);
 });
 
+test('E33 procs: a pid already gone (ended with its parent tree) counts as ended, not as a failure', async () => {
+  const { runProcs } = await import('./verify-run.mjs');
+  const procsJson = JSON.stringify([{ ProcessId: 80, ParentProcessId: 1, CommandLine: 'node D:/x/E3/a.js' }, { ProcessId: 81, ParentProcessId: 80, CommandLine: 'node D:/x/E3/b.js' }, { ProcessId: 82, ParentProcessId: 1, CommandLine: 'node D:/x/E3/c.js' }]);
+  const listing = (cmd) => (cmd === 'netstat' ? { status: 0, stdout: '' } : { status: 0, stdout: procsJson });
+  // taskkill exit 128 is "process not found" whatever the language of the message
+  const answers = { 80: { status: 0, stdout: 'SUCCESS' }, 81: { status: 128, stdout: '', stderr: 'ERRO: o processo "81" não foi encontrado.' }, 82: { status: 1, stdout: '', stderr: 'ERROR: Access is denied.' } };
+  const run = (cmd, args) => (cmd === 'taskkill' ? answers[args[1]] : listing(cmd, args));
+  const w = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run });
+  assert.deepEqual(w.ended, [80, 81]);
+  assert.deepEqual(w.failed, [{ pid: 82, error: 'ERROR: Access is denied.' }]);
+  // posix: ESRCH from process.kill is the same case
+  const lin = (cmd) => (cmd === 'lsof' ? { status: 0, stdout: '' } : { status: 0, stdout: '  900 1 node /x/E3/a\n  901 900 node /x/E3/b\n' });
+  const kill = (pid) => { if (pid === 901) { const e = new Error('kill ESRCH'); e.code = 'ESRCH'; throw e; } };
+  const l = runProcs({ nonce: NONCE, wt: '/x/E3', ports: [5210, 5219] }, { platform: 'linux', run: lin, kill });
+  assert.deepEqual(l.ended, [900, 901]);
+  assert.deepEqual(l.failed, []);
+});
+
 test('E33 procs: taskkill ends a path match with its tree and a port match without /T', async () => {
   const { runProcs } = await import('./verify-run.mjs');
   const kills = [];
