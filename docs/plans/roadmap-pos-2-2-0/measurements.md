@@ -7,6 +7,7 @@ Execuções pagas, custos e marcos de medição deste roadmap. Teto: US$ 40 (DEC
 |---|---|---|---|---|---|---|
 | 2026-11-17 | E30 | custo | Lote do revisor opus, custo da CLI por sessão: sonnet US$ 3,602, opus US$ 5,613. Relatório `docs/reports/2026-11-17-E30-revisor-opus.md` | US$ 9,216 | - | registrado |
 | 2026-11-17 | E31 | custo | Lote de parada-retomada, custo pelas transcrições: x1 US$ 3,761, x2 US$ 3,543, x3 inválida US$ 1,177, x4 US$ 4,764. Relatório `docs/reports/2026-11-17-E31-parada-retomada.md` | US$ 13,24 | - | registrado |
+| 2026-11-17 | E33 | custo | Sonda plan-only (DEC-033) com o plugin 2.3.0 em 03f84c4: spec-commit e plan-commit feitos de primeira, pending vazio, sem -commit2; custo da CLI na sessão (US$ 1,44 pela tabela de preços). Saída `D:/claude-e33-out/plan-only-20261117-202349` | US$ 1,87 | - | registrado |
 <!-- /roadmap:measurements -->
 
-Total registrado em 2026-11-17: US$ 22,46 de 40 (E30 + E31). A sonda paga de E33 (DEC-033, até US$ 3 da reserva) entra como linha nova quando rodar.
+Total registrado em 2026-11-17: US$ 24,33 de 40 (E30 + E31 + sonda de E33).

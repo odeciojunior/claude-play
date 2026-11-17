@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | E33 | Sonda paga plan-only (DEC-033) passou: spec-commit e plan-commit feitos de primeira com pending vazio, sem -commit2; US$ 1,87. Revisão final T3 da release: 0 crítico, 2 importantes e 5 menores (modo procs); correção em fix/e33-procs-revisao. | `docs/plans/roadmap-pos-2-2-0/measurements.md` |
 | 2026-11-17 | - | Pendências retiradas do state.md: duas (dono) de E31 (AC1 aceito), notas de E30 no desenho (lote feito), S3-24 antiga (substituída pela do roadmap futuro, DEC-031) e premissa da v1.1 (escrita). Carga haiku corrigida para 7 de 20. | `state.md` |
 | 2026-11-17 | - | Estratégia v1.1 (dono via Fable): absorve DEC-007 a DEC-036; custo de parada-retomada cerca de US$ 4,0 por execução (3,54 a 4,76 em E31); questões de E29 e E33 respondidas; card E33 com sonda, revisão final e segundo push. | `../2026-11-15-roadmap-pos-2-2-0.md` |
 | 2026-11-17 | E31 | custo registrado para E31: US$ 13,24 pelas transcrições (x1 3,761, x2 3,543, x3 inválida 1,177, x4 4,764) em measurements.md; total 22,46 de 40. | `docs/reports/2026-11-17-E31-parada-retomada.md` |
