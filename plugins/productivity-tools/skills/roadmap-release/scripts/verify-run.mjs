@@ -17,7 +17,7 @@
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
-//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match is ended without its children and carries no cmd); never itself or its ancestors; no marker: ending is idempotent)
+//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match carries no cmd and is ended with its children only when a path match is its ancestor, never beyond that tree); never itself or its ancestors; no marker: ending is idempotent)
 //     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid] (port matches are ended first, then the path trees), failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; a pid already gone, taskkill exit 128 or ESRCH, counts as ended; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
@@ -307,7 +307,7 @@ export function selectProcs(procs, listens, { wt, ports, self, platform, uncheck
   return [...out.values()];
 }
 
-// tree: end the process with its children (taskkill /T); only a path match asks for it, a port match never does.
+// tree: end the process with its children (taskkill /T); a path match asks for it, and a port match only under a matched path ancestor.
 const defaultKill = (platform, run) => (pid, tree) => {
   if (platform === 'win32') {
     const r = run('taskkill', ['/PID', String(pid), ...(tree ? ['/T'] : []), '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -340,9 +340,14 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   const end = kill || defaultKill(platform, run);
   const ended = [];
   const failed = [];
-  // Port matches first, each on its own (no /T): a path tree killed before would take the listener with it unseen.
+  // Port matches first: a path tree killed before would take the listener with it unseen. A port match with a path ancestor in matched
+  // is ended with its subtree (/T): that subtree is inside the ancestor's tree anyway, and ending the listener alone would orphan its children
+  // (their parent pid then points to a dead process, out of reach of the ancestor's /T). Without such an ancestor (defensive) it is ended alone.
+  const paths = new Set(matched.filter((x) => x.why === 'path').map((x) => x.pid));
+  const ppidOf = new Map(procs.map((q) => [q.pid, q.ppid]));
+  const underPath = (pid) => { const seen = new Set(); for (let q = ppidOf.get(pid); q && !seen.has(q); q = ppidOf.get(q)) { if (paths.has(q)) return true; seen.add(q); } return false; };
   for (const m of [...matched.filter((x) => x.why !== 'path'), ...matched.filter((x) => x.why === 'path')]) {
-    try { end(m.pid, m.why === 'path'); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
+    try { end(m.pid, m.why === 'path' || underPath(m.pid)); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
   return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };
 }
