@@ -12,7 +12,7 @@ A chave `taskReview.single` do `release.config.json` foi removida (E29, cumprind
 
 ## O que muda
 
-- **E32, modo `procs` do `verify-run`.** Lista e encerra os processos do entregável; a limpeza do release passa a usá-lo.
+- **E32, modo `procs` do `verify-run`.** Lista e encerra os processos do entregável; a limpeza do release passa a usá-lo. Encerra o que tem o caminho da worktree na linha de comando; por porta só com ancestral na worktree (os demais ouvintes da faixa ficam em `unchecked`).
 - **E32, correções menores.** O `plan-coordinator` marca a revisão de passo retomado; o `plan-author` descreve o emit enxuto; o `roadmap-tracker` cita `status --deliverable`.
 - **E31, cargas da spec e commits.** O `release-workflow` confere o código de saída das cargas da spec contra a saída e confere no git o commit da spec e do plano (repete em sonnet quando o commit está pendente). Isso evita correções em opus por achado sintético, sobretudo na retomada.
 

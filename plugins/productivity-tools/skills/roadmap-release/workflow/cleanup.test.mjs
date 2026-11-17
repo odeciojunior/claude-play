@@ -6,20 +6,16 @@ const WF = new URL('./roadmap-release.js', import.meta.url);
 
 test('E32: the cleanup prompt ends processes through verify-run procs', () => {
   const text = readFileSync(WF, 'utf8').replace(/\r\n/g, '\n');
-  const lines = text.split('\n').filter((l) => l.includes('CLEANUP of deliverable'));
-  assert.equal(lines.length, 1);
-  const line = lines[0];
-  for (const part of [
-    'node "${VERIFY_RUN}" procs ${encArg({',
-    'wt',
-    'ports: [port, port + 9]',
-    'nonce: `${RUN_TAG}:${E}:procs`',
-    'leftovers',
-    'failed',
-    'unchecked',
-    'worktree remove --force',
-    '-dirty',
-    'diff --binary HEAD',
-  ]) assert.ok(line.includes(part), `missing: ${part}`);
+  const lines = text.split('\n');
+  const at = lines.findIndex((l) => l.includes('CLEANUP of deliverable'));
+  assert.equal(lines.filter((l) => l.includes('CLEANUP of deliverable')).length, 1);
+  const line = lines[at];
+  // the whole call, literally: the nonce, the worktree and the port range of the deliverable, in this order
+  assert.ok(line.includes('run once: node "${VERIFY_RUN}" procs ${encArg({ nonce: `${RUN_TAG}:${E}:procs`, wt, ports: [port, port + 9] })} and put in leftovers each pid of its failed and each item of its unchecked;'), line);
+  for (const part of ['worktree remove --force', '-dirty', 'diff --binary HEAD']) assert.ok(line.includes(part), `missing: ${part}`);
   assert.ok(!line.includes('end processes whose command contains'));
+  // leftovers reach the concerns even when the cleanup agent answers ok: true
+  const check = lines.slice(at, at + 4).find((l) => l.includes('incomplete cleanup'));
+  assert.ok(check, 'the incomplete-cleanup concern follows the cleanup call');
+  assert.ok(check.includes('if (!cl || !cl.ok || (cl.leftovers || []).length) out.concerns.push(`incomplete cleanup: '), check);
 });

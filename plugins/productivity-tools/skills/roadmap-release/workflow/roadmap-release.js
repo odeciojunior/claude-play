@@ -2069,7 +2069,7 @@ ${BASH_ONLY}`,
     }
     const cl = await agent(`CLEANUP of deliverable ${E}: run once: node "${VERIFY_RUN}" procs ${encArg({ nonce: `${RUN_TAG}:${E}:procs`, wt, ports: [port, port + 9] })} and put in leftovers each pid of its failed and each item of its unchecked; stop any service you find that was started for ${E}; FIRST: if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, a patch is needed: mkdir -p "${WT}/_tmp/${E}-dirty", save it (git -C "${wt}" diff --binary HEAD > "${WT}/_tmp/${E}-dirty/cleanup.patch", plus the untracked files list and copies) and confirm the file was written; if it cannot be written, do not remove the worktree and list it in leftovers. Then, when no patch was needed, or only after the patch was written: git -C "${REPO}" worktree remove --force "${wt}"; delete "${WT}/_tmp/${E}-"* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku', effort: 'low' })
-    if (!cl || !cl.ok) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
+    if (!cl || !cl.ok || (cl.leftovers || []).length) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
     return out
   }
@@ -2219,7 +2219,7 @@ ${NO_ASK}`,
     }
     return { ok: false, why }
   }
-  const loadSpec = () => load3(specLoadOnce, t => checkSpecLoad(t, E, card))
+  const loadSpec = () => load3(specLoadOnce, t => ({ ...checkSpecLoad(t, E, card), head: t && t.head }))
   const reusedAsIs = setup.nativeSpec === true && !noteE
   if (!reusedAsIs) {
     const authored = await agent(`mode: unattended
@@ -2236,11 +2236,13 @@ ${Cn()}`,
   }
   let specLoad = await loadSpec()
   if (!specLoad.ok) return fail('infra', `spec load: ${specLoad.why}`)
+  // A reuse only when HEAD did not move since the load: a commit without its hash still reviews what it wrote.
+  const hd = s => String(s || '').trim()
   let specReused = reusedAsIs
   if (!reusedAsIs) {
     const cm = await commitChecked('spec', AP.spec, 'Spec', '')
     if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
-    specReused = !cm.commit
+    specReused = !cm.commit && !!hd(cm.head) && hd(cm.head) === hd(specLoad.head)
   }
   spec = { specPath: AP.spec, reused: specReused }
   let loadErr = ''
@@ -2338,7 +2340,7 @@ ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   // The digest is recalculated here from the emit.
   // useSpec false: the frozen plan is read against no spec.
-  const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => checkPlanLoad(t, { E, RM }))
+  const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => ({ ...checkPlanLoad(t, { E, RM }), head: t && t.head }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}
 planTool: ${planTool}
@@ -2388,8 +2390,13 @@ ${NO_ASK}`,
     }
     const cm = await commitChecked('plan', AP.plan, 'Plan', `, and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}"`)
     if (!cm || !cm.ok) return fail('infra', `plan commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
-    planCommitted = !!cm.commit
-    planBlobNow = planCommitted ? String(cm.blob || '').trim() || planLoad.blob : planLoad.blob
+    planCommitted = !!cm.commit || !hd(cm.head) || hd(cm.head) !== hd(planLoad.head)
+    planBlobNow = planCommitted ? String(cm.blob || '').trim() : planLoad.blob
+    if (planCommitted && !planBlobNow) {  // committed without its blob: measure it again, the load before the commit saw the old one
+      planLoad = await loadPlan()
+      if (!planLoad.ok) return planLoadFail(planLoad.why)
+      planBlobNow = planLoad.blob
+    }
   }
   if (!/^[0-9a-f]{40,64}$/.test(planBlobNow)) return fail('infra', `plan load: the blob of ${AP.plan} on the branch was not measured`)
   const planFrom = (ld, blob, reused) => ({ planPath: AP.plan, planBlob: blob, reused, tasks: tasksFromPlan(ld.plan), ac: evidenceFromPlan(ld.plan) })

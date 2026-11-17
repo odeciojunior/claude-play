@@ -202,7 +202,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:spec-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/:plan-load\d$/.test(l)) return planLoadOf(planOf[E] || OLD_DEFAULT_PLAN, E);
-    if (/:plan-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
+    if (/:plan-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1', blob: (planOf[E] || OLD_DEFAULT_PLAN).planBlob }; // the commit agent returns the blob of the plan it committed
     if (/plan-review/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 };
@@ -254,6 +254,20 @@ test('happy path merges, persists the log before the re-sync gates, and cleanup 
   assert.doesNotMatch(clean, /_tmp\/E1\*/);
   assert.match(clean, /-dirty/);
   assert.match(clean, /diff --binary HEAD/);
+});
+
+test('E33: the cleanup runs procs with the worktree and the port range of the deliverable, and its leftovers reach concerns even with ok: true', async () => {
+  const leftovers = ['pid 4242: Access is denied.', 'pid 60 listens on port 5203 in the range, but neither it nor an ancestor carries the worktree path: not ended'];
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:cleanup' ? { ok: true, leftovers } : undefined) });
+  const p = verifyArg(calls.find((c) => c.label === 'E1:cleanup').prompt, 'procs');
+  const { digest, ...payload } = p;
+  assert.deepEqual(payload, { nonce: `${fnv1a('pf-test')}:E1:procs`, wt: '/wt/E1', ports: [5200, 5209] });
+  assert.equal(digest, fnv1a(JSON.stringify(canon(payload))));
+  assert.equal(r.results[0].merged, true);
+  assert.ok(r.results[0].concerns.includes(`incomplete cleanup: ${leftovers.join(', ')}`), JSON.stringify(r.results[0].concerns));
+  // nothing left over: no concern
+  const clean = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:cleanup' ? { ok: true, leftovers: [] } : undefined) });
+  assert.ok(!clean.r.results[0].concerns.some((c) => /incomplete cleanup/.test(c)));
 });
 
 test('sync schema requires deltaFiles and targetTip', async () => {
@@ -4783,6 +4797,50 @@ const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.
 
 const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
 const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
+
+test('E33: a spec commit that moved HEAD without returning its hash is not a reuse: the spec review runs', async () => {
+  const commitAs = (head) => (l) => (l === 'E1:spec-commit' ? { ok: true, head, commit: '', pending: '' } : undefined);
+  const args = { notes: { E1: 'use the X adapter' } };
+  // the load measured a1; the commit agent says head h2 and no hash: a commit was made, the freshly written spec is reviewed
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('h2'), recordedSetup(RUN_REC)) });
+  assert.ok(moved.labels.includes('E1:spec'));
+  assert.ok(moved.labels.includes('E1:spec-review1'), moved.labels.join(' '));
+  assert.ok(!moved.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  // an unmeasured head is not a reuse either
+  const blank = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs(''), recordedSetup(RUN_REC)) });
+  assert.ok(blank.labels.includes('E1:spec-review1'), blank.labels.join(' '));
+  // the same head as the load and no hash: nothing was committed, the recorded review still holds
+  const same = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('a1'), recordedSetup(RUN_REC)) });
+  assert.ok(!same.labels.includes('E1:spec-review1'), same.labels.join(' '));
+  assert.ok(same.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+});
+
+test('E33: a plan commit that moved HEAD without returning its hash is not a reuse: the plan review runs; a commit without its blob measures it again', async () => {
+  const args = { notes: { E1: 'use the X adapter' } };
+  const commits = (planAnswer) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '', pending: '' } : l === 'E1:plan-commit' ? planAnswer : undefined);
+  const runWith = (planAnswer) => exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commits(planAnswer), recordedSetup(RUN_REC)) });
+  // the spec is a reuse (same head as its load), so only the plan decides the plan review
+  const moved = await runWith({ ok: true, head: 'h2', commit: '', pending: '' });
+  assert.ok(moved.labels.includes('E1:plan'));
+  assert.ok(!moved.labels.includes('E1:spec-review1'), moved.labels.join(' '));
+  assert.ok(moved.labels.includes('E1:plan-review1'), moved.labels.join(' '));
+  assert.ok(!moved.r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  // an unmeasured head is not a reuse either
+  const blank = await runWith({ ok: true, head: '', commit: '', pending: '' });
+  assert.ok(blank.labels.includes('E1:plan-review1'), blank.labels.join(' '));
+  // the same head as the load and no hash: nothing was committed, the recorded review still holds
+  const same = await runWith({ ok: true, head: 'a1', commit: '', pending: '' });
+  assert.ok(!same.labels.includes('E1:plan-review1'), same.labels.join(' '));
+  assert.ok(same.r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  // committed without the blob: the blob is measured again after the commit, never taken from the load before it
+  const noBlob = await runWith({ ok: true, head: 'h2', commit: 'c2' });
+  const at = noBlob.labels.indexOf('E1:plan-commit');
+  assert.ok(noBlob.labels.slice(at + 1).some((l) => /^E1:plan-load\d$/.test(l)), noBlob.labels.join(' '));
+  // committed with the blob: no extra load
+  const withBlob = await runWith({ ok: true, head: 'h2', commit: 'c2', blob: B2 });
+  const at2 = withBlob.labels.indexOf('E1:plan-commit');
+  assert.ok(!withBlob.labels.slice(at2 + 1).some((l) => /^E1:plan-load\d$/.test(l)), withBlob.labels.join(' '));
+});
 
 test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });

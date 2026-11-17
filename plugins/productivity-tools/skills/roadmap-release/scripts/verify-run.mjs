@@ -3,7 +3,7 @@
 //
 //   node verify-run.mjs group <payload>   runs the record commands in order and commits them
 //   node verify-run.mjs check <payload>   measures the git truth and lists what the run claimed against it
-//   node verify-run.mjs procs <payload>   lists and ends the processes of a deliverable (worktree path in the command line, or a listener in its port range)
+//   node verify-run.mjs procs <payload>   lists and ends the processes of a deliverable (worktree path in the command line, or a listener in its port range that descends from such a process)
 //
 // <payload> is encodeURIComponent(JSON) (plus !'()* as %XX) in ONE argument. It carries `nonce` and `digest`,
 // where digest = fnv1a(JSON.stringify(canon(payload without digest))) of lib/plan-digest.mjs, computed by the workflow.
@@ -17,8 +17,8 @@
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
-//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, or that listens on a port in lo..hi; never itself or its ancestors; no marker: ending is idempotent)
-//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd }], ended: [pid], failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; the exit code stays 0)
+//   procs payload: { nonce, digest, wt, ports: [lo, hi] }  (ends every process whose command line holds the worktree path followed by a boundary, and every process that listens on a port in lo..hi when it or an ancestor holds that path (a listener without that proof goes to unchecked, not ended; a port match carries no cmd; on Windows it is ended with its children (taskkill /T) only when a path match is its ancestor, never beyond that tree; on Linux every match gets SIGTERM alone); never itself or its ancestors; no marker: ending is idempotent)
+//     -> { tool: 'verify-run', mode: 'procs', nonce, matched: [{ pid, why, cmd? }], ended: [pid] (port matches are ended first, then the path trees), failed: [{ pid, error }], unchecked: [text], digest }  (a listing that could not run goes to unchecked; a pid already gone, taskkill exit 128 or ESRCH, counts as ended; the exit code stays 0)
 //
 // The group is idempotent by nonce (DEC-714): before any step a marker <git dir>/verify-run/<fnv1a(nonce)>.json is created with flag wx
 // ({ nonce, digest }); at the end it receives the signed stdout ({ nonce, digest, output }). The same nonce and digest with output prints that output
@@ -237,7 +237,7 @@ export function runCheck(p) {
   return { tool: TOOL, mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth };
 }
 
-// ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range) ----
+// ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range and descends from one that does) ----
 
 const asList = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 export function parseCimProcs(text) {
@@ -254,12 +254,13 @@ export function parsePs(text) {
   }
   return out;
 }
-export function parseNetstatListen(text) {
-  const out = [];
-  for (const line of String(text == null ? '' : text).split(/\r?\n/)) {
-    const m = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(line);
-    if (m) out.push({ pid: Number(m[2]), port: Number(m[1]) });
-  }
+// Get-NetTCPConnection -State Listen as JSON: IPv4 and IPv6 alike, no localized state word. Text that is not that JSON throws (-> unchecked).
+export function parseNetTcpListen(text) {
+  const s = String(text == null ? '' : text).replace(/[\u0000-\u001f]/g, ' ').trim();
+  if (!s) return [];
+  const rows = asList(JSON.parse(s));
+  const out = rows.filter((o) => o && Number.isInteger(o.LocalPort) && Number.isInteger(o.OwningProcess)).map((o) => ({ pid: o.OwningProcess, port: o.LocalPort }));
+  if (rows.length && !out.length) throw new Error('no LocalPort/OwningProcess in the listing');
   return out;
 }
 export function parseLsofListen(text) {
@@ -271,9 +272,10 @@ export function parseLsofListen(text) {
   return out;
 }
 
-// [{ pid, why, cmd }]: why is 'path' (the command line holds the worktree path followed by a boundary) or 'port <n>' (listens in the range).
-// The caller (self) and its ancestors are never picked.
-export function selectProcs(procs, listens, { wt, ports, self, platform }) {
+// [{ pid, why, cmd? }]: why is 'path' (the command line holds the worktree path followed by a boundary) or 'port <n>' (listens in the range
+// AND the listener or one of its ancestors holds the path; a port match carries no cmd, it may be someone else's command line).
+// A listener in the range without that proof goes to `unchecked`, never ended. The caller (self) and its ancestors are never picked nor taken as proof.
+export function selectProcs(procs, listens, { wt, ports, self, platform, unchecked = [] }) {
   const fold = (s) => { const t = String(s).replace(/\\/g, '/'); return platform === 'win32' ? t.toLowerCase() : t; };
   const root = fold(wt).replace(/\/+$/, '');
   const byPid = new Map(procs.map((q) => [q.pid, q]));
@@ -291,17 +293,27 @@ export function selectProcs(procs, listens, { wt, ports, self, platform }) {
   const out = new Map();
   const cut = (cmd) => String(cmd || '').slice(0, 200);
   for (const q of procs) if (!skip.has(q.pid) && holdsPath(q.cmd)) out.set(q.pid, { pid: q.pid, why: 'path', cmd: cut(q.cmd) });
+  const inWt = (pid) => {
+    const seen = new Set();
+    for (let q = byPid.get(pid); q && !seen.has(q.pid) && !skip.has(q.pid); q = byPid.get(q.ppid)) { seen.add(q.pid); if (holdsPath(q.cmd)) return true; }
+    return false;
+  };
+  const told = new Set();
   for (const l of listens) {
     if (skip.has(l.pid) || out.has(l.pid) || !(l.port >= ports[0] && l.port <= ports[1])) continue;
-    out.set(l.pid, { pid: l.pid, why: `port ${l.port}`, cmd: cut(byPid.has(l.pid) ? byPid.get(l.pid).cmd : '') });
+    if (inWt(l.pid)) out.set(l.pid, { pid: l.pid, why: `port ${l.port}` });
+    else if (!told.has(l.pid)) { told.add(l.pid); unchecked.push(`pid ${l.pid} listens on port ${l.port} in the range, but neither it nor an ancestor carries the worktree path: not ended`); }
   }
   return [...out.values()];
 }
 
-const defaultKill = (platform) => (pid) => {
+// tree: end the process with its children (taskkill /T); a path match asks for it, and a port match only under a matched path ancestor.
+const defaultKill = (platform, run) => (pid, tree) => {
   if (platform === 'win32') {
-    const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = run('taskkill', ['/PID', String(pid), ...(tree ? ['/T'] : []), '/F'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.error) throw r.error;
+    // 128: the process is not there (already ended with the tree of an earlier match); the message itself is localized
+    if (r.status === 128) throw Object.assign(new Error(`pid ${pid} not found`), { code: 'ESRCH' });
     if (r.status !== 0) throw new Error(cap((r.stderr || r.stdout || `taskkill exit ${r.status}`).trim(), 200));
   } else process.kill(pid, 'SIGTERM');
 };
@@ -321,14 +333,21 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
     ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
     : list('ps', 'ps', ['-eo', 'pid=,ppid=,args='], parsePs);
   const listens = win
-    ? list('netstat', 'netstat', ['-ano', '-p', 'tcp'], parseNetstatListen)
+    // "none found" becomes [] with exit 0; any other error (cmdlet missing, CIM failure) is thrown, so exit != 0 -> unchecked
+    ? list('Get-NetTCPConnection', 'powershell.exe', ['-NoProfile', '-Command', "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; try { $r = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) } catch { if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound*') { throw }; $r = @() }; ConvertTo-Json -Compress -InputObject @($r | Select-Object LocalPort,OwningProcess)"], parseNetTcpListen)
     : list('lsof', 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], parseLsofListen, true);
-  const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform });
-  const end = kill || defaultKill(platform);
+  const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform, unchecked });
+  const end = kill || defaultKill(platform, run);
   const ended = [];
   const failed = [];
-  for (const m of matched) {
-    try { end(m.pid); ended.push(m.pid); } catch (e) { failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
+  // Port matches first: a path tree killed before would take the listener with it unseen. A port match with a path ancestor in matched
+  // is ended with its subtree (/T): that subtree is inside the ancestor's tree anyway, and ending the listener alone would orphan its children
+  // (their parent pid then points to a dead process, out of reach of the ancestor's /T). Without such an ancestor (defensive) it is ended alone.
+  const paths = new Set(matched.filter((x) => x.why === 'path').map((x) => x.pid));
+  const ppidOf = new Map(procs.map((q) => [q.pid, q.ppid]));
+  const underPath = (pid) => { const seen = new Set(); for (let q = ppidOf.get(pid); q && !seen.has(q); q = ppidOf.get(q)) { if (paths.has(q)) return true; seen.add(q); } return false; };
+  for (const m of [...matched.filter((x) => x.why !== 'path'), ...matched.filter((x) => x.why === 'path')]) {
+    try { end(m.pid, m.why === 'path' || underPath(m.pid)); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
   return { tool: TOOL, mode: 'procs', nonce: p.nonce, matched, ended, failed, unchecked };
 }

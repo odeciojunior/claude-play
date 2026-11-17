@@ -101,3 +101,15 @@ test('SKILL.md treats missingDirs like missingRules and forbids composed shell c
   assert.ok(skillMd.split('\n').some((l) => l.startsWith('- One simple command per Bash call')));
   assert.ok(operatorMd.includes('--permission-mode acceptEdits --add-dir'));
 });
+
+test('E33: config.md lists the procs mode of the cleanup among the uses of the verify-run rule, and what it ends', () => {
+  const cfg = read(path.join(SKILL, 'references', 'config.md'));
+  const rule = cfg.slice(cfg.indexOf('`Bash(node *verify-run.mjs" *)`'));
+  const uses = rule.slice(0, rule.indexOf(')', rule.indexOf('(the `check` subcommand')) + 1);
+  assert.match(uses, /the `procs` subcommand of the cleanup/);
+  assert.match(cfg, /`procs` ends every process whose command line holds the worktree path, and a listener in the port range of the deliverable only when it or an ancestor holds that path/);
+  const note = read(path.join(SKILL, '..', '..', '..', '..', 'docs', 'releases', '2026-11-17-productivity-tools-2.3.0.md'));
+  const item = note.split('\n').find((l) => l.startsWith('- **E32, modo `procs` do `verify-run`.**'));
+  assert.match(item, /caminho da worktree/);
+  assert.match(item, /porta só com/);
+});
