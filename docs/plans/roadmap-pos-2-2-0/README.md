@@ -11,6 +11,7 @@ Acompanhamento vivo do roadmap. Estratégia: `../2026-11-15-roadmap-pos-2-2-0.md
 | `critical-path.md` | Grafo de dependências e próximos gates |
 | `sources.md` | Inventário de fontes e conflitos |
 | `requirements.md` | Requisitos e sua cobertura |
+| `measurements.md` | Execuções pagas, custos e marcos de medição |
 | `roadmap.config.json` | Caminhos, vocabulário, limites |
 
 ## Verificação
@@ -22,5 +23,6 @@ Rode `node <pasta-do-roadmap>/check-roadmap.mjs` (Node 18 ou mais novo). Sai com
 | Uma decisão é tomada | `decisions.md` primeiro, depois o que a usa |
 | Uma peça ou passo fecha | `log.md` e o painel em `state.md` |
 | Uma branch é integrada ou removida | "em andamento" em `state.md` e `log.md` |
+| Uma execução paga ou medição | `measurements.md` e `log.md` |
 | Um bloqueio abre ou fecha | `state.md` e `critical-path.md` |
 | Uma peça ou fase termina | propor uma revisão da estratégia |

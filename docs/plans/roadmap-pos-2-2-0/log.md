@@ -3,6 +3,11 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | - | Pendências retiradas do state.md: duas (dono) de E31 (AC1 aceito), notas de E30 no desenho (lote feito), S3-24 antiga (substituída pela do roadmap futuro, DEC-031) e premissa da v1.1 (escrita). Carga haiku corrigida para 7 de 20. | `state.md` |
+| 2026-11-17 | - | Estratégia v1.1 (dono via Fable): absorve DEC-007 a DEC-036; custo de parada-retomada cerca de US$ 4,0 por execução (3,54 a 4,76 em E31); questões de E29 e E33 respondidas; card E33 com sonda, revisão final e segundo push. | `../2026-11-15-roadmap-pos-2-2-0.md` |
+| 2026-11-17 | E31 | custo registrado para E31: US$ 13,24 pelas transcrições (x1 3,761, x2 3,543, x3 inválida 1,177, x4 4,764) em measurements.md; total 22,46 de 40. | `docs/reports/2026-11-17-E31-parada-retomada.md` |
+| 2026-11-17 | E30 | custo registrado para E30: US$ 9,216 pela CLI por sessão (sonnet 3,602, opus 5,613) em measurements.md. | `docs/reports/2026-11-17-E30-revisor-opus.md` |
+| 2026-11-17 | - | config: measurements.md habilitado (DEC-036), com a linha de evento no README. | `roadmap.config.json` |
 | 2026-11-17 | E33 | DEC-031 a DEC-036 (dono via Fable, DEC-006) registradas e ratificadas: S3-24 adiada, caminho de E33, sonda paga, alcance da autorização, logout e measurements.md. | `decisions.md` |
 | 2026-11-17 | E31 | DEC-028 a DEC-030 (correção de E31) ratificadas pelo dono via Fable, sem emenda, conferidas contra o diff do merge e os testes novos. | `decisions.md` |
 | 2026-11-17 | E30 | E30 AC1 e AC2 aceitos pelo dono via Fable: os 20 aggregate.json recontados por script dão os números do relatório (sonnet 20/40, opus 28/40, US$ 9,22) e a decisão do modelo e do laço quality está registrada. Linha da medição em measurements.md. | `docs/reports/2026-11-17-E30-revisor-opus.md` |

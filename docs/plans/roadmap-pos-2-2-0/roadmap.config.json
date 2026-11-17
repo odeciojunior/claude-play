@@ -10,7 +10,7 @@
     "decisions": "decisions.md",
     "log": "log.md",
     "criticalPath": "critical-path.md",
-    "measurements": null,
+    "measurements": "measurements.md",
     "sources": "sources.md",
     "requirements": "requirements.md"
   },
