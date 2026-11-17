@@ -4234,6 +4234,51 @@ test('a failed spec check is a critical issue of the review, fixed by the correc
   assert.equal(r.results[0].merged, true);
 });
 
+const specToolJson = (n) => JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', errors: [], warnings: [], summary: { errors: 0, warnings: 0, exitCode: n } });
+
+test('E31 (a): a resume whose spec-load1 misreports checkExit loads again and keeps both reviews skipped', async () => {
+  const misreport = (l) => (l === 'E1:spec-load1' ? { checkExit: 1, emitExit: 2, checkStdout: specToolJson(0), emitStdout: '', head: 'a1', clean: true } : undefined);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), misreport) });
+  assert.ok(labels.includes('E1:spec-load2'));
+  assert.ok(!labels.some((l) => /^E1:spec-fix/.test(l)));
+  assert.ok(!labels.some((l) => /^E1:(spec|plan)-review/.test(l)));
+  assert.ok(r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  assert.ok(r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31 (b): a spec check that really failed stays a critical issue for the spec fixer', async () => {
+  let n = 0;
+  const bad = (l) => (l === 'E1:spec-load1' && n++ === 0 ? { checkExit: 1, emitExit: 2, checkStdout: specToolJson(1), emitStdout: '', head: 'a1', clean: true } : undefined);
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), bad, (l) => (l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined)) });
+  assert.ok(labels.includes('E1:spec-fix1'));
+  assert.match(calls.find((c) => c.label === 'E1:spec-fix1').prompt, /spec-tool check exited 1/);
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31: the load prompts name the exit codes by command, not by value', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const l of ['E1:spec-load1', 'E1:plan-load1']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.ok(!p.includes('checkExit = 1') && !p.includes('emitExit = 2'), l);
+    assert.ok(p.includes('checkExit from command 1') && p.includes('emitExit from command 2'), l);
+  }
+});
+
+test('E31: checkSpecLoad fails the load when checkExit disagrees with summary.exitCode', () => {
+  const card1 = { id: 'E1', acceptance: [{ id: 'AC1', text: 'works' }] };
+  const emit = specEmitOf('E1', { acceptance: card1.acceptance });
+  const mk = (checkExit, checkStdout) => PURE_X.checkSpecLoad({ checkExit, checkStdout, emitExit: 0, emitStdout: emit }, 'E1', card1);
+  const a = mk(1, specToolJson(0));
+  assert.equal(a.ok, false);
+  assert.match(a.why, /differs from summary\.exitCode 0/);
+  assert.equal(mk(0, specToolJson(1)).ok, false);
+  const agree = mk(1, specToolJson(1));
+  assert.deepEqual([agree.ok, agree.checkFailed], [true, true]);
+  const noInt = mk(1, '{"tool":"spec-tool","summary":{}}');
+  assert.deepEqual([noInt.ok, noInt.checkFailed], [true, true]);
+});
+
 test('a reused native spec without owner note calls no author and records no duplicate decision', async () => {
   seenDecisions.clear();
   const nativeSetup = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: false } : undefined);

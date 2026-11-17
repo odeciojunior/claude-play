@@ -1146,11 +1146,14 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
-// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a failed check is not a failed load (it becomes a critical issue of the review),
+// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a check exit that disagrees with its summary.exitCode is a failed load, a failed check is not a failed load (it becomes a critical issue of the review),
 // an emit that is not the spec/1 envelope of this deliverable, or that differs from the card, is a failed load.
 function checkSpecLoad(t, E, card) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.checkExit) || !Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit codes of check and emit' }
+  let ck
+  try { ck = JSON.parse(String(t.checkStdout)) } catch (e) { ck = null }
+  if (ck && typeof ck === 'object' && ck.tool === 'spec-tool' && ck.summary && Number.isInteger(ck.summary.exitCode) && ck.summary.exitCode !== t.checkExit) return { ok: false, why: `spec-tool check exit ${t.checkExit} differs from summary.exitCode ${ck.summary.exitCode} in its stdout` }
   if (t.checkExit !== 0) return { ok: true, checkFailed: true, why: `spec-tool check exited ${t.checkExit}: ${collapseWs(t.checkStdout).slice(0, 1500)}` }
   if (t.emitExit !== 0) return { ok: false, why: `spec-tool emit exited ${t.emitExit} although check exited 0` }
   let o
@@ -2167,7 +2170,7 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   const specAbs = `${wt}/${AP.spec}`
   const rmAbs = `${wt}/${RM.replace(/\/+$/, '')}`
   const R_WT = `Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or that worktree.`
-  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2,'
+  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit from command 1, emitStdout and emitExit from command 2,'
   const R_COUNT = `commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD)`
   const R_NOTE = noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''
   const R_NOCOMMIT = 'Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.'
