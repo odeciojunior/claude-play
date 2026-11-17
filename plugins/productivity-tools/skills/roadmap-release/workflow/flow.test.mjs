@@ -4798,6 +4798,23 @@ const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.
 const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
 const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
 
+test('E33: a spec commit that moved HEAD without returning its hash is not a reuse: the spec review runs', async () => {
+  const commitAs = (head) => (l) => (l === 'E1:spec-commit' ? { ok: true, head, commit: '', pending: '' } : undefined);
+  const args = { notes: { E1: 'use the X adapter' } };
+  // the load measured a1; the commit agent says head h2 and no hash: a commit was made, the freshly written spec is reviewed
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('h2'), recordedSetup(RUN_REC)) });
+  assert.ok(moved.labels.includes('E1:spec'));
+  assert.ok(moved.labels.includes('E1:spec-review1'), moved.labels.join(' '));
+  assert.ok(!moved.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  // an unmeasured head is not a reuse either
+  const blank = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs(''), recordedSetup(RUN_REC)) });
+  assert.ok(blank.labels.includes('E1:spec-review1'), blank.labels.join(' '));
+  // the same head as the load and no hash: nothing was committed, the recorded review still holds
+  const same = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('a1'), recordedSetup(RUN_REC)) });
+  assert.ok(!same.labels.includes('E1:spec-review1'), same.labels.join(' '));
+  assert.ok(same.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+});
+
 test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup(RUN_REC) });
   assert.equal(r.results[0].merged, true);

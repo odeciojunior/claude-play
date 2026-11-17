@@ -2219,7 +2219,7 @@ ${NO_ASK}`,
     }
     return { ok: false, why }
   }
-  const loadSpec = () => load3(specLoadOnce, t => checkSpecLoad(t, E, card))
+  const loadSpec = () => load3(specLoadOnce, t => ({ ...checkSpecLoad(t, E, card), head: t && t.head }))
   const reusedAsIs = setup.nativeSpec === true && !noteE
   if (!reusedAsIs) {
     const authored = await agent(`mode: unattended
@@ -2240,7 +2240,9 @@ ${Cn()}`,
   if (!reusedAsIs) {
     const cm = await commitChecked('spec', AP.spec, 'Spec', '')
     if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
-    specReused = !cm.commit
+    // A reuse only when HEAD did not move since the load: a commit without its hash still reviews the spec it wrote.
+    const hd = s => String(s || '').trim()
+    specReused = !cm.commit && !!hd(cm.head) && hd(cm.head) === hd(specLoad.head)
   }
   spec = { specPath: AP.spec, reused: specReused }
   let loadErr = ''
