@@ -2236,12 +2236,12 @@ ${Cn()}`,
   }
   let specLoad = await loadSpec()
   if (!specLoad.ok) return fail('infra', `spec load: ${specLoad.why}`)
+  // A reuse only when HEAD did not move since the load: a commit without its hash still reviews what it wrote.
+  const hd = s => String(s || '').trim()
   let specReused = reusedAsIs
   if (!reusedAsIs) {
     const cm = await commitChecked('spec', AP.spec, 'Spec', '')
     if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
-    // A reuse only when HEAD did not move since the load: a commit without its hash still reviews the spec it wrote.
-    const hd = s => String(s || '').trim()
     specReused = !cm.commit && !!hd(cm.head) && hd(cm.head) === hd(specLoad.head)
   }
   spec = { specPath: AP.spec, reused: specReused }
@@ -2340,7 +2340,7 @@ ${NO_ASK}`,
     { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
   // The digest is recalculated here from the emit.
   // useSpec false: the frozen plan is read against no spec.
-  const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => checkPlanLoad(t, { E, RM }))
+  const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => ({ ...checkPlanLoad(t, { E, RM }), head: t && t.head }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}
 planTool: ${planTool}
@@ -2390,8 +2390,13 @@ ${NO_ASK}`,
     }
     const cm = await commitChecked('plan', AP.plan, 'Plan', `, and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}"`)
     if (!cm || !cm.ok) return fail('infra', `plan commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
-    planCommitted = !!cm.commit
-    planBlobNow = planCommitted ? String(cm.blob || '').trim() || planLoad.blob : planLoad.blob
+    planCommitted = !!cm.commit || !hd(cm.head) || hd(cm.head) !== hd(planLoad.head)
+    planBlobNow = planCommitted ? String(cm.blob || '').trim() : planLoad.blob
+    if (planCommitted && !planBlobNow) {  // committed without its blob: measure it again, the load before the commit saw the old one
+      planLoad = await loadPlan()
+      if (!planLoad.ok) return planLoadFail(planLoad.why)
+      planBlobNow = planLoad.blob
+    }
   }
   if (!/^[0-9a-f]{40,64}$/.test(planBlobNow)) return fail('infra', `plan load: the blob of ${AP.plan} on the branch was not measured`)
   const planFrom = (ld, blob, reused) => ({ planPath: AP.plan, planBlob: blob, reused, tasks: tasksFromPlan(ld.plan), ac: evidenceFromPlan(ld.plan) })

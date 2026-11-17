@@ -202,7 +202,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:spec-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
     if (/:plan$/.test(l)) return { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
     if (/:plan-load\d$/.test(l)) return planLoadOf(planOf[E] || OLD_DEFAULT_PLAN, E);
-    if (/:plan-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1' };
+    if (/:plan-commit$/.test(l)) return { ok: true, head: 'a1', commit: 'c1', blob: (planOf[E] || OLD_DEFAULT_PLAN).planBlob }; // the commit agent returns the blob of the plan it committed
     if (/plan-review/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 2, measuredPlanBlob: B1 };
     // A task review counts what git shows: for a launched external task, launch..HEAD holds the started mark, the task commit and the completion mark.
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 };
@@ -4813,6 +4813,33 @@ test('E33: a spec commit that moved HEAD without returning its hash is not a reu
   const same = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('a1'), recordedSetup(RUN_REC)) });
   assert.ok(!same.labels.includes('E1:spec-review1'), same.labels.join(' '));
   assert.ok(same.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+});
+
+test('E33: a plan commit that moved HEAD without returning its hash is not a reuse: the plan review runs; a commit without its blob measures it again', async () => {
+  const args = { notes: { E1: 'use the X adapter' } };
+  const commits = (planAnswer) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '', pending: '' } : l === 'E1:plan-commit' ? planAnswer : undefined);
+  const runWith = (planAnswer) => exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commits(planAnswer), recordedSetup(RUN_REC)) });
+  // the spec is a reuse (same head as its load), so only the plan decides the plan review
+  const moved = await runWith({ ok: true, head: 'h2', commit: '', pending: '' });
+  assert.ok(moved.labels.includes('E1:plan'));
+  assert.ok(!moved.labels.includes('E1:spec-review1'), moved.labels.join(' '));
+  assert.ok(moved.labels.includes('E1:plan-review1'), moved.labels.join(' '));
+  assert.ok(!moved.r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  // an unmeasured head is not a reuse either
+  const blank = await runWith({ ok: true, head: '', commit: '', pending: '' });
+  assert.ok(blank.labels.includes('E1:plan-review1'), blank.labels.join(' '));
+  // the same head as the load and no hash: nothing was committed, the recorded review still holds
+  const same = await runWith({ ok: true, head: 'a1', commit: '', pending: '' });
+  assert.ok(!same.labels.includes('E1:plan-review1'), same.labels.join(' '));
+  assert.ok(same.r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  // committed without the blob: the blob is measured again after the commit, never taken from the load before it
+  const noBlob = await runWith({ ok: true, head: 'h2', commit: 'c2' });
+  const at = noBlob.labels.indexOf('E1:plan-commit');
+  assert.ok(noBlob.labels.slice(at + 1).some((l) => /^E1:plan-load\d$/.test(l)), noBlob.labels.join(' '));
+  // committed with the blob: no extra load
+  const withBlob = await runWith({ ok: true, head: 'h2', commit: 'c2', blob: B2 });
+  const at2 = withBlob.labels.indexOf('E1:plan-commit');
+  assert.ok(!withBlob.labels.slice(at2 + 1).some((l) => /^E1:plan-load\d$/.test(l)), withBlob.labels.join(' '));
 });
 
 test('AC1: a resume with every recorded value skips the spec, plan and final reviews', async () => {
