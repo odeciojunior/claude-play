@@ -479,7 +479,7 @@ test('DEC-714: a live pid without output is waited for, then the output is repla
 // ---- E32: procs mode (list and end the processes of a deliverable) ----
 
 test('E32 procs: parsers read fixed outputs', async () => {
-  const { parseCimProcs, parsePs, parseNetstatListen, parseLsofListen } = await import('./verify-run.mjs');
+  const { parseCimProcs, parsePs, parseNetTcpListen, parseLsofListen } = await import('./verify-run.mjs');
   assert.deepEqual(parseCimProcs('{"ProcessId":10,"ParentProcessId":4,"CommandLine":null}'), [{ pid: 10, ppid: 4, cmd: '' }]);
   assert.deepEqual(
     parseCimProcs('[{"ProcessId":11,"ParentProcessId":10,"CommandLine":"node a.js"},{"ProcessId":12,"ParentProcessId":10,"CommandLine":null}]'),
@@ -489,13 +489,12 @@ test('E32 procs: parsers read fixed outputs', async () => {
   // a raw control character from the console codepage (0x1A) and the final CRLF do not break the parse
   assert.deepEqual(parseCimProcs('[{"ProcessId":13,"ParentProcessId":1,"CommandLine":"a \u001a b"}]\r\n'), [{ pid: 13, ppid: 1, cmd: 'a   b' }]);
   assert.deepEqual(parsePs('    1     0 /sbin/init splash\n  200   1 node /x/server.js --port 5212\n\n'), [{ pid: 1, ppid: 0, cmd: '/sbin/init splash' }, { pid: 200, ppid: 1, cmd: 'node /x/server.js --port 5212' }]);
-  const net = [
-    'Active Connections', '', '  Proto  Local Address          Foreign Address        State           PID',
-    '  TCP    0.0.0.0:5212           0.0.0.0:0              LISTENING       4242',
-    '  TCP    [::]:5213              [::]:0                 LISTENING       4243',
-    '  TCP    127.0.0.1:5214         127.0.0.1:60000        ESTABLISHED     4244',
-  ].join('\r\n');
-  assert.deepEqual(parseNetstatListen(net), [{ pid: 4242, port: 5212 }, { pid: 4243, port: 5213 }]);
+  // Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | ConvertTo-Json -Compress: IPv4 and IPv6 (::1) alike, no localized text
+  assert.deepEqual(parseNetTcpListen('[{"LocalPort":5212,"OwningProcess":4242},{"LocalPort":5213,"OwningProcess":4243}]\r\n'), [{ pid: 4242, port: 5212 }, { pid: 4243, port: 5213 }]);
+  assert.deepEqual(parseNetTcpListen('{"LocalPort":5215,"OwningProcess":4245}'), [{ pid: 4245, port: 5215 }]);
+  assert.deepEqual(parseNetTcpListen(''), []);
+  assert.throws(() => parseNetTcpListen('Proto  Local Address  Foreign Address  State  PID'));
+  assert.throws(() => parseNetTcpListen('[{"Port":5212,"Pid":4242}]'), /LocalPort/);
   const lsof = [
     'COMMAND   PID USER   FD   TYPE  DEVICE SIZE/OFF NODE NAME',
     'node     4242   me   23u  IPv4 0x1234      0t0  TCP *:5214 (LISTEN)',
@@ -566,10 +565,58 @@ test('E33 procs: a port match needs the worktree on the listener or an ancestor;
   assert.deepEqual(selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32' }).map((x) => x.pid), [80, 82]);
 });
 
+test('E33 procs: win32 lists listeners with Get-NetTCPConnection; an unreadable listing goes to unchecked', async () => {
+  const { runProcs } = await import('./verify-run.mjs');
+  const seen = [];
+  const procsJson = JSON.stringify([{ ProcessId: 80, ParentProcessId: 1, CommandLine: 'node D:/x/E3/dev.js' }, { ProcessId: 82, ParentProcessId: 80, CommandLine: 'vite' }]);
+  const mk = (listOut) => (cmd, args) => {
+    seen.push([cmd, ...args].join(' '));
+    return /Get-CimInstance/.test(args.join(' ')) ? { status: 0, stdout: procsJson } : listOut;
+  };
+  const ok = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 0, stdout: '[{"LocalPort":5212,"OwningProcess":82}]' }), kill: () => {} });
+  assert.ok(seen.some((c) => /^powershell\.exe .*\[Console\]::OutputEncoding = \[System\.Text\.Encoding\]::UTF8; Get-NetTCPConnection -State Listen \| Select-Object LocalPort,OwningProcess \| ConvertTo-Json -Compress$/.test(c)), seen.join('\n'));
+  assert.ok(!seen.some((c) => /netstat/.test(c)));
+  assert.deepEqual(ok.matched.map((m) => [m.pid, m.why]), [[80, 'path'], [82, 'port 5212']]);
+  assert.deepEqual(ok.unchecked, []);
+  // no listener at all: Get-NetTCPConnection exits 1 with empty stdout
+  const none = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 1, stdout: '' }), kill: () => {} });
+  assert.deepEqual(none.unchecked, []);
+  // localized or otherwise unreadable text is never read as "no listener"
+  const bad = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 0, stdout: '  TCP    [::1]:5212    [::]:0    ESCUTANDO    82' }), kill: () => {} });
+  assert.equal(bad.unchecked.length, 1);
+  assert.match(bad.unchecked[0], /^Get-NetTCPConnection: output not readable/);
+  assert.deepEqual(bad.matched.map((m) => m.pid), [80]);
+});
+
+test('E33 procs: on Windows a listener on ::1 is found through its ancestor and ended', { skip: process.platform !== 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vr-procs6-'));
+  const childSrc = "const s=require('net').createServer();s.listen(0,'::1',()=>{process.stdout.write(String(s.address().port))});";
+  const parentSrc = `const c=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(childSrc)}],{stdio:['ignore','pipe','ignore']});c.stdout.on('data',d=>process.stdout.write(c.pid+' '+d+'\\n'));setInterval(()=>{},1000);`;
+  const parent = spawn(process.execPath, ['-e', parentSrc, dir], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let childPid = 0;
+  try {
+    const line = await new Promise((res, rej) => { let s = ''; parent.stdout.on('data', (d) => { s += d; if (s.includes('\n')) res(s.trim()); }); setTimeout(() => rej(new Error('no port within 10 s')), 10000); });
+    const [cp, port] = line.split(' ').map(Number);
+    childPid = cp;
+    const o = await new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, 'procs', enc(sign({ nonce: NONCE, wt: dir, ports: [port, port] }))], { stdio: ['ignore', 'pipe', 'pipe'] }); let s = ''; c.stdout.on('data', (d) => { s += d; }); c.on('close', (code) => res({ code, s })); });
+    const json = JSON.parse(o.s);
+    assert.equal(o.code, 0, o.s);
+    assert.deepEqual(json.unchecked, [], o.s);
+    assert.ok(json.matched.some((m) => m.pid === parent.pid && m.why === 'path'), o.s);
+    assert.ok(json.matched.some((m) => m.pid === childPid && m.why === `port ${port}` && !('cmd' in m)), o.s);
+    assert.ok(json.ended.includes(parent.pid) && json.ended.includes(childPid), o.s);
+    assert.deepEqual(json.failed, [], o.s);
+  } finally {
+    if (parent.exitCode === null && parent.signalCode === null) parent.kill();
+    if (childPid) { try { process.kill(childPid); } catch { /* already gone */ } }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('E33 procs: a pid already gone (ended with its parent tree) counts as ended, not as a failure', async () => {
   const { runProcs } = await import('./verify-run.mjs');
   const procsJson = JSON.stringify([{ ProcessId: 80, ParentProcessId: 1, CommandLine: 'node D:/x/E3/a.js' }, { ProcessId: 81, ParentProcessId: 80, CommandLine: 'node D:/x/E3/b.js' }, { ProcessId: 82, ParentProcessId: 1, CommandLine: 'node D:/x/E3/c.js' }]);
-  const listing = (cmd) => (cmd === 'netstat' ? { status: 0, stdout: '' } : { status: 0, stdout: procsJson });
+  const listing = (cmd, args) => (/Get-NetTCPConnection/.test(args.join(' ')) ? { status: 0, stdout: '' } : { status: 0, stdout: procsJson });
   // taskkill exit 128 is "process not found" whatever the language of the message
   const answers = { 80: { status: 0, stdout: 'SUCCESS' }, 81: { status: 128, stdout: '', stderr: 'ERRO: o processo "81" não foi encontrado.' }, 82: { status: 1, stdout: '', stderr: 'ERROR: Access is denied.' } };
   const run = (cmd, args) => (cmd === 'taskkill' ? answers[args[1]] : listing(cmd, args));
@@ -591,7 +638,6 @@ test('E33 procs: taskkill ends a path match with its tree and a port match witho
     if (cmd === 'taskkill') { kills.push(args); return { status: 0, stdout: 'SUCCESS', stderr: '' }; }
     const script = args.join(' ');
     if (/Get-CimInstance/.test(script)) return { status: 0, stdout: JSON.stringify([{ ProcessId: 80, ParentProcessId: 1, CommandLine: 'node D:/x/E3/dev.js' }, { ProcessId: 82, ParentProcessId: 80, CommandLine: 'vite' }, { ProcessId: 60, ParentProcessId: 1, CommandLine: 'docker' }]) };
-    if (cmd === 'netstat') return { status: 0, stdout: '  TCP    0.0.0.0:5212    0.0.0.0:0    LISTENING    82\r\n  TCP    0.0.0.0:5213    0.0.0.0:0    LISTENING    60\r\n' };
     return { status: 0, stdout: JSON.stringify([{ LocalPort: 5212, OwningProcess: 82 }, { LocalPort: 5213, OwningProcess: 60 }]) };
   };
   const o = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run });
@@ -643,15 +689,15 @@ test('E32 procs: a missing listing goes to unchecked and the command still succe
   assert.deepEqual(a.ended, [900]);
   assert.deepEqual(a.failed, []);
   assert.deepEqual(killed, [900]);
-  const win = (cmd) => (/powershell/i.test(cmd) ? { status: 0, stdout: '[{"ProcessId":910,"ParentProcessId":1,"CommandLine":"node D:\\\\x\\\\E3\\\\s.js"}]' } : { error: { code: 'ENOENT' } });
+  const win = (cmd, args) => (/Get-CimInstance/.test(args.join(' ')) ? { status: 0, stdout: '[{"ProcessId":910,"ParentProcessId":1,"CommandLine":"node D:\\\\x\\\\E3\\\\s.js"}]' } : { error: { code: 'ENOENT' } });
   const b = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: win, kill });
   assert.equal(b.unchecked.length, 1);
-  assert.match(b.unchecked[0], /netstat/);
+  assert.match(b.unchecked[0], /Get-NetTCPConnection/);
   assert.deepEqual(b.ended, [910]);
   const none = runProcs(p, { platform: 'win32', run: () => ({ error: { code: 'ENOENT' } }), kill });
   assert.equal(none.unchecked.length, 2);
   assert.match(none.unchecked.join('|'), /powershell/);
-  assert.match(none.unchecked.join('|'), /netstat/);
+  assert.match(none.unchecked.join('|'), /Get-NetTCPConnection/);
   assert.deepEqual(none.matched, []);
   // a kill that throws goes to failed, the others still end
   const bad = runProcs(p, { platform: 'linux', run: (cmd) => (cmd === 'lsof' ? { status: 0, stdout: '' } : { status: 0, stdout: '  900 1 node /x/E3/a\n  901 1 node /x/E3/b\n' }), kill: (pid) => { if (pid === 900) throw new Error('EPERM'); } });

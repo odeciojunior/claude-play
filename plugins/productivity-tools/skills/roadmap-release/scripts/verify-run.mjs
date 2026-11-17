@@ -254,12 +254,13 @@ export function parsePs(text) {
   }
   return out;
 }
-export function parseNetstatListen(text) {
-  const out = [];
-  for (const line of String(text == null ? '' : text).split(/\r?\n/)) {
-    const m = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(line);
-    if (m) out.push({ pid: Number(m[2]), port: Number(m[1]) });
-  }
+// Get-NetTCPConnection -State Listen as JSON: IPv4 and IPv6 alike, no localized state word. Text that is not that JSON throws (-> unchecked).
+export function parseNetTcpListen(text) {
+  const s = String(text == null ? '' : text).replace(/[\u0000-\u001f]/g, ' ').trim();
+  if (!s) return [];
+  const rows = asList(JSON.parse(s));
+  const out = rows.filter((o) => o && Number.isInteger(o.LocalPort) && Number.isInteger(o.OwningProcess)).map((o) => ({ pid: o.OwningProcess, port: o.LocalPort }));
+  if (rows.length && !out.length) throw new Error('no LocalPort/OwningProcess in the listing');
   return out;
 }
 export function parseLsofListen(text) {
@@ -332,7 +333,7 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
     ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
     : list('ps', 'ps', ['-eo', 'pid=,ppid=,args='], parsePs);
   const listens = win
-    ? list('netstat', 'netstat', ['-ano', '-p', 'tcp'], parseNetstatListen)
+    ? list('Get-NetTCPConnection', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | ConvertTo-Json -Compress'], parseNetTcpListen, true)
     : list('lsof', 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], parseLsofListen, true);
   const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform, unchecked });
   const end = kill || defaultKill(platform, run);
