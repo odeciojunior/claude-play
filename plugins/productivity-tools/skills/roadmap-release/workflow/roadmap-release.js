@@ -1146,11 +1146,14 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
-// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a failed check is not a failed load (it becomes a critical issue of the review),
+// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a check exit that disagrees with its summary.exitCode is a failed load, a failed check is not a failed load (it becomes a critical issue of the review),
 // an emit that is not the spec/1 envelope of this deliverable, or that differs from the card, is a failed load.
 function checkSpecLoad(t, E, card) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.checkExit) || !Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit codes of check and emit' }
+  let ck
+  try { ck = JSON.parse(String(t.checkStdout)) } catch (e) { ck = null }
+  if (ck && typeof ck === 'object' && ck.tool === 'spec-tool' && ck.summary && Number.isInteger(ck.summary.exitCode) && ck.summary.exitCode !== t.checkExit) return { ok: false, why: `spec-tool check exit ${t.checkExit} differs from summary.exitCode ${ck.summary.exitCode} in its stdout` }
   if (t.checkExit !== 0) return { ok: true, checkFailed: true, why: `spec-tool check exited ${t.checkExit}: ${collapseWs(t.checkStdout).slice(0, 1500)}` }
   if (t.emitExit !== 0) return { ok: false, why: `spec-tool emit exited ${t.emitExit} although check exited 0` }
   let o
@@ -1421,7 +1424,7 @@ const ISSUES = { type: 'array', items: { type: 'object', properties: {
   description: STR, file: STR, blq: STR, id: STR }, required: ['severity', 'description'] } }
 const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
 const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: STR, emitExit: INT, emitStdout: STR, blob: STR, head: STR, clean: BOOL }, required: ['checkExit', 'emitExit', 'emitStdout'] }
-const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, error: STR }, required: ['ok'] }
+const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, pending: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
 const S_VERIFY = { type: 'object', properties: { verdicts: { type: 'array', items: { type: 'object', properties: { n: INT, refuted: BOOL, reason: STR } } } }, required: ['verdicts'] }
@@ -2167,22 +2170,30 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   const specAbs = `${wt}/${AP.spec}`
   const rmAbs = `${wt}/${RM.replace(/\/+$/, '')}`
   const R_WT = `Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or that worktree.`
-  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit = 1, emitStdout and emitExit = 2,'
+  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit from command 1, emitStdout and emitExit from command 2,'
   const R_COUNT = `commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD)`
   const R_NOTE = noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''
   const R_NOCOMMIT = 'Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.'
-  const commitAgent = (kind, file, phase, tail) => {
+  const commitAgent = (kind, file, phase, tail, k = '', model = 'haiku') => {
     const msgFile = `${WT}/_tmp/${E}-${kind}-commit.txt`
     return agent(`${Cs()}
 
 COMMIT of the ${kind} of deliverable ${E} (mechanical). Only the file ${file} may enter the commit. One command per call, in this order:
 1. Write the commit message with the Write tool (not with a shell command) to "${msgFile}": the subject line "${E}: ${kind}", an empty line, then the line ${TRAILER}
 2. git -C "${wt}" add -- ${file}
-3. git -C "${wt}" diff --cached --quiet -- ${file}   (exit 0 means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
-4. Otherwise git -C "${wt}" commit -F "${msgFile}"
-5. Delete "${msgFile}". Return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none)${tail}. ok is false, with error, when a command failed.
+3. git -C "${wt}" diff --cached --name-only -- ${file}   (empty output means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
+4. Only when step 3 printed the path: git -C "${wt}" commit -F "${msgFile}"
+5. Delete "${msgFile}". After the steps return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none), pending = the output of git -C "${wt}" status --porcelain -- ${file} (empty when clean)${tail}. ok is false, with error, when a command failed.
 ${NO_ASK}`,
-      { label: `${E}:${kind}-commit`, phase, schema: S_COMMITTED, model: 'haiku', effort: 'low' })
+      { label: `${E}:${kind}-commit${k}`, phase, schema: S_COMMITTED, model, effort: model === 'haiku' ? 'low' : 'medium' })
+  }
+  // An empty commit with the file still pending is committed once more in sonnet; unmeasured counts as pending.
+  const commitChecked = async (kind, file, phase, tail) => {
+    const left = c => (c && c.ok && !c.commit ? String(c.pending == null ? '(not measured)' : c.pending).trim() : '')
+    let cm = await commitAgent(kind, file, phase, tail)
+    if (!left(cm)) return cm
+    cm = await commitAgent(kind, file, phase, tail, '2', 'sonnet')
+    return left(cm) ? { ok: false, error: `${file} still pending after an empty commit: ${left(cm)}` } : cm
   }
   const specRules = `Fixed rules of this run:
 - ${NO_ASK}
@@ -2227,7 +2238,7 @@ ${Cn()}`,
   if (!specLoad.ok) return fail('infra', `spec load: ${specLoad.why}`)
   let specReused = reusedAsIs
   if (!reusedAsIs) {
-    const cm = await commitAgent('spec', AP.spec, 'Spec', '')
+    const cm = await commitChecked('spec', AP.spec, 'Spec', '')
     if (!cm || !cm.ok) return fail('infra', `spec commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
     specReused = !cm.commit
   }
@@ -2375,7 +2386,7 @@ ${NO_ASK}`,
         { ...A, deliverables: [E] })
       return fail('conteudo', `the owner instruction rewrote committed task(s) of the plan: ${frozenList}`)
     }
-    const cm = await commitAgent('plan', AP.plan, 'Plan', `, and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}"`)
+    const cm = await commitChecked('plan', AP.plan, 'Plan', `, and blob = the output of git -C "${wt}" rev-parse "HEAD:${AP.plan}"`)
     if (!cm || !cm.ok) return fail('infra', `plan commit: ${cm ? cm.error || 'not ok' : 'null agent'}`)
     planCommitted = !!cm.commit
     planBlobNow = planCommitted ? String(cm.blob || '').trim() || planLoad.blob : planLoad.blob

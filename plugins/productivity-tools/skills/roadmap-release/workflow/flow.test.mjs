@@ -2533,8 +2533,8 @@ test('FF/I1: an answer in notes that changes nothing keeps the plan blob, the fi
   assert.match(hi.doNow, /stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again \(pass the bare `E1:T1` in your own message to re-authorize together with the answer\)/);
   const { config, ...rw } = hi.resumeWith;
   const reused = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }
-    : l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '' }
-    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: '' }
+    : l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '', pending: '' }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: '', pending: '' }
     : l === 'E1:plan-load1' ? planLoadOf(planWith(ext1), 'E1')
     : l === 'E1:progress' ? { head: 'h9', clean: true, done: [], awaitingPerson: [1], launchOpen: [], effectMayHaveRun: [], effectCompleted: [] } : undefined);
   const run2 = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...rw, notes: { E1: 'the key is in DEPLOY_KEY' }, runToken: 'pf-2' }, over: reused });
@@ -2641,8 +2641,8 @@ test('FF/M8: a local task that waited for a person closes with a neutral mark, w
 
 // Fable review 2 (F2).
 test('F2/I-A: a note that changed no file stays in resumeWith; a note written into the plan is consumed', async () => {
-  const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1' }
-    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1' }
+  const reused = (v) => (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1', ...(v ? { pending: '' } : {}) }
+    : l === 'E1:plan-commit' ? { ok: true, head: 'a1', commit: v ? '' : 'c1', ...(v ? { pending: '' } : {}) }
     : l === 'E1:t1:impl' ? { status: 'BLOCKED', summary: 'stop', checks: [] } : undefined);
   const kept = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'the key is in DEPLOY_KEY' } }, over: reused(true) });
   assert.equal(kept.r.resumeArgs.notes && kept.r.resumeArgs.notes.E1, 'the key is in DEPLOY_KEY');
@@ -4234,6 +4234,51 @@ test('a failed spec check is a critical issue of the review, fixed by the correc
   assert.equal(r.results[0].merged, true);
 });
 
+const specToolJson = (n) => JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', errors: [], warnings: [], summary: { errors: 0, warnings: 0, exitCode: n } });
+
+test('E31 (a): a resume whose spec-load1 misreports checkExit loads again and keeps both reviews skipped', async () => {
+  const misreport = (l) => (l === 'E1:spec-load1' ? { checkExit: 1, emitExit: 2, checkStdout: specToolJson(0), emitStdout: '', head: 'a1', clean: true } : undefined);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), misreport) });
+  assert.ok(labels.includes('E1:spec-load2'));
+  assert.ok(!labels.some((l) => /^E1:spec-fix/.test(l)));
+  assert.ok(!labels.some((l) => /^E1:(spec|plan)-review/.test(l)));
+  assert.ok(r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  assert.ok(r.results[0].concerns.some((c) => /plan review skipped/.test(c)));
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31 (b): a spec check that really failed stays a critical issue for the spec fixer', async () => {
+  let n = 0;
+  const bad = (l) => (l === 'E1:spec-load1' && n++ === 0 ? { checkExit: 1, emitExit: 2, checkStdout: specToolJson(1), emitStdout: '', head: 'a1', clean: true } : undefined);
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(recordedSetup(RUN_REC), bad, (l) => (l === 'E1:spec-fix1' ? { specPath: 'x', slug: 'x', decisions: [], humanInputs: [] } : undefined)) });
+  assert.ok(labels.includes('E1:spec-fix1'));
+  assert.match(calls.find((c) => c.label === 'E1:spec-fix1').prompt, /spec-tool check exited 1/);
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31: the load prompts name the exit codes by command, not by value', async () => {
+  const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  for (const l of ['E1:spec-load1', 'E1:plan-load1']) {
+    const p = calls.find((c) => c.label === l).prompt;
+    assert.ok(!p.includes('checkExit = 1') && !p.includes('emitExit = 2'), l);
+    assert.ok(p.includes('checkExit from command 1') && p.includes('emitExit from command 2'), l);
+  }
+});
+
+test('E31: checkSpecLoad fails the load when checkExit disagrees with summary.exitCode', () => {
+  const card1 = { id: 'E1', acceptance: [{ id: 'AC1', text: 'works' }] };
+  const emit = specEmitOf('E1', { acceptance: card1.acceptance });
+  const mk = (checkExit, checkStdout) => PURE_X.checkSpecLoad({ checkExit, checkStdout, emitExit: 0, emitStdout: emit }, 'E1', card1);
+  const a = mk(1, specToolJson(0));
+  assert.equal(a.ok, false);
+  assert.match(a.why, /differs from summary\.exitCode 0/);
+  assert.equal(mk(0, specToolJson(1)).ok, false);
+  const agree = mk(1, specToolJson(1));
+  assert.deepEqual([agree.ok, agree.checkFailed], [true, true]);
+  const noInt = mk(1, '{"tool":"spec-tool","summary":{}}');
+  assert.deepEqual([noInt.ok, noInt.checkFailed], [true, true]);
+});
+
 test('a reused native spec without owner note calls no author and records no duplicate decision', async () => {
   seenDecisions.clear();
   const nativeSetup = (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: false } : undefined);
@@ -4271,7 +4316,62 @@ test('the commit agent writes the message with Write, commits with -F and only t
   assert.match(c.prompt, /Write tool/);
   assert.match(c.prompt, /git -C "\/wt\/E1" add -- docs\/plans\/x-E1\/spec\.md/);
   assert.match(c.prompt, /git -C "\/wt\/E1" commit -F "\/wt\/_tmp\/E1-spec-commit\.txt"/);
+  assert.match(c.prompt, /git -C "\/wt\/E1" diff --cached --name-only -- docs\/plans\/x-E1\/spec\.md/);
+  assert.match(c.prompt, /git -C "\/wt\/E1" status --porcelain -- docs\/plans\/x-E1\/spec\.md/);
+  assert.match(c.prompt, /pending/);
+  assert.ok(!c.prompt.includes('--quiet'));
+  assert.ok('pending' in c.opts.schema.properties);
   assert.ok(!/ && | ; /.test(c.prompt));
+});
+
+// E31 T2: the commit steps never depend on an exit code the Bash tool does not show.
+const pendingSpec = 'A  docs/plans/x-E1/spec.md';
+const pendingPlan = 'M  docs/plans/x-E1/plan.md';
+const emptySpec = (pending) => ({ ok: true, head: 'a1', commit: '', ...(pending === undefined ? {} : { pending }) });
+
+test('E31 (c): an empty spec commit with the spec still pending is committed again in sonnet', async () => {
+  const over = (l) => (l === 'E1:spec-commit' ? emptySpec(pendingSpec) : l === 'E1:spec-commit2' ? { ok: true, head: 'a2', commit: 'c2', pending: '' } : undefined);
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(labels.indexOf('E1:spec-commit2') > labels.indexOf('E1:spec-commit'));
+  assert.equal(calls.find((c) => c.label === 'E1:spec-commit2').opts.model, 'sonnet');
+  assert.ok(!labels.some((l) => /^E1:spec-fix/.test(l)));
+  assert.ok(labels.includes('E1:spec-review1'));
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31 (c): a spec still pending after the second commit fails as infra before the review', async () => {
+  for (const first of [emptySpec(pendingSpec), emptySpec(undefined)]) {
+    const over = (l) => (l === 'E1:spec-commit' ? first : l === 'E1:spec-commit2' ? emptySpec(pendingSpec) : undefined);
+    const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+    assert.equal(r.results[0].failKind, 'infra');
+    assert.match(r.results[0].error, /spec commit: docs\/plans\/x-E1\/spec\.md still pending after an empty commit/);
+    assert.ok(!labels.includes('E1:spec-review1'));
+    assert.ok(!labels.some((l) => /^E1:spec-fix/.test(l)));
+  }
+  const unmeasured = (l) => (l === 'E1:spec-commit' || l === 'E1:spec-commit2' ? emptySpec(undefined) : undefined);
+  const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: unmeasured });
+  assert.ok(labels.includes('E1:spec-commit2'));
+});
+
+test('E31 (d): an empty commit with nothing pending is a legitimate reuse', async () => {
+  const over = (l) => (l === 'E1:spec-commit' ? emptySpec('') : undefined);
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(!labels.includes('E1:spec-commit2'));
+  assert.ok(!labels.some((l) => /^E1:spec-fix/.test(l)));
+  assert.equal(r.results[0].merged, true);
+});
+
+test('E31 C4: an empty plan commit with the plan pending is committed again as plan-commit2, and fails as infra if it persists', async () => {
+  const emptyPlan = { ok: true, head: 'a1', commit: '', pending: pendingPlan };
+  const ok2 = (l) => (l === 'E1:plan-commit' ? emptyPlan : l === 'E1:plan-commit2' ? { ok: true, head: 'a2', commit: 'c2', pending: '', blob: B1 } : undefined);
+  const a = await exec({ cards: [card('E1')], deliverables: ['E1'], over: ok2 });
+  assert.equal(a.calls.find((c) => c.label === 'E1:plan-commit2').opts.model, 'sonnet');
+  assert.ok(a.labels.includes('E1:plan-review1'));
+  const bad = (l) => (l === 'E1:plan-commit' || l === 'E1:plan-commit2' ? emptyPlan : undefined);
+  const b = await exec({ cards: [card('E1')], deliverables: ['E1'], over: bad });
+  assert.equal(b.r.results[0].failKind, 'infra');
+  assert.match(b.r.results[0].error, /plan commit: docs\/plans\/x-E1\/plan\.md still pending after an empty commit/);
+  assert.ok(!b.labels.includes('E1:plan-review1'));
 });
 
 test('checkSpecLoad separates a failed check from a failed load', () => {
