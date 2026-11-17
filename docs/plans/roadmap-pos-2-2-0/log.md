@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | E31 | DEC-024 (x3 inválida e x4 de E31, dono via Fable) ratificada | `decisions.md` |
 | 2026-11-17 | E30 | Lote de E30: 20 execuções válidas, US$ 9,22 de 16. Sonnet 20/40 capturas, opus 28/40; opus passa na R2; laço quality fica (R3 inconclusiva). Sobra 6,78 vai à reserva comum. | `docs/reports/2026-11-17-E30-revisor-opus.md` |
 | 2026-11-17 | E30 | DEC-023 (resultado de E30 pela regra do desenho, dono via Fable) ratificada | `decisions.md` |
 | 2026-11-17 | E30 | DEC-021 e DEC-022 (dono via Fable, DEC-006) registradas e ratificadas | `decisions.md` |
