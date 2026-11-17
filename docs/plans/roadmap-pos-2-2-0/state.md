@@ -9,10 +9,10 @@ Estratégia v1.0 -- 2026-11-15
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
 | E29 | na-branch | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `a563e48710c42e1b1adbed3815941d36835a584c` | Aguarda E33 (publicação) |
-| E30 | na-branch | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`, `33adadf2918f6cd02abae9cd432e9ac1ea21c815`, `docs/reports/2026-11-17-E30-revisor-opus.md` | Medido; vira medido quando E33 levar a release a main |
-| E31 | na-branch | `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md`, `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md`, `8fcc042b86100fe7680f422077c7b287fe276c1e` | E31: seguir o fluxo do release após na-branch |
+| E30 | na-branch | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`, `33adadf2918f6cd02abae9cd432e9ac1ea21c815`, `docs/reports/2026-11-17-E30-revisor-opus.md` | Aguarda E33 (publicação); AC1 e AC2 aceitos; vira medido com a release em main |
+| E31 | na-branch | `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md`, `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md`, `8fcc042b86100fe7680f422077c7b287fe276c1e` | Aguarda E33 (publicação); AC1 aceito |
 | E32 | na-branch | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19` | Aguarda E33 (publicação); AC1 aceito |
-| E33 | nao-iniciado | - | - |
+| E33 | executando | - | Bump 2.3.0 e nota, sonda paga, revisão final, branch de volta e roteiro; depois autorização do dono |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
@@ -34,6 +34,10 @@ Estratégia v1.0 -- 2026-11-15
 - (executor) Arnês (roadmap futuro): a regex de correção do extrator conta rótulos *-fix-review e *-fix-probe como correção; corrigir com teste em session-metrics.test.mjs. Não afetou o lote de E31.
 - (dono) O dono confere o relatório docs/reports/2026-11-17-E31-parada-retomada.md (critério 1).
 - (dono) E31: critério AC1 sem evidência automática (human)
+- (executor) Roadmap futuro: S3-24 (task-reviewer.md: verdicts só no modo restrito, spec e quality só no modo review) entra na spec do revisor por tarefa opus e é medida com ela.
+- (executor) Roadmap futuro: roadmap-release.js está em 244.453 de 250.000 caracteres (LF); a spec do revisor opus precisa caber ou abrir espaço antes.
+- (dono) Autorizar a publicação da 2.3.0 quando o roteiro de E33 estiver pronto: tag v2.2.0, main por fast-forward, push, update do plugin e segundo push só de docs.
+- (dono) Logout da config descartável D:\claude-pos22-cfg depois da 2.3.0 conferida no cache e do aviso do executor; só então a pasta é apagada.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |

@@ -61,3 +61,11 @@ A retomada repete setup, cargas, registro de status e progress: cerca de 6 a 9 h
 - Transcrições, uma pasta por execução, cada uma com `SHA256SUMS`: `D:/claude-e31-out/parada-retomada-20261117-180415`, `-181650`, `-182828` e `-184110`, em `private/transcripts/`.
 - Sandboxes intactos: `D:/claude-e31-work/x1` a `x4`.
 - A config descartável fica até o fim do roadmap; o dono faz logout e só então ela é apagada.
+
+## Adendo de aceitação (2026-11-17)
+
+Critério 1 de E31 aceito pelo dono via Fable (DEC-006): estágio, agente e motivo das duas ocorrências conferidos nas transcrições da x4; custos e as 21 cargas recontados por script. Três correções de texto:
+
+1. O "saiu 1" do `git diff --cached --quiet` na S1 é inferência: o resultado da ferramenta não mostra código de saída nem erro.
+2. Das 21 cargas, 20 foram por haiku e 1 por sonnet (`spec-load3` da x1); os 7 erros são todos de haiku, ou seja, 7 de 20.
+3. As linhas de `roadmap-release.js` citadas acima são da árvore medida `a15165b`; a correção está no merge `8fcc042`.

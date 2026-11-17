@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-17 | E33 | DEC-031 a DEC-036 (dono via Fable, DEC-006) registradas e ratificadas: S3-24 adiada, caminho de E33, sonda paga, alcance da autorização, logout e measurements.md. | `decisions.md` |
+| 2026-11-17 | E31 | DEC-028 a DEC-030 (correção de E31) ratificadas pelo dono via Fable, sem emenda, conferidas contra o diff do merge e os testes novos. | `decisions.md` |
+| 2026-11-17 | E30 | E30 AC1 e AC2 aceitos pelo dono via Fable: os 20 aggregate.json recontados por script dão os números do relatório (sonnet 20/40, opus 28/40, US$ 9,22) e a decisão do modelo e do laço quality está registrada. Linha da medição em measurements.md. | `docs/reports/2026-11-17-E30-revisor-opus.md` |
+| 2026-11-17 | E31 | E31 AC1 aceito pelo dono via Fable: estágio, agente e motivo conferidos nas transcrições da x4; custos e as 21 cargas recontados por script. Adendo no relatório com 3 correções de texto (exit 1 do diff é inferido; 7 erros em 20 cargas haiku; linhas citadas da árvore medida). | `docs/reports/2026-11-17-E31-parada-retomada.md` |
 | 2026-11-17 | E31 | E31 passou para na-branch | `8fcc042b86100fe7680f422077c7b287fe276c1e`, `gates G1, G2, G3, G4, G5`, `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md`, `docs/plans/pos-2-2-0-E31/reviews.md` |
 | 2026-11-17 | E31 | E31 passou para executando | `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md` |
 | 2026-11-17 | E31 | Lote de E31: 3 válidas (x1, x2, x4) e 1 inválida por causa externa (x3), US$ 13,24 de 15; reserva não usada. x4 com 2 correções opus de achado sintético (spec não commitada; exit code de carga mal transcrito). Causa provável (n=1), defeito do produto. | `docs/reports/2026-11-17-E31-parada-retomada.md` |
