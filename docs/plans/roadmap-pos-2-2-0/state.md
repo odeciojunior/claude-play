@@ -35,6 +35,8 @@ Estratégia v1.1 -- 2026-11-17
 - (executor) Roadmap futuro: roadmap-release.js está em 244.453 de 250.000 caracteres (LF); a spec do revisor opus precisa caber ou abrir espaço antes.
 - (dono) Autorizar a publicação da 2.3.0 quando o roteiro de E33 estiver pronto: tag v2.2.0, main por fast-forward, push, update do plugin e segundo push só de docs.
 - (dono) Logout da config descartável D:\claude-pos22-cfg depois da 2.3.0 conferida no cache e do aviso do executor; só então a pasta é apagada.
+- (executor) Roadmap futuro: procs aceita como prova de ancestralidade um ppid reaproveitado pelo Windows (e /T amplia o efeito); listar CreationDate e cortar a cadeia quando o pai for mais novo que o filho, com teste de mock.
+- (executor) Roadmap futuro: o reuso da spec compara o head do commit com o head medido depois do autor; se o spec-author commitar (viola R_NOCOMMIT), a revisão de uma spec alterada pode ser pulada. Decidir pelo blob contra o registro.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
