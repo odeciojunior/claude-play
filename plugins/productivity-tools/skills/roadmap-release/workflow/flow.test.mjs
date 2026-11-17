@@ -256,6 +256,20 @@ test('happy path merges, persists the log before the re-sync gates, and cleanup 
   assert.match(clean, /diff --binary HEAD/);
 });
 
+test('E33: the cleanup runs procs with the worktree and the port range of the deliverable, and its leftovers reach concerns even with ok: true', async () => {
+  const leftovers = ['pid 4242: Access is denied.', 'pid 60 listens on port 5203 in the range, but neither it nor an ancestor carries the worktree path: not ended'];
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:cleanup' ? { ok: true, leftovers } : undefined) });
+  const p = verifyArg(calls.find((c) => c.label === 'E1:cleanup').prompt, 'procs');
+  const { digest, ...payload } = p;
+  assert.deepEqual(payload, { nonce: `${fnv1a('pf-test')}:E1:procs`, wt: '/wt/E1', ports: [5200, 5209] });
+  assert.equal(digest, fnv1a(JSON.stringify(canon(payload))));
+  assert.equal(r.results[0].merged, true);
+  assert.ok(r.results[0].concerns.includes(`incomplete cleanup: ${leftovers.join(', ')}`), JSON.stringify(r.results[0].concerns));
+  // nothing left over: no concern
+  const clean = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:cleanup' ? { ok: true, leftovers: [] } : undefined) });
+  assert.ok(!clean.r.results[0].concerns.some((c) => /incomplete cleanup/.test(c)));
+});
+
 test('sync schema requires deltaFiles and targetTip', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const sync = calls.find((c) => c.label === 'E1:sync').opts.schema;
