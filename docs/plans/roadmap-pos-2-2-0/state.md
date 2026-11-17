@@ -1,20 +1,18 @@
 Estratégia v1.1 -- 2026-11-17
 
 <!-- roadmap:now -->
-1. E33: bump 2.3.0 (plugin.json e README) e nota em docs/releases, G1 a G5, merge na release (DEC-032). Executa: executor.
-2. E33: sonda paga só até o plano, com o plugin da ponta da release, até US$ 3 da reserva; passa com commit feito e pending vazio na spec e no plano (DEC-033). Executa: executor.
-3. E33: revisão final opus/high da release inteira contra main (DEC-032). Executa: executor.
-4. E33: branch de volta 2.3.1 e roteiro de publicação (DEC-032, DEC-034). Executa: executor.
-5. E33: autorização do dono para publicar: tag v2.2.0, main por fast-forward, push, update do plugin e segundo push só de docs (DEC-034). Executa: dono.
+1. E33: conferir na config descartável a receita de fixar a loja numa tag (S3-01), até US$ 1 da reserva. Executa: executor.
+2. Dono: logout da config descartável D:\claude-pos22-cfg (DEC-035). Executa: dono.
+3. Limpeza (config, loja fixa, worktree do lote, sandboxes, branches de desenho) e segundo push só de docs (DEC-034). Executa: executor.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E29 | na-branch | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `a563e48710c42e1b1adbed3815941d36835a584c` | Aguarda E33 (publicação) |
-| E30 | na-branch | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`, `33adadf2918f6cd02abae9cd432e9ac1ea21c815`, `docs/reports/2026-11-17-E30-revisor-opus.md` | Aguarda E33 (publicação); AC1 e AC2 aceitos; vira medido com a release em main |
-| E31 | na-branch | `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md`, `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md`, `8fcc042b86100fe7680f422077c7b287fe276c1e` | Aguarda E33 (publicação); AC1 aceito |
-| E32 | na-branch | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19` | Aguarda E33 (publicação); AC1 aceito |
-| E33 | executando | - | Bump 2.3.0 e nota, sonda paga, revisão final, branch de volta e roteiro; depois autorização do dono |
+| E29 | publicado | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `a563e48710c42e1b1adbed3815941d36835a584c`, `3d30412758bd646fba7778ef4f19e8a0efcc6943` | - |
+| E30 | medido | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`, `33adadf2918f6cd02abae9cd432e9ac1ea21c815`, `docs/reports/2026-11-17-E30-revisor-opus.md`, `3d30412758bd646fba7778ef4f19e8a0efcc6943` | - |
+| E31 | medido | `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md`, `docs/plans/pos-2-2-0-E31/spec.md`, `docs/plans/pos-2-2-0-E31/plan.md`, `8fcc042b86100fe7680f422077c7b287fe276c1e`, `3d30412758bd646fba7778ef4f19e8a0efcc6943`, `docs/reports/2026-11-17-E31-parada-retomada.md` | - |
+| E32 | publicado | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19`, `3d30412758bd646fba7778ef4f19e8a0efcc6943` | - |
+| E33 | publicado | `3d30412758bd646fba7778ef4f19e8a0efcc6943`, `docs/reports/2026-11-17-E33-roteiro-publicacao.md` | Conferir S3-01; logout do dono; limpeza; segundo push só de docs |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
@@ -33,7 +31,6 @@ Estratégia v1.1 -- 2026-11-17
 - (executor) Arnês (roadmap futuro): a regex de correção do extrator conta rótulos *-fix-review e *-fix-probe como correção; corrigir com teste em session-metrics.test.mjs. Não afetou o lote de E31.
 - (executor) Roadmap futuro: S3-24 (task-reviewer.md: verdicts só no modo restrito, spec e quality só no modo review) entra na spec do revisor por tarefa opus e é medida com ela.
 - (executor) Roadmap futuro: roadmap-release.js está em 244.453 de 250.000 caracteres (LF); a spec do revisor opus precisa caber ou abrir espaço antes.
-- (dono) Autorizar a publicação da 2.3.0 quando o roteiro de E33 estiver pronto: tag v2.2.0, main por fast-forward, push, update do plugin e segundo push só de docs.
 - (dono) Logout da config descartável D:\claude-pos22-cfg depois da 2.3.0 conferida no cache e do aviso do executor; só então a pasta é apagada.
 - (executor) Roadmap futuro: procs aceita como prova de ancestralidade um ppid reaproveitado pelo Windows (e /T amplia o efeito); listar CreationDate e cortar a cadeia quando o pai for mais novo que o filho, com teste de mock.
 - (executor) Roadmap futuro: o reuso da spec compara o head do commit com o head medido depois do autor; se o spec-author commitar (viola R_NOCOMMIT), a revisão de uma spec alterada pode ser pulada. Decidir pelo blob contra o registro.
