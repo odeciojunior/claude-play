@@ -574,13 +574,18 @@ test('E33 procs: win32 lists listeners with Get-NetTCPConnection; an unreadable 
     return /Get-CimInstance/.test(args.join(' ')) ? { status: 0, stdout: procsJson } : listOut;
   };
   const ok = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 0, stdout: '[{"LocalPort":5212,"OwningProcess":82}]' }), kill: () => {} });
-  assert.ok(seen.some((c) => /^powershell\.exe .*\[Console\]::OutputEncoding = \[System\.Text\.Encoding\]::UTF8; Get-NetTCPConnection -State Listen \| Select-Object LocalPort,OwningProcess \| ConvertTo-Json -Compress$/.test(c)), seen.join('\n'));
+  // "none found" is caught and printed as [] (exit 0); any other error (cmdlet missing, CIM failure) is thrown: exit != 0
+  const LISTEN_PS = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; try { $r = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) } catch { if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound*') { throw }; $r = @() }; ConvertTo-Json -Compress -InputObject @($r | Select-Object LocalPort,OwningProcess)";
+  assert.ok(seen.includes(`powershell.exe -NoProfile -Command ${LISTEN_PS}`), seen.join('\n'));
   assert.ok(!seen.some((c) => /netstat/.test(c)));
   assert.deepEqual(ok.matched.map((m) => [m.pid, m.why]), [[80, 'path'], [82, 'port 5212']]);
   assert.deepEqual(ok.unchecked, []);
-  // no listener at all: Get-NetTCPConnection exits 1 with empty stdout
-  const none = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 1, stdout: '' }), kill: () => {} });
+  // no listener at all: the script prints [] and exits 0
+  const none = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 0, stdout: '[]\r\n' }), kill: () => {} });
   assert.deepEqual(none.unchecked, []);
+  // exit 1 with empty stdout is a real error (cmdlet missing, CIM failure), never "no listener"
+  const failedList = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 1, stdout: '' }), kill: () => {} });
+  assert.deepEqual(failedList.unchecked, ['Get-NetTCPConnection: exit 1']);
   // localized or otherwise unreadable text is never read as "no listener"
   const bad = runProcs({ nonce: NONCE, wt: 'D:/x/E3', ports: [5210, 5219] }, { platform: 'win32', run: mk({ status: 0, stdout: '  TCP    [::1]:5212    [::]:0    ESCUTANDO    82' }), kill: () => {} });
   assert.equal(bad.unchecked.length, 1);

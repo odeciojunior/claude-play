@@ -333,7 +333,8 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
     ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
     : list('ps', 'ps', ['-eo', 'pid=,ppid=,args='], parsePs);
   const listens = win
-    ? list('Get-NetTCPConnection', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | ConvertTo-Json -Compress'], parseNetTcpListen, true)
+    // "none found" becomes [] with exit 0; any other error (cmdlet missing, CIM failure) is thrown, so exit != 0 -> unchecked
+    ? list('Get-NetTCPConnection', 'powershell.exe', ['-NoProfile', '-Command', "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; try { $r = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) } catch { if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound*') { throw }; $r = @() }; ConvertTo-Json -Compress -InputObject @($r | Select-Object LocalPort,OwningProcess)"], parseNetTcpListen)
     : list('lsof', 'lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], parseLsofListen, true);
   const matched = selectProcs(procs, listens, { wt: p.wt, ports: p.ports, self: process.pid, platform, unchecked });
   const end = kill || defaultKill(platform, run);
