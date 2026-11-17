@@ -1,6 +1,6 @@
 # E31: origem da correção extra em parada-retomada (desenho da medição)
 
-Data: 2026-11-17. Branch: `design/e31` (worktree `D:/projects/claude-play-wt/e31d`, base `b1e3fe0`, que é a ponta de `release/pos-2.2.0`, árvore `plugins/` `8eae29d`). Base: card E31 da estratégia `docs/plans/2026-11-15-roadmap-pos-2-2-0.md` (REQ-004, REQ-008), DEC-004 (teto de US$ 40), DEC-006 (dono via Fable), DEC-778 e DEC-746 do roadmap anterior, S3-08 e a parte de parada-retomada da S2-17 em `docs/reports/2026-11-15-E32-triagem-backlog.md`. Este documento fixa tudo antes do lote e não gasta nada; o lote só roda depois da resposta às questões do dono (ou da recomendação via Fable, DEC-006).
+Data: 2026-11-17. Branch: `design/e31` (worktree `D:/projects/claude-play-wt/e31d`, base `b1e3fe0`, que é a ponta de `release/pos-2.2.0`, árvore `plugins/` `8eae29d`). Base: card E31 da estratégia `docs/plans/2026-11-15-roadmap-pos-2-2-0.md` (REQ-004, REQ-008), DEC-004 (teto de US$ 40), DEC-006 (dono via Fable), DEC-778 e DEC-746 do roadmap anterior, S3-08 e a parte de parada-retomada da S2-17 em `docs/reports/2026-11-15-E32-triagem-backlog.md`. Este documento fixa tudo antes do lote e não gasta nada. As questões do dono foram respondidas via Fable (DEC-006) e registradas no tracker de `docs/plans/roadmap-pos-2-2-0/` como DEC-021 (orçamento e ordem) e DEC-022 (config única); ver "Decisões do dono".
 
 ## Objetivo
 
@@ -58,27 +58,32 @@ A leitura é feita por um script no scratchpad da sessão, sem mudança em `tool
 
 ## Lote
 
-- **Árvore medida:** worktree destacada da ponta de `release/pos-2.2.0` (hoje `b1e3fe0`, `plugins/` `8eae29d`) por `--plugin-dir`. É o que E33 vai publicar. A 2.2.0, onde o salto foi visto, é `d7d1c53` (`plugins/` `775a600`); ver a questão 3.
-- **Config:** `D:\claude-pos22-cfg` (logada em 2026-11-17), `bypassPermissions` só na medição. Antes da 1ª execução, conferir sem gasto a versão do superpowers e a atualização automática das lojas desligada (S3-06, preparo comum com E30). Registrar a versão da CLI.
-- **Comando, uma execução por invocação**, com `--work` próprio, porque o arnês nomeia o sandbox `parada-retomada-<k>` e `k` recomeça em 1 a cada invocação:
+- **Ordem:** o lote de E31 roda **depois** do de E30 (DEC-021), um lote por vez, com o mesmo setup.
+- **Árvore medida:** worktree destacada `D:/claude-pos22-release`, comum com E30, criada com `git -C D:/projects/claude-play-wt/_integracao worktree add --detach D:/claude-pos22-release <M>`, onde `M` é a ponta de `release/pos-2.2.0` com `plugins/` e `tools/measure` iguais aos de `b1e3fe0` (`plugins/` `8eae29d`); os dois hashes de árvore ficam registrados. É o que E33 vai publicar. A 2.2.0, onde o salto foi visto, é `d7d1c53` (`plugins/` `775a600`); controle nela só nas condições da decisão 3.
+- **Config (setup único, DEC-022; nada toca `~/.claude`):** `D:\claude-pos22-cfg` (logada em 2026-11-17), `bypassPermissions` só na medição. Antes do 1º lote: `settings.json` guardado como `settings.json.orig`, sha256 dele e do `CLAUDE.md` anotados; `settings.json` sem hooks, `statusLine` e `extraKnownMarketplaces`, `enabledPlugins = {}`, `env` com `CLAUDE_CODE_SUBAGENT_MODEL` `"sonnet"` e `DISABLE_AUTOUPDATER` `"1"`; superpowers 7.0.0 fixo no sha `bb92a77741419a4ab5f06e711a283343f1ada0c3` pela loja local `D:/claude-pos22-mkt` (`superpowers@pos22-fixo`), único plugin em `installed_plugins.json`; `"autoUpdate": false` em `known_marketplaces.json`.
+- **Antes de cada execução:** `claude --version` (hoje 2.1.326), sha do superpowers e sha256 do `settings.json`. Mudou algum → parar.
+- **Comando, uma execução por invocação**, de `D:/claude-pos22-release`, com `--work` próprio, porque o arnês nomeia o sandbox `parada-retomada-<k>` e `k` recomeça em 1 a cada invocação:
 
   ```
+  cd D:/claude-pos22-release
+  export CLAUDE_CONFIG_DIR=D:/claude-pos22-cfg DISABLE_AUTOUPDATER=1
   node tools/measure/run-batch.mjs --variant parada-retomada --runs 1 --ratify off --stop-on-denial \
     --work D:/claude-e31-work/x<i> --out D:/claude-e31-out --config-dir D:/claude-pos22-cfg \
-    --permission-mode bypassPermissions --plugin-dir <worktree destacada> --max-budget-usd 6
+    --permission-mode bypassPermissions --plugin-dir D:/claude-pos22-release/plugins/productivity-tools --max-budget-usd 6
   ```
 
-  `--ratify off` repete a condição de E11 (DEC-746) em que o salto apareceu (questão 4).
+  O `export` é obrigatório: `--config-dir` do arnês só **lê** a config (transcrições, `installed_plugins.json`); o `claude -p` herda o ambiente, e sem `CLAUDE_CONFIG_DIR` a sessão paga rodaria na config real. Sem `--model`: a sessão principal usa o modelo da config. `--max-budget-usd 6` vale por sessão `claude -p` (são duas por execução), então o limite por execução é conferido pelas transcrições (Paradas). `--ratify off` repete a condição de E11 (DEC-746) em que o salto apareceu (decisão 4).
 - **Número de execuções:** sequenciais, lendo a transcrição de cada uma antes da próxima.
   - **Base: até 3.** Para antes das 3 quando houver **2 ocorrências com a mesma assinatura** (mesma sessão, mesmo rótulo e mesma classe de achado). O esperado é parar em 2 ou 3.
-  - **Reserva: até 2 a mais**, só na parte condicional do orçamento: quando as ocorrências tiverem assinaturas diferentes, ou para o controle na 2.2.0 se nada se reproduzir (questão 3).
+  - **Reserva: até 2 a mais**, só com a reserva comum liberada via Fable (DEC-021): quando as ocorrências tiverem assinaturas diferentes, ou para o controle na 2.2.0 se nada se reproduzir (decisão 3).
   - Máximo absoluto: 5. Com a taxa vista (pelo menos 5 de 6), a chance de 3 execuções sem nenhuma ocorrência é menor que 1%, se a causa ainda estiver na árvore medida.
 - **Um lote pago por vez:** nada de E30, G1 ou release rodando junto (risco transversal da estratégia, decisão 710 do roadmap anterior).
 
 ### Paradas
 
-- **Sonda (1ª execução):** custo pelas transcrições acima de US$ 6 → parar e perguntar, porque a premissa corrigida (US$ 4,39) erraria por mais de 35%.
-- **Gasto acumulado** atingir a parte firme de E31 (questão 1) com a regra de conclusão ainda aberta → parar, concluir com o que houver e não entrar na reserva sem resposta à questão 1.
+- **Custo por execução:** o limite de US$ 6 vale para **toda** execução, não só a 1ª. Custo pelas transcrições (duas sessões mais agentes) acima de US$ 6 → parar e perguntar, porque a premissa corrigida (US$ 4,39) erraria por mais de 35%.
+- **Antes de começar uma execução:** gasto acumulado de E31 + US$ 5 tem de caber nos US$ 15 firmes. Não cabe e a regra de conclusão segue aberta → parar e concluir com o que houver; reserva só com liberação via Fable.
+- **Sonda (1ª execução) confere também:** o plugin medido veio do `--plugin-dir` (agregado com versão e commit de `D:/claude-pos22-release`; nenhum `productivity-tools@claude-play` carregado da config); contagem haiku/sonnet/opus contra E13 (sonnet 11, opus 5); modelo da sessão principal, que roda sem `--model`. Sessão principal em Fable → parar e perguntar ao dono.
 - **Inválidas:** `parou-por-decisao` → parar e voltar ao dono (regra de DEC-746). A 1ª `retomada-sem-agentes`, `retomada-incompleta` ou `extrator-falhou` → parar, ler sem gasto e só seguir com a causa entendida. 2 inválidas de qualquer motivo → parar.
 - **Negação de permissão:** `--stop-on-denial` encerra.
 - **Gatilhos de DEC-778:** correção fora do estágio de spec, extraRounds ou fixCalls acima de 1, ou sonnet, opus ou ponderado sem haiku acima de E13 (11, 5, 420). Não param o lote (E11 já teve 2/2), mas são registrados e voltam ao dono no fechamento, via Fable (DEC-006).
@@ -92,14 +97,14 @@ A config descartável `D:\claude-pos22-cfg` **não é apagada nem deslogada** an
 3. Gravar `transcripts/SHA256SUMS` (sha256 de cada arquivo copiado) e conferir que o número de arquivos bate com a origem.
 4. Manter o sandbox `D:/claude-e31-work/x<i>` intacto: histórico git, `run.json` e `_tmp/E5-dirty/` são a evidência do estado no corte.
 
-Nada disso é commitado: as transcrições têm caminhos e conteúdo da conta. O relatório cita caminho, id da sessão e índice da entrada, e transcreve só os trechos curtos que sustentam a classificação. A cópia é feita por script no scratchpad (questão 5). Apagar a config, `D:/claude-e31-out` e `D:/claude-e31-work` fica para depois de E33, como a S2-02 fez com a config anterior.
+Nada disso é commitado: as transcrições têm caminhos e conteúdo da conta. O relatório cita caminho, id da sessão e índice da entrada, e transcreve só os trechos curtos que sustentam a classificação. A cópia é feita por script no scratchpad (decisão 5). Apagar a config, `D:/claude-e31-out` e `D:/claude-e31-work` fica para depois de E33, como a S2-02 fez com a config anterior.
 
 ## Orçamento
 
 - **Premissa corrigida:** os US$ 2,26 por execução da estratégia são o custo da CLI **só da sessão de retomada**. Pelas transcrições, a execução inteira custa ≈ US$ 4,39 (E11). Conta-se **US$ 5 por execução**, com margem. A premissa "revalidar na sonda de E31" fica revalidada aqui; a estratégia deve trocar o número (proposta para o tracker, não editada neste commit).
 - **Teto do roadmap:** US$ 40 (DEC-004), gasto até agora US$ 0, dividido com E30.
-- **Parte proposta para E31: US$ 15 firmes** (3 execuções a US$ 5), mais **reserva condicional de até US$ 10** (2 execuções). A reserva só se usa com o gasto de E30 conhecido e com a soma dos dois ainda até US$ 40. Para E30 ficam US$ 25 garantidos.
-- **Projeção:** 2 execuções (causa achada cedo) ≈ US$ 8,80; 3 execuções ≈ US$ 13,20; com a reserva inteira ≈ US$ 22.
+- **Partes (DEC-021):** E30 até US$ 16 (sonnet até 5, opus até 11). **E31 US$ 15 firmes** (3 execuções a US$ 5). **Reserva comum US$ 9** mais o que E30 não gastar, liberada só via Fable; E31 pode pedir dela até 2 execuções se o total do roadmap ficar ≤ US$ 40.
+- **Projeção:** 2 execuções (causa achada cedo) ≈ US$ 8,80; 3 execuções ≈ US$ 13,20; com 2 da reserva ≈ US$ 22.
 - **Medição do gasto:** soma, pelas transcrições (`prices.json`), dos agentes e das duas sessões principais de cada execução, conferida contra `cliCostUsd` da retomada. O total vai no relatório e no log do roadmap.
 
 ## Leitura da S3-08 e da S2-17
@@ -114,11 +119,11 @@ Cada ocorrência é classificada em H1 a H5 pelo registro acima. O resultado do 
 
 | Resultado | Condição | Desfecho |
 |---|---|---|
-| **Causa achada: defeito do produto** | 2 ocorrências com a mesma assinatura, de H2 ou H3, e as outras hipóteses refutadas pelos campos registrados | Correção em `roadmap-release.js` (ou no script de registro) com teste que reproduz a retomada sem `run.json` válido ou com árvore suja, e G1 verde. Vai numa branch de E31 para `release/pos-2.2.0` quando cabe na regra de "pequena" de DEC-012 (até 3 arquivos de produto além dos testes, sem mudar formato de plano ou de estado). Maior que isso: vira pendente com dono e decisão de aceite até lá. |
+| **Causa achada: defeito do produto** | 2 ocorrências com a mesma assinatura, de H2 ou H3, e as outras hipóteses refutadas pelos campos registrados | Correção em `roadmap-release.js` (ou no script de registro) com teste que reproduz a retomada sem `run.json` válido ou com árvore suja, e G1 verde (só G1, decisão 6). Vai numa branch de E31 para `release/pos-2.2.0` quando cabe na regra de "pequena" de DEC-012 (até 3 arquivos de produto além dos testes, sem mudar formato de plano ou de estado). Maior que isso: vira pendente com dono e decisão de aceite até lá. Integra na release só depois dos lotes de E30 e E31 (DEC-022). |
 | **Causa achada: defeito do arnês** | H5 | Correção em `tools/measure` com teste; relatório diz que o salto de E11 e E13 era de contagem; decisão registrada. |
 | **Causa achada: não é defeito** | H1 (ou H4 com decisão pendente real) | Decisão registrada que aceita a correção como comportamento esperado do revisor (critério 2, ramo "não é"). A exceção nomeada de DEC-778 vira explicada. Qualidade do autor da spec vai como nota de roadmap futuro se o achado se repetir no mesmo ponto da spec. |
 | **Causa provável (n=1)** | Só 1 ocorrência antes de o orçamento firme acabar | Mesmo desfecho da linha correspondente, marcado como n=1. Correção de produto só se o mecanismo for visível no código, com teste. Senão, decisão de aceite com revisitar quando aparecer de novo. |
-| **Não reproduzida** | 0 ocorrências em 3 execuções na árvore medida | Risco do card: registrar como não reproduzida e aceitar com decisão. Se a reserva for liberada, 1 a 2 execuções de controle na 2.2.0 (`d7d1c53`) dizem se a causa sumiu entre 2.2.0 e a release (E29 ou E32) ou se era acaso. |
+| **Não reproduzida** | 0 ocorrências em 3 execuções na árvore medida | Risco do card: registrar como não reproduzida e aceitar com decisão. Só com reserva liberada via Fable, 1 a 2 execuções de controle na 2.2.0 (`d7d1c53`) dizem se a causa sumiu entre 2.2.0 e a release (E29 ou E32) ou se era acaso. |
 | **Inconclusiva** | Ocorrências com assinaturas diferentes depois da reserva, ou campos ausentes nas transcrições | Decisão de aceite com as classificações registradas. Sem gasto além do teto. O ponto aberto vai ao backlog com dono. |
 
 Em qualquer resultado, os gatilhos de DEC-778 que dispararem voltam ao dono via Fable. Push e publicação seguem com o dono (DEC-005).
@@ -137,20 +142,23 @@ Testes que cobrem o caminho deste lote:
 
 Nenhum teste cobre a regex de correção do extrator contra `*-fix-review` (H5). Esse teste entra só se H5 for a causa.
 
-## Questões do dono
+## Decisões do dono
 
-Nenhuma trava o desenho. Sem resposta, vale a recomendação, por DEC-006.
+Respondidas via Fable (DEC-006) em 2026-11-17 e registradas como DEC-021 (orçamento e ordem) e DEC-022 (config única) no tracker de `roadmap-pos-2-2-0`.
 
-1. **Parte do orçamento de E31.** (a) US$ 15 firmes mais reserva condicional de US$ 10, com E30 em US$ 25 garantidos. (b) US$ 10 firmes (2 execuções), deixando 30 para E30; arrisca terminar em "causa provável (n=1)". (c) US$ 22 firmes (5 execuções); E30 fica com 18, provavelmente pouco para 20 válidas com revisor opus. **Recomendo (a).**
-2. **Ordem dos lotes.** (a) E31 antes de E30: lote pequeno e limitado, e o gasto de E31 fica conhecido antes do lote maior. (b) E30 antes, como em `state.md`. **Recomendo (a)**; nenhum dos dois depende do outro.
-3. **Árvore medida.** (a) Ponta de `release/pos-2.2.0` (o que será publicado), com controle na 2.2.0 só se nada se reproduzir. (b) Só a 2.2.0 `d7d1c53`, onde o salto foi visto. (c) As duas desde o início (dobra o custo). **Recomendo (a)**: E29 e E32 não tocam no estágio de spec, e uma correção precisa partir da release.
-4. **Ratificação entre as sessões.** (a) `--ratify off`, como E11 (DEC-746). (b) `between`, como E15. **Recomendo (a)**: repete a condição observada; H4 é medida por `pendingAtResume` sem precisar de outro braço.
-5. **Preservação.** (a) Cópia por script depois de cada execução, com `SHA256SUMS`, sem mudar `tools/measure`. (b) Opção nova `--keep-transcripts` no `run-batch.mjs` com teste (um ciclo de código antes do lote). **Recomendo (a)**: a config não é apagada até os relatórios, então a cópia é segurança extra e não precisa de código.
-6. **Confirmação paga depois de uma correção de produto.** (a) Só G1, como pede o critério 2. (b) 1 execução da reserva depois da correção, para ver o salto sumir. **Recomendo (a)**, com (b) só se a reserva sobrar depois de E30.
+1. **Orçamento de E31:** US$ 15 firmes; reserva de até 2 execuções dentro da reserva comum (US$ 9 + sobra de E30); E30 fica com US$ 16 (DEC-021).
+2. **Ordem:** E30 antes de E31, um lote por vez (DEC-021).
+3. **Árvore medida:** ponta da release (`D:/claude-pos22-release`); controle na 2.2.0 só com reserva liberada e nenhuma ocorrência.
+4. **Ratificação:** `--ratify off`.
+5. **Preservação:** cópia por script com `SHA256SUMS` depois de cada execução, sem mudar `tools/measure`.
+6. **Confirmação depois de uma correção de produto:** só G1. Execução paga de confirmação só se sobrar reserva depois de tudo, liberada via Fable.
+
+Config (DEC-022): setup único comum a E30 e E31 (seção "Lote"). S3-24 e qualquer correção de E31 só integram na release depois dos dois lotes; a config não é apagada nem deslogada antes dos dois relatórios.
 
 ## Riscos
 
-- O salto não se reproduz na release: coberto por "não reproduzida" e pelo controle opcional na 2.2.0.
+- O salto não se reproduz na release: coberto por "não reproduzida" e pelo controle na 2.2.0, se a reserva for liberada.
+- Sessão paga na config real: evitada pelo `export CLAUDE_CONFIG_DIR` no comando; a sonda confere a origem do plugin.
 - O corte acontece num ponto diferente a cada execução (consulta a cada 5 s), e as assinaturas variam: o item 4 do registro guarda o estado no corte, e a reserva cobre até 2 execuções a mais.
 - Config apagada antes da leitura: proibido por este desenho e pela pendência de `state.md`. A cópia com SHA256SUMS protege contra isso.
 - Custo acima do previsto: parada da sonda em US$ 6 e parte firme fixada antes.
