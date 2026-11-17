@@ -9,7 +9,7 @@ Estratégia v1.0 -- 2026-11-15
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
 | E29 | na-branch | `docs/plans/pos-2-2-0-E29/spec.md`, `docs/plans/pos-2-2-0-E29/plan.md`, `a563e48710c42e1b1adbed3815941d36835a584c` | Aguarda E33 (publicação) |
-| E30 | spec | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md` | Sondas sonnet A e opus A, depois o lote (teto US$ 16) |
+| E30 | na-branch | `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`, `33adadf2918f6cd02abae9cd432e9ac1ea21c815`, `docs/reports/2026-11-17-E30-revisor-opus.md` | Medido; vira medido quando E33 levar a release a main |
 | E31 | spec | `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md` | Lote depois de E30 (US$ 15 firmes) |
 | E32 | na-branch | `docs/plans/pos-2-2-0-E32/spec.md`, `docs/plans/pos-2-2-0-E32/plan.md`, `92096976de66b3ab0f8af81c96b7da08b55f3e19` | Aguarda E33 (publicação); AC1 aceito |
 | E33 | nao-iniciado | - | - |
