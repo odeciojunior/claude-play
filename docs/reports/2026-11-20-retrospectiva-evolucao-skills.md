@@ -16,30 +16,30 @@
 | Versão | Data | Entregáveis | O que mudou para o usuário | Commit / tag |
 |---|---|---|---|---|
 | 1.6.0 (partida) | 2026-11-09/10 | Antes do período (`2169d24`, "productivity-tools 1.6.0") | `roadmap-release` novo; serviu de linha de base E15 | tag `v1.6.0` em `3fbb59b` |
-| 1.7.0 | 2026-11-12 | E1 a E6, E14, E15, E17, E18, E22, E25 (`state.md` do anterior) | Formato do roadmap verificado por código, eventos do tracker por CLI, planner com scaffold e rubrica, formatos e ferramentas de spec e de plano, registro do release pela CLI, release lançado pelo nome, tracker enxuto (títulos dos cards). Nenhuma nota em `docs/releases/` | main `3fbb59b..73cd476`, publicado pelo dono (log do anterior, 2026-11-12); tag `v1.7.0` em `73cd476` |
+| 1.7.0 | 2026-11-12 | E1 a E6, E14, E15, E17, E18, E22, E25 (`state.md` do anterior) | Formato do roadmap verificado por código, eventos do tracker por CLI, planner com scaffold e rubrica, formatos e ferramentas de spec e de plano, registro do release pela CLI, release lançado pelo nome, tracker enxuto (títulos dos cards). Nenhuma nota em `docs/releases/` | main `3fbb59b..73cd476`, publicado pelo dono (log do anterior, 2026-11-12); tag `v1.7.0` em `73cd476` criada em 2026-11-15 na publicação da 2.0.0 |
 | 2.0.0 (quebra) | 2026-11-15 | E7 a E12, E19 a E21, E23, E24 (E26 só medido) | Plano e spec só com bloco `plan/1`/`spec/1`, `progress.json`, coordinator como workflow, `spec-writer` e `plan-writer`, 7 agentes, Claude Code mínimo 2.1.322; migração por adoção (`docs/releases/2026-11-15-productivity-tools-2.0.0.md`). marketplace-tools 1.3.0 junto | main `1017db5`; tag `v2.0.0` criada na publicação da 2.1.0 |
 | 2.1.0 | 2026-11-15 | E16, E28 e as pendências da 2.0.1 (E27 só medido) | Coordinator para diante de base de testes vermelha ou vazia; implementador na worktree; SHA só completo; `taskReview.single` existe, mas desligada e "não recomendada" | main `779bae0`; tag `v2.1.0` criada na publicação da 2.2.0 |
 | 2.2.0 | 2026-11-15 | E13 | Nenhuma mudança de comportamento: teste de independência sobre os 140 arquivos do plugin, um exemplo de caminho corrigido, diagramas | main `b5812b3`; tag `v2.2.0` criada na publicação da 2.3.0 |
 | 2.3.0 | 2026-11-17 | E29, E31 (correção), E32, E33 (E30 e E31 medidos) | `taskReview.single` removida (o preflight recusa a chave), modo `procs` do `verify-run`, conferência no git das cargas e dos commits da spec e do plano | publicado em `3d30412` (tag `v2.3.0`); 2º push só de docs leva main a `dae686b` (DEC-034 (pós-2.2.0)) |
 
-Datas e SHAs: `git log --first-parent main`, `git tag`, `log.md` dos dois roadmaps. A tag de cada versão foi criada na publicação seguinte, não na própria.
+Datas e SHAs: `git log --first-parent main`, `git tag`, `log.md` dos dois roadmaps. As tags `v1.7.0` a `v2.2.0` foram criadas retroativamente na publicação seguinte (não na própria), enquanto `v1.6.0` e `v2.3.0` foram criadas na própria publicação.
 
 ## 3. Como trabalhamos
 
 **Delegação.**
-- **Decisões do dono via Fable.** Regra literal de 2026-11-12: "sempre que precisar de alguma decisao do dono, dispare um subagent fable para analisar as questoes e recomendar o melhor caminho, decida por estas recomendacoes" (memória `owner-decisions-via-fable.md`; sessão). No pós-2.2.0 isso virou a DEC-006 (pós-2.2.0): DEC-007 a DEC-036 foram ratificadas por esse caminho. A exceção é a DEC-018 (pós-2.2.0), emenda do próprio dono. No anterior, 91 das 779 linhas de `decisions.md` citam "dono via Fable" ou "por delegação".
+- **Decisões do dono via Fable.** Regra literal de 2026-11-12: "sempre que precisar de alguma decisao do dono, dispare um subagent fable para analisar as questoes e recomendar o melhor caminho, decida por estas recomendacoes" (memória `owner-decisions-via-fable.md`; sessão). No pós-2.2.0 isso virou a DEC-006 (pós-2.2.0): DEC-007 a DEC-036 foram ratificadas por esse caminho (a DEC-018 foi uma emenda à DEC-008 também ratificada via Fable sob a DEC-006, registrada com o template padrão `"Emenda do dono"` e origem `user` pela CLI, conforme `docs/plans/roadmap-pos-2-2-0/log.md:32`). No anterior, 91 das 779 linhas de `decisions.md` citam "dono via Fable" ou "por delegação".
 - **Conferências interativas por opus headless.** Regra de 2026-11-12 (memória `interactive-checks-via-opus-headless.md`). Exemplos: a conferência P4 de E11 (4 sessões `claude -p`, US$ 4,25) e a S3-01, a loja fixada numa tag, conferida sem custo (`log.md` do pós-2.2.0).
 - **bypassPermissions** quando há problema de permissão (memória `bypass-on-permission-problems.md`). O escopo ficou restrito à orquestração e às medições em sandbox descartável (sessão).
 - **Roteamento de modelos** pelo CLAUDE.md global: haiku para o mecânico, sonnet como padrão, opus para julgamento, opus/high no portão final; Fable só para as decisões do dono (sessão).
 
-**Dogfooding.** Os entregáveis foram executados pelo próprio `release-workflow` (relatórios `*-run.md`: E9, E10, E12, E21, E23, E24, E29, E31). O estado foi mantido pelo `roadmap-tracker` (linhas "passou para executando/na-branch" e BLQ-1 a BLQ-14 em `log.md`), e o pós-2.2.0 nasceu do `roadmap-planner` em modo leve (DEC-001 (pós-2.2.0)). O `plan-coordinator` foi medido como variante dos lotes, mas os logs não registram seu uso para executar trabalho do próprio roadmap. E33 rodou fora do workflow por decisão (DEC-032 (pós-2.2.0)).
+**Dogfooding.** Os entregáveis foram executados pelo próprio `release-workflow` (relatórios `*-run.md`: E9, E10, E12, E21, E23, E24, E29, E31, E32). O estado foi mantido pelo `roadmap-tracker` (linhas "passou para executando/na-branch" e BLQ-1 a BLQ-18 em `log.md`), e o pós-2.2.0 nasceu do `roadmap-planner` em modo leve (DEC-001 (pós-2.2.0)). O `plan-coordinator` foi medido como variante dos lotes, mas os logs não registram seu uso para executar trabalho do próprio roadmap. E33 rodou fora do workflow por decisão (DEC-032 (pós-2.2.0)).
 
 **Medições pagas.**
 - Rodaram em config descartável (`CLAUDE_CONFIG_DIR`, `D:/claude-e17-cfg` no anterior e `D:\claude-pos22-cfg` no pós-2.2.0), com o plugin por `--plugin-dir` e o superpowers fixado em 7.0.0 (relatórios de E11, E16, E30).
 - Antes de cada lote ficavam fixados a regra de decisão, as paradas e o teto. Exemplos: as regras R1 a R3 de E30 no desenho `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md`; a regra por lente da passada C (DEC-770 a DEC-772 (anterior)); o orçamento de E30 e E31 (DEC-021 (pós-2.2.0)).
 - Exceção: as execuções do release (E9 em diante) usaram, por decisão, a config real do dono com `--max-budget-usd 150` (DEC-567 (anterior)).
 
-**Publicação.** Cada versão teve autorização explícita do dono, pedida na hora (sessão; log do anterior para 2.1.0 e 2.2.0; DEC-034 (pós-2.2.0) para a 2.3.0). Cada versão também teve roteiro de publicação, nota em `docs/releases/` (a partir da 2.0.0), branch de volta com G1 a G5 verdes (`volta/productivity-tools-1.7.1`, `-2.1.1`, `-2.2.1`, `-2.3.1`) e conferência do cache depois do update.
+**Publicação.** Cada versão teve autorização explícita do dono, pedida na hora (sessão; log do anterior para 2.1.0 e 2.2.0; DEC-034 (pós-2.2.0) para a 2.3.0). Cada versão também teve roteiro de publicação, nota em `docs/releases/` (a partir da 2.0.0), branch de volta com G1 a G5 verdes (`volta/productivity-tools-1.7.1`, `-2.0.1`, `-2.1.1`, `-2.2.1`, `-2.3.1`) e conferência do cache depois do update.
 
 ## 4. Medições
 
@@ -64,7 +64,7 @@ Custos tirados de `measurements.md` de cada roadmap, salvo indicação.
 | E31 (pós-2.2.0) | Causa da correção extra em parada-retomada | Causa provável (n=1): achado sintético de haiku; x3 inválida por causa externa | 13,24 de 15 | Corrigir antes de E33 (DEC-025 (pós-2.2.0)) |
 | E33 sonda (pós-2.2.0) | Prompt novo de commit com modelo real | Commits de primeira, `pending` vazio | 1,87 | Publicar (DEC-033 (pós-2.2.0)) |
 
-Execuções do release que contam como gasto, embora não sejam medições (anterior): E21 38,37; E23 19,33 (sem o r2); E24 22,56; E10 30,05; E12 27,04. Total de 137,35. Já entram na soma de cerca de US$ 439. O custo das 3 execuções de E9 não foi lançado (nota S2-05 de `docs/reports/2026-11-15-E32-triagem-backlog.md`). Os entregáveis E2 a E6, E15, E18, E22 e E25 não têm custo de execução registrado.
+Execuções do release que contam como gasto, embora não sejam medições (anterior): E21 38,37; E23 19,33 (sem o r2); E24 22,56; E10 30,05; E12 27,04. Total de 137,35. Já entram na soma de cerca de US$ 439. O custo das 3 execuções de E9 não foi lançado (nota S2-05 de `docs/reports/2026-11-15-E32-triagem-backlog.md`). Os entregáveis E2 a E7, E15, E18, E19, E22, E25 e E28 não têm custo de execução registrado (e E1, E8 e E20 têm apenas entradas de medição/sonda).
 
 ## 5. O que funcionou
 
@@ -132,7 +132,7 @@ Execuções do release que contam como gasto, embora não sejam medições (ante
 - S3-01 conferida: `marketplace add "<url>#productivity-tools--v2.3.0"` instala a 2.3.0. A prova completa, com main em outro commit, ficou pendente.
 
 **Só local** (conferido em 2026-11-20):
-- Branch `volta/productivity-tools-2.3.1` (`67a7bfa`, conteúdo da 2.2.0 com versão 2.3.1). Não está no remoto. A branch `release/pos-2.2.0` também existe só localmente.
+- Branch `volta/productivity-tools-2.3.1` (`67a7bfa`, conteúdo da 2.2.0 com versão 2.3.1). Não está no remoto (apenas `main` e `volta/productivity-tools-2.3.1` existem localmente; `release/pos-2.2.0` foi apagada).
 - Transcrições pagas: `D:/claude-e30-out`, `D:/claude-e31-out` e `D:/claude-e33-out`. Ficam até o próximo roadmap fechar a spec do revisor opus e a nova linha de base de parada-retomada (DEC-035 (pós-2.2.0)).
 
 **Pendências do dono.**

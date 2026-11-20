@@ -28,12 +28,12 @@ claude plugin install productivity-tools@claude-play
 ## Agents
 
 - **spec-author** (`agents/spec-author.md`, `model: opus`, `effort: medium`): writes one `spec/1` design spec for a roadmap card or a standalone request, reads the card and the code first, and records its own decisions. It never asks the person anything. A workflow dispatches it with `agentType: 'productivity-tools:spec-author'`; a skill in the main session dispatches it with `subagent_type: "productivity-tools:spec-author"`.
-- **plan-author** (`agents/plan-author.md`, `model: opus`, `effort: medium`): writes one `plan/1` implementation plan for a checked spec, or rewrites an old plan that has no data block, reading the spec and the code first. It never asks the person anything. A skill in the main session dispatches it with `subagent_type: "productivity-tools:plan-author"`.
+- **plan-author** (`agents/plan-author.md`, `model: opus`, `effort: medium`): writes one `plan/1` implementation plan for a checked spec, or rewrites an old plan that has no data block, reading the spec and the code first. It never asks the person anything. A workflow dispatches it with `agentType: 'productivity-tools:plan-author'`; a skill in the main session dispatches it with `subagent_type: "productivity-tools:plan-author"`.
 - **implementer** (`agents/implementer.md`, no fixed `model` or `effort`: each call passes the ones from its route): implements one task of an approved plan, or fixes a list of review findings, and never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:implementer'` in its six implementation and fix calls; the coordinator workflow (`productivity-tools:coordinator-workflow`) dispatches it the same way for each plan step.
 - **task-reviewer** (`agents/task-reviewer.md`, no fixed `model` or `effort`: each call passes the ones from its route): reviews one task of an approved plan by reading only, returns findings with an identifier, and never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:task-reviewer'` in every per-task review; the coordinator workflow (`productivity-tools:coordinator-workflow`) dispatches it the same way.
 - **final-reviewer** (`agents/final-reviewer.md`, no fixed `model` or `effort`: the release workflow passes opus and high): reads the whole branch of a deliverable before its gates and merge, one lens per call (mode `review`), or tries to refute the numbered findings of that review (mode `verify`), read-only. It never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:final-reviewer'` in its final review calls; the verification call runs only when `finalReview.adversarial` is on. The coordinator workflow (`productivity-tools:coordinator-workflow`) dispatches it the same way for the final review of a plan.
 - **test-integrity** (`agents/test-integrity.md`, no fixed `model` or `effort`: the release workflow passes haiku and low): runs one given Node measurement program on the branch and returns its fields (deleted tests, removed asserts, skips, production files changed, asserts added). It writes and deletes only its own temporary program and never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:test-integrity'` before the final review.
-- **script-runner** (`agents/script-runner.md`, no fixed `model` or `effort`: the release workflow passes the ones from its route): runs exactly one given shell command once, without editing any file, and returns its exit code and its full standard output, unchanged. It never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:script-runner'` for the script runs of a deliverable; the coordinator workflow (`productivity-tools:coordinator-workflow`) dispatches it the same way for the gate runs of a plan.
+- **script-runner** (`agents/script-runner.md`, no fixed `model` or `effort`: workflows pass `haiku`/`low`, escalating to `sonnet`/`medium` on read retries): runs exactly one given shell command once, without editing any file, and returns its exit code and its full standard output, unchanged. It never asks the person anything. The release workflow dispatches it with `agentType: 'productivity-tools:script-runner'` for the script runs of a deliverable; the coordinator workflow (`productivity-tools:coordinator-workflow`) dispatches it the same way for the state, commit and gate commands of a plan.
 
 ## Pipeline
 
@@ -46,8 +46,8 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 1. **Research** a topic with `deep-researcher` → produces a report in `docs/reports/`
 2. **Analyze** the report with `report-analyzer` → produces a strategic roadmap in `docs/roadmaps/`
 3. **Plan** the roadmap with `roadmap-planner` → writes the tracking folder `docs/plans/roadmap-<topic>/` and the strategy `docs/plans/<date>-roadmap-<topic>.md`
-4. **Execute** with `plan-coordinator` → produces an execution map in `docs/plans/`; when the plan has a `**Roadmap:**` line it calls `roadmap-tracker`
-5. **Keep it alive** with `roadmap-tracker` → updates the roadmap folder in place after decisions, closed pieces and plan waves
+4. **Execute** with `plan-coordinator` → writes `progress.json` and `briefs/` beside `plan.md`; when the plan's data block sets `roadmap`, it calls `roadmap-tracker` once on completion
+5. **Keep it alive** with `roadmap-tracker` → updates the roadmap folder in place after decisions, closed pieces and completed plans
 
 `mermaid-designer` is a cross-cutting utility for adding diagrams to any document.
 
@@ -61,15 +61,17 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 | report-analyzer | `docs/roadmaps/roadmap-<topic>-YYYY-MM-DD.md` |
 | roadmap-planner | `docs/plans/roadmap-<topic>/` (tracking folder) + `docs/plans/<date>-roadmap-<topic>.md` (strategy) |
 | roadmap-tracker | Updates the existing roadmap folder in place; strategy revisions written only after approval |
+| spec-writer | `docs/plans/<topic>/spec.md` |
 | plan-writer | `docs/plans/<topic>/plan.md` (or the old plan's own path in adoption mode) |
 | plan-coordinator | `docs/plans/<topic>/progress.json` (+ `briefs/`) |
+| roadmap-release | `docs/plans/<roadmap-slug>-E<n>/`, `docs/reports/YYYY-MM-DD-<ids>-run.md` |
 | mermaid-designer | Inline or `docs/diagrams/<topic>.md` |
 | excalidraw-designer | `docs/diagrams/<name>.excalidraw` |
 
 ## Prerequisites
 
-- Claude Code with plugin support
-- Node.js >= 18 for the roadmap checker (roadmap-planner, roadmap-tracker) and the Excalidraw validator (excalidraw-designer)
+- Claude Code with plugin support (`2.1.322+` to launch workflows by name: `plan-coordinator`, `roadmap-release`)
+- Node.js >= 18 for `roadmap-planner`, `roadmap-tracker`, `spec-writer`, `plan-writer`, `plan-coordinator`, `roadmap-release` and `excalidraw-designer`
 - A WSL/Linux shell for wsl-health-check
 - No other tools or setup required
 

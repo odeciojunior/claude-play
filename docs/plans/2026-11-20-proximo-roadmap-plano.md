@@ -11,7 +11,7 @@ Proposta do executor, 2026-11-20; as decisões da seção 7 são do dono. Fonte 
 
 | Item | Valor | Fonte |
 |---|---|---|
-| Versão publicada | productivity-tools 2.3.0; `main` = `dae686b`; tag `productivity-tools--v2.3.0` em `3d30412`, 2 commits (só docs) atrás de `main` | `plugin.json`; `git rev-list` no worktree |
+| Versão publicada | productivity-tools 2.3.0; `main` = `896f9ed` (ponta atual, que inclui os docs de 2026-11-20); tag `productivity-tools--v2.3.0` em `3d30412`, 3 commits (só docs) atrás de `main` | `plugin.json`; `git rev-list` |
 | Testes (G1) | 2204 testes, 2202 pass, 0 falhas, 2 skipped na ponta da release | E33rel, "Portões na ponta da release" |
 | Portões | G1 a G5 verdes; avisos preexistentes `ICON_MISSING` (G3) e 1 WARN de links em `delegation-protocol.md` (G5) | E33rel |
 | Tamanho do workflow | `roadmap-release.js` com 245.049 caracteres LF em `dae686b` (245.074 bytes; o `state` registra 244.453, de antes das correções de E33); teto 250.000 caracteres (`MAX_WORKFLOW_CHARS`, `size.test.mjs`); folga cerca de 4.950 | medição; `size.test.mjs` |
@@ -21,7 +21,7 @@ Proposta do executor, 2026-11-20; as decisões da seção 7 são do dono. Fonte 
 | Custos unitários medidos | lote E30: US$ 9,22 por 20 execuções task-review (0,46 em média; sonnet 0,360 e opus 0,561 por válida); parada-retomada inteira ~US$ 4,0 (3,54 a 4,76); sonda plan-only US$ 1,87 | E30rel; E31rel; med |
 | Medido e decidido | revisor por tarefa opus passa na R2 (28 contra 20 capturas, custo 1,56x); laço quality fica (R3 inconclusiva) | E30rel; DEC-023 do pós-2.2.0 |
 | Medido, sem linha de base nova | parada-retomada: x1/x2/x4 com opus 5/5/7 e ponderado sem haiku 440/420/500; gatilhos mantidos (opus > 5 ou ponderado > 420 sem achado sintético) | E31rel; DEC-026 do pós-2.2.0 |
-| Config e transcrições | config descartável deslogada; transcrições de E30 e E31 ficam até o próximo roadmap fechar a spec do revisor opus e a nova linha de base | DEC-035 do pós-2.2.0; sessão |
+| Config e transcrições | config descartável deslogada; transcrições de E30, E31 e E33 (`D:/claude-e30-out`, `D:/claude-e31-out` e `D:/claude-e33-out`) ficam até o próximo roadmap fechar a spec do revisor opus e a nova linha de base | DEC-035 do pós-2.2.0; sessão |
 
 ## 3. Backlog consolidado e deduplicado
 
@@ -33,13 +33,13 @@ Esforço é estimativa do executor a partir do código lido (P = um arquivo de p
 | B02 | S3-24: em `agents/task-reviewer.md`, verdicts só no modo restrito, spec e quality só no modo review; medida junto com B01 | E32tri S3-24 e adendo; DEC-031 do pós-2.2.0 | produto | P | médio: muda o texto dos modos que E30 mediu | B01 | entra |
 | B03 | Folga do `roadmap-release.js`: cerca de 4.950 caracteres. Abrir espaço (comentários históricos, programa embutido para `scripts/`) ou subir o teto por decisão (teto atual veio de DEC-641 do roadmap de evolução; limite de lançamento 524.288 bytes) | state; DEC-025 do pós-2.2.0 (gatilho "não caber no teto"); `size.test.mjs` | workflow | P (teto) / M (extração) | baixo (teto) / médio (extração mexe em literais testados) | - | entra |
 | B04 | Regra da R3 para o caso "1 captura marginal em cada braço" (hoje cai no inconclusivo genérico) | E30rel obs. 3; DEC-023 do pós-2.2.0 | medição | P (só texto de desenho) | baixo | - | entra (só a regra; sem lote) |
-| B05 | Gate tests aceita total menor com remoção declarada e revisada (nomes que somem citados na spec ou no plano) e o `gates-fix` para na 1ª rodada quando a única falha é o total. Hoje `gatePasses` (`:219-228`) exige `total >= baseline.total`; `branchGates` (`:2763-2796`) roda até `MAXFIX` | state; DEC-017 do pós-2.2.0 (gatilho); sessão (E29: 2175 para 2172, 2 rodadas gastas sem solução) | workflow | M, Tam. | alto: afrouxa a proteção que DEC-017 do pós-2.2.0 preservou | B03 | entra |
+| B05 | Gate tests aceita total menor com remoção declarada e revisada (nomes que somem citados na spec ou no plano) e o `gates-fix` para na 1ª rodada quando a única falha é o total. Hoje `gatePasses` (`:219-228`) exige `total >= baseline.total`; `branchGates` (`:2763-2800`) roda até `MAXFIX` | state; DEC-017 do pós-2.2.0 (gatilho); sessão (E29: 2175 para 2172, 2 rodadas gastas sem solução) | workflow | M, Tam. | alto: afrouxa a proteção que DEC-017 do pós-2.2.0 preservou | B03 | entra |
 | B06 | Carga do plano congelado sem `--spec` ainda lê a spec pelo campo `spec` do plano e falha (`edge-case-uncovered`); contornado à mão no E29. Ponto de chamada `loadPlan(useSpec)` (`:2343`); leitura em `scripts/plan-tool.mjs` | state; sessão | workflow | P | baixo | - | entra |
-| B07 | Cargas de spec e plano por haiku sem depender de transcrição: 7 de 20 cargas haiku erradas (4 exit trocado, 3 emit não JSON); `checkSpecLoad` (`:1151`) aceita `checkExit` transcrito. Ex.: conferir exit contra o stdout, ou um script que imprime um JSON único com digest (como o payload `{ nonce, digest }` do modo `procs`) | state; E31rel e adendo; sessão (lição) | workflow | M, Tam. | médio | B03 | entra |
+| B07 | Cargas de spec e plano por haiku sem depender de transcrição: 7 de 20 cargas haiku erradas em E31 (4 exit trocado, 3 emit não JSON); E31 já acrescentou o cruzamento de `checkExit` com `summary.exitCode` em `checkSpecLoad` (`:1156`), mas `checkSpecLoad` ainda cai no `checkExit` transcrito quando o stdout não é JSON, `checkPlanLoad` (`:488-496`) ainda confia no `emitExit` transcrito, e ambos seguem dependendo de transcrição pelo haiku. Ex.: wrapper ou script com JSON único `{ nonce, digest }` (como o modo `procs`) ou carga equivalente sem transcrição | state; E31rel e adendo; sessão (lição) | workflow | M, Tam. | médio | B03 | entra |
 | B08 | Reuso da spec compara o head do commit com o head medido depois do autor (`specReused`, `:2241-2245`); se o spec-author commitar (viola R_NOCOMMIT), a revisão de spec alterada pode ser pulada. Decidir pelo blob contra o registro | state; E33rel (menor da revisão final) | workflow | P, Tam. | médio (revisão pulada em silêncio) | B03 | entra |
 | B09 | Pré-voo e sentinela de processos no arnês (`tools/measure`), hoje feitos ad hoc no lote de E31 e na sonda de E33; x3 de E31 morreu por `Stop-Process -Name node` de outro projeto | state; DEC-024 do pós-2.2.0; E31rel | arnês | M | baixo | - | entra |
-| B10 | Regex do extrator conta `*-fix-review` e `*-fix-probe` como correção (`session-metrics.mjs`, tabela de rótulos ~`:187-222`); corrigir com teste em `session-metrics.test.mjs` | state; desenho de E31 (H5) | arnês | P | baixo | - | entra |
-| B11 | `procs`: ppid reaproveitado pelo Windows aceito como prova de ancestralidade (`/T` amplia); listar CreationDate e cortar a cadeia quando o pai for mais novo, com teste de mock (`selectProcs`, `verify-run.mjs:278-298`) | state; E33rel | produto | P | médio: encerra processo alheio | - | entra |
+| B10 | Regex do extrator conta `*-fix-review` e `*-fix-probe` como correção (`isFixLabel`, `session-metrics.mjs:240`, usado em `:338`); corrigir com teste em `session-metrics.test.mjs` | state; desenho de E31 (H5) | arnês | P | baixo | - | entra |
+| B11 | `procs`: ppid reaproveitado pelo Windows aceito como prova de ancestralidade (`/T` amplia); listar CreationDate e cortar a cadeia quando o pai for mais novo, com teste de mock (`selectProcs`, `verify-run.mjs:278-308`, `inWt` em `:296-300`) | state; E33rel | produto | P | médio: encerra processo alheio | - | entra |
 | B12 | `procs`: caminho Linux (ps, lsof, SIGTERM) só rodou com fakes; conferir num host Linux ou WSL real | state; E29-E32 run (T1) | produto | P (execução) | baixo; ambiente: o guarda de worktree recusa `wsl.exe` (memória do projeto) | - | entra (conferência em sessão fora de worktree) |
 | B13 | `marketplace update` com a loja fixada numa tag não pula para `main`: repetir com `main` em outro commit. Hoje já está (2 commits de docs à frente da tag); a prova forte é depois de um bump | state; E33rel | docs/medição | P | baixo; até US$ 1 (E33rel) | publicação | entra (na publicação) |
 | B14 | Nova linha de base de parada-retomada depois das correções (E31 só a fez antes; DEC-026 do pós-2.2.0 adiou "para o próximo roadmap, depois da correção publicada") | DEC-026 e DEC-035 do pós-2.2.0; estr22 (premissa) | medição | M (3 execuções pagas) | médio: custo, ambiente | B01, B02, B07, B09 | entra |
@@ -53,7 +53,7 @@ Esforço é estimativa do executor a partir do código lido (P = um arquivo de p
 | B22 | Grupo registros e condicionais: S2-03 (espera 2º caso de testFirstGap), S2-05 (lançar custo de E9 no measurements antigo), S3-19 (lint de `commands/*.md`; nenhum plugin tem `commands/`) | E32tri | docs | P | baixo | gatilho | fica (S2-05 talvez, sem código) |
 | B23 | Grupo arnês herdado de E30: S2-10 (`parentMention`), S2-15 (`coordinatorGateVazio` só lê `# tests 0`), S3-02 (regra inerte em `SANDBOX_RELEASE_RULES`), S3-03 (`spec-review-atual.md` não confere), S3-07 (divergência de superpowers vira erro global), S3-09 (`E5_PATHS` em `docs/superpowers`), S3-10 parte de gatilho | E30des (resumo: "passam a roadmap futuro") | arnês | P a M | baixo | B09 | talvez (só as que o lote de B14 usar) |
 | B24 | Paralelismo: `release.config.json` com `generated: true` força `maxParallel` 1; gatilho de DEC-020 do pós-2.2.0 é "dois entregáveis de código independentes prontos" | DEC-020 do pós-2.2.0; relatórios de execução | workflow (config) | P | médio: árvore compartilhada com outras sessões (memória do projeto) | - | fica |
-| B25 | Limpeza das transcrições de E30 e E31 quando B01/B02 e B14 fecharem | DEC-035 do pós-2.2.0 | docs | P | baixo | B01, B14 | entra (na publicação) |
+| B25 | Limpeza das transcrições de E30, E31 e E33 (`D:/claude-e30-out`, `D:/claude-e31-out` e `D:/claude-e33-out`) quando B01/B02 e B14 fecharem | DEC-035 do pós-2.2.0 | docs | P | baixo | B01, B14 | entra (na publicação) |
 
 Conferência da contagem da triagem: as 22 notas de dono executor e destino roadmap futuro (E32tri, "Pendências com dono") estão em B15 a B22: S2-01, S2-03, S2-05, S2-08, S2-09, S2-12, S2-13 (partes 1 a 3), S3-04, S3-05, S3-16, S3-18, S3-19, S3-20, S3-21, S3-22, S3-23, S3-25, S3-26, S3-27, S3-28, S3-29, S3-30 (7 de SRC-02 + 15 de SRC-03). S3-13 (dono) está em B20; S3-24 em B02.
 
@@ -113,7 +113,7 @@ IDs começam em E34 para não colidir com merges antigos na história (sessão: 
 
 - Objetivo: versão nova no cache, como E33 (DEC-032 e DEC-034 do pós-2.2.0).
 - Absorve: B13, B25, ratificação de decisões.
-- Aceite: bump em `plugin.json` e README, nota em `docs/releases`, revisão final opus/high da release contra `main`, branch de volta, versão no cache conferida pelo dono, conferência da loja fixada na tag com `main` em outro commit, transcrições de E30/E31 apagadas.
+- Aceite: bump em `plugin.json` e README, nota em `docs/releases`, revisão final opus/high da release contra `main`, branch de volta, versão no cache conferida pelo dono, conferência da loja fixada na tag com `main` em outro commit, transcrições de E30, E31 e E33 (`D:/claude-e30-out`, `D:/claude-e31-out` e `D:/claude-e33-out`) apagadas.
 - Medição paga: até US$ 1 (B13).
 - Dependências: E34 a E39.
 
@@ -154,7 +154,7 @@ Regras (todas com precedente):
 5. **Laço quality e R3.** Rec.: manter o laço e escrever a regra para 1×1 no desenho de E35, sem lote próprio. Alt.: novo lote para decidir o laço (custo do laço opus US$ 0,143 por tentativa, E30rel).
 6. **Gate de testes (B05).** Rec.: aceitar remoção declarada na spec ou no plano e conferida por nome, e parar o `gates-fix` quando a única falha é o total. Alt.: só parar o `gates-fix` cedo e manter a recusa (cada remoção vira ato do dono, como E29).
 7. **Modo do planner.** Rec.: leve, como DEC-001 do pós-2.2.0 (7 entregáveis, fontes já triadas). Alt.: completo, com revisor independente, se o dono quiser revisão extra de B05 (raio alto).
-8. **IDs e branch.** Rec.: E34 em diante; `release/pos-2.3.0` criada de `dae686b`. Alt.: outro prefixo de ID por roadmap.
+8. **IDs e branch.** Rec.: E34 em diante; `release/pos-2.3.0` criada da ponta de `main` (a partir de `896f9ed`, para incluir `2026-11-20-proximo-roadmap-plano.md` e `2026-11-20-retrospectiva-evolucao-skills.md`). Alt.: outro prefixo de ID por roadmap.
 9. **Paralelismo (B24).** Rec.: manter `generated: true` e `maxParallel` 1 (árvore compartilhada com outras sessões). Alt.: rever `locks` e `needsLock` para rodar E36 e E38 juntos.
 10. **Notas de baixo valor (B19 a B22).** Rec.: registrar como "fica" com motivo e tirá-las do backlog ativo. Alt.: manter todas pendentes para o roadmap seguinte.
 11. **Conferência Linux real (B12).** Rec.: sessão fora de worktree, delegada a sessão headless com subagent opus (memória do projeto). Alt.: aceitar só os fakes com risco registrado.
@@ -183,10 +183,10 @@ Regras (todas com precedente):
 
 ## 10. Como iniciar
 
-Recomendação: modo leve (decisão 7). Pedido ao roadmap-planner, numa sessão em `D:/projects/claude-play` com `main` em `dae686b`:
+Recomendação: modo leve (decisão 7). Pedido ao roadmap-planner, numa sessão em `D:/projects/claude-play` na ponta de `main` (a partir de `896f9ed`, incluindo os dois docs SRC de 2026-11-20):
 
 ```
-/productivity-tools:roadmap-planner Planeje em modo leve o roadmap pós-2.3.0 do productivity-tools a partir de docs/plans/2026-11-20-proximo-roadmap-plano.md (este plano, depois de aprovado pelo dono, com as decisões da seção 7 respondidas). Entregáveis começam em E34. Branch de release: release/pos-2.3.0, criada de dae686b; main avança só na publicação, ato do dono. Teto pago: US$ <valor da decisão 2>, em config descartável. Decisões do dono via Fable (DEC-006 do pós-2.2.0 continua).
+/productivity-tools:roadmap-planner Planeje em modo leve o roadmap pós-2.3.0 do productivity-tools a partir de docs/plans/2026-11-20-proximo-roadmap-plano.md (este plano, depois de aprovado pelo dono, com as decisões da seção 7 respondidas). Entregáveis começam em E34. Branch de release: release/pos-2.3.0, criada da ponta de main (a partir de 896f9ed, incluindo ambos os docs de 2026-11-20); main avança só na publicação, ato do dono. Teto pago: US$ <valor da decisão 2>, em config descartável. Decisões do dono via Fable (DEC-006 do pós-2.2.0 continua).
 ```
 
 Fontes a passar (SRC):
@@ -197,4 +197,4 @@ Fontes a passar (SRC):
 - `docs/plans/2026-11-17-measure-e30-revisor-opus-design.md` (notas do arnês que passaram a roadmap futuro) e `docs/plans/2026-11-17-measure-e31-parada-retomada-design.md` (H5);
 - `docs/plans/2026-11-15-roadmap-pos-2-2-0.md` (não objetivos, premissas, gates G1 a G5).
 
-Branch de release sugerida: `release/pos-2.3.0`, criada de `dae686b`. Antes do primeiro entregável, medir de novo G1 em `dae686b` como linha de base (o 2204 é da ponta da release em E33rel) e o tamanho LF do workflow.
+Branch de release sugerida: `release/pos-2.3.0`, criada da ponta de `main` (a partir de `896f9ed`, para incluir `2026-11-20-proximo-roadmap-plano.md` e `2026-11-20-retrospectiva-evolucao-skills.md`). Antes do primeiro entregável, medir de novo G1 na ponta de `main` (base da branch, >= `896f9ed`) como linha de base (o 2204 é da ponta da release em E33rel) e o tamanho LF do workflow.

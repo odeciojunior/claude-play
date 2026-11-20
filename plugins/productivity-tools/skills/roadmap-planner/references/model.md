@@ -27,12 +27,12 @@ Each default applied is listed in `defaulted` of the output.
 
 - `questions[]`: `{question, answer}`, the answer literal; a secret is written "[omitted: secret]".
 - `sources[]`: `{id, source, what, readOn, reliability}`; `conflicts[]`: `"SRC-a vs SRC-b: <what disagrees>"`.
-- `decisions[]`: `{id, date, title, decision, why, status}` and optionally `deliverable`, `discarded`, `contradicts`, `revisit`.
+- `decisions[]`: `{id, date, title, decision, origin, status}` and optionally `deliverable`, `discarded`, `contradicts`, `revisit`.
 - `assumptions[]`: `{text, owner, revalidate}`.
 
 ## 4. Requirements
 
-`requirements[]`: `{id, text, type, sources[]}`, plus `coverage` only when the requirement is not covered: `{kind: "out-of-scope", reason}` or `{kind: "needs-clarification", deliverable}` (the deliverable that resolves it).
+`requirements[]`: `{id, text, type, sources[]}`, plus `coverage` only when not covered: `{kind: "out-of-scope", reason}` or `{kind: "needs-clarification"}` (resolving cards list it in `reqs`).
 
 ## 5. Structure
 
@@ -65,11 +65,11 @@ Example card (the worked example of `decompose.md`):
 
 ## 7. State
 
-`now[]`, `pending[]` (`{owner, text}`), `blockers[]` (`{id, text, owner, blocks[]}`), `donot[]`, `releases[]`, `measurements[]` (the last three optional).
+`now[]`, `pending[]` (`{owner, text}`), `blockers[]` (`{id, text, blocks[], since?, unblocksWhen?}`), `donot[]`, `releases[]`, `measurements[]` (the last three optional).
 
 ## 8. Required to generate
 
-The base fields except `releaseBranch` and `nextStep`; `requirements` (at least 1); `phases` (at least 1); `deliverables` (at least 1), each with `id`, `title`, `phase`, `depends`, `reqs` (use `[]` for none) and at least 2 criteria with `verify`. `objective` is not checked, but without it the Objective section reads "None.".
+The base fields except `strategyPath`, `releaseBranch` and `nextStep`; `requirements` (at least 1); `phases` (at least 1); `deliverables` (at least 1), each with `id`, `title`, `phase`, `depends`, `reqs` (use `[]` for none) and at least 2 criteria with `verify`. `objective` is not checked, but without it the Objective section reads "None.".
 
 ## 9. What the scaffold derives (the model never stores it)
 
@@ -81,7 +81,7 @@ The base fields except `releaseBranch` and `nextStep`; `requirements` (at least 
 
 It never reads stdin, never asks, never commits and never deletes the model. It writes only when the generated folder has 0 checker errors; running it again rewrites the folder from the model with the same bytes.
 
-`--json` prints `{tool, model, folder, written[], defaulted[], errors[], warnings[], summary: {errors, warnings, exitCode}}`; each error is `{path, code, message}` with the JSON path of the field. `defaulted` is `[{path, value}]`; `warnings` are the checker's. Exit 0 generated (warnings do not change it), 1 refused with nothing written, 2 usage, read, write or internal failure.
+`--json` prints `{tool, model, folder, written[], defaulted[], errors[], warnings[], summary: {errors, warnings, exitCode}}`; each error is `{path, code, message}` with the JSON path of the field. `defaulted` is `[{path, value}]`; `warnings` are the checker's plus full-mode warnings (`objective-plain-text`, `card-fields-missing`). Exit 0 generated (warnings do not change it), 1 refused with nothing written, 2 usage, read, write or internal failure.
 
 ## 11. Refusals (exit 1, nothing written)
 
@@ -95,6 +95,6 @@ It never reads stdin, never asks, never commits and never deletes the model. It 
 | `cycle` | the dependencies form a cycle |
 | `acceptance-min` | a card has fewer than 2 criteria |
 | `verify-missing`, `verify-blocked-no-blq` | a criterion lacks `verify`, its `kind`, its `evidence`, or the BLQ of a `blocked` kind |
-| `multiline-cell` | a table-cell value has a line break (a `|` is escaped instead) |
+| `multiline-cell` | a table-cell value has a line break (a `\|` is escaped instead) |
 | `existing-roadmap` | the folder has `roadmap.config.json` and no model, or an extra tracker log row |
 | checker codes | the generated folder has a checker error (same codes as `check-roadmap.mjs`) |

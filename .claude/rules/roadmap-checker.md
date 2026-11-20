@@ -2,6 +2,8 @@
 paths:
   - "plugins/productivity-tools/skills/roadmap-tracker/**"
   - "plugins/productivity-tools/skills/roadmap-planner/**"
+  - "plugins/productivity-tools/lib/roadmap-format.mjs"
+  - "plugins/productivity-tools/lib/roadmap-edit.mjs"
 ---
 
 # Roadmap checker and formats

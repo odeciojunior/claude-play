@@ -113,7 +113,7 @@ The final message has these parts, in this order:
 2. **Findings**: the agent's own report format, with severities from the scale above and evidence for each finding.
 3. **Assumptions and not checked**: what was assumed, skipped (version, permission, Azure) or out of scope.
 4. **Questions for the caller**: a subagent cannot ask questions mid-run, so collect them here.
-5. **Suggested handoffs**: written as "Recommend the caller delegate <X> to `sql-server-tools:<agent>`". A subagent cannot spawn another agent.
+5. **Suggested handoffs**: written as "Recommend the caller delegate <X> to `sql-server-tools:<agent>`". You do not have the Agent tool and cannot spawn another agent directly.
 
 ## Memory
 

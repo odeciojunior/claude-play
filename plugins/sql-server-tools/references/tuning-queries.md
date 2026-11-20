@@ -234,7 +234,7 @@ ORDER BY qv.worst_plan_avg_ms - qv.best_plan_avg_ms DESC, qv.max_stdev_duration_
 
 ## Plan XML cues
 
-Use these when the caller supplies a `.sqlplan` file (Grep it for the attribute name) or when `tuning.plan-by-text` returns `statement_plan` (scan the text). Showplan XML is one long line, so Grep with `-o` and a short context pattern, such as `SpillToTempDb[^>]*`, rather than whole-line output. Attributes marked "actual only" exist only in an actual plan (SSMS "Include Actual Execution Plan" or `SET STATISTICS XML ON`; cached and Query Store plans are estimated); when the caller sent an estimated plan, ask for the actual plan under "Questions for the caller".
+Use these when the caller supplies a `.sqlplan` file (Grep it for the attribute name) or when `tuning.plan-by-text` returns `statement_plan` (scan the text). Showplan XML is one long line, so the built-in `Grep` tool returns whole lines (it has no `-o` flag), so check which cues appear with `output_mode: "count"` or `"files_with_matches"` first, then inspect the matching XML attributes via `Read` or targeted searches rather than repeatedly dumping the full line. Attributes marked "actual only" exist only in an actual plan (SSMS "Include Actual Execution Plan" or `SET STATISTICS XML ON`; cached and Query Store plans are estimated); when the caller sent an estimated plan, ask for the actual plan under "Questions for the caller".
 
 | Cue | Where it appears | What it tells you |
 |-----|------------------|-------------------|

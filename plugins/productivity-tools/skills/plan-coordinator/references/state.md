@@ -42,7 +42,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 | `no-report --step n` | agent lost: `pending`; an external step becomes `stopped` |
 | `review-result --step n --value pass\|defects\|lost` | `pass`; `defects`: fix-up round (`launched`, 2 rounds, then as a failure; external: `stopped`); `lost`: review again |
 | `commit --step n --sha s` | records the commit of a `pass` step |
-| `wave-gate --value pass\|fail [--step n]` | clears `waveGateOwed`; `fail` with `--step` sends that `pass` step back as a failure |
+| `wave-gate --value pass\|fail [--step n]` | `pass` clears `waveGateOwed`; `fail` without `--step` keeps it set; `fail` with `--step` clears it and sends that `pass` step back as a failure |
 | `advance` | moves to the next wave |
 | `final-gate --value pass\|defects\|skip [--step n]` | `pass` or `skip`: `completed`; `defects` with `--step` sends the step back as a failure and reopens its wave |
 | `prelaunch-review --step n --value pass\|defects` | external step: records the review; 2 defect rounds hold it |

@@ -53,7 +53,7 @@ Key version boundaries to check via `@@VERSION` or `SERVERPROPERTY('ProductMajor
 
 | Feature | Min Version | Min compat | Notes |
 |---------|------------|-----------|-------|
-| STRING_AGG | 2017+ | 130 | Use STUFF + FOR XML PATH for older versions |
+| STRING_AGG | 2017+ | any | `WITHIN GROUP (ORDER BY ...)` needs compat 110+; use STUFF + FOR XML PATH on older versions |
 | CONCAT_WS, TRIM, TRANSLATE | 2017+ | any | |
 | JSON support (full) | 2016+ | 130 | Variable JSON paths require 2017+ |
 | CREATE OR ALTER, DROP IF EXISTS | 2016 SP1+ | any | |
@@ -93,7 +93,7 @@ Key version boundaries to check via `@@VERSION` or `SERVERPROPERTY('ProductMajor
 These examples are code to write for the user. They use DECLARE, variables and CTEs, so do not run them through `execute_query`; only protocol-compliant SELECTs are run, for validation.
 
 ### Dynamic Pivot
-STRING_AGG needs 2017 and compat 130; on older versions build `@cols` with `STUFF((SELECT ',' + QUOTENAME(category) ... FOR XML PATH('')), 1, 1, '')`.
+STRING_AGG needs 2017+ (any compat level; `WITHIN GROUP` needs 110+); on older versions build `@cols` with `STUFF((SELECT ',' + QUOTENAME(category) ... FOR XML PATH('')), 1, 1, '')`.
 ```sql
 DECLARE @cols NVARCHAR(MAX), @sql NVARCHAR(MAX);
 SELECT @cols = STRING_AGG(QUOTENAME(category), N', ')

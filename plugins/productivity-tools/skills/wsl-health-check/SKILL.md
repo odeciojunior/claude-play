@@ -23,10 +23,10 @@ Key sections to extract:
 |---|---|
 | `SYSTEM INFORMATION` | System |
 | `DISK USAGE` | Disk |
-| `MEMORY & CPU` | Memory (includes swap and load average) |
+| `MEMORY & CPU` | Memory (includes swap), plus `nproc` and load average for Processes |
 | `NETWORK` | Network |
 | `SERVICES` | Services |
-| `TOP PROCESSES` | Processes (high CPU/memory consumers, load average) |
+| `TOP PROCESSES` | Processes (high CPU/memory consumers) |
 | `HEALTH SUMMARY` | Cross-check, and the `Zombie processes: <n>` line for Processes |
 
 Subsections start with `▶` followed by a label.

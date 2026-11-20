@@ -147,7 +147,7 @@ Report to the user:
 - **Summary**: folder and strategy paths, deliverables per phase, requirement coverage, open questions, checker result with the remaining warnings, and the `now` list from `state.md`.
 - **Next**: the first deliverable goes through the chain below. The downstream skills know nothing about the roadmap, so give the user these exact instructions:
   1. `spec-writer`, per deliverable, with the card (<strategy>, section E<n>), REQs <ids> and depends on <ids>; topic `<roadmap slug>-E<n>`. The spec must keep the card's acceptance criteria and cite E<n>.
-  2. `plan-writer <folder of that spec>/spec.md --roadmap <roadmap folder>` (the `roadmap` field of the block lets plan-coordinator call `roadmap-tracker` after each wave).
+  2. `plan-writer <folder of that spec>/spec.md --roadmap <roadmap folder>` (the `roadmap` field of the block lets plan-coordinator call `roadmap-tracker` on completion).
   3. Execution: `plan-coordinator`, the executor of a tracked roadmap.
 - **Several deliverables unattended**: prefer `roadmap-release`, which runs them end to end into a release branch. `plan-coordinator` handles one deliverable's plan at a time and does not integrate branches; integration and the next deliverable are separate steps the user starts.
 - **Later events** (a decision, a piece closed, an integration, a blocker, a measurement, end of a phase) → `roadmap-tracker`.

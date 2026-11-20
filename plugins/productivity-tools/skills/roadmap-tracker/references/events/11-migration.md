@@ -25,4 +25,4 @@ Steps:
 6. log.md: "format migrated <N-1> → <N>", evidence `roadmap.config.json`.
 ```
 
-Rules: never set the config's `formatVersion` above the vendored checker's `format <n>` (step 3 comes before step 4). The new checker usually fails on the unmigrated folder, so § 10 exit 1 does not block a migration; the gate is step 5, on the migrated files.
+Rules: never set the config's `formatVersion` above the vendored checker's `format <n>` (step 3 comes before step 4). The new checker usually fails on the unmigrated folder, so a § 10 `refreshed: false` does not block a migration; the gate is step 5, on the migrated files.

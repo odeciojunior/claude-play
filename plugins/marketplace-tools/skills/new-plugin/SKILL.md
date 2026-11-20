@@ -71,17 +71,17 @@ Write `plugins/<name>/.claude-plugin/plugin.json` with the gathered metadata:
 
 Write `plugins/<name>/README.md` with plugin-specific content:
 
-```markdown
+````markdown
 # <Plugin Name (title case)>
 
 <description>
 
 ## Installation
 
-\`\`\`bash
+```bash
 claude plugin marketplace add odeciojunior/claude-play
 claude plugin install <name>@claude-play
-\`\`\`
+```
 
 ## Skills
 
@@ -96,7 +96,7 @@ claude plugin install <name>@claude-play
 ## License
 
 MIT
-```
+````
 
 ### Step 7: Register in marketplace.json
 
@@ -146,7 +146,7 @@ Registered in:
 
 Next steps:
   1. Edit plugins/<name>/skills/<skill-name>/SKILL.md to define your skill
-  2. Run /marketplace-tools:validate-plugin <name> and claude plugin validate plugins/<name>
+  2. Run /marketplace-tools:validate-plugin <name> and claude plugin validate .
   3. Commit and open a PR
 ```
 

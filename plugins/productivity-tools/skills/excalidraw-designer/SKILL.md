@@ -23,7 +23,6 @@ Creates hand-drawn style diagrams as `.excalidraw` JSON files: clear, well-space
    - [ ] Arrow `points` start with `[0, 0]`
    - [ ] Arrow `width` and `height` match the max absolute offsets in `points`
    - [ ] One roughness style across the diagram
-   - [ ] No JSON comments or trailing commas
 
 ## Binding Rules (Critical)
 

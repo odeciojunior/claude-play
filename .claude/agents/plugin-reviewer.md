@@ -49,13 +49,15 @@ Run these 9 checks and report each as OK, WARN, or FAIL:
 - FAIL if the entry has a `version` (repo policy: the version lives in plugin.json, which Claude Code uses over any marketplace value)
 
 **Check 8: Agent files valid (FAIL)**
-- Glob `plugins/<name>/agents/*.md` (skip this check as OK if the directory does not exist)
+- Glob `plugins/<name>/agents/**/*.md` (skip this check as OK if the directory does not exist)
 - Each file must have `---` on line 1 and frontmatter with `name` and `description`
 - `name` must not contain `:` (Claude Code silently skips a bad agent file)
 
-**Check 9: No ignored plugin-agent fields (FAIL)**
-- In each `plugins/<name>/agents/*.md` frontmatter, flag the keys `hooks`, `mcpServers`, `permissionMode`, `initialPrompt`
-- FAIL because Claude Code silently ignores these fields for plugin agents, so the file promises behavior that never happens
+**Check 9: Agent frontmatter keys valid — no ignored or disallowed fields (FAIL)**
+- In each `plugins/<name>/agents/**/*.md` frontmatter:
+  - Flag the 4 keys ignored for plugin agents: `hooks`, `mcpServers`, `permissionMode`, `initialPrompt` (Claude Code silently ignores them, so the file promises behavior that never happens)
+  - Flag any key outside the 15 repo-policy allowed keys: `name`, `description`, `tools`, `disallowedTools`, `model`, `effort`, `maxTurns`, `skills`, `memory`, `background`, `isolation`, `omitClaudeMd`, `color`, `autoCompactWindow`, `experimental`
+- FAIL if any ignored or disallowed key is present
 
 ### Phase 2: Content Quality Review
 
@@ -110,7 +112,7 @@ Scan all files under `plugins/<name>/` for:
 - Flag if `disable-model-invocation` is missing on skills with side effects (deploy, commit, send)
 - Rate: PASS or FLAG (list any WARN notes in the details)
 
-**Tool permissions appropriate** — For each `plugins/<name>/agents/*.md`, check:
+**Tool permissions appropriate** — For each `plugins/<name>/agents/**/*.md`, check:
 - The frontmatter sets `tools` explicitly
 - Agents whose job is writing code or files may carry `Edit`, `Write` or `Bash`
 - FLAG `Bash` on an agent whose instructions never run commands
@@ -141,7 +143,7 @@ Structure your review EXACTLY like this:
 [OK]   No sensitive data patterns found
 [WARN] Plugin not registered in marketplace.json
 [OK]   Agent files valid (N agents)
-[OK]   No ignored plugin-agent fields
+[OK]   Agent frontmatter keys valid (no ignored or disallowed fields)
 
 Result: 8 OK, 1 WARN, 0 FAIL
 ### Content Quality

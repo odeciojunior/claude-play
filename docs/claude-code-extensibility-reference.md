@@ -201,7 +201,7 @@ None of these are in the environment of commands Claude runs through the Bash to
 - **Component files**: skill, agent and command files in the plugin directory, reporting frontmatter that doesn't parse; it also warns about a plugin-root `CLAUDE.md` and unquoted path variables in shell-form hooks.
 - **Not checked**: unknown SKILL.md or agent frontmatter keys (Claude Code ignores them silently; this repo verified an invented SKILL.md key passes), `.lsp.json`, a root-level `SKILL.md`, entry `hooks` given as a path, remote sources (fail only at install), and, in a marketplace run, the files of plugins it lists (validate each plugin directory).
 - **`--strict`**: turns warnings into failures (exit `1`), for CI. Exit `2` means the validator itself failed.
-- **Repo practice**: `marketplace-tools`' `lint-plugin.mjs` checks frontmatter keys and agent files, since validate doesn't.
+- **Repo practice**: `marketplace-tools`' `lint-plugin.mjs` checks frontmatter keys, ignored plugin-agent fields, and repo policy, since validate doesn't.
 
 Sources: [Plugin manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference) · [Marketplace reference](https://code.claude.com/docs/en/plugins/marketplace-reference) · [Plugin commands reference](https://code.claude.com/docs/en/plugins/cli-reference) · [Add components](https://code.claude.com/docs/en/plugins/components) · [Plugin loading](https://code.claude.com/docs/en/plugins/loading)
 
@@ -261,7 +261,7 @@ All fields are optional; Claude Code ignores unrecognized fields without an erro
 
 **Outside Claude Code** (claude.ai uploads, Skills API, `package_skill.py`), only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` are allowed and others are a hard error. There the Agent Skills spec limits apply: `name` ≤ 64 chars, lowercase letters/digits/hyphens, matching the directory; `description` ≤ 1,024 chars.
 
-**Repo policy (claude-play)**: SKILL.md uses only `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`.
+**Repo policy (claude-play)**: SKILL.md uses only `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. Single exception (DEC-049, DEC-275): `plugins/productivity-tools/skills/roadmap-release/SKILL.md` declares `allowed-tools: Workflow(productivity-tools:release-workflow)` together with `disable-model-invocation: true`; `lint-plugin.mjs` fails `allowed-tools` in any other skill or with any other entry.
 
 ### 2.3 Invocation Matrix
 

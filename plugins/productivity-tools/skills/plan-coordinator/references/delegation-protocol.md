@@ -25,7 +25,7 @@ A stopped return is `{ status: 'stopped', stop: { kind, ... }, resumeArgs }`. Sh
 After the person answers, call the workflow again with the `resumeArgs` it returned, the same `state`, a new `progress.mjs token` as `runToken`, and what the person gave:
 
 - `authorizeExternal`: the authorized items, copied exactly from the `authorize` stop.
-- `answers`: a list of objects `{ event, step, value, text }`, one per answer; `event` is `answer`, `unblock`, `release`, `hold` or `refuse` (`type` is accepted as a synonym), and `step`, `value` and `text` are the fields `references/state.md` lists for that event (the CLI flags `--step`, `--value`, `--text`). Example: `{ "event": "answer", "step": 3, "value": "done" }`.
+- `answers`: a list of objects `{ event, step, value, text }`, one per answer; `event` is `answer`, `unblock`, `release`, `hold` or `refuse` (`type` is accepted as a synonym), and `step`, `value` and `text` are the fields the state reference (linked from `SKILL.md`) lists for that event (the CLI flags `--step`, `--value`, `--text`). Example: `{ "event": "answer", "step": 3, "value": "done" }`.
   - A stop that names a step (an open `manual` entry of an external step left `stopped`, held or skipped) is answered with `answer` and that `step`: `value` is `done`, `no`, `rerun` or `value` (with `text`). `rerun` creates a new step that reuses the brief of the step it replaces.
   - A stop of the run itself (a failed wave gate, a baseline whose tests fail or run 0 tests, a lost reviewer, the final gate asking) has no step: answer it with `{ "event": "unblock" }` after the person decided (for a baseline, fix the command and recreate the state with `progress.mjs init <plan> --restart`, since nothing has launched yet, or answer `unblock` to accept that baseline); the run goes back to `in-progress` and the workflow continues.
   - An `authorize` stop is answered by `authorizeExternal`, not by `answers`; `refuse` (`step`, `value` `refused` or `not-named`), `hold` and `release` (`step`) act on one step.
@@ -42,4 +42,4 @@ When `plan.roadmap` names a folder, invoke the `roadmap-tracker` skill once, aft
 
 ## Final report
 
-Tell the person: tiers planned versus actual, retries, each external step and what happened to it, steps refused or not run, the tracker's pending items, and the concerns the workflow returned. Do not push unless asked, except an authorized external step.
+Tell the person: each step's final status, attempts and commit SHA (from `steps`, plus `progress.mjs show` if tiers are needed), each external step and what happened to it, steps refused or not run, any open manual items (`open`), and the tracker's pending items. Do not push unless asked, except an authorized external step.

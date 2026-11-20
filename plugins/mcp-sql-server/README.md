@@ -4,7 +4,7 @@ Automated setup for the [mcp-sql-server](https://github.com/odeciojunior/mcp-sql
 
 ## Prerequisites
 
-- **Node.js** — required by the setup script to write `.mcp.json` files
+- **Node.js** — required by the setup script to build MCP JSON entries and update `.mcp.json` files
 - **Python 3.10+** — the setup wizard checks automatically
 - **Microsoft ODBC Driver 17 or 18** — platform-specific install instructions provided if missing
 
@@ -16,7 +16,7 @@ claude plugin install mcp-sql-server@claude-play
 
 ## Setup
 
-After installing the plugin, describe your task or say "setup sql server". The setup wizard will:
+After installing the plugin, run `/mcp-sql-server:mcp-sql-server-setup`. The setup wizard will:
 
 1. Check Python and ODBC prerequisites
 2. Create an isolated virtual environment at `~/.claude/mcp-servers/mcp-sql-server/.venv`
@@ -102,7 +102,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh" add-database "<project>/.mcp.json"
 
 `env:NAME` makes the script write the placeholder `${NAME}`; then set `NAME` in your environment. This edits a project `.mcp.json`; for local or user scope, re-run the setup wizard instead of editing `~/.claude.json` by hand.
 
-Re-running with the same alias updates it in place. Re-running the wizard's default-database registration preserves every alias.
+Re-running with the same alias updates it in place. In project scope, re-running the wizard's default-database registration preserves every alias; in local or user scope it replaces the entry, so re-add aliases in Step 6.5.
 
 **Caveats:**
 

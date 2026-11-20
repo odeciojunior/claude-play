@@ -1,6 +1,6 @@
 ---
 name: mcp-sql-server-setup
-description: Set up the mcp-sql-server MCP server for SQL Server database connectivity. Creates an isolated Python environment, installs the server, collects connection settings (the password stays in an environment variable the user sets) and registers the MCP server with Claude Code. Use when the user wants to connect to a SQL Server database, set up MCP SQL Server, or says "setup sql server".
+description: Set up the mcp-sql-server MCP server for SQL Server database connectivity. Creates an isolated Python environment, installs the server, collects connection settings (the password stays in an environment variable the user sets) and registers the MCP server with Claude Code. Use when the user wants to connect to a SQL Server database, set up MCP SQL Server, or runs /mcp-sql-server:mcp-sql-server-setup.
 disable-model-invocation: true
 ---
 
@@ -23,7 +23,7 @@ You never see the database password: not in chat, not in a command you run, not 
 
 - Never ask for it, and never read, parse, grep or print it from a `.env`, `.mcp.json` or `~/.claude.json`.
 - If the user pastes a password in chat anyway, do not use it in any command. Tell them to set it as an environment variable instead (Step 5) and to consider changing it, since it is now in the conversation history.
-- In every setup command, pass the password argument as the reference `env:DB_PASSWORD` (or `env:DB_<ALIAS>_PASSWORD`). The script writes the literal placeholder `${DB_PASSWORD}` itself. Never pass a `${...}` form (a shell launched from PowerShell can mangle it, and the script rejects it) and never a double-quoted shell variable (that would expand the real secret).
+- In every setup command, pass the password argument as the reference `env:DB_PASSWORD` (or `env:DB_<ALIAS>_PASSWORD`). The script writes the literal placeholder `${DB_PASSWORD}` itself. Never pass a `${...}` form (a shell launched from PowerShell can mangle it into `$NAME`, which the script rejects) and never a double-quoted shell variable (that would expand the real secret).
 
 ## Setup Steps
 
@@ -189,7 +189,7 @@ If `.mcp.json` already exists, the script merges the `mcp-sql-server` entry into
 
 ### Step 6.5: Additional Databases (optional)
 
-One server entry can serve several databases. Each extra database gets an **alias** with its own `DB_{ALIAS}_*` variables, and every tool takes a `database` argument to choose between them.
+One server entry can serve several databases. Each extra database gets an **alias** with its own `DB_{ALIAS}_*` variables, and every tool except `list_databases` takes a `database` argument to choose between them.
 
 Ask: **"Do you want to connect additional databases? (yes/no)"**
 
