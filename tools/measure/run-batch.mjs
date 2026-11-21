@@ -8,7 +8,7 @@
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -18,6 +18,7 @@ import { makeScenario, artifactOf, manifestEntries, seedSourceOf, excludeFromGit
 import { piece3Of } from './session-metrics.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
+import { parseCimProcs, parsePs } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXTRACTOR = join(here, 'session-metrics.mjs');
@@ -1417,6 +1418,95 @@ export const EXPECTED_PANEL = {
 // An error text can carry a temporary or install path; the aggregate never holds personal paths.
 export const redactPaths = (s) => s.replace(/[A-Za-z]:[\\/][^\s'"]*|(?:\/[^\s'"\/]+){2,}/g, '<path>');
 
+// E38 (B09): Preflight and runtime sentinel for external processes that kill `node` (e.g. `Stop-Process -Name node` in another workspace).
+export const KILLER_RE = /\bstop-process\b[^\r\n]*-name\b[^\r\n]*\bnode(?:\.exe)?\b|\btaskkill\b[^\r\n]*\/im\s+["']?node(?:\.exe)?["']?|\btskill\b[^\r\n]*\bnode(?:\.exe)?\b|\b(?:pkill|killall)\b[^\r\n]*\bnode\b|\bget-process\b[^\r\n]*\bnode(?:\.exe)?\b[^\r\n]*\|\s*(?:%|\bforeach\b|\bstop-process\b|\bkill\b)/i;
+
+export function defaultListProcs(platform = process.platform, run = spawnSync) {
+  try {
+    if (platform === 'win32') {
+      const r = run(
+        'powershell.exe',
+        ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 },
+      );
+      return !r || r.error || r.status !== 0 ? [] : parseCimProcs(r.stdout);
+    }
+    const r = run('ps', ['-eo', 'pid=,ppid=,args='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+    return !r || r.error || r.status !== 0 ? [] : parsePs(r.stdout);
+  } catch {
+    return [];
+  }
+}
+
+export function detectExternalKiller(procs, { selfPids = new Set([process.pid]) } = {}) {
+  const own = selfPids instanceof Set ? selfPids : new Set(selfPids);
+  const byPid = new Map((procs ?? []).map((p) => [p.pid, p]));
+  const underSelf = (pid) => {
+    const seen = new Set();
+    for (let q = byPid.get(pid); q && !seen.has(q.pid); q = byPid.get(q.ppid)) {
+      if (own.has(q.pid)) return true;
+      seen.add(q.pid);
+    }
+    return own.has(pid);
+  };
+  for (const p of procs ?? []) {
+    if (!p || underSelf(p.pid)) continue;
+    if (KILLER_RE.test(String(p.cmd ?? ''))) {
+      return { pid: p.pid, ppid: p.ppid ?? 0, cmd: redactPaths(String(p.cmd ?? '')).slice(0, 200) };
+    }
+  }
+  return null;
+}
+
+export function checkProcessPreflight(procs, { selfPids = new Set([process.pid]) } = {}) {
+  const killer = detectExternalKiller(procs, { selfPids });
+  return killer ? { ok: false, killer } : { ok: true, killer: null };
+}
+
+export function createProcessSentinel({ listProcs, selfPids = new Set([process.pid]), intervalMs = 2000, logFile = null, redact = redactPaths, now = () => new Date() } = {}) {
+  let killer = null;
+  let timer = null;
+  const log = (line) => {
+    if (!logFile) return;
+    try {
+      appendFileSync(logFile, `${redact(line)}\n`);
+    } catch {
+      /* logging never breaks the batch */
+    }
+  };
+  const sample = () => {
+    if (killer) return killer;
+    let procs = [];
+    try {
+      procs = listProcs ? listProcs() : [];
+    } catch {
+      procs = [];
+    }
+    const hit = detectExternalKiller(procs, { selfPids });
+    if (hit) {
+      killer = hit;
+      log(`[${now().toISOString()}] killer pid=${hit.pid} ppid=${hit.ppid} cmd=${hit.cmd}`);
+    }
+    return hit;
+  };
+  const start = () => {
+    if (timer) return;
+    log(`[${now().toISOString()}] sentinel start`);
+    sample();
+    timer = setInterval(sample, intervalMs);
+    timer.unref?.();
+  };
+  const stop = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    sample();
+    log(`[${now().toISOString()}] sentinel stop`);
+  };
+  return { start, stop, sample, killedBy: () => killer };
+}
+
 // Never throws: any failure (missing CLI, non-JSON output, exit other than 0/1) is { error }.
 // The committed state of release/sandbox is read in a detached temporary worktree: a checkout in the sandbox root is refused
 // when the release preflight keeps that branch in <sandbox>-wt/_integracao. The fields e5Status/e5Evidence hold the row of `deliverable`.
@@ -2242,7 +2332,7 @@ function blockingHumanInputs(scenario, ref) {
   }
 }
 
-export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract, pending = pendingE5, scenarioFn = makeScenario } = {}) {
+export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract, pending = pendingE5, scenarioFn = makeScenario, listProcs = exec === defaultExec ? defaultListProcs : () => [], sentinelIntervalMs = 2000 } = {}) {
   const { variant, runs } = opts;
   const seeded = /semead[oa]|nativo/.test(variant);
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
@@ -2299,11 +2389,21 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const attempts = [];
   const privateAttempts = [];
   const validRuns = [];
+  const sentinelLog = join(priv, 'sentinel.log');
   const fixLoop = h?.rounds === 'loop' && (h.stage === 'task-review' || h.stage === 'final-review'); // the batch stop rules of B4 (the A stages keep every attempt)
   let stoppedBy = null;
   for (let k = 1; k <= runs; k++) {
     stoppedBy = fixLoop ? batchStopReason(attempts, { lenses: h.lenses === true }) : null;
     if (stoppedBy) break;
+    const pf = checkProcessPreflight(listProcs(), { selfPids: new Set([process.pid]) });
+    if (!pf.ok) {
+      appendFileSync(sentinelLog, redactPaths(`[${now().toISOString()}] preflight blocked pid=${pf.killer.pid} ppid=${pf.killer.ppid} cmd=${pf.killer.cmd}\n`));
+      attempts.push({ n: k, status: 'invalid', reason: 'preflight-processo-matador' });
+      privateAttempts.push({ n: k, sessions: [] });
+      writeFileSync(join(priv, 'attempts.json'), JSON.stringify({ attempts: privateAttempts }, null, 2) + '\n');
+      stoppedBy = 'preflight-processo-matador';
+      break;
+    }
     const scenario = await scenarioFn(join(resolve(opts.work), `${variant}-${k}`), variant, { fromRun: opts.fromRun, coordinatorFixture: opts.coordinatorFixture });
     const sessions = [];
     const cliCosts = [];
@@ -2358,31 +2458,37 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       let r;
       let aborted = false;
       const known = watch ? sessionIds(opts.configDir) : null;
-      if (watch) {
-        const ac = new AbortController();
-        let polling = false;
-        const timer = setInterval(async () => {
-          if (polling || ac.signal.aborted) return;
-          polling = true;
-          try {
-            const g = await exec('git', ['log', stop.stopWhen.branch, '--format=%s'], { cwd: scenario.dir });
-            if (g.code === 0 && g.stdout.split(/\r?\n/).some((l) => l.startsWith(stop.stopWhen.subjectPrefix))) {
-              aborted = true;
-              ac.abort();
+      const sentinel = createProcessSentinel({ listProcs, intervalMs: sentinelIntervalMs, logFile: sentinelLog, redact: redactPaths, now });
+      sentinel.start();
+      try {
+        if (watch) {
+          const ac = new AbortController();
+          let polling = false;
+          const timer = setInterval(async () => {
+            if (polling || ac.signal.aborted) return;
+            polling = true;
+            try {
+              const g = await exec('git', ['log', stop.stopWhen.branch, '--format=%s'], { cwd: scenario.dir });
+              if (g.code === 0 && g.stdout.split(/\r?\n/).some((l) => l.startsWith(stop.stopWhen.subjectPrefix))) {
+                aborted = true;
+                ac.abort();
+              }
+            } catch {
+              /* branch not there yet */
+            } finally {
+              polling = false;
             }
-          } catch {
-            /* branch not there yet */
+          }, opts.pollMs ?? 5000);
+          try {
+            r = await exec('claude', args, { cwd: scenario.dir, signal: ac.signal });
           } finally {
-            polling = false;
+            clearInterval(timer);
           }
-        }, opts.pollMs ?? 5000);
-        try {
-          r = await exec('claude', args, { cwd: scenario.dir, signal: ac.signal });
-        } finally {
-          clearInterval(timer);
+        } else {
+          r = await exec('claude', args, { cwd: scenario.dir });
         }
-      } else {
-        r = await exec('claude', args, { cwd: scenario.dir });
+      } finally {
+        sentinel.stop();
       }
       const j = parseClaudeJson(r.stdout);
       if (typeof j?.total_cost_usd === 'number') cliCosts.push(j.total_cost_usd);
@@ -2390,6 +2496,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       else if (aborted) for (const id of sessionIds(opts.configDir)) if (!known.has(id) && !sessions.includes(id)) sessions.push(id);
       if (j && Array.isArray(j.permission_denials) && j.permission_denials.length > 0) {
         denied = true;
+        break;
+      }
+      if (sentinel.killedBy()) {
+        failed = true;
+        failReason = 'morto-por-processo-externo';
         break;
       }
       if (aborted) {

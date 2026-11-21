@@ -6,7 +6,7 @@ import { join, dirname, resolve, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { redactPaths, runBatch, parseCli, pendingE5, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, coordinatorGateVazio, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL } from './run-batch.mjs';
+import { redactPaths, runBatch, parseCli, pendingE5, buildQuestionsScript, toAttemptCounters, sumCliCost, rolesByLabel, readJournal, checkValidity, releaseRunValidity, coordinatorGateVazio, resumeRunValidity, ratifyE5Contract, execEnv, e5Integrated, readPlugin, readPanel, panelMatches, PANEL_VARIANTS, EXPECTED_PANEL, detectExternalKiller, checkProcessPreflight, createProcessSentinel } from './run-batch.mjs';
 import { E5_PATHS, NATIVE_PATHS, seedSourceOf, makeScenario } from './make-scenario.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -4531,5 +4531,91 @@ test('C4: the aggregate of a lenses batch records harness.taskReview, kinds, out
     } finally {
       s.done();
     }
+  }
+});
+
+// ---- E38 (B09): Process preflight and external killer sentinel ----
+
+test('E38 AC1 (B09): detectExternalKiller catches node killers outside selfPids and ignores benign commands', () => {
+  const self = process.pid;
+  const selfChild = 9001;
+  const benign = [
+    { pid: self, ppid: 1, cmd: 'node run-batch.mjs' },
+    { pid: selfChild, ppid: self, cmd: 'pwsh -Command Stop-Process -Name "node" -Force' },
+    { pid: 4100, ppid: 1, cmd: 'node server.js' },
+    { pid: 4101, ppid: 1, cmd: 'taskkill /T /F /PID 1234' },
+  ];
+  assert.equal(detectExternalKiller(benign), null);
+  assert.equal(checkProcessPreflight(benign).ok, true);
+
+  for (const killerCmd of [
+    'pwsh -NoProfile -Command Stop-Process -Name "node" -Force',
+    'powershell.exe -Command Stop-Process -Name node',
+    'cmd /c taskkill /F /IM node.exe',
+    'cmd /c tskill node',
+    'pkill -f node',
+    'killall node',
+    'powershell -Command Get-Process node | Stop-Process -Force',
+  ]) {
+    const hit = detectExternalKiller([...benign, { pid: 31720, ppid: 4000, cmd: killerCmd }]);
+    assert.ok(hit && hit.pid === 31720, `expected detection for: ${killerCmd}`);
+    assert.equal(checkProcessPreflight([...benign, { pid: 31720, ppid: 4000, cmd: killerCmd }]).ok, false);
+  }
+});
+
+test('E38 AC1 (B09): runBatch preflight blocks external node killer before calling claude -p', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const listProcs = () => [{ pid: 31720, ppid: 4000, cmd: 'pwsh -File D:/x/bdesk/release-bdesk.ps1 -Command Stop-Process -Name "node" -Force' }];
+    const r = await runBatch(baseOpts(s, { runs: 2 }), { exec: fake.exec, now: NOW, listProcs });
+    assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
+    assert.equal(r.exitCode, 1);
+    assert.equal(r.aggregate.stoppedBy, 'preflight-processo-matador');
+    assert.equal(r.aggregate.valid, 0);
+    assert.equal(r.aggregate.invalid, 1);
+    assert.deepEqual(r.aggregate.invalidReasons, { 'preflight-processo-matador': 1 });
+    assert.equal(r.aggregate.attempts[0].reason, 'preflight-processo-matador');
+    const log = readFileSync(join(r.dir, 'private', 'sentinel.log'), 'utf8');
+    assert.match(log, /preflight blocked/);
+    assert.ok(!log.includes('D:/x/bdesk'), log);
+  } finally {
+    s.done();
+  }
+});
+
+test('E38 AC1 (B09): process sentinel invalidates an interrupted attempt as morto-por-processo-externo', async () => {
+  const s = setup();
+  try {
+    let phase = 'preflight';
+    const exec = async (cmd, args, opts = {}) => {
+      if (cmd === 'claude' && args[0] === '-p') {
+        phase = 'killed';
+        await new Promise((res) => setTimeout(res, 25));
+        return { code: 127, stdout: '' };
+      }
+      if (cmd === 'claude' && args[0] === '--version') return { code: 0, stdout: '2.1.0 (Claude Code)\n' };
+      return makeFake(s.configDir).exec(cmd, args, opts);
+    };
+    const listProcs = () => (phase === 'killed' ? [{ pid: 31720, ppid: 4000, cmd: 'pwsh -File D:/x/bdesk/release.ps1 -Command Stop-Process -Name "node" -Force' }] : []);
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec, now: NOW, listProcs, sentinelIntervalMs: 5 });
+    assert.equal(r.exitCode, 1);
+    assert.equal(r.aggregate.valid, 0);
+    assert.equal(r.aggregate.invalid, 1);
+    assert.deepEqual(r.aggregate.invalidReasons, { 'morto-por-processo-externo': 1 });
+    assert.equal(r.aggregate.attempts[0].status, 'invalid');
+    assert.equal(r.aggregate.attempts[0].reason, 'morto-por-processo-externo');
+    const log = readFileSync(join(r.dir, 'private', 'sentinel.log'), 'utf8');
+    assert.match(log, /killer pid=31720/);
+    assert.ok(!log.includes('D:/x/bdesk'), log);
+    const aggText = readFileSync(join(r.dir, 'aggregate.json'), 'utf8');
+    assert.ok(!aggText.includes('D:/x/bdesk'));
+    // Also exercise createProcessSentinel directly
+    const sentinel = createProcessSentinel({ listProcs: () => [], intervalMs: 5, logFile: join(s.base, 's.log'), now: NOW });
+    sentinel.start();
+    sentinel.stop();
+    assert.equal(sentinel.killedBy(), null);
+  } finally {
+    s.done();
   }
 });
