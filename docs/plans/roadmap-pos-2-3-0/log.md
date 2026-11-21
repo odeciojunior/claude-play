@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-21 | E38 | E38 critérios comparados: nenhum mudou; item de now podado e pendência de conferência humana de AC2 registrada em state.md | `docs/plans/pos-2-3-0-E38/spec.md, state.md` |
 | 2026-11-21 | E38 | E38 fechada na-branch: T1-T5 concluidas (AC1 298/298, WSL2 Linux procs real B12, G1-G5 verdes); aguarda conferencia humana de AC2 | `docs/plans/pos-2-3-0-E38/progress.json, docs/reports/2026-11-21-E38-arnes-e-procs-linux.md, 625fcab, 7a2a470, e52c2d7, 5c9d8ab, 1b694f2` |
 | 2026-11-21 | E38 | DEC-020 a DEC-023 (E38) ratificadas pelo dono via Fable (DEC-012) | `decisions.md` |
 | 2026-11-21 | E35 | DEC-016 a DEC-019 (E35) ratificadas pelo dono via Fable (DEC-012) | `decisions.md` |

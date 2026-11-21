@@ -23,4 +23,4 @@ graph LR
   E39 --> E40
 ```
 
-Caminho crítico: E34 -> E35 -> E39 -> E40. Próximo gate por trilha: ver `state.md`.
+Caminho crítico: E34 -> E35 -> E39 -> E40. Próximo marco por trilha: engineering -> E36 e E37 (E34 e E38 na-branch); measurement -> lote pago de confirmação de E35 (AC2), seguido de E39.
