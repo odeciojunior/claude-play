@@ -458,3 +458,27 @@ test('E17: panel survives the merge of partial aggregates', () => {
   assert.deepEqual(m.attempts[0].panel, panel(1));
   assert.deepEqual(m.attempts[1].panel, panel(1));
 });
+
+test('E38 AC1 (S3-07): linha-de-base.md cites accepted superpowers decision and mergeVariant prefers valid partial', () => {
+  withTmp((root) => {
+    const out = join(root, 'out');
+    const list = E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs, p.variant === 'tracker' ? { superpowers: { version: '7.0.0', commit: 'bb92a77' } } : {}));
+    writeAggs(out, list);
+    const dest = join(root, 'dest');
+    assert.equal(main(['--out', out, '--dest', dest, '--date', DATE, '--plan', 'e11', '--accept-superpowers', 'DEC-747'], quiet), 0);
+    const md = readFileSync(join(dest, 'linha-de-base.md'), 'utf8');
+    assert.ok(md.includes('Divergência de superpowers aceita por DEC-747.'), md.split('\n').slice(0, 6).join('\n'));
+    assert.ok(md.includes('| tracker | 1/1 |') && md.includes('| 7.0.0 (bb92a77) |'));
+    assert.ok(md.includes('| planner | 1/1 |') && md.includes('| 7.0.2 (22f0b46) |'));
+    const same = join(root, 'same');
+    writeAggs(same, E11_VARIANTS.map((p) => synthAgg(p.variant, p.runs)));
+    const sameMd = buildBaseline({ outDir: same, tagCommit: TAG_COMMIT, date: DATE, plan: E11_VARIANTS, acceptSuperpowers: 'DEC-747' }).markdown;
+    assert.ok(!sameMd.includes('Divergência de superpowers aceita por'));
+  });
+  const base = { variant: 'planner', requested: 1, invalid: 0, cli: 'x', models: [], pricesDate: 'd', attempts: [] };
+  const merged = mergeVariant([
+    { ...base, valid: 0, denied: 1, permissionMode: 'default', superpowers: { version: '6.9.0', commit: '1111111' } },
+    { ...base, valid: 1, denied: 0, permissionMode: 'bypassPermissions', superpowers: { version: '7.0.0', commit: 'bb92a77' } },
+  ]);
+  assert.deepEqual(merged.superpowers, { version: '7.0.0', commit: 'bb92a77' });
+});

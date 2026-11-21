@@ -139,7 +139,7 @@ export function mergeVariant(aggs) {
     denied: sum('denied'),
     invalidReasons: sumReasons(aggs),
     plugin: first.plugin,
-    superpowers: first.superpowers,
+    superpowers: aggs.find((a) => (a.valid ?? 0) > 0)?.superpowers ?? first.superpowers,
     ...(seedSource ? { seedSource } : {}),
     cli: first.cli,
     models: [...new Set(aggs.flatMap((a) => a.models ?? []))],
@@ -331,7 +331,7 @@ function buildMarkdown({ baseline, date, tagCommit, errors, incomplete, flagged,
   const v = baseline.variants;
   const L = [];
   L.push('# Linha de base', '');
-  L.push(`Data: ${date}. Commit da tag de partida: ${tagCommit}.`, '');
+  L.push(`Data: ${date}. Commit da tag de partida: ${tagCommit}.${baseline.acceptedSuperpowers ? ` Divergência de superpowers aceita por ${baseline.acceptedSuperpowers}.` : ''}`, '');
   if (errors.length || incomplete.length) {
     L.push('## Pendências', '');
     for (const e of errors) L.push(`- erro: ${e}`);
