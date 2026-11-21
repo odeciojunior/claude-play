@@ -9,7 +9,7 @@ Estratégia v1.0 -- 2026-11-21
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
 | E34 | na-branch | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md`, `docs/plans/pos-2-3-0-E34/progress.json`, `3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba`, `c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc`, `e0ace0fc6348d33ac3a1daac493cb4e19534af62` | - |
-| E35 | nao-iniciado | - | - |
+| E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md` | Executar tarefas T1 a T3 |
 | E36 | nao-iniciado | - | - |
 | E37 | nao-iniciado | - | - |
 | E38 | nao-iniciado | - | - |
