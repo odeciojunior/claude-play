@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-21 | E38 | E38 fechada na-branch: T1-T5 concluidas (AC1 298/298, WSL2 Linux procs real B12, G1-G5 verdes); aguarda conferencia humana de AC2 | `docs/plans/pos-2-3-0-E38/progress.json, docs/reports/2026-11-21-E38-arnes-e-procs-linux.md, 625fcab, 7a2a470, e52c2d7, 5c9d8ab, 1b694f2` |
+| 2026-11-21 | E38 | DEC-020 a DEC-023 (E38) ratificadas pelo dono via Fable (DEC-012) | `decisions.md` |
 | 2026-11-21 | E35 | DEC-016 a DEC-019 (E35) ratificadas pelo dono via Fable (DEC-012) | `decisions.md` |
 | 2026-11-21 | E35 | E35 T1 a T3 concluídas na branch (revisor opus, S3-24 e desenho do lote; G1 a G5 verdes); aguarda lote pago (AC2) | `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0` |
 | 2026-11-21 | E35 | E35 passou para executando | `docs/plans/pos-2-3-0-E35/spec.md, docs/plans/pos-2-3-0-E35/plan.md` |

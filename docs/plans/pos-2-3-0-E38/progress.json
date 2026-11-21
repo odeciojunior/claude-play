@@ -1,0 +1,332 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E38/plan.md",
+    "id": "E38",
+    "digest": "2c2441a0",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": "docs/plans/pos-2-3-0-E38/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 3,
+    "worktree": null,
+    "branch": null,
+    "base": "48d409e",
+    "test": null,
+    "baseline": null,
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-21T18:25:23.684Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        5
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Corrigir isFixLabel em session-metrics.mjs para rejeitar *-fix-review e *-fix-probe (B10)",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/session-metrics.mjs",
+        "tools/measure/session-metrics.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "625fcab44274082e3647a85f8a2259c0f2812eee",
+      "replacedBy": null,
+      "note": "isFixLabel ancorada em /-fix\\d*$/ em session-metrics.mjs (23/23 pass)",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Fechar tratamento de superpowers em baseline.mjs (B23 / S3-07)",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/baseline.mjs",
+        "tools/measure/baseline.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "7a2a4705f2cbd72cbd5aeba3bc9ecf1ff5d236d9",
+      "replacedBy": null,
+      "note": "superpowers em mergeVariant e buildMarkdown em baseline.mjs (35/35 pass)",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Integrar pré-voo e sentinela de processos em tools/measure/run-batch.mjs (B09)",
+      "wave": 2,
+      "deps": [
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "5c9d8ab11ec2126af0442605baafb068df409ec8",
+      "replacedBy": null,
+      "note": "Pre-voo e sentinela de processos em run-batch.mjs (221/221 pass)",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Filtrar PPID reaproveitado por CreationDate em verify-run.mjs (B11)",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "e52c2d7e2b8625b1123dc736402b6576263f1baa",
+      "replacedBy": null,
+      "note": "CreationDate e corte de PPID reaproveitado em verify-run.mjs (42/42 pass)",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Exercício do caminho Linux de verify-run.mjs procs, relatório e portões G1 a G5 (B12 / AC2)",
+      "wave": 3,
+      "deps": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "docs/reports/2026-11-21-E38-arnes-e-procs-linux.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "1b694f208d3551c4e1778e02ae19bc92befe10dd",
+      "replacedBy": null,
+      "note": "Conferencia real Linux procs (ps, lsof, SIGTERM) e portoes AC1 298/298 + G1 2216/2218 (2 skipped) + G2-G5 verdes",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-21T18:25:09.262Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-21T18:25:22.655Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        2,
+        4
+      ],
+      "at": "2026-11-21T18:25:22.710Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-21T18:25:22.763Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-21T18:25:22.817Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-21T18:25:22.871Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-21T18:25:22.924Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-21T18:25:22.979Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-21T18:25:23.033Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.087Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-21T18:25:23.140Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-21T18:25:23.195Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.249Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-21T18:25:23.304Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.357Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-21T18:25:23.412Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-21T18:25:23.468Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.522Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-21T18:25:23.577Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.630Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-21T18:25:23.684Z"
+    }
+  ]
+}
