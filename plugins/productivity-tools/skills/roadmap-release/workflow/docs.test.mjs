@@ -113,3 +113,16 @@ test('E33: config.md lists the procs mode of the cleanup among the uses of the v
   assert.match(item, /caminho da worktree/);
   assert.match(item, /porta só com/);
 });
+
+test('E34: SKILL.md, operator.md and config.md document the 524.288-byte (512 KiB) launch limit and preflight error', () => {
+  const step2 = /\n2\. \*\*Preflight\.\*\*[\s\S]*?\n3\. \*\*/.exec(skillMd);
+  const step4 = /\n4\. \*\*Run the workflow\.\*\*[\s\S]*?\n5\. \*\*/.exec(skillMd);
+  assert.ok(step2, 'SKILL.md step 2');
+  assert.ok(step4, 'SKILL.md step 4');
+  const configMd = read(path.join(SKILL, 'references', 'config.md'));
+  for (const [name, text] of [['SKILL.md step 2', step2[0]], ['SKILL.md step 4', step4[0]], ['operator.md', operatorMd], ['config.md', configMd]]) {
+    assert.match(text, /524[.,]288/, `${name} cites 524.288`);
+    assert.match(text, /512 KiB/, `${name} cites 512 KiB`);
+    assert.match(text, /not found/i, `${name} cites not found`);
+  }
+});
