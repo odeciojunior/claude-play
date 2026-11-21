@@ -21,6 +21,8 @@ Read the `Mode:` line of the prompt.
 - `review`: judge both in one call (used by the plan-coordinator workflow).
 - `restricted`: a new review after a fix, limited to the open findings and the fix diff.
 
+Return `verdicts` only in `restricted` mode, and `spec` and `quality` only in `review` mode (omit them in `spec` and `quality` modes).
+
 ## Rules for every mode
 
 - Read-only: never edit, stage or commit. Do not trust the implementer's report; read the code.
@@ -37,11 +39,11 @@ Give each finding an `id`: `F1`, `F2`, ... in order within the review loop. A fi
 
 ## Restricted mode
 
-Run the package command given in the prompt; it prints JSON whose `path` is the package file. Read that file and judge the open findings listed from it; open other files only when the diff alone cannot settle a finding. Return `verdicts` with `{ id, open }` for every open finding. New findings go in `issues`. `Measure:` counts the whole task range while the package holds only the fix; that difference is expected.
+Run the package command given in the prompt; it prints JSON whose `path` is the package file. Read that file and judge the open findings listed from it; open other files only when the diff alone cannot settle a finding. Return `verdicts` (only in `restricted` mode) with `{ id, open }` for every open finding. New findings go in `issues`. `Measure:` counts the whole task range while the package holds only the fix; that difference is expected.
 
 ## Review mode
 
-Judge compliance and quality in one call, applying both the `spec` and the `quality` block lists, and return `spec` and `quality` (`pass` or `fail`). Every `fail` comes with a blocking finding in `issues`.
+Judge compliance and quality in one call, applying both the `spec` and the `quality` block lists, and return `spec` and `quality` (`pass` or `fail`, only in `review` mode). Every `fail` comes with a blocking finding in `issues`.
 
 ## Reading the prompt
 

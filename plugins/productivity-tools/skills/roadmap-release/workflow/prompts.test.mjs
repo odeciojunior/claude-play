@@ -480,3 +480,17 @@ test('E29 AC1: the per-task fix goes through implAgent with the C() briefing and
   assert.ok(seg.includes('implAgent(`${C()}'), 'the fix opens with the C() briefing');
   assert.ok(seg.includes('fix the ${kind} problems'), 'the fix names the kind of the loop');
 });
+
+test('E35 AC1 (S3-24): task-reviewer restricts verdicts to restricted mode and spec/quality to review mode', () => {
+  const t = reviewerAgent();
+  const slice = (heading) => {
+    const at = t.indexOf(`\n## ${heading}\n`);
+    assert.ok(at >= 0, `missing ${heading}`);
+    const rest = t.slice(at + 1);
+    const next = rest.indexOf('\n## ');
+    return next >= 0 ? rest.slice(0, next) : rest;
+  };
+  assert.ok(slice('Choosing the mode').includes('Return `verdicts` only in `restricted` mode, and `spec` and `quality` only in `review` mode (omit them in `spec` and `quality` modes).'));
+  assert.ok(slice('Restricted mode').includes('Return `verdicts` (only in `restricted` mode) with `{ id, open }` for every open finding.'));
+  assert.ok(slice('Review mode').includes('return `spec` and `quality` (`pass` or `fail`, only in `review` mode).'));
+});

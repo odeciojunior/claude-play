@@ -776,3 +776,18 @@ test('E29 AC1: the release, the preflight and the task-reviewer carry no single 
   assert.ok(!agent.includes('restricted, review'));
   assert.match(SRC.slice(SRC.indexOf('async function runDeliverable')), /for \(const kind of \['spec', 'quality'\]\)/);
 });
+
+test('E35 AC1: task-reviewer.md restricts verdicts to restricted and spec/quality to review (S3-24)', () => {
+  const here3 = dirname(fileURLToPath(import.meta.url));
+  const agent = readFileSync(join(here3, '..', '..', '..', 'agents', 'task-reviewer.md'), 'utf8').replace(/\r\n/g, '\n');
+  const section = (heading) => {
+    const at = agent.indexOf(`\n## ${heading}\n`);
+    assert.ok(at >= 0, `missing ${heading}`);
+    const rest = agent.slice(at + 1);
+    const next = rest.indexOf('\n## ');
+    return next >= 0 ? rest.slice(0, next) : rest;
+  };
+  assert.match(section('Choosing the mode'), /Return `verdicts` only in `restricted` mode, and `spec` and `quality` only in `review` mode \(omit them in `spec` and `quality` modes\)\./);
+  assert.match(section('Restricted mode'), /Return `verdicts` \(only in `restricted` mode\) with `\{ id, open \}`/);
+  assert.match(section('Review mode'), /return `spec` and `quality` \(`pass` or `fail`, only in `review` mode\)\./);
+});
