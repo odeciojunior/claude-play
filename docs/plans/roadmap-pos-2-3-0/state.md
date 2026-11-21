@@ -7,7 +7,7 @@ Estratégia v1.0 -- 2026-11-21
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E34 | nao-iniciado | - | - |
+| E34 | executando | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md` | Executar tarefas T1 a T3 |
 | E35 | nao-iniciado | - | - |
 | E36 | nao-iniciado | - | - |
 | E37 | nao-iniciado | - | - |
