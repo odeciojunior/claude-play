@@ -390,7 +390,7 @@ test('task fixers and final reviews carry the roles and rounds of the real label
 });
 
 // ---- E11 P10: piece-3 counters per attempt
-import { piece3Of } from './session-metrics.mjs';
+import { piece3Of, isFixLabel } from './session-metrics.mjs';
 import { rolesByLabel } from './run-batch.mjs';
 
 function piece3Run(agents) {
@@ -441,4 +441,36 @@ test('rolesByLabel keeps the gates role that joins gate and gate-fix', () => {
   assert.equal(rl.fix.agents, 1);
   assert.equal(rl.other.agents, 2);
   assert.deepEqual(Object.keys(rl).sort(), ['fix', 'other', 'review', 'session', 'verify']);
+});
+
+test('E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers', () => {
+  for (const label of [
+    'E5:spec-fix1', 'E5:plan-fix2', 'E5:final-fix1', 'E5:gates-fix1',
+    'E5:regates-fix1', 'E5:delta-fix1', 'E5:merge-fix', 'E5:resume-fix', 'E5:merge-fix#2',
+  ]) {
+    assert.equal(isFixLabel(label), true, `expected fix label: ${label}`);
+  }
+  for (const label of [
+    'E5:merge-fix-review', 'E5:resume-fix-review', 'E5:gates-fix1-review',
+    'E5:regates-fix1-review', 'E5:merge-fix-probe', 'E5:spec-review1', 'E5:merge-fix-review#2',
+  ]) {
+    assert.equal(isFixLabel(label), false, `expected non-fix label: ${label}`);
+  }
+  const r = piece3Run([
+    { label: 'E5:spec', model: 'claude-opus-4-5', prompt: 'x'.repeat(10) },
+    { label: 'E5:merge-fix', model: 'claude-sonnet-4-5', prompt: 'x'.repeat(5) },
+    { label: 'E5:merge-fix-review', model: 'claude-opus-4-5', prompt: 'x'.repeat(6) },
+    { label: 'E5:resume-fix-review', model: 'claude-opus-4-5', prompt: 'x'.repeat(7) },
+    { label: 'E5:gates-fix1-review', model: 'claude-opus-4-5', prompt: 'x'.repeat(8) },
+    { label: 'E5:merge-fix-probe', model: 'claude-haiku-4-5', prompt: 'x'.repeat(4) },
+  ]);
+  assert.equal(r.fixAgents.calls.sonnet, 1);
+  assert.equal(r.fixAgents.calls.opus, 0);
+  assert.equal(r.fixAgents.calls.haiku, 0);
+  const c = toAttemptCounters(r);
+  assert.deepEqual(c.conditional, { extraRounds: 0, fixCalls: 1 });
+  assert.equal(c.structural.opus, 4);
+  assert.equal(c.structural.haiku, 1);
+  assert.equal(c.structural.sonnet, 0);
+  assert.equal(c.bytes, 10 + 6 + 7 + 8 + 4);
 });

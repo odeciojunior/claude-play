@@ -237,7 +237,7 @@ function reviewLoop(label) {
 }
 
 // Fix agents are decided by label (not by role: final-fix, gates-fix and merge-fix classify as other roles).
-const isFixLabel = (label) => /-fix\d*(-|$)/.test(normalizeLabel(label));
+export const isFixLabel = (label) => /-fix\d*$/.test(normalizeLabel(label));
 
 const taskOf = (label) => /^t(\d+):/.exec(normalizeLabel(label))?.[1] ?? null;
 
