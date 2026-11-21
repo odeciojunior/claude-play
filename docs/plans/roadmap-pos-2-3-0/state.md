@@ -12,7 +12,7 @@ Estratégia v1.0 -- 2026-11-21
 | E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md`, `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0` | Logar config descartável (ou concluir E38) e rodar lote pago de confirmação (10x opus, teto US$ 7) |
 | E36 | nao-iniciado | - | - |
 | E37 | nao-iniciado | - | - |
-| E38 | nao-iniciado | - | - |
+| E38 | executando | `docs/plans/pos-2-3-0-E38/spec.md, docs/plans/pos-2-3-0-E38/plan.md` | Executar Tarefas 1 a 5 (AC1, B12/AC2 e G1-G5) |
 | E39 | nao-iniciado | - | - |
 | E40 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
