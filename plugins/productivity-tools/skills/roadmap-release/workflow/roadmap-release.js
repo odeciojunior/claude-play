@@ -417,7 +417,7 @@ function reviewTruth(r, minCommits, label, marks = 0) {
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
-// The route of the plan/1 emit (recalculated here from the score, checked against the emitted one) drives the models; the reviewer is opus for the route's reviewTier, an opus implementer and any external task.
+// The route of the plan/1 emit (recalculated here from the score, checked against the emitted one) drives the implementer model and effort; the per-task reviewer is opus by default.
 function implModel(task) {
   const t = task && task.route && task.route.tier
   return ['haiku', 'sonnet', 'opus'].includes(t) ? t : 'sonnet'
@@ -426,9 +426,8 @@ function implEffort(task) {
   const e = task && task.route && task.route.effort
   return ['low', 'medium', 'high'].includes(e) ? e : effortFor(implModel(task))
 }
-function reviewModelFor(task) {
-  const r = task && task.route
-  return (r && (r.reviewTier === 'opus' || r.tier === 'opus')) || (task && task.external === true) ? 'opus' : 'sonnet'
+function reviewModelFor() {
+  return 'opus'
 }
 // ---- plan/1 adapter (E8): the plan-tool emit is parsed and checked here; nothing is trusted from an agent's transcription.
 function loadPlanEmit(stdout, { E, RM } = {}) {

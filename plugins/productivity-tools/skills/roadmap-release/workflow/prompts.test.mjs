@@ -45,15 +45,16 @@ test('review prompt hands the implementer checks (command, exit, output) to the 
   assert.match(P.buildTaskReviewPrompt(ctx, task, 'quality', impl), /Mode: quality/);
 });
 
-test('reviewer model: opus for route.reviewTier opus, an opus route or an external task; implementer model comes from the route', () => {
+test('reviewer model: opus by default for every task; implementer model comes from the route', () => {
   const r = (tier, effort, reviewTier) => ({ route: { tier, effort, reviewTier } });
   assert.equal(P.reviewModelFor(r('sonnet', 'medium', 'opus')), 'opus');
-  assert.equal(P.reviewModelFor(r('sonnet', 'medium', 'sonnet')), 'sonnet');
-  assert.equal(P.reviewModelFor({}), 'sonnet');
+  assert.equal(P.reviewModelFor(r('sonnet', 'medium', 'sonnet')), 'opus');
+  assert.equal(P.reviewModelFor(r('haiku', 'low', 'sonnet')), 'opus');
+  assert.equal(P.reviewModelFor({}), 'opus');
   assert.equal(P.reviewModelFor(r('opus', 'medium', 'sonnet')), 'opus');
   assert.equal(P.reviewModelFor({ ...r('sonnet', 'medium', 'sonnet'), external: true }), 'opus');
-  assert.equal(P.reviewModelFor({ ...r('sonnet', 'medium', 'sonnet'), external: false }), 'sonnet');
-  assert.equal(P.reviewModelFor(null), 'sonnet');
+  assert.equal(P.reviewModelFor({ ...r('sonnet', 'medium', 'sonnet'), external: false }), 'opus');
+  assert.equal(P.reviewModelFor(null), 'opus');
   assert.equal(P.implModel(r('haiku', 'low', 'sonnet')), 'haiku');
   assert.equal(P.implModel(r('opus', 'medium', 'opus')), 'opus');
   assert.equal(P.implModel(r('fable', 'medium', 'sonnet')), 'sonnet');
@@ -61,9 +62,9 @@ test('reviewer model: opus for route.reviewTier opus, an opus route or an extern
   assert.equal(P.implEffort(r('haiku', 'low', 'sonnet')), 'low');
   assert.equal(P.implEffort(r('sonnet', 'high', 'sonnet')), 'high');
   assert.equal(P.implEffort({}), 'medium');
-  // E8 T6: a transcribed tier/reviewTier without route is no longer read
+  // E8 T6: a transcribed tier/reviewTier without route is no longer read for implModel; reviewModelFor defaults to opus
   assert.equal(P.implModel({ tier: 'haiku' }), 'sonnet');
-  assert.equal(P.reviewModelFor({ tier: 'sonnet', reviewTier: 'opus' }), 'sonnet');
+  assert.equal(P.reviewModelFor({ tier: 'sonnet', reviewTier: 'sonnet' }), 'opus');
 });
 
 test('issue helpers: blocking, fmt, compact, reviewTruth', () => {

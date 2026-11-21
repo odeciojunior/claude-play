@@ -2169,10 +2169,10 @@ const issueRev = (iss) => ({ issues: iss, headSha: 'a1', clean: true, commitsInR
 const defect = { severity: 'critical', category: 'defeito', description: 'same defect', file: 'a.js' };
 const modelOf = (calls, label) => calls.find((c) => c.label === label).opts;
 
-test('task review model: opus task and external task are reviewed by opus, a plain sonnet task by sonnet', async () => {
+test('task review model: opus by default for plain sonnet, opus and external tasks', async () => {
   const tasks = [tk(1, false), tk(2, false, { tier: 'opus' }), tk(3, true)];
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { authorizeExternal: ['E1:T3'] }, over: withPlan(tasks) });
-  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t2:spec1').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t3:spec1').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t3:spec1').effort, 'medium');
@@ -2182,7 +2182,7 @@ test('re-review after a fix escalated to opus runs at opus', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: withPlan([tk(1, false)], (l) => (/^E1:t1:spec[12]$/.test(l) ? issueRev([defect]) : /^E1:t1:spec-fix/.test(l) ? { status: 'DONE', summary: 'f', checks: [] } : undefined)) });
   assert.equal(modelOf(calls, 'E1:t1:spec-fix1').model, 'sonnet');
-  assert.equal(modelOf(calls, 'E1:t1:spec2').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t1:spec2').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t1:spec-fix2').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t1:spec3').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t1:spec3').effort, 'medium');
@@ -4424,7 +4424,7 @@ test('AC4: the implementer and the task reviewer get model and effort from route
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^E1:plan-load\d$/.test(l) ? { checkExit: 0, emitExit: 0, emitStdout: JSON.stringify(emit), blob: B1 } : undefined) });
   assert.deepEqual([modelOf(calls, 'E1:t1:impl').model, modelOf(calls, 'E1:t1:impl').effort], ['haiku', 'low']);
   assert.deepEqual([modelOf(calls, 'E1:t2:impl').model, modelOf(calls, 'E1:t2:impl').effort], ['sonnet', 'high']);
-  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'sonnet');
+  assert.equal(modelOf(calls, 'E1:t1:spec1').model, 'opus');
   assert.equal(modelOf(calls, 'E1:t2:spec1').model, 'opus');
 });
 

@@ -640,6 +640,14 @@ test("AC3: by default each task gets the spec and quality reviews on today's mod
   assert.match(at, /effort: effortFor\(rvModel \|\| reviewModelFor\(t\)\)/);
 });
 
+test('E35 AC1: reviewModelFor returns opus by default for every task route', () => {
+  const r = (tier, effort, reviewTier) => ({ route: { tier, effort, reviewTier }, external: false });
+  for (const t of [r('haiku', 'low', 'sonnet'), r('sonnet', 'medium', 'sonnet'), r('opus', 'medium', 'opus'), { ...r('sonnet', 'medium', 'sonnet'), external: true }, {}, null]) {
+    assert.equal(P2.reviewModelFor(t), 'opus');
+    assert.equal(P2.effortFor(P2.reviewModelFor(t)), 'medium');
+  }
+});
+
 // ---- E29 T1: no single review mode ----
 test('E29 AC1: taskIssues ignores verdicts and returns the restricted join or r.issues', () => {
   for (const c of [rCtx({}), rCtx({ taskReview: { restricted: false, single: true } })]) {
