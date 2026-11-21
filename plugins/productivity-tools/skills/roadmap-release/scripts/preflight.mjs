@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Preflight for the roadmap-release skill: validates (or derives) release.config.json
 // and checks permission rules. Read-only: it never writes any file or setting.
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, isAbsolute, relative, sep, dirname, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -356,6 +356,14 @@ function repoRoot(from) {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+// Launch-by-name runtime limit measured in docs/reports/2026-11-13-E8-limite-lancamento-workflow.md: above 524,288 bytes (512 KiB)
+// on disk (including CRLF on Windows), the workflow disappears from the plugin registry and launching by name fails with 'not found'.
+export const MAX_WORKFLOW_LAUNCH_BYTES = 524288;
+
+export function workflowFilePath(from = HERE) {
+  return resolve(from, '../workflow/roadmap-release.js').split(sep).join('/');
+}
+
 // Absolute path (with /) of the tracker CLI shipped next to this skill; an error when it is missing or has a double quote
 // (the workflow wraps the path in double quotes).
 export function trackerCliPath(from = HERE) {
@@ -527,7 +535,7 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
   return data;
 }
 
-export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform } = {}) {
+export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -563,6 +571,13 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   if (config) errors.push(...validateReleaseConfig(config));
   const tracker = trackerCliPath(trackerFrom);
   if (tracker.error) errors.push(tracker.error);
+  const wfPath = workflowPath ? resolve(workflowPath).split(sep).join('/') : (existsSync(workflowFilePath(trackerFrom)) ? workflowFilePath(trackerFrom) : workflowFilePath(HERE));
+  if (existsSync(wfPath)) {
+    const wfSize = statSync(wfPath).size;
+    if (wfSize > MAX_WORKFLOW_LAUNCH_BYTES) {
+      errors.push(`release workflow file exceeds 524.288 bytes (512 KiB): ${wfPath} has ${wfSize} bytes (limit is ${MAX_WORKFLOW_LAUNCH_BYTES} bytes); launching ${RELEASE_WORKFLOW} by name will fail with 'not found'`);
+    }
+  }
   let missing = [];
   let pending = [];
   if (config && errors.length === 0) {

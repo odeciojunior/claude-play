@@ -9,6 +9,7 @@ import {
   requiredRules, requiredCommands, missingRules, parseGatesTable, runPreflight, readRoadmapStructure,
   WORKFLOW_SCRIPTS, scriptRule, openCardCommands, trackerCliPath,
   RELEASE_WORKFLOW, releaseWorkflowRule, workflowRuleCovered, discoverRoadmap, discoveryPages, DISCOVERY_PAGE_CHARS,
+  MAX_WORKFLOW_LAUNCH_BYTES, workflowFilePath,
 } from './preflight.mjs';
 import { readBlocks, parseTable, parseRoadmap, loadRoadmap } from '../../roadmap-tracker/scripts/check-roadmap.mjs';
 import { readFileSync, existsSync } from 'node:fs';
@@ -1133,4 +1134,50 @@ test('runPreflight: default wtRoot is <main repo>-wt even from a linked worktree
   assert.deepEqual(norm(fromMain), norm([want]));
   assert.deepEqual(norm(fromLinked), norm([want]));
   rmSync(linked, { recursive: true, force: true });
+});
+
+// ---- E34 AC2: workflow file 512 KiB (524.288 bytes) launch limit diagnostic ----
+test('E34 AC2: workflowFilePath points to roadmap-release.js and the real workflow is within 524288 bytes', () => {
+  assert.equal(MAX_WORKFLOW_LAUNCH_BYTES, 524288);
+  const wf = workflowFilePath();
+  assert.match(wf, /\/workflow\/roadmap-release\.js$/);
+  assert.equal(wf.includes('\\'), false);
+  assert.equal(existsSync(wf), true);
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const r = runPreflight(dir, { home, ref: 'rel' });
+  assert.deepEqual(r.errors, []);
+});
+
+test('E34 AC2: runPreflight accepts a workflow file of exactly 524288 bytes (C1) and rejects 524289 bytes with a not found error (C2)', () => {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'wf512k-'));
+  const wf512k = join(tmp, 'wf-524288.js');
+  const wfOver = join(tmp, 'wf-524289.js');
+  writeFileSync(wf512k, Buffer.alloc(524288, 0x61));
+  writeFileSync(wfOver, Buffer.alloc(524289, 0x61));
+  const ok = runPreflight(dir, { home, ref: 'rel', workflowPath: wf512k });
+  assert.deepEqual(ok.errors, []);
+  const over = runPreflight(dir, { home, ref: 'rel', workflowPath: wfOver });
+  assert.equal(over.errors.length, 1);
+  assert.match(over.errors[0], /524\.288/);
+  assert.match(over.errors[0], /512 KiB/);
+  assert.match(over.errors[0], /524289/);
+  assert.match(over.errors[0], /productivity-tools:release-workflow/);
+  assert.match(over.errors[0], /'not found'/);
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+test('E34 C3: runPreflight reports both config validation errors and the 524.288-byte workflow size error', () => {
+  const { dir } = repoWithRoadmap(false);
+  writeFileSync(join(dir, 'release.config.json'), JSON.stringify({ projectContext: '', install: '', gates: [] }));
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'wf512k-c3-'));
+  const wfOver = join(tmp, 'wf-524289.js');
+  writeFileSync(wfOver, Buffer.alloc(524289, 0x61));
+  const r = runPreflight(dir, { home, workflowPath: wfOver });
+  assert.ok(r.errors.some((e) => /gates must be a non-empty list/.test(e)));
+  assert.ok(r.errors.some((e) => /524\.288 bytes \(512 KiB\)/.test(e) && /'not found'/.test(e)));
+  rmSync(tmp, { recursive: true, force: true });
 });
