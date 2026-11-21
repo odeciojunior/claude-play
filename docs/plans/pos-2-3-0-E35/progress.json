@@ -1,0 +1,240 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E35/plan.md",
+    "id": "E35",
+    "digest": "09cb03ef",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": "docs/plans/pos-2-3-0-E35/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "in-progress",
+    "wave": 3,
+    "worktree": null,
+    "branch": null,
+    "base": "3c7e204a9cef85ab326fb3f50f42802d67ccf71f",
+    "test": null,
+    "baseline": null,
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-21T17:33:28.387Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Promover reviewModelFor para opus por padrão e atualizar testes do workflow",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "625e535781c0237cc3f75140c516c984ad6afa9e",
+      "replacedBy": null,
+      "note": "reviewModelFor promovido para opus em roadmap-release.js e testes em prompts.test.mjs, review.test.mjs e flow.test.mjs atualizados (549 pass, 0 fail)",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Alinhar modos em agents/task-reviewer.md (S3-24) com testes unitários",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/agents/task-reviewer.md",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9",
+      "replacedBy": null,
+      "note": "S3-24 aplicado em agents/task-reviewer.md com testes em prompts.test.mjs e review.test.mjs (104 pass, 0 fail)",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Escrever desenho do lote E35 (regra R3 1x1 e piso 26/40) e validar portões G1 a G5",
+      "wave": 3,
+      "deps": [
+        1,
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "docs/plans/2026-11-21-measure-e35-confirmacao-opus-design.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0",
+      "replacedBy": null,
+      "note": "Desenho docs/plans/2026-11-21-measure-e35-confirmacao-opus-design.md criado com regra R3 1x1 e piso 26/40; embed --check e G1 a G5 verdes (2211 testes, 2209 pass, 0 fail, 2 skipped)",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pending",
+    "rounds": 0,
+    "lastVerdict": null
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-21T17:33:27.510Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-21T17:33:27.598Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-21T17:33:27.671Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-21T17:33:27.727Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-21T17:33:27.782Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T17:33:27.836Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-21T17:33:27.890Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-21T17:33:27.947Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-21T17:33:28.002Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-21T17:33:28.057Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T17:33:28.109Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-21T17:33:28.164Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-21T17:33:28.220Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-21T17:33:28.278Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-21T17:33:28.334Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T17:33:28.387Z"
+    }
+  ]
+}

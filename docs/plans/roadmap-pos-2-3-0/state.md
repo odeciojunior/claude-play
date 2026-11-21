@@ -9,7 +9,7 @@ Estratégia v1.0 -- 2026-11-21
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
 | E34 | na-branch | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md`, `docs/plans/pos-2-3-0-E34/progress.json`, `3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba`, `c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc`, `e0ace0fc6348d33ac3a1daac493cb4e19534af62` | - |
-| E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md` | Executar tarefas T1 a T3 |
+| E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md`, `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0` | Logar config descartável (ou concluir E38) e rodar lote pago de confirmação (10x opus, teto US$ 7) |
 | E36 | nao-iniciado | - | - |
 | E37 | nao-iniciado | - | - |
 | E38 | nao-iniciado | - | - |
