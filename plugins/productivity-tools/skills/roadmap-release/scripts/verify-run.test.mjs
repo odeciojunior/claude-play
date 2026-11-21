@@ -773,3 +773,73 @@ test('E32 procs: end to end ends a child whose command line carries the worktree
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- E38 (B11): CreationDate cutoff for reused PPIDs ----
+
+test('E38 AC1 (B11): parseCreationDate and parseCimProcs handle /Date(ms)/, ISO-8601 and absent CreationDate', async () => {
+  const { parseCreationDate, parseCimProcs } = await import('./verify-run.mjs');
+  assert.equal(parseCreationDate('/Date(1732190000000)/'), 1732190000000);
+  assert.equal(parseCreationDate('/Date(1732190000123-0300)/'), 1732190000123);
+  assert.equal(parseCreationDate('2026-11-21T14:00:00.000Z'), Date.parse('2026-11-21T14:00:00.000Z'));
+  assert.equal(parseCreationDate(1732190000000), 1732190000000);
+  assert.equal(parseCreationDate(null), null);
+  assert.equal(parseCreationDate(''), null);
+  assert.equal(parseCreationDate('not-a-date'), null);
+  assert.deepEqual(
+    parseCimProcs(JSON.stringify([
+      { ProcessId: 10, ParentProcessId: 1, CreationDate: '/Date(1732190000000)/', CommandLine: 'node a.js' },
+      { ProcessId: 11, ParentProcessId: 10, CreationDate: '2026-11-21T14:00:00.000Z', CommandLine: 'node b.js' },
+      { ProcessId: 12, ParentProcessId: 1, CreationDate: null, CommandLine: 'node c.js' },
+    ])),
+    [
+      { pid: 10, ppid: 1, cmd: 'node a.js', created: 1732190000000 },
+      { pid: 11, ppid: 10, cmd: 'node b.js', created: Date.parse('2026-11-21T14:00:00.000Z') },
+      { pid: 12, ppid: 1, cmd: 'node c.js' },
+    ],
+  );
+});
+
+test('E38 AC1 (B11): selectProcs and runProcs cut ancestry when a parent pid was created after the child', async () => {
+  const { selectProcs, runProcs } = await import('./verify-run.mjs');
+  const wt = 'D:/x/E3';
+  const procs = [
+    { pid: 1, ppid: 0, created: 100, cmd: 'wininit' },
+    // pid 80 in the worktree started AFTER orphan pid 90, reusing pid 80
+    { pid: 80, ppid: 1, created: 2000, cmd: 'node D:/x/E3/dev.js' },
+    { pid: 90, ppid: 80, created: 1000, cmd: 'unrelated-orphan' },
+    // pid 91 started AFTER pid 80: legitimate descendant
+    { pid: 91, ppid: 80, created: 2500, cmd: 'vite' },
+    // self pid 30 has ppid 95, which was reused later by a worktree process -> skip must NOT include 95
+    { pid: 30, ppid: 95, created: 1000, cmd: 'node verify-run.mjs procs' },
+    { pid: 95, ppid: 1, created: 3000, cmd: 'node D:/x/E3/sibling.js' },
+  ];
+  const listens = [{ pid: 90, port: 5212 }, { pid: 91, port: 5213 }];
+  const unchecked = [];
+  const m = selectProcs(procs, listens, { wt, ports: [5210, 5219], self: 30, platform: 'win32', unchecked });
+  assert.deepEqual(m, [
+    { pid: 80, why: 'path', cmd: 'node D:/x/E3/dev.js' },
+    { pid: 95, why: 'path', cmd: 'node D:/x/E3/sibling.js' },
+    { pid: 91, why: 'port 5213' },
+  ]);
+  assert.deepEqual(unchecked, ['pid 90 listens on port 5212 in the range, but neither it nor an ancestor carries the worktree path: not ended']);
+
+  const seen = [];
+  const kills = [];
+  const cimJson = JSON.stringify([
+    { ProcessId: 80, ParentProcessId: 1, CreationDate: '/Date(2000)/', CommandLine: 'node D:/x/E3/dev.js' },
+    { ProcessId: 90, ParentProcessId: 80, CreationDate: '/Date(1000)/', CommandLine: 'unrelated-orphan' },
+    { ProcessId: 91, ParentProcessId: 80, CreationDate: '/Date(2500)/', CommandLine: 'vite' },
+  ]);
+  const run = (cmd, args) => {
+    if (cmd === 'taskkill') { kills.push(args); return { status: 0, stdout: 'SUCCESS', stderr: '' }; }
+    const scriptArgs = args.join(' ');
+    seen.push(scriptArgs);
+    if (/Get-CimInstance/.test(scriptArgs)) return { status: 0, stdout: cimJson };
+    return { status: 0, stdout: JSON.stringify([{ LocalPort: 5212, OwningProcess: 90 }, { LocalPort: 5213, OwningProcess: 91 }]) };
+  };
+  const r = runProcs({ nonce: NONCE, wt, ports: [5210, 5219] }, { platform: 'win32', run });
+  assert.ok(seen.some((s) => s.includes('ProcessId,ParentProcessId,CreationDate,CommandLine')), seen.join('\n'));
+  assert.deepEqual(r.matched.map((x) => [x.pid, x.why]), [[80, 'path'], [91, 'port 5213']]);
+  assert.deepEqual(r.unchecked, ['pid 90 listens on port 5212 in the range, but neither it nor an ancestor carries the worktree path: not ended']);
+  assert.deepEqual(kills, [['/PID', '91', '/T', '/F'], ['/PID', '80', '/T', '/F']]);
+});

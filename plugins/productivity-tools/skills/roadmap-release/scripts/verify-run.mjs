@@ -240,11 +240,32 @@ export function runCheck(p) {
 // ---- procs: list and end the processes of a deliverable (command line carries the worktree path, or it listens in the port range and descends from one that does) ----
 
 const asList = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
+export function parseCreationDate(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  const ms = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(s);
+  if (ms) return Number(ms[1]);
+  const dmtf = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.(\d{6})([+-]\d{3})$/.exec(s);
+  if (dmtf) return Date.UTC(+dmtf[1], +dmtf[2] - 1, +dmtf[3], +dmtf[4], +dmtf[5], +dmtf[6], Math.floor(+dmtf[7] / 1000)) - Number(dmtf[8]) * 60000;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
+const validParent = (child, parent) => !(child && parent && Number.isFinite(child.created) && Number.isFinite(parent.created) && parent.created > child.created);
 export function parseCimProcs(text) {
   // A raw control character is never valid inside JSON: the console codepage can emit one (0x1A) for a character it cannot encode.
   const s = String(text == null ? '' : text).replace(/[\u0000-\u001f]/g, ' ').trim();
   if (!s) return [];
-  return asList(JSON.parse(s)).filter((o) => o && Number.isInteger(o.ProcessId)).map((o) => ({ pid: o.ProcessId, ppid: Number.isInteger(o.ParentProcessId) ? o.ParentProcessId : 0, cmd: typeof o.CommandLine === 'string' ? o.CommandLine : '' }));
+  return asList(JSON.parse(s)).filter((o) => o && Number.isInteger(o.ProcessId)).map((o) => {
+    const created = parseCreationDate(o.CreationDate);
+    return {
+      pid: o.ProcessId,
+      ppid: Number.isInteger(o.ParentProcessId) ? o.ParentProcessId : 0,
+      cmd: typeof o.CommandLine === 'string' ? o.CommandLine : '',
+      ...(created !== null ? { created } : {}),
+    };
+  });
 }
 export function parsePs(text) {
   const out = [];
@@ -280,7 +301,13 @@ export function selectProcs(procs, listens, { wt, ports, self, platform, uncheck
   const root = fold(wt).replace(/\/+$/, '');
   const byPid = new Map(procs.map((q) => [q.pid, q]));
   const skip = new Set();
-  for (let pid = self; Number.isInteger(pid) && pid > 0 && !skip.has(pid); pid = byPid.has(pid) ? byPid.get(pid).ppid : 0) skip.add(pid);
+  for (let pid = self; Number.isInteger(pid) && pid > 0 && !skip.has(pid); ) {
+    skip.add(pid);
+    const cur = byPid.get(pid);
+    if (!cur) break;
+    const parent = byPid.get(cur.ppid);
+    pid = validParent(cur, parent) ? cur.ppid : 0;
+  }
   const holdsPath = (cmd) => {
     if (!root) return false;
     const c = fold(cmd);
@@ -295,7 +322,12 @@ export function selectProcs(procs, listens, { wt, ports, self, platform, uncheck
   for (const q of procs) if (!skip.has(q.pid) && holdsPath(q.cmd)) out.set(q.pid, { pid: q.pid, why: 'path', cmd: cut(q.cmd) });
   const inWt = (pid) => {
     const seen = new Set();
-    for (let q = byPid.get(pid); q && !seen.has(q.pid) && !skip.has(q.pid); q = byPid.get(q.ppid)) { seen.add(q.pid); if (holdsPath(q.cmd)) return true; }
+    for (let q = byPid.get(pid); q && !seen.has(q.pid) && !skip.has(q.pid); ) {
+      seen.add(q.pid);
+      if (holdsPath(q.cmd)) return true;
+      const parent = byPid.get(q.ppid);
+      q = validParent(q, parent) ? parent : null;
+    }
     return false;
   };
   const told = new Set();
@@ -330,7 +362,7 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   };
   const win = platform === 'win32';
   const procs = win
-    ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
+    ? list('powershell.exe', 'powershell.exe', ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress'], parseCimProcs)
     : list('ps', 'ps', ['-eo', 'pid=,ppid=,args='], parsePs);
   const listens = win
     // "none found" becomes [] with exit 0; any other error (cmdlet missing, CIM failure) is thrown, so exit != 0 -> unchecked
@@ -344,8 +376,18 @@ export function runProcs(p, { platform = process.platform, run = spawnSync, kill
   // is ended with its subtree (/T): that subtree is inside the ancestor's tree anyway, and ending the listener alone would orphan its children
   // (their parent pid then points to a dead process, out of reach of the ancestor's /T). Without such an ancestor (defensive) it is ended alone.
   const paths = new Set(matched.filter((x) => x.why === 'path').map((x) => x.pid));
-  const ppidOf = new Map(procs.map((q) => [q.pid, q.ppid]));
-  const underPath = (pid) => { const seen = new Set(); for (let q = ppidOf.get(pid); q && !seen.has(q); q = ppidOf.get(q)) { if (paths.has(q)) return true; seen.add(q); } return false; };
+  const byPid = new Map(procs.map((q) => [q.pid, q]));
+  const underPath = (pid) => {
+    const seen = new Set();
+    for (let q = byPid.get(pid); q && !seen.has(q.pid); ) {
+      seen.add(q.pid);
+      const parent = byPid.get(q.ppid);
+      if (!validParent(q, parent)) return false;
+      if (parent && paths.has(parent.pid)) return true;
+      q = parent;
+    }
+    return false;
+  };
   for (const m of [...matched.filter((x) => x.why !== 'path'), ...matched.filter((x) => x.why === 'path')]) {
     try { end(m.pid, m.why === 'path' || underPath(m.pid)); ended.push(m.pid); } catch (e) { if (e && e.code === 'ESRCH') ended.push(m.pid); else failed.push({ pid: m.pid, error: cap(e && e.message ? e.message : String(e), 200) }); }
   }
