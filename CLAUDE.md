@@ -1,58 +1,69 @@
 # CLAUDE.md
 
-Claude Code plugin marketplace (`claude-play`). Users add this repo as a marketplace source and install plugins with the standard CLI: `claude plugin install <plugin>@claude-play`.
+Claude Code plugin marketplace (`claude-play`). Install plugins with `claude plugin install <plugin>@claude-play`.
 
 ## Rules that matter
 
-- **Bump the version in two places together**: `plugins/<name>/.claude-plugin/plugin.json` (authoritative: Claude Code uses it over any marketplace value) and the root `README.md` table. Marketplace entries carry no `version`; `lint-plugin` checks plugin.json against the README row and fails an entry that has one. Installed copies resolve from `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`, so an edit without a bump never reaches users.
-- **Agent frontmatter keys (repo policy):** `name`, `description`, `tools`, `disallowedTools`, `model`, `effort`, `maxTurns`, `skills`, `memory`, `background`, `isolation`, `omitClaudeMd`, `color`, `autoCompactWindow`, `experimental` are the only allowed keys. `hooks`, `mcpServers`, `permissionMode` and `initialPrompt` are ignored in plugin agents and fail the lint; any other key fails it too (`lint-plugin.mjs` checks every `agents/**/*.md`).
-- **SKILL.md frontmatter keys (repo policy):** `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. `model`/`context`/`agent`/`allowed-tools`/`paths`/`hooks` are valid Claude Code fields that we don't use, to keep skills portable and predictable. Unknown keys are ignored silently, so spelling matters. Single exception (DEC-049): `productivity-tools/skills/roadmap-release/SKILL.md` declares `allowed-tools: Workflow(productivity-tools:release-workflow)`, and `lint-plugin` fails `allowed-tools` in any other skill and any other entry. That SKILL.md also declares `disable-model-invocation: true` and the lint requires it together with the grant (DEC-275): the grant holds only for the command the person types.
-- **Never edit `plugins/_template/`** (the `protect-template` hook blocks it); contributors copy it to a new plugin directory.
-- **No CI.** Before committing run `claude plugin validate .` (marketplace) and `claude plugin validate plugins/<name>` for each changed plugin, and the tests: `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"`. The validator checks manifests, MCP entries, and frontmatter parsing (not key allowlists or repo policy); SKILL.md/agent frontmatter keys and repo rules are checked by the `marketplace-tools` `validate-plugin` skill (`lint-plugin.mjs`).
-- Path-specific rules load from `.claude/rules/` when a matching file is read or edited: skills, the roadmap checker, mcp-sql-server.
+- **Bump versions in two places at release/publication (not feature branches — DEC-042 in `.claude/rules/roadmap-checker.md`)**: `plugins/<name>/.claude-plugin/plugin.json` (authoritative) and root `README.md` table (no `version` in `.claude-plugin/marketplace.json`). Cache: `~/.claude/plugins/cache/claude-play/<plugin>/<version>/`.
+- **Frontmatter (`lint-plugin.mjs` is authoritative)**: plugin agents allow 15 repo-policy keys (`hooks`, `mcpServers`, `permissionMode`, `initialPrompt`, unlisted keys fail); `SKILL.md` uses 8 portable keys except DEC-049/DEC-275 (`plugins/productivity-tools/skills/roadmap-release/SKILL.md`: `allowed-tools: Workflow(productivity-tools:release-workflow)` + `disable-model-invocation: true`); workflow-referencing skills require semver `compatibility`.
+- **Never edit `plugins/_template/`** (`protect-template` hook); copy it for new plugins.
+- **No CI — verify directly:**
+  - `claude plugin validate .` and `claude plugin validate plugins/<name>` — manifests, MCP entries, frontmatter parsing (not key allowlists/policy).
+  - `node plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs plugins/<name>` — CLI behind `/marketplace-tools:validate-plugin`.
+  - `node --test "plugins/**/*.test.mjs" ".claude/hooks/*.test.mjs" "tools/**/*.test.mjs"` — unit tests (quoted recursive globs need Node >= 20.11; `check-roadmap.mjs` stays Node >= 18).
+  - `node plugins/sql-server-tools/scripts/check-queries.mjs` — mandatory after `plugins/sql-server-tools/references/*.md` edits (`node --test` skips live packs).
+  - `node plugins/productivity-tools/scripts/embed.mjs --check <targets...>` — after `plugins/productivity-tools/lib/` edits (`.claude/rules/workflows-and-lib.md`).
+  - `node plugins/productivity-tools/skills/excalidraw-designer/scripts/validate-excalidraw.mjs docs/diagrams/repo-architecture.excalidraw` — after Excalidraw diagram edits.
+- **Path-scoped rules** in `.claude/rules/` load automatically via `paths:` frontmatter on matching reads/edits.
 
 ## Publish an update
 
-1. Bump the version (two places), commit on a feature branch, fast-forward or merge into `main`, `git push origin main`.
-2. `claude plugin marketplace update claude-play`, then `claude plugin update <plugin>@claude-play`, then `/reload-plugins` (or restart).
-3. Check that `~/.claude/plugins/cache/claude-play/<plugin>/<new version>/` exists. Older version folders linger for 14 days; don't debug against them.
+Explicit owner authorization is required before pushing or tagging.
 
-Dev loop without a bump: `claude plugin marketplace add <local path to this repo>` loads plugins in place; `/reload-plugins` picks up edits. The bump matters for installs from GitHub.
+1. Prepare verified rollback branch (`volta/<plugin>-<next-patch>`); on release branch, bump `check-roadmap.mjs` line 1 if changed (DEC-042) and both version places before advancing `main`.
+2. Advance `main`, then (owner-authorized) tag and push.
+3. Update locally: `claude plugin marketplace update claude-play`, `claude plugin update <plugin>@claude-play`, `/reload-plugins` (or restart).
+4. Verify `~/.claude/plugins/cache/claude-play/<plugin>/<new version>/` (old folders linger 14 days; don't debug against them).
 
-Commits use `type(scope): description` (`feat`, `fix`, `docs`, `chore`).
+Dev loop (no bump): `claude plugin marketplace add <local path to this repo>` + `/reload-plugins`.
+Commits: `type(scope): description` (`feat`, `fix`, `docs`, `chore`).
 
 ## Layout
 
 ```
-.claude-plugin/marketplace.json     # Plugin catalog: source of truth for plugins and categories (versions live in plugin.json)
+.claude-plugin/marketplace.json  # Catalog & categories (no version)
 plugins/<name>/
-  .claude-plugin/plugin.json        # Dir name = plugin name (kebab-case); repo-required: name, description, version, author, license, keywords (the spec requires only name)
-  skills/<skill>/SKILL.md           # + references/*.md loaded on demand
-  agents/<agent>.md                 # Shipped subagents (sql-server-tools and productivity-tools); plugin agents ignore hooks, mcpServers, permissionMode, initialPrompt
-  lib/                              # Pure source modules (DEC-058): roadmap-format.mjs (embedded into check-roadmap.mjs by scripts/embed.mjs); roadmap-edit.mjs (imported by roadmap.mjs); data-block.mjs (shared by spec-tool.mjs, plan-tool.mjs, and progress.mjs); routing.mjs, plan-digest.mjs, external-auth.mjs, and progress-state.mjs (embeddable pure sources; progress-state.mjs is imported by progress.mjs and embedded in coordinator.js; external-auth.mjs and plan-digest.mjs are embedded in both workflows)
-  scripts/                          # Setup/utility scripts; embed.mjs syncs embedded copies; spec-tool.mjs checks a spec (`json data` block) against its card; plan-tool.mjs checks a plan (`plan/1`) against its spec, emits it with a digest, and generates the wave map and per-task briefs; review-package.mjs builds a single diff package for restricted re-reviews; run-record.mjs manages `run.json` approval/baseline caches
-plugins/_template/                  # Starter template (protected)
-.claude/agents/plugin-reviewer.md   # Repo-local agent, not shipped: "review plugin X"
-.claude/hooks/*.mjs                 # Wired in .claude/settings.json
-.claude/rules/*.md                  # Path-scoped rules
-docs/plans/  docs/reports/          # Designs and plans (YYYY-MM-DD-<topic>-design|plan.md); research reports
-tools/measure/                      # Repo-only measurement tools (not shipped); outputs go to tools/measure/out/, never committed
+  .claude-plugin/plugin.json  # Kebab-case dir=name; required: name, description, version, author, license, keywords
+  skills/<skill>/  # SKILL.md, references/, scripts/, workflow/
+  agents/<agent>.md  # Shipped subagents (sql-server-tools, productivity-tools)
+  references/  # Plugin-root reference packs (sql-server-tools)
+  lib/  # Pure modules; .claude/rules/workflows-and-lib.md (productivity-tools module/embed map)
+  scripts/  # CLI/setup/check scripts; .claude/rules/workflows-and-lib.md
+plugins/_template/  # Protected starter template
+.claude/agents/plugin-reviewer.md  # Repo-local reviewer: "review plugin X"
+.claude/hooks/*.mjs  # Wired in .claude/settings.json
+.claude/rules/*.md  # Path-scoped rules
+docs/plans/  # Designs, plans, roadmap-<topic>/, <topic>-E<n>/
+docs/releases/  # Published release notes
+docs/reports/  # Research reports
 docs/diagrams/repo-architecture.{md,excalidraw}
-docs/claude-code-extensibility-reference.md   # Spec digest: plugin/skill/hook/agent formats
+docs/claude-code-extensibility-reference.md  # Spec digest: plugin/skill/hook/agent formats
+tools/measure/  # Not shipped; .claude/rules/measure.md (--work/--out/paid-run rules)
 ```
 
-Human-facing plugin table: `README.md`. When adding or removing a plugin, update `marketplace.json`, `README.md` and both `docs/diagrams/repo-architecture` files.
+Human table: `README.md`. Adding/removing a plugin updates `marketplace.json`, `README.md`, and `docs/diagrams/repo-architecture.{md,excalidraw}` (validate `.excalidraw`).
 
 ## Hooks
 
-Both are Node scripts (Node ≥18 is already required by the roadmap checker).
+Node >= 18:
 
-- `protect-template.mjs` (PreToolUse, Edit|MultiEdit|Write|NotebookEdit): exit 2 blocks edits under `plugins/_template/` (Windows `\` paths, any case and `..` segments included). Shell commands are not guarded.
-- `validate-marketplace-json.mjs` (PostToolUse, same matcher): after an edit to `marketplace.json`, prints `{"decision":"block","reason":...}` when one of its 9 checks fails (including entry name vs each `plugin.json`; an entry with a `version` is rejected, since versions live in plugin.json); an unexpected error also blocks; no output = pass. Run it by hand: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
+- `protect-template.mjs` (PreToolUse, `Edit|MultiEdit|Write|NotebookEdit`): exit 2 blocks `plugins/_template/` edits (normalizes `\`, case, `..`); shell commands unguarded.
+- `validate-marketplace-json.mjs` (PostToolUse, same matcher): runs 9 checks on `marketplace.json` (incl. `plugin.json` sync, no entry `version`); prints `{"decision":"block","reason":...}` on fail/error (no output = pass). Test: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
 
 ## Windows
 
-`core.autocrlf=true` checks text files out as CRLF. `.gitattributes` keeps `*.sh` LF everywhere; check with `git ls-files --eol`.
+- Build Windows paths/JSON containing `\` in code (`String.fromCharCode(92)` or `path.win32.join`) instead of shell/bash argv or heredocs, which collapse backslashes before Node reads them.
+- `core.autocrlf=true` checks out CRLF. `.gitattributes` keeps `*.sh` and `tools/measure/{scenario,arms}/**` LF and pins the CRLF trigger fixture to CRLF; verify via `git ls-files --eol`.
 
 ## Contributing
 
