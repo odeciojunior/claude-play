@@ -147,18 +147,20 @@ Regras (todas com precedente):
 
 ## 7. Decisões do dono antes de começar
 
-1. **Objetivo e versão.** Rec.: o objetivo da seção 1 e versão 2.4.0 (o revisor opus muda o comportamento padrão e o custo de toda execução). Alt.: 2.3.x só com correções, deixando o revisor opus para depois.
-2. **Teto pago.** Rec.: US$ 30 com reserva de 4 liberada via Fable. Alt.: US$ 20 sem lote de confirmação do opus; US$ 40 como no pós-2.2.0.
-3. **Espaço no workflow (B03).** Rec.: subir o teto para 300.000 com decisão registrada, mantendo o teste (limite de lançamento 524.288 bytes; extração mexe em literais cobertos por `flow.test.mjs`). Alt.: extrair comentários históricos (31.236 caracteres) e o programa embutido para `scripts/` sem mudar o teto; não fazer nada e cortar escopo para caber em cerca de 4.950.
-4. **Lote de confirmação do revisor opus (E35).** Rec.: sim, só braço opus, 10 execuções, porque DEC-031 do pós-2.2.0 manda medir a S3-24 junto. Alt.: adotar opus sem lote e deixar a S3-24 fora; braços sonnet e opus de novo (~US$ 9,2).
-5. **Laço quality e R3.** Rec.: manter o laço e escrever a regra para 1×1 no desenho de E35, sem lote próprio. Alt.: novo lote para decidir o laço (custo do laço opus US$ 0,143 por tentativa, E30rel).
-6. **Gate de testes (B05).** Rec.: aceitar remoção declarada na spec ou no plano e conferida por nome, e parar o `gates-fix` quando a única falha é o total. Alt.: só parar o `gates-fix` cedo e manter a recusa (cada remoção vira ato do dono, como E29).
-7. **Modo do planner.** Rec.: leve, como DEC-001 do pós-2.2.0 (7 entregáveis, fontes já triadas). Alt.: completo, com revisor independente, se o dono quiser revisão extra de B05 (raio alto).
-8. **IDs e branch.** Rec.: E34 em diante; `release/pos-2.3.0` criada da ponta de `main` (a partir de `896f9ed`, para incluir `2026-11-20-proximo-roadmap-plano.md` e `2026-11-20-retrospectiva-evolucao-skills.md`). Alt.: outro prefixo de ID por roadmap.
-9. **Paralelismo (B24).** Rec.: manter `generated: true` e `maxParallel` 1 (árvore compartilhada com outras sessões). Alt.: rever `locks` e `needsLock` para rodar E36 e E38 juntos.
-10. **Notas de baixo valor (B19 a B22).** Rec.: registrar como "fica" com motivo e tirá-las do backlog ativo. Alt.: manter todas pendentes para o roadmap seguinte.
-11. **Conferência Linux real (B12).** Rec.: sessão fora de worktree, delegada a sessão headless com subagent opus (memória do projeto). Alt.: aceitar só os fakes com risco registrado.
-12. **Delegação a Fable.** Rec.: manter DEC-006 do pós-2.2.0 (decisões do dono via Fable; push, tag e publicação com autorização explícita). Alt.: dono decide cada uma.
+Aprovadas pelo dono em 2026-11-21 (viram `DEC-001` a `DEC-012` do roadmap pós-2.3.0):
+
+1. **Objetivo e versão.** **Aprovado:** o objetivo da seção 1 e versão `2.4.0` (o revisor opus muda o comportamento padrão e o custo de toda execução). Alternativa descartada: `2.3.x` só com correções, deixando o revisor opus para depois.
+2. **Teto pago.** **Aprovado:** US$ 30 (~US$ 20,5 esperados + reserva comum de US$ 4 liberada só via Fable; parada unitária acima de US$ 6). Alternativa descartada: US$ 20 sem lote de confirmação do opus; US$ 40 como no pós-2.2.0.
+3. **Espaço no workflow (B03).** **Aprovado:** subir `MAX_WORKFLOW_CHARS` para `300000` com decisão registrada, mantendo o teste (limite real de lançamento 524.288 bytes; extração mexe em literais cobertos por `flow.test.mjs`), somado ao diagnóstico de 512 KiB no preflight (`S3-27`). Alternativa descartada: extrair comentários históricos (31.236 caracteres) e o programa embutido para `scripts/` sem mudar o teto; não fazer nada e cortar escopo para caber em cerca de 4.950.
+4. **Lote de confirmação do revisor opus (E35).** **Aprovado:** sim, só braço `opus`, 10 execuções (`lentes-semeadas-A/B`, teto US$ 7), porque DEC-031 do pós-2.2.0 manda medir a S3-24 junto, com piso de não-regressão fixado antes do lote. Alternativa descartada: adotar opus sem lote e deixar a S3-24 fora; rodar braços sonnet e opus de novo (~US$ 9,2).
+5. **Laço quality e R3.** **Aprovado:** manter o laço `quality` e escrever a regra para `1×1` no desenho de E35, sem lote próprio. Alternativa descartada: novo lote pago para decidir o laço (custo do laço opus US$ 0,143 por tentativa, E30rel).
+6. **Gate de testes (B05).** **Aprovado:** aceitar remoção declarada na spec ou no plano e conferida por nome, parar o `gates-fix` na 1ª medição quando a única falha é o total e ajustar `mergeFloor`. Alternativa descartada: só parar o `gates-fix` cedo e manter a recusa (cada remoção vira ato do dono, como E29).
+7. **Modo do planner.** **Aprovado:** modo leve (`light`), como DEC-001 do pós-2.2.0 (7 entregáveis, fontes já triadas). Alternativa descartada: modo completo, com revisor independente.
+8. **IDs e branch.** **Aprovado:** `E34` a `E40`; branch `release/pos-2.3.0` criada da ponta de `main` (`0e363b0`, que já inclui os docs de 2026-11-20, correções de documentação, regras escopadas e `AGENTS.md`). Alternativa descartada: outro prefixo de ID por roadmap ou base anterior.
+9. **Paralelismo (B24).** **Aprovado:** manter `generated: true` e `maxParallel` 1 (árvore compartilhada com outras sessões e E34–E37 no mesmo arquivo). Alternativa descartada: rever `locks` e `needsLock` para rodar E36 e E38 juntos.
+10. **Notas de baixo valor (B19 a B22) e itens "talvez" (B16, B17, B18, B23).** **Aprovado:** registrar B17 e B19 a B22 (e S2-01 de B18) como `"fica"` (fora de escopo) com motivo e tirá-las do backlog ativo; incluir S2-08 (B18) e B16 (`S2-13` partes 1 a 3) em E37; incluir em E38 apenas os itens de B23 necessários ao lote de E39 (`S3-07`). Alternativa descartada: manter todas pendentes para o roadmap seguinte.
+11. **Conferência Linux real (B12).** **Aprovado:** conferir em sessão fora de worktree (WSL/Linux real, delegada a sessão headless com subagent opus). Alternativa descartada: aceitar só os fakes com risco registrado.
+12. **Delegação a Fable.** **Aprovado:** manter DEC-006 do pós-2.2.0 (decisões do dono durante a execução via Fable; push, tag e publicação com autorização explícita do dono). Alternativa descartada: dono decide cada parada intermediária.
 
 ## 8. Fora de escopo recomendado
 
