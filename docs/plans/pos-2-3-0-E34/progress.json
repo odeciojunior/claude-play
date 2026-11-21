@@ -1,0 +1,228 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E34/plan.md",
+    "id": "E34",
+    "digest": "dd7447b0",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": "docs/plans/pos-2-3-0-E34/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "0cfbe8682ead1e8f0d29306907125945e9c574cb",
+    "test": null,
+    "baseline": null,
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-21T08:03:24.420Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Elevar MAX_WORKFLOW_CHARS para 300.000 e testar folga > 50.000 chars em size.test.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba",
+      "replacedBy": null,
+      "note": "MAX_WORKFLOW_CHARS elevado a 300000 e folga > 50000 chars verificada",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Diagnosticar arquivo de workflow acima de 524.288 bytes (512 KiB) em preflight.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc",
+      "replacedBy": null,
+      "note": "Diagnostico de 524.288 bytes (512 KiB) implementado em preflight.mjs e 104 testes em preflight.test.mjs passando",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Documentar o limite de 512 KiB e diagnóstico na skill e referências com teste em docs.test.mjs",
+      "wave": 2,
+      "deps": [
+        1,
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/SKILL.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/config.md",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/docs.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": "e0ace0fc6348d33ac3a1daac493cb4e19534af62",
+      "replacedBy": null,
+      "note": "SKILL.md, operator.md e config.md atualizados com teste em docs.test.mjs; G1 a G5 verdes (2208 testes, 0 falhas)",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-21T07:49:04.403Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "0cfbe8682ead1e8f0d29306907125945e9c574cb",
+      "at": "2026-11-21T07:49:04.403Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-21T07:50:14.411Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        2
+      ],
+      "at": "2026-11-21T07:50:14.466Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-21T07:51:41.544Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-21T07:51:41.594Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-21T07:54:32.647Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-21T07:54:32.699Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T07:54:32.754Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-21T07:54:32.804Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-21T07:54:32.856Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-21T08:03:24.255Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-21T08:03:24.312Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-21T08:03:24.367Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-21T08:03:24.420Z"
+    }
+  ]
+}

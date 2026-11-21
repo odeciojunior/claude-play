@@ -1,13 +1,14 @@
 Estratégia v1.0 -- 2026-11-21
 
 <!-- roadmap:now -->
-1. Criar a branch release/pos-2.3.0 a partir de main (0e363b0) e iniciar E34 (Espaço no workflow e diagnóstico de 512 KiB). Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: -.
-2. Iniciar E38 (Arnês e limpeza de processos confiáveis), que não toca roadmap-release.js, desde que nenhum lote pago rode em paralelo. Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: -.
+1. Iniciar E35 (Revisor por tarefa opus com modos alinhados). Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (na-branch).
+2. Iniciar E36 (Gate de testes com remoção declarada) ou E37 (Cargas e commits conferidos contra a fonte) em série. Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (na-branch).
+3. Iniciar E38 (Arnês e limpeza de processos confiáveis), que não toca roadmap-release.js, desde que nenhum lote pago rode em paralelo. Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: -.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
-| E34 | executando | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md` | Executar tarefas T1 a T3 |
+| E34 | na-branch | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md`, `docs/plans/pos-2-3-0-E34/progress.json`, `3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba`, `c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc`, `e0ace0fc6348d33ac3a1daac493cb4e19534af62` | - |
 | E35 | nao-iniciado | - | - |
 | E36 | nao-iniciado | - | - |
 | E37 | nao-iniciado | - | - |
