@@ -11,7 +11,7 @@ Keep a living roadmap true. A roadmap built by `roadmap-planner` is a versioned 
 
 ## Paths
 
-`${CLAUDE_SKILL_DIR}` is this skill's directory.
+`${CLAUDE_SKILL_DIR}` is this skill's directory. If it appears empty or literally in a command, use the directory this SKILL.md was loaded from.
 
 | What | Path |
 |------|------|

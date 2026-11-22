@@ -90,7 +90,7 @@ Also settle now:
 
 1. Take the objective and the sources passed as arguments. When the user supplies only an objective (or a brief in the conversation), register it as `SRC-01` (What it is: user brief) so requirements can cite it (`decompose.md` §1).
 2. **Discover** related sources (light mode: skip): repo docs, specs, issues, `git log` on the relevant paths. Use the web only if the user allows it; ask once.
-3. **Read** them. With a subagent tool, delegate the reading with `model: sonnet`, `effort: medium` (several sources per subagent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format in each prompt and wait for the result. Without a subagent tool, read directly. Each source yields this summary, at most 10 lines:
+3. **Read** them. With a subagent tool, delegate the reading with `model: sonnet`, `effort: medium` (agy: `flash`) (several sources per subagent); the main conversation keeps the judgment. Subagents do not see the conversation: put the source paths and the summary format in each prompt and wait for the result. Without a subagent tool, read directly. Each source yields this summary, at most 10 lines:
 
    ```
    SRC-NN | <path or URL> | <what it is> | read <full|partial: which sections>
@@ -136,7 +136,7 @@ On exit 1, fix the model at each error's `path` (codes: `model.md` §11) and run
 ### Step 7: Verify
 
 1. Run the vendored copy: `node "<roadmap-folder>/check-roadmap.mjs"` until it reports **0 errors**; list the remaining warnings in the handoff. Fix the model, never the checker. If `node` is missing or older than 18, hand off saying "checker not run (Node ≥18 missing)".
-2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium`, read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode, or no subagent tool: skip it, never self-review as if independent, and say in the handoff that no independent review ran (without a subagent tool, recommend the same brief in a fresh session before use; fixes go via `roadmap-tracker`).
+2. Full mode: dispatch **one fresh-context reviewer** subagent with `model: opus`, `effort: medium` (agy: `pro`), read-only (tell it "do not edit files"), with the roadmap folder, the strategy path, the source paths and the path of `${CLAUDE_SKILL_DIR}/references/review-rubric.md`, which the reviewer reads and applies; it returns the JSON block that file defines. Light mode, or no subagent tool: skip it, never self-review as if independent, and say in the handoff that no independent review ran (without a subagent tool, recommend the same brief in a fresh session before use; fixes go via `roadmap-tracker`).
 3. Loop, at most three review rounds in total: fix each `error` finding in the model, run the scaffold and the checker until 0 errors, and dispatch a fresh reviewer only if the previous round had an `error` finding. `warning` findings go to the handoff. An `error` left after the third round goes to the handoff as a pending item, without another round.
 4. Delete `<roadmap-folder>/planning-model.json`.
 
