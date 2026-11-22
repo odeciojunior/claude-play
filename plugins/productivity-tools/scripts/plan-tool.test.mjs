@@ -68,6 +68,53 @@ test('routing is pure', () => {
   assert.equal(checkPureSource(text, 'routing.mjs'), null);
 });
 
+import { AGY_MODEL_RANK, agyModelFor, agyReviewModelFor, nextAgyTier, toAgyRoute } from '../lib/agy-routing.mjs';
+
+const AGY_EXPECTED = [
+  ['flash_lite', 'flash_lite', 'flash', 'flash'], ['flash_lite', 'flash_lite', 'flash', 'flash'],
+  ['flash', 'flash', 'flash', 'flash'], ['flash', 'flash', 'flash', 'flash'],
+  ['flash', 'pro', 'flash', 'pro'], ['pro', 'pro', 'pro', 'pro'],
+  ['flash', 'pro', 'flash', 'pro'], ['pro', 'pro', 'pro', 'pro'],
+  ['flash_lite', 'flash_lite', 'flash', 'flash'], ['flash', 'flash', 'pro', 'pro'],
+  ['pro', 'pro', 'pro', 'pro'], ['flash', 'pro', 'flash', 'pro'],
+  ['flash', 'flash', 'pro', 'pro'], ['flash', 'flash', 'pro', 'pro'],
+  ['pro', 'pro', 'pro', 'pro'], ['flash', 'flash', 'pro', 'pro'],
+  ['flash_lite', 'flash_lite', 'flash', 'pro'], ['flash_lite', 'flash_lite', 'flash', 'flash'],
+];
+
+ROUTING_TABLE.rows.forEach((row, i) => {
+  test(`AC1: agy route row ${i + 1} ${row.name}`, () => {
+    const r = route(rowTask(row.input), { hasDependents: row.input.hasDependents });
+    assert.deepEqual(Object.keys(r).sort(), ['effort', 'gate', 'reviewTier', 'score', 'tier']);
+    const a = toAgyRoute(r);
+    const [agyTier, agyModel, agyReviewTier, agyReviewModel] = AGY_EXPECTED[i];
+    assert.deepEqual({ agyTier: a.agyTier, agyModel: a.agyModel, agyReviewTier: a.agyReviewTier, agyReviewModel: a.agyReviewModel }, { agyTier, agyModel, agyReviewTier, agyReviewModel });
+    assert.equal(a.gate, row.expected.gate);
+    assert.equal(a.tier, r.tier);
+  });
+});
+
+test('agy helpers', () => {
+  assert.deepEqual(AGY_MODEL_RANK, { flash_lite: 0, flash: 1, pro: 2 });
+  assert.equal(agyModelFor('sonnet', 'high'), 'pro');
+  assert.equal(agyModelFor('haiku', 'low'), 'flash_lite');
+  assert.equal(agyModelFor('sonnet', 'medium'), 'flash');
+  assert.equal(agyReviewModelFor('sonnet', true, 'flash'), 'pro');
+  assert.equal(agyReviewModelFor('sonnet'), 'flash');
+  assert.equal(nextAgyTier('flash', false), 'flash');
+  assert.equal(nextAgyTier('flash_lite', true), 'flash');
+  assert.equal(nextAgyTier('haiku', true), 'flash');
+  assert.equal(nextAgyTier('flash', true), 'pro');
+  assert.equal(nextAgyTier('sonnet', true), 'pro');
+  assert.equal(nextAgyTier('pro', true), null);
+  assert.equal(nextAgyTier('opus', true), null);
+});
+
+test('agy-routing is pure', () => {
+  const text = fs.readFileSync(path.join(HERE, '..', 'lib', 'agy-routing.mjs'), 'utf8');
+  assert.equal(checkPureSource(text, 'agy-routing.mjs'), null);
+});
+
 // ---- Task 3: check (esquema, spec, prosa, grafo, conflito de escrita) ----
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
