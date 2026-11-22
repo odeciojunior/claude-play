@@ -19,7 +19,7 @@ Creates hand-drawn style diagrams as `.excalidraw` JSON files: clear, well-space
 
 5. **Write file** -- Save to `docs/diagrams/<name>.excalidraw` by default (or the location the user names), creating the directory if needed. Use kebab-case filenames.
 
-6. **Validate** -- Run `node "${CLAUDE_SKILL_DIR}/scripts/validate-excalidraw.mjs" <file>` and fix every reported problem until it prints `OK`. Then check the items the script cannot:
+6. **Validate** -- Run `node "${CLAUDE_SKILL_DIR}/scripts/validate-excalidraw.mjs" <file>` (if `${CLAUDE_SKILL_DIR}` is empty or not expanded, use the folder this SKILL.md was loaded from) and fix every reported problem until it prints `OK`. Then check the items the script cannot:
    - [ ] Arrow `points` start with `[0, 0]`
    - [ ] Arrow `width` and `height` match the max absolute offsets in `points`
    - [ ] One roughness style across the diagram

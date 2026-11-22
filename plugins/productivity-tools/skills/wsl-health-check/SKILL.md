@@ -9,7 +9,7 @@ Run the bundled script and produce a structured summary.
 
 ## Workflow
 
-1. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/health-report.sh" --full --no-color`
+1. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/health-report.sh" --full --no-color` (if `${CLAUDE_SKILL_DIR}` is empty or not expanded, use the folder this SKILL.md was loaded from)
 2. Parse each section (see Parsing Guide below)
 3. Classify each category using the Thresholds table
 4. Output EXACTLY the format shown in Output Format
