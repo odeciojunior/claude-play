@@ -49,6 +49,8 @@ const DRIVER = [
   '        i = counts.get(role, 0)',
   '        counts[role] = i + 1',
   '        r = r[min(i, len(r) - 1)] if r else None',
+  "    if isinstance(r, dict) and '$raise' in r:",
+  "        raise RuntimeError(r['$raise'])",
   "    if isinstance(r, dict) and '$effects' in r:",
   "        for e in r['$effects']:",
   "            if 'git' in e:",
@@ -1268,4 +1270,37 @@ test('T7 static: merge, rollback, docs, cleanup and the truth check are git and 
   assert.match(src, /'check', _enc_arg\(/);
   assert.match(src, /'procs', _enc_arg\(/);
   assert.doesNotMatch(src, /readyToMerge/, 'the merge is no longer left to a later task');
+});
+
+pyTest('guard: an agent() that raises outside a deliverable (discovery-donot) still ends in one JSON result with status error', () => {
+  const repo = makeRepo(withDonot);
+  try {
+    const r = runWorkflow(baseArgs(repo), { 'discovery-donot': { $raise: 'boom' } });
+    assert.equal(r.stdoutLines, 1);
+    assert.equal(r.result.status, 'error');
+    assert.match(r.result.error, /^RuntimeError: boom/);
+    assert.deepEqual(r.result.results, []);
+    assert.ok(r.result.operatorActions.some((o) => o.kind === 'infra'));
+    assert.ok(r.result.resumeArgs);
+    assert.ok(!('runToken' in r.result.resumeArgs));
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: a report agent that raises after the merge keeps the merged result, lastGood, operatorActions and resumeArgs', () => {
+  const repo = makeRunRepo();
+  try {
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, docsStage: DOCS_STAGE } }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    assert.equal(r.result.status, 'error', JSON.stringify(r.result.operatorActions));
+    assert.match(r.result.error, /RuntimeError: boom/);
+    assert.equal(r.result.results[0].merged, true);
+    assert.match(r.result.results[0].merge.commit, /^[0-9a-f]{40}$/);
+    assert.match(r.result.lastGood, /^[0-9a-f]{40}$/);
+    assert.ok(r.result.operatorActions.some((o) => o.kind === 'infra'));
+    assert.ok(!('runToken' in r.result.resumeArgs));
+  } finally {
+    rmAll(repo);
+  }
 });

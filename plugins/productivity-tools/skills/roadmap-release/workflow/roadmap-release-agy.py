@@ -2750,7 +2750,7 @@ async def finish_run(selection):
                      lastGood=R.last_good, resumeArgs=fixed['resume'], reportPath=path_out, report=report)
 
 
-async def main():
+async def _main():
     global A, MODE, ROOT
     raw = globals().get('args')
     raw = raw if isinstance(raw, dict) else {}
@@ -2854,6 +2854,26 @@ async def main():
     if MODE == 'dry-run' or not plan['order']:
         return mk_result('done' if plan['order'] else 'partial', selection=selection)
     return await run_deliverables(disc, plan, cfg, token, items, gates, selection)
+
+
+def crash_result(e):
+    """An exception that escaped every stage still ends in the result contract: the operator actions gathered so far, the
+    resume args and the last validated target tip go out with status error (git is the truth of what was merged)."""
+    msg = '%s: %s' % (type(e).__name__, e)
+    try:
+        slim = [_slim(r) for r in RESULTS]
+    except Exception:
+        slim = []
+    op('infra', None, 'the workflow stopped on an unexpected error: %s' % msg[:400],
+       'Check git log and git status of the target, then run again (the stages reuse the spec, the plan, the commits and the merges already there)', dict(A))
+    return mk_result('error', error=msg, results=slim, lastGood=getattr(R, 'last_good', None))
+
+
+async def main():
+    try:
+        return await _main()
+    except Exception as e:  # the run never dies without a result (same guard as coordinator-agy.py)
+        return crash_result(e)
 
 
 RESULT = await main()
