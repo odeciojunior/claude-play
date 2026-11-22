@@ -212,6 +212,7 @@ const launchArgs = (sb, over = {}) => ({
   state: sb.stateFile.replace(/\\/g, '/'),
   progress: PROGRESS,
   runToken: `tok-${process.pid}-${++tokenSeq}`,
+  agyRequestedBy: 'owner',
   test: `node ${shq(sb.check)}`,
   ...over,
 });
@@ -349,10 +350,10 @@ pyTest('a red baseline stops with ask before any implementer and unblock resumes
   assert.match(run.result.stop.question, /baseline/);
   assert.equal(agents(run, 'implementer').length, 0, 'no implementer ran');
   assert.equal(readState(sb).run.status, 'blocked');
-  for (const k of ['runToken', 'authorizeExternal', 'answers']) assert.ok(!(k in run.result.resumeArgs), `resumeArgs has no ${k}`);
+  for (const k of ['runToken', 'authorizeExternal', 'answers', 'agyRequestedBy']) assert.ok(!(k in run.result.resumeArgs), `resumeArgs has no ${k}`);
   assert.ok(run.result.resumeArgs.plan && run.result.resumeArgs.state && run.result.resumeArgs.progress && run.result.resumeArgs.test);
   // the person accepts the red baseline: the same failing test name passes the gates
-  const run2 = runScript({ ...run.result.resumeArgs, runToken: `tok-${process.pid}-resume`, answers: [{ event: 'unblock' }] });
+  const run2 = runScript({ ...run.result.resumeArgs, runToken: `tok-${process.pid}-resume`, agyRequestedBy: 'owner', answers: [{ event: 'unblock' }] });
   assert.equal(run2.result.status, 'done', JSON.stringify(run2.result));
   assert.equal(readState(sb).run.status, 'completed');
 }));
@@ -398,6 +399,24 @@ pyTest('AC4: an external step gets a prelaunch-review on pro and stops with auth
 }, { plan: read(EXTERNAL_PLAN) }));
 
 // ---- argumentos
+pyTest('agyRequestedBy: absent or invalid returns error before any agent, process or state change', () => withSandbox(async (sb) => {
+  const before = fs.readFileSync(sb.stateFile, 'utf8');
+  for (const bad of [undefined, 'yes', 'delegate:', '', 'owner ', 'owner\n', 42, null]) {
+    const run = runScript({ ...launchArgs(sb), agyRequestedBy: bad });
+    assert.equal(run.result.status, 'error', String(bad));
+    assert.ok(run.result.error.includes('agy path needs a direct request'), run.result.error);
+    assert.equal(run.events.length, 0, `${String(bad)}: nothing runs`);
+    assert.equal(fs.readFileSync(sb.stateFile, 'utf8'), before, 'the state did not change');
+  }
+}));
+
+pyTest('agyRequestedBy: delegate:fable passes the validation and never comes back in resumeArgs', () => withSandbox(async (sb) => {
+  fs.writeFileSync(sb.check + '.fail', 'red\n');
+  const run = runScript({ ...launchArgs(sb), agyRequestedBy: 'delegate:fable' });
+  assert.equal(run.result.status, 'stopped', JSON.stringify(run.result));
+  assert.ok(!('agyRequestedBy' in run.result.resumeArgs));
+}));
+
 pyTest('args outside the contract return error before any agent', async () => {
   const sb = { planFile: '/p/plan.md', stateFile: '/p/progress.json', check: '/p/check.mjs' };
   for (const k of ['plan', 'state', 'runToken', 'progress']) {

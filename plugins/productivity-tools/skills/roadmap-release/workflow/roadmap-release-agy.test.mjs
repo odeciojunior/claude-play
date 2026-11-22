@@ -140,7 +140,7 @@ const withDonot = (name, text) => (name === 'state.md'
 
 const CONFIG = { gates: [{ name: 'unit', cmd: 'node --test', kind: 'tests' }], projectContext: 'sample' };
 const baseArgs = (repo, extra = {}) => ({
-  config: CONFIG, runToken: 'tok-agy-1', trackerCli: TRACKER_CLI.replace(/\\/g, '/'), wtRoot: `${repo}-wt`,
+  config: CONFIG, runToken: 'tok-agy-1', agyRequestedBy: 'owner', trackerCli: TRACKER_CLI.replace(/\\/g, '/'), wtRoot: `${repo}-wt`,
   repo, roadmap: 'docs/plans/roadmap-x', today: '2026-01-05', mode: 'dry-run', ...extra,
 });
 
@@ -171,6 +171,30 @@ for (const [name, mutate, re] of BAD_ARGS) {
     assert.deepEqual(r.calls, []);
   });
 }
+
+for (const bad of [undefined, 'yes', 'delegate:', '', 'owner\n', 42]) {
+  pyTest(`T4 args: agyRequestedBy ${JSON.stringify(bad)} is refused before any agent() call`, () => {
+    const args = baseArgs('/does/not/exist');
+    if (bad === undefined) delete args.agyRequestedBy; else args.agyRequestedBy = bad;
+    const r = runWorkflow(args);
+    assert.equal(r.result.status, 'error');
+    assert.ok(r.result.error.includes('agy path needs a direct request'), r.result.error);
+    assert.deepEqual(r.calls, []);
+  });
+}
+
+pyTest('T4 args: agyRequestedBy delegate:fable is accepted and never returns in resumeArgs or resumeWith', () => {
+  const repo = makeRepo();
+  try {
+    const r = runWorkflow(baseArgs(repo, { agyRequestedBy: 'delegate:fable', minBudgetPerDeliverable: 999999999 }));
+    assert.ok(!String(r.result.error || '').includes('agy path needs a direct request'), JSON.stringify(r.result));
+    assert.ok(!('agyRequestedBy' in r.result.resumeArgs));
+    for (const a of r.result.operatorActions || []) assert.ok(!('agyRequestedBy' in (a.resumeWith || {})));
+    assert.ok(!JSON.stringify(r.result).includes('agyRequestedBy'));
+  } finally {
+    rmAll(repo);
+  }
+});
 
 pyTest('T4 args: an absent args dict is an error, not a crash', () => {
   const r = runWorkflow(undefined);
@@ -1205,7 +1229,7 @@ pyTest('T7 resume: a run interrupted after the Plan goes on with the Tasks, with
     const infra = first.result.operatorActions.find((a) => a.kind === 'infra');
     assert.deepEqual(infra.resumeWith.deliverables, ['E1']);
     assert.equal('runToken' in infra.resumeWith, false);
-    const again = runWorkflow({ ...infra.resumeWith, runToken: 'tok-agy-2' }, runResponses(repo));
+    const again = runWorkflow({ ...infra.resumeWith, runToken: 'tok-agy-2', agyRequestedBy: 'owner' }, runResponses(repo));
     const rs = roles(again.calls);
     for (const stage of ['spec-author', 'spec-review', 'plan-author', 'plan-review']) assert.ok(!rs.includes(stage), `${stage} is not redone: ${rs.join(',')}`);
     assert.equal(rs.filter((x) => x === 'implementer').length, 2);

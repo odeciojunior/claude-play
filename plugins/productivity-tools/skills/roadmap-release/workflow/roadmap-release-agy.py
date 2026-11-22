@@ -26,6 +26,10 @@ import os
 import re
 import shutil
 
+AGY_REQUEST_RE = re.compile(r'^(owner|delegate:\S.*)$')
+AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>" '
+                   '(set only when the owner, or a subagent the owner delegated decision power to, asked to run on Antigravity)')
+
 TRACKER_SUFFIX = '/skills/roadmap-tracker/scripts/roadmap.mjs'
 RELEASE_JS_REL = 'skills/roadmap-release/workflow/roadmap-release.js'
 PREFLIGHT_REL = 'skills/roadmap-release/scripts/preflight.mjs'
@@ -2754,9 +2758,11 @@ async def _main():
     global A, MODE, ROOT
     raw = globals().get('args')
     raw = raw if isinstance(raw, dict) else {}
+    if not isinstance(raw.get('agyRequestedBy'), str) or not AGY_REQUEST_RE.fullmatch(raw['agyRequestedBy']):
+        return err(AGY_REQUEST_ERR)
     token_arg = raw.get('runToken')
     token = token_arg.strip() if isinstance(token_arg, str) else ''
-    A = {k: v for k, v in raw.items() if k != 'runToken'}
+    A = {k: v for k, v in raw.items() if k not in ('runToken', 'agyRequestedBy')}
     MODE = A.get('mode') or 'run'
     cfg = A.get('config')
     del OPS[:]

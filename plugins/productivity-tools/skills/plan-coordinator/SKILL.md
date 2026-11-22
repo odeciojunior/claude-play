@@ -10,7 +10,7 @@ Runs a plan as waves of subagents, each step on the cheapest tier that can do it
 
 ## 1. Pick the plan
 
-Run `progress.mjs select` (add `--query <text>` when the request names a plan). A printed path is the plan. A `question` (a tie, or no plan) is the only question to ask before the launch; `no plan` offers plan-writer.
+On Antigravity (no `Workflow` tool, `run_workflow` present) without a direct request from the owner, or from a subagent the owner delegated decision power to, to run there, stop now, before any step below: report that the Antigravity path needs that request and ask nothing. Run `progress.mjs select` (add `--query <text>` when the request names a plan). A printed path is the plan. A `question` (a tie, or no plan) is the only question to ask before the launch; `no plan` offers plan-writer.
 
 ## 2. Create the state
 
@@ -26,7 +26,7 @@ Run `progress.mjs token` to get a `runToken`. Then call `Workflow` by the name `
 
 Only when the `Workflow` error says the name is unknown or not found, make one call with `scriptPath` = `<dir>/workflow/coordinator.js` (absolute, built from the line "Base directory for this skill: <dir>", never fixed) and the same `args`. Warn that this only works without permission prompts or with the script folder readable (for example `--add-dir`), because the plugin cache folder is not readable in the default mode. If it also fails, report both errors verbatim and stop. A permission error, a denial or any other error never tries the path: tell the person to add the rule `Workflow(productivity-tools:coordinator-workflow)` to `.claude/settings.local.json`. Report the rule; never write settings yourself.
 
-Only when `${CLAUDE_SKILL_DIR}` is unset or the line "Base directory for this skill" is absent, take `<dir>` from the folder that holds this SKILL.md. Only when the `Workflow` tool is absent and `run_workflow` exists (Antigravity), call `run_workflow` with `ScriptPath` = `<dir>/workflow/coordinator-agy.py` and the same `Args`; there, use `ask_question` in place of `AskUserQuestion`. State keeps Claude tiers; the script translates them at dispatch.
+Only when `${CLAUDE_SKILL_DIR}` is unset or the line "Base directory for this skill" is absent, take `<dir>` from the folder that holds this SKILL.md. Only when the `Workflow` tool is absent, `run_workflow` exists (Antigravity) and the owner, or a subagent the owner delegated decision power to, asked directly to run on Antigravity, call `run_workflow` with `ScriptPath` = `<dir>/workflow/coordinator-agy.py` and the same `Args` plus `agyRequestedBy` (`owner`, or `delegate:<name>` for that subagent; never carried over from `resumeArgs`); there, use `ask_question` in place of `AskUserQuestion`. Without that request, do not call `run_workflow`: report that the Antigravity path needs a direct request from the owner and ask nothing. State keeps Claude tiers; the script translates them at dispatch.
 
 ## After the workflow returns
 

@@ -53,7 +53,7 @@ Non-external steps retry up to 3 attempts at their planned `tier` in `coordinato
 
 ## 6. Antigravity (agy) Gemini routing
 
-Only when the host is Antigravity (`run_workflow` present, no `Workflow` tool), `coordinator-agy.py` dispatches on Gemini models. The translation lives in `lib/agy-routing.mjs` (`agyModelFor(tier, effort)`), never in the plan or the state.
+Only when the host is Antigravity (`run_workflow` present, no `Workflow` tool), `coordinator-agy.py` dispatches on Gemini models. The translation lives in `lib/agy-routing.mjs` (`agyModelFor(tier, effort)`), never in the plan or the state. The path runs only on a direct request from the owner, or from a subagent the owner delegated decision power to: the skill passes `agyRequestedBy` (`owner` or `delegate:<name>`), and the script refuses to start without it.
 
 - **Canonical state:** `plan.md` and `progress.json` hold only Claude tiers (haiku, sonnet, opus). The script translates at dispatch; a Gemini tier is never written to either file.
 - **Translation:** haiku -> flash_lite, sonnet -> flash, opus -> pro. A `(sonnet, high)` step is promoted to pro.

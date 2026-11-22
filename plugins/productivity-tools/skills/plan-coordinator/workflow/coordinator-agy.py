@@ -17,6 +17,9 @@ import json
 import os
 import re
 
+AGY_REQUEST_RE = re.compile(r'^(owner|delegate:\S.*)$')
+AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>" '
+                   '(set only when the owner, or a subagent the owner delegated decision power to, asked to run on Antigravity)')
 PROGRESS_SUFFIX = '/skills/plan-coordinator/scripts/progress.mjs'
 # Event size caps: the gate question, the failed names kept in the baseline and the command of one progress.mjs apply.
 GATE_Q_CAP = 600
@@ -371,7 +374,7 @@ def read_signed(first):
 
 def resume_args():
     # What only the person gives (authorizations, answers) and the run token never come back.
-    return {k: v for k, v in A.items() if k not in ('runToken', 'authorizeExternal', 'answers')}
+    return {k: v for k, v in A.items() if k not in ('runToken', 'authorizeExternal', 'answers', 'agyRequestedBy')}
 
 
 def stop_with(kind, **extra):
@@ -747,6 +750,8 @@ def read_only_violation(role, what):
 def early_args_error(a):
     if not isinstance(a, dict):
         return 'args must be an object with plan, state and runToken'
+    if not isinstance(a.get('agyRequestedBy'), str) or not AGY_REQUEST_RE.fullmatch(a['agyRequestedBy']):
+        return AGY_REQUEST_ERR
     for k in ('plan', 'state', 'runToken'):
         if not isinstance(a.get(k), str) or a[k].strip() == '':
             return 'args.%s must be a non-empty string' % k
