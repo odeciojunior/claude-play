@@ -26,6 +26,8 @@ Run `progress.mjs token` to get a `runToken`. Then call `Workflow` by the name `
 
 Only when the `Workflow` error says the name is unknown or not found, make one call with `scriptPath` = `<dir>/workflow/coordinator.js` (absolute, built from the line "Base directory for this skill: <dir>", never fixed) and the same `args`. Warn that this only works without permission prompts or with the script folder readable (for example `--add-dir`), because the plugin cache folder is not readable in the default mode. If it also fails, report both errors verbatim and stop. A permission error, a denial or any other error never tries the path: tell the person to add the rule `Workflow(productivity-tools:coordinator-workflow)` to `.claude/settings.local.json`. Report the rule; never write settings yourself.
 
+Only when `${CLAUDE_SKILL_DIR}` is unset or the line "Base directory for this skill" is absent, take `<dir>` from the folder that holds this SKILL.md. Only when the `Workflow` tool is absent and `run_workflow` exists (Antigravity), call `run_workflow` with `ScriptPath` = `<dir>/workflow/coordinator-agy.py` and the same `Args`; there, use `ask_question` in place of `AskUserQuestion`. State keeps Claude tiers; the script translates them at dispatch.
+
 ## After the workflow returns
 
 The workflow returns `done` or a stop (`authorize`, `ask`, `plan-changed`, `state-divergence`, `error`). Pass each stop to the person, relaunch with the same `state` and a new `runToken` plus their `authorizeExternal` or `answers`, and finish with the final report. The details are in `references/delegation-protocol.md`; the state format, events and refusal codes are in `references/state.md`.

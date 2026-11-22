@@ -50,3 +50,13 @@ A gate is the `gate` field of the step in `progress.json`; it is set by `route`,
 ## 5. Retries and holds (on FAIL, BLOCKED, or exhausted review rounds)
 
 Non-external steps retry up to 3 attempts at their planned `tier` in `coordinator-workflow` (never re-running external steps); when attempts exhaust, review rounds exceed the limit, or a human decision is needed, the step is held in `manual[]` via `skip-manual`. Tier overrides (`progress.mjs apply launch --tier <tier>`) exist only at the state-CLI level.
+
+## 6. Antigravity (agy) Gemini routing
+
+Only when the host is Antigravity (`run_workflow` present, no `Workflow` tool), `coordinator-agy.py` dispatches on Gemini models. The translation lives in `lib/agy-routing.mjs` (`agyModelFor(tier, effort)`), never in the plan or the state.
+
+- **Canonical state:** `plan.md` and `progress.json` hold only Claude tiers (haiku, sonnet, opus). The script translates at dispatch; a Gemini tier is never written to either file.
+- **Translation:** haiku -> flash_lite, sonnet -> flash, opus -> pro. A `(sonnet, high)` step is promoted to pro.
+- **Reviewers:** `agyReviewModel` is `pro` for every gate, and for every executor already on `pro`; `task-reviewer` and `final-reviewer` run on `pro`.
+- **Escalation:** `nextAgyTier` climbs flash_lite -> flash -> pro -> null (null means stop and hold the step).
+- `route(task, ctx)` and the plan digest are unchanged; only the dispatch differs.
