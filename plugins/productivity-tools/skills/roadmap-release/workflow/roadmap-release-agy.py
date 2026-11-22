@@ -1645,7 +1645,7 @@ class Deliverable(object):
             r = dict(rs[0], issues=[i for x in rs for i in (x.get('issues') or [])], clean=all(x.get('clean') for x in rs))
             bl = pure('blocking(p)', r)
             if fr.get('adversarial') is True and bl:
-                v = await call_agent('final-reviewer', '%s\n\nMode: verify.\n%s' % (self.C(), pure('fmt(p)', bl)), SCHEMAS['S_VERIFY'], None, body)
+                v = await self.ask_ro('final-reviewer', '%s\n\nMode: verify.\n%s' % (self.C(), pure('fmt(p)', bl)), 'S_VERIFY', body=body)
                 sp = pure('splitRefuted(p.bl, p.v)', {'bl': bl, 'v': v})
                 r['issues'] = [i for i in r['issues'] if i not in bl] + sp['keep']
                 o['reviews'].append({'stage': 'final-verify', 'round': rnd, 'refuted': sp['refuted']})

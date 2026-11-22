@@ -922,6 +922,32 @@ pyTest('T6 run: test-integrity runs by subprocess on a detached temporary worktr
   }
 });
 
+pyTest('T6 run: the adversarial verify of the final review is a read-only reviewer call, so a mutating verifier fails the deliverable as infra', () => {
+  const repo = makeRunRepo();
+  try {
+    const wt = path.join(`${repo}-wt`, 'E1');
+    const cfg = { ...RUN_CONFIG, finalReview: { adversarial: true } };
+    const r = runWorkflow(runArgs(repo, { config: cfg }), runResponses(repo, {
+      'final-reviewer': [
+        REVIEW_OK({ commitsInRange: 3, clean: false, issues: [ISSUE('a blocking final finding')] }),
+        REVIEW_OK({ commitsInRange: 3 }),
+        { $effects: [{ write: path.join(wt, 'stray-verify.txt'), text: 'x' }], $value: { verdicts: [{ n: 1, refuted: true, reason: 'x' }] } },
+      ],
+    }));
+    const fin = r.calls.filter((c) => c.role === 'final-reviewer');
+    assert.equal(fin.length, 3, 'two lenses and then the verify: ' + JSON.stringify(r.calls.map((c) => c.role)));
+    assert.match(fin[2].prompt, /Mode: verify\.\s1\. \[critical\/defeito\] x\.md a blocking final finding$/);
+    assert.match(fin[1].prompt, /Mode: review, lens: security\. Diff:/);
+    assert.equal(fin[2].model, 'pro');
+    assert.ok(fin[2].schema.required.includes('verdicts'));
+    const row = r.result.results[0];
+    assert.equal(row.failKind, 'infra', JSON.stringify(r.result));
+    assert.match(row.error, /the final-reviewer changed the repository .*reviewers are read-only/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
 const INTEG_SNIPPET = (repo, body) => `
 ROOT = ${JSON.stringify(PLUGIN.replace(/\\/g, '/'))}
 _load_bridge(ROOT)
