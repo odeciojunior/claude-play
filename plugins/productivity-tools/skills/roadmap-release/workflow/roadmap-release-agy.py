@@ -46,6 +46,7 @@ STAGE_MODELS = {
 
 _STR = {'type': 'string'}
 _STRS = {'type': 'array', 'items': _STR}
+STR_SCHEMA = {'type': 'string'}  # a call whose answer is only a done-signal (the work is read back from git or from files)
 S_DONOT = {'type': 'object', 'properties': {'donotHolds': {'type': 'array', 'items': {
     'type': 'object', 'properties': {'text': _STR, 'affects': _STRS}, 'required': ['text', 'affects']}}}, 'required': ['donotHolds']}
 
@@ -202,6 +203,8 @@ def call_pure(root, expr, payload):
 async def call_agent(role, prompt, schema, model=None, body=None):
     """One cognitive stage: the model comes from STAGE_MODELS unless given (implementer: agyModelFor / nextAgyTier).
     `body` (the agent .md body from load_agent_body) goes first in the prompt."""
+    if schema is None:  # the agy runtime marks schema as required
+        raise ValueError('agent() call without a schema: %s' % role)
     m = model or STAGE_MODELS[role]
     text = (body + '\n\n' + prompt) if body else prompt
     return await agent(text, schema, role=role, type_name='self', model=m)
@@ -1032,7 +1035,10 @@ class Deliverable(object):
 
     # ---- agents
     async def ask(self, role, prompt, schema=None, model=None, body=None):
-        return await call_agent(role, prompt, SCHEMAS[schema] if schema else None, model, body)
+        """The agy runtime requires a schema on every agent() call (the agent answers through `finish`): `schema` is the name of an
+        S_* of roadmap-release.js or a schema dict; with none, a plain string."""
+        sc = SCHEMAS[schema] if isinstance(schema, str) else (schema or STR_SCHEMA)
+        return await call_agent(role, prompt, sc, model, body)
 
     async def ask_ro(self, role, prompt, schema, body=None, wt=None):
         """A reviewer (always pro). It runs with the tools of the session, so HEAD and the git status of its worktree are compared around it."""
@@ -1067,7 +1073,7 @@ class Deliverable(object):
             data['recordCuts'] = o['recordCuts']
         prompt = ('%s\n\nWrite %s/%s on the branch %s, in the language of the roadmap, with the review log (if that file already exists, keep all it holds and add this run; never remove or rewrite an earlier record): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)%s. Transcribe faithfully; do not summarize blocking issues. Do not commit: the caller commits. Data: %s'
                   % (self.Cs(), self.wt, self.ap['reviews'], self.br, cuts, json.dumps(data, ensure_ascii=True)))
-        w = await self.ask('review-log', prompt)
+        w = await self.ask('review-log', prompt, STR_SCHEMA)
         label = ' (%s)' % tag if tag else ''
         if w is None:
             o['concerns'].append('review log%s not written: null agent' % label)
@@ -1568,7 +1574,7 @@ class Deliverable(object):
                 conflict_txt = (' Rules for generated files: %s.' % R.cfg['conflictRules']) if R.cfg.get('conflictRules') else ''
                 prompt = ('%s\n\nBring the target state into the branch: the merge of %s into %s stopped with conflicts in: %s. Resolve them keeping both parts.%s Do not use any shared resource. Finish the merge with git commit --no-edit; one simple command per call.' % (
                     self.Cs(), ref, wt, ', '.join(un), conflict_txt))
-                r = await self.ask(role, prompt)
+                r = await self.ask(role, prompt, STR_SCHEMA)
                 ended = (r is not None and git_in(wt, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] != 0
                          and not git_in(wt, '--no-optional-locks', 'status', '--porcelain')['stdout'].strip() and git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip() != before)
                 ok = ended
@@ -1802,7 +1808,7 @@ class Deliverable(object):
         iw = R.int_wt
         prompt = '%s\n\nIntegration worktree %s (branch %s). %s %s (create it if there is none), keeping everything the file holds: %s\nDo not commit: the caller commits only that file.' % (
             self.Cs(), iw, R.target, what, self.ap['reviews'], json.dumps(data, ensure_ascii=True))
-        w = await self.ask('review-log', prompt)
+        w = await self.ask('review-log', prompt, STR_SCHEMA)
         if w is None:
             return None
         cm = commit_file(iw, self.ap['reviews'], subject)
@@ -1925,7 +1931,7 @@ class Deliverable(object):
                           'Project docs: %s\nThe roadmap folder %s is already recorded by the workflow: do not edit it. Never record a human act (acceptance, go/no-go, credentials) as done. Do not commit: the caller commits the files you changed.%s') % (
                     self.Cn(), E, iw, R.target, merge_commit, instr, R.rm,
                     ('\nFIX ROUND. The independent measurement found: %s. Fix what it lists%s.' % (json.dumps(docs_measure, ensure_ascii=True), ' (measureOk must be true)' if R.docs.get('measure') else '')) if k else '')
-                d = await self.ask('docs', prompt)
+                d = await self.ask('docs', prompt, 'S_DOCS')
                 if d is None:
                     agent_fail.append('null docs agent')
                 files = [f for f in self.changed_paths(iw) if not slash(f).startswith(R.rm)]
@@ -2060,7 +2066,7 @@ class Deliverable(object):
             prompt = ('%s\n\nMERGE STAGE of deliverable %s in the integration worktree %s (branch %s).%s The merge of %s stopped with conflicts in: %s. Resolve them keeping both parts.%s Do not use any shared resource. '
                       'Finish the merge with git commit --no-edit; one simple command per call. If you cannot finish, git merge --abort.') % (
                 self.Cs(), E, iw, R.target, (' The operator authorized %s: this merge may be done in that checkout.' % R.foreign_item) if R.foreign else '', br, ', '.join(un), conflict_txt)
-            mg = await self.ask('merge', prompt)
+            mg = await self.ask('merge', prompt, 'S_MERGE')
             ended = (mg is not None and git_in(iw, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] != 0 and self.is_clean(iw) and self.head_of(iw) != pre_sha)
             if not ended:
                 return rollback('the merge did not complete: %s' % ('null agent' if mg is None else 'the conflicts in %s were not resolved' % ', '.join(un)), 'infra' if mg is None else 'conteudo')
@@ -2247,7 +2253,7 @@ class Deliverable(object):
                 self.spec_abs, self.spec_tool, lang, self.rm_abs, E, r_note,
                 ('The file %s already exists on this branch: edit it to take the instruction into account. A ruling the instruction does not change keeps its id and its text.\n' % self.ap['spec']) if setup['nativeSpec'] is True else '',
                 spec_rules, self.Cn())
-            authored = await self.ask('spec-author', prompt, body=self.body('spec-author'))
+            authored = await self.ask('spec-author', prompt, 'S_SPEC', body=self.body('spec-author'))
             if authored is None:
                 return await self.fail('infra', 'spec: null agent')
         spec_load = self.load_spec()
@@ -2372,7 +2378,7 @@ class Deliverable(object):
                 ('Tasks already committed on this branch (%s) are frozen: each keeps its number, its text and every field of its block. Only tasks not yet committed may change, and a new task gets a number greater than the largest existing one.\n' % ', '.join(str(n) for n in committed_tasks)) if frozen else '',
                 ('The previous attempt changed frozen tasks: %s. Undo those changes.\n' % '; '.join(diffs)) if diffs else '',
                 plan_rules, self.Cn())
-            return await self.ask('plan-author', prompt, body=self.body('plan-author'))
+            return await self.ask('plan-author', prompt, STR_SCHEMA, body=self.body('plan-author'))
 
         plan_load = None
         plan_committed = False
@@ -2451,7 +2457,7 @@ class Deliverable(object):
             prompt = ('%s\n\nFix the plan %s according to the review below. Stop after saving the file; do not commit: the caller commits.\n%s\nEvery ac of the evidence list is ONLY the criterion id (e.g. AC1), nothing else; if the review reports an ac mismatch, use exactly the expected id.\n'
                       'The plan ends with a json data block in the plan/1 schema, which must stay valid: run node "%s" check "%s" --spec "%s" before you finish, one simple command per call. Tasks and evidence rows are read from that block, never from your answer.\n%s') % (
                 self.C(), self.plan['planPath'], fmt_iss, self.plan_tool, self.plan_abs, self.spec_abs, NO_ASK)
-            fx = await self.ask('plan-fix', prompt, model=tier)
+            fx = await self.ask('plan-fix', prompt, STR_SCHEMA, model=tier)
             if not fx:
                 return None
             cm = commit_checked(wt, self.ap['plan'], '%s: plan fix %d' % (E, k))

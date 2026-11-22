@@ -60,6 +60,8 @@ const DRIVER = [
   "        r = r.get('$value')",
   '    return r',
   'async def agent(prompt, schema, role=None, type_name=None, model=None, **kw):',
+  '    if schema is None:',
+  "        raise RuntimeError('agent() requires a schema (role %s)' % role)",
   "    calls.append({'role': role, 'type_name': type_name, 'model': model, 'prompt': prompt, 'schema': schema})",
   '    return answer(role)',
   'def phase(title):',
@@ -464,6 +466,11 @@ pyTest('T5 plan-only: roles and models in order, spec and plan committed by git,
     // the reviewers get the schemas of the .js
     assert.ok(r.calls[1].schema.required.includes('commitsInRange'));
     assert.ok(r.calls[3].schema.required.includes('measuredPlanBlob'));
+    // every agent() call carries a schema (the agy runtime requires it): authors too
+    assert.ok(r.calls.every((c) => c.schema && typeof c.schema === 'object'), JSON.stringify(r.calls.map((c) => [c.role, c.schema && c.schema.type])));
+    assert.ok(r.calls[0].schema.required.includes('specPath'));
+    assert.equal(r.calls[2].schema.type, 'string');
+    assert.equal(r.calls[4].schema.type, 'string');
     // spec.md and plan.md are commits of git (author of the repo config), never of an agent
     const onBranch = subjects(repo, 'feat/E1');
     assert.ok(onBranch.includes('E1: spec'), onBranch.join('|'));
