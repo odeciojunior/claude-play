@@ -1,4 +1,4 @@
-// roadmap-release-agy.py (T4 base, discovery and dry-run; T5 plan-only and the review loop). The Python script runs in a python3
+// roadmap-release-agy.py (T4 base, discovery and dry-run; T5 plan-only and the review loop; T6 run mode up to the gates of the branch). The Python script runs in a python3
 // process with simulated agent(), phase() and log() (a driver compiles it with top-level await, as run_workflow does)
 // over a real temporary git repository; preflight discover, the selection and the bridge run for real, so what is
 // compared with the JS is the output of the same pure functions. Without Python >= 3.8 the suite skips with a reason.
@@ -34,10 +34,10 @@ const pyTest = (name, fn) => (PY ? test(name, fn) : test(name, { skip: SKIP_REAS
 
 // The driver: what run_workflow provides. agent() records each call and answers from req.responses[role]: a plain value,
 // or a list (one item per call of that role; the last item answers every later call). An item that is an object with
-// `$effects` first performs them (`{ write: <absolute path>, text }`: the simulated agent writes a file) and answers `$value`.
+// `$effects` first performs them (`{ write: <absolute path>, text }`: the simulated agent writes a file; `{ git: [argv] }`: it runs git) and answers `$value`.
 // A `snippet` runs after the source is loaded without its entry point: it defines `async def snip()` and sees the module.
 const DRIVER = [
-  'import ast, asyncio, json, os, sys',
+  'import ast, asyncio, json, os, subprocess, sys',
   "req = json.loads(sys.stdin.buffer.read().decode('utf-8'))",
   "path = os.environ['AGY_WORKFLOW']",
   'calls = []',
@@ -51,6 +51,9 @@ const DRIVER = [
   '        r = r[min(i, len(r) - 1)] if r else None',
   "    if isinstance(r, dict) and '$effects' in r:",
   "        for e in r['$effects']:",
+  "            if 'git' in e:",
+  "                subprocess.run(['git'] + e['git'], check=True, capture_output=True)",
+  "                continue",
   "            os.makedirs(os.path.dirname(e['write']), exist_ok=True)",
   "            with open(e['write'], 'w', encoding='utf-8', newline='') as f:",
   "                f.write(e['text'])",
@@ -120,6 +123,11 @@ function makeRepo(edit = (name, text) => text) {
   git(root, 'commit', '-q', '-m', 'base');
   return root;
 }
+
+const rmAll = (repo) => {
+  fs.rmSync(repo, { recursive: true, force: true });
+  fs.rmSync(`${repo}-wt`, { recursive: true, force: true });
+};
 
 const DONOT_TEXT = 'Do not ship E3 before the DEC-001 ruling holds.';
 const withDonot = (name, text) => (name === 'state.md'
@@ -348,33 +356,20 @@ pyTest('T4 contract: minBudgetPerDeliverable is ignored and said so in operatorA
 pyTest('T4 contract: a restricted gate in run mode asks for authorization; the other modes stay silent', () => {
   const repo = makeRepo();
   try {
-    const config = { gates: [{ name: 'unit', cmd: 'node --test', kind: 'tests' }, { name: 'prod', cmd: 'deploy --check', kind: 'tests', restricted: true }] };
-    const run = runWorkflow(baseArgs(repo, { config, mode: 'run' }));
-    assert.equal(run.result.operatorActions.length, 1);
-    const a = run.result.operatorActions[0];
-    assert.equal(a.kind, 'authorize-external');
+    const config = { gates: [{ name: 'unit', cmd: 'node --version', kind: 'exit' }, { name: 'prod', cmd: 'deploy --check', kind: 'exit', restricted: true }] };
+    const kinds = (r) => r.result.operatorActions.filter((x) => x.kind === 'authorize-external');
+    const run = runWorkflow(baseArgs(repo, { config, mode: 'run', deliverables: ['E1'] }));
+    assert.equal(kinds(run).length, 1);
+    const a = kinds(run)[0];
     assert.equal(a.item, 'gate:prod');
     assert.deepEqual(a.resumeWith.authorizeExternal, ['gate:prod']);
     assert.equal('runToken' in a.resumeWith, false);
     const dry = runWorkflow(baseArgs(repo, { config }));
     assert.deepEqual(dry.result.operatorActions, []);
-    const authorized = runWorkflow(baseArgs(repo, { config, mode: 'run', authorizeExternal: ['gate:prod'] }));
-    assert.deepEqual(authorized.result.operatorActions, []);
+    const authorized = runWorkflow(baseArgs(repo, { config, mode: 'run', deliverables: ['E1'], authorizeExternal: ['gate:prod'] }));
+    assert.deepEqual(kinds(authorized), []);
   } finally {
-    fs.rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-pyTest('T4 modes: run stops with "mode not implemented yet" until the later tasks, with the selection', () => {
-  const repo = makeRepo();
-  try {
-    const r = runWorkflow(baseArgs(repo, { mode: 'run' }));
-    assert.equal(r.result.status, 'error');
-    assert.match(r.result.error, /mode not implemented yet/);
-    assert.deepEqual(r.result.selection.order, ['E1', 'E2', 'E3']);
-    assert.deepEqual(r.calls, []);
-  } finally {
-    fs.rmSync(repo, { recursive: true, force: true });
+    rmAll(repo);
   }
 });
 
@@ -400,10 +395,6 @@ pyTest('T4 STAGE_MODELS: pro for authors and reviewers, flash for the sonnet/med
 });
 
 // ======================================================================== T5: plan-only and the review loop
-const rmAll = (repo) => {
-  fs.rmSync(repo, { recursive: true, force: true });
-  fs.rmSync(`${repo}-wt`, { recursive: true, force: true });
-};
 const artDir = (repo, E) => path.join(`${repo}-wt`, E, 'docs', 'plans', `x-${E}`);
 const gitBlob = (text) => execFileSync('git', ['hash-object', '--stdin'], { input: text, encoding: 'utf8' }).trim();
 const dataDoc = (title, obj) => `# ${title}\n\nProse the tool does not read.\n\n\`\`\`json data\n${JSON.stringify(obj, null, 2)}\n\`\`\`\n`;
@@ -792,4 +783,267 @@ test('T4 static: no shell=True, no tiers of Claude in the dispatch, unique basen
   };
   walk(PLUGIN);
   assert.deepEqual(dups, []);
+});
+
+// ======================================================================== T6: run mode up to the gates of the branch
+const taskOf = (n, title, score, extra = {}) => ({
+  writes: [], produces: [], consumes: [], covers: n === 1 ? ['AC1'] : ['AC2'], testFirst: true, locks: [], external: false, externalDedupe: null, noCommit: false,
+  n, title, deps: n > 1 ? [n - 1] : [], files: { create: [`src/s${n}.mjs`], modify: [], test: [`tests/e${n}.test.mjs`] }, score,
+  checks: [{ cmd: 'node --test tests/e1.test.mjs', expect: 'exit 0' }], ...extra,
+});
+// T1 routes to haiku (flash_lite); T2 to sonnet/high (pro).
+const PLAN2_OBJ = (t2 = {}) => ({
+  ...PLAN_OBJ,
+  tasks: [taskOf(1, 'Store', { ambiguity: 0, reasoning: 0, blast: 0, verifiability: 0 }), taskOf(2, 'Reload', { ambiguity: 2, reasoning: 2, blast: 1, verifiability: 1 }, t2)],
+});
+const plan2Text = (t2) => dataDoc('Plan E1', PLAN2_OBJ(t2)).replace('```json data', '## Tarefas\n\n### Tarefa 1: Store\n\nx\n\n### Tarefa 2: Reload\n\nx\n\n```json data');
+const OLD_TEST = "import assert from 'node:assert/strict';\nassert.equal(1, 1);\nassert.equal(2, 2);\nassert.equal(3, 3);\n";
+const commitEffects = (dir, files, subject, extra = []) => [
+  ...Object.entries(files).map(([rel, text]) => ({ write: path.join(dir, rel), text })),
+  ...extra,
+  { git: ['-C', dir, 'add', '-A', '--', '.'] },
+  { git: ['-C', dir, 'commit', '-q', '-m', subject] },
+];
+const CHECKS_FIRST = [{ command: 'node --test tests/e1.test.mjs', output: 'not ok', exit: 1 }, { command: 'node --test tests/e1.test.mjs', output: 'ok', exit: 0 }];
+const IMPL_DONE = (extra = {}) => ({ status: 'DONE', summary: 'done', checks: CHECKS_FIRST, ...extra });
+const RUN_CONFIG = {
+  gates: [{ name: 'broken', cmd: 'test ! -f BROKEN.txt', kind: 'exit' }, { name: 'tests', cmd: 'echo "tests 3 pass 3"', kind: 'tests' }],
+  projectContext: 'sample',
+};
+const runArgs = (repo, extra = {}) => baseArgs(repo, { mode: 'run', deliverables: ['E1'], config: RUN_CONFIG, ...extra });
+const GATE_READ = { name: 'tests', ran: true, exit: 0, total: 3, skipped: 0, failedNames: [] };
+
+// A repository whose main already holds a test with 3 assertions (T1 of the scripted implementer removes one).
+function makeRunRepo() {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'tests', 'old.test.mjs'), OLD_TEST);
+  git(repo, 'add', '.');
+  git(repo, 'commit', '-q', '-m', 'old test');
+  return repo;
+}
+
+function runResponses(repo, over = {}) {
+  const wt = path.join(`${repo}-wt`, 'E1');
+  const p2 = plan2Text();
+  return {
+    gates: GATE_READ,
+    'spec-author': authorWrites(path.join(artDir(repo, 'E1'), 'spec.md'), specText()),
+    'spec-review': REVIEW_OK(),
+    'plan-author': authorWrites(path.join(artDir(repo, 'E1'), 'plan.md'), p2),
+    'plan-review': REVIEW_OK({ measuredPlanBlob: gitBlob(p2) }),
+    implementer: [
+      { $effects: commitEffects(wt, { 'tests/e1.test.mjs': "import test from 'node:test';\ntest('x', () => {});\n", 'src/s1.mjs': 'export default 1;\n', 'tests/old.test.mjs': "import assert from 'node:assert/strict';\nassert.equal(1, 1);\nassert.equal(2, 2);\n" }, 'E1 T1: store'), $value: IMPL_DONE() },
+      { $effects: commitEffects(wt, { 'scripts/smoke.mjs': 'process.exit(0);\n', 'src/s2.mjs': 'export default 2;\n', 'BROKEN.txt': 'x\n' }, 'E1 T2: reload'), $value: IMPL_DONE() },
+    ],
+    'task-reviewer': REVIEW_OK({ commitsInRange: 1 }),
+    'final-reviewer': REVIEW_OK({ commitsInRange: 3 }),
+    'review-log': logWriter(repo),
+    'gates-fix': { $effects: commitEffects(wt, {}, 'E1 gates-fix: remove BROKEN.txt', [{ git: ['-C', wt, 'rm', '-q', 'BROKEN.txt'] }]), $value: { status: 'DONE', summary: 'fixed', checks: [] } },
+    'gates-fix-review': REVIEW_OK({ commitsInRange: 1 }),
+    ...over,
+  };
+}
+
+pyTest('T6 run: tasks on the routed Gemini model, task-reviewer always pro, a red gate goes to gates-fix on flash and is re-reviewed on pro', () => {
+  const repo = makeRunRepo();
+  try {
+    const r = runWorkflow(runArgs(repo), runResponses(repo));
+    assert.equal(r.result.error, undefined, JSON.stringify(r.result));
+    assert.deepEqual(roles(r.calls), ['gates', 'spec-author', 'spec-review', 'plan-author', 'plan-review', 'implementer', 'task-reviewer', 'task-reviewer', 'implementer', 'task-reviewer',
+      'task-reviewer', 'final-reviewer', 'final-reviewer', 'review-log', 'gates', 'gates-fix', 'gates-fix-review', 'review-log', 'gates']);
+    assert.deepEqual(modelsOf(r.calls, 'implementer'), ['flash_lite', 'pro'], 'agyModelFor(route.tier, route.effort) per task');
+    assert.ok(modelsOf(r.calls, 'task-reviewer').length === 4 && modelsOf(r.calls, 'task-reviewer').every((m) => m === 'pro'));
+    assert.deepEqual(modelsOf(r.calls, 'gates-fix'), ['flash']);
+    assert.deepEqual(modelsOf(r.calls, 'gates-fix-review'), ['pro']);
+    assert.deepEqual(modelsOf(r.calls, 'final-reviewer'), ['pro', 'pro'], 'E1 is CRITICAL: the correctness and the security lens');
+    assert.ok(modelsOf(r.calls, 'gates').every((m) => m === 'flash'), 'only a tests gate needs a model: it reads the numbers of the output');
+    assert.ok(r.calls.every((c) => c.type_name === 'self'));
+    for (const forbidden of ['script-runner', 'test-integrity', 'setup', 'preflight', 'progress', 'sync']) assert.ok(!roles(r.calls).includes(forbidden), forbidden);
+    // the Gemini tiers go to the dispatch only, never to the plan
+    const planFile = fs.readFileSync(path.join(`${repo}-wt`, 'E1', 'docs', 'plans', 'x-E1', 'plan.md'), 'utf8');
+    assert.ok(!/flash|"pro"/.test(planFile), 'plan.md carries no Gemini tier');
+    assert.match(r.calls[5].prompt, /Implement ONLY Task 1/);
+    assert.match(r.calls[5].prompt, /test-first task/);
+    assert.match(r.calls[5].prompt, /CURRENT BASELINE OF THE TARGET .*broken: exit 0 \| tests: exit 0, total 3/);
+    assert.match(r.calls[6].prompt, /Mode: spec\. Task 1 \("Store"\)/);
+    assert.match(r.calls[7].prompt, /Mode: quality\. Task 1/);
+    // the output of the tests gate goes to the reader; the exit and the commands are the script's
+    const gateCall = r.calls[0];
+    assert.match(gateCall.prompt, /tests 3 pass 3/);
+    assert.ok(gateCall.schema.required.includes('name'));
+    const onBranch = subjects(repo, 'feat/E1');
+    for (const s of ['E1 T1: store', 'E1 T2: reload', 'E1 gates-fix: remove BROKEN.txt']) assert.ok(onBranch.includes(s), onBranch.join('|'));
+    assert.ok(onBranch.some((s) => /^E1: review log/.test(s)));
+    assert.equal(git(path.join(`${repo}-wt`, 'E1'), 'status', '--porcelain'), '');
+    // the executing record on the target through roadmap.mjs, with the in-flight entry
+    assert.match(git(repo, 'log', '--format=%s', 'main..release/sample'), /docs\(roadmap\): E1 at /);
+    assert.match(git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md'), /feat\/E1/);
+    const row = r.result.results[0];
+    assert.equal(row.id, 'E1');
+    assert.equal(row.tasks, 2);
+    assert.equal(row.merged, false);
+    assert.equal(row.readyToMerge, true, 'the merge is the next task: the branch is validated and waits');
+    assert.equal(r.result.status, 'partial');
+    assert.deepEqual(r.result.resumeArgs.deliverables, ['E1']);
+    // the run record kept the baseline (prep) for a resume
+    assert.ok(fs.existsSync(path.join(`${repo}-wt`, 'E1', 'docs', 'plans', 'x-E1', 'run.json')));
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T6 run: test-integrity runs by subprocess on a detached temporary worktree and its alerts reach the final reviewer', () => {
+  const repo = makeRunRepo();
+  try {
+    const r = runWorkflow(runArgs(repo), runResponses(repo));
+    const fin = r.calls.find((c) => c.role === 'final-reviewer');
+    assert.match(fin.prompt, /Alerts: .*1 assertions removed without replacement/);
+    assert.match(fin.prompt, /Mode: review, lens: correctness\. Diff: git -C ".*E1" diff release\/sample\.\.\.HEAD/);
+    assert.ok(!roles(r.calls).includes('test-integrity'));
+    assert.equal(fs.existsSync(path.join(`${repo}-wt`, '_tmp', 'E1-integrity-wt')), false, 'the temporary worktree is gone');
+    assert.doesNotMatch(git(repo, 'worktree', 'list', '--porcelain'), /integrity/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+const INTEG_SNIPPET = (repo, body) => `
+ROOT = ${JSON.stringify(PLUGIN.replace(/\\/g, '/'))}
+_load_bridge(ROOT)
+REPO = ${JSON.stringify(repo.replace(/\\/g, '/'))}
+TMP = REPO + '-wt/_tmp/E1-integrity-wt'
+async def snip():
+${body.trim().split('\n').map((l) => '    ' + l).join('\n')}
+`;
+
+pyTest('T6 integrity: the temporary worktree is removed after the program, after a failing program and after an exception', () => {
+  const repo = makeRunRepo();
+  try {
+    git(repo, 'checkout', '-q', '-b', 'b');
+    fs.writeFileSync(path.join(repo, 'tests', 'old.test.mjs'), "import assert from 'node:assert/strict';\nassert.equal(1, 1);\n");
+    git(repo, 'commit', '-q', '-am', 'weaken');
+    git(repo, 'checkout', '-q', 'main');
+    const out = runWorkflow(undefined, {}, WORKFLOW, INTEG_SNIPPET(repo, `
+program = load_test_integrity(ROOT + '/' + RELEASE_JS_REL, {})
+good = measure_integrity(program, REPO, TMP, 'b', 'main')
+gone1 = not os.path.exists(TMP)
+bad = measure_integrity('process.exit(3)', REPO, TMP, 'b', 'main')
+gone2 = not os.path.exists(TMP)
+def boom(*a, **k):
+    raise RuntimeError('boom')
+globals()['run_test_integrity'] = boom
+raised = False
+try:
+    measure_integrity(program, REPO, TMP, 'b', 'main')
+except RuntimeError:
+    raised = True
+listing = git_in(REPO, 'worktree', 'list', '--porcelain')['stdout']
+return {'good': good, 'gone1': gone1, 'bad': bad, 'gone2': gone2, 'raised': raised, 'listing': listing, 'gone3': not os.path.exists(TMP)}
+`)).snip;
+    assert.equal(out.good.removedAsserts, 2);
+    assert.deepEqual(out.good.deletedTests, []);
+    assert.equal(out.gone1, true);
+    assert.equal(out.bad.removedAsserts, -1);
+    assert.equal(out.gone2, true);
+    assert.equal(out.raised, true);
+    assert.equal(out.gone3, true);
+    assert.doesNotMatch(out.listing, /integrity/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T6 preflight: a failing setup command, a red baseline and an invalid baseline ask the operator, and no agent runs after them', () => {
+  const repo = makeRunRepo();
+  try {
+    const setup = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, setup: ['exit 3'] } }), runResponses(repo));
+    assert.equal(setup.result.status, 'needs-operator');
+    assert.equal(setup.result.operatorActions[0].kind, 'preflight:setup');
+    assert.match(setup.result.operatorActions[0].what, /exit 3/);
+    assert.deepEqual(setup.calls, []);
+  } finally {
+    rmAll(repo);
+  }
+  const repo2 = makeRunRepo();
+  try {
+    const config = { gates: [{ name: 'unit', cmd: 'exit 1', kind: 'exit' }] };
+    const red = runWorkflow(runArgs(repo2, { config }), runResponses(repo2));
+    assert.equal(red.result.status, 'needs-operator');
+    assert.equal(red.result.operatorActions[0].kind, 'preflight:red-baseline');
+    assert.match(red.result.operatorActions[0].what, /baseline of release\/sample is red in: unit/);
+    assert.deepEqual(red.calls, []);
+    const accepted = runWorkflow(runArgs(repo2, { config, acceptRedBaseline: true }), runResponses(repo2, { 'spec-author': null }));
+    assert.equal(accepted.result.operatorActions.some((a) => a.kind === 'preflight:red-baseline'), false);
+    assert.equal(roles(accepted.calls)[0], 'spec-author', 'an accepted red baseline goes on to the spec');
+  } finally {
+    rmAll(repo2);
+  }
+  const repo3 = makeRunRepo();
+  try {
+    const bad = runWorkflow(runArgs(repo3), runResponses(repo3, { gates: null }));
+    assert.equal(bad.result.status, 'needs-operator');
+    assert.equal(bad.result.operatorActions[0].kind, 'preflight:other');
+    assert.deepEqual(roles(bad.calls), ['gates', 'gates'], 'an unreadable tests gate is read twice, then the baseline does not count');
+  } finally {
+    rmAll(repo3);
+  }
+});
+
+pyTest('T6 run: an external task that is not authorized holds the deliverable before its implementer runs', () => {
+  const repo = makeRunRepo();
+  try {
+    const t2 = { external: true, externalDedupe: 'check the outbox' };
+    const p2 = plan2Text(t2);
+    const over = { 'plan-author': authorWrites(path.join(artDir(repo, 'E1'), 'plan.md'), p2), 'plan-review': REVIEW_OK({ measuredPlanBlob: gitBlob(p2) }) };
+    const held = runWorkflow(runArgs(repo), runResponses(repo, over));
+    assert.equal(held.result.status, 'needs-operator');
+    const row = held.result.results[0];
+    assert.equal(row.failKind, 'externo');
+    assert.match(row.error, /^external task 2 awaits authorization \(E1:T2@[0-9a-f]{8}\)/);
+    assert.deepEqual(modelsOf(held.calls, 'implementer'), ['flash_lite'], 'T1 (local) ran, T2 (external) did not');
+    const a = held.result.operatorActions.find((x) => x.kind === 'authorize-external' && x.deliverable === 'E1');
+    assert.match(a.item, /^E1:T2@[0-9a-f]{8}$/);
+    assert.deepEqual(a.resumeWith.authorizeExternal, [a.item]);
+    assert.match(a.what, /task 2 \("Reload"\) of E1 is external and not authorized: it was not run/);
+    assert.ok(!held.result.operatorActions.some((x) => x.kind === 'defect'));
+    // no blocked record for an externo stop
+    const rowState = git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md').split('\n').find((l) => /^\| E1 \|/.test(l));
+    assert.ok(!/blocked/.test(rowState), rowState);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T6 run: a task review that repeats walks the implementer ladder flash_lite -> flash -> pro and ends with a conteudo failure recorded as blocked', () => {
+  const repo = makeRunRepo();
+  try {
+    const issue = ISSUE('the same task defect');
+    const r = runWorkflow(runArgs(repo), runResponses(repo, {
+      'task-reviewer': REVIEW_OK({ issues: [issue], commitsInRange: 1 }),
+      'task-fix': { status: 'DONE', summary: 'tried', checks: [] },
+    }));
+    assert.deepEqual(modelsOf(r.calls, 'task-fix'), ['flash_lite', 'flash', 'pro']);
+    assert.ok(modelsOf(r.calls, 'task-reviewer').every((m) => m === 'pro'));
+    const row = r.result.results[0];
+    assert.equal(row.failKind, 'conteudo');
+    assert.match(row.error, /^task 1: T1:spec: the same finding reappeared after a fix at pro and there is no higher tier/);
+    assert.ok(r.result.operatorActions.find((x) => x.kind === 'defect'));
+    const rowState = git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md').split('\n').find((l) => /^\| E1 \|/.test(l));
+    assert.match(rowState, /blocked/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+test('T6 static: the run mode reuses the pure functions and the bridge, with no tier of Claude and no parallel()', () => {
+  const src = lf(fs.readFileSync(WORKFLOW, 'utf8'));
+  assert.match(src, /agyModelFor\(p\.t, p\.e\)/);
+  assert.match(src, /load_test_integrity\(/);
+  assert.match(src, /run_test_integrity\(/);
+  assert.match(src, /run_shell\(/);
+  assert.ok(!/\bparallel\(/.test(src.replace(/#[^\n]*/g, '')), 'the gates run one after the other: no parallel() call');
+  for (const fn of ['externalHold', 'bindAuthorizations', 'testFirstGap', 'gateGroups', 'allPass', 'validMeasure', 'integrityAlerts', 'buildImplPrompt', 'buildTaskReviewPrompt']) {
+    assert.ok(!new RegExp(`def ${fn}\\b`, 'i').test(src), `${fn} is evaluated from the .js or the lib, not reimplemented`);
+  }
 });

@@ -14,7 +14,9 @@
 # minBudgetPerDeliverable is ignored: agy exposes no budget (an operator note says so).
 # RETURN: { status, mode, operatorActions, resumeArgs, selection, results, ownerReview, truth, lastGood, reportPath, report }
 # Modes: dry-run, plan-only (preflight steps 1, 2 and 5, setup by git, spec and plan with their review loops, the roadmap record)
-# and run (not implemented yet: status "error"). The report stage of plan-only comes with the merge task: `report` is None.
+# and run (the full preflight with setup commands and the baseline of the gates, the same spec and plan, the tasks, the sync and
+# final review, the gates of the branch; the merge, post-merge gates and docs come with the merge task: the deliverable then
+# waits with `readyToMerge`). The report stage comes with the merge task: `report` is None.
 import inspect
 import json
 import os
@@ -358,6 +360,7 @@ PURE_RESUME_JS = r"""(() => {
 })()"""
 
 CMD_CAP = 6000
+RAN_MARK = 'already authorized and run in this run'  # the mark annotateAuthorizedHuman adds to a human item
 NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 
 
@@ -540,7 +543,7 @@ async def run_review_loop(env, stage, review, fix, truth, opt=None):
     return {'ok': True, 'r': r}
 
 
-# ---------------------------------------------------------------- run state and preflight (plan-only steps 1, 2 and 5)
+# ---------------------------------------------------------------- run state
 def init_run(disc, plan, cfg, token, items, gates):
     R.disc = disc
     R.cfg = cfg
@@ -584,6 +587,15 @@ def init_run(disc, plan, cfg, token, items, gates):
     R.foreign_ok = False
     R.foreign_item = 'checkout:' + R.target
     R.pre = None
+    R.mode = MODE
+    R.accept_red = bool(A.get('acceptRedBaseline') or cfg.get('acceptRedBaseline'))
+    R.before_evidence = as_list(cfg.get('beforeEvidence'))
+    R.setup_cmds = as_list(cfg.get('setup'))
+    R.install = cfg.get('install') or ''
+    R.gates_key = pure('fnv1a(JSON.stringify(canon(p)))', gates)
+    R.baseline = {}  # gate name -> GateResult of the target (the baseline every measure is judged against)
+    R.test_integrity = None
+    R.deliv = {}  # E -> Deliverable (its log is written again after the blocked record)
 
 
 def _env_facts():
@@ -596,9 +608,122 @@ def _env_facts():
     return '; '.join(bits)
 
 
-def preflight_plan_only():
-    """Steps 1, 2 and 5 of the preflight of plan-only mode, by git: the target branch, the integration worktree, envFacts.
-    Returns S_PRE-shaped data: { ok, errorKind?, error?, integrationWorktree, targetHead, clean, envFacts }. No baseline."""
+def sh(cmd, cwd):
+    """One shell command line through Git Bash (the commands of the config are shell text). A missing Git Bash is { ran: False }."""
+    try:
+        r = dict(run_shell(cmd, cwd))
+    except RuntimeError as e:
+        return {'exit': 127, 'stdout': '', 'stderr': str(e), 'ran': False}
+    r['ran'] = True
+    return r
+
+
+def tail_text(s, n=3000):
+    s = str(s or '')
+    return s if len(s) <= n else '[...truncated...]\n' + s[-n:]
+
+
+# ---------------------------------------------------------------- gates: measured by run_shell, judged by the script
+async def read_tests_gate(d, r):
+    """A tests gate: the exit is the script's own; only the numbers inside its output need a reader (flash, no tools). None when unreadable."""
+    text = tail_text(r['stdout'] + (('\n' + r['stderr']) if r['stderr'].strip() else ''), 4000)
+    prompt = ('GATE OUTPUT READER (read-only; run nothing, change nothing, no tools needed). The gate "%s" (kind tests) ran `%s` and exited %s. '
+              'Read its output below and return { name, ran: true, exit: %s, total, skipped, failedNames }: total = tests executed, skipped = tests skipped, '
+              'failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)). '
+              'A non-zero exit requires failedNames and failedNames require a non-zero exit. Real numbers from the output, never estimates.\nOUTPUT:\n%s'
+              % (d.get('name'), d.get('cmd'), r['exit'], r['exit'], text))
+    for _ in range(2):
+        g = await call_agent('gates', prompt, SCHEMAS['S_GATE'])
+        if isinstance(g, dict) and type(g.get('total')) is int:
+            sk = g.get('skipped')
+            return {'total': g['total'], 'skipped': sk if type(sk) is int else 0, 'failedNames': [str(x) for x in (g.get('failedNames') or [])]}
+    return None
+
+
+async def measure_defs(defs, wt, rng):
+    """One group of gates in `wt`: headSha and clean BEFORE any command, the state preparation of the gates that need a lock, then every
+    command by run_shell. Returns { headSha, clean, gates, changedFiles, log } or None when a tests gate could not be read."""
+    head = git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip()
+    clean = not git_in(wt, '--no-optional-locks', 'status', '--porcelain')['stdout'].strip()
+    before_ok = True
+    if R.before_evidence and any(as_list(d.get('needsLock')) for d in defs):
+        for c in R.before_evidence:
+            if sh(c, wt)['exit'] != 0:
+                before_ok = False
+                break
+    res = []
+    logs = []
+    for d in defs:
+        if not before_ok and as_list(d.get('needsLock')):
+            res.append({'name': d['name'], 'ran': False, 'exit': 1})
+            continue
+        r = sh(d['cmd'], wt)
+        g = {'name': d['name'], 'ran': r['ran'], 'exit': r['exit']}
+        if r['ran'] and d.get('kind') == 'tests':
+            t = await read_tests_gate(d, r)
+            if t is None:
+                return None
+            g.update(t)
+        if r['exit'] != 0:
+            logs.append('%s (exit %s):\n%s' % (d['name'], r['exit'], tail_text(r['stdout'] + r['stderr'], 1500)))
+        res.append(g)
+    changed = [x for x in git_in(wt, 'diff', '--name-only', rng)['stdout'].splitlines() if x.strip()] if rng else []
+    return {'headSha': head, 'clean': clean, 'gates': res, 'changedFiles': changed, 'log': '\n---\n'.join(logs)}
+
+
+async def measure_all(wt, exp=None, rng=None):
+    """Every gate of the run, one group after the other (the unlocked group first). A group that does not make a valid measure (dirty tree,
+    wrong commit, a gate missing, exit and failing names in disagreement) makes the whole measure None."""
+    parts = []
+    for g in pure('gateGroups(p)', R.gates):
+        m = await measure_defs(g['defs'], wt, rng)
+        if not m or not pure('validMeasure(p.m, p.e, p.d)', {'m': m, 'e': exp, 'd': g['defs']}):
+            return None
+        m['headSha'] = str(m['headSha']).strip().lower()
+        parts.append(m)
+    if not parts or not pure('p.every(x => gateShaMatch(x.headSha, p[0].headSha))', parts):
+        return None
+    changed = []
+    for x in parts:
+        for f in x['changedFiles']:
+            if f not in changed:
+                changed.append(f)
+    return {'headSha': parts[0]['headSha'], 'clean': True, 'gates': [g for x in parts for g in x['gates']], 'changedFiles': changed, 'log': '\n---\n'.join(x['log'] for x in parts)}
+
+
+async def run_gates(wt, base=None, exp=None, rng=None):
+    """gates() of the .js: { m, ok, nullAgent, failures, summary }. The verdict is the script's, over the numbers it measured."""
+    m = await measure_all(wt, exp, rng or '%s...HEAD' % R.target)
+    if not m:
+        return {'m': None, 'ok': False, 'nullAgent': True, 'failures': [], 'summary': 'measurement null or invalid (dirty tree, wrong commit, a missing gate or exit and failing names in disagreement)'}
+    b = base if base is not None else R.baseline
+    v = pure('allPass(p.d, p.m, p.b, p.c)', {'d': R.gates, 'm': m, 'b': b, 'c': m['changedFiles']})
+    return {'m': m, 'ok': v['ok'], 'nullAgent': False, 'failures': v['failures'], 'summary': pure('gateSummary(p.d, p.m, p.b)', {'d': R.gates, 'm': m, 'b': b})}
+
+
+def base_txt():
+    return pure("p.d.map(g => g.name + ': ' + resultTxt(p.b[g.name])).join(' | ')", {'d': R.gates, 'b': R.baseline})
+
+
+def measure_integrity(program, repo, tmp_dir, rev, base):
+    """test-integrity (the program of roadmap-release.js) on a temporary detached worktree of `rev`, against `base`. The worktree is
+    always removed, also when the program fails or raises. The result is the bridge's: removedAsserts -1 when unmeasured."""
+    git_in(repo, 'worktree', 'remove', '--force', tmp_dir)  # a leftover of an earlier run
+    a = git_in(repo, 'worktree', 'add', '--detach', tmp_dir, rev)
+    if a['exit'] != 0:
+        return dict(UNMEASURED_INTEGRITY, deletedTests=[])
+    try:
+        return run_test_integrity(program, tmp_dir, base)
+    finally:
+        git_in(repo, 'worktree', 'remove', '--force', tmp_dir)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        git_in(repo, 'worktree', 'prune')
+
+
+# ---------------------------------------------------------------- preflight (steps 1, 2 and 5 by git; setup and baseline in run mode)
+async def preflight():
+    """The preflight: steps 1, 2 and 5 by git; in run mode also the setup commands and the baseline of every gate (recorded by an earlier
+    run or measured). Returns S_PRE-shaped data: { ok, errorKind?, error?, integrationWorktree, targetHead, clean, envFacts, baseline? }."""
     target, repo = R.target, R.repo
     r = git_in(repo, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + target)
     if r['exit'] != 0:
@@ -636,7 +761,29 @@ def preflight_plan_only():
     if st['exit'] != 0 or st['stdout'].strip():
         return {'ok': False, 'errorKind': 'dirty', 'error': 'the integration worktree %s is not clean: %s' % (intwt, st['stdout'].strip() or st['stderr'].strip()), 'integrationWorktree': intwt}
     head = git_in(intwt, 'rev-parse', 'HEAD')['stdout'].strip()
-    return {'ok': True, 'integrationWorktree': intwt, 'targetHead': head, 'clean': True, 'envFacts': facts}
+    out = {'ok': True, 'integrationWorktree': intwt, 'targetHead': head, 'clean': True, 'envFacts': facts}
+    if MODE != 'run':
+        return out
+    # step 3: the environment setup, in the integration worktree, in order
+    for c in R.setup_cmds:
+        s = sh(c, intwt)
+        if s['exit'] != 0:
+            return {'ok': False, 'errorKind': 'setup', 'error': 'setup command failed (exit %s): "%s"\n%s' % (s['exit'], c, tail_text(s['stderr'] or s['stdout'], 500)), 'integrationWorktree': intwt}
+    # step 4: the baseline of the gates. A baseline recorded by an earlier run for this exact target head and gates is reused.
+    specs = pure("p.ids.map(id => p.pfx + id + ':' + artifactPaths(p.slug, id).dir)", {'ids': R.order, 'pfx': R.prefix, 'slug': R.disc['roadmapSlug']})
+    rec = run_cli(['node', R.root + '/scripts/run-record.mjs', 'baseline', R.repo, R.target, R.gates_key] + specs)
+    recorded = rec['stdout'] if rec['exit'] == 0 and rec['stdout'].strip() else ''
+    if R.install:
+        s = sh(R.install, intwt)
+        if s['exit'] != 0:
+            return {'ok': False, 'errorKind': 'setup', 'error': 'install failed (exit %s): %s' % (s['exit'], tail_text(s['stderr'] or s['stdout'], 500)), 'integrationWorktree': intwt}
+    if recorded:
+        out['baseline'] = pure('recordedBaseline(p.s, p.h, p.k, p.d)', {'s': recorded, 'h': head, 'k': R.gates_key, 'd': R.gates})
+    else:
+        m = await measure_all(intwt)
+        if m:
+            out['baseline'] = {'headSha': m['headSha'], 'clean': m['clean'], 'gates': m['gates']}
+    return out
 
 
 # ---------------------------------------------------------------- shared briefing (the FIXED RULES of the prompts)
@@ -850,7 +997,7 @@ class Deliverable(object):
 
     def briefing(self, with_notes=True):
         return '%s\nENVIRONMENT MEASURED IN THE PREFLIGHT: %s\nCURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): %s' % (
-            self.base_of(with_notes), R.pre.get('envFacts') or '(not reported)', '(none: plan-only mode measures no baseline)')
+            self.base_of(with_notes), R.pre.get('envFacts') or '(not reported)', '(none: plan-only mode measures no baseline)' if MODE == 'plan-only' else base_txt())
 
     def C(self):
         return self.briefing(True)
@@ -865,12 +1012,13 @@ class Deliverable(object):
     async def ask(self, role, prompt, schema=None, model=None, body=None):
         return await call_agent(role, prompt, SCHEMAS[schema] if schema else None, model, body)
 
-    async def ask_ro(self, role, prompt, schema):
+    async def ask_ro(self, role, prompt, schema, body=None, wt=None):
         """A reviewer (always pro). It runs with the tools of the session, so HEAD and the git status of its worktree are compared around it."""
-        before = git_snapshot(self.wt)
-        out = await call_agent(role, prompt, SCHEMAS[schema])
-        if git_snapshot(self.wt) != before:
-            raise ReadOnlyViolation('the %s changed the repository (HEAD or git status of %s differ): reviewers are read-only' % (role, self.wt))
+        wt = wt or self.wt
+        before = git_snapshot(wt)
+        out = await call_agent(role, prompt, SCHEMAS[schema], None, body)
+        if git_snapshot(wt) != before:
+            raise ReadOnlyViolation('the %s changed the repository (HEAD or git status of %s differ): reviewers are read-only' % (role, wt))
         return out
 
     def body(self, name):
@@ -888,10 +1036,11 @@ class Deliverable(object):
         if not self.setup_ok or (not stages and not o['reviews'] and not o['externalRun'] and not o['recordCuts']):
             return
         if stages:  # the run record of the approved spec/plan: a failure is ignored
-            enc = pure("encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')", {'trailer': R.trailer})
-            run_cli(['node', R.root + '/scripts/run-record.mjs', 'approve', self.wt, self.ap['dir'], self.E, stages, tip or '-', enc])
+            self.rec_approve(stages, tip)
         cuts = ', plus a section "Textos cortados no registro": one entry per item of recordCuts (origin = source, where it went in, the full text), keeping the earlier entries' if o['recordCuts'] else ''
-        data = {'reviews': o['reviews'], 'acceptedRisks': o['acceptedRisks'], 'concerns': o['concerns'], 'humanInputs': self.human, 'failure': o.get('error')}
+        data = {'reviews': o['reviews'], 'acceptedRisks': o['acceptedRisks'], 'concerns': o['concerns'], 'gates': o.get('gates'), 'tasks': o.get('tasks'), 'humanInputs': self.human, 'failure': o.get('error')}
+        if o['externalRun']:
+            data['externalRun'] = o['externalRun']
         if o['recordCuts']:
             data['recordCuts'] = o['recordCuts']
         prompt = ('%s\n\nWrite %s/%s on the branch %s, in the language of the roadmap, with the review log (if that file already exists, keep all it holds and add this run; never remove or rewrite an earlier record): per stage or task, the rounds (round number, reviewer model, tier of the fix that preceded it), the critical/important issues with category and description, the count of minor ones, unresolved items and accepted risks, plus concerns, gates and the human inputs (what, blq, workaround, blocking)%s. Transcribe faithfully; do not summarize blocking issues. Do not commit: the caller commits. Data: %s'
@@ -904,6 +1053,14 @@ class Deliverable(object):
         cm = commit_file(self.wt, self.ap['reviews'], '%s: review log%s' % (self.E, label))
         if not cm.get('ok'):
             o['concerns'].append('review log%s not committed: %s' % (label, cm.get('error')))
+
+    def rec_approve(self, stages, tip=None):
+        """run-record.mjs approve: the run record of the approved spec/plan (and, in run mode, the baseline for a resume). A failure is ignored."""
+        payload = {'trailer': R.trailer}
+        if MODE != 'plan-only' and R.pre.get('baseline'):
+            payload['prep'] = {'targetHead': R.pre['targetHead'], 'gatesKey': R.gates_key, 'baseline': R.pre['baseline']}
+        enc = pure("encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')", payload)
+        return run_cli(['node', R.root + '/scripts/run-record.mjs', 'approve', self.wt, self.ap['dir'], self.E, stages, tip or '-', enc])
 
     async def fail(self, kind, msg):
         o = self.out
@@ -1015,11 +1172,564 @@ class Deliverable(object):
     def truth_of(self, r, min_commits, label):
         return pure('reviewTruth(p.r, p.min, p.label)', {'r': r, 'min': min_commits, 'label': label})
 
+    # ---- run mode: the helpers of the stages after the plan
+    def ctx_for(self, **extra):
+        c = {'base': self.base_of(), 'envFacts': R.pre.get('envFacts'), 'baseline': base_txt(), 'E': self.E, 'target': R.target, 'wt': self.wt,
+             'planPath': self.plan['planPath'] if self.plan else None, 'specPath': self.spec['specPath'] if self.spec else None, 'locks': []}
+        c.update(extra)
+        return c
+
+    def lock_note(self, locks):
+        return pure('lockNote(p)', locks)
+
+    def no_spec_edit(self):
+        return 'Never edit the spec%s or the plan%s to satisfy a finding: they are approved, so if an item can only be met by changing them, do not apply it and explain in concerns.' % (
+            (' ' + self.spec_ref) if self.spec_ref else '', (' ' + self.plan_ref) if self.plan_ref else '')
+
+    def bound_items(self):
+        if self.E not in R.bound:
+            return list(R.items)
+        return pure('bindAuthorizations(p.items, p.E, p.fp)', {'items': R.items, 'E': self.E, 'fp': R.bound[self.E]})
+
+    def external_hold(self, t):
+        return pure('externalHold(p.t, p.E, p.items, p.fp)', {'t': t, 'E': self.E, 'items': R.items, 'fp': self.fp})
+
+    def held_tasks(self, xs):
+        return pure('p.xs.map(x => ({ x, item: externalHold(x, p.E, p.items, p.fp) })).filter(h => h.item)', {'xs': xs, 'E': self.E, 'items': R.items, 'fp': self.fp})
+
+    def held_evidence(self):
+        return pure('evidenceHolds(normalizePlanAc(p.c, p.a), p.E, p.items, p.fp)', {'c': self.card_ac, 'a': self.plan['ac'], 'E': self.E, 'items': R.items, 'fp': self.fp})
+
+    def op_evidence(self, held):
+        E = self.E
+        for h in held:
+            op('authorize-external', E, 'the acceptance evidence of criterion %s of %s runs a command with an external effect and is not authorized, so it was not run: %s' % (h['ac'], E, ' ; '.join(h['commands'])),
+               'Authorize it by running again with authorizeExternal including "%s" (externalDedupe: %s); the command runs on the branch, again after each gates fix, after a late sync and on the retry of an invalid measure' % (h['item'], ' ; '.join(h['dedupe']) or 'none declared'),
+               dict(A, authorizeExternal=self.bound_items() + [h['item']], deliverables=[E]), {'item': h['item']})
+
+    def op_tasks(self, held):
+        E, br = self.E, self.br
+        for h in held:
+            x = h['x']
+            op('authorize-external', E, 'task %s ("%s") of %s is external and not authorized: it was not run' % (x['n'], x['title'], E),
+               'Authorize it by running again with authorizeExternal including "%s" (externalDedupe: %s); the tasks before it are already committed on %s' % (h['item'], x.get('externalDedupe') or 'none declared', br),
+               dict(A, authorizeExternal=self.bound_items() + [h['item']], deliverables=[E]), {'item': h['item']})
+
+    def failed_record(self, rec):
+        return '; '.join(rec['failures']) if rec else 'null result or integration worktree broken'
+
+    def annotate_human(self):
+        self.human[:] = pure('annotateAuthorizedHuman(p.h, p.r)', {'h': self.human, 'r': self.out['externalRun']})
+
+    def missing(self, lst, items, key):
+        return pure('missingFrom(p.l, p.i, %s)' % key, {'l': lst, 'i': items})
+
+    async def read_persisted_log(self):
+        """Human acts and accepted risks of an earlier run live only in the persisted files: a read (flash, no tools beyond reading)."""
+        E, ap = self.E, self.ap
+        prompt = ('Read-only. In "%s" read %s (the review log), %s (the spec) and %s (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log '
+                  '(stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. '
+                  'humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. '
+                  'ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. '
+                  'externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. '
+                  'Transcribe faithfully, do not invent.') % (self.wt, ap['reviews'], ap['spec'], ap['plan'])
+        return await self.ask('review-log', prompt, 'S_RESUMELOG')
+
+    def restore_from_log(self, rl, unsettled=()):
+        o = self.out
+
+        def strip(h):
+            w = str(h.get('what') or '')
+            for item in unsettled:
+                w = w.replace(' [%s: %s]' % (RAN_MARK, item), '')
+            return dict(h, what=w)
+
+        self.human.extend(self.missing(self.human, [strip(h) for h in (rl.get('humanInputs') or [])], 'humanKey'))
+        o['acceptedRisks'].extend(self.missing(o['acceptedRisks'], rl.get('acceptedRisks') or [], 'x => `${x.stage}|${x.description}`'))
+        o['externalRun'].extend(self.missing(o['externalRun'], [e for e in (rl.get('externalRun') or []) if e.get('item') not in unsettled], 'x => `${x.item}|${x.command || \'\'}`'))
+        self.annotate_human()
+
+    def commit_mark(self, subject):
+        """An empty commit that is a durable mark (launch, completion, awaiting a person). Returns its head, or '' when it is not HEAD."""
+        git_in(self.wt, 'reset', '-q')
+        c = git_in(self.wt, 'commit', '--allow-empty', '-q', '-m', subject, '-m', R.trailer)
+        if c['exit'] != 0:
+            return ''
+        if git_in(self.wt, 'log', '-1', '--format=%s')['stdout'].strip() != subject:
+            return ''
+        return git_in(self.wt, 'rev-parse', 'HEAD')['stdout'].strip()
+
+    def read_progress(self, external_ns):
+        """What the earlier runs left on the branch, read by git: the commits of each task, the waits for a person and the marks of the external tasks."""
+        E, wt = self.E, self.wt
+        commits = []  # newest first
+        for ln in git_in(wt, 'log', '--format=%H%x09%s', '%s..HEAD' % R.target)['stdout'].splitlines():
+            sha, _, subj = ln.partition('\t')
+            commits.append((sha, subj))
+        head, clean = self._head_clean()
+
+        def newest(prefixes):
+            return next((i for i, c in enumerate(commits) if any(c[1].startswith(p) for p in prefixes)), None)
+
+        done = []
+        awaiting = []
+        for t in self.plan['tasks']:
+            n = t['n']
+            tn = '%s T%d' % (E, n)
+            mine = [c for c in reversed(commits) if c[1].startswith(tn + ':')]
+            if mine:
+                done.append({'n': n, 'firstParent': git_in(wt, 'rev-parse', mine[0][0] + '^')['stdout'].strip(), 'last': mine[-1][0]})
+            a = newest([tn + ' awaiting person:'])
+            c = newest([tn + ': external effect completed', tn + ': resumed after awaiting person'])
+            if a is not None and (c is None or a < c):
+                awaiting.append(n)
+        launch_open, completed, may = [], [], []
+        for n in external_ns:
+            tn = '%s T%d' % (E, n)
+            allp = [tn + ' launching', tn + ' started', tn + ' awaiting person:', tn + ' awaiting person (effect may have run):', tn + ' awaiting person (effect unknown):', tn + ': external effect completed']
+            for _sha, s in commits:
+                if not any(s.startswith(p) for p in allp):
+                    continue
+                if s.startswith((tn + ' launching', tn + ' started', tn + ' awaiting person (effect unknown):', tn + ' awaiting person: external effect did not complete')):
+                    launch_open.append(n)
+                elif s.startswith(tn + ': external effect completed'):
+                    completed.append(n)
+                elif s.startswith((tn + ' awaiting person (effect may have run):', tn + ' awaiting person: a fix round needs a person')):
+                    may.append(n)
+                break
+        return {'head': head, 'clean': clean, 'done': done, 'awaitingPerson': awaiting, 'launchOpen': launch_open, 'effectCompleted': completed, 'effectMayHaveRun': may}
+
+    # ---- the tasks (resumable)
+    async def stop_for_person(self, t, res, from_fix=False):
+        """An authorized external task that stopped for a person: nothing merges, and only a person can say the effect did not happen."""
+        E, br, wt = self.E, self.br, self.wt
+        n = t['n']
+        self.human.extend(self.missing(self.human, res.get('humanInputs') or [], 'humanKey'))
+        needed = '; '.join('%s%s' % ((h['blq'] + ': ') if h.get('blq') else '', h.get('what')) for h in (res.get('humanInputs') or [])) or res.get('summary')
+        subject = ('%s T%d awaiting person (effect may have run): a fix round needs a person' % (E, n)) if from_fix else ('%s T%d awaiting person (effect unknown): the implementer needs a person' % (E, n))
+        mark = self.commit_mark(subject)
+        warn = '' if mark else ' WARNING: the mark commit could not be written, %s: before running again, add an empty commit on %s with the subject "%s"' % (
+            'so a resume would count this task as done' if from_fix else 'so a resume will stop and ask, because the launch stays open', br, subject)
+        state = 'a fix round needs a person first; the implementer reported the external effect done' if from_fix else 'its implementer stopped for a person and it is not known whether the external effect started'
+        check = 'Check whether the effect already happened before repeating it (externalDedupe: %s). ' % (t.get('externalDedupe') or 'none declared')
+        confirmed = '%s T%d awaiting person: confirmed not run' % (E, n)
+        done = '%s T%d: external effect completed' % (E, n)
+        if from_fix:
+            how = "the implementer is not launched again: the task's commits stay on %s, its reviews run again and any fix runs without authorization for the effect (if the fix needs the effect run again, run it yourself after its duplicate check, or add \"%s\" only if you undid the first effect)" % (br, confirmed)
+        else:
+            how = 'any commits it made stay on %s, and the resume stops and asks until you add an empty commit: "%s" if the effect did not start (the task then runs again), or "%s" if it did' % (br, confirmed, done)
+        op('human-input', E, 'external task %s ("%s") of %s is authorized, but %s: %s' % (n, t['title'], E, state, needed),
+           ('%sProvide the data (or the decision) and run again passing the answer in notes; %s; the authorization of this task stays valid only if the spec and plan files come out unchanged; an answer that changes them is a replan and the authorization is asked again '
+            '(pass the bare `%s:T%d` in your own message to re-authorize together with the answer). Never put a secret in notes: set an environment variable and name it.%s') % (check, how, E, n, warn),
+           dict(A, authorizeExternal=self.bound_items(), deliverables=[E], notes=dict(A.get('notes') or {}, **{E: '<owner answer>'})))
+        if from_fix:
+            return await self.fail('humano', 'authorized external task %s: a fix round needs a person; the implementer reported the external effect done: %s' % (n, needed))
+        return await self.fail('humano', 'authorized external task %s needs a person; whether its external effect started is unknown: %s' % (n, needed))
+
+    def close_effect(self, t, was_awaiting):
+        """Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again."""
+        E, n = self.E, t['n']
+        done = '%s T%d: external effect completed' % (E, n)
+        subject = ('%s T%d: resumed after awaiting person' % (E, n)) if t.get('external') is False else (done + (', clears the awaiting-person mark' if was_awaiting else ''))
+        ok = bool(self.commit_mark(subject))
+        if not ok:
+            self.out['concerns'].append(
+                ('T%d: the awaiting-person mark was not cleared, so a later resume would launch this task again: before running again, add an empty commit on %s with the subject "%s"' % (n, self.br, ('%s T%d: resumed after awaiting person' % (E, n)) if t.get('external') is False else done))
+                if was_awaiting else
+                ('T%d: the launch was not closed, so a later resume will stop and ask about this task: before running again, add an empty commit on %s with the subject "%s"' % (n, self.br, done)))
+        return ok
+
+    def record_run(self, t, status):
+        item = '%s:T%d' % (self.E, t['n'])
+        o = self.out
+        o['externalRun'] = [e for e in o['externalRun'] if e.get('item') != item]
+        o['externalRun'].append({'item': item, 'title': t['title'], 'status': status, 'reviewed': False})
+
+    async def tasks_stage(self, setup, spec_skip, plan_skip):
+        """Each task of the plan on its routed model, reviewed twice by the task-reviewer (always pro), fixes up the nextAgyTier ladder.
+        Returns None when every task passed, or the failed result of the deliverable."""
+        E, o, wt, br, tasks = self.E, self.out, self.wt, self.br, self.plan['tasks']
+        human = self.human
+        external_ns = [t['n'] for t in tasks if t.get('external') is not False]
+        if not (spec_skip and plan_skip):
+            self.rec_approve('spec,plan')
+        prog = self.read_progress(external_ns)
+        if not prog['clean'] and not self.sanitize('tasks'):
+            return await self.fail('infra', 'worktree %s is still dirty after the automatic cleanup' % wt)
+        # A task stopped for a person has commits but not its effect: it is a gap, so it runs again under the normal authorization rules.
+        # The newest mark decides. An open launch or a may-have-run mark is never a gap to run again.
+        launch_open = prog['launchOpen']
+        may_have_run = prog['effectMayHaveRun']
+        awaiting = [n for n in prog['awaitingPerson'] if n not in launch_open and n not in may_have_run]
+        done_map = dict((d['n'], d) for d in prog['done'] if d['n'] not in awaiting)
+        last_done = pure('lastContiguousDone(p.tasks, p.doneMap)', {'tasks': tasks, 'doneMap': dict((str(k), v) for k, v in done_map.items())})
+        if done_map or setup.get('reused') or self.plan['reused']:  # any sign of an earlier run: its log holds what this run must not lose
+            rl = await self.read_persisted_log()
+            if not rl or rl.get('found') is not True:
+                o['concerns'].append('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
+            else:
+                self.restore_from_log(rl, ['%s:T%d' % (E, n) for n in awaiting + launch_open])
+        o['externalRun'].extend(self.missing(o['externalRun'], [{'item': '%s:T%d' % (E, t['n']), 'title': t['title'], 'status': 'confirmed by mark', 'reviewed': False} for t in tasks if t['n'] in prog['effectCompleted']], 'x => x.item'))
+        self.annotate_human()
+        # In doubt whether an external effect happened: stop and ask, never repeat it. Only the person's commit reopens or closes the task.
+        doubtful = [t for t in tasks if t['n'] in launch_open or (t['n'] in may_have_run and t['n'] not in done_map)]
+        if doubtful:
+            for t in doubtful:
+                op('human-input', E, 'external task %s ("%s") of %s was launched and no conclusion was recorded: its external effect may or may not have happened, and nothing was run again' % (t['n'], t['title'], E),
+                   'Check whether the effect happened (externalDedupe: %s). If it did, add an empty commit on %s with the subject "%s T%d: external effect completed"; the task then counts as done and goes to review. If you confirmed it did not, add an empty commit with the subject "%s T%d awaiting person: confirmed not run"; the task then runs again. Then run with this resumeWith. Without one of those commits the run stops here again.' % (
+                       t.get('externalDedupe') or 'none declared', br, E, t['n'], E, t['n']),
+                   dict(A, authorizeExternal=self.bound_items(), deliverables=[E]))
+            # Nothing is written on the branch while the effect is in doubt (not even the review log): the open mark stays the newest commit for the person to judge.
+            o['error'] = 'external task %s was launched with no recorded conclusion: its external effect may have happened' % doubtful[0]['n']
+            o['failKind'] = 'humano'
+            o['branch'] = br
+            o['worktree'] = wt
+            return o
+        # A replan can declare external a task already committed: it will not run, but its commits must not go on without the person seeing them.
+        late = self.held_tasks([t for t in tasks if t['n'] in done_map])
+        if late:
+            for h in late:
+                x = h['x']
+                op('authorize-external', E, 'task %s ("%s") of %s is already committed on %s, but the current plan declares it external and it is not authorized' % (x['n'], x['title'], E, br),
+                   'Check its commits on %s. It is already committed and will not run again: authorizing "%s" accepts that work as it is and lets the deliverable go on. If the effect must not stand or never happened, revert those commits first (externalDedupe: %s)' % (br, h['item'], x.get('externalDedupe') or 'none declared'),
+                   dict(A, authorizeExternal=self.bound_items() + [h['item']], deliverables=[E]), {'item': h['item']})
+            self.op_tasks(self.held_tasks([t for t in tasks if t['n'] not in done_map]))
+            self.op_evidence(self.held_evidence())
+            o['held'] = late[0]['item']
+            return await self.fail('externo', 'committed task %s is now declared external and awaits authorization (%s)' % (late[0]['x']['n'], late[0]['item']))
+
+        head = prog['head']
+        task_log = []
+        o['tasks'] = task_log  # a stop inside the loop still reports the tasks already done
+        for t in tasks:
+            n = t['n']
+            tn = '%s T%d' % (E, n)
+            resumed = done_map.get(n)
+            # A later task stopped for a person ran after this one passed its reviews, and its commits are not this task's scope.
+            if resumed and (n < last_done or any(a > n for a in awaiting)):
+                task_log.append({'n': n, 'title': t['title'], 'status': 'RESUMED (already reviewed)'})
+                seen = next((e for e in o['externalRun'] if e.get('item') == '%s:T%d' % (E, n)), None)
+                if seen:
+                    seen['reviewed'] = True
+                continue
+            earlier = next((d for d in prog['done'] if d['n'] == n), None) if n in awaiting else None
+            start = resumed['firstParent'] if resumed else (earlier['firstParent'] if earlier else head)  # a re-run may add nothing to the commits of the run that stopped
+            run_rec_note = ' A commit "%s: run record (...)" is bookkeeping, not extra scope.' % E
+            bookkeeping_note = (' The range may hold this task\'s commits from a run that stopped for a person: commits with the subject "%s awaiting person:", "%s awaiting person (effect may have run):", "%s awaiting person (effect unknown):", "%s launching", "%s started", "%s: external effect completed", "%s: resumed after awaiting person" or "%s: review log" are bookkeeping and not extra scope. The spec %s and the plan %s, committed by this resume, may be in the range too and are not extra scope.%s'
+                                % (tn, tn, tn, tn, tn, tn, tn, E, self.spec['specPath'], self.plan['planPath'], run_rec_note))
+            range_note = bookkeeping_note if (earlier or (resumed and t.get('external') is not False)) else (run_rec_note if resumed else '')
+            completion = 0  # the completion mark of this run sits inside the range and is not the implementer's commit
+            started = 0     # so does the started mark the implementer writes first
+            locks = [x for x in as_list(t.get('needsLock')) if x in R.task_locks]
+            # A task committed by an earlier run is never launched again, so its fixes do not get the effect either.
+            authorized_ext = t.get('external') is not False and self.external_hold(t) is None
+            if not resumed:
+                held = self.held_tasks([x for x in tasks if x['n'] not in done_map and x['n'] >= n])
+                if held and held[0]['x']['n'] == n:
+                    self.op_tasks(held)
+                    self.op_evidence(self.held_evidence())  # one question lists every external item of the plan
+                    o['held'] = held[0]['item']
+                    return await self.fail('externo', 'external task %s awaits authorization (%s)' % (n, held[0]['item']))
+            m_tier, m_effort = pure('[implModel(p), implEffort(p)]', t)
+            impl_model = call_lib(ROOT, 'agyModelFor(p.t, p.e)', {'t': m_tier, 'e': m_effort})  # the Gemini model is chosen at the dispatch only
+
+            async def run_impl(lk, t=t, authorized_ext=authorized_ext):
+                prompt = pure('buildImplPrompt(p.c, p.t)', {'c': self.ctx_for(locks=lk, authorizedExternal=authorized_ext), 't': t})
+                return await self.ask('implementer', prompt, 'S_IMPL', model=impl_model, body=self.body('implementer'))
+
+            impl = {'status': 'DONE', 'summary': 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', 'checks': []}
+            if not resumed:
+                if authorized_ext:
+                    # Durable proof that the effect may have started, written before it can start: without it the implementer does not run.
+                    mk = self.commit_mark('%s launching' % tn)
+                    if not mk:
+                        return await self.fail('infra', 'task %s: the launch mark could not be written, so the external task was not started' % n)
+                    if not earlier:
+                        start = mk
+                        started = 1  # the marks are not this task's commits
+                    range_note = bookkeeping_note
+                impl = await run_impl(locks)
+                if impl and impl.get('status') == 'BLOCKED' and impl.get('needsLock') in R.task_locks and impl['needsLock'] not in locks:
+                    locks = locks + [impl['needsLock']]
+                    impl = await run_impl(locks)
+                if not impl:
+                    return await self.fail('infra', 'task %s: null implementer' % n)
+                human.extend(self.missing(human, impl.get('humanInputs') or [], 'humanKey'))
+                if impl.get('concerns'):
+                    o['concerns'].append('T%s: %s' % (n, impl['concerns']))
+                if impl['status'] == 'BLOCKED':
+                    return await self.fail('conteudo', 'task %s BLOCKED: %s%s' % (n, impl.get('summary'), ('; its launch mark stays open: before running again add `%s awaiting person: confirmed not run` if the effect did not start' % tn) if authorized_ext else ''))
+                if authorized_ext and impl['status'] == 'NEEDS_HUMAN':
+                    return await self.stop_for_person(t, impl)
+                if impl['status'] in ('DONE', 'DONE_WITH_CONCERNS'):
+                    if authorized_ext:
+                        self.record_run(t, impl['status'])  # the implementer reports the effect done: true even if a review rejects the task later
+                    if authorized_ext or n in awaiting:
+                        closed = self.close_effect(t, n in awaiting)
+                        if closed and not earlier and authorized_ext:
+                            completion = 1
+            gap = pure('testFirstGap(p.t, p.i, p.r)', {'t': t, 'i': impl, 'r': bool(resumed)})
+            if gap:
+                return await self.fail('conteudo', '%s. A rerun takes the task as done and skips this check: %s' % (gap, 'ask the owner, as its effect or wait marks count as done' if (authorized_ext or n in awaiting) else
+                                       'first drop its commits, keeping the review log: git -C "%s" rebase --onto %s <last task commit> %s' % (wt, start, br)))
+            cur = {'summary': impl.get('summary'), 'checks': impl.get('checks') or []}  # refreshed by each fix so the reviewer sees real output
+            tr = R.cfg.get('taskReview') or {}
+            TR = {'restricted': tr.get('restricted') is True}
+            no_files = pure('noFiles(p)', t)
+            last_r = None
+            for kind in ('spec', 'quality'):
+                cxs = {}
+
+                async def review(rnd, prev, rv=None, was=None, kind=kind, cxs=cxs, t=t, locks=locks, start=start, range_note=range_note, cur=cur):
+                    cx = self.ctx_for(locks=locks, start=start, round=rnd, prev=prev, rangeNote=range_note, taskReview=TR, pluginRoot=R.root, was=was,
+                                      diffPath='%s/_tmp/%s-t%d-%s%s.diff' % (R.wt, E, t['n'], kind, rnd))
+                    cxs['cx'] = cx
+                    prompt = pure('buildTaskReviewPrompt(p.c, p.t, p.k, p.i)', {'c': cx, 't': t, 'k': kind, 'i': cur})
+                    return await self.ask_ro('task-reviewer', prompt, 'S_TASKREVIEW', body=self.body('task-reviewer'))
+
+                async def fix(iss, k, tier, kind=kind, t=t, locks=locks, cur=cur, authorized_ext=authorized_ext, resumed=resumed):
+                    ext = ('The external effect of this task already ran (the implementer reported it done): do not run it again, not even through its duplicate check; checks only read. If this fix needs the effect run again, return NEEDS_HUMAN and say why.'
+                           if (authorized_ext and not resumed) else pure('externalNote(false, p)', t))
+                    prompt = '%s\n\nIn Task %s of the plan %s, fix the %s problems below, run the task\'s checks and commit "%s T%s: fix ...". %s STOP after this fix. %s %s\n%s' % (
+                        self.C(), t['n'], self.plan['planPath'], kind, E, t['n'], ext, self.lock_note(locks), self.no_spec_edit(), pure('fmt(p)', iss))
+                    fx = await self.ask('task-fix', prompt, 'S_IMPL', model=tier, body=self.body('implementer'))
+                    if fx:
+                        if fx.get('checks'):
+                            cur['checks'] = fx['checks']
+                        if fx.get('summary'):
+                            cur['summary'] = fx['summary']
+                    return fx
+
+                def truth(r, cxs=cxs, kind=kind, start=start, impl=impl, completion=completion, started=started, no_files=no_files):
+                    needs = impl.get('status') == 'NEEDS_HUMAN'
+                    return pure('reviewTruth(Object.assign({}, p.r, { issues: taskIssues(p.r, p.c) }), p.m, p.l, p.k)', {
+                        'r': r, 'c': cxs.get('cx'), 'm': 0 if needs else (0 if no_files else 1) + completion + started, 'l': '%s..HEAD' % start, 'k': 0 if needs else completion + started})
+
+                halt = (lambda fx, a=authorized_ext, rs=bool(resumed): a and not rs and fx.get('status') == 'NEEDS_HUMAN')
+                loop = await run_review_loop(self.review_env(), 'T%s:%s' % (n, kind), review, fix, truth, {'tier': impl_model, 'reviewModel': 'pro', 'haltOn': halt, 'byId': True})
+                if loop.get('halted'):
+                    return await self.stop_for_person(t, loop['halted'], True)
+                if not loop.get('ok'):
+                    return await self.fail(loop.get('kind'), 'task %s: %s' % (n, loop.get('msg')))
+                last_r = loop['r']
+            head = git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip()
+            task_log.append({'n': n, 'title': t['title'], 'status': impl['status'], 'commits': last_r.get('commitsInRange')})
+            ran = next((e for e in o['externalRun'] if e.get('item') == '%s:T%d' % (E, n)), None)
+            if ran:
+                ran['reviewed'] = True
+        o['tasks'] = task_log
+        self.annotate_human()
+        return None
+
+    # ---- sync with the target and the final review
+    async def sync_branch(self, ref, frm):
+        """git merge --no-ff of `ref` into the branch, by git. A conflict is a judgement: the sync agent (flash) resolves it and the
+        script checks that the merge really ended. Returns { ok, head, conflictsResolved, details, targetTip, deltaFiles, record }."""
+        E, wt = self.E, self.wt
+        before = git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip()
+        m = git_in(wt, 'merge', '--no-ff', ref, '-m', '%s: sync with %s' % (E, R.target), '-m', R.trailer)
+        conflicts = 0
+        details = ''
+        ok = m['exit'] == 0
+        if not ok:
+            un = [x for x in git_in(wt, 'diff', '--name-only', '--diff-filter=U')['stdout'].splitlines() if x.strip()]
+            conflicts = len(un)
+            if un:
+                conflict_txt = (' Rules for generated files: %s.' % R.cfg['conflictRules']) if R.cfg.get('conflictRules') else ''
+                prompt = ('%s\n\nBring the target state into the branch: the merge of %s into %s stopped with conflicts in: %s. Resolve them keeping both parts.%s Do not use any shared resource. Finish the merge with git commit --no-edit; one simple command per call.' % (
+                    self.Cs(), ref, wt, ', '.join(un), conflict_txt))
+                r = await self.ask('sync', prompt)
+                ended = (r is not None and git_in(wt, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] != 0
+                         and not git_in(wt, '--no-optional-locks', 'status', '--porcelain')['stdout'].strip() and git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip() != before)
+                ok = ended
+                details = '' if ok else 'the conflicts in %s were not resolved' % ', '.join(un)
+            else:
+                details = (m['stderr'] or m['stdout']).strip()
+            if not ok:
+                git_in(wt, 'merge', '--abort')
+        rec = run_cli(['node', R.root + '/scripts/run-record.mjs', 'key', wt, self.ap['dir']])
+        return {'ok': ok, 'head': git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip(), 'conflictsResolved': conflicts if ok else 0, 'details': details,
+                'targetTip': git_in(wt, 'rev-parse', ref)['stdout'].strip(),
+                'deltaFiles': [x for x in git_in(wt, 'diff', '--name-only', '%s..%s' % (frm, ref))['stdout'].splitlines() if x.strip()], 'record': rec['stdout'] if rec['exit'] == 0 else ''}
+
+    async def review_conflicts(self, sha, label):
+        """The review (read-only) of the resolution of a merge conflict: a part of one branch lost, duplicated code, a generated file resolved by hand."""
+        prompt = ('%s\n\nReview (read-only) the conflict resolutions of the merge %s in %s: git -C "%s" show --cc %s. Blocks (defeito): a part of one of the branches lost, duplicated code, a generated file resolved by hand, inconsistent counts in docs. Measure headSha, clean, commitsInRange=1.' % (
+            self.C(), sha, self.wt, self.wt, sha))
+        cr = await self.ask_ro('conflict-review', prompt, 'S_REVIEW')
+        if not cr:
+            return {'ok': False, 'kind': 'infra', 'why': 'conflict resolution review: null agent'}
+        bl = pure('blocking(p)', cr)
+        self.out['reviews'].append(dict({'stage': label, 'rounds': [{'round': 1, 'reviewModel': 'pro', 'fixTier': None}], 'unresolved': bl}, **pure('compact(p)', cr['issues'])))
+        if _hard(bl, R.blq):
+            return {'ok': False, 'kind': 'conteudo', 'why': 'conflict resolution rejected: %s' % pure('fmt(p)', bl)}
+        self.accept_risks(label, bl)
+        return {'ok': True}
+
+    async def final_stage(self):
+        """Sync with the last validated tip, test-integrity and the final review of the whole branch (pro), fixes up the ladder from flash."""
+        E, o, wt = self.E, self.out, self.wt
+        plan_locks = [n for n in dict.fromkeys(x for t in self.plan['tasks'] for x in as_list(t.get('needsLock'))) if n in R.task_locks]
+        sync_at = R.last_good
+        self.my_base = json.loads(json.dumps(R.baseline))  # baseline of syncAt (captured with it)
+        sync = await self.sync_branch(sync_at, sync_at)
+        if not sync['ok']:
+            return await self.fail('conteudo', 'sync with %s failed: %s' % (R.target, sync['details']))
+        if sync['conflictsResolved'] != 0:  # a resolution is reviewed in full, as on the late sync
+            rc = await self.review_conflicts(sync['head'], '%s:sync-review' % E)
+            if not rc['ok']:
+                return await self.fail(rc['kind'], rc['why'])
+        self.sync = sync
+        key = pure('runKey(p)', sync['record']) if sync.get('record') else None
+        skip_fin = self.skip_rev('final', True, key, sync['targetTip'])
+        self.skip_fin = skip_fin
+        integ = None
+        if R.test_integrity and not skip_fin:
+            integ = measure_integrity(R.test_integrity, R.repo, '%s/_tmp/%s-integrity-wt' % (R.wt, E), git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip(), R.target)
+            if integ['removedAsserts'] < 0:
+                o['concerns'].append('test integrity not measured')
+        alerts = pure('integrityAlerts(p)', integ)
+        fr = R.cfg.get('finalReview') or {}
+        card = self.card
+        body = self.body('final-reviewer')
+
+        async def review(rnd, prev, rv=None, was=None):
+            rs = []
+            for lens in (['correctness', 'security'] if card.get('critical') else ['all']):
+                prompt = '%s\n\nMode: review, lens: %s. Diff: git -C "%s" diff %s...HEAD\nSpec %s, plan %s, %s.%s%s' % (
+                    self.C(), lens, wt, R.target, self.spec['specPath'], self.plan['planPath'], self.card_ref,
+                    ('\nAlerts: %s.' % '; '.join(alerts)) if alerts else '', ('\nPrevious issues (%s):\n%s' % (repeat_rule(), prev)) if prev else '')
+                x = await self.ask_ro('final-reviewer', prompt, 'S_REVIEW', body=body)
+                if not x:
+                    return None
+                rs.append(x)
+            r = dict(rs[0], issues=[i for x in rs for i in (x.get('issues') or [])], clean=all(x.get('clean') for x in rs))
+            bl = pure('blocking(p)', r)
+            if fr.get('adversarial') is True and bl:
+                v = await call_agent('final-reviewer', '%s\n\nMode: verify.\n%s' % (self.C(), pure('fmt(p)', bl)), SCHEMAS['S_VERIFY'], None, body)
+                sp = pure('splitRefuted(p.bl, p.v)', {'bl': bl, 'v': v})
+                r['issues'] = [i for i in r['issues'] if i not in bl] + sp['keep']
+                o['reviews'].append({'stage': 'final-verify', 'round': rnd, 'refuted': sp['refuted']})
+            return r
+
+        async def fix(iss, k, tier):
+            prompt = '%s\n\nFix the final review problems below and commit "%s final-fix: ...". %s %s\n%s' % (self.C(), E, self.lock_note(plan_locks), self.no_spec_edit(), pure('fmt(p)', iss))
+            return await self.ask('final-fix', prompt, 'S_IMPL', model=tier, body=self.body('implementer'))
+
+        def truth(r):
+            return pure('reviewTruth(p.r, 1, p.l)', {'r': r, 'l': '%s..HEAD' % R.target})
+
+        loop = {'ok': True} if skip_fin else await run_review_loop(self.review_env(), 'final', review, fix, truth,
+                                                                     {'tier': STAGE_MODELS['final-fix'], 'reviewModel': 'pro', 'once': fr.get('singleWave') is True})
+        if not loop.get('ok'):
+            return await self.fail(loop.get('kind'), loop.get('msg'))
+        self.plan_locks = plan_locks
+        return None
+
+    # ---- the gates of the branch (+ reviewed fix); every criterion is proved by a command that ran
+    def ac_exec(self):
+        return pure('normalizePlanAc(p.c, p.a).filter(p => VERIFY_EXEC.includes(p.kind) && p.command).map(p => ({ ...p, command: commandKey(p.command) }))', {'c': self.card_ac, 'a': self.plan['ac']})
+
+    def external_evidence_note(self):
+        rows = [p for p in self.ac_exec() if p.get('external') is not False]
+        if not rows:
+            return ''
+        return '\nThe person AUTHORIZED the external effect of these evidence commands: %s. Run one again only if that command is what failed, and only after its duplicate check: %s.' % (
+            ' ; '.join(p['command'] for p in rows), '; '.join('%s: %s' % (p['ac'], p.get('externalDedupe') or 'none declared') for p in rows))
+
+    def run_evidence(self, exp):
+        """The command of every criterion with automatic evidence, by run_shell on the branch, after the state preparation (beforeEvidence)."""
+        o, wt = self.out, self.wt
+        rows = self.ac_exec()
+        if not rows and not R.before_evidence:
+            return {'ok': True, 'summary': ''}
+        head = git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip()
+        clean = not git_in(wt, '--no-optional-locks', 'status', '--porcelain')['stdout'].strip()
+        before_ok = True
+        for c in R.before_evidence:
+            if sh(c, wt)['exit'] != 0:
+                before_ok = False
+                break
+        results = []
+        if before_ok:
+            for p in rows:
+                r = sh(p['command'], wt)
+                results.append({'ac': p['ac'], 'command': p['command'], 'exit': r['exit'], 'log': tail_text(r['stdout'] + r['stderr'], 600)})
+        ev = {'headSha': head, 'clean': clean, 'beforeOk': before_ok, 'results': results}
+        if not pure('validEvidence(p.x, p.e, p.n)', {'x': ev, 'e': exp, 'n': len(R.before_evidence) > 0}):
+            return {'ok': False, 'infra': True, 'summary': 'evidence measurement null, with a dirty tree, at the wrong commit or with the state preparation failing'}
+        problems = []
+        for i, p in enumerate(rows):
+            x = pure('matchEvidence(p.r, p.row, p.i)', {'r': results, 'row': p, 'i': i})
+            if x and p.get('external') is not False and x.get('exit') == 0:  # only an effect that happened; a failed re-run does not erase an earlier success
+                o['externalRun'] = [e for e in o['externalRun'] if not (e.get('item') == '%s:%s' % (self.E, p['ac']) and e.get('command') == p['command'])]
+                o['externalRun'].append({'item': '%s:%s' % (self.E, p['ac']), 'command': p['command'], 'exit': x['exit']})
+            if not x:
+                problems.append('criterion %s: command not run' % p['ac'])
+            elif x.get('exit') != 0:
+                problems.append('criterion %s: "%s" exited %s: %s' % (p['ac'], p['command'], x.get('exit'), str(x.get('log') or '')[:600]))
+        self.annotate_human()
+        return {'ok': not problems, 'summary': '\n'.join(problems)}
+
+    async def branch_gates(self, tag, first_exp):
+        E, o, wt = self.E, self.out, self.wt
+        exp = first_exp
+        k = 0
+        while True:
+            g = await run_gates(wt, self.my_base, exp)
+            o['gates'] = g['summary']
+            if g['nullAgent']:
+                return {'ok': False, 'kind': 'infra', 'msg': 'gates: %s' % g['summary']}
+            fail_text = 'gates not green (%s): %s' % (', '.join(g['failures']), g['summary'])
+            if g['ok']:
+                o['brM'] = g['m']
+                ev = self.run_evidence(g['m']['headSha'])
+                if ev['ok']:
+                    return {'ok': True, 'head': g['m']['headSha']}
+                if ev.get('infra'):
+                    return {'ok': False, 'kind': 'infra', 'msg': ev['summary']}
+                fail_text = 'gates green, but the evidence failed:\n%s' % ev['summary']
+            if k >= R.maxfix:
+                return {'ok': False, 'kind': 'conteudo', 'msg': 'branch gates did not pass: %s' % fail_text}
+            pre_fix = g['m']['headSha']
+            prompt = ('%s\n\n%s %s The gates failed against the baseline:\n%s\nFailing output: %s\nRoot cause, a fix with a test when it is a defect, run the failed gate again and commit "%s gates-fix: ...". '
+                      'A failure outside the baseline cannot be masked; if it comes from the environment, explain in concerns.%s') % (
+                self.C(), self.lock_note(self.plan_locks), self.no_spec_edit(), fail_text, str(g['m'].get('log') or '')[:3000], E, self.external_evidence_note())
+            fx = await self.ask('gates-fix', prompt, 'S_IMPL', body=self.body('implementer'))
+            if not fx:
+                return {'ok': False, 'kind': 'infra', 'msg': 'gates fix: null agent'}
+            if fx.get('status') == 'BLOCKED':
+                return {'ok': False, 'kind': 'conteudo', 'msg': 'gates fix BLOCKED: %s' % fx.get('summary')}
+            if fx.get('concerns'):
+                o['concerns'].append('%sgates-fix%d: %s' % (tag, k + 1, fx['concerns']))
+            rp = ('%s\n\nReview (read-only) the gates fix: git -C "%s" diff %s..HEAD. Blocks (defeito): a fix that masks a test, relaxes an assertion, skips a suite, edits the baseline or introduces a defect, an edit to the spec or the plan. '
+                  'Measure headSha, clean, commitsInRange (git rev-list --count %s..HEAD).') % (self.C(), wt, pre_fix, pre_fix)
+            rr = await self.ask_ro('gates-fix-review', rp, 'S_REVIEW')
+            if not rr:
+                return {'ok': False, 'kind': 'infra', 'msg': 'gates fix review: null agent'}
+            bl = pure('blocking(p)', rr)
+            if _hard(bl, R.blq):
+                return {'ok': False, 'kind': 'conteudo', 'msg': 'gates fix rejected: %s' % pure('fmt(p)', bl)}
+            self.accept_risks('%sgates-fix%d' % (tag, k + 1), bl)
+            o['reviews'].append(dict({'stage': '%sgates-fix%d' % (tag, k + 1), 'rounds': [{'round': 1, 'reviewModel': 'pro', 'fixTier': STAGE_MODELS['gates-fix']}], 'unresolved': bl}, **pure('compact(p)', rr['issues'])))
+            await self.persist_reviews('gates')  # committed before re-measuring
+            exp = None
+            k += 1
+
+    async def merge_stage(self, validated_head):
+        """The merge, the post-merge gates and the docs come with the merge task: until then the validated branch waits (readyToMerge)."""
+        o = self.out
+        o['readyToMerge'] = True
+        o['validatedHead'] = validated_head
+        return o
+
     # ---- the deliverable
     async def run(self):
         E, o, wt, br = self.E, self.out, self.wt, self.br
         if R.foreign and not R.foreign_ok:
             return await self.fail('externo', 'the target %s is checked out in %s and %s is not authorized' % (R.target, R.int_wt, R.foreign_item))
+        if MODE == 'run' and pure('resumeAction(p.c, p.s)', {'c': self.card, 's': R.statuses}) == 'finish-merge':
+            return await self.fail('infra', 'a merge of %s is already on the target without a post-merge record: validating and documenting it comes with the merge task of the agy workflow' % E)
         closed = pure('closedBlockers(p.ac, p.blq)', {'ac': self.card_ac, 'blq': R.blq})
         if closed:
             o['doNow'] = '%s %s closed on the roadmap but the card still tags %s: change the tag through a strategy revision, or reopen %s, then run again' % (
@@ -1296,21 +2006,52 @@ class Deliverable(object):
         self.plan_ref = self.plan['planPath']
         o['acOpen'] = pure('criteriaOpen(p.cardAc, p.planAc)', {'cardAc': self.card_ac, 'planAc': self.plan['ac']})
         _log('%s: plan with %d tasks' % (E, len(self.plan['tasks'])))
-        R.bound[E] = pure('planFingerprint(p.tasks, p.blob)', {'tasks': self.plan['tasks'], 'blob': self.plan['planBlob']})
+        self.fp = pure('planFingerprint(p.tasks, p.blob)', {'tasks': self.plan['tasks'], 'blob': self.plan['planBlob']})
+        R.bound[E] = self.fp
 
-        # ---------- plan-only: the roadmap record, then the log, then done
         extra = {'rulings': o.get('rulings') or [], 'pending': [h['what'] for h in self.human if h.get('blocking') is not True], 'source': self.ap['reviews']}
-        rec = record_status(E, R.statuses['plan'], [self.spec['specPath'], self.plan['planPath']], extra)
-        if rec:
-            o['recordCuts'].extend(rec['cuts'])
-        if not rec or not rec['ok']:
-            return await self.fail('infra', 'plan-only: the roadmap record failed (%s)' % ('; '.join(rec['failures']) if rec else 'null result or integration worktree broken'))
-        ran_sp = (not spec_skip) or (not plan_skip)
-        if o['recordCuts'] or ran_sp:
-            await self.persist_reviews('record' if o['recordCuts'] else 'plan', 'spec,plan' if ran_sp else None)
-        o['planOnly'] = True
-        o['ok'] = True
-        return o
+        refs = [self.spec['specPath'], self.plan['planPath']]
+        if MODE == 'plan-only':  # the roadmap record, then the log, then done
+            rec = record_status(E, R.statuses['plan'], refs, extra)
+            if rec:
+                o['recordCuts'].extend(rec['cuts'])
+            if not rec or not rec['ok']:
+                return await self.fail('infra', 'plan-only: the roadmap record failed (%s)' % self.failed_record(rec))
+            ran_sp = (not spec_skip) or (not plan_skip)
+            if o['recordCuts'] or ran_sp:
+                await self.persist_reviews('record' if o['recordCuts'] else 'plan', 'spec,plan' if ran_sp else None)
+            o['planOnly'] = True
+            o['ok'] = True
+            return o
+
+        # ---------- run: the executing record, the tasks, the sync and final review, the gates of the branch
+        rec_run = record_status(E, R.statuses['executing'], refs, dict(extra, inflight={'add': br, 'note': ''}))
+        if rec_run:
+            o['recordCuts'].extend(rec_run['cuts'])
+        if not rec_run or not rec_run['ok']:
+            o['concerns'].append('the "executing" roadmap record failed (%s); decisions and the in-flight entry are not recorded yet' % self.failed_record(rec_run))
+        failed = await self.tasks_stage(setup, spec_skip, plan_skip)
+        if failed is not None:
+            return failed
+        # Held before the final review: nothing past here is spent without authorization.
+        ev_held = self.held_evidence()
+        if ev_held:
+            self.op_evidence(ev_held)
+            o['held'] = ev_held[0]['item']
+            return await self.fail('externo', 'external evidence of criterion %s awaits authorization (%s)' % (ev_held[0]['ac'], ev_held[0]['item']))
+        failed = await self.final_stage()
+        if failed is not None:
+            return failed
+        await self.persist_reviews('', None if self.skip_fin else 'final', self.sync['targetTip'])  # before the final measurement, which then includes it
+        bg = await self.branch_gates('', None)
+        if not bg['ok']:
+            return await self.fail(bg['kind'], bg['msg'])
+        if R.target == R.integ:
+            crit = [x for x in o['acceptedRisks'] if x.get('severity') == 'critical']
+            if crit and E not in (A.get('acceptRisks') or []):
+                risks = '\n'.join('%s: [%s/%s] %s' % (x['stage'], x.get('severity'), x.get('category'), x.get('description')) for x in crit)
+                return await self.fail('decisao', 'direct merge into %s with an accepted critical risk; review it and pass acceptRisks:["%s"]:\n%s' % (R.target, E, risks))
+        return await self.merge_stage(bg['head'])
 
 
 # ---------------------------------------------------------------- plan-only: scheduling by dependencies and the final result
@@ -1326,6 +2067,7 @@ def hold_of(E):
 
 async def run_deliverable(E, idx):
     d = Deliverable(E, idx)
+    R.deliv[E] = d
     try:
         return await d.run()
     except ReadOnlyViolation as e:
@@ -1335,26 +2077,61 @@ async def run_deliverable(E, idx):
 def _slim(r):
     s = {'id': r['id'], 'merged': bool(r.get('merged')), 'broken': bool(r.get('broken')), 'planOnly': bool(r.get('planOnly')), 'skipped': r.get('skipped'), 'error': r.get('error'),
          'failKind': r.get('failKind'), 'held': r.get('held'), 'branch': r.get('branch'), 'spec': r.get('spec'), 'plan': r.get('plan'),
-         'tasks': len(r.get('tasks') or []), 'concerns': r.get('concerns') or [], 'acceptedRisks': r.get('acceptedRisks') or [], 'decisions': len(r.get('decisions') or []),
+         'tasks': len(r.get('tasks') or []), 'readyToMerge': bool(r.get('readyToMerge')), 'concerns': r.get('concerns') or [], 'acceptedRisks': r.get('acceptedRisks') or [], 'decisions': len(r.get('decisions') or []),
          'human': [('%s: ' % h['blq'] if h.get('blq') else '') + str(h.get('what')) for h in (r.get('human') or [])][:12]}
     return {k: v for k, v in s.items() if v is not None}
 
 
-async def run_plan_only(disc, plan, cfg, token, items, gates, selection):
-    """plan-only mode: preflight steps 1, 2 and 5, then per deliverable setup, spec, plan and the roadmap record (the .js plan-only path)."""
+async def blocked_record(E, r):
+    """A deliverable that stopped for a defect, a decision or a person is recorded as blocked on the target (run mode); the cut texts go to its log."""
+    d = R.deliv.get(E)
+    source = d.ap['reviews'] if d else pure('artifactPaths(p.slug, p.E)', {'slug': R.disc['roadmapSlug'], 'E': E})['reviews']
+    rec = record_status(E, R.statuses['blocked'], ['branch ' + r['branch'] if r.get('branch') else R.rm + 'state.md'],
+                        {'reason': 'automatic execution stopped (%s): %s; branch %s kept at %s' % (r.get('failKind'), str(r['error'])[:400], r.get('branch'), r.get('worktree')), 'source': source})
+    if rec and rec['cuts']:
+        r['recordCuts'] = list(r.get('recordCuts') or []) + rec['cuts']
+        if d:
+            await d.persist_reviews('blocked-record')
+
+
+async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
+    """plan-only and run modes: the preflight (plan-only: steps 1, 2 and 5; run: also the setup commands and the baseline of the gates), then per
+    deliverable, one after the other, setup, spec, plan and the roadmap record (plan-only) or the tasks, the final review and the gates (run)."""
     init_run(disc, plan, cfg, token, items, gates)
     R.root = ROOT
+    if MODE == 'run':
+        try:
+            R.test_integrity = load_test_integrity(ROOT + '/' + RELEASE_JS_REL, cfg)
+        except (OSError, RuntimeError) as e:
+            return err('test-integrity program unavailable: %s' % e)
     _phase('Preflight')
-    pre = preflight_plan_only()
+    pre = await preflight()
     R.pre = pre
-    if not pre.get('ok') or not pre.get('integrationWorktree'):
+    foreign_hold = R.foreign and not R.foreign_ok
+    if (not pre.get('ok') or not pre.get('integrationWorktree') or (MODE != 'plan-only' and not pre.get('baseline') and not foreign_hold)
+            or (MODE != 'plan-only' and not foreign_hold and not pre.get('targetHead'))):
         kind = pre.get('errorKind') or 'other'
         op('preflight:%s' % kind, None, pre.get('error') or 'incomplete preflight',
            ('Clean or commit the listed files in the integration worktree of %s' % R.target) if kind == 'dirty' else ('Fix the environment setup command and run again' if kind == 'setup' else 'Read the error and fix the environment'), dict(A))
         return mk_result('needs-operator', selection=selection)
     R.int_wt = pre['integrationWorktree']
+    for g in (pre.get('baseline') or {}).get('gates') or []:
+        if isinstance(g, dict) and g.get('name'):
+            R.baseline[g['name']] = g
     th = pre.get('targetHead') or ''
-    R.last_good = th if re.match(r'^[0-9a-f]{40,64}$', th) else R.target
+    R.last_good = th if re.match(r'^[0-9a-f]{40,64}$', th) else R.target  # target tip already validated
+    if MODE == 'run' and not foreign_hold:
+        if not pure('validMeasure(p.b, p.h, p.d)', {'b': pre.get('baseline'), 'h': pre.get('targetHead'), 'd': R.gates}):
+            op('preflight:baseline-invalid', None, 'the baseline measure is invalid: %s' % '; '.join(pure('measureProblems(p.b, p.h, p.d)', {'b': pre.get('baseline'), 'h': pre.get('targetHead'), 'd': R.gates})),
+               'Check the integration worktree and the gate commands, then run again', dict(A))
+            return mk_result('needs-operator', selection=selection)
+        red = pure('isRedBaseline(p.d, p.b)', {'d': R.gates, 'b': R.baseline})
+        if red and not R.accept_red:
+            zero = pure('zeroTestGates(p.d, p.b)', {'d': R.gates, 'b': R.baseline})
+            op('preflight:red-baseline', None, 'baseline of %s is red in: %s' % (R.target, ', '.join(red)),
+               ('Fix the command of %s so it runs tests, or set kind: exit on it in release.config.json if it is not a test suite. An explicitly accepted red baseline is honoured, but a tests gate with total 0 fails any deliverable that adds no tests' % ', '.join(zero))
+               if zero else 'Fix the target (or the environment) before running; with a red baseline the matching gates stop blocking regressions. To accept it anyway, pass acceptRedBaseline:true', dict(A))
+            return mk_result('needs-operator', selection=selection)
     R.abs_folder = R.int_wt.rstrip('/') + '/' + R.rm.rstrip('/')
 
     # ---- scheduling: the order of the selection already respects the dependencies; one deliverable at a time
@@ -1382,25 +2159,28 @@ async def run_plan_only(disc, plan, cfg, token, items, gates, selection):
                 r = {'id': E, 'merged': False, 'ok': False, 'error': 'unexpected error: %s' % e, 'failKind': 'infra'}
             if r.get('error') and not r.get('skipped'):
                 fk = r.get('failKind')
-                if fk == 'infra':
+                if fk == 'externo':
+                    pass  # waiting for the person: no defect, no blocked status
+                elif fk == 'infra':
                     op('infra', E, r['error'], 'Run again (the stages reuse spec, plan and commits)', dict(A, deliverables=[E]))
-                elif fk in ('conteudo', 'decisao'):
+                else:
                     notes = dict(A.get('notes') or {})
                     if fk == 'conteudo':
                         kept = notes.get(E) if notes.get(E) and E not in R.notes_read else '<owner instruction>'
                         op('defect', E, r['error'], 'Read the review log on the branch %s; adjust the spec or plan, or pass an instruction in notes, and run again' % r.get('branch'),
                            dict(A, deliverables=[E], notes=dict(notes, **{E: kept})))
-                    else:
+                    if fk == 'decisao':
                         op('decision', E, r['error'], r.get('doNow') or 'Decide (a new DEC or a revision of the existing one) and run again with the decision in notes',
                            dict(A, deliverables=[E], notes=dict(notes, **{E: '<owner decision>'})))
-                # externo and humano: waiting for the person, no defect and no blocked record in plan-only
+                    if MODE != 'plan-only':
+                        await blocked_record(E, r)
         done[E] = r
         RESULTS.append(r)
-    return finish_plan_only(selection)
+    return finish_run(selection)
 
 
-def finish_plan_only(selection):
-    """The result of the plan-only run (the Report section of the .js without the report agent: the report stage is the merge task's)."""
+def finish_run(selection):
+    """The result of a plan-only or run invocation (the Report section of the .js without the report agent: the report stage is the merge task's)."""
     _phase('Report')
     slim = [_slim(r) for r in RESULTS]
     owner = {
@@ -1531,9 +2311,7 @@ async def main():
     _log('selection: %s' % (' -> '.join(plan['order']) or '(empty)'))
     if MODE == 'dry-run' or not plan['order']:
         return mk_result('done' if plan['order'] else 'partial', selection=selection)
-    if MODE == 'run':
-        return mk_result('error', error='mode not implemented yet: %s runs in a later task of the agy workflow' % MODE, selection=selection)
-    return await run_plan_only(disc, plan, cfg, token, items, gates, selection)
+    return await run_deliverables(disc, plan, cfg, token, items, gates, selection)
 
 
 RESULT = await main()
