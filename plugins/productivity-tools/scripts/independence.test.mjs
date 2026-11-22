@@ -2,9 +2,9 @@
 // de superpowers, nao perguntam e fixam o contrato de chamada.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PLUGIN = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -298,4 +298,25 @@ test('E13: no file of the plugin mentions superpowers', () => {
     lines.forEach((l, i) => { if (/superpowers/i.test(l)) hits.push(`${path}:${i + 1}`); });
   }
   assert.deepEqual(hits, []);
+});
+
+// T11: descoberta no agy e lint limpo.
+const REPO = join(PLUGIN, '..', '..');
+
+test('T11: .agents/skills.json registers the skills dir for agy discovery', () => {
+  const cfg = JSON.parse(readFileSync(join(REPO, '.agents', 'skills.json'), 'utf8'));
+  assert.ok(Array.isArray(cfg.entries));
+  assert.ok(cfg.entries.some((e) => e.path === 'plugins/productivity-tools/skills'));
+  const dirs = readdirSync(join(PLUGIN, 'skills'), { withFileTypes: true }).filter((d) => d.isDirectory());
+  assert.equal(dirs.length, 11);
+  for (const d of dirs) assert.ok(existsSync(join(PLUGIN, 'skills', d.name, 'SKILL.md')), d.name);
+  assert.equal(existsSync(join(PLUGIN, '.antigravity-plugin', 'plugin.json')), false);
+});
+
+test('T11: lintPlugin reports 0 FAIL, 0 WARN and unique script names', async () => {
+  const lintUrl = pathToFileURL(join(REPO, 'plugins', 'marketplace-tools', 'skills', 'validate-plugin', 'scripts', 'lint-plugin.mjs')).href;
+  const { lintPlugin } = await import(lintUrl);
+  const { results } = lintPlugin(PLUGIN);
+  assert.deepEqual(results.filter((r) => r.level === 'FAIL' || r.level === 'WARN'), []);
+  assert.ok(results.some((r) => r.level === 'OK' && r.check === 'Script names are unique'));
 });
