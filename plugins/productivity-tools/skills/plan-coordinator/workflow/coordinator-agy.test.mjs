@@ -96,6 +96,11 @@ async def agent(prompt, schema, role=None, type_name=None, model=None, **extra):
         if mut == 'file':
             with open(os.path.join(root, 'rogue.txt'), 'w') as f:
                 f.write('reviewer wrote this\n')
+        elif mut == 'dirty':  # rewrites a file of the step that is already modified/untracked: git status --porcelain does not change
+            n = step_no(prompt)
+            step = [s for s in st['steps'] if s['n'] == n][0]
+            with open(os.path.join(root, step['files'][0]), 'a', encoding='utf-8') as f:
+                f.write('// rewritten by the reviewer\n')
         elif mut == 'commit':
             _orig_run(['git', '-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-m', 'rogue'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return {'issues': [], 'headSha': 'abc', 'clean': True, 'commitsInRange': 0, 'spec': 'pass', 'quality': 'pass'}
@@ -326,7 +331,7 @@ pyTest('C3: progress.json keeps only Claude tiers and progress.mjs refuses a Gem
 }));
 
 // ---- guarda read-only
-for (const mutate of ['file', 'commit']) {
+for (const mutate of ['file', 'commit', 'dirty']) {
   pyTest(`AC4: a reviewer that changes the repository (${mutate}) makes the run return error`, () => withSandbox(async (sb) => {
     const run = runScript(launchArgs(sb), { review: { mutate } });
     assert.equal(run.result.status, 'error', JSON.stringify(run.result));

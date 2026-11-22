@@ -514,11 +514,32 @@ async def call_agent(role, prompt, schema_name, model):
     return await agent(BODIES[role] + '\n\n' + prompt, SCHEMAS[schema_name], role=role, type_name='self', model=model)
 
 
+def guard_snapshot():
+    """git_snapshot (HEAD + porcelain) plus the content of what is already dirty. The files of a step are still uncommitted while it is
+    reviewed, so a rewrite of one of them leaves the porcelain line as it was: the diff against HEAD and the bytes of every untracked
+    file are part of the snapshot (compared as is, never hashed here)."""
+    base = git_snapshot(ROOT)
+    diff = run_cli(['git', '--no-optional-locks', 'diff', 'HEAD', '--binary'], cwd=ROOT)
+    if diff['exit'] != 0:
+        raise RuntimeError('git diff HEAD failed: %s' % diff['stderr'].strip())
+    names = run_cli(['git', '--no-optional-locks', 'ls-files', '--others', '--exclude-standard', '-z'], cwd=ROOT)
+    if names['exit'] != 0:
+        raise RuntimeError('git ls-files failed: %s' % names['stderr'].strip())
+    untracked = {}
+    for rel in sorted(x for x in names['stdout'].split('\0') if x):
+        try:
+            with open(os.path.join(ROOT, rel), 'rb') as fh:
+                untracked[rel] = fh.read()
+        except OSError:
+            untracked[rel] = None
+    return (base, diff['stdout'], untracked)
+
+
 async def read_only_agent(role, prompt, schema_name):
-    """A reviewer on 'pro'. It runs with the tools of the session, so HEAD and the git status are compared around it."""
-    before = git_snapshot(ROOT)
+    """A reviewer on 'pro'. It runs with the tools of the session, so HEAD, the git status and the content of the dirty files are compared around it."""
+    before = guard_snapshot()
     out = await call_agent(role, prompt, schema_name, 'pro')
-    return out, git_snapshot(ROOT) != before
+    return out, guard_snapshot() != before
 
 
 def impl_prompt(s, defects):
@@ -927,10 +948,10 @@ async def main():
                 return finish(dict({'status': 'done'}, **summary_of()))
             elif kind == 'prelaunch-review':  # external steps are reviewed before the person is asked, read-only on the brief
                 phase('Review')
-                before = git_snapshot(ROOT)
+                before = guard_snapshot()
                 ns = list(act['steps'])
                 outs = await asyncio.gather(*[call_agent('task-reviewer', prelaunch_prompt(step_of(n)), 'S_TASKREVIEW', 'pro') for n in ns])
-                if git_snapshot(ROOT) != before:
+                if guard_snapshot() != before:
                     return finish(read_only_violation('task-reviewer', 'of the pre-launch review'))
                 for n, out in sorted(zip(ns, outs), key=lambda x: x[0]):
                     v = review_verdict(out)
