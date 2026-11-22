@@ -15,8 +15,11 @@
 # RETURN: { status, mode, operatorActions, resumeArgs, selection, results, ownerReview, truth, lastGood, reportPath, report }
 # Modes: dry-run, plan-only (preflight steps 1, 2 and 5, setup by git, spec and plan with their review loops, the roadmap record)
 # and run (the full preflight with setup commands and the baseline of the gates, the same spec and plan, the tasks, the sync and
-# final review, the gates of the branch; the merge, post-merge gates and docs come with the merge task: the deliverable then
-# waits with `readyToMerge`). The report stage comes with the merge task: `report` is None.
+# final review, the gates of the branch, then the serialized merge by git in the integration worktree, the post-merge gates with
+# one reviewed merge-fix, the rollback by git when they stay red, the docs stage and the cleanup). Both modes end with the report
+# (flash), committed by the script, and in run mode the git truth of verify-run.mjs check (run by subprocess).
+# Resume needs no replay: each deliverable rebuilds its progress from the roadmap, its branch and its worktree (the run record skips
+# the reviews of an unchanged spec and plan, the task commits mark the tasks done, an interrupted merge is validated and documented).
 import inspect
 import json
 import os
@@ -298,7 +301,7 @@ def _validate_args(cfg, token):
 # The roadmap record: recordCommands assembles the exact tracker CLI commands, the chunks are signed groups for verify-run.mjs
 # (run by subprocess, idempotent by nonce). Same expression as the .js recordStatus, over the same pure functions.
 PURE_RECORD_JS = r"""(() => {
-  const rc = recordCommands({ cli: p.cli, folder: p.folder, E: p.E, word: p.status, piece: p.piece, blockedBy: p.blockedBy, evidence: p.refs, logWhat: p.reason,
+  const rc = recordCommands({ cli: p.cli, folder: p.folder, E: p.E, word: p.status, piece: p.piece, blockedBy: p.blockedBy, evidence: p.refs, statusEvidence: p.statusEvidence, logWhat: p.reason,
     decisions: rulingDecisions(p.rulings), pending: p.pending, inflight: p.inflight, skipStatus: p.skip, lang: p.lang, cellChars: p.cellChars, source: p.source, blockedStatus: p.blockedStatus })
   if (rc.error) return { error: rc.error }
   const msg = phrases(p.lang).commit(p.E, p.status)
@@ -359,8 +362,21 @@ PURE_RESUME_JS = r"""(() => {
   return { ops, resume }
 })()"""
 
+# The pending items of the docs record (postMerge of the .js): accepted risks, open human inputs and criteria without automatic
+# evidence; `maybe` = the human items marked as already run, which the .js leaves to the judgement of its docs agent.
+PURE_DOCS_PENDING_JS = r"""(() => {
+  const P = phrases(p.lang)
+  const room = p.cellChars - `(${P.owner}) `.length
+  const ran = h => String(h.what || '').includes('[' + p.mark + ':')
+  return {
+    pending: [...p.risks.map(x => `${x.stage}: [${x.severity}/${x.category}] ${x.description}`), ...p.human.filter(h => !ran(h)).map(h => h.what),
+      ...p.acOpen.map(x => fitCell(P.critNoEvidence(p.E, x.ac, x.kind, x.blq), room, p.planTxt, p.lang).text)],
+    maybe: p.human.filter(ran).map(h => h.what),
+  }
+})()"""
+
 CMD_CAP = 6000
-RAN_MARK = 'already authorized and run in this run'  # the mark annotateAuthorizedHuman adds to a human item
+RAN_MARK ='already authorized and run in this run'  # the mark annotateAuthorizedHuman adds to a human item
 NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 
 
@@ -596,6 +612,12 @@ def init_run(disc, plan, cfg, token, items, gates):
     R.baseline = {}  # gate name -> GateResult of the target (the baseline every measure is judged against)
     R.test_integrity = None
     R.deliv = {}  # E -> Deliverable (its log is written again after the blocked record)
+    # docsStage: a string (instructions) or { instructions, measure (Node program printing {"ok":bool,"details":str}), paths (doc prefixes) }
+    ds = cfg.get('docsStage')
+    R.docs = {'instructions': ds} if isinstance(ds, str) else (ds if isinstance(ds, dict) else {})
+    R.docs_paths = R.docs['paths'] if isinstance(R.docs.get('paths'), list) and R.docs['paths'] else ['docs/']
+    R.status_after = plan['statusAfterMerge']
+    R.checkers = {}  # E -> result.checker of the brief read back after the docs record
 
 
 def _env_facts():
@@ -903,7 +925,7 @@ def record_status(E, status, refs, extra=None):
     payload = {'cli': A['trackerCli'], 'folder': R.abs_folder, 'E': E, 'status': status, 'piece': piece, 'refs': refs, 'rulings': x.get('rulings') or [],
                'skip': cur == status, 'lang': R.lang, 'cellChars': R.cell_chars, 'source': x.get('source') or (R.rm + 'state.md'),
                'blockedStatus': R.statuses['blocked'], 'tag': R.run_tag, 'intwt': R.int_wt, 'rm': R.rm, 'trailer': R.trailer, 'verify': R.verify_run, 'cap': CMD_CAP}
-    for k_in, k_out in (('reason', 'reason'), ('pending', 'pending'), ('inflight', 'inflight')):
+    for k_in, k_out in (('reason', 'reason'), ('pending', 'pending'), ('inflight', 'inflight'), ('statusEvidence', 'statusEvidence')):
         if x.get(k_in) is not None:
             payload[k_out] = x[k_in]
     if blocked_by:
@@ -955,7 +977,7 @@ def record_status(E, status, refs, extra=None):
             R.last_good = read['head']
     else:
         hold_unconfirmed(E, x.get('rulings'), v.get('decisionIds') or [])
-    return {'ok': ok, 'failures': failures, 'head': read.get('head') if ok else None, 'cuts': pl['cuts']}
+    return {'ok': ok, 'failures': failures, 'head': read.get('head') if ok else None, 'cuts': pl['cuts'], 'brief': read.get('brief'), 'clean': read.get('clean')}
 
 # ---------------------------------------------------------------- one deliverable (setup, spec, plan, plan-only record)
 def collapse(s):
@@ -1075,8 +1097,8 @@ class Deliverable(object):
         return {'maxFix': R.maxfix, 'blqIds': R.blq, 'reviews': self.out['reviews'], 'concerns': self.out['concerns'], 'acceptRisks': self.accept_risks}
 
     # ---- setup (mechanical, by git -C)
-    def sanitize(self, stage):
-        """Clears uncommitted files left by an interrupted run; the patch is kept in _tmp."""
+    def save_patch(self, stage):
+        """The uncommitted work of the worktree (diff and untracked files) saved in _tmp/<E>-dirty. Returns the folder, or None."""
         d = '%s/_tmp/%s-dirty' % (R.wt, self.E)
         try:
             os.makedirs(d, exist_ok=True)
@@ -1094,6 +1116,13 @@ class Deliverable(object):
                 except OSError:
                     pass
         except OSError:
+            return None
+        return d
+
+    def sanitize(self, stage):
+        """Clears uncommitted files left by an interrupted run; the patch is kept in _tmp."""
+        d = self.save_patch(stage)
+        if not d:
             return False
         if git_in(self.wt, 'reset', '--hard', 'HEAD')['exit'] != 0 or git_in(self.wt, 'clean', '-fd')['exit'] != 0:
             return False
@@ -1224,15 +1253,16 @@ class Deliverable(object):
     def missing(self, lst, items, key):
         return pure('missingFrom(p.l, p.i, %s)' % key, {'l': lst, 'i': items})
 
-    async def read_persisted_log(self):
-        """Human acts and accepted risks of an earlier run live only in the persisted files: a read (flash, no tools beyond reading)."""
+    async def read_persisted_log(self, d=None):
+        """Human acts and accepted risks of an earlier run live only in the persisted files: a read (flash, no tools beyond reading).
+        `d` is the folder read (the deliverable worktree, or the integration worktree for an interrupted merge)."""
         E, ap = self.E, self.ap
         prompt = ('Read-only. In "%s" read %s (the review log), %s (the spec) and %s (the plan). found = true only if at least one of those files was read. acceptedRisks = every accepted risk listed in the review log '
                   '(stage, severity, category, description, file when given); an accepted risk is an item the log lists as accepted, never a finding that was fixed or that only appears as an issue of a round; empty list when none. '
                   'humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. '
                   'ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. '
                   'externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. '
-                  'Transcribe faithfully, do not invent.') % (self.wt, ap['reviews'], ap['spec'], ap['plan'])
+                  'Transcribe faithfully, do not invent.') % (d or self.wt, ap['reviews'], ap['spec'], ap['plan'])
         return await self.ask('review-log', prompt, 'S_RESUMELOG')
 
     def restore_from_log(self, rl, unsettled=()):
@@ -1522,9 +1552,9 @@ class Deliverable(object):
         return None
 
     # ---- sync with the target and the final review
-    async def sync_branch(self, ref, frm):
-        """git merge --no-ff of `ref` into the branch, by git. A conflict is a judgement: the sync agent (flash) resolves it and the
-        script checks that the merge really ended. Returns { ok, head, conflictsResolved, details, targetTip, deltaFiles, record }."""
+    async def sync_branch(self, ref, frm, role='sync'):
+        """git merge --no-ff of `ref` into the branch, by git. A conflict is a judgement: the sync agent (flash; `resync` on the late
+        sync) resolves it and the script checks that the merge really ended. Returns { ok, head, conflictsResolved, details, targetTip, deltaFiles, record }."""
         E, wt = self.E, self.wt
         before = git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip()
         m = git_in(wt, 'merge', '--no-ff', ref, '-m', '%s: sync with %s' % (E, R.target), '-m', R.trailer)
@@ -1538,7 +1568,7 @@ class Deliverable(object):
                 conflict_txt = (' Rules for generated files: %s.' % R.cfg['conflictRules']) if R.cfg.get('conflictRules') else ''
                 prompt = ('%s\n\nBring the target state into the branch: the merge of %s into %s stopped with conflicts in: %s. Resolve them keeping both parts.%s Do not use any shared resource. Finish the merge with git commit --no-edit; one simple command per call.' % (
                     self.Cs(), ref, wt, ', '.join(un), conflict_txt))
-                r = await self.ask('sync', prompt)
+                r = await self.ask(role, prompt)
                 ended = (r is not None and git_in(wt, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] != 0
                          and not git_in(wt, '--no-optional-locks', 'status', '--porcelain')['stdout'].strip() and git_in(wt, 'rev-parse', 'HEAD')['stdout'].strip() != before)
                 ok = ended
@@ -1552,11 +1582,13 @@ class Deliverable(object):
                 'targetTip': git_in(wt, 'rev-parse', ref)['stdout'].strip(),
                 'deltaFiles': [x for x in git_in(wt, 'diff', '--name-only', '%s..%s' % (frm, ref))['stdout'].splitlines() if x.strip()], 'record': rec['stdout'] if rec['exit'] == 0 else ''}
 
-    async def review_conflicts(self, sha, label):
-        """The review (read-only) of the resolution of a merge conflict: a part of one branch lost, duplicated code, a generated file resolved by hand."""
+    async def review_conflicts(self, sha, label, d=None):
+        """The review (read-only) of the resolution of a merge conflict: a part of one branch lost, duplicated code, a generated file resolved by hand.
+        `d` is the worktree of the merge (the deliverable worktree on a sync, the integration worktree on the merge)."""
+        d = d or self.wt
         prompt = ('%s\n\nReview (read-only) the conflict resolutions of the merge %s in %s: git -C "%s" show --cc %s. Blocks (defeito): a part of one of the branches lost, duplicated code, a generated file resolved by hand, inconsistent counts in docs. Measure headSha, clean, commitsInRange=1.' % (
-            self.C(), sha, self.wt, self.wt, sha))
-        cr = await self.ask_ro('conflict-review', prompt, 'S_REVIEW')
+            self.C(), sha, d, d, sha))
+        cr = await self.ask_ro('conflict-review', prompt, 'S_REVIEW', wt=d)
         if not cr:
             return {'ok': False, 'kind': 'infra', 'why': 'conflict resolution review: null agent'}
         bl = pure('blocking(p)', cr)
@@ -1571,6 +1603,7 @@ class Deliverable(object):
         E, o, wt = self.E, self.out, self.wt
         plan_locks = [n for n in dict.fromkeys(x for t in self.plan['tasks'] for x in as_list(t.get('needsLock'))) if n in R.task_locks]
         sync_at = R.last_good
+        self.sync_at = sync_at  # the late sync of the merge stage reviews the delta of the target since this tip
         self.my_base = json.loads(json.dumps(R.baseline))  # baseline of syncAt (captured with it)
         sync = await self.sync_branch(sync_at, sync_at)
         if not sync['ok']:
@@ -1716,12 +1749,453 @@ class Deliverable(object):
             exp = None
             k += 1
 
-    async def merge_stage(self, validated_head):
-        """The merge, the post-merge gates and the docs come with the merge task: until then the validated branch waits (readyToMerge)."""
+    # ---- merge, post-merge gates, rollback, docs and cleanup (serialized: one deliverable at a time)
+    def head_of(self, d):
+        return git_in(d, 'rev-parse', 'HEAD')['stdout'].strip()
+
+    def is_clean(self, d):
+        r = git_in(d, '--no-optional-locks', 'status', '--porcelain')
+        return r['exit'] == 0 and not r['stdout'].strip()
+
+    @staticmethod
+    def fmt_risk(x):
+        return '%s: [%s/%s] %s' % (x.get('stage'), x.get('severity'), x.get('category'), x.get('description'))
+
+    def mark_broken(self, why, kind='conteudo', do_now=None):
+        """A merge already on the target that failed validation: it cannot be undone without a human decision (work may sit on top)."""
+        E, br, wt, iw = self.E, self.br, self.wt, R.int_wt
+        R.integ_broken = 'the merge of %s is already on %s and %s: %s' % (E, R.target, 'could not be validated' if kind == 'infra' else 'failed validation', why)
+        dn = do_now or (('Fix the environment and run again with deliverables:["%s"] (the run resumes as validate-and-document); if you decide to drop the merge: git -C "%s" revert -m 1 <merge>' % (E, iw))
+                        if kind == 'infra' else
+                        ('Fix it on %s and run again with deliverables:["%s"]. To undo: git -C "%s" revert -m 1 <merge>, delete the branch %s and the worktree %s, and run again (the deliverable restarts from scratch)' % (R.target, E, iw, br, wt)))
+        op('merge-rejected', E, R.integ_broken, dn, dict(A, deliverables=[E]))
+        return {'ok': False, 'broken': True, 'kind': kind, 'why': why}
+
+    def rollback_to(self, pre_sha):
+        """The rollback of a merge that did not pass, by git in the integration worktree: abort a merge in progress, reset to the commit
+        before the merge (the last validated tip), clean what the merge left and prune the worktrees. The S_ROLLBACK data come from git."""
+        E, iw = self.E, R.int_wt
+
+        def rb(why, kind='conteudo'):
+            if git_in(iw, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] == 0:
+                git_in(iw, 'merge', '--abort')
+            reset = git_in(iw, 'reset', '--hard', pre_sha)
+            if not R.foreign:  # the preflight found it clean: what is left untracked now came from the merge stage
+                git_in(iw, 'clean', '-fd')
+            git_in(R.repo, 'worktree', 'prune')
+            st = git_in(iw, '--no-optional-locks', 'status', '--porcelain')
+            left = [x for x in st['stdout'].splitlines() if x.strip()]
+            res = {'ok': reset['exit'] == 0 and st['exit'] == 0, 'head': self.head_of(iw), 'clean': st['exit'] == 0 and not left, 'leftovers': left}
+            self.out['rollback'] = res
+            if not res['ok'] or not pure('gateShaMatch(p.a, p.b)', {'a': res['head'], 'b': pre_sha}) or res['clean'] is False:
+                R.integ_broken = 'the rollback of %s did not confirm %s at %s and clean (%s)' % (E, R.target, pre_sha, json.dumps({'head': res['head'], 'leftovers': left}, ensure_ascii=True))
+                op('integration', E, R.integ_broken, 'Restore it by hand: git -C "%s" reset --hard %s and confirm a clean git status' % (iw, pre_sha),
+                   dict(A, deliverables=[x for x in R.order if x != E]))
+            else:
+                R.last_good = pre_sha
+            return {'ok': False, 'kind': kind, 'why': why}
+        return rb
+
+    async def log_on_target(self, what, data, subject):
+        """A note the review log of the deliverable on the target must keep (risks accepted or evidence effects run after the last branch log):
+        the review-log agent (flash) edits the file, the script commits only it. Returns the new head, or None."""
+        iw = R.int_wt
+        prompt = '%s\n\nIntegration worktree %s (branch %s). %s %s (create it if there is none), keeping everything the file holds: %s\nDo not commit: the caller commits only that file.' % (
+            self.Cs(), iw, R.target, what, self.ap['reviews'], json.dumps(data, ensure_ascii=True))
+        w = await self.ask('review-log', prompt)
+        if w is None:
+            return None
+        cm = commit_file(iw, self.ap['reviews'], subject)
+        return cm['head'] if cm.get('ok') and cm.get('commit') else None
+
+    async def persist_merge_risks(self, frm, exp):
         o = self.out
-        o['readyToMerge'] = True
-        o['validatedHead'] = validated_head
+        fresh = o['acceptedRisks'][frm:]
+        if not fresh:
+            return exp
+        h = await self.log_on_target('Risks were accepted during the merge of %s. Add them to the accepted risks of its review log on %s,' % (self.E, R.target), fresh, '%s: accepted merge-stage risks' % self.E)
+        if not h:
+            o['concerns'].append('merge-stage accepted risks not committed to the review log: %s' % '; '.join(self.fmt_risk(x) for x in fresh))
+            return exp
+        return h
+
+    async def persist_merge_effects(self, exp):
+        o = self.out
+        ran = [e for e in o['externalRun'] if e.get('command')]
+        if not ran:
+            return exp
+        h = await self.log_on_target('In the section "External effects run" of the review log of %s on %s, add one line per entry (item, command, exit) that is not there yet, in' % (self.E, R.target), ran, '%s: external effects of the acceptance evidence' % self.E)
+        if not h:
+            o['concerns'].append('external effects not committed to the review log, so a resume of this merge would not know they ran: %s' % ', '.join(e['item'] for e in ran))
+            return exp
+        return h
+
+    async def review_fixes_after_merge(self, merge_sha):
+        """Work committed on the target after the merge was never reviewed: review it (pro) on every re-run. None when clear, or the broken result."""
+        E, iw = self.E, R.int_wt
+        argv = pure('postMergeFixArgs(p.m, p.rm, p.d)', {'m': merge_sha, 'rm': R.rm, 'd': R.docs_paths})
+        r = git_in(iw, *argv)
+        if r['exit'] != 0:
+            return self.mark_broken('the probe for commits after the merge %s did not confirm a valid range' % merge_sha, 'infra')
+        listed = []
+        for ln in r['stdout'].splitlines():
+            if ln.strip():
+                sha, _, subj = ln.partition('\t')
+                listed.append({'sha': sha.strip(), 'subject': subj})
+        commits = pure('postMergeFixes(p.c, p.E)', {'c': listed, 'E': E})
+        if not commits:
+            return None
+        names = ', '.join('%s (%s)' % (c['sha'], c['subject']) for c in commits)
+        prompt = ('%s\n\nReview (read-only) the commits that sit on %s after the merge %s of %s, never reviewed: %s. Read each one with git -C "%s" show <sha>, then the files they touch as they are at HEAD. Judge the NET STATE AT HEAD of those commits: a defect reverted or corrected by a later commit of this list does not block; report only what remains at HEAD. Changes of other deliverables in those files are not under review. '
+                  'Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, editing the baseline, introducing a defect. Measure headSha, clean, commitsInRange (how many of the listed commits you actually read).') % (self.C(), R.target, merge_sha, E, names, iw)
+        rv = await self.ask_ro('resume-fix-review', prompt, 'S_REVIEW', wt=iw)
+        if not rv:
+            return self.mark_broken('the review of the commits after the merge returned nothing: %s' % names, 'infra', 'Run again with deliverables:["%s"] to repeat the review. Commits: %s' % (E, names))
+        hard = pure('reviewTruth(p.r, p.n, p.l).filter(i => isHard(i, p.blq))', {'r': rv, 'n': len(commits), 'l': 'the %d commits listed after %s' % (len(commits), merge_sha), 'blq': R.blq})
+        if hard:
+            return self.mark_broken('the commits after the merge were rejected: %s; commits: %s' % (pure('fmt(p)', hard), names), 'conteudo',
+                                    'Correct the problem on %s with a later commit, or revert the commits (git -C "%s" revert <sha>), then run again with deliverables:["%s"]. The review judges the net state at HEAD, so a defect reverted or corrected later no longer blocks. Commits: %s' % (R.target, iw, E, names))
+        self.accept_risks('resume-merge-fix', pure('blocking(p)', rv))
+        return None
+
+    def docs_measure(self):
+        """DOCS.measure: a Node program the script runs in the integration worktree (no model); it prints {"ok": bool, "details": str}."""
+        f = '%s/_tmp/%s-docs-measure.cjs' % (R.wt, self.E)
+        try:
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            with open(f, 'w', encoding='utf-8', newline='\n') as fh:
+                fh.write(R.docs['measure'])
+            r = run_cli(['node', f], cwd=R.int_wt)
+        finally:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        lines = [ln for ln in r['stdout'].splitlines() if ln.strip()]
+        try:
+            j = json.loads(lines[-1])
+            return {'measureOk': j.get('ok') is True, 'measureDetails': str(j.get('details') or '')}
+        except (IndexError, ValueError, AttributeError):
+            return {'measureOk': False, 'measureDetails': 'exit %s: %s' % (r['exit'], tail_text(r['stderr'] or r['stdout'], 300))}
+
+    def changed_paths(self, d):
+        r = git_in(d, 'status', '--porcelain', '-z', '-uall')
+        parts = r['stdout'].split('\0')
+        out = []
+        i = 0
+        while i < len(parts):
+            e = parts[i]
+            i += 1
+            if len(e) < 4:
+                continue
+            out.append(e[3:])
+            if 'R' in e[:2] or 'C' in e[:2]:
+                if i < len(parts) and parts[i]:
+                    out.append(parts[i])
+                i += 1
+        return out
+
+    async def docs_stage(self, merge_commit):
+        """The roadmap part (the exact tracker CLI commands, run through verify-run.mjs and judged over raw outputs) and, when configured,
+        the project docs (docs, flash), committed by the script; DOCS.measure is a program run by the script. Two rounds for the agent part."""
+        E, o, iw = self.E, self.out, R.int_wt
+        spec_txt = self.spec_ref or self.ap['spec']
+        plan_txt = self.plan_ref or self.ap['plan']
+        reviews_txt = self.ap['reviews'] if self.spec_ref else '(review log of the branch %s, if any)' % self.br
+        pend = pure(PURE_DOCS_PENDING_JS, {'lang': R.lang, 'cellChars': R.cell_chars, 'mark': RAN_MARK, 'risks': o['acceptedRisks'], 'human': self.human,
+                                           'acOpen': o.get('acOpen') or [], 'E': E, 'planTxt': plan_txt})
+        if pend['maybe']:
+            o['concerns'].append('human items whose external effect this run already ran were left out of the roadmap pending list; add back any that still states an open need: %s' % '; '.join(pend['maybe']))
+        refs = [merge_commit, 'gates %s' % ', '.join(g['name'] for g in R.gates), spec_txt, plan_txt, reviews_txt]
+        rec = record_status(E, R.status_after, refs, {'pending': pend['pending'], 'inflight': {'remove': self.br}, 'source': reviews_txt, 'statusEvidence': [merge_commit]})
+        if rec:
+            o['recordCuts'].extend(rec['cuts'])
+            bc = pure('parseCli(p)', rec.get('brief')) if rec.get('brief') else None
+            if bc and isinstance(bc.get('result'), dict) and bc['result'].get('checker'):
+                R.checkers[E] = bc['result']['checker']
+        rec_fail = [] if rec and rec['ok'] else ['roadmap record: %s' % self.failed_record(rec)]
+        instr = R.docs.get('instructions')
+        measure = {}
+        agent_fail = []
+        docs_measure = None
+        for k in range(2):
+            agent_fail = []
+            if instr:
+                prompt = ('%s\n\nDOCS STAGE of deliverable %s in the integration worktree %s (branch %s); merge %s. Only this stage edits the project docs.\n'
+                          'Project docs: %s\nThe roadmap folder %s is already recorded by the workflow: do not edit it. Never record a human act (acceptance, go/no-go, credentials) as done. Do not commit: the caller commits the files you changed.%s') % (
+                    self.Cn(), E, iw, R.target, merge_commit, instr, R.rm,
+                    ('\nFIX ROUND. The independent measurement found: %s. Fix what it lists%s.' % (json.dumps(docs_measure, ensure_ascii=True), ' (measureOk must be true)' if R.docs.get('measure') else '')) if k else '')
+                d = await self.ask('docs', prompt)
+                if d is None:
+                    agent_fail.append('null docs agent')
+                files = [f for f in self.changed_paths(iw) if not slash(f).startswith(R.rm)]
+                if files:
+                    git_in(iw, 'add', '--all', '--', *files)
+                    c = git_in(iw, 'commit', '-q', '-m', 'docs: %s on %s' % (E, R.target), '-m', R.trailer)
+                    if c['exit'] != 0:
+                        agent_fail.append('docs commit failed: %s' % (c['stderr'].strip() or c['stdout'].strip()))
+            measure = self.docs_measure() if R.docs.get('measure') else {}
+            clean = self.is_clean(iw)
+            docs_measure = dict({'failures': rec_fail + agent_fail, 'clean': clean, 'head': self.head_of(iw)}, **measure)
+            ok = not rec_fail and not agent_fail and clean and (not R.docs.get('measure') or measure.get('measureOk') is True)
+            if ok or not instr:
+                break
+        docs_ok = not docs_measure['failures'] and docs_measure['clean'] and (not R.docs.get('measure') or measure.get('measureOk') is True)
+        if docs_ok and docs_measure['head']:
+            R.last_good = docs_measure['head']
+        return docs_ok, docs_measure
+
+    async def post_merge(self, merge_commit, conflicts, on_bad, first_exp):
+        """Post-merge gates (one reviewed merge-fix: flash, reviewed on pro), the baseline refresh, then the docs stage."""
+        E, o, iw = self.E, self.out, R.int_wt
+        exp = first_exp
+        k = 0
+        while True:
+            floor = pure('mergeFloor(p.b, p.m)', {'b': R.baseline, 'm': o.get('brM')})
+            g = await run_gates(iw, floor, exp, '%s^1..HEAD' % merge_commit)
+            if g['ok']:
+                break
+            if k >= 1 or g['nullAgent']:
+                return await _call(on_bad, 'post-merge gates failed: %s' % g['summary'], 'infra' if g['nullAgent'] else 'conteudo')
+            pre_fix = g['m']['headSha']
+            prompt = '%s\n\nIntegration worktree %s (branch %s). %s The post-merge gates of %s failed:\n%s\nFailing output: %s\nFix on %s with a test and commit "%s merge-fix: ...". Do not mask failures. %s' % (
+                self.Cn(), iw, R.target, self.lock_note(R.task_locks), E, g['summary'], str(g['m'].get('log') or '')[:3000], R.target, E, self.no_spec_edit())
+            fx = await self.ask('merge-fix', prompt, 'S_IMPL', body=self.body('implementer'))
+            if not fx or fx.get('status') == 'BLOCKED':
+                return await _call(on_bad, 'post-merge fix %s' % (('BLOCKED: %s' % fx.get('summary')) if fx else 'null'), 'conteudo' if fx else 'infra')
+            if fx.get('concerns'):
+                o['concerns'].append('merge-fix: %s' % fx['concerns'])
+            rp = ('%s\n\nReview (read-only) the post-merge fix: git -C "%s" diff %s..HEAD. Blocks (defeito): masking a test, relaxing an assertion, skipping a suite, introducing a defect, an edit to the spec or the plan. Measure headSha, clean, commitsInRange.') % (self.Cn(), iw, pre_fix)
+            rr = await self.ask_ro('merge-fix-review', rp, 'S_REVIEW', wt=iw)
+            bl = pure('blocking(p)', rr) if rr else []
+            if not rr or _hard(bl, R.blq):
+                return await _call(on_bad, 'post-merge fix rejected: %s' % (pure('fmt(p)', bl) if rr else 'null agent'), 'conteudo' if rr else 'infra')
+            risk_from = len(o['acceptedRisks'])
+            self.accept_risks('merge-fix', bl)
+            o['reviews'].append(dict({'stage': 'merge-fix', 'rounds': [{'round': 1, 'reviewModel': 'pro', 'fixTier': STAGE_MODELS['merge-fix']}], 'unresolved': bl}, **pure('compact(p)', rr.get('issues'))))
+            exp = await self.persist_merge_risks(risk_from, self.head_of(iw))
+            k += 1
+        R.baseline = pure('refreshBaseline(p.b, p.d, p.m, p.c)', {'b': R.baseline, 'd': R.gates, 'm': g['m'], 'c': g['m']['changedFiles']})
+        R.last_good = g['m']['headSha']
+        docs_ok, docs_measure = await self.docs_stage(merge_commit)
+        return {'ok': True, 'mergeCommit': merge_commit, 'conflicts': conflicts, 'gates': g['summary'], 'docsOk': docs_ok, 'docsMeasure': docs_measure}
+
+    async def late_sync(self):
+        """Another deliverable landed after the last sync of this branch: sync again (resync, flash), review a resolved conflict and the
+        delta of the target (pro), then measure the gates of the branch again. Returns the new validated head, or a failed merge result."""
+        E, br, wt = self.E, self.br, self.wt
+        rs = await self.sync_branch(R.target, self.sync_at, role='resync')
+        if not rs['ok']:
+            return {'ok': False, 'kind': 'conteudo', 'why': 're-sync failed: %s' % rs['details']}
+        if rs['conflictsResolved'] != 0:
+            rc = await self.review_conflicts(rs['head'], '%s:resync-review' % E)
+            if not rc['ok']:
+                return rc
+        if pure('needsDeltaReview(p.f, p.rm, p.d)', {'f': rs['deltaFiles'], 'rm': R.rm, 'd': R.docs_paths}):
+            prev_sync = self.sync_at
+            tip = rs['targetTip'] or R.target
+
+            async def review(rnd, prev, rv=None, was=None):
+                prompt = ('%s\n\nLATE-SYNC REVIEW (read-only). Other deliverables landed on %s after the last sync of this branch. Review ONLY what they brought: git -C "%s" diff %s..%s, against this branch (spec %s, %s).\n'
+                          'Blocks (defeito): a contract of the incoming change that this branch breaks or that breaks this branch (callers, schemas, permissions, generated files), a criterion of the card no longer proved, a duplicated or conflicting definition%s.%s\n'
+                          'Measure: headSha, clean, commitsInRange=0 is fine here.') % (
+                    self.C(), R.target, wt, prev_sync, tip, self.spec['specPath'], self.card_ref, ', an edit to the spec or the plan made by a fix round' if prev else '',
+                    ('\nPrevious issues (verify them; %s):\n%s' % (repeat_rule(), prev)) if prev else '')
+                return await self.ask_ro('delta-review', prompt, 'S_REVIEW')
+
+            async def fix(iss, k, tier):
+                prompt = '%s\n\nFix the late-sync review problems below on the branch %s (worktree %s), with tests, and commit "%s resync-fix: ...". %s %s\n%s' % (
+                    self.C(), br, wt, E, self.lock_note(self.plan_locks), self.no_spec_edit(), pure('fmt(p)', iss))
+                return await self.ask('delta-fix', prompt, 'S_IMPL', model=tier, body=self.body('implementer'))
+
+            dl = await run_review_loop(self.review_env(), 'delta', review, fix, lambda r: pure('reviewTruth(p, 0, "")', r), {'tier': STAGE_MODELS['delta-fix'], 'reviewModel': 'pro'})
+            if not dl.get('ok'):
+                return {'ok': False, 'kind': dl.get('kind'), 'why': 'late-sync review: %s' % dl.get('msg')}
+        self.sync_at = rs['targetTip'] or self.sync_at
+        self.my_base = json.loads(json.dumps(R.baseline))
+        await self.persist_reviews('resync')  # conflict and delta reviews go into the log before the final measurement
+        rg = await self.branch_gates('re', None)
+        if not rg['ok']:
+            return {'ok': False, 'kind': rg['kind'], 'why': 'gates after the re-sync: %s' % rg['msg']}
+        return {'ok': True, 'head': rg['head']}
+
+    async def merge_block(self, validated_head):
+        """The merge of the validated branch into the target, by git in the integration worktree (git merge --no-ff); a conflict goes to
+        the merge agent (flash) and its resolution to conflict-review (pro). A merge that does not pass is rolled back by git."""
+        E, br, iw = self.E, self.br, R.int_wt
+        if R.integ_broken:
+            return {'ok': False, 'kind': 'infra', 'why': 'integration worktree compromised: %s' % R.integ_broken}
+        if not self.is_clean(iw):
+            R.integ_broken = 'integration worktree %s dirty before the merge of %s' % (iw, E)
+            op('integration', E, R.integ_broken, 'Clean or commit the integration worktree (git -C "%s" status) and run again' % iw, dict(A))
+            return {'ok': False, 'kind': 'infra', 'why': R.integ_broken}
+        pre_sha = self.head_of(iw)
+        has_target = git_in(R.repo, 'merge-base', '--is-ancestor', R.target, br)['exit'] == 0
+        merged = git_in(R.repo, 'merge-base', '--is-ancestor', br, R.target)['exit'] == 0
+        if not has_target and not merged:
+            ls = await self.late_sync()
+            if not ls['ok']:
+                return ls
+            validated_head = ls['head']
+        if merged:
+            loc = git_in(iw, 'rev-list', '--first-parent', '--reverse', '--ancestry-path', '%s..HEAD' % br)
+            sha = (loc['stdout'].splitlines() or [''])[0].strip()
+            second = git_in(iw, 'rev-parse', sha + '^2')['stdout'].strip() if sha else ''
+            tip = git_in(iw, 'rev-parse', br)['stdout'].strip()
+            if loc['exit'] != 0 or not sha or not second or not pure('gateShaMatch(p.a, p.b)', {'a': second, 'b': tip}):
+                return self.mark_broken('the branch %s is on %s but its merge commit could not be located' % (br, R.target), 'infra')
+            bad = await self.review_fixes_after_merge(sha)
+            if bad:
+                return bad
+            return await self.post_merge(sha, 0, self.mark_broken, pre_sha)
+        rollback = self.rollback_to(pre_sha)
+        m = git_in(iw, 'merge', '--no-ff', br, '-m', 'merge: %s in %s' % (E, R.target), '-m', R.trailer)
+        conflicts = 0
+        if m['exit'] != 0:
+            un = [x for x in git_in(iw, 'diff', '--name-only', '--diff-filter=U')['stdout'].splitlines() if x.strip()]
+            conflicts = len(un)
+            if not un:
+                return rollback('the merge did not complete: %s' % ((m['stderr'] or m['stdout']).strip()), 'conteudo')
+            conflict_txt = (' Rules for generated files: %s.' % R.cfg['conflictRules']) if R.cfg.get('conflictRules') else ''
+            prompt = ('%s\n\nMERGE STAGE of deliverable %s in the integration worktree %s (branch %s).%s The merge of %s stopped with conflicts in: %s. Resolve them keeping both parts.%s Do not use any shared resource. '
+                      'Finish the merge with git commit --no-edit; one simple command per call. If you cannot finish, git merge --abort.') % (
+                self.Cs(), E, iw, R.target, (' The operator authorized %s: this merge may be done in that checkout.' % R.foreign_item) if R.foreign else '', br, ', '.join(un), conflict_txt)
+            mg = await self.ask('merge', prompt)
+            ended = (mg is not None and git_in(iw, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')['exit'] != 0 and self.is_clean(iw) and self.head_of(iw) != pre_sha)
+            if not ended:
+                return rollback('the merge did not complete: %s' % ('null agent' if mg is None else 'the conflicts in %s were not resolved' % ', '.join(un)), 'infra' if mg is None else 'conteudo')
+        merge_commit = self.head_of(iw)
+        par = git_in(iw, 'rev-parse', 'HEAD^1')
+        par2 = git_in(iw, 'rev-parse', 'HEAD^2')
+        mg = {'mergeCommit': pure('fullRef(p)', merge_commit), 'firstParent': par['stdout'].strip() if par['exit'] == 0 else '',
+              'secondParent': par2['stdout'].strip() if par2['exit'] == 0 else '', 'conflicts': conflicts, 'clean': self.is_clean(iw)}
+        if not mg['clean'] or not mg['mergeCommit'] or pure('gateShaMatch(p.a, p.b)', {'a': merge_commit, 'b': pre_sha}):
+            return rollback('the merge did not complete: %s' % ('the integration worktree is not clean after it' if not mg['clean'] else 'no merge commit'), 'conteudo')
+        if not pure('mergeParentsOk(p.mg, p.pre, p.v)', {'mg': mg, 'pre': pre_sha, 'v': validated_head}):
+            return rollback('the merge commit %s has first parent %s and second parent %s, expected %s and the validated head %s: the second parent does not match' % (
+                merge_commit, mg['firstParent'], mg['secondParent'], pre_sha, validated_head), 'conteudo')
+        first_exp = merge_commit
+        if conflicts:
+            risk_from = len(self.out['acceptedRisks'])
+            rc = await self.review_conflicts(merge_commit, '%s:merge-review' % E, iw)
+            if not rc['ok']:
+                return rollback(rc['why'], rc['kind'])
+            first_exp = await self.persist_merge_risks(risk_from, first_exp)
+        first_exp = await self.persist_merge_effects(first_exp)
+        return await self.post_merge(merge_commit, conflicts, rollback, first_exp)
+
+    def cleanup(self):
+        """The cleanup of a merged deliverable, by subprocess: its processes (verify-run.mjs procs), its worktree (a dirty one is saved as a
+        patch first, and kept when the patch cannot be written), its _tmp entries (the -dirty folders stay) and its merged branch."""
+        E, wt = self.E, self.wt
+        left = []
+        nonce = '%s:%s:procs' % (R.run_tag, E)
+        pr = run_cli(['node', R.verify_run, 'procs', _enc_arg({'nonce': nonce, 'wt': wt, 'ports': [self.port, self.port + 9]})])
+        v = _check_run(pr['stdout'], 'verify-run', nonce)
+        if v.get('ok'):
+            left.extend('pid %s: %s' % (f.get('pid'), f.get('error')) for f in (v['data'].get('failed') or []))
+            left.extend(str(u) for u in (v['data'].get('unchecked') or []))
+        else:
+            left.append('processes of %s not checked: %s' % (E, v.get('why') or pr['stderr'].strip()))
+        registered = any(same_path(w['path'], wt) for w in worktrees(R.repo))
+        if registered:
+            keep = False
+            if not self.is_clean(wt):
+                d = self.save_patch('cleanup')
+                if d:
+                    self.out['concerns'].append('cleanup: uncommitted files of %s saved in %s' % (wt, d))
+                else:
+                    keep = True
+                    left.append('%s: dirty and its patch could not be written, so it was not removed' % wt)
+            if not keep:
+                rm = git_in(R.repo, 'worktree', 'remove', '--force', wt)
+                if rm['exit'] != 0:
+                    left.append('%s: %s' % (wt, rm['stderr'].strip()))
+        tmp = R.wt + '/_tmp'
+        if os.path.isdir(tmp):
+            for name in os.listdir(tmp):
+                if name.startswith(E + '-') and not name.endswith('-dirty'):
+                    p = os.path.join(tmp, name)
+                    try:
+                        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+                    except OSError as e:
+                        left.append('%s: %s' % (slash(p), e))
+        if not A.get('keepBranches') and git_in(R.repo, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + self.br)['exit'] == 0:
+            b = git_in(R.int_wt, 'branch', '-d', self.br)
+            if b['exit'] != 0:
+                left.append('branch %s: %s' % (self.br, b['stderr'].strip()))
+        return left
+
+    async def close_out(self, result):
+        """Closes the deliverable from the result of the merge block."""
+        E, o = self.E, self.out
+        if result.get('broken'):
+            o['merged'] = True
+            o['broken'] = True
+            o['concerns'].append('merge on the target without validation: %s' % result.get('why'))
+            return o
+        if not result.get('ok'):
+            return await self.fail(result.get('kind'), 'not merged: %s' % result.get('why'))
+        o['merged'] = True
+        o['ok'] = True
+        o['merge'] = result
+        if not result.get('docsOk'):
+            o['concerns'].append('docs with pending items after 2 rounds: %s' % json.dumps(result.get('docsMeasure'), ensure_ascii=True))
+            op('docs', E, 'docs or roadmap inconsistent after the merge of %s: %s' % (E, json.dumps(result.get('docsMeasure'), ensure_ascii=True)), 'Fix the record and run the roadmap checker on the target', None)
+        left = self.cleanup()
+        if left:
+            o['concerns'].append('incomplete cleanup: %s' % ', '.join(left))
+        _log('%s: merged into %s (%s)' % (E, R.target, result.get('mergeCommit')))
         return o
+
+    async def merge_stage(self, validated_head):
+        return await self.close_out(await self.merge_block(validated_head))
+
+    async def finish_merge(self):
+        """A merge already on the target without a post-merge status: validate and document it, do not redo the deliverable."""
+        E, o, card, iw = self.E, self.out, self.card, R.int_wt
+        sha = card.get('mergeSha')
+        _log('%s: merge %s already on the target without a record; validating and documenting' % (E, sha or '?'))
+        if not sha:
+            return await self.close_out(self.mark_broken('a merge of this deliverable is on the target but the discovery did not identify its commit, so it cannot be validated', 'conteudo',
+                                                         'Identify the merge commit (git -C "%s" log --first-parent --grep "^merge: %s "), then revert it (git revert -m 1) or fix the roadmap record, and run again with deliverables:["%s"]' % (iw, E, E)))
+        rl = await self.read_persisted_log(iw)  # the interrupted run held the human acts and accepted risks in memory
+        found = isinstance(rl, dict) and rl.get('found') is True
+        o['acOpen'] = pure('criteriaOpen(p.c, p.a)', {'c': self.card_ac, 'a': (rl.get('ac') or []) if found else []})
+        if not found:
+            o['concerns'].append('resume: review log not read, so accepted risks and human inputs may be missing')
+        else:
+            self.restore_from_log(rl)
+        return await self.close_out(await self.finish_block(sha))
+
+    async def finish_block(self, sha):
+        E, o, iw = self.E, self.out, R.int_wt
+        if R.integ_broken:
+            return {'ok': False, 'kind': 'infra', 'why': 'integration worktree compromised: %s' % R.integ_broken}
+        named = [n for r in R.baseline.values() for n in ((r or {}).get('failedNames') or [])]
+        if named and not R.accept_red:
+            return self.mark_broken('the baseline was measured with this merge already on the target and has named failures that may come from it: %s' % ', '.join(named), 'conteudo',
+                                    'Compare those failures with the commit before the merge (%s^1). If they already existed, run again with acceptRedBaseline:true; otherwise fix them on %s' % (sha, R.target))
+        bad = await self.review_fixes_after_merge(sha)
+        if bad:
+            return bad
+        # the branch measure is gone on a resume, so the count floor uses a baseline that already holds the merge: measure what the merge did to the tests
+        integ = measure_integrity(R.test_integrity, R.repo, '%s/_tmp/%s-integrity-wt' % (R.wt, E), sha, sha + '^1') if R.test_integrity else None
+        if not integ or integ['removedAsserts'] < 0:
+            o['concerns'].append('resume: the test-count floor was not verified for the merge %s (test integrity %s)' % (sha, 'not measured' if R.test_integrity else 'disabled'))
+        for a in pure('integrityHeuristicAlerts(p)', integ):
+            o['concerns'].append('resume: test integrity of the merge %s: %s' % (sha, a))
+        hard = pure('integrityHardAlerts(p)', integ)
+        if hard:
+            if pure('integrityAckMatches(p.a, p.E, p.s)', {'a': A.get('acceptIntegrityAlerts'), 'E': E, 's': sha}):
+                o['concerns'].append('the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge %s: %s' % (sha, '; '.join(hard)))
+            else:
+                ack = dict(A.get('acceptIntegrityAlerts') or {}) if isinstance(A.get('acceptIntegrityAlerts'), dict) else {}
+                ack[E] = sha
+                return self.mark_broken('the merge %s weakened the tests: %s' % (sha, '; '.join(hard)), 'conteudo',
+                                        'These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "%s" revert -m 1 %s, delete the branch %s and the worktree %s, and run again (the deliverable restarts from scratch); or, only if you decide to accept the merge as it is, add acceptIntegrityAlerts:%s yourself to the args and run again with deliverables:["%s"] (the resume args below leave it out on purpose, so they re-measure and stay broken)' % (
+                                            iw, sha, self.br, self.wt, json.dumps(ack, separators=(',', ':'), ensure_ascii=True), E))
+        return await self.post_merge(sha, 0, self.mark_broken, None)  # commits may exist after the merge
 
     # ---- the deliverable
     async def run(self):
@@ -1729,7 +2203,7 @@ class Deliverable(object):
         if R.foreign and not R.foreign_ok:
             return await self.fail('externo', 'the target %s is checked out in %s and %s is not authorized' % (R.target, R.int_wt, R.foreign_item))
         if MODE == 'run' and pure('resumeAction(p.c, p.s)', {'c': self.card, 's': R.statuses}) == 'finish-merge':
-            return await self.fail('infra', 'a merge of %s is already on the target without a post-merge record: validating and documenting it comes with the merge task of the agy workflow' % E)
+            return await self.finish_merge()
         closed = pure('closedBlockers(p.ac, p.blq)', {'ac': self.card_ac, 'blq': R.blq})
         if closed:
             o['doNow'] = '%s %s closed on the roadmap but the card still tags %s: change the tag through a strategy revision, or reopen %s, then run again' % (
@@ -2077,7 +2551,8 @@ async def run_deliverable(E, idx):
 def _slim(r):
     s = {'id': r['id'], 'merged': bool(r.get('merged')), 'broken': bool(r.get('broken')), 'planOnly': bool(r.get('planOnly')), 'skipped': r.get('skipped'), 'error': r.get('error'),
          'failKind': r.get('failKind'), 'held': r.get('held'), 'branch': r.get('branch'), 'spec': r.get('spec'), 'plan': r.get('plan'),
-         'tasks': len(r.get('tasks') or []), 'readyToMerge': bool(r.get('readyToMerge')), 'concerns': r.get('concerns') or [], 'acceptedRisks': r.get('acceptedRisks') or [], 'decisions': len(r.get('decisions') or []),
+         'merge': ({'commit': r['merge'].get('mergeCommit'), 'conflicts': r['merge'].get('conflicts'), 'gates': r['merge'].get('gates'), 'docsOk': r['merge'].get('docsOk')} if r.get('merge') else None),
+         'tasks': len(r.get('tasks') or []), 'concerns': r.get('concerns') or [], 'acceptedRisks': r.get('acceptedRisks') or [], 'decisions': len(r.get('decisions') or []),
          'human': [('%s: ' % h['blq'] if h.get('blq') else '') + str(h.get('what')) for h in (r.get('human') or [])][:12]}
     return {k: v for k, v in s.items() if v is not None}
 
@@ -2134,14 +2609,17 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
             return mk_result('needs-operator', selection=selection)
     R.abs_folder = R.int_wt.rstrip('/') + '/' + R.rm.rstrip('/')
 
-    # ---- scheduling: the order of the selection already respects the dependencies; one deliverable at a time
+    # ---- scheduling: the order of the selection already respects the dependencies; one deliverable at a time.
+    # Interrupted merges finish (validate and document) before any new deliverable; one that does not finish validated stops every later merge.
     _phase('Plan')
+    finish = [E for E, a in zip(R.order, pure('p.ids.map(id => resumeAction(p.by[id], p.s))', {'ids': R.order, 'by': R.by_id, 's': R.statuses})) if MODE == 'run' and a == 'finish-merge']
     done = {}
-    for idx, E in enumerate(R.order):
+    for E in finish + [x for x in R.order if x not in finish]:
+        idx = R.order.index(E)
         r = None
         for dep in R.by_id[E].get('deps') or []:
             if dep not in done:
-                continue  # dependency already on the target
+                continue  # dependency already on the target, or (for an interrupted merge) a new one that waits for it
             if not done[dep].get('ok'):
                 r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': hold_of(E) or 'dependency %s did not finish in this run' % dep}
                 break
@@ -2157,6 +2635,8 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
                 r = await run_deliverable(E, idx)
             except Exception as e:  # an unexpected failure of one deliverable is its result, not the end of the run
                 r = {'id': E, 'merged': False, 'ok': False, 'error': 'unexpected error: %s' % e, 'failKind': 'infra'}
+            if E in finish and not r.get('ok') and not R.integ_broken:
+                R.integ_broken = 'the interrupted merge of %s did not finish validation: %s' % (E, r.get('error') or 'not ok')
             if r.get('error') and not r.get('skipped'):
                 fk = r.get('failKind')
                 if fk == 'externo':
@@ -2175,12 +2655,13 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
                     if MODE != 'plan-only':
                         await blocked_record(E, r)
         done[E] = r
-        RESULTS.append(r)
-    return finish_run(selection)
+    RESULTS.extend(done[E] for E in R.order)
+    return await finish_run(selection)
 
 
-def finish_run(selection):
-    """The result of a plan-only or run invocation (the Report section of the .js without the report agent: the report stage is the merge task's)."""
+async def finish_run(selection):
+    """The result of a plan-only or run invocation (the Report section of the .js): the git truth by verify-run.mjs check (run mode, by
+    subprocess), the report written by the report agent (flash) and committed by the script on the target, the resume args."""
     _phase('Report')
     slim = [_slim(r) for r in RESULTS]
     owner = {
@@ -2202,10 +2683,65 @@ def finish_run(selection):
            dict(A, authorizeExternal=R.items + [R.foreign_item]), {'item': R.foreign_item})
     fixed = pure(PURE_RESUME_JS,{'results': slim, 'bound': R.bound, 'ops': OPS, 'notesRead': R.notes_read, 'resumeArgs': resume_args, 'A': A, 'items': R.items, 'resumeIds': resume_ids})
     OPS[:] = fixed['ops']
+    foreign_hold = R.foreign and not R.foreign_ok
+    # Final deterministic check: what the run claims is compared with git itself (verify-run.mjs check, signed, by subprocess).
+    truth = None
+    divergences = []
+    if MODE != 'plan-only':
+        claims = [{'id': r['id'], 'commit': r['merge']['mergeCommit']} for r in RESULTS if r.get('merged') and r.get('merge') and r['merge'].get('mergeCommit')]
+        nonce = '%s:check' % R.run_tag
+        payload = {'nonce': nonce, 'repo': R.repo, 'intwt': R.int_wt, 'wtRoot': R.wt, 'target': R.target, 'lastGood': R.last_good, 'order': R.order, 'claims': claims,
+                   'reported': [{'id': r['id'], 'merged': r['merged'], 'broken': r['broken'], 'planOnly': r['planOnly']} for r in slim], 'integBroken': bool(R.integ_broken or foreign_hold)}
+        ck = run_cli(['node', R.verify_run, 'check', _enc_arg(payload)])
+        v = _check_run(ck['stdout'], 'verify-run', nonce)
+        if v.get('ok') and v['data'].get('mode') == 'check' and v['data'].get('truth') and isinstance(v['data'].get('divergences'), list):
+            truth, divergences = v['data']['truth'], v['data']['divergences']
+        else:
+            divergences = ['the git truth check returned nothing (%s): verify the target branch by hand' % (v.get('why') or ck['stderr'].strip() or 'no output')]
+    for d in divergences:
+        op('divergence', None, d, 'Check git log and git status of the target', None)
+    ids = '-'.join(R.order)[:60]
+    report_path = pure('reportPathFor(p.t, p.i)', {'t': R.today, 'i': ids})
+    write = not (R.integ_broken or foreign_hold)
+    ext_run = [e for r in RESULTS for e in (r.get('externalRun') or [])]
+    unreviewed = any(e.get('reviewed') is False for e in ext_run)
+    where = ("The integration worktree is %s: do NOT write a file or commit, only build the execution report and return the text." % ('compromised' if R.integ_broken else "the person's checkout and was not authorized")
+             if not write else 'Write the EXECUTION REPORT to %s/%s. Do not commit: the caller commits only that file on %s.' % (R.int_wt, report_path, R.target))
+    prompt = '\n'.join([
+        common_slim(), '',
+        '%s Write it in the language of the roadmap.' % where,
+        'Git truth measured by the script (verify-run.mjs check; null in plan-only mode): %s' % json.dumps(truth, ensure_ascii=True),
+        'Divergences between the run and the git truth (each one is already an operator action): %s' % json.dumps(divergences, ensure_ascii=True),
+        'Selection: %s' % json.dumps(selection, ensure_ascii=True),
+        'Results (summary per deliverable; details in the reviews.md log of each branch, under docs/plans/<roadmap slug>-<E>/): %s' % json.dumps(slim, ensure_ascii=True),
+        'Operator actions: %s' % json.dumps([dict(o, resumeWith=pure('withoutConfig(p)', o.get('resumeWith'))) for o in OPS], ensure_ascii=True),
+        'Resume args: %s' % json.dumps(pure('withoutConfig(p)', fixed['resume']), ensure_ascii=True),
+        'Owner review: %s' % json.dumps(owner, ensure_ascii=True),
+        'Authorizations given for this run: %s' % json.dumps(R.items, ensure_ascii=True),
+        'External effects authorized and run: %s%s' % (json.dumps(ext_run, ensure_ascii=True), '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' if unreviewed else ''),
+        'Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in %sdecisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of %s into %s and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured after the docs record from brief --json (result.checker: errors, warnings, folder, stale): %s; do not run the checker file yourself; (5) leftovers (strays, worktrees) from the git truth.' % (
+            R.rm, R.target, R.integ, json.dumps(R.checkers, ensure_ascii=True)),
+        'Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[%s: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text in report.' % RAN_MARK,
+    ])
+    rep = await call_agent('report', prompt, {'type': 'object', 'properties': {'report': _STR}, 'required': ['report']})
+    report = rep.get('report') if isinstance(rep, dict) else (rep if isinstance(rep, str) else None)
+    report = report if isinstance(report, str) and report.strip() else None
+    path_out = None
+    if report and write:
+        if os.path.isfile(R.int_wt + '/' + report_path):
+            cm = commit_file(R.int_wt, report_path, 'docs: execution report %s' % ids)
+            if cm.get('ok') and cm.get('blob'):
+                path_out = report_path
+            else:
+                op('report', None, 'the execution report %s was written but not committed on %s: %s' % (report_path, R.target, cm.get('error') or 'nothing committed'), 'Commit the file yourself on %s, or rebuild it from this result' % R.target, None)
+        else:
+            op('report', None, 'the report agent returned the report but did not write %s, so there is no execution report file' % report_path, 'Write the report text of this result to that file and commit it on %s' % R.target, None)
+    if not report and MODE != 'plan-only':
+        op('report', None, 'the report agent returned nothing, so there is no execution report file', 'Rebuild the report from this result (results, truth, operatorActions)', None)
     all_ok = all(r['merged'] or r['planOnly'] for r in slim)
     needs = any(o.get('kind') != 'note' for o in OPS)  # a note (minBudgetPerDeliverable is ignored) asks for nothing
-    return mk_result('needs-operator' if needs else ('done' if all_ok else 'partial'), selection=selection, results=slim, ownerReview=owner, truth=None,
-                     lastGood=R.last_good, resumeArgs=fixed['resume'], reportPath=None, report=None)
+    return mk_result('needs-operator' if needs else ('done' if all_ok else 'partial'), selection=selection, results=slim, ownerReview=owner, truth=truth,
+                     lastGood=R.last_good, resumeArgs=fixed['resume'], reportPath=path_out, report=report)
 
 
 async def main():

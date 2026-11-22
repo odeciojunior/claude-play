@@ -424,6 +424,9 @@ const REVIEW_OK = (extra = {}) => ({ issues: [], summary: 'ok', headSha: 'abc', 
 const ISSUE = (description, extra = {}) => ({ severity: 'critical', category: 'defeito', description, file: 'x.md', ...extra });
 const authorWrites = (file, text) => ({ $effects: [{ write: file, text }], $value: { ok: true } });
 const logWriter = (repo) => ({ $effects: [{ write: path.join(artDir(repo, 'E1'), 'reviews.md'), text: '# Review log\n' }], $value: { ok: true } });
+// The report agent (flash) writes the execution report in the integration worktree; the script commits it.
+const REPORT_PATH = 'docs/reports/2026-01-05-E1-run.md';
+const reportWriter = (repo) => ({ $effects: [{ write: path.join(`${repo}-wt`, '_integracao', ...REPORT_PATH.split('/')), text: '# Execution report\n' }], $value: { report: '# Execution report' } });
 const planOnlyArgs = (repo, extra = {}) => baseArgs(repo, { mode: 'plan-only', deliverables: ['E1'], ...extra });
 const roles = (calls) => calls.map((c) => c.role);
 const modelsOf = (calls, role) => calls.filter((c) => c.role === role).map((c) => c.model);
@@ -437,6 +440,7 @@ function okResponses(repo, over = {}) {
     'plan-author': authorWrites(path.join(artDir(repo, 'E1'), 'plan.md'), pT),
     'plan-review': REVIEW_OK({ measuredPlanBlob: gitBlob(pT) }),
     'review-log': logWriter(repo),
+    report: reportWriter(repo),
     ...over,
   };
 }
@@ -448,8 +452,8 @@ pyTest('T5 plan-only: roles and models in order, spec and plan committed by git,
     assert.equal(r.result.error, undefined, JSON.stringify(r.result.operatorActions));
     assert.equal(r.result.status, 'done', JSON.stringify(r.result));
     assert.equal(r.result.mode, 'plan-only');
-    assert.deepEqual(roles(r.calls), ['spec-author', 'spec-review', 'plan-author', 'plan-review', 'review-log']);
-    assert.deepEqual(r.calls.map((c) => c.model), ['pro', 'pro', 'pro', 'pro', 'flash']);
+    assert.deepEqual(roles(r.calls), ['spec-author', 'spec-review', 'plan-author', 'plan-review', 'review-log', 'report']);
+    assert.deepEqual(r.calls.map((c) => c.model), ['pro', 'pro', 'pro', 'pro', 'flash', 'flash']);
     assert.ok(r.calls.every((c) => c.type_name === 'self'));
     for (const forbidden of ['script-runner', 'setup', 'sanitize', 'rollback', 'cleanup', 'test-integrity', 'spec-load', 'plan-load', 'preflight', 'spec-commit', 'plan-commit']) {
       assert.ok(!roles(r.calls).includes(forbidden), `${forbidden} is a subprocess, not an agent`);
@@ -481,9 +485,11 @@ pyTest('T5 plan-only: roles and models in order, spec and plan committed by git,
     assert.equal(row.spec, 'docs/plans/x-E1/spec.md');
     assert.equal(row.plan, 'docs/plans/x-E1/plan.md');
     assert.equal(row.tasks, 0, 'task results exist only in run mode');
-    assert.equal(r.result.report, null);
+    assert.equal(r.result.report, '# Execution report');
     assert.match(r.result.lastGood, /^[0-9a-f]{40}$/);
-    assert.equal(r.result.reportPath, null);
+    assert.equal(r.result.reportPath, REPORT_PATH);
+    assert.ok(subjects(repo, 'main..release/sample').some((s) => /^docs: execution report E1$/.test(s)), 'the report is a mechanical commit on the target');
+    assert.equal(r.result.truth, null, 'plan-only measures no git truth');
   } finally {
     rmAll(repo);
   }
@@ -740,7 +746,9 @@ pyTest('T5 plan-only: the target checked out in the checkout of the person is no
     git(repo, 'checkout', '-q', '-b', 'release/sample');
     const head = git(repo, 'rev-parse', 'HEAD');
     const r = runWorkflow(planOnlyArgs(repo), okResponses(repo));
-    assert.deepEqual(r.calls, []);
+    assert.deepEqual(roles(r.calls), ['report'], 'only the report, told not to write');
+    assert.match(r.calls[0].prompt, /do NOT write a file or commit/);
+    assert.equal(r.result.reportPath, null);
     assert.equal(r.result.results[0].failKind, 'externo');
     assert.equal(r.result.status, 'needs-operator');
     const a = r.result.operatorActions.find((x) => x.kind === 'authorize-external');
@@ -841,6 +849,7 @@ function runResponses(repo, over = {}) {
     'review-log': logWriter(repo),
     'gates-fix': { $effects: commitEffects(wt, {}, 'E1 gates-fix: remove BROKEN.txt', [{ git: ['-C', wt, 'rm', '-q', 'BROKEN.txt'] }]), $value: { status: 'DONE', summary: 'fixed', checks: [] } },
     'gates-fix-review': REVIEW_OK({ commitsInRange: 1 }),
+    report: reportWriter(repo),
     ...over,
   };
 }
@@ -851,7 +860,7 @@ pyTest('T6 run: tasks on the routed Gemini model, task-reviewer always pro, a re
     const r = runWorkflow(runArgs(repo), runResponses(repo));
     assert.equal(r.result.error, undefined, JSON.stringify(r.result));
     assert.deepEqual(roles(r.calls), ['gates', 'spec-author', 'spec-review', 'plan-author', 'plan-review', 'implementer', 'task-reviewer', 'task-reviewer', 'implementer', 'task-reviewer',
-      'task-reviewer', 'final-reviewer', 'final-reviewer', 'review-log', 'gates', 'gates-fix', 'gates-fix-review', 'review-log', 'gates']);
+      'task-reviewer', 'final-reviewer', 'final-reviewer', 'review-log', 'gates', 'gates-fix', 'gates-fix-review', 'review-log', 'gates', 'gates', 'report']);
     assert.deepEqual(modelsOf(r.calls, 'implementer'), ['flash_lite', 'pro'], 'agyModelFor(route.tier, route.effort) per task');
     assert.ok(modelsOf(r.calls, 'task-reviewer').length === 4 && modelsOf(r.calls, 'task-reviewer').every((m) => m === 'pro'));
     assert.deepEqual(modelsOf(r.calls, 'gates-fix'), ['flash']);
@@ -861,7 +870,7 @@ pyTest('T6 run: tasks on the routed Gemini model, task-reviewer always pro, a re
     assert.ok(r.calls.every((c) => c.type_name === 'self'));
     for (const forbidden of ['script-runner', 'test-integrity', 'setup', 'preflight', 'progress', 'sync']) assert.ok(!roles(r.calls).includes(forbidden), forbidden);
     // the Gemini tiers go to the dispatch only, never to the plan
-    const planFile = fs.readFileSync(path.join(`${repo}-wt`, 'E1', 'docs', 'plans', 'x-E1', 'plan.md'), 'utf8');
+    const planFile = git(repo, 'show', 'release/sample:docs/plans/x-E1/plan.md');
     assert.ok(!/flash|"pro"/.test(planFile), 'plan.md carries no Gemini tier');
     assert.match(r.calls[5].prompt, /Implement ONLY Task 1/);
     assert.match(r.calls[5].prompt, /test-first task/);
@@ -872,22 +881,20 @@ pyTest('T6 run: tasks on the routed Gemini model, task-reviewer always pro, a re
     const gateCall = r.calls[0];
     assert.match(gateCall.prompt, /tests 3 pass 3/);
     assert.ok(gateCall.schema.required.includes('name'));
-    const onBranch = subjects(repo, 'feat/E1');
+    const onBranch = subjects(repo, 'release/sample');
     for (const s of ['E1 T1: store', 'E1 T2: reload', 'E1 gates-fix: remove BROKEN.txt']) assert.ok(onBranch.includes(s), onBranch.join('|'));
     assert.ok(onBranch.some((s) => /^E1: review log/.test(s)));
-    assert.equal(git(path.join(`${repo}-wt`, 'E1'), 'status', '--porcelain'), '');
     // the executing record on the target through roadmap.mjs, with the in-flight entry
     assert.match(git(repo, 'log', '--format=%s', 'main..release/sample'), /docs\(roadmap\): E1 at /);
-    assert.match(git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md'), /feat\/E1/);
+    assert.ok(git(repo, 'log', '-p', '--format=', 'main..release/sample', '--', 'docs/plans/roadmap-x/state.md').includes('feat/E1'), 'the in-flight entry was added (and removed by the docs record)');
     const row = r.result.results[0];
     assert.equal(row.id, 'E1');
     assert.equal(row.tasks, 2);
-    assert.equal(row.merged, false);
-    assert.equal(row.readyToMerge, true, 'the merge is the next task: the branch is validated and waits');
-    assert.equal(r.result.status, 'partial');
-    assert.deepEqual(r.result.resumeArgs.deliverables, ['E1']);
-    // the run record kept the baseline (prep) for a resume
-    assert.ok(fs.existsSync(path.join(`${repo}-wt`, 'E1', 'docs', 'plans', 'x-E1', 'run.json')));
+    assert.equal(row.merged, true, 'the validated branch goes on to the merge');
+    assert.equal(r.result.status, 'done', JSON.stringify(r.result.operatorActions));
+    assert.equal('targetBranch' in r.result.resumeArgs, false, 'nothing left to resume: the resume args are the args of this run');
+    // the run record kept the baseline (prep) for a resume; it reached the target with the merge
+    assert.match(git(repo, 'show', 'release/sample:docs/plans/x-E1/run.json'), /prep/);
   } finally {
     rmAll(repo);
   }
@@ -1046,4 +1053,186 @@ test('T6 static: the run mode reuses the pure functions and the bridge, with no 
   for (const fn of ['externalHold', 'bindAuthorizations', 'testFirstGap', 'gateGroups', 'allPass', 'validMeasure', 'integrityAlerts', 'buildImplPrompt', 'buildTaskReviewPrompt']) {
     assert.ok(!new RegExp(`def ${fn}\\b`, 'i').test(src), `${fn} is evaluated from the .js or the lib, not reimplemented`);
   }
+});
+
+// ======================================================================== T7: merge, post-merge gates, rollback, docs, report and resume
+const intWt = (repo) => path.join(`${repo}-wt`, '_integracao');
+const stateRow = (repo, E = 'E1') => git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md').split('\n').find((l) => new RegExp(`^\\| ${E} \\|`).test(l));
+const isAncestor = (repo, a, b) => spawnSync('git', ['-C', repo, 'merge-base', '--is-ancestor', a, b]).status === 0;
+const DOCS_STAGE = 'Add one line for the deliverable to docs/CHANGELOG.md.';
+
+pyTest('T7 merge: a clean merge by git, post-merge gates, docs (flash) with mechanical commits, cleanup and the report (flash) end with status done', () => {
+  const repo = makeRunRepo();
+  try {
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, docsStage: DOCS_STAGE } }), runResponses(repo, { docs }));
+    assert.equal(r.result.status, 'done', JSON.stringify(r.result.operatorActions));
+    const row = r.result.results[0];
+    assert.equal(row.merged, true);
+    assert.equal(row.broken, false);
+    assert.match(row.merge.commit, /^[0-9a-f]{40}$/);
+    assert.equal(row.merge.conflicts, 0);
+    assert.equal(row.merge.docsOk, true);
+    // the merge is a commit of git, never of an agent: first parent the target before it, second the validated branch head
+    assert.equal(git(repo, 'log', '-1', '--format=%s', row.merge.commit), 'merge: E1 in release/sample');
+    assert.equal(git(repo, 'log', '-1', '--format=%an', row.merge.commit), 'T');
+    for (const forbidden of ['merge', 'rollback', 'cleanup', 'merge-fix', 'conflict-review', 'script-runner']) assert.ok(!roles(r.calls).includes(forbidden), forbidden);
+    assert.deepEqual(modelsOf(r.calls, 'docs'), ['flash']);
+    assert.deepEqual(modelsOf(r.calls, 'report'), ['flash']);
+    assert.ok(r.calls.find((c) => c.role === 'docs').prompt.includes(DOCS_STAGE));
+    // docs: the project file and the roadmap record (on-branch, out of the in-flight block) are on the target
+    const onTarget = subjects(repo, 'main..release/sample');
+    assert.ok(onTarget.includes('docs: E1 on release/sample'), onTarget.join('|'));
+    assert.match(git(repo, 'show', 'release/sample:docs/CHANGELOG.md'), /E1: walking skeleton/);
+    assert.match(stateRow(repo), /^\| E1 \| on-branch \|/);
+    assert.doesNotMatch(git(repo, 'show', 'release/sample:docs/plans/roadmap-x/state.md'), /feat\/E1/);
+    // the report: written by the agent, committed by the script; the git truth measured by verify-run check
+    assert.equal(r.result.reportPath, REPORT_PATH);
+    assert.equal(git(repo, 'show', `release/sample:${REPORT_PATH}`), '# Execution report');
+    assert.match(r.calls.find((c) => c.role === 'report').prompt, /Write the EXECUTION REPORT to .*_integracao\/docs\/reports\/2026-01-05-E1-run\.md/);
+    assert.deepEqual(r.result.truth.mergedIds, ['E1']);
+    assert.equal(r.result.truth.lastGoodReachable, true);
+    assert.ok(isAncestor(repo, r.result.lastGood, 'release/sample'));
+    // cleanup: the worktree and the branch of the deliverable are gone, the integration worktree is clean
+    assert.equal(fs.existsSync(path.join(`${repo}-wt`, 'E1')), false);
+    assert.equal(spawnSync('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', 'refs/heads/feat/E1']).status, 1);
+    assert.equal(git(intWt(repo), 'status', '--porcelain'), '');
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T7 rollback: a post-merge gate that stays red after the merge-fix (flash, reviewed on pro) restores the target to the commit before the merge and lists the operator action', () => {
+  const repo = makeRunRepo();
+  try {
+    // green in the baseline and on the branch, red only in the integration worktree once src/s2.mjs arrives with the merge
+    const config = { ...RUN_CONFIG, gates: [...RUN_CONFIG.gates, { name: 'postmerge', cmd: 'case "$PWD" in *_integracao*) test ! -f src/s2.mjs;; esac', kind: 'exit' }] };
+    const r = runWorkflow(runArgs(repo, { config }), runResponses(repo, {
+      'merge-fix': { status: 'DONE', summary: 'nothing found to fix', checks: [] },
+      'merge-fix-review': REVIEW_OK({ commitsInRange: 0 }),
+    }));
+    assert.deepEqual(modelsOf(r.calls, 'merge-fix'), ['flash']);
+    assert.deepEqual(modelsOf(r.calls, 'merge-fix-review'), ['pro']);
+    assert.ok(!roles(r.calls).includes('rollback'), 'the rollback is git, not an agent');
+    const row = r.result.results[0];
+    assert.equal(row.merged, false);
+    assert.equal(row.failKind, 'conteudo');
+    assert.match(row.error, /^not merged: post-merge gates failed: /);
+    assert.equal(r.result.status, 'needs-operator');
+    const act = r.result.operatorActions.find((a) => a.kind === 'defect' && a.deliverable === 'E1');
+    assert.ok(act, JSON.stringify(r.result.operatorActions));
+    assert.match(act.what, /post-merge gates failed/);
+    // the merge commit is gone from the target, which is clean; the blocked record went on top of the restored commit
+    assert.ok(!subjects(repo, 'release/sample').some((s) => /^merge: E1 /.test(s)));
+    assert.equal(isAncestor(repo, 'feat/E1', 'release/sample'), false);
+    assert.equal(git(intWt(repo), 'status', '--porcelain'), '');
+    assert.match(stateRow(repo), /blocked/);
+    assert.ok(isAncestor(repo, r.result.lastGood, 'release/sample'));
+    assert.deepEqual(r.result.truth.mergedIds, []);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T7 conflict: the target moved after the last sync: the late sync (flash) resolves the conflict, conflict-review and delta-review run on pro, the branch gates run again and the merge lands', () => {
+  const repo = makeRunRepo();
+  try {
+    const wt = path.join(`${repo}-wt`, 'E1');
+    const iw = intWt(repo);
+    // T2 leaves the gates green, so the branch is measured once; while it is read, another change lands on the target
+    const implementer = [runResponses(repo).implementer[0], { $effects: commitEffects(wt, { 'scripts/smoke.mjs': 'process.exit(0);\n', 'src/s2.mjs': 'export default 2;\n' }, 'E1 T2: reload'), $value: IMPL_DONE() }];
+    const landing = { $effects: commitEffects(iw, { 'src/s1.mjs': 'export default 9;\n' }, 'E9 T1: other'), $value: GATE_READ };
+    const resync = { $effects: [{ write: path.join(wt, 'src', 's1.mjs'), text: 'export default 1;\nexport const nine = 9;\n' }, { git: ['-C', wt, 'add', 'src/s1.mjs'] }, { git: ['-C', wt, 'commit', '-q', '--no-edit'] }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo), runResponses(repo, { implementer, gates: [GATE_READ, landing, GATE_READ], resync, 'conflict-review': REVIEW_OK({ commitsInRange: 1 }), 'delta-review': REVIEW_OK({ commitsInRange: 0 }) }));
+    assert.equal(r.result.status, 'done', JSON.stringify(r.result.operatorActions));
+    assert.deepEqual(modelsOf(r.calls, 'resync'), ['flash']);
+    assert.deepEqual(modelsOf(r.calls, 'conflict-review'), ['pro']);
+    assert.deepEqual(modelsOf(r.calls, 'delta-review'), ['pro']);
+    assert.match(r.calls.find((c) => c.role === 'resync').prompt, /conflicts in: src\/s1\.mjs/);
+    assert.match(r.calls.find((c) => c.role === 'conflict-review').prompt, /show --cc [0-9a-f]{40}/);
+    const rs = roles(r.calls);
+    assert.ok(rs.indexOf('delta-review') < rs.lastIndexOf('gates'), 'the branch gates run again after the late sync');
+    const row = r.result.results[0];
+    assert.equal(row.merged, true);
+    assert.equal(git(repo, 'show', 'release/sample:src/s1.mjs'), 'export default 1;\nexport const nine = 9;');
+    assert.ok(subjects(repo, 'release/sample').includes('E9 T1: other'));
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('T7 resume: a run interrupted after the Plan goes on with the Tasks, without writing or reviewing the spec and the plan again', () => {
+  const repo = makeRunRepo();
+  try {
+    const first = runWorkflow(runArgs(repo), runResponses(repo, { implementer: null }));
+    assert.equal(first.result.results[0].failKind, 'infra');
+    assert.match(first.result.results[0].error, /^task 1: null implementer/);
+    const infra = first.result.operatorActions.find((a) => a.kind === 'infra');
+    assert.deepEqual(infra.resumeWith.deliverables, ['E1']);
+    assert.equal('runToken' in infra.resumeWith, false);
+    const again = runWorkflow({ ...infra.resumeWith, runToken: 'tok-agy-2' }, runResponses(repo));
+    const rs = roles(again.calls);
+    for (const stage of ['spec-author', 'spec-review', 'plan-author', 'plan-review']) assert.ok(!rs.includes(stage), `${stage} is not redone: ${rs.join(',')}`);
+    assert.equal(rs.filter((x) => x === 'implementer').length, 2);
+    assert.equal(again.result.results[0].merged, true, JSON.stringify(again.result.results[0]));
+    const onTarget = subjects(repo, 'release/sample');
+    assert.equal(onTarget.filter((x) => x === 'E1: spec').length, 1, 'one spec commit');
+    assert.equal(onTarget.filter((x) => x === 'E1: plan').length, 1, 'one plan commit');
+  } finally {
+    rmAll(repo);
+  }
+});
+
+// A merge of E1 already on the target without its post-merge record, and the merge weakened a test.
+function makeInterruptedMerge() {
+  const repo = makeRunRepo();
+  git(repo, 'branch', 'release/sample', 'main');
+  git(repo, 'checkout', '-q', '-b', 'feat/E1', 'release/sample');
+  fs.writeFileSync(path.join(repo, 'tests', 'old.test.mjs'), "import assert from 'node:assert/strict';\nassert.equal(1, 1);\nassert.equal(2, 2);\n");
+  git(repo, 'commit', '-q', '-am', 'E1 T1: weaken');
+  git(repo, 'checkout', '-q', 'release/sample');
+  git(repo, 'merge', '-q', '--no-ff', 'feat/E1', '-m', 'merge: E1 in release/sample');
+  const sha = git(repo, 'rev-parse', 'HEAD');
+  git(repo, 'checkout', '-q', 'main');
+  return { repo, sha };
+}
+const RESUME_LOG = { found: false, acceptedRisks: [], humanInputs: [], ac: [], externalRun: [] };
+
+pyTest('T7 resume: an interrupted merge with test-integrity alerts stays broken under acceptIntegrityAlerts with another SHA, and finishes only with the exact SHA', () => {
+  const { repo, sha } = makeInterruptedMerge();
+  try {
+    const resp = { gates: GATE_READ, 'review-log': RESUME_LOG, report: reportWriter(repo) };
+    const wrong = runWorkflow(runArgs(repo, { acceptIntegrityAlerts: { E1: sha.slice(0, 12) } }), { ...resp, report: { report: '# Execution report' } });
+    const row = wrong.result.results[0];
+    assert.equal(row.merged, true, JSON.stringify(wrong.result));
+    assert.equal(row.broken, true);
+    assert.ok(!roles(wrong.calls).includes('spec-author'), 'a finish-merge redoes no stage of the deliverable');
+    const act = wrong.result.operatorActions.find((a) => a.kind === 'merge-rejected');
+    assert.ok(act.what.includes(`the merge ${sha} weakened the tests: 1 assertions removed without replacement`), act.what);
+    assert.ok(act.doNow.includes(`acceptIntegrityAlerts:{"E1":"${sha}"}`), act.doNow);
+    assert.equal(wrong.result.reportPath, null, 'a broken integration writes no report file');
+    assert.doesNotMatch(stateRow(repo), /on-branch/);
+    const ok = runWorkflow(runArgs(repo, { acceptIntegrityAlerts: { E1: sha } }), resp);
+    assert.equal(ok.result.results.length, 1, JSON.stringify(ok.result));
+    const row2 = ok.result.results[0];
+    assert.equal(row2.broken, false, JSON.stringify(ok.result.operatorActions));
+    assert.equal(row2.merged, true);
+    assert.ok(row2.concerns.some((c) => c.includes(`the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge ${sha}`)), row2.concerns.join('|'));
+    assert.match(stateRow(repo), /^\| E1 \| on-branch \|/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+test('T7 static: merge, rollback, docs, cleanup and the truth check are git and subprocesses; the judgement stages keep their Gemini model', () => {
+  const src = lf(fs.readFileSync(WORKFLOW, 'utf8'));
+  for (const fn of ['mergeParentsOk', 'mergeFloor', 'refreshBaseline', 'needsDeltaReview', 'postMergeFixArgs', 'integrityAckMatches', 'reportPathFor']) {
+    assert.ok(src.includes(fn + '('), `${fn} is evaluated from the .js`);
+    assert.ok(!new RegExp(`def ${fn}\\b`, 'i').test(src), `${fn} is not reimplemented`);
+  }
+  assert.match(src, /'merge', '--no-ff'/);
+  assert.match(src, /'reset', '--hard'/);
+  assert.match(src, /'check', _enc_arg\(/);
+  assert.match(src, /'procs', _enc_arg\(/);
+  assert.doesNotMatch(src, /readyToMerge/, 'the merge is no longer left to a later task');
 });
