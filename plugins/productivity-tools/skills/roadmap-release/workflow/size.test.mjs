@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 // o limite é de 524.288 bytes (512 KiB) do arquivo (acima disso o workflow some e a chamada responde
 // "not found"); mesmo em CRLF, 300.000 caracteres ficam perto de 303 mil bytes (~57% do limite real).
 // Crescimento acima deste teto pede nova decisão, não aumento silencioso.
+// O arquivo tem de ficar abaixo de 290.000 caracteres LF, o gatilho da DEC-003, pela folga de 10.000 da DEC-034.
 export const MAX_WORKFLOW_CHARS = 300000;
 
 const WF = new URL('./roadmap-release.js', import.meta.url);
@@ -18,7 +19,7 @@ export const workflowChars = (text) => text.replace(/\r\n/g, '\n').length;
 test('the release workflow stays within the size launched by name', () => {
   const size = workflowChars(readFileSync(WF, 'utf8'));
   assert.ok(size <= MAX_WORKFLOW_CHARS, `roadmap-release.js has ${size} chars, cap is ${MAX_WORKFLOW_CHARS}`);
-  assert.ok(MAX_WORKFLOW_CHARS - size > 50000, `roadmap-release.js slack is ${MAX_WORKFLOW_CHARS - size} chars, expected > 50000`);
+  assert.ok(MAX_WORKFLOW_CHARS - size > 10000, `roadmap-release.js slack is ${MAX_WORKFLOW_CHARS - size} chars, expected > 10000 (DEC-034: stay below the 290000 trigger of DEC-003)`);
 });
 
 test('a CRLF working copy measures the same as the committed LF text', () => {
