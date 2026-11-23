@@ -612,6 +612,7 @@ def review_prompt(s, rep):
         'Summary: %s' % summary,
         checks,
         'Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty (false is expected while the step is uncommitted); commitsInRange = 0.',
+        'Do not spawn subagents.',
     ])
 
 
@@ -622,6 +623,7 @@ def prelaunch_prompt(s):
         'Brief of the step: %s. Read it and check that it names the exact external effect and its target, says how a repeat is avoided (externalDedupe), lists the checks that prove the result and needs nothing that is not written there. Never read the plan file.' % brief_of(s),
         'Files of the step: %s.' % (', '.join(files_of(s)) if files_of(s) else 'none'),
         'Measure: headSha = git -C %s rev-parse HEAD; clean = git status --porcelain empty; commitsInRange = 0. Set spec to fail when the brief cannot be executed once, as written, without asking anyone.' % shq(ROOT),
+        'Do not spawn subagents.',
     ])
 
 
@@ -642,6 +644,7 @@ def final_prompt():
         bl_text,
         'Look for broken contracts between steps, regressions outside the changed files and acceptance criteria with no test. Give each finding its file.',
         'Measure: headSha = git rev-parse HEAD; clean = git status --porcelain empty; commitsInRange = git -C %s rev-list --count %s..HEAD.' % (shq(ROOT), base),
+        'Do not spawn subagents.',
     ])
 
 

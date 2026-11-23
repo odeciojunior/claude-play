@@ -109,6 +109,8 @@ function runWorkflow(args, responses = {}, workflow = WORKFLOW, snippet = undefi
     if (r.status !== 0) throw new Error(`python exited ${r.status}: ${r.stderr}`);
     const lines = r.stdout.split('\n').filter((l) => l.trim());
     const rec = JSON.parse(fs.readFileSync(out, 'utf8'));
+    // Every agent() of the agy path runs without subagents: each recorded prompt carries the rule.
+    for (const c of rec.calls) assert.ok(String(c.prompt).includes('Do not spawn subagents'), `prompt of ${c.role} lacks "Do not spawn subagents": ${String(c.prompt).slice(0, 200)}`);
     return { result: snippet ? null : JSON.parse(lines[lines.length - 1]), stdoutLines: lines.length, ...rec };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -478,6 +480,25 @@ function okResponses(repo, over = {}) {
     ...over,
   };
 }
+
+pyTest('T5 review log: an agent that answers but writes no file leaves a concern, not a silent loss', () => {
+  const repo = makeRepo();
+  try {
+    const r = runWorkflow(planOnlyArgs(repo), okResponses(repo, { 'review-log': { ok: true } }));
+    const row = r.result.results[0];
+    assert.ok(row.concerns.some((c) => /^review log.* not written: docs\/plans\/x-E1\/reviews\.md was not created$/.test(c)), row.concerns.join('|'));
+    assert.ok(!subjects(repo, 'feat/E1').some((s) => /^E1: review log/.test(s)));
+    const ok = makeRepo();
+    try {
+      const w = runWorkflow(planOnlyArgs(ok), okResponses(ok));
+      assert.ok(!w.result.results[0].concerns.some((c) => /^review log/.test(c)), w.result.results[0].concerns.join('|'));
+    } finally {
+      rmAll(ok);
+    }
+  } finally {
+    rmAll(repo);
+  }
+});
 
 pyTest('T5 plan-only: roles and models in order, spec and plan committed by git, tools and the record by subprocess', () => {
   const repo = makeRepo();
@@ -1347,6 +1368,48 @@ pyTest('T7 resume: an interrupted merge with test-integrity alerts stays broken 
     assert.equal(row2.merged, true);
     assert.ok(row2.concerns.some((c) => c.includes(`the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge ${sha}`)), row2.concerns.join('|'));
     assert.match(stateRow(repo), /^\| E1 \| on-branch \|/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+// E2 merged on the target without its post-merge record (an interrupted run), outside a run that asks only for E1.
+function makeInterruptedE2() {
+  const repo = makeRunRepo();
+  git(repo, 'branch', 'release/sample', 'main');
+  git(repo, 'checkout', '-q', '-b', 'feat/E2', 'release/sample');
+  fs.writeFileSync(path.join(repo, 'src-e2.mjs'), 'export default 2;\n');
+  git(repo, 'add', 'src-e2.mjs');
+  git(repo, 'commit', '-q', '-m', 'E2 T1: store');
+  git(repo, 'checkout', '-q', 'release/sample');
+  git(repo, 'merge', '-q', '--no-ff', 'feat/E2', '-m', 'merge: E2 in release/sample');
+  const sha = git(repo, 'rev-parse', 'HEAD');
+  git(repo, 'checkout', '-q', 'main');
+  return { repo, sha };
+}
+
+pyTest('C1: a run stops at selection when an interrupted merge is outside it (unfinished-merge), before any baseline, merge or agent', () => {
+  const { repo, sha } = makeInterruptedE2();
+  try {
+    const r = runWorkflow(runArgs(repo, { deliverables: ['E1'], approveRulings: { E1: ['k'] } }), runResponses(repo));
+    assert.equal(r.result.status, 'needs-operator', JSON.stringify(r.result));
+    assert.deepEqual(r.calls, [], 'no agent at all: no baseline reader, no implementer, no merge');
+    const acts = r.result.operatorActions.filter((a) => a.kind === 'unfinished-merge');
+    assert.equal(acts.length, 1, JSON.stringify(r.result.operatorActions));
+    const o = acts[0];
+    assert.equal(o.deliverable, 'E2');
+    assert.equal(o.what, 'the merge of E2 is on release/sample without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target');
+    assert.equal(o.doNow, 'Run again with E2 in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge. That validation replaces the panel row with the post-merge status, so an open blocker note or per-piece status on that row is lost. If the merge was already validated, keep the row instead: write its Status cell as "code: on-branch; <the existing segments>", which the workflow reads as finished, then run again');
+    assert.deepEqual(o.resumeWith.deliverables, ['E2', 'E1'], 'the interrupted one goes before the request');
+    assert.equal('approveRulings' in o.resumeWith, false);
+    assert.deepEqual(r.result.resumeArgs, o.resumeWith);
+    assert.deepEqual(r.result.results, []);
+    assert.equal(git(repo, 'rev-parse', 'release/sample'), sha, 'the target did not move: no merge');
+    assert.ok(!fs.existsSync(`${repo}-wt`) || fs.readdirSync(`${repo}-wt`).length === 0, 'no worktree was made: no baseline');
+    const dry = runWorkflow(runArgs(repo, { deliverables: ['E1'], mode: 'dry-run' }));
+    assert.equal(dry.result.status, 'done', 'dry-run only notes the interrupted merge');
+    assert.ok(dry.result.selection.notes.some((n) => /E2/.test(n) && /interrupted/.test(n)));
+    assert.deepEqual(dry.result.operatorActions, []);
   } finally {
     rmAll(repo);
   }

@@ -238,6 +238,8 @@ function runScript(args, scenario = {}) {
   }
   const events = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, 'utf8')) : [];
   fs.rmSync(path.dirname(out), { recursive: true, force: true });
+  // Every agent() of the agy path runs without subagents: each recorded prompt carries the rule.
+  for (const e of events) if (e.kind === 'agent') assert.ok(String(e.prompt).includes('Do not spawn subagents'), `prompt of ${e.role} lacks "Do not spawn subagents": ${String(e.prompt).slice(0, 200)}`);
   return { result, events, status: r.status, stderr: r.stderr };
 }
 const agents = (run, role) => run.events.filter((e) => e.kind === 'agent' && (!role || e.role === role));

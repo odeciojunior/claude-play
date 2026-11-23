@@ -286,7 +286,7 @@ def _donot_prompt(disc):
         for c in disc['cards'])
     return ('DO-NOT CHECK (read-only; change nothing). Return donotHolds: for each item below, { text: the item, affects: ids of the '
             'cards whose main object is exactly what the item forbids (read card title and criteria; "do not migrate X" only affects '
-            'the card that migrates X; when in doubt, do not list) }.\nItems:\n%s\nCards:\n%s' % (items, cards))
+            'the card that migrates X; when in doubt, do not list) }. Do not spawn subagents.\nItems:\n%s\nCards:\n%s' % (items, cards))
 
 
 def _validate_args(cfg, token):
@@ -669,7 +669,7 @@ async def read_tests_gate(d, r):
     prompt = ('GATE OUTPUT READER (read-only; run nothing, change nothing, no tools needed). The gate "%s" (kind tests) ran `%s` and exited %s. '
               'Read its output below and return { name, ran: true, exit: %s, total, skipped, failedNames }: total = tests executed, skipped = tests skipped, '
               'failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)). '
-              'A non-zero exit requires failedNames and failedNames require a non-zero exit. Real numbers from the output, never estimates.\nOUTPUT:\n%s'
+              'A non-zero exit requires failedNames and failedNames require a non-zero exit. Real numbers from the output, never estimates. Do not spawn subagents.\nOUTPUT:\n%s'
               % (d.get('name'), d.get('cmd'), r['exit'], r['exit'], text))
     for _ in range(2):
         g = await call_agent('gates', prompt, SCHEMAS['S_GATE'])
@@ -1090,9 +1090,14 @@ class Deliverable(object):
         if w is None:
             o['concerns'].append('review log%s not written: null agent' % label)
             return
+        if not os.path.isfile(os.path.join(self.wt, self.ap['reviews'])):  # the agent answered without writing: git add would only fail on the pathspec
+            o['concerns'].append('review log%s not written: %s was not created' % (label, self.ap['reviews']))
+            return
         cm = commit_file(self.wt, self.ap['reviews'], '%s: review log%s' % (self.E, label))
         if not cm.get('ok'):
             o['concerns'].append('review log%s not committed: %s' % (label, cm.get('error')))
+        elif not cm.get('commit') and not cm.get('blob'):  # nothing committed and the file is not in HEAD: the agent did not write it
+            o['concerns'].append('review log%s not written: %s was not created' % (label, self.ap['reviews']))
 
     def rec_approve(self, stages, tip=None):
         """run-record.mjs approve: the run record of the approved spec/plan (and, in run mode, the baseline for a resume). A failure is ignored."""
@@ -1280,7 +1285,7 @@ class Deliverable(object):
                   'humanInputs = every item of the "Depends on human input" section of the spec plus every human input listed in the review log (what, blq when named, workaround, blocking), one entry per distinct item; empty list when there are none. '
                   'ac = every row of the "Acceptance criteria evidence" section of the plan (ac = the criterion id alone; kind = test, smoke, integration, human or blocked; blq when named); empty list when the plan or the section is absent. '
                   'externalRun = every line of the "External effects run" section of the review log (item, title, command, status, exit, reviewed, each only when written), one entry per distinct item and command; empty list when the section is absent. '
-                  'Transcribe faithfully, do not invent.') % (d or self.wt, ap['reviews'], ap['spec'], ap['plan'])
+                  'Transcribe faithfully, do not invent. Do not spawn subagents.') % (d or self.wt, ap['reviews'], ap['spec'], ap['plan'])
         return await self.ask('review-log', prompt, 'S_RESUMELOG')
 
     def restore_from_log(self, rl, unsettled=()):
@@ -2767,7 +2772,7 @@ async def finish_run(selection):
         'External effects authorized and run: %s%s' % (json.dumps(ext_run, ensure_ascii=True), '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' if unreviewed else ''),
         'Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in %sdecisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of %s into %s and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured after the docs record from brief --json (result.checker: errors, warnings, folder, stale): %s; do not run the checker file yourself; (5) leftovers (strays, worktrees) from the git truth.' % (
             R.rm, R.target, R.integ, json.dumps(R.checkers, ensure_ascii=True)),
-        'Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[%s: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text in report.' % RAN_MARK,
+        'Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[%s: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Do not spawn subagents. Return the report text in report.' % RAN_MARK,
     ])
     rep = await call_agent('report', prompt, {'type': 'object', 'properties': {'report': _STR}, 'required': ['report']})
     report = rep.get('report') if isinstance(rep, dict) else (rep if isinstance(rep, str) else None)
@@ -2899,6 +2904,16 @@ async def _main():
     selection = plan['selection']
     R.selection = selection
     _log('selection: %s' % (' -> '.join(plan['order']) or '(empty)'))
+    interrupted = plan.get('interrupted') or []
+    if MODE == 'run' and plan['order'] and interrupted:
+        tgt, sam = plan.get('target'), plan.get('statusAfterMerge')
+        resume_with = dict(without_approve(A), deliverables=list(interrupted) + list(plan['order']))
+        for eid in interrupted:
+            op('unfinished-merge', eid,
+               'the merge of %s is on %s without a post-merge status and is outside this selection, so later merges would be measured on an unvalidated target' % (eid, tgt),
+               'Run again with %s in deliverables so it is validated first (if a "do not" veto holds it, decide on overrideDonot), or revert the merge. That validation replaces the panel row with the post-merge status, so an open blocker note or per-piece status on that row is lost. If the merge was already validated, keep the row instead: write its Status cell as "code: %s; <the existing segments>", which the workflow reads as finished, then run again' % (eid, sam),
+               resume_with)
+        return mk_result('needs-operator', selection=selection, resumeArgs=resume_with)
     if MODE == 'dry-run' or not plan['order']:
         return mk_result('done' if plan['order'] else 'partial', selection=selection)
     return await run_deliverables(disc, plan, cfg, token, items, gates, selection)
