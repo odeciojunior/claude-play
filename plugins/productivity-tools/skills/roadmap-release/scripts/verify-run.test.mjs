@@ -843,3 +843,78 @@ test('E38 AC1 (B11): selectProcs and runProcs cut ancestry when a parent pid was
   assert.deepEqual(r.unchecked, ['pid 90 listens on port 5212 in the range, but neither it nor an ancestor carries the worktree path: not ended']);
   assert.deepEqual(kills, [['/PID', '91', '/T', '/F'], ['/PID', '80', '/T', '/F']]);
 });
+
+// ---- E41 T8: read in slices (field `slice`), each copy under SLICE_BYTES
+function fakeCli() {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vr-fake-')));
+  const file = join(dir, 'fake-cli.mjs');
+  const src = `
+const verb = process.argv[2];
+const note = (c) => c.repeat(200) + ' BLQ-1';
+const ok = (result) => console.log(JSON.stringify({ tool: 'roadmap', summary: { exitCode: 0 }, result }));
+if (verb === 'status') ok({ panel: [{ id: 'E1', segments: ['a', 'b', 'c', 'd'].map((l) => ({ label: l, word: 'w' + l, note: note('\u00e9') })), evidence: 'e'.repeat(200), next: 'n'.repeat(200) }] });
+else if (verb === 'brief') ok({ checker: { folder: 'f'.repeat(200), plugin: 'p', stale: false, errors: 0, warnings: 10, errorCodes: [], warningCodes: Array.from({ length: 10 }, (_, i) => 'W' + 'w'.repeat(30) + i) } });
+else ok({ decisions: Array.from({ length: 100 }, (_, i) => ({ id: 'DEC-' + String(1e15 + i) })) });
+`;
+  writeFileSync(file, src);
+  return file;
+}
+const sliceRun = (r, cli, k, nonce = 'rd-1', extra = {}) => run('read', sign({ nonce, cwd: r.dir, cli, folder: r.dir, deliverable: 'E1', ...(k === undefined ? {} : { slice: k }), ...extra }));
+
+test('E41 T8: read with slice returns envelopes up to 3072 bytes that checkSlice accepts and joinSlices rebuilds buildRead', async () => {
+  const { checkSlice, joinSlices, SLICE_BYTES } = await import('../../../lib/plan-digest.mjs');
+  const { buildRead } = await import('./verify-run.mjs');
+  const r = repo();
+  const cli = fakeCli();
+  const first = sliceRun(r, cli, 0);
+  assert.equal(first.exit, 0, first.stdout);
+  const n = first.json.slices;
+  assert.ok(n >= 2, 'the fake output needs more than one slice: ' + n);
+  const envs = [];
+  for (let k = 0; k < n; k++) {
+    const o = k === 0 ? first : sliceRun(r, cli, k);
+    assert.equal(o.exit, 0, o.stdout);
+    assert.ok(Buffer.byteLength(o.stdout.replace(/\n$/, '')) <= SLICE_BYTES, String(Buffer.byteLength(o.stdout)));
+    assert.deepEqual(checkSlice(o.json, { tool: 'verify-run', command: 'read', nonce: 'rd-1', slice: k }), { ok: true, why: null });
+    envs.push(o.json);
+  }
+  const j = joinSlices(envs);
+  assert.equal(j.ok, true, j.why);
+  const run1 = (verb, extra = []) => { const x = spawnSync(process.execPath, [cli, verb, r.dir, ...extra, '--json'], { cwd: r.dir, encoding: 'utf8' }); return { exit: x.status, stdout: x.stdout }; };
+  const g = (...a) => { const x = spawnSync('git', a, { cwd: r.dir, encoding: 'utf8' }); return { exit: x.status, stdout: x.stdout }; };
+  const d = buildRead({ status: run1('status', ['--deliverable', 'E1']), brief: run1('brief'), pending: run1('pending-decisions'), head: g('rev-parse', 'HEAD'), porcelain: g('--no-optional-locks', 'status', '--porcelain') }, 'E1', undefined, '');
+  assert.equal(j.text, JSON.stringify(canon(d)));
+  const parsed = JSON.parse(j.text);
+  for (const key of ['tool', 'mode', 'nonce']) assert.equal(key in parsed, false);
+  assert.deepEqual(Object.keys(parsed).sort(), ['brief', 'clean', 'exits', 'head', 'pendingDecisions', 'porcelain', 'status']);
+});
+
+test('E41 T8: total.sha256 is the same across slices and across nonces', () => {
+  const r = repo();
+  const cli = fakeCli();
+  const a = sliceRun(r, cli, 0, 'nonce-a');
+  const b = sliceRun(r, cli, 1, 'nonce-a');
+  const c = sliceRun(r, cli, 0, 'a-very-different-nonce-b');
+  assert.equal(a.json.total.sha256, b.json.total.sha256);
+  assert.equal(a.json.total.sha256, c.json.total.sha256);
+  assert.equal(a.json.total.bytes, c.json.total.bytes);
+  assert.equal(c.json.nonce, 'a-very-different-nonce-b');
+  assert.equal(c.json.mode, 'read');
+});
+
+test('E41 T8: an invalid slice exits 2, an out-of-range slice names the slice count, and no slice keeps today\'s output', () => {
+  const r = repo();
+  const cli = fakeCli();
+  for (const bad of [-1, 1.5, '1', null, true]) assert.equal(sliceRun(r, cli, bad).exit, 2, String(bad));
+  const n = sliceRun(r, cli, 0).json.slices;
+  const out = sliceRun(r, cli, n);
+  assert.equal(out.exit, 2);
+  assert.ok(out.json.error.includes(n + ' slices'), out.json.error);
+  const plain = sliceRun(r, cli, undefined);
+  assert.equal(plain.exit, 0);
+  assert.equal(plain.json.mode, 'read');
+  assert.equal(plain.json.nonce, 'rd-1');
+  assert.equal('slice' in plain.json, false);
+  assert.ok(outDigest(plain.json));
+  assert.deepEqual(Object.keys(plain.json).slice(0, 4), ['tool', 'mode', 'nonce', 'exits']);
+});

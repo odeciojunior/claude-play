@@ -12,8 +12,9 @@
 //
 //   group payload: { nonce, digest, cwd, steps: [text], finally: { commit: { add: [paths], message: [m1, m2] } } | null }
 //     -> { tool: 'verify-run', mode: 'group', nonce, steps: [{ n, exit, out }], stopped: { n, exit } | null, commit, head, digest }
-//   read payload: { nonce, digest, cwd, cli, folder, deliverable, piece? }  (read-only: the CLI status --deliverable, brief and pending-decisions, git rev-parse HEAD, git status --porcelain)
+//   read payload: { nonce, digest, cwd, cli, folder, deliverable, piece?, slice? }  (read-only: the CLI status --deliverable, brief and pending-decisions, git rev-parse HEAD, git status --porcelain)
 //     -> { tool: 'verify-run', mode: 'read', nonce, exits, status, brief, pendingDecisions, head, porcelain, clean, digest }  (under 8000 characters: a final budget in buildRead guarantees it)
+//     -> with slice k (integer >= 0): the k-th envelope of sliceEnvelopes({ tool, mode, nonce }, JSON.stringify(canon(buildRead output))): { tool, mode, nonce, slice, slices, total: { sha256, bytes }, text, digest }, up to SLICE_BYTES; nonce and mode live only in the envelope, so total.sha256 is the same across slices and across nonces; joinSlices of lib/plan-digest.mjs rebuilds the text. A slice out of range is refused with the slice count (exit 2).
 //   check payload: { nonce, digest, repo, intwt, wtRoot, target, lastGood, order, claims: [{ id, commit }],
 //                    reported: [{ id, merged, broken, planOnly }], integBroken }
 //     -> { tool: 'verify-run', mode: 'check', nonce, ok, divergences, truth, digest }
@@ -30,7 +31,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync, realpathSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, sliceEnvelopes } from '../../../lib/plan-digest.mjs';
 
 const TOOL = 'verify-run';
 const OUT_CHARS = 2000;
@@ -192,7 +193,9 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece,
 
 export function runRead(p) {
   const cli = (verb, extra = []) => exec('node', [p.cli, verb, p.folder, ...extra, '--json'], p.cwd);
-  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['--no-optional-locks', 'status', '--porcelain']) }, p.deliverable, p.piece, p.nonce);
+  const sliced = p.slice !== undefined;
+  const r = buildRead({ status: cli('status', ['--deliverable', p.deliverable]), brief: cli('brief'), pending: cli('pending-decisions'), head: git(p.cwd, ['rev-parse', 'HEAD']), porcelain: git(p.cwd, ['--no-optional-locks', 'status', '--porcelain']) }, p.deliverable, p.piece, sliced ? '' : p.nonce);
+  if (sliced) return { slicedRead: r };
   return { tool: TOOL, mode: 'read', nonce: p.nonce, ...r };
 }
 
@@ -428,7 +431,7 @@ function openMarker(p) {
 
 const REQUIRED = {
   group: (p) => typeof p.cwd === 'string' && p.cwd && Array.isArray(p.steps) && p.steps.every((t) => typeof t === 'string'),
-  read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && (p.piece === undefined || typeof p.piece === 'string') && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
+  read: (p) => ['cwd', 'cli', 'folder', 'deliverable'].every((k) => typeof p[k] === 'string' && p[k]) && (p.piece === undefined || typeof p.piece === 'string') && (p.slice === undefined || (Number.isInteger(p.slice) && p.slice >= 0)) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(p.deliverable),
   check: (p) => ['repo', 'intwt', 'target'].every((k) => typeof p[k] === 'string' && p[k]) && (p.order === undefined || Array.isArray(p.order)),
   procs: (p) => typeof p.wt === 'string' && !!p.wt && Array.isArray(p.ports) && p.ports.length === 2 && p.ports.every(Number.isInteger),
 };
@@ -461,6 +464,14 @@ function cli(argv) {
     const body = JSON.stringify({ nonce: p.nonce, digest: p.digest, pid: process.pid, output: line });
     const tmp = marker.file + '.' + process.pid + '.tmp'; // atomic: a replay never reads half a file
     try { writeFileSync(tmp, body); try { renameSync(tmp, marker.file); } catch { writeFileSync(marker.file, body); try { unlinkSync(tmp); } catch { /* */ } } } catch { /* the output is still printed; a replay then refuses: the marker has no output */ }
+  }
+  if (result.slicedRead) {
+    const envs = sliceEnvelopes({ tool: TOOL, mode: 'read', nonce: p.nonce }, JSON.stringify(canon(result.slicedRead)));
+    if (p.slice >= envs.length) return refuse(`slice ${p.slice} is out of range: the read has ${envs.length} slices (0 to ${envs.length - 1})`, p.nonce);
+    process.exitCode = 0;
+    process.stdout.write(`${JSON.stringify(envs[p.slice])}
+`);
+    return;
   }
   return out(result, 0);
 }
