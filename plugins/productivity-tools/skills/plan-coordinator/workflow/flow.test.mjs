@@ -373,6 +373,7 @@ test('state divergence and plan changes stop the run', async () => {
     const r = await sim.go(launchArgs(sb));
     assert.equal(r.status, 'done', JSON.stringify(r));
     assert.equal(runnerCmds(sim).filter((c) => / read /.test(c)).length, 2, 'the read is repeated once');
+    assert.deepEqual(byAgent(sim, RUNNER).filter((c) => / read /.test(c.cmd)).map((c) => c.o.label), ['read-slice0', 'read-slice0-retry2'], 'only the slice that came back wrong is repeated');
   });
   // a write whose output was copied wrong: a new read, and the batch that already landed is not written twice
   await withSandbox(async (sb) => {
@@ -610,17 +611,18 @@ test('E12: a single event whose command alone is above the cap fails before any 
   assert.equal(readState(sb).steps[0].status, 'launched', 'nothing of the reports was written');
 }));
 
-test('E12: a state of many steps is read in signed pages and the run uses all of it', () => withSandbox(async (sb) => {
+test('E12: a state of many steps is read in signed slices and the run uses all of it', () => withSandbox(async (sb) => {
   const sim = makeSim(sb, { impl: (n) => ({ status: 'DONE', summary: longSummary(n), checks: [{ command: 'x', output: 'ok', exit: 0 }] }) });
   const r = await sim.go(launchArgs(sb));
   assert.equal(r.status, 'done', JSON.stringify(r));
   assert.equal(readState(sb).steps.length, 40);
-  // a new run over the big finished state reads it in pages and sees every step
+  // a new run over the big finished state reads it in slices and sees every step
   const sim2 = makeSim(sb);
   const r2 = await sim2.go(launchArgs(sb));
   assert.equal(r2.status, 'done', JSON.stringify(r2));
   const reads = runnerCmds(sim2).filter((c) => / read /.test(c));
-  assert.ok(reads.some((c) => / --page 1 /.test(c)), 'a second page was read: ' + reads.length);
+  assert.ok(reads.some((c) => / --slice 1 /.test(c)), 'a second slice was read: ' + reads.length);
+  assert.ok(reads.every((c) => !/ --page /.test(c)), 'no read by pages');
   assert.ok(runnerCmds(sim2).every((c) => c.length <= 6000));
   assert.equal(byAgent(sim2, IMPL).length, 0, 'every step is seen as passed');
 }, { plan: widePlan(40) }));

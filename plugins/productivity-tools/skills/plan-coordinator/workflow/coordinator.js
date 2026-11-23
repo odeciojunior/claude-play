@@ -1245,6 +1245,7 @@ if (typeof args.progress !== 'string' || args.progress.trim() === '') {
 const A = args
 const PROGRESS = slash(A.progress)
 const STATE_FILE = slash(A.state)
+const CAPTURE = PROGRESS.replace(/\/skills\/plan-coordinator\/scripts\/progress\.mjs$/, '/scripts/capture.mjs')
 // The run token stays only in the first read: every later nonce carries a hash of it, so a resume by the runtime re-runs everything live.
 const RUN_TAG = fnv1a(A.runToken)
 
@@ -1265,13 +1266,18 @@ const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required
 // ---------------------------------------------------------------- script-runner calls
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return exit=-1 with an empty stdout.'
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
-const runPrompt = (cmd, writes) => `Run this command once and return its exit code and its full stdout, literal${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
+// With json the command prints one JSON line: an agent copies it literally, and a line above the copy limit is an error of the command.
+const runPrompt = (cmd, writes, json) => `Run this command once and return its exit code and ${json ? `the one JSON line it prints, literal (a line above ${MAX_COPY_BYTES} bytes is an error of the command: return it as it is)` : 'its full stdout, literal'}${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
+// An output an agent copied must fit the copy limit, or it was cut.
+const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
+// sliceEnvelopes sizes a slice by the length of its nonce: all the slices of a read need nonces of one length, the one of the run token.
+const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`
 const runCmd = (cmd, label, o = {}) => {
   const over = cmdOverCap(cmd)
   if (over.refuse) return Promise.resolve({ exit: -1, stdout: `command of ${over.size} characters, above the limit of ${CMD_CAP}: not dispatched` })
-  return agent(runPrompt(cmd, o.writes),
+  return agent(runPrompt(cmd, o.writes, o.json),
     { agentType: 'productivity-tools:script-runner', label, phase: o.phase, schema: S_RUN, model: o.model || 'haiku', effort: o.effort || 'low' })
 }
 
@@ -1308,37 +1314,34 @@ const queue = (ev) => {
   queued.push(e)
 }
 
-// A signed read of progress.mjs. A read only, so it repeats: attempts 1-2 haiku, 3 sonnet. The first read carries the run token.
+// A signed read of progress.mjs, slice by slice (read --slice k): every envelope fits the copy limit and only a bad slice is repeated.
+// Per slice 3 tries (haiku, haiku, sonnet). Slices of different reads are refused by joinSlices and the read restarts once. Slice 0 of the first read carries the run token.
 const readSigned = async (label, first) => {
   let why = ''
-  for (let k = 1; k <= 3; k++) {
-    const nonce = first ? A.runToken : nonceOf()
-    const out = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(nonce)} --json`,
-      k === 1 ? label : `${label}-retry${k}`, { phase: 'Read', model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-    const data = parseJson(out && out.stdout)
-    const v = checkSigned(data, nonce, 'read')
-    if (!v.ok) { why = v.error; continue }
-    if (!data.state || data.state.schema !== 'progress/1' || !Array.isArray(data.state.steps) || typeof data.root !== 'string' || typeof data.now !== 'string') {
-      why = 'the signed read has no valid progress/1 state'
-      continue
+  for (let round = 0; round < 2; round++) {
+    const envs = []
+    for (let k = 0; k === 0 || k < envs[0].slices; k++) {
+      let env = null
+      for (let t = 1; t <= 3 && !env; t++) {
+        const nonce = first && k === 0 ? A.runToken : sliceNonce()
+        const out = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(nonce)} --slice ${k} --json`,
+          `${label}-slice${k}${t > 1 ? `-retry${t}` : ''}`, { phase: 'Read', json: true, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
+        if (!copyFits(out && out.stdout)) { why = 'the output of the read is larger than the copy limit'; continue }
+        const data = parseJson(out.stdout)
+        const v = checkSlice(data, { tool: 'progress', command: 'read', nonce, slice: k })
+        if (!v.ok) { why = v.why; continue }
+        if (k === 0 && !(Number.isInteger(data.slices) && data.slices >= 1 && data.slices <= 200)) { why = 'the first slice has no valid slice count'; continue }
+        env = data
+      }
+      if (!env) return { why }
+      envs.push(env)
     }
-    // A big state comes in pages (page 0 with the state, the others with steps only): every page is signed and carries the digest of the whole state.
-    const pages = Number.isInteger(data.pages) ? data.pages : 1
-    const steps = data.state.steps.slice()
-    let bad = ''
-    for (let pg = 1; pg < pages && !bad; pg++) {
-      const pn = nonceOf()
-      const po = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(pn)} --page ${pg} --json`,
-        `${label}-page${pg}`, { phase: 'Read', model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-      const pd = parseJson(po && po.stdout)
-      const pv = checkSigned(pd, pn, 'read')
-      if (!pv.ok) bad = pv.error
-      else if (pd.page !== pg || pd.stateDigest !== data.stateDigest || !Array.isArray(pd.steps)) bad = `page ${pg} of the signed read does not belong to the same state`
-      else steps.push(...pd.steps)
-    }
-    if (!bad && pages > 1 && stateDigest({ ...data.state, steps }) !== data.stateDigest) bad = 'the pages of the signed read do not add up to the state they sign'
-    if (bad) { why = bad; continue }
-    return { data: pages > 1 ? { ...data, state: { ...data.state, steps } } : data }
+    const j = joinSlices(envs)
+    if (!j.ok) { why = j.why; continue }
+    const p = parseJson(j.text)
+    if (!p || !p.state || p.state.schema !== 'progress/1' || !Array.isArray(p.state.steps) || typeof p.root !== 'string') { why = 'the signed read has no valid progress/1 state'; continue }
+    if (stateDigest(p.state) !== p.stateDigest) { why = 'the state of the signed read does not match the digest it signs'; continue }
+    return { data: { root: p.root, planChanged: p.planChanged, stateDigest: p.stateDigest, state: p.state, now: envs[envs.length - 1].now } }
   }
   return { why }
 }
@@ -1359,8 +1362,8 @@ const flushChunk = async (why, events) => {
   for (let attempt = 1; attempt <= 2; attempt++) {
     const nonce = nonceOf()
     const out = await runCmd(applyCmd(expect, events, nonce),
-      `apply:${why}${attempt > 1 ? '-retry' : ''}`, { phase: 'Read', writes: true })
-    const data = parseJson(out && out.stdout)
+      `apply:${why}${attempt > 1 ? '-retry' : ''}`, { phase: 'Read', writes: true, json: true })
+    const data = copyFits(out && out.stdout) ? parseJson(out.stdout) : null
     if (checkSigned(data, nonce, 'apply').ok) {
       if (data.ok !== true) {
         if (data.code === 'concurrent-change') return divergence('progress.json changed while the run was writing (concurrent-change); this chunk was not written')
