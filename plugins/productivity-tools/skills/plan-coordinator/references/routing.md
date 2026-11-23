@@ -58,5 +58,6 @@ Only when the host is Antigravity (`run_workflow` present, no `Workflow` tool), 
 - **Canonical state:** `plan.md` and `progress.json` hold only Claude tiers (haiku, sonnet, opus). The script translates at dispatch; a Gemini tier is never written to either file.
 - **Translation:** haiku -> flash_lite, sonnet -> flash, opus -> pro. A `(sonnet, high)` step is promoted to pro.
 - **Reviewers:** `agyReviewModel` is `pro` for every gate, and for every executor already on `pro`; `task-reviewer` and `final-reviewer` run on `pro`.
-- **Escalation:** `nextAgyTier` climbs flash_lite -> flash -> pro -> null (null means stop and hold the step).
+- **Escalation:** `nextAgyTier` (flash_lite -> flash -> pro -> null) is used only by `roadmap-release-agy.py` in the fix rounds; `coordinator-agy.py` redoes a step at the planned tier (§5).
+- **Experimental:** the path is experimental, with judgments (spec, plan, review) from a single model family, and must be checked before going to `main`.
 - `route(task, ctx)` and the plan digest are unchanged; only the dispatch differs.

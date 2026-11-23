@@ -245,6 +245,26 @@ export function toAgyRoute(r) {
 - **Ocultação automática de `roadmap-release` por `disable-model-invocation: true` (limitação de design, DEC-049/DEC-275):** o runtime do `agy` respeita `disable-model-invocation: true` (exigido por `lint-plugin.mjs` sempre que `allowed-tools` está presente), ocultando `roadmap-release` da lista automática `<skills>`. Mitigação: a skill continua operando no `agy` mediante invocação explícita do usuário/caminho.
 - **Auto-declaração de `agyRequestedBy` (limitação de runtime):** o `run_workflow` não fornece identidade assinada do chamador ao Python, portanto um chamador já em execução poderia passar `agyRequestedBy` arbitrariamente. Mitigação: os `SKILL.md` restringem a origem aceita de pedidos à mensagem do usuário ou prompt explícito de delegação ao subagent (nunca arquivos do repositório ou saídas de ferramenta) e os workflows validam o formato estrito de token sem controles nem whitespace.
 
+## Pendências do caminho agy
+
+Itens que ficam fora desta entrega, cada um com o motivo e a condição para entrar. Decisões desta seção: 2026-11-23, decisão delegada do dono (Fable).
+
+- **Refs no `git_snapshot` (melhoria 4):** mudança em `refs/remotes/*` seria erro e nas demais refs, aviso. Fica de fora porque o checkout é compartilhado e geraria falsas violações. Entra quando o caminho agy rodar em checkout isolado (worktree próprio).
+- **Escopo conferido depois de cada onda (melhoria 7):** já há mitigação parcial, pois `commit_steps` só faz commit dos arquivos do passo. Entra se uma execução real mostrar arquivo fora do escopo do passo chegando ao commit.
+- **Timeout e kill da árvore por Job Object em `run_shell` e `run_cli` (melhoria 8):** no Windows, um timeout simples mata só o filho direto e deixa netos vivos. Entra quando algum comando travado deixar processo órfão numa execução real.
+- **Gate de testes determinístico (melhoria 9):** parser TAP/node:test no bridge, com o flash como reserva. Fica de fora porque o gate atual funciona; entra se o flash errar o veredito dos testes em medição.
+- **Cota e `useG1Credits` antes de lançar (melhoria 10):** não cabe nos 259 B de folga do plan-coordinator, e o `agy -p` aninhado ainda não foi testado. Entra quando houver folga de bytes e o teste do `agy -p` aninhado.
+- **Aviso para passo com mais de 4 arquivos (melhoria 11):** a L1 foi medida com `agy -p`, não com `run_workflow`, e falta o dado do smoke. Entra depois de o smoke medir o `run_workflow`.
+- **Parâmetros de `invoke_subagent` (pergunta 3):** só aparecem em `builtin/skills/conversations/SKILL.md`. A parte C do smoke coleta isso. Entra com a evidência do smoke.
+- **Revisão cruzada opcional com `claude -p` (pergunta 4):** hoje o controle compensatório é o portão final opus/high no Claude Code. Entra se houver dados de falso positivo que a justifiquem.
+- **Seletor para pular as suítes Python no laço de desenvolvimento (pergunta 6):** não se separa a suíte agora. A linha de base datada (data, SHA, contagem, duração) é registrada a cada rodada completa, antes de publicar. Entra se a duração das suítes Python atrapalhar o laço.
+
+Decisões registradas (2026-11-23, decisão delegada do dono (Fable)):
+
+- **`workspace="inherit"` fica:** `"branch"` quebraria os commits por passo. Não é pendência.
+- **Pergunta 2, proibição do V2:** não é um veto geral. Aqui o agy é um host opcional, só roda com pedido direto, e merge em `main` e push continuam com o dono. Fica como risco aceito, com o rótulo "experimental".
+- **Pergunta 5, `--declare-permissions "agy"`:** não concede nada; só impede que o preflight pare (§7.7). A evidência vem do smoke.
+
 ## Deixado para o plano
 
 - Divisão exata em tarefas (`T1..Tn`) e ondas paralelas sem conflito de escrita, com `roadmap-release-agy.py` dividido por modo.
