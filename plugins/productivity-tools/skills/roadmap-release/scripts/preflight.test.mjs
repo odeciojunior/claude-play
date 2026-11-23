@@ -16,7 +16,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseRoadmapTexts } from '../../../lib/roadmap-format.mjs';
-import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, checkSlice, joinSlices, SLICE_BYTES, utf8Length } from '../../../lib/plan-digest.mjs';
 
 const good = () => ({
   projectContext: 'ctx',
@@ -1044,6 +1044,61 @@ test('E10 final-fix: discover --page prints each signed page of the project road
   const beyond = run(n + 1);
   assert.equal(beyond.status, 1);
   assert.match(JSON.parse(beyond.stdout).error, /page/);
+});
+
+// ---- E41 T9: discover --slice ----
+const bigBlockers = (n) => (name, text) => (name === 'state.md'
+  ? text.replace('|---|---|---|---|---|\n<!-- /roadmap:blockers -->', `|---|---|---|---|---|\n${Array.from({ length: n }, (_, i) => `| B${i + 1} | blocked by é ${'x'.repeat(200)} | E1 | 2026-01-01 | later |`).join('\n')}\n<!-- /roadmap:blockers -->`)
+  : text);
+
+test('E41 T9: discover --slice returns signed slices up to the byte cap that rejoin into the whole discovery', () => {
+  const { root } = discRepo(bigBlockers(60));
+  const args = ['--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', 'n-s'];
+  const whole = disc(root);
+  const first = discCli(...args, '--slice', '0');
+  assert.equal(first.status, 0, first.stderr);
+  const e0 = JSON.parse(first.stdout);
+  assert.ok(e0.slices > 1, `slices ${e0.slices}`);
+  const envs = [e0];
+  for (let k = 1; k < e0.slices; k++) {
+    const r = discCli(...args, '--slice', String(k));
+    assert.equal(r.status, 0, r.stderr);
+    envs.push(JSON.parse(r.stdout));
+  }
+  envs.forEach((e, k) => {
+    assert.ok(utf8Length(JSON.stringify(e)) <= SLICE_BYTES);
+    assert.deepEqual(checkSlice(e, { tool: 'release-discovery', command: 'discover', nonce: 'n-s', slice: k }), { ok: true, why: null });
+  });
+  const joined = joinSlices(envs);
+  assert.equal(joined.ok, true, joined.why);
+  const got = JSON.parse(joined.text);
+  // runToken is new on every call, so compare everything else
+  const { runToken: _a, ...g } = got;
+  const { runToken: _b, ...w } = JSON.parse(JSON.stringify(canon(whole)));
+  assert.deepEqual(g, w);
+  assert.equal(discCli(...args, '--slice', String(e0.slices)).status, 1);
+  assert.equal(discCli(...args, '--slice', '-1').status, 2);
+});
+
+test('E41 T9: every disc.<field> read by the workflow exists in the rejoined discovery', () => {
+  const { root } = discRepo();
+  const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'workflow', 'roadmap-release.js'), 'utf8');
+  const fields = new Set([...wf.matchAll(/\bdisc\.([A-Za-z_]\w*)/g)].map((m) => m[1]));
+  const r = discCli('--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', 'n-f', '--slice', '0');
+  assert.equal(r.status, 0, r.stderr);
+  const e = JSON.parse(r.stdout);
+  const envs = [e];
+  for (let k = 1; k < e.slices; k++) envs.push(JSON.parse(discCli('--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', 'n-f', '--slice', String(k)).stdout));
+  const data = JSON.parse(joinSlices(envs).text);
+  const writtenByWorkflow = new Set(['pages', 'cardCount', 'donotHolds']);
+  for (const f of fields) if (!writtenByWorkflow.has(f)) assert.ok(f in data, `disc.${f} missing`);
+});
+
+test('E41 T9: --slice with --page is refused with exit 2', () => {
+  const { root } = discRepo();
+  const r = discCli('--repo', root, '--roadmap', DISC_ROADMAP, '--prefix', 'pf-', '--nonce', 'n', '--slice', '0', '--page', '0');
+  assert.equal(r.status, 2);
+  assert.match(JSON.parse(r.stdout).error, /slice/);
 });
 
 // ---- missingDirs (DEC-719): wtRoot must be in permissions.additionalDirectories ----

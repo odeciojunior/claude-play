@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { pendingDecisions } from '../../roadmap-tracker/scripts/roadmap.mjs';
 import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS, idsIn, shasIn } from '../../../lib/roadmap-format.mjs';
-import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, sliceEnvelopes } from '../../../lib/plan-digest.mjs';
 
 const KINDS = ['exit', 'tests'];
 
@@ -647,17 +647,26 @@ export function discoveryPages(data, budget = DISCOVERY_PAGE_CHARS) {
   return [{ ...rest, pages: chunks.length, cardCount: cards.length }, ...chunks.map((cs, i) => ({ page: i + 1, pages: chunks.length, cards: cs }))];
 }
 
-// discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k>]
+// discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k> | --slice <k>]
 function discoverCli(argv) {
   // No process.exit: a large JSON on a pipe must be flushed before the process ends.
   const out = (obj, code) => { process.exitCode = code; process.stdout.write(`${JSON.stringify(obj)}\n`); };
-  const usage = 'usage: node preflight.mjs discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k>]';
+  const usage = 'usage: node preflight.mjs discover --repo <r> [--roadmap <p>] [--ref <t>] [--base <b>] [--today <d>] --prefix <x> --nonce <n> [--page <k> | --slice <k>]';
   const opts = {};
   for (let i = 0; i < argv.length; i += 2) {
-    if (!/^--(repo|roadmap|ref|base|today|prefix|nonce|page)$/.test(argv[i] || '') || argv[i + 1] === undefined) return out({ tool: 'release-discovery', error: `${usage} (bad argument: ${argv[i]})` }, 2);
+    if (!/^--(repo|roadmap|ref|base|today|prefix|nonce|page|slice)$/.test(argv[i] || '') || argv[i + 1] === undefined) return out({ tool: 'release-discovery', error: `${usage} (bad argument: ${argv[i]})` }, 2);
     opts[argv[i].slice(2)] = argv[i + 1];
   }
   if (!opts.repo || opts.prefix === undefined || !opts.nonce) return out({ tool: 'release-discovery', error: `${usage} (--repo, --prefix and --nonce are required)` }, 2);
+  if (opts.slice !== undefined && opts.page !== undefined) return out({ tool: 'release-discovery', error: `${usage} (--slice and --page cannot be used together)` }, 2);
+  const slice = opts.slice === undefined ? null : Number(opts.slice);
+  if (slice !== null && (!Number.isInteger(slice) || slice < 0)) return out({ tool: 'release-discovery', error: `${usage} (--slice must be a whole number from 0)` }, 2);
+  if (slice !== null) {
+    let envs;
+    try { envs = sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: opts.nonce }, JSON.stringify(canon(discoverRoadmap(opts)))); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+    if (slice >= envs.length) return out({ tool: 'release-discovery', error: `slice ${slice} does not exist: the discovery has ${envs.length} slice(s), numbered from 0` }, 1);
+    return out(envs[slice], 0);
+  }
   const page = opts.page === undefined ? 0 : Number(opts.page);
   if (!Number.isInteger(page) || page < 0) return out({ tool: 'release-discovery', error: `${usage} (--page must be a whole number from 0)` }, 2);
   let pages;
