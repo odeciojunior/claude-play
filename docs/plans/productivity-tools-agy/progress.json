@@ -1,0 +1,994 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/productivity-tools-agy/plan.md",
+    "id": "productivity-tools-agy",
+    "digest": "4364b54c",
+    "maxWidth": 4,
+    "roadmap": null,
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 9,
+    "worktree": null,
+    "branch": null,
+    "base": "0cfbe8682ead1e8f0d29306907125945e9c574cb",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "[Partial stdout: the run was moved to the background, so this is its final TAP summary as written to the output file, not the full 2218-test log. The full literal output is at C:\\Users\\odeci\\AppData\\Local\\Temp\\claude\\25a90f2008b31a17\\e72362ce-7f45-4ae3-be2b-098d60840f3d\\tasks\\b6npffb1t.output]\n\n  ...\n1..2152\n# tests 2218\n# suites 11\n# pass 2216\n# fail 0\n# cancelled 0\n# skipped 2\n# todo 0\n# duration_ms 281808.0694\n\n[exited with code 0]",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-22T09:33:20.450Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        9,
+        10
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3,
+        4
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        5
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        6
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        7
+      ]
+    },
+    {
+      "n": 7,
+      "tasks": [
+        8
+      ]
+    },
+    {
+      "n": 8,
+      "tasks": [
+        11
+      ]
+    },
+    {
+      "n": 9,
+      "tasks": [
+        12
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "lib/agy-routing.mjs puro, testes dos 18 vetores e regra de lib",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/lib/agy-routing.mjs",
+        ".claude/rules/workflows-and-lib.md",
+        "plugins/productivity-tools/scripts/plan-tool.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Created plugins/productivity-tools/lib/agy-routing.mjs, a pure module exporting AGY_MODEL_RANK, agyModelFor, agyReviewModelFor, nextAgyTier and toAgyRoute, copied from spec 7.5. Added tests to plan-tool.test.mjs: 18 vectors through route and toAgyRoute (including C1, vector 5, and C2, vector 17), the helper tests with the C4 case (nextAgyTier('pro', true) returns null), and the checkPureSource check. Updated .claude/rules/workflows-and-lib.md with the agy-routing.mjs note and a line on agy-bridg",
+      "sha": "cf0c81feed69ffad27ee1ba7c685ac688c421705",
+      "replacedBy": null,
+      "note": "Created plugins/productivity-tools/lib/agy-routing.mjs, a pure module exporting AGY_MODEL_RANK, agyModelFor, agyReviewModelFor, nextAgyTier and toAgyRoute, copied from spec 7.5. Added tests to plan-tool.test.mjs: 18 vectors through route and toAgyRoute (including C1, vector 5, and C2, vector 17), the helper tests with the C4 case (nextAgyTier('pro', true) returns null), and the checkPureSource che",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "scripts/agy-bridge.py e agy-bridge.test.mjs",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/agy-bridge.py",
+        "plugins/productivity-tools/scripts/agy-bridge.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Created plugins/productivity-tools/scripts/agy-bridge.py (stdlib, Python >= 3.8, shell=False) and agy-bridge.test.mjs (19 tests). The bridge exposes plugin_root_from, run_cli, find_git_bash (rejects %SystemRoot%/System32), run_shell (raises git-bash-not-found), call_lib(root, expr, payload), load_agent_body, load_js_schemas, load_test_integrity, run_test_integrity and git_snapshot. Downstream agy workflows load it with exec(compile(open(bridge).read(), bridge, 'exec'), globals()) after deriving ",
+      "sha": "94dd753faaf6daa0b6951d5be80a3a7ac25af8b3",
+      "replacedBy": null,
+      "note": "Created plugins/productivity-tools/scripts/agy-bridge.py (stdlib, Python >= 3.8, shell=False) and agy-bridge.test.mjs (19 tests). The bridge exposes plugin_root_from, run_cli, find_git_bash (rejects %SystemRoot%/System32), run_shell (raises git-bash-not-found), call_lib(root, expr, payload), load_agent_body, load_js_schemas, load_test_integrity, run_test_integrity and git_snapshot.\nDownstream agy ",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "coordinator-agy.py e coordinator-agy.test.mjs",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator-agy.py",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 2,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "F1 fixed: coordinator-agy.py now has guard_snapshot(), which is git_snapshot plus `git diff HEAD --binary` plus the bytes of every untracked file. It is compared as is, with no hashing. It guards task-reviewer, final-reviewer and the prelaunch-review. Added a 'dirty' reviewer mutation (appends to an already-uncommitted step file) in coordinator-agy.test.mjs. It failed before the fix (run returned 'done') and passes after. F2 fixed: the final-review verify call in roadmap-release-agy.py now goes ",
+      "sha": "39b5f2a793830b9c349f811962975f1b1e2fc014",
+      "replacedBy": null,
+      "note": "F1 fixed: coordinator-agy.py now has guard_snapshot(), which is git_snapshot plus `git diff HEAD --binary` plus the bytes of every untracked file. It is compared as is, with no hashing. It guards task-reviewer, final-reviewer and the prelaunch-review.\nAdded a 'dirty' reviewer mutation (appends to an already-uncommitted step file) in coordinator-agy.test.mjs. It failed before the fix (run returned ",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "roadmap-release-agy.py, base e modo dry-run",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 3,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "The `finalReview.adversarial` verify call (line 1648) now goes through `self.ask_ro(..., 'S_VERIFY', body=body)`, so HEAD and git status are compared around it. The fix was already in the working tree; I kept it. I added a regression test in `roadmap-release-agy.test.mjs`: a verify reviewer that writes a stray file must give `failKind: infra` with \"the final-reviewer changed the repository ... reviewers are read-only\". It fails against the old `call_agent` line and passes with the fix. Both file",
+      "sha": "bf727d966bcc71142ecdd1bc2ea9718ed1f4f590",
+      "replacedBy": null,
+      "note": "The `finalReview.adversarial` verify call (line 1648) now goes through `self.ask_ro(..., 'S_VERIFY', body=body)`, so HEAD and git status are compared around it. The fix was already in the working tree; I kept it.\nI added a regression test in `roadmap-release-agy.test.mjs`: a verify reviewer that writes a stray file must give `failKind: infra` with \"the final-reviewer changed the repository ... rev",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "roadmap-release-agy.py, modo plan-only e laço de revisão",
+      "wave": 4,
+      "deps": [
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release-agy.py now runs plan-only: preflight steps 1, 2 and 5 and the worktree setup by `git -C`, then spec and plan authors on pro with their review loops, mechanical commits, and the roadmap record through verify-run/roadmap.mjs. `run_review_loop(env, stage, review, fix, truth, opt)` has the JS semantics with the nextAgyTier ladder (flash_lite, flash, pro, None), one bonus round, and every review on pro. A repeat at pro returns `{ok: False, kind, msg}` (C4). T6 and T7 reuse it, along w",
+      "sha": "20b8d9776e38f7f939b6ceeb5883cafbecba57a3",
+      "replacedBy": null,
+      "note": "roadmap-release-agy.py now runs plan-only: preflight steps 1, 2 and 5 and the worktree setup by `git -C`, then spec and plan authors on pro with their review loops, mechanical commits, and the roadmap record through verify-run/roadmap.mjs.\n`run_review_loop(env, stage, review, fix, truth, opt)` has the JS semantics with the nextAgyTier ladder (flash_lite, flash, pro, None), one bonus round, and eve",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "roadmap-release-agy.py, modo run (tarefas, revisão final, gates)",
+      "wave": 5,
+      "deps": [
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release-agy.py now runs mode run up to the validated branch. It does the full preflight (setup commands, recorded or measured baseline, red and invalid baseline ops), the executing record, the tasks, the sync, the final review, test-integrity and the branch gates with the reviewed gates-fix. Gates and evidence run by run_shell and the script judges the numbers; only a kind \"tests\" gate calls the flash `gates` reader. Models are chosen at dispatch: implementer via agyModelFor(route.tier, ",
+      "sha": "7542406495d513f1f42852171a0be7f63c3a379b",
+      "replacedBy": null,
+      "note": "roadmap-release-agy.py now runs mode run up to the validated branch. It does the full preflight (setup commands, recorded or measured baseline, red and invalid baseline ops), the executing record, the tasks, the sync, the final review, test-integrity and the branch gates with the reviewed gates-fix.\nGates and evidence run by run_shell and the script judges the numbers; only a kind \"tests\" gate cal",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "roadmap-release-agy.py, merge, rollback, docs, relatório e retomada",
+      "wave": 6,
+      "deps": [
+        6
+      ],
+      "tier": "opus",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release-agy.py now carries run mode through to the end. Merges are serialized and done by git (`git merge --no-ff` in the integration worktree). A merge conflict goes to `merge` on flash; a late sync uses `resync` (flash), `conflict-review` (pro) and `delta-review` (pro) with fixes up the ladder, then the branch gates run again. Post-merge gates allow one `merge-fix` (flash), reviewed by `merge-fix-review` (pro). If the gates stay red, the script itself rolls back with git (merge --abort",
+      "sha": "5d95f872c6d8d40854a3b7904d673393ecdfc57d",
+      "replacedBy": null,
+      "note": "roadmap-release-agy.py now carries run mode through to the end. Merges are serialized and done by git (`git merge --no-ff` in the integration worktree). A merge conflict goes to `merge` on flash; a late sync uses `resync` (flash), `conflict-review` (pro) and `delta-review` (pro) with fixes up the ladder, then the branch gates run again. Post-merge gates allow one `merge-fix` (flash), reviewed by `",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "Portabilidade dual-host nos SKILL.md de plan-coordinator e roadmap-release e em routing.md",
+      "wave": 7,
+      "deps": [
+        3,
+        7
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/SKILL.md",
+        "plugins/productivity-tools/skills/plan-coordinator/references/routing.md",
+        "plugins/productivity-tools/skills/roadmap-release/SKILL.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "plan-coordinator SKILL.md now has a host-conditioned fallback for the skill dir and the run_workflow/ScriptPath path to coordinator-agy.py, using ask_question there. It stays at about 4.1 KB, under the 6000 B ceiling. routing.md has a new \"## 6. Antigravity (agy) Gemini routing\" section. It states canonical Claude-tier state, translation at dispatch via lib/agy-routing.mjs, (sonnet,high) promotion, agyReviewModel pro, and nextAgyTier. roadmap-release SKILL.md step 2 now has an agy-conditioned no",
+      "sha": "1007b035aef465a05598eb21cec3abbbfbee7e46",
+      "replacedBy": null,
+      "note": "plan-coordinator SKILL.md now has a host-conditioned fallback for the skill dir and the run_workflow/ScriptPath path to coordinator-agy.py, using ask_question there. It stays at about 4.1 KB, under the 6000 B ceiling.\nrouting.md has a new \"## 6. Antigravity (agy) Gemini routing\" section. It states canonical Claude-tier state, translation at dispatch via lib/agy-routing.mjs, (sonnet,high) promotion",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    },
+    {
+      "n": 9,
+      "title": "Portabilidade dual-host em spec-writer, plan-writer, excalidraw-designer e wsl-health-check",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/spec-writer/SKILL.md",
+        "plugins/productivity-tools/skills/plan-writer/SKILL.md",
+        "plugins/productivity-tools/skills/excalidraw-designer/SKILL.md",
+        "plugins/productivity-tools/skills/wsl-health-check/SKILL.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Os 4 SKILL.md agora têm instruções dual-host, cada uma condicionada ao host. - excalidraw-designer e wsl-health-check: fallback para `${CLAUDE_SKILL_DIR}` vazio ou não expandido. - spec-writer: `ask_question` quando falta `AskUserQuestion` (passos 2 e 4); `invoke_subagent` com `TypeName: \"self\"`, `Role: \"spec-author\"`, `Model: \"pro\"`, e `Prompt` mandando ler `agents/spec-author.md` do disco. O despacho `Agent` ficou intacto. - plan-writer: mesmo fallback de `invoke_subagent` para spec-author (ad",
+      "sha": "31f4afe87375aa59d0fcd138a7d4e73c53a7d346",
+      "replacedBy": null,
+      "note": "Os 4 SKILL.md agora têm instruções dual-host, cada uma condicionada ao host.\n- excalidraw-designer e wsl-health-check: fallback para `${CLAUDE_SKILL_DIR}` vazio ou não expandido.\n- spec-writer: `ask_question` quando falta `AskUserQuestion` (passos 2 e 4); `invoke_subagent` com `TypeName: \"self\"`, `Role: \"spec-author\"`, `Model: \"pro\"`, e `Prompt` mandando ler `agents/spec-author.md` do disco. O des",
+      "outputs": null,
+      "brief": "briefs/T9.md",
+      "gated": true
+    },
+    {
+      "n": 10,
+      "title": "Portabilidade dual-host em roadmap-planner e roadmap-tracker dentro dos orçamentos de prosa",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-planner/SKILL.md",
+        "plugins/productivity-tools/skills/roadmap-tracker/SKILL.md",
+        "plugins/productivity-tools/skills/roadmap-tracker/references/events/07-new-source.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T10 applied: roadmap-planner/SKILL.md gained the agy aliases `(agy: \\`flash\\`)` on line 93 and `(agy: \\`pro\\`)` on line 139; roadmap-tracker/SKILL.md `## Paths` got a fallback sentence for an empty `${CLAUDE_SKILL_DIR}`; roadmap-tracker/references/events/07-new-source.md line 5 gained `(agy: \\`flash\\`)`. Only these three files changed, nothing staged or committed. Downstream steps see the agy aliases as prose only, no routing change.</summary> <parameter name=\"concerns\">The tool output did not s",
+      "sha": "8c3acb8aaba53c44dee7460bccb05e9ec84d5a59",
+      "replacedBy": null,
+      "note": "T10 applied: roadmap-planner/SKILL.md gained the agy aliases `(agy: \\`flash\\`)` on line 93 and `(agy: \\`pro\\`)` on line 139; roadmap-tracker/SKILL.md `## Paths` got a fallback sentence for an empty `${CLAUDE_SKILL_DIR}`; roadmap-tracker/references/events/07-new-source.md line 5 gained `(agy: \\`flash\\`)`. Only these three files changed, nothing staged or committed. Downstream steps see the agy alia",
+      "outputs": null,
+      "brief": "briefs/T10.md",
+      "gated": true
+    },
+    {
+      "n": 11,
+      "title": "Descoberta no agy (.agents/skills.json) e asserções de lint em independence.test.mjs",
+      "wave": 8,
+      "deps": [
+        8,
+        9,
+        10
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        ".agents/skills.json",
+        "plugins/productivity-tools/scripts/independence.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Created .agents/skills.json with entries [{\"path\":\"plugins/productivity-tools/skills\"}]. Added two T11 tests to independence.test.mjs: discovery file plus 11 SKILL.md and no .antigravity-plugin/plugin.json, and lintPlugin with 0 FAIL, 0 WARN and \"Script names are unique\" OK. independence.test.mjs passes 30/30; lint-plugin reports 57 OK, 0 WARN, 0 FAIL. Nothing staged or committed.",
+      "sha": "ce89da6b7b3813b5091442514dbd8fa416f6aa24",
+      "replacedBy": null,
+      "note": "Created .agents/skills.json with entries [{\"path\":\"plugins/productivity-tools/skills\"}].\nAdded two T11 tests to independence.test.mjs: discovery file plus 11 SKILL.md and no .antigravity-plugin/plugin.json, and lintPlugin with 0 FAIL, 0 WARN and \"Script names are unique\" OK.\nindependence.test.mjs passes 30/30; lint-plugin reports 57 OK, 0 WARN, 0 FAIL.\nNothing staged or committed.",
+      "outputs": null,
+      "brief": "briefs/T11.md",
+      "gated": true
+    },
+    {
+      "n": 12,
+      "title": "Gates completos do repositório e evidência dos critérios",
+      "wave": 9,
+      "deps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T12 is a gates-only step with no files and no commit. The full suite passes: 2324 tests, 2322 pass, 0 fail, 2 skipped. The protected files show no diff against 9e62fd4. lint-plugin reports 57 OK, 0 WARN, 0 FAIL. Both claude plugin validate runs pass. The embed --check run printed nothing. Nothing was staged, committed or pushed.",
+      "sha": null,
+      "replacedBy": null,
+      "note": "T12 is a gates-only step with no files and no commit. The full suite passes: 2324 tests, 2322 pass, 0 fail, 2 skipped. The protected files show no diff against 9e62fd4. lint-plugin reports 57 OK, 0 WARN, 0 FAIL. Both claude plugin validate runs pass. The embed --check run printed nothing. Nothing was staged, committed or pushed.",
+      "outputs": null,
+      "brief": "briefs/T12.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 4,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-22T04:59:15.498Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "0cfbe8682ead1e8f0d29306907125945e9c574cb",
+      "at": "2026-11-22T04:59:15.498Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-22T04:59:22.905Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-22T04:59:22.905Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        10,
+        1,
+        9
+      ],
+      "at": "2026-11-22T04:59:22.905Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-22T05:04:33.232Z"
+    },
+    {
+      "event": "report",
+      "step": 9,
+      "value": "pass",
+      "at": "2026-11-22T05:04:33.232Z"
+    },
+    {
+      "event": "report",
+      "step": 10,
+      "value": "pass",
+      "at": "2026-11-22T05:04:33.232Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-22T05:06:24.721Z"
+    },
+    {
+      "event": "commit",
+      "step": 9,
+      "at": "2026-11-22T05:06:46.920Z"
+    },
+    {
+      "event": "commit",
+      "step": 10,
+      "at": "2026-11-22T05:07:05.774Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T05:07:27.069Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T05:07:27.069Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-22T05:07:27.069Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-22T05:12:18.053Z"
+    },
+    {
+      "event": "review-result",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-22T05:16:28.374Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-22T05:16:28.374Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T05:17:29.393Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T05:17:29.393Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3,
+        4
+      ],
+      "at": "2026-11-22T05:17:29.393Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-22T05:22:27.095Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-22T05:22:27.095Z"
+    },
+    {
+      "event": "review-result",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-22T05:31:03.732Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-22T05:31:03.732Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-22T05:32:38.723Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T05:33:02.909Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T05:33:02.909Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-22T05:33:02.909Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-22T05:38:01.851Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-22T05:54:05.032Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T05:54:28.275Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T05:54:28.275Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-22T05:54:28.275Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-22T05:59:31.048Z"
+    },
+    {
+      "event": "review-result",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-22T06:27:28.895Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-22T06:27:28.895Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T06:30:42.758Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T06:30:42.758Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        7
+      ],
+      "at": "2026-11-22T06:30:42.758Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-22T06:36:42.605Z"
+    },
+    {
+      "event": "review-result",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-22T07:08:13.224Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-22T07:08:13.224Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T07:14:19.509Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T07:14:19.509Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        8
+      ],
+      "at": "2026-11-22T07:14:19.509Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-22T07:21:02.731Z"
+    },
+    {
+      "event": "commit",
+      "step": 8,
+      "at": "2026-11-22T07:22:59.131Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T07:23:20.720Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T07:23:20.720Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        11
+      ],
+      "at": "2026-11-22T07:23:20.720Z"
+    },
+    {
+      "event": "report",
+      "step": 11,
+      "value": "pass",
+      "at": "2026-11-22T07:30:19.665Z"
+    },
+    {
+      "event": "commit",
+      "step": 11,
+      "at": "2026-11-22T07:30:51.535Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T07:31:19.101Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T07:31:19.101Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        12
+      ],
+      "at": "2026-11-22T07:31:19.101Z"
+    },
+    {
+      "event": "report",
+      "step": 12,
+      "value": "pass",
+      "at": "2026-11-22T07:37:27.245Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T07:44:03.212Z"
+    },
+    {
+      "event": "final-gate",
+      "step": 4,
+      "value": "defects",
+      "at": "2026-11-22T07:44:03.212Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-22T07:44:03.212Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-22T07:56:27.064Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-22T08:02:27.955Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "final-gate",
+      "step": 3,
+      "value": "defects",
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-22T08:02:52.287Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-22T08:21:25.611Z"
+    },
+    {
+      "event": "review-result",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-22T08:28:50.003Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-22T08:28:50.003Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "final-gate",
+      "step": 4,
+      "value": "defects",
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-22T08:30:34.799Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-22T08:43:44.944Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-22T08:56:42.011Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-22T08:57:08.320Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-22T09:32:43.073Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-22T09:33:20.450Z"
+    }
+  ]
+}
