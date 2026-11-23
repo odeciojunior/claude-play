@@ -1432,7 +1432,18 @@ function checkCapture(stdout, { nonce, noncePrefix, cmdDigest } = {}) {
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' };
   return { ok: true, data: o.data };
 }
-// </embed>
+
+// Checks the output of a signed progress.mjs call: tool, command, nonce and digest of the rest.
+function checkSigned(out, nonce, command) {
+  if (!out || typeof out !== 'object' || Array.isArray(out)) return { ok: false, error: 'signed output is not an object' }
+  if (out.tool !== 'progress') return { ok: false, error: 'signed output has the wrong tool' }
+  if (out.command !== command) return { ok: false, error: `signed output is not from the ${command} command` }
+  if (out.nonce !== nonce) return { ok: false, error: 'signed output has the wrong nonce' }
+  const { digest, ...rest } = out
+  if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, error: 'signed output digest does not match' }
+  return { ok: true, error: null }
+}
+
 // Output of a plugin script copied by an agent: tool, nonce and digest must match. release-discovery signs { nonce, data }; verify-run signs the whole output without its digest.
 function checkRun(stdout, tool, nonce) {
   let o
@@ -1445,6 +1456,7 @@ function checkRun(stdout, tool, nonce) {
   if (digest !== fnv1a(JSON.stringify(canon(disco ? { nonce: o.nonce, data: o.data } : rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' }
   return { ok: true, data: disco ? o.data : o }
 }
+// </embed>
 // A payload for verify-run.mjs in ONE argument: the payload plus its digest as encodeURIComponent(JSON), with !'()* also in %XX (no shell metacharacter left).
 function encArg(obj) {
   return encodeURIComponent(JSON.stringify({ ...obj, digest: fnv1a(JSON.stringify(canon(obj))) })).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())

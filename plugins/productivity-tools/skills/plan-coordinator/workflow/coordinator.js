@@ -972,6 +972,30 @@ function checkCapture(stdout, { nonce, noncePrefix, cmdDigest } = {}) {
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' };
   return { ok: true, data: o.data };
 }
+
+// Checks the output of a signed progress.mjs call: tool, command, nonce and digest of the rest.
+function checkSigned(out, nonce, command) {
+  if (!out || typeof out !== 'object' || Array.isArray(out)) return { ok: false, error: 'signed output is not an object' }
+  if (out.tool !== 'progress') return { ok: false, error: 'signed output has the wrong tool' }
+  if (out.command !== command) return { ok: false, error: `signed output is not from the ${command} command` }
+  if (out.nonce !== nonce) return { ok: false, error: 'signed output has the wrong nonce' }
+  const { digest, ...rest } = out
+  if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, error: 'signed output digest does not match' }
+  return { ok: true, error: null }
+}
+
+// Output of a plugin script copied by an agent: tool, nonce and digest must match. release-discovery signs { nonce, data }; verify-run signs the whole output without its digest.
+function checkRun(stdout, tool, nonce) {
+  let o
+  try { o = JSON.parse(String(stdout == null ? '' : stdout)) } catch { return { ok: false, why: 'the output is not JSON' } }
+  if (!o || typeof o !== 'object' || o.tool !== tool) return { ok: false, why: `the output is not from ${tool}` }
+  if (o.error !== undefined) return { ok: false, why: `${tool} refused: ${o.error}` }
+  if (o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run' }
+  const { digest, ...rest } = o
+  const disco = tool === 'release-discovery'
+  if (digest !== fnv1a(JSON.stringify(canon(disco ? { nonce: o.nonce, data: o.data } : rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' }
+  return { ok: true, data: disco ? o.data : o }
+}
 // </embed>
 // <embed src="../../../lib/external-auth.mjs" exports="strip">
 // Gerado de ../../../lib/external-auth.mjs por plugins/productivity-tools/scripts/embed.mjs; não editar aqui.
@@ -1022,17 +1046,6 @@ function waveGatePasses(gate, baseline) {
   if (names.length === 0) return false
   if (!baseline || baseline.exit === 0 || !Array.isArray(baseline.failedNames)) return false
   return names.every((n) => baseline.failedNames.includes(n))
-}
-
-// Checks the output of a signed progress.mjs call: tool, command, nonce and digest of the rest.
-function checkSigned(out, nonce, command) {
-  if (!out || typeof out !== 'object' || Array.isArray(out)) return { ok: false, error: 'signed output is not an object' }
-  if (out.tool !== 'progress') return { ok: false, error: 'signed output has the wrong tool' }
-  if (out.command !== command) return { ok: false, error: `signed output is not from the ${command} command` }
-  if (out.nonce !== nonce) return { ok: false, error: 'signed output has the wrong nonce' }
-  const { digest, ...rest } = out
-  if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, error: 'signed output digest does not match' }
-  return { ok: true, error: null }
 }
 
 // Validates the launch args. Returns { error, authorizeExternal }.
