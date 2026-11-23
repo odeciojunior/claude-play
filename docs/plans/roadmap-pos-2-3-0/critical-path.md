@@ -9,6 +9,7 @@ graph LR
   E38
   E39
   E40
+  E41
   E34 --> E35
   E34 --> E36
   E34 --> E37
@@ -21,6 +22,11 @@ graph LR
   E38 --> E39
   E38 --> E40
   E39 --> E40
+  E34 --> E41
+  E41 --> E36
+  E41 --> E37
+  E41 --> E39
+  E41 --> E40
 ```
 
-Caminho crítico: E34 -> E35 -> E39 -> E40. Próximo marco por trilha: engineering -> E36 e E37 (E34 e E38 publicados na 2.4.0); release -> E40 com alvo de versão a redefinir na estratégia v1.1; measurement -> lote pago de confirmação de E35 (AC2), seguido de E39.
+Caminho crítico: E41 -> E37 -> E39 -> E40 (E34 já publicado na 2.4.0). Próximo marco por trilha: engineering -> spec de E41 via spec-writer, depois E36 e E37 em série; release -> E40 publica a 2.5.0 (volta volta/productivity-tools-2.5.1, DEC-028); measurement -> lote pago de confirmação de E35 (AC2) e sonda AC2b de E41 (DEC-029), seguidos de E39.

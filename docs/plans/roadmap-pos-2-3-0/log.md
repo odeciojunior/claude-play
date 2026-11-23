@@ -3,6 +3,11 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-23 | - | pendência de aprovação da estratégia v1.1 resolvida pela revisão; item de now de E36/E37 substituído pelos itens de E41 e de E36/E37 depois de E41 | `state.md` |
+| 2026-11-23 | - | strategy v1.1: absorve DEC-024, DEC-025, DEC-026, DEC-027, DEC-028, DEC-029, DEC-030 (E41 novo; E37 sem B07; E36, E37, E39 e E40 dependem de E41; E40 publica 2.5.0) | `../2026-11-21-roadmap-pos-2-3-0.md` |
+| 2026-11-23 | - | REQ-011 adicionado: saída de script sem recópia lossy por LLM (respostas copiadas até 3.500 bytes, exit code vindo de script), coberto por E41; REQ-004 sem B07, REQ-008 com alvo 2.5.0 | `requirements.md` |
+| 2026-11-23 | - | SRC-08 adicionada: relatório de saída de script sem recópia por LLM; conflito com SRC-01 (B07) resolvido por DEC-024 e DEC-030 | `docs/reports/2026-11-23-saida-de-script-sem-recopia.md` |
+| 2026-11-23 | E41 | DEC-024 a DEC-030 registradas (dono via Fable, DEC-012): conteúdo grande por tipo, escopo, provas, context-mode, versão 2.5.0, até US$ 1 da reserva (DEC-002) para a sonda AC2b e encaixe do E41 | `decisions.md` |
 | 2026-11-23 | E40 | achado que afeta a estratégia: 2.4.0 publicada antes de E40; revisão v1.1 pendente de aprovação do dono | `state.md` |
 | 2026-11-23 | E34,E35,E38 | pacote productivity-tools 2.4.0 publicado no marketplace claude-play (tag productivity-tools--v2.4.0; leva o código de E35, cuja AC2 segue pendente; volta volta/productivity-tools-2.4.1 em 6f2eaf7) | `3f36054` |
 | 2026-11-23 | E34, E38 | E34, E38 integrada(s) em main via release/pos-2.3.0 | `3f36054` |
