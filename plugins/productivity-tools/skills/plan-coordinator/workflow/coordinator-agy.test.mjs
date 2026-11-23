@@ -82,6 +82,8 @@ async def agent(prompt, schema, role=None, type_name=None, model=None, **extra):
             st['manual'] = [{'kind': 'open-question', 'step': n, 'text': 'tampered', 'open': False}]
             with open(args['state'], 'w', encoding='utf-8') as f:
                 json.dump(st, f, indent=2)
+        if over and over.get('raise'):
+            raise RuntimeError(over['raise'])
         if over and over.get('reply'):
             return over['reply']
         step = [s for s in st['steps'] if s['n'] == n][0]
@@ -92,6 +94,8 @@ async def agent(prompt, schema, role=None, type_name=None, model=None, **extra):
                 f.write('// step %d, written by the simulated implementer\n' % n)
         return {'status': 'DONE', 'summary': 'T%d done: %s' % (n, ' '.join(step.get('files') or [])), 'checks': [{'command': 'node --test t%d' % n, 'output': 'ok', 'exit': 0}]}
     if role == 'task-reviewer':
+        if (sc.get('review') or {}).get('raise'):
+            raise RuntimeError('reviewer boom')
         mut = (sc.get('review') or {}).get('mutate')
         if mut == 'file':
             with open(os.path.join(root, 'rogue.txt'), 'w') as f:
@@ -108,8 +112,8 @@ async def agent(prompt, schema, role=None, type_name=None, model=None, **extra):
         return {'issues': [], 'headSha': 'abc', 'clean': True, 'commitsInRange': 0}
     raise RuntimeError('unexpected role %r' % role)
 
-async def parallel(fns):
-    return await asyncio.gather(*[f() for f in fns])
+async def parallel(items, fn):
+    return await asyncio.gather(*[fn(i) for i in items])
 def phase(*a, **k):
     pass
 def log(*a, **k):
@@ -341,6 +345,34 @@ for (const mutate of ['file', 'commit', 'dirty']) {
   }));
 }
 
+// ---- falha de agent(): vira None (retorno perdido), nunca derruba a onda
+pyTest('an implementer that raises leaves the other steps of the wave passed on disk and the step becomes no-report with the error text', () => withSandbox(async (sb) => {
+  const run = runScript(launchArgs(sb), { impl: { 2: { raise: 'boom-from-agy ' + 'x'.repeat(400) } } });
+  assert.notEqual(run.result.status, 'error', JSON.stringify(run.result) + run.stderr);
+  const st = readState(sb);
+  const t1 = st.steps.find((x) => x.n === 1);
+  const t2 = st.steps.find((x) => x.n === 2);
+  assert.equal(t1.status, 'pass', 'the other step of the wave stays pass and is on disk');
+  assert.notEqual(t2.status, 'pass');
+  assert.ok(t2.attempts >= 1);
+  assert.equal(t2.status === 'skip-manual' || t2.status === 'pending', true);
+  const applies = procs(run).filter((p) => p.argv.includes('apply') && p.argv.includes('--events')).map((p) => decodeURIComponent(p.argv[p.argv.indexOf('--events') + 1])).join(' ');
+  const m = /"type":"no-report","step":2[^}]*"text":"(RuntimeError: boom-from-agy[^"]*)"/.exec(applies);
+  assert.ok(m, 'the no-report event of T2 carries the error text: ' + applies.slice(0, 500));
+  assert.ok(m[1].length <= 300, 'the text is cut at 300 characters');
+  const holds = [...applies.matchAll(/"type":"hold","step":2[^}]*"text":"([^"]*)"/g)].map((x) => x[1]);
+  assert.ok(holds.length > 0, 'T2 is held after three losses: ' + applies.slice(0, 800));
+  for (const h of holds) assert.match(h, /^step T2 returned no report in \d+ attempts: RuntimeError: boom-from-agy/, 'the hold carries the last error');
+}));
+
+pyTest('a reviewer that raises counts as lost: three losses ask the person', () => withSandbox(async (sb) => {
+  const run = runScript(launchArgs(sb), { review: { raise: true } });
+  assert.equal(run.result.status, 'stopped', JSON.stringify(run.result) + run.stderr);
+  assert.equal(run.result.stop.kind, 'ask');
+  assert.match(run.result.stop.question, /returned nothing 3 times/);
+  assert.equal(agents(run, 'task-reviewer').length, 3);
+}));
+
 // ---- base vermelha, retomada e estado concorrente
 pyTest('a red baseline stops with ask before any implementer and unblock resumes the run', () => withSandbox(async (sb) => {
   fs.writeFileSync(sb.check + '.fail', 'red\n');
@@ -396,6 +428,15 @@ pyTest('AC4: an external step gets a prelaunch-review on pro and stops with auth
   assert.equal(ok.result.status, 'done', JSON.stringify(ok.result));
   assert.match(implOf(ok, 3).prompt, /external and the owner authorized it/);
   assert.ok(readState(sb).steps[2].authorized, 'the authorization is recorded');
+}, { plan: read(EXTERNAL_PLAN) }));
+
+pyTest('an external implementer that raises: the no-report text keeps the default warning and adds the error', () => withSandbox(async (sb) => {
+  const run0 = runScript(launchArgs(sb));
+  const auth = run0.result.stop.items[0].item;
+  const run = runScript(launchArgs(sb, { authorizeExternal: [auth] }), { impl: { 3: { raise: 'ext-boom' } } });
+  assert.notEqual(run.result.status, 'error', JSON.stringify(run.result) + run.stderr);
+  const applies = procs(run).filter((p) => p.argv.includes('apply') && p.argv.includes('--events')).map((p) => decodeURIComponent(p.argv[p.argv.indexOf('--events') + 1])).join(' ');
+  assert.match(applies, /"type":"no-report","step":3[^}]*"text":"passo externo 3 sem relatório; resultado não conferido: RuntimeError: ext-boom"/);
 }, { plan: read(EXTERNAL_PLAN) }));
 
 // ---- argumentos

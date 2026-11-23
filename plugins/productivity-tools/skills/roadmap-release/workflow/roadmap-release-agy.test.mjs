@@ -43,12 +43,16 @@ const DRIVER = [
   'calls = []',
   'logs = []',
   'counts = {}',
+  'crash = {}  # $crash: the agent() failure is swallowed by call_agent, so the next log() (the one it makes) raises: a crash outside agent()',
   'def answer(role):',
   "    r = req['responses'].get(role)",
   '    if isinstance(r, list):',
   '        i = counts.get(role, 0)',
   '        counts[role] = i + 1',
   '        r = r[min(i, len(r) - 1)] if r else None',
+  "    if isinstance(r, dict) and '$crash' in r:",
+  "        crash['msg'] = r['$crash']",
+  "        raise RuntimeError(r['$crash'])",
   "    if isinstance(r, dict) and '$raise' in r:",
   "        raise RuntimeError(r['$raise'])",
   "    if isinstance(r, dict) and '$effects' in r:",
@@ -69,6 +73,8 @@ const DRIVER = [
   'def phase(title):',
   '    pass',
   'def log(msg):',
+  "    if crash.get('msg'):",
+  "        raise RuntimeError(crash['msg'])",
   '    logs.append(str(msg))',
   'async def parallel(*a, **k):',
   "    raise RuntimeError('parallel is not used by this step')",
@@ -607,6 +613,21 @@ pyTest('T5 plan-only: a review that returns nothing twice is an infra failure an
     } finally {
       rmAll(repo2);
     }
+  }
+});
+
+pyTest('T5 plan-only: a review whose agent() raises is a lost return: round 1b, then infra, with the error in the log', () => {
+  const repo = makeRepo();
+  try {
+    const r = runWorkflow(planOnlyArgs(repo), okResponses(repo, { 'spec-review': { $raise: 'agy-boom ' + 'y'.repeat(400) } }));
+    assert.equal(r.result.results[0].failKind, 'infra');
+    assert.match(r.result.results[0].error, /^spec: null review/);
+    assert.deepEqual(modelsOf(r.calls, 'spec-review'), ['pro', 'pro'], 'the round 1b retry');
+    const lg = r.logs.filter((l) => /^agent spec-review failed: RuntimeError: agy-boom/.test(l));
+    assert.equal(lg.length, 2, r.logs.join(' | '));
+    assert.ok(lg[0].length <= 'agent spec-review failed: RuntimeError: '.length + 300);
+  } finally {
+    rmAll(repo);
   }
 });
 
@@ -1296,10 +1317,10 @@ test('T7 static: merge, rollback, docs, cleanup and the truth check are git and 
   assert.doesNotMatch(src, /readyToMerge/, 'the merge is no longer left to a later task');
 });
 
-pyTest('guard: an agent() that raises outside a deliverable (discovery-donot) still ends in one JSON result with status error', () => {
+pyTest('guard: a crash outside agent() in a stage outside a deliverable (discovery-donot, via $crash) still ends in one JSON result with status error', () => {
   const repo = makeRepo(withDonot);
   try {
-    const r = runWorkflow(baseArgs(repo), { 'discovery-donot': { $raise: 'boom' } });
+    const r = runWorkflow(baseArgs(repo), { 'discovery-donot': { $crash: 'boom' } });
     assert.equal(r.stdoutLines, 1);
     assert.equal(r.result.status, 'error');
     assert.match(r.result.error, /^RuntimeError: boom/);
@@ -1312,11 +1333,11 @@ pyTest('guard: an agent() that raises outside a deliverable (discovery-donot) st
   }
 });
 
-pyTest('guard: a report agent that raises after the merge keeps the merged result, lastGood, operatorActions and resumeArgs', () => {
+pyTest('guard: a crash outside agent() in the report stage after the merge keeps the merged result, lastGood, operatorActions and resumeArgs', () => {
   const repo = makeRunRepo();
   try {
     const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
-    const r = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, docsStage: DOCS_STAGE } }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    const r = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, docsStage: DOCS_STAGE } }), runResponses(repo, { docs, report: { $crash: 'boom' } }));
     assert.equal(r.result.status, 'error', JSON.stringify(r.result.operatorActions));
     assert.match(r.result.error, /RuntimeError: boom/);
     assert.equal(r.result.results[0].merged, true);
@@ -1324,6 +1345,32 @@ pyTest('guard: a report agent that raises after the merge keeps the merged resul
     assert.match(r.result.lastGood, /^[0-9a-f]{40}$/);
     assert.ok(r.result.operatorActions.some((o) => o.kind === 'infra'));
     assert.ok(!('runToken' in r.result.resumeArgs));
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: an agent() that raises in discovery-donot is a lost return: error discovery failed, the do-not check returned nothing', () => {
+  const repo = makeRepo(withDonot);
+  try {
+    const r = runWorkflow(baseArgs(repo), { 'discovery-donot': { $raise: 'agy-boom' } });
+    assert.equal(r.stdoutLines, 1);
+    assert.equal(r.result.status, 'error');
+    assert.match(r.result.error, /discovery failed: the do-not check returned nothing/);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: a report agent() that raises after the merge is a lost return: needs-operator with the empty-report action, merged kept', () => {
+  const repo = makeRunRepo();
+  try {
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, { config: { ...RUN_CONFIG, docsStage: DOCS_STAGE } }), runResponses(repo, { docs, report: { $raise: 'agy-boom' } }));
+    assert.equal(r.result.status, 'needs-operator', JSON.stringify(r.result.operatorActions));
+    assert.equal(r.result.results[0].merged, true);
+    assert.match(r.result.lastGood, /^[0-9a-f]{40}$/);
+    assert.ok(r.result.operatorActions.some((o) => o.kind === 'report' && /the report agent returned nothing/.test(o.text || o.reason || JSON.stringify(o))));
   } finally {
     rmAll(repo);
   }
@@ -1344,7 +1391,7 @@ pyTest('guard: crash_result normalizes resumeArgs and operatorActions[].resumeWi
       authorizeExternal: ['gate:prod', 'E1:T1'],
       notes: { E1: 'keep this out after use' },
       approveRulings: { E1: ['R1:abc'] },
-    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    }), runResponses(repo, { docs, report: { $crash: 'boom' } }));
     assert.equal(r.result.status, 'error', JSON.stringify(r.result.operatorActions));
     const ra = r.result.resumeArgs;
     assert.ok(ra, 'resumeArgs present');
@@ -1555,7 +1602,7 @@ pyTest('guard: crash_result includes maxDeliverables-deferred deliverables in re
       authorizeExternal: ['gate:prod', 'E1:T1'],
       notes: { E1: 'keep this out after use' },
       approveRulings: { E1: ['R1:abc'] },
-    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    }), runResponses(repo, { docs, report: { $crash: 'boom' } }));
     assert.equal(r.result.status, 'error');
     assert.ok(r.result.selection, 'selection preserved in crash_result');
     assert.deepEqual(r.result.selection.order, ['E1']);
@@ -1586,7 +1633,7 @@ pyTest('guard: crash_result with resume_ids == [] drops gate items and sets infr
       deliverables: ['E1'],
       authorizeExternal: ['gate:prod', 'E1:T1'],
       notes: { E1: 'keep this out after use' },
-    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    }), runResponses(repo, { docs, report: { $crash: 'boom' } }));
     assert.equal(r.result.status, 'error');
     assert.equal(r.result.results[0].merged, true);
     assert.ok(r.result.selection);

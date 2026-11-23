@@ -211,7 +211,11 @@ async def call_agent(role, prompt, schema, model=None, body=None):
         raise ValueError('agent() call without a schema: %s' % role)
     m = model or STAGE_MODELS[role]
     text = (body + '\n\n' + prompt) if body else prompt
-    return await agent(text, schema, role=role, type_name='self', model=m)
+    try:
+        return await agent(text, schema, role=role, type_name='self', model=m)
+    except Exception as e:  # a failing agent() is a lost return (None); CancelledError is a BaseException and propagates
+        _log('agent %s failed: %s: %s' % (role, type(e).__name__, str(e)[:300]))
+        return None
 
 
 def _check_run(stdout, tool, nonce):

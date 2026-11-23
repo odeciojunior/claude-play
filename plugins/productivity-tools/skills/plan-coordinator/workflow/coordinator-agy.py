@@ -513,8 +513,27 @@ def stop_no_bash():
     return stop_with('ask', question=NO_BASH)
 
 
-async def call_agent(role, prompt, schema_name, model):
-    return await agent(BODIES[role] + '\n\n' + prompt, SCHEMAS[schema_name], role=role, type_name='self', model=model)
+def _log(msg):
+    f = globals().get('log')
+    if callable(f):
+        f(msg)
+
+
+ERRORS = {}  # last agent() failure of each step (text kept for the no-report event)
+
+
+async def call_agent(role, prompt, schema_name, model, tag=None):
+    """A failing agent() (any Exception) is a lost return (None); CancelledError is a BaseException and still propagates."""
+    text = BODIES[role] + '\n\n' + prompt
+    schema = SCHEMAS[schema_name]
+    try:
+        return await agent(text, schema, role=role, type_name='self', model=model)
+    except Exception as e:
+        msg = '%s: %s' % (type(e).__name__, str(e)[:300])
+        _log('agent %s failed: %s' % (role, msg))
+        if tag is not None:
+            ERRORS[tag] = msg
+        return None
 
 
 def guard_snapshot():
@@ -619,9 +638,14 @@ def final_prompt():
 
 # ---------------------------------------------------------------- the pieces of the loop
 async def impl_step(s, defects, model):
-    out = await call_agent('implementer', impl_prompt(s, defects), 'S_IMPL', model)
+    ERRORS.pop(s['n'], None)
+    out = await call_agent('implementer', impl_prompt(s, defects), 'S_IMPL', model, s['n'])
     REPORTS[s['n']] = out
     return {'n': s['n'], 'out': out}
+
+
+def _reraise(e):
+    raise e
 
 
 def models_of(steps):
@@ -637,12 +661,22 @@ def record_reports(results):
     """Every return becomes a report event; a step with no return in 3 attempts is held for the person."""
     for r in sorted(results, key=lambda x: x['n']):
         ev = report_event(r['n'], r['out'], NOW)
-        queue(ev)
         s = step_of(r['n'])
+        err = ERRORS.get(r['n']) if ev['type'] == 'no-report' else None
+        if err:
+            if s.get('external'):  # same warning the reducer writes without text, plus the error
+                ev['text'] = 'passo externo %s sem relatório; resultado não conferido: %s' % (r['n'], err[:300])
+            else:
+                ev['text'] = err[:300]
+        queue(ev)
+        s = step_of(r['n'])  # after queue: the state the event produced
         if ev['type'] == 'report' and ev['value'] == 'pass' and s.get('sha'):
             AGAIN.add(r['n'])
         if ev['type'] == 'no-report' and s['status'] == 'pending' and s['attempts'] >= 3:
-            queue({'type': 'hold', 'step': r['n'], 'text': 'step T%s returned no report in %s attempts' % (r['n'], s['attempts'])})
+            hold = 'step T%s returned no report in %s attempts' % (r['n'], s['attempts'])
+            if err:
+                hold += ': ' + err[:300]
+            queue({'type': 'hold', 'step': r['n'], 'text': hold})
 
 
 def ensure_baseline():
@@ -809,6 +843,7 @@ async def main():
     CARRY.clear()
     REPORTS.clear()
     LOST.clear()
+    ERRORS.clear()
     MAP = None
     SCHEMAS = {}
     BODIES = {}
@@ -881,8 +916,19 @@ async def main():
                 phase('Wave')
                 launched = [step_of(x['n']) for x in act['steps']]
                 models = models_of(launched)
-                results = await asyncio.gather(*[impl_step(s, take_carry(s['n']), m) for s, m in zip(launched, models)])
-                record_reports(list(results))
+                results = await asyncio.gather(*[impl_step(s, take_carry(s['n']), m) for s, m in zip(launched, models)], return_exceptions=True)
+                fixed = []
+                for x, s in zip(results, launched):
+                    if isinstance(x, BaseException):
+                        if not isinstance(x, Exception):
+                            _reraise(x)
+                        msg = '%s: %s' % (type(x).__name__, str(x)[:300])
+                        _log('step T%s failed outside agent(): %s' % (s['n'], msg))
+                        ERRORS[s['n']] = msg
+                        x = {'n': s['n'], 'out': None}
+                    fixed.append(x)
+                results = fixed
+                record_reports(results)
                 w2 = flush('reports')
                 if w2:
                     return w2
@@ -975,7 +1021,18 @@ async def main():
                 phase('Review')
                 before = guard_snapshot()
                 ns = list(act['steps'])
-                outs = await asyncio.gather(*[call_agent('task-reviewer', prelaunch_prompt(step_of(n)), 'S_TASKREVIEW', 'pro') for n in ns])
+                outs = await asyncio.gather(*[call_agent('task-reviewer', prelaunch_prompt(step_of(n)), 'S_TASKREVIEW', 'pro') for n in ns], return_exceptions=True)
+                fixed = []
+                for n, x in zip(ns, outs):
+                    if isinstance(x, BaseException):
+                        if not isinstance(x, Exception):
+                            _reraise(x)
+                        msg = '%s: %s' % (type(x).__name__, str(x)[:300])
+                        _log('pre-launch review of T%s failed outside agent(): %s' % (n, msg))
+                        ERRORS[n] = msg
+                        x = None
+                    fixed.append(x)
+                outs = fixed
                 if guard_snapshot() != before:
                     return finish(read_only_violation('task-reviewer', 'of the pre-launch review'))
                 for n, out in sorted(zip(ns, outs), key=lambda x: x[0]):
