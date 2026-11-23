@@ -1102,6 +1102,40 @@ pyTest('T6 run: an external task that is not authorized holds the deliverable be
   }
 });
 
+pyTest('rules: the prompts of the implementer and of the task-fix carry "Do not spawn subagents."', () => {
+  const repo = makeRunRepo();
+  try {
+    const r = runWorkflow(runArgs(repo), runResponses(repo, {
+      'task-reviewer': REVIEW_OK({ issues: [ISSUE('the same task defect')], commitsInRange: 1 }),
+      'task-fix': { status: 'DONE', summary: 'tried', checks: [] },
+    }));
+    for (const role of ['implementer', 'task-fix']) {
+      const cs = r.calls.filter((c) => c.role === role);
+      assert.ok(cs.length > 0, role);
+      for (const c of cs) assert.ok(c.prompt.includes('- Do not spawn subagents.'), role);
+    }
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('bodies: a plugin root without agents/implementer.md ends in status error before the preflight, with no agent() call', () => {
+  const repo = makeRunRepo();
+  const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'agyrel-plugin-'));
+  try {
+    fs.cpSync(PLUGIN, copy, { recursive: true });
+    fs.rmSync(path.join(copy, 'agents', 'implementer.md'));
+    const cli = path.join(copy, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs').replace(/\\/g, '/');
+    const r = runWorkflow(runArgs(repo, { trackerCli: cli }), runResponses(repo));
+    assert.equal(r.result.status, 'error');
+    assert.match(r.result.error, /agent body not found: implementer/);
+    assert.equal(r.calls.length, 0);
+  } finally {
+    rmAll(repo);
+    fs.rmSync(copy, { recursive: true, force: true });
+  }
+});
+
 pyTest('T6 run: a task review that repeats walks the implementer ladder flash_lite -> flash -> pro and ends with a conteudo failure recorded as blocked', () => {
   const repo = makeRunRepo();
   try {

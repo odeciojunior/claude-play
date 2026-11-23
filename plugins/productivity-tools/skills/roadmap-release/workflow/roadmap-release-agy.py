@@ -835,6 +835,7 @@ def _rule_lines():
         'proc': '- Processes: start servers only if the task needs them, in your deliverable\'s port range; stop everything you started before returning.',
         'locks': '- Shared resources: only agents told they HOLD a lock may use the resource that lock protects (%s). Without the lock and needing it: return BLOCKED with needsLock=<name>.' % ', '.join(R.lock_order),
         'ext': "- NEVER perform an external effect (production, deploy, push, sending e-mail or messages, writing shared data, resetting or rolling back someone's checkout) unless your task is marked external and authorized; when in doubt it is external.",
+        'nosub': '- Do not spawn subagents.',
     }
 
 
@@ -855,7 +856,7 @@ def common_base():
         '  Human acts also include: sessions with users, acceptances, owner approvals, go/no-go, credentials and external accounts. Produce the artifacts; never record a fictional acceptance.',
         '- Roadmap "do not" restrictions (violating any is category decisao, severity critical):',
         donot,
-        ln['git'], ln['rm'], ln['clean'], ln['tmp'], ln['proc'], ln['locks'],
+        ln['git'], ln['rm'], ln['clean'], ln['tmp'], ln['proc'], ln['locks'], ln['nosub'],
         '- Canonical gates: %s.' % gates_txt,
         '- Reviewers classify each problem with category: defeito (bug or unmet criterion), decisao (contradicts a registered decision), ambiente (limit of the local environment, not of the code; when a roadmap blocker is registered, cite its id in blq), fora-do-escopo (only a PRE-EXISTING problem outside the deliverable), pelo-plano (the plan foresaw it). A defect introduced by this diff is never fora-do-escopo nor pelo-plano. Excess scope is a defect.',
         ln['ext'],
@@ -874,7 +875,7 @@ def common_slim():
         'FIXED RULES (mechanical stage):',
         ln['git'], ln['rm'],
         "- Never write or quote a credential, token or key in any file, commit message, log or report; write 'provided through environment variable <NAME>' instead.",
-        ln['clean'], ln['tmp'], ln['proc'], ln['locks'], ln['ext'],
+        ln['clean'], ln['tmp'], ln['proc'], ln['locks'], ln['ext'], ln['nosub'],
         '- Asking the user is FORBIDDEN (do not use AskUserQuestion).',
         conflict + 'PROJECT:',
         R.project,
@@ -1058,10 +1059,7 @@ class Deliverable(object):
         return out
 
     def body(self, name):
-        try:
-            return load_agent_body(ROOT, name)
-        except OSError:
-            return ''
+        return R.bodies.get(name, '')
 
     # ---- results and failure
     def accept_risks(self, stage, issues):
@@ -2595,6 +2593,12 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
     deliverable, one after the other, setup, spec, plan and the roadmap record (plan-only) or the tasks, the final review and the gates (run)."""
     init_run(disc, plan, cfg, token, items, gates)
     R.root = ROOT
+    R.bodies = {}
+    for nm in ('implementer', 'task-reviewer', 'final-reviewer', 'spec-author', 'plan-author'):
+        try:
+            R.bodies[nm] = load_agent_body(ROOT, nm)
+        except OSError:
+            return err('agent body not found: %s' % nm)
     if MODE == 'run':
         try:
             R.test_integrity = load_test_integrity(ROOT + '/' + RELEASE_JS_REL, cfg)
