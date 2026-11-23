@@ -12,5 +12,5 @@ paths:
 - **Embed sync:** After editing any embedded `lib/` module, regenerate and verify all 4 targets:
   `node plugins/productivity-tools/scripts/embed.mjs --check plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js plugins/productivity-tools/scripts/fixtures/plan-tool/workflow-copy.js`
 - **Workflow agent dispatch (DEC-057):** Registered workflow scripts must pass `agentType`, never `subagent_type` (`lint-plugin.mjs` fails on any occurrence).
-- **Workflow size caps (`size.test.mjs`):** `roadmap-release.js` <= `250,000` LF chars (headroom is tight, ~5k chars; runtime launch ceiling is `524,288` bytes); `coordinator.js` <= `120,000` LF chars.
+- **Workflow size caps (`size.test.mjs`):** `roadmap-release.js` <= `300,000` LF chars (DEC-003), with headroom asserted `> 10,000` so it stays below the `290,000` trigger (DEC-034); runtime launch ceiling is `524,288` bytes in disk; `coordinator.js` <= `120,000` LF chars.
 - **Required tests:** Run `independence.test.mjs` (zero `superpowers` mentions anywhere in non-test plugin files), workflow `size.test.mjs` / `flow.test.mjs`, and `prose-budget.test.mjs`.
