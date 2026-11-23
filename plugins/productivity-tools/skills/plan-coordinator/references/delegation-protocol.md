@@ -30,7 +30,7 @@ After the person answers, call the workflow again with the `resumeArgs` it retur
   - A stop of the run itself (a failed wave gate, a baseline whose tests fail or run 0 tests, a lost reviewer, the final gate asking) has no step: answer it with `{ "event": "unblock" }` after the person decided (for a baseline, fix the command and recreate the state with `progress.mjs init <plan> --restart`, since nothing has launched yet, or answer `unblock` to accept that baseline); the run goes back to `in-progress` and the workflow continues.
   - An `authorize` stop is answered by `authorizeExternal`, not by `answers`; `refuse` (`step`, `value` `refused` or `not-named`), `hold` and `release` (`step`) act on one step.
 
-`runToken`, `authorizeExternal` and `answers` are never reused from an earlier call.
+`runToken`, `authorizeExternal` and `answers` are never reused from `resumeArgs` or an earlier call; `agyRequestedBy` (Antigravity) is never copied from `resumeArgs` or an earlier call either: on each relaunch the skill sets it again only if the owner's (or delegated subagent's) direct request to run on Antigravity still holds in this conversation (if lost to compaction or a new session, stop and require a fresh direct request).
 
 ## Restart
 

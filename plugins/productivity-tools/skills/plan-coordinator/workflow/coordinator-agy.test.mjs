@@ -401,7 +401,7 @@ pyTest('AC4: an external step gets a prelaunch-review on pro and stops with auth
 // ---- argumentos
 pyTest('agyRequestedBy: absent or invalid returns error before any agent, process or state change', () => withSandbox(async (sb) => {
   const before = fs.readFileSync(sb.stateFile, 'utf8');
-  for (const bad of [undefined, 'yes', 'delegate:', '', 'owner ', 'owner\n', 42, null]) {
+  for (const bad of [undefined, 'yes', 'delegate:', '', 'owner ', 'owner\n', 'owner\r', 'delegate:x\r', 'delegate:a b', 'delegate:a\tb', 'delegate:x\x00', 'delegate:x\x80', 'delegate:x\x9f', 42, null]) {
     const run = runScript({ ...launchArgs(sb), agyRequestedBy: bad });
     assert.equal(run.result.status, 'error', String(bad));
     assert.ok(run.result.error.includes('agy path needs a direct request'), run.result.error);
@@ -438,4 +438,33 @@ pyTest('args outside the contract return error before any agent', async () => {
   const answers = runScript({ ...launchArgs(sb), answers: [{ event: 'launch' }] });
   assert.equal(answers.result.status, 'error');
   assert.equal(agents(answers).length, 0);
+});
+
+pyTest('main() resets all module globals before early_args_error runs', () => {
+  const py = [
+    'import ast, asyncio, json',
+    `src = open(${JSON.stringify(SCRIPT)}, encoding='utf-8').read().split('try:\\n    result = await main()')[0]`,
+    "ns = {'__name__': '__agy_workflow__', 'args': {}, 'phase': lambda *a, **k: None, 'log': lambda *a, **k: None}",
+    'async def _agent(*a, **k): return None',
+    'async def _parallel(*a, **k): return []',
+    "ns['agent'] = _agent; ns['parallel'] = _parallel",
+    `code = compile(src, ${JSON.stringify(SCRIPT)}, 'exec', flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)`,
+    'eval(code, ns)',
+    "ns.update({'PLUGIN': '/stale', 'A': {'stale': True}, 'PROGRESS': '/stale', 'STATE_FILE': '/stale', 'RUN_TAG': 'stale', 'SEQ': 9, 'S': {'x': 1}, 'DISK': {'y': 2}, 'NOW': 'now', 'ROOT': '/stale', 'SWEPT': True, 'MAP': [1], 'SCHEMAS': {'k': 1}, 'BODIES': {'k': 'v'}, 'AUTH_ITEMS': ['x']})",
+    "ns['QUEUED'].append({'e': 1}); ns['AGAIN'].add(1); ns['CARRY'][1] = 'x'; ns['REPORTS'][1] = {}; ns['LOST'][1] = 2",
+    "res = asyncio.run(ns['main']())",
+    "out = {'res': res, 'PLUGIN': ns['PLUGIN'], 'A': ns['A'], 'PROGRESS': ns['PROGRESS'], 'STATE_FILE': ns['STATE_FILE'], 'RUN_TAG': ns['RUN_TAG'], 'SEQ': ns['SEQ'], 'S': ns['S'], 'DISK': ns['DISK'], 'NOW': ns['NOW'], 'ROOT': ns['ROOT'], 'QUEUED': ns['QUEUED'], 'SWEPT': ns['SWEPT'], 'AGAIN': sorted(ns['AGAIN']), 'CARRY': ns['CARRY'], 'REPORTS': ns['REPORTS'], 'LOST': ns['LOST'], 'MAP': ns['MAP'], 'SCHEMAS': ns['SCHEMAS'], 'BODIES': ns['BODIES'], 'AUTH_ITEMS': ns['AUTH_ITEMS']}",
+    'print(json.dumps(out))',
+  ].join('\n');
+  const r = spawnSync(PY.cmd, [...PY.pre, '-I', '-X', 'utf8', '-c', py], { encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout.trim());
+  assert.equal(out.res.status, 'error');
+  assert.ok(out.res.error.includes('agy path needs a direct request'), out.res.error);
+  for (const k of ['PLUGIN', 'PROGRESS', 'STATE_FILE', 'RUN_TAG', 'S', 'DISK', 'NOW', 'ROOT', 'MAP']) assert.equal(out[k], null, k);
+  assert.equal(out.SEQ, 0);
+  assert.equal(out.SWEPT, false);
+  assert.deepEqual(out.A, {});
+  for (const k of ['QUEUED', 'AGAIN', 'AUTH_ITEMS']) assert.deepEqual(out[k], [], k);
+  for (const k of ['CARRY', 'REPORTS', 'LOST', 'SCHEMAS', 'BODIES']) assert.deepEqual(out[k], {}, k);
 });

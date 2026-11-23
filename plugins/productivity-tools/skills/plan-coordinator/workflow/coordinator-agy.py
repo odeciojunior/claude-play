@@ -17,8 +17,8 @@ import json
 import os
 import re
 
-AGY_REQUEST_RE = re.compile(r'^(owner|delegate:\S.*)$')
-AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>" '
+AGY_REQUEST_RE = re.compile(r'^(owner|delegate:[^\s\x00-\x1f\x7f-\x9f]+)\Z')
+AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>", where <name> is a token with no spaces or control characters (e.g. delegate:plan-reviewer) '
                    '(set only when the owner, or a subagent the owner delegated decision power to, asked to run on Antigravity)')
 PROGRESS_SUFFIX = '/skills/plan-coordinator/scripts/progress.mjs'
 # Event size caps: the gate question, the failed names kept in the baseline and the command of one progress.mjs apply.
@@ -792,8 +792,28 @@ def late_args_error(a):
 
 # ---------------------------------------------------------------- run
 async def main():
-    global PLUGIN, A, PROGRESS, STATE_FILE, RUN_TAG, S, DISK, NOW, ROOT, SWEPT, MAP, SCHEMAS, BODIES
-    A = args
+    global PLUGIN, A, PROGRESS, STATE_FILE, RUN_TAG, SEQ, S, DISK, NOW, ROOT, SWEPT, MAP, SCHEMAS, BODIES, AUTH_ITEMS
+    PLUGIN = None
+    A = None
+    PROGRESS = None
+    STATE_FILE = None
+    RUN_TAG = None
+    SEQ = 0
+    S = None
+    DISK = None
+    NOW = None
+    ROOT = None
+    del QUEUED[:]
+    SWEPT = False
+    AGAIN.clear()
+    CARRY.clear()
+    REPORTS.clear()
+    LOST.clear()
+    MAP = None
+    SCHEMAS = {}
+    BODIES = {}
+    AUTH_ITEMS = []
+    A = globals().get('args')
     why = early_args_error(A)
     if why:
         return fail_with(why)

@@ -26,8 +26,8 @@ import os
 import re
 import shutil
 
-AGY_REQUEST_RE = re.compile(r'^(owner|delegate:\S.*)$')
-AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>" '
+AGY_REQUEST_RE = re.compile(r'^(owner|delegate:[^\s\x00-\x1f\x7f-\x9f]+)\Z')
+AGY_REQUEST_ERR = ('agy path needs a direct request: args.agyRequestedBy must be "owner" or "delegate:<name>", where <name> is a token with no spaces or control characters (e.g. delegate:plan-reviewer) '
                    '(set only when the owner, or a subagent the owner delegated decision power to, asked to run on Antigravity)')
 
 TRACKER_SUFFIX = '/skills/roadmap-tracker/scripts/roadmap.mjs'
@@ -2570,13 +2570,20 @@ def _slim(r):
 async def blocked_record(E, r):
     """A deliverable that stopped for a defect, a decision or a person is recorded as blocked on the target (run mode); the cut texts go to its log."""
     d = R.deliv.get(E)
-    source = d.ap['reviews'] if d else pure('artifactPaths(p.slug, p.E)', {'slug': R.disc['roadmapSlug'], 'E': E})['reviews']
-    rec = record_status(E, R.statuses['blocked'], ['branch ' + r['branch'] if r.get('branch') else R.rm + 'state.md'],
-                        {'reason': 'automatic execution stopped (%s): %s; branch %s kept at %s' % (r.get('failKind'), str(r['error'])[:400], r.get('branch'), r.get('worktree')), 'source': source})
+    try:
+        source = d.ap['reviews'] if d else pure('artifactPaths(p.slug, p.E)', {'slug': R.disc['roadmapSlug'], 'E': E})['reviews']
+        rec = record_status(E, R.statuses['blocked'], ['branch ' + r['branch'] if r.get('branch') else R.rm + 'state.md'],
+                            {'reason': 'automatic execution stopped (%s): %s; branch %s kept at %s' % (r.get('failKind'), str(r['error'])[:400], r.get('branch'), r.get('worktree')), 'source': source})
+    except Exception as e:
+        _log('unhandled failure: %s' % e)
+        rec = None
     if rec and rec['cuts']:
         r['recordCuts'] = list(r.get('recordCuts') or []) + rec['cuts']
         if d:
-            await d.persist_reviews('blocked-record')
+            try:
+                await d.persist_reviews('blocked-record')
+            except Exception as e:
+                _log('unhandled failure: %s' % e)
 
 
 async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
@@ -2627,27 +2634,44 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
     for E in finish + [x for x in R.order if x not in finish]:
         idx = R.order.index(E)
         r = None
+        outer_catch = False
         for dep in R.by_id[E].get('deps') or []:
             if dep not in done:
                 continue  # dependency already on the target, or (for an interrupted merge) a new one that waits for it
             if not done[dep].get('ok'):
-                r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': hold_of(E) or 'dependency %s did not finish in this run' % dep}
+                try:
+                    why = hold_of(E)
+                except Exception as e:  # the twin turns this into an infra result of the deliverable (outer catch), with no op and no integ_broken
+                    _log('unhandled failure in hold_of(%s): %s' % (E, e))
+                    r = {'id': E, 'merged': False, 'ok': False, 'error': 'unexpected error: %s' % e, 'failKind': 'infra'}
+                    outer_catch = True
+                    break
+                r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': why or 'dependency %s did not finish in this run' % dep}
                 break
         if r is None:
-            why = hold_of(E)
-            if why:
-                r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': why}
-            elif R.integ_broken:
-                r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': 'integration worktree compromised: %s' % R.integ_broken}
+            try:
+                why = hold_of(E)
+            except Exception as e:
+                _log('unhandled failure in hold_of(%s): %s' % (E, e))
+                r = {'id': E, 'merged': False, 'ok': False, 'error': 'unexpected error: %s' % e, 'failKind': 'infra'}
+                outer_catch = True
+            else:
+                if why:
+                    r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': why}
+                elif R.integ_broken:
+                    r = {'id': E, 'merged': False, 'ok': False, 'skipped': True, 'error': 'integration worktree compromised: %s' % R.integ_broken}
         if r is None:
             R.begun.append(E)
             try:
                 r = await run_deliverable(E, idx)
             except Exception as e:  # an unexpected failure of one deliverable is its result, not the end of the run
                 r = {'id': E, 'merged': False, 'ok': False, 'error': 'unexpected error: %s' % e, 'failKind': 'infra'}
+        done[E] = r
+        RESULTS[:] = [done[x] for x in R.order if x in done]
+        if not r.get('skipped') and not outer_catch:
             if E in finish and not r.get('ok') and not R.integ_broken:
                 R.integ_broken = 'the interrupted merge of %s did not finish validation: %s' % (E, r.get('error') or 'not ok')
-            if r.get('error') and not r.get('skipped'):
+            if r.get('error'):
                 fk = r.get('failKind')
                 if fk == 'externo':
                     pass  # waiting for the person: no defect, no blocked status
@@ -2664,8 +2688,6 @@ async def run_deliverables(disc, plan, cfg, token, items, gates, selection):
                            dict(A, deliverables=[E], notes=dict(notes, **{E: '<owner decision>'})))
                     if MODE != 'plan-only':
                         await blocked_record(E, r)
-        done[E] = r
-    RESULTS.extend(done[E] for E in R.order)
     return await finish_run(selection)
 
 
@@ -2755,7 +2777,14 @@ async def finish_run(selection):
 
 
 async def _main():
-    global A, MODE, ROOT
+    global A, MODE, ROOT, _PURE_TEXT
+    ROOT = None
+    A = {}
+    MODE = 'run'
+    _PURE_TEXT = None
+    del OPS[:]
+    del RESULTS[:]
+    R.__dict__.clear()
     raw = globals().get('args')
     raw = raw if isinstance(raw, dict) else {}
     if not isinstance(raw.get('agyRequestedBy'), str) or not AGY_REQUEST_RE.fullmatch(raw['agyRequestedBy']):
@@ -2765,8 +2794,6 @@ async def _main():
     A = {k: v for k, v in raw.items() if k not in ('runToken', 'agyRequestedBy')}
     MODE = A.get('mode') or 'run'
     cfg = A.get('config')
-    del OPS[:]
-    del RESULTS[:]
 
     # parseAuthorizeExternal comes first in the .js; it needs the plugin root (lib/external-auth.mjs through call_lib).
     early_root = _root_of(A.get('trackerCli'))
@@ -2856,6 +2883,7 @@ async def _main():
     if plan.get('error'):
         return err(plan['error'])
     selection = plan['selection']
+    R.selection = selection
     _log('selection: %s' % (' -> '.join(plan['order']) or '(empty)'))
     if MODE == 'dry-run' or not plan['order']:
         return mk_result('done' if plan['order'] else 'partial', selection=selection)
@@ -2870,9 +2898,42 @@ def crash_result(e):
         slim = [_slim(r) for r in RESULTS]
     except Exception:
         slim = []
-    op('infra', None, 'the workflow stopped on an unexpected error: %s' % msg[:400],
-       'Check git log and git status of the target, then run again (the stages reuse the spec, the plan, the commits and the merges already there)', dict(A))
-    return mk_result('error', error=msg, results=slim, lastGood=getattr(R, 'last_good', None))
+    selection = getattr(R, 'selection', None)
+    has_order = hasattr(R, 'order')
+    seen = {r['id'] for r in slim}
+    resume_ids = [r['id'] for r in slim if (not r['merged'] or r['broken']) and not r['planOnly']]
+    base_order = getattr(R, 'order', None) or ((selection or {}).get('order') or [])
+    resume_ids += [eid for eid in base_order if eid not in seen and eid not in resume_ids]
+    for s in ((selection or {}).get('skippedUpfront') or []):
+        sid = s.get('id')
+        if sid and sid not in resume_ids and re.search(r'maxDeliverables', s.get('reason') or ''):
+            resume_ids.append(sid)
+    target = getattr(R, 'target', None)
+    resume_args = dict(A, deliverables=resume_ids, **({'targetBranch': target} if target else {})) if resume_ids else None
+    final_resume = without_approve(resume_args if resume_args is not None else dict(A))
+    if ROOT and hasattr(R, 'items') and callable(globals().get('run_cli')):
+        try:
+            fixed = pure(PURE_RESUME_JS, {
+                'results': slim,
+                'bound': getattr(R, 'bound', None) or {},
+                'ops': OPS,
+                'notesRead': getattr(R, 'notes_read', None) or [],
+                'resumeArgs': resume_args,
+                'A': A,
+                'items': getattr(R, 'items', None) or [],
+                'resumeIds': resume_ids,
+            })
+            OPS[:] = fixed['ops']
+            final_resume = fixed['resume']
+        except Exception:
+            pass
+    if resume_ids or not has_order:
+        op('infra', None, 'the workflow stopped on an unexpected error: %s' % msg[:400],
+           'Check git log and git status of the target, then run again (the stages reuse the spec, the plan, the commits and the merges already there)', final_resume)
+    else:
+        op('infra', None, 'the workflow stopped on an unexpected error: %s' % msg[:400],
+           'Check git log and git status of the target; all selected deliverables finished before the error, rebuild the report from this result if needed', None)
+    return mk_result('error', error=msg, selection=selection, results=slim, lastGood=getattr(R, 'last_good', None), resumeArgs=final_resume)
 
 
 async def main():

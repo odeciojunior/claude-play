@@ -172,7 +172,7 @@ for (const [name, mutate, re] of BAD_ARGS) {
   });
 }
 
-for (const bad of [undefined, 'yes', 'delegate:', '', 'owner\n', 42]) {
+for (const bad of [undefined, 'yes', 'delegate:', '', 'owner ', 'owner\n', 'owner\r', 'delegate:x\r', 'delegate:a b', 'delegate:a\tb', 'delegate:x\x00', 'delegate:x\x80', 'delegate:x\x9f', 42, null]) {
   pyTest(`T4 args: agyRequestedBy ${JSON.stringify(bad)} is refused before any agent() call`, () => {
     const args = baseArgs('/does/not/exist');
     if (bad === undefined) delete args.agyRequestedBy; else args.agyRequestedBy = bad;
@@ -1327,4 +1327,301 @@ pyTest('guard: a report agent that raises after the merge keeps the merged resul
   } finally {
     rmAll(repo);
   }
+});
+
+pyTest('guard: crash_result normalizes resumeArgs and operatorActions[].resumeWith through PURE_RESUME_JS', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = {
+      ...RUN_CONFIG,
+      gates: [...RUN_CONFIG.gates, { name: 'prod', cmd: 'echo prod', kind: 'exit', restricted: true }],
+      docsStage: DOCS_STAGE,
+    };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, {
+      config: ext,
+      deliverables: ['E1', 'E2'],
+      authorizeExternal: ['gate:prod', 'E1:T1'],
+      notes: { E1: 'keep this out after use' },
+      approveRulings: { E1: ['R1:abc'] },
+    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    assert.equal(r.result.status, 'error', JSON.stringify(r.result.operatorActions));
+    const ra = r.result.resumeArgs;
+    assert.ok(ra, 'resumeArgs present');
+    assert.ok(!('runToken' in ra));
+    assert.ok(!('agyRequestedBy' in ra));
+    assert.ok(!('approveRulings' in ra));
+    assert.deepEqual(ra.deliverables, ['E2']);
+    assert.ok(!ra.notes || !('E1' in ra.notes), `consumed E1 note dropped: ${JSON.stringify(ra.notes)}`);
+    assert.deepEqual(ra.authorizeExternal, ['gate:prod'], 'merged E1 item dropped while unmerged gate stays');
+    const infra = r.result.operatorActions.find((o) => o.kind === 'infra');
+    assert.ok(infra && infra.resumeWith);
+    assert.deepEqual(infra.resumeWith.deliverables, ['E2']);
+    assert.ok(!('approveRulings' in infra.resumeWith));
+    assert.ok(!('agyRequestedBy' in infra.resumeWith));
+    assert.deepEqual(infra.resumeWith.authorizeExternal, ['gate:prod']);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: hold_of raising for E2 after E1 merges is an infra result of E2 (twin parity): no extra op, no integ_broken, later deliverables run', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = { ...RUN_CONFIG, docsStage: DOCS_STAGE };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const snippet = [
+      '_orig_hold = hold_of',
+      'def _wrapped_hold(E):',
+      "    if E == 'E2':",
+      "        raise RuntimeError('hold boom')",
+      '    return _orig_hold(E)',
+      "globals()['hold_of'] = _wrapped_hold",
+      'async def snip():',
+      '    res = await main()',
+      "    return {'res': res, 'broken': R.integ_broken, 'begun': list(R.begun)}",
+    ].join('\n');
+    const r = runWorkflow(runArgs(repo, { config: ext, deliverables: ['E1', 'E2', 'E3'] }), runResponses(repo, { docs }), WORKFLOW, snippet);
+    const res = r.snip.res;
+    assert.equal(res.results.length, 3, JSON.stringify(res));
+    assert.equal(res.results[0].id, 'E1');
+    assert.equal(res.results[0].merged, true);
+    assert.equal(res.results[1].id, 'E2');
+    assert.equal(res.results[1].failKind, 'infra');
+    assert.ok(!res.results[1].skipped);
+    assert.match(res.results[1].error, /unexpected error: .*hold boom/);
+    assert.ok(!res.operatorActions.some((o) => o.kind === 'infra' && o.deliverable === 'E2'), 'no extra infra op for E2');
+    assert.ok(!r.snip.broken, 'integ_broken not set');
+    assert.ok(!r.snip.begun.includes('E2'));
+    assert.equal(res.results[2].id, 'E3');
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: hold_of raising in the dependency branch is an infra result, not "dependency did not finish"', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = { ...RUN_CONFIG, docsStage: DOCS_STAGE };
+    const snippet = [
+      '_orig_hold = hold_of',
+      'def _wrapped_hold(E):',
+      "    if E == 'E2':",
+      "        raise RuntimeError('dep hold boom')",
+      '    return _orig_hold(E)',
+      "globals()['hold_of'] = _wrapped_hold",
+      '_orig_rd = run_deliverable',
+      'async def _fake_rd(E, idx):',
+      "    return {'id': E, 'merged': False, 'ok': False, 'error': 'first failed', 'failKind': 'externo'}",
+      "globals()['run_deliverable'] = _fake_rd",
+      'async def snip():',
+      '    res = await main()',
+      "    return {'res': res, 'broken': R.integ_broken}",
+    ].join('\n');
+    const r = runWorkflow(runArgs(repo, { config: ext, deliverables: ['E1', 'E2'] }), runResponses(repo, {}), WORKFLOW, snippet);
+    const res = r.snip.res;
+    const e2 = res.results.find((x) => x.id === 'E2');
+    assert.ok(e2, JSON.stringify(res));
+    assert.equal(e2.failKind, 'infra');
+    assert.ok(!e2.skipped);
+    assert.match(e2.error, /unexpected error: .*dep hold boom/);
+    assert.ok(!/did not finish/.test(e2.error));
+    assert.ok(!r.snip.broken);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: crash_result inside init_run (R.order not yet set) takes the ids from selection.order and the deferred ones', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = { ...RUN_CONFIG, docsStage: DOCS_STAGE };
+    const snippet = [
+      'def _boom_init(*a, **k):',
+      "    raise RuntimeError('init boom')",
+      "globals()['init_run'] = _boom_init",
+      'async def snip():',
+      '    return await main()',
+    ].join('\n');
+    const r = runWorkflow(runArgs(repo, { config: ext, deliverables: ['E1', 'E2'], maxDeliverables: 1 }), runResponses(repo, {}), WORKFLOW, snippet);
+    const res = r.snip;
+    assert.equal(res.status, 'error', JSON.stringify(res));
+    assert.match(res.error, /init boom/);
+    assert.deepEqual(res.selection.order, ['E1']);
+    assert.deepEqual(res.resumeArgs.deliverables, ['E1', 'E2']);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: blocked_record failing after E1 merges logs and preserves E1 and E2 results', () => {
+  const repo = makeRunRepo();
+  try {
+    const cleanCfg = { gates: [{ name: 'tests', cmd: 'echo "tests 3 pass 3"', kind: 'tests' }], projectContext: 'sample', docsStage: DOCS_STAGE };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const e2Spec = dataDoc('Spec E2', { ...SPEC_OBJ, id: 'E2' });
+    const snippet = [
+      '_orig_rec = record_status',
+      'def _wrapped_rec(E, status, refs, extra=None):',
+      "    if E == 'E2' and status == R.statuses['blocked']:",
+      "        raise RuntimeError('record boom')",
+      '    return _orig_rec(E, status, refs, extra)',
+      "globals()['record_status'] = _wrapped_rec",
+      'async def snip():',
+      '    return await main()',
+    ].join('\n');
+    const r = runWorkflow(runArgs(repo, { config: cleanCfg, deliverables: ['E1', 'E2'], maxFixRounds: 0 }), runResponses(repo, {
+      docs,
+      'spec-author': [authorWrites(path.join(artDir(repo, 'E1'), 'spec.md'), specText()), authorWrites(path.join(artDir(repo, 'E2'), 'spec.md'), e2Spec)],
+      'spec-review': [REVIEW_OK(), REVIEW_OK({ issues: [ISSUE('E2 spec defect')] })],
+      'review-log': [logWriter(repo), { $effects: [{ write: path.join(artDir(repo, 'E2'), 'reviews.md'), text: '# Review log E2\n' }], $value: { ok: true } }],
+    }), WORKFLOW, snippet);
+    const res = r.snip;
+    assert.equal(res.status, 'needs-operator', JSON.stringify(res));
+    assert.equal(res.results.length, 2);
+    assert.equal(res.results[0].id, 'E1');
+    assert.equal(res.results[0].merged, true);
+    assert.equal(res.results[1].id, 'E2');
+    assert.equal(res.results[1].failKind, 'conteudo');
+    assert.ok(r.logs.some((l) => l.includes('unhandled failure: record boom')), r.logs.join('|'));
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: exception escaping mid-loop after E1 merges preserves E1 in crash_result and filters E1 items', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = {
+      ...RUN_CONFIG,
+      gates: [...RUN_CONFIG.gates, { name: 'prod', cmd: 'echo prod', kind: 'exit', restricted: true }],
+      docsStage: DOCS_STAGE,
+    };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const snippet = [
+      '_orig_init = init_run',
+      'class _BoomList(list):',
+      '    def append(self, x):',
+      "        if x == 'E2':",
+      "            raise RuntimeError('mid-loop boom')",
+      '        return super().append(x)',
+      'def _wrapped_init(*a, **k):',
+      '    _orig_init(*a, **k)',
+      '    R.begun = _BoomList()',
+      "globals()['init_run'] = _wrapped_init",
+      'async def snip():',
+      '    return await main()',
+    ].join('\n');
+    const r = runWorkflow(runArgs(repo, {
+      config: ext,
+      deliverables: ['E1', 'E2'],
+      authorizeExternal: ['gate:prod', 'E1:T1'],
+      notes: { E1: 'keep this out after use' },
+      approveRulings: { E1: ['R1:abc'] },
+    }), runResponses(repo, { docs }), WORKFLOW, snippet);
+    const res = r.snip;
+    assert.equal(res.status, 'error', JSON.stringify(res));
+    assert.match(res.error, /mid-loop boom/);
+    assert.equal(res.results.length, 1);
+    assert.equal(res.results[0].id, 'E1');
+    assert.equal(res.results[0].merged, true);
+    assert.deepEqual(res.selection.order, ['E1', 'E2']);
+    assert.deepEqual(res.resumeArgs.deliverables, ['E2']);
+    assert.deepEqual(res.resumeArgs.authorizeExternal, ['gate:prod']);
+    assert.ok(!res.resumeArgs.notes || !('E1' in res.resumeArgs.notes));
+    assert.ok(!('approveRulings' in res.resumeArgs));
+    const infra = res.operatorActions.find((o) => o.kind === 'infra');
+    assert.ok(infra && infra.resumeWith);
+    assert.deepEqual(infra.resumeWith.deliverables, ['E2']);
+    assert.deepEqual(infra.resumeWith.authorizeExternal, ['gate:prod']);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: crash_result includes maxDeliverables-deferred deliverables in resumeArgs and keeps gate items', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = {
+      ...RUN_CONFIG,
+      gates: [...RUN_CONFIG.gates, { name: 'prod', cmd: 'echo prod', kind: 'exit', restricted: true }],
+      docsStage: DOCS_STAGE,
+    };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, {
+      config: ext,
+      deliverables: 'all',
+      maxDeliverables: 1,
+      authorizeExternal: ['gate:prod', 'E1:T1'],
+      notes: { E1: 'keep this out after use' },
+      approveRulings: { E1: ['R1:abc'] },
+    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    assert.equal(r.result.status, 'error');
+    assert.ok(r.result.selection, 'selection preserved in crash_result');
+    assert.deepEqual(r.result.selection.order, ['E1']);
+    assert.deepEqual(r.result.resumeArgs.deliverables, ['E2', 'E3']);
+    assert.equal(r.result.resumeArgs.targetBranch, 'release/sample');
+    assert.deepEqual(r.result.resumeArgs.authorizeExternal, ['gate:prod']);
+    const infra = r.result.operatorActions.find((o) => o.kind === 'infra');
+    assert.ok(infra && infra.resumeWith);
+    assert.deepEqual(infra.resumeWith.deliverables, ['E2', 'E3']);
+    assert.equal(infra.resumeWith.targetBranch, 'release/sample');
+    assert.deepEqual(infra.resumeWith.authorizeExternal, ['gate:prod']);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: crash_result with resume_ids == [] drops gate items and sets infra.resumeWith to null', () => {
+  const repo = makeRunRepo();
+  try {
+    const ext = {
+      ...RUN_CONFIG,
+      gates: [...RUN_CONFIG.gates, { name: 'prod', cmd: 'echo prod', kind: 'exit', restricted: true }],
+      docsStage: DOCS_STAGE,
+    };
+    const docs = { $effects: [{ write: path.join(intWt(repo), 'docs', 'CHANGELOG.md'), text: '- E1: walking skeleton\n' }], $value: { ok: true } };
+    const r = runWorkflow(runArgs(repo, {
+      config: ext,
+      deliverables: ['E1'],
+      authorizeExternal: ['gate:prod', 'E1:T1'],
+      notes: { E1: 'keep this out after use' },
+    }), runResponses(repo, { docs, report: { $raise: 'boom' } }));
+    assert.equal(r.result.status, 'error');
+    assert.equal(r.result.results[0].merged, true);
+    assert.ok(r.result.selection);
+    assert.deepEqual(r.result.resumeArgs.authorizeExternal, []);
+    const infra = r.result.operatorActions.find((o) => o.kind === 'infra');
+    assert.ok(infra);
+    assert.equal(infra.resumeWith, null);
+  } finally {
+    rmAll(repo);
+  }
+});
+
+pyTest('guard: _main() resets ROOT and all module globals before AGY_REQUEST_RE check', () => {
+  const snippet = [
+    "ROOT = '/stale'",
+    "A = {'stale': True}",
+    "MODE = 'dry-run'",
+    "_PURE_TEXT = 'stale'",
+    "OPS.append({'kind': 'stale'})",
+    "RESULTS.append({'id': 'E9'})",
+    "R.target = 'stale'",
+    "args = {}",
+    'async def snip():',
+    '    res = await _main()',
+    "    return {'res': res, 'ROOT': ROOT, 'A': A, 'MODE': MODE, 'PURE': _PURE_TEXT, 'OPS': list(OPS), 'RESULTS': list(RESULTS), 'R': dict(R.__dict__)}",
+  ].join('\n');
+  const r = runWorkflow(undefined, {}, WORKFLOW, snippet);
+  const s = r.snip;
+  assert.equal(s.res.status, 'error');
+  assert.ok(s.res.error.includes('agy path needs a direct request'));
+  assert.equal(s.ROOT, null);
+  assert.deepEqual(s.A, {});
+  assert.equal(s.MODE, 'run');
+  assert.equal(s.PURE, null);
+  assert.deepEqual(s.OPS, []);
+  assert.deepEqual(s.RESULTS, []);
+  assert.deepEqual(s.R, {});
 });
