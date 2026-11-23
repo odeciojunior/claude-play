@@ -265,6 +265,20 @@ Decisões registradas (2026-11-23, decisão delegada do dono (Fable)):
 - **Pergunta 2, proibição do V2:** não é um veto geral. Aqui o agy é um host opcional, só roda com pedido direto, e merge em `main` e push continuam com o dono. Fica como risco aceito, com o rótulo "experimental".
 - **Pergunta 5, `--declare-permissions "agy"`:** não concede nada; só impede que o preflight pare (§7.7). A evidência vem do smoke.
 
+## Evidência ao vivo (smoke de 2026-11-23)
+
+Sessão interativa do agy 1.5.15 (Orchestrator, `--mode accept-edits`, `toolPermission=request-review`, `useG1Credits=false`), dirigida por pseudo-terminal, no claude-play em `7c3021c` e num repositório descartável sem remote. O plano de 2 passos numa onda terminou com o workflow devolvendo `done`, `finalGate pass` e um commit por passo. O retrato do claude-play antes e depois saiu idêntico (HEAD, porcelain, refs, worktrees). A evidência bruta (transcript, agy.log, aprovações) ficou fora do repositório.
+
+- **Falha sem `finish` (pergunta 1):** não levanta exceção nem derruba o workflow. O `agent()` devolve o texto final da resposta (sonda com schema string: `'done'`). Com schema de objeto não foi observado. Como defesa, `call_agent` trata como retorno perdido (None) qualquer valor cujo tipo não seja o pedido pelo schema.
+- **Concorrência:** o `asyncio.gather` sobre `await agent()` funciona e os dois implementers rodaram em paralelo, com escritas intercaladas no agy.log.
+- **Parâmetros:** `model`, `type_name='self'` e schemas extraídos do JS foram aceitos. `workspace` aceita `inherit`, `branch` ou `share`; outro valor levanta `ValueError`. O modelo que atendeu cada chamada não aparece no log.
+- **Guarda read-only:** o final-reviewer passou sem falso positivo. O task-reviewer não rodou, porque os passos não tinham portão; isso fica sem evidência ao vivo.
+- **Gate:** a linha de base e o portão da onda rodaram pelo Git Bash (`exit 0`).
+- **Permissões (pergunta 5):** pediram aprovação os comandos de terminal do agente principal (5), o `RunWorkflow` (2) e os comandos Bash dos subagents (7). Não pediram as leituras, a criação de arquivos em `accept-edits` nem o ExitPlanMode. Os subagents esperam aprovação própria na TUI, então uma sessão sem ninguém para aprovar trava neles.
+- **`invoke_subagent` (pergunta 3):** obrigatórios `TypeName`, `Role` e `Prompt`; opcionais `Model` e `Workspace` (autorrelato do agy, coerente com o erro de `workspace`).
+- **Custo:** a sessão de cerca de 15 minutos consumiu 25 pp da cota semanal e 86 pp da cota de 5 horas do Gemini, sem separar outro uso da mesma conta no período. A referência do spike (0,03 a 0,2 pp por chamada pequena de `agy -p`) não vale para o Orchestrator com workflow. Um plano de 2 passos triviais custa caro; o caminho agy deve ser reservado a pedidos explícitos que justifiquem esse gasto.
+- **Observação:** os horários dos eventos no `progress.json` do agy recebem o instante da última escrita (`queue()` usa `NOW`), então não servem para auditar a ordem dos fatos.
+
 ## Deixado para o plano
 
 - Divisão exata em tarefas (`T1..Tn`) e ondas paralelas sem conflito de escrita, com `roadmap-release-agy.py` dividido por modo.
