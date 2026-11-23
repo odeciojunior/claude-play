@@ -53,7 +53,8 @@ test('generates a valid disposable repo', () => withTemp((root) => {
   // baseline gate is green with at least one real test
   const t = spawnSync(process.execPath, ['--test'], { cwd: dir, encoding: 'utf8', env });
   assert.equal(t.status, 0, t.stdout + t.stderr);
-  assert.match(t.stdout, /# pass [1-9]/);
+  // Node < 23 prints the TAP summary (# pass); Node >= 23 defaults to the spec reporter (ℹ pass).
+  assert.match(t.stdout, /(?:#|ℹ) pass [1-9]/);
 }));
 
 test('refuses a non-empty directory and leaves it untouched', () => withTemp((root) => {
