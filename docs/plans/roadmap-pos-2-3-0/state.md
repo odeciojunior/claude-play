@@ -15,7 +15,7 @@ Estratégia v1.1 -- 2026-11-23
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Conferência humana de AC2 em docs/reports/2026-11-21-E38-arnes-e-procs-linux.md; resto em E40 |
 | E39 | nao-iniciado | - | - |
 | E40 | nao-iniciado | - | - |
-| E41 | nao-iniciado | - | Spec via spec-writer (docs/plans/pos-2-3-0-E41/) |
+| E41 | spec | `docs/plans/pos-2-3-0-E41/spec.md` | Planos A e B via plan-writer |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
@@ -25,6 +25,7 @@ Estratégia v1.1 -- 2026-11-23
 - (dono) Logar a config descartável quando o primeiro lote pago (E35) estiver pronto para rodar e fazer logout ao fim de E40 antes de apagar a pasta da config.
 - (executor) Manter intocadas as pastas de transcrições pagas dos três lotes do pós-2.2.0 em D:/claude-e3x-out até o fechamento de E35 e E39; apagá-las em E40 (decisão 35 do pós-2.2.0; REQ-008).
 - (dono) Conferir o relatório docs/reports/2026-11-21-E38-arnes-e-procs-linux.md para aceite humano de E38 AC2 (conferência Linux/WSL real de verify-run procs).
+- (dono) ratificar DEC-033: --page fica só para o caminho agy (subprocess, sem recópia por LLM); diverge da letra de DEC-024
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |

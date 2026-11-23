@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-23 | E41 | DEC-033 registrada (ratificação pendente) | `decisions.md` |
+| 2026-11-23 | E41 | cartão E41: marcas verify dos critérios de teste alinhadas aos arquivos da spec (DEC-032) | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
+| 2026-11-23 | E41 | DEC-032 ratificada pelo dono via Fable (questão aberta da v1.1 respondida pela spec do E41) | `decisions.md` |
 | 2026-11-23 | - | pendência de aprovação da estratégia v1.1 resolvida pela revisão; item de now de E36/E37 substituído pelos itens de E41 e de E36/E37 depois de E41 | `state.md` |
 | 2026-11-23 | - | strategy v1.1: absorve DEC-024, DEC-025, DEC-026, DEC-027, DEC-028, DEC-029, DEC-030 (E41 novo; E37 sem B07; E36, E37, E39 e E40 dependem de E41; E40 publica 2.5.0) | `../2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-23 | - | REQ-011 adicionado: saída de script sem recópia lossy por LLM (respostas copiadas até 3.500 bytes, exit code vindo de script), coberto por E41; REQ-004 sem B07, REQ-008 com alvo 2.5.0 | `requirements.md` |
