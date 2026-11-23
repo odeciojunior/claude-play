@@ -1,26 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { loadPure } from '../../roadmap-release/workflow/load-pure.mjs';
 
 const COORDINATOR = fileURLToPath(new URL('./coordinator.js', import.meta.url));
 const P = loadPure(COORDINATOR);
-
-test('failedTestNames reads TAP not ok lines', () => {
-  const out = ['TAP version 13', 'ok 1 - good', 'not ok 2 - first bad', 'not ok 3 - second bad', '1..3'].join('\n');
-  assert.deepEqual(P.failedTestNames(out), ['first bad', 'second bad']);
-});
-
-test('failedTestNames reads spec cross lines', () => {
-  const out = ['✔ good (1.2ms)', '✖ spec bad (3.4ms)', '✖ other bad', 'ℹ fail 2'].join('\n');
-  assert.deepEqual(P.failedTestNames(out), ['spec bad', 'other bad']);
-});
-
-test('failedTestNames gives an empty list when no names are recognizable', () => {
-  assert.deepEqual(P.failedTestNames('all fine\nnothing here'), []);
-  assert.deepEqual(P.failedTestNames(''), []);
-  assert.deepEqual(P.failedTestNames(undefined), []);
-});
+const CAPTURE = fileURLToPath(new URL('../../../scripts/capture.mjs', import.meta.url));
 
 test('waveGatePasses: exit 0 passes', () => {
   assert.equal(P.waveGatePasses({ exit: 0, failedNames: [] }, null), true);
@@ -110,26 +99,72 @@ test('gateQuestion stays within 600 characters', () => {
   assert.equal(P.gateQuestion(2, 1, ['x']), 'the gate of wave 2 failed (exit 1, failing: x); the person decides');
 });
 
-test('baselineEvent caps names and tail', () => {
-  const stdout = Array.from({ length: 60 }, (_, i) => `not ok ${i + 1} - bad ${i}`).join('\n') + '\n' + 'z'.repeat(3000);
-  const ev = P.baselineEvent('node --test', { exit: 1, stdout });
-  assert.equal(ev.type, 'baseline');
-  assert.ok(ev.tail.length <= 1500);
+// A real capture line of a generated suite: 63 tests, the three given ones fail (stdout in TAP, as node --test prints it).
+function realCapture(failNames, { extra = '', tests = true } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-cap-'));
+  try {
+    const run = (cmd, args) => { const r = spawnSync(cmd, args, { cwd: dir, encoding: 'utf8' }); assert.ok(r.status === 0 || r.status === 1, r.stderr); return r; };
+    run('git', ['init', '-q']);
+    const lines = ['TAP version 13'];
+    for (let i = 1; i <= 63; i++) lines.push(i <= failNames.length ? 'not ok ' + i + ' - ' + failNames[i - 1] : 'ok ' + i + ' - good ' + i);
+    lines.push('1..63', '# tests 63', '# pass ' + (63 - failNames.length), '# fail ' + failNames.length, '# skipped 0');
+    const body = tests ? lines.join('\n') :'plain output without a summary';
+    writeFileSync(join(dir, 's.mjs'), 'console.log(' + JSON.stringify(body + extra) + '); process.exit(' + (failNames.length ? 1 : 0) + ');\n');
+    const r = spawnSync(process.execPath, [CAPTURE, 'run', '--nonce', 'N1', '--task', 'gt', '--tests', '--cwd', dir, '--', process.execPath, 's.mjs'], { encoding: 'utf8' });
+    return JSON.parse(r.stdout);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+test('E41 AC4: waveGateOf takes failedNames and exit from the extractor of a real capture, not from copied text', () => {
+  const cap = realCapture(['FAIL_A', 'FAIL_B', 'FAIL_C']);
+  assert.equal(cap.extract.total, 63);
+  assert.deepEqual(P.waveGateOf(cap), { exit: 1, failedNames: ['FAIL_A', 'FAIL_B', 'FAIL_C'] });
+  assert.equal(P.waveGatePasses(P.waveGateOf(cap), P.waveGateOf(cap)), true);
+});
+
+test('E41 C3: an output that is not node:test and exits 1 has no names and the gate does not pass', () => {
+  const cap = realCapture(['x'], { tests: false });
+  assert.equal(cap.extract.format, 'unknown');
+  const gate = P.waveGateOf(cap);
+  assert.deepEqual(gate, { exit: 1, failedNames: [] });
+  assert.equal(P.waveGatePasses(gate, { exit: 1, failedNames: ['x'] }), false);
+  assert.deepEqual(P.waveGateOf(null), { exit: -1, failedNames: [] });
+});
+
+test('E41 C4: a cut list of names (failedNamesCut > 0) gives no names and fails against a baseline with the same names', () => {
+  const cap = { exit: 1, extract: { failedNames: ['a', 'b'], failedNamesCut: 3 } };
+  const gate = P.waveGateOf(cap);
+  assert.deepEqual(gate, { exit: 1, failedNames: [] });
+  assert.equal(P.waveGatePasses(gate, { exit: 1, failedNames: ['a', 'b'] }), false);
+});
+
+test('E41: baselineEvent and baselineProblem read exit, tail and extract of the capture JSON', () => {
+  const cap = realCapture(['FAIL_A', 'FAIL_B', 'FAIL_C']);
+  const ev = P.baselineEvent('node --test', cap);
+  assert.deepEqual(ev, { type: 'baseline', test: 'node --test', exit: 1, tail: cap.tail, failedNames: ['FAIL_A', 'FAIL_B', 'FAIL_C'] });
+  assert.match(P.baselineProblem(cap), /exited 1/);
+  const green = realCapture([]);
+  assert.equal(P.baselineProblem(green), null);
+  assert.equal(P.baselineEvent('t', green).exit, 0);
+});
+
+test('E41: baselineEvent caps the names at 50 and adds failedNamesCut of the extractor', () => {
+  const failedNames = Array.from({ length: 60 }, (_, i) => 'bad ' + i);
+  const ev = P.baselineEvent('t', { exit: 1, tail: 'x', extract: { failedNames, failedNamesCut: 4 } });
   assert.equal(ev.failedNames.length, 50);
-  assert.equal(ev.failedNamesCut, 10);
+  assert.equal(ev.failedNamesCut, 14);
+  assert.equal(P.baselineEvent('t', { exit: 1, tail: 'x', extract: { failedNames: ['a'], failedNamesCut: 0 } }).failedNamesCut, undefined);
 });
 
 test('2.0.1 AC1: baselineProblem names a failing or empty baseline and lets a plain green run through', () => {
-  assert.match(P.baselineProblem({ exit: 1, stdout: 'not ok 1 - x' }), /exited 1/);
-  assert.match(P.baselineProblem({ exit: 2, stdout: '' }), /exited 2/);
-  assert.match(P.baselineProblem({ exit: 0, stdout: 'TAP version 13\n# tests 0\n# suites 0\n# pass 0\n# fail 0\n' }), /executed 0 tests/);
-  assert.match(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 0\nℹ pass 0\n' }), /executed 0 tests/);
-  assert.match(P.baselineProblem({ exit: 0, stdout: '  # tests 3  \n# pass 0\n# skipped 3\n' }), /passed 0 tests/);
-  assert.match(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 2\r\nℹ pass 0\r\n' }), /passed 0 tests/);
-  assert.equal(P.baselineProblem({ exit: 0, stdout: 'ok 1 - fine' }), null);
-  assert.equal(P.baselineProblem({ exit: 0, stdout: '# tests 2\n# pass 2\n' }), null);
-  assert.equal(P.baselineProblem({ exit: 0, stdout: 'ℹ tests 5\nℹ pass 5\n' }), null);
-  assert.equal(P.baselineProblem({ exit: 0, stdout: undefined }), null);
+  const ex = (total, pass) => ({ exit: 0, extract: { format: 'node-tap', total, pass, failedNames: [] } });
+  assert.match(P.baselineProblem({ exit: 1, extract: { format: 'unknown', total: null, pass: null, failedNames: [] } }), /exited 1/);
+  assert.match(P.baselineProblem({ exit: 2 }), /exited 2/);
+  assert.match(P.baselineProblem(ex(0, 0)), /executed 0 tests/);
+  assert.match(P.baselineProblem(ex(3, 0)), /passed 0 tests/);
+  assert.equal(P.baselineProblem({ exit: 0, extract: { format: 'unknown', total: null, pass: null, failedNames: [] } }), null);
+  assert.equal(P.baselineProblem(ex(2, 2)), null);
+  assert.equal(P.baselineProblem({ exit: 0 }), null);
 });
 
 test('waveGatePasses with a cut baseline', () => {

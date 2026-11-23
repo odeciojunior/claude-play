@@ -1022,21 +1022,6 @@ function bindAuthorizations(items, E, fp) {
 }
 // </embed>
 
-// Names of the failed tests in node:test output: TAP "not ok 3 - name" and spec "✖ name (1.2ms)".
-function failedTestNames(text) {
-  const names = []
-  for (const raw of String(text == null ? '' : text).split(/\r?\n/)) {
-    const line = raw.trim()
-    let m = /^not ok \d+ - (.+)$/.exec(line)
-    if (!m) m = /^✖ (.+)$/.exec(line)
-    if (!m) continue
-    const name = m[1].replace(/\s+\(\d+(?:\.\d+)?ms\)$/, '').replace(/\s+# (?:TODO|SKIP).*$/, '').trim()
-    if (!name || /^failing tests:?$/.test(name)) continue
-    if (!names.includes(name)) names.push(name)
-  }
-  return names
-}
-
 // gate and baseline: { exit, failedNames }. Passes on exit 0; on a failure only when every failed name
 // is already red in a red baseline. A failure without recognizable names never passes.
 function waveGatePasses(gate, baseline) {
@@ -1122,28 +1107,30 @@ function gateQuestion(wave, exit, failedNames) {
   return head + list.slice(0, Math.max(0, keep)) + '...' + more + tail
 }
 
-// The baseline event of a test run: tail and failed names capped, the excess of names counted.
-function baselineEvent(test, out) {
-  const { names, cut } = capNames(failedTestNames(out.stdout))
-  const ev = { type: 'baseline', test, exit: out.exit, tail: tailOf(out.stdout), failedNames: names }
-  if (cut > 0) ev.failedNamesCut = cut
+// The gate of a wave from the checked JSON of capture: a cut or missing list of names never passes a failure.
+function waveGateOf(cap) {
+  if (!cap || !Number.isInteger(cap.exit)) return { exit: -1, failedNames: [] }
+  const ex = cap.extract
+  const ok = ex && Array.isArray(ex.failedNames) && !(ex.failedNamesCut > 0)
+  return { exit: cap.exit, failedNames: ok ? ex.failedNames : [] }
+}
+
+// The baseline event of a test run: tail of the capture, failed names capped, the excess of names counted.
+function baselineEvent(test, cap) {
+  const ex = cap.extract || {}
+  const { names, cut } = capNames(ex.failedNames)
+  const all = cut + (Number.isInteger(ex.failedNamesCut) ? ex.failedNamesCut : 0)
+  const ev = { type: 'baseline', test, exit: cap.exit, tail: cap.tail, failedNames: names }
+  if (all > 0) ev.failedNamesCut = all
   return ev
 }
 
 // Why a baseline run cannot be trusted (exit not 0, 0 tests run, 0 passed), or null.
-function baselineProblem(out) {
-  if (out.exit !== 0) return `the baseline test run exited ${out.exit}`
-  let tests = null
-  let pass = null
-  for (const raw of String(out.stdout == null ? '' : out.stdout).split(/\r?\n/)) {
-    const line = raw.trim()
-    const t = /^(?:#|ℹ) tests (\d+)$/.exec(line)
-    const p = /^(?:#|ℹ) pass (\d+)$/.exec(line)
-    if (t) tests = Number(t[1])
-    if (p) pass = Number(p[1])
-  }
-  if (tests === 0) return 'the baseline test run executed 0 tests'
-  if (pass === 0) return 'the baseline test run passed 0 tests'
+function baselineProblem(cap) {
+  if (cap.exit !== 0) return `the baseline test run exited ${cap.exit}`
+  const ex = cap.extract || {}
+  if (ex.total === 0) return 'the baseline test run executed 0 tests'
+  if (ex.pass === 0) return 'the baseline test run passed 0 tests'
   return null
 }
 
@@ -1490,7 +1477,18 @@ const recordReports = (results) => {
   }
 }
 const testCmd = () => S.run.test || A.test || 'none'
-const runTest = (label) => runCmd(`cd ${shq(ROOT)} && ${testCmd()}`, label, { phase: 'Gate', writes: true })
+// capture.mjs runs the command and signs one JSON line (exit, tail, extract); the line is checked and the run repeated once in sonnet. null when no line checks.
+const runCapture = async ({ argv, bash, task, label, phase, tests, cwd }) => {
+  const digest = commandDigest(bash !== undefined ? { bash } : { argv })
+  for (let t = 1; t <= 2; t++) {
+    const nonce = nonceOf()
+    const cmd = `node ${shq(CAPTURE)} run --nonce ${shq(nonce)} --task ${shq(task)}${tests ? ' --tests' : ''} --cwd ${shq(cwd)} ${bash !== undefined ? `--bash ${shq(bash)}` : `-- ${argv.map(shq).join(' ')}`}`
+    const out = await runCmd(cmd, `${label}${t > 1 ? '-retry' : ''}`, { phase, json: true, writes: true, model: t > 1 ? 'sonnet' : 'haiku', effort: t > 1 ? 'medium' : 'low' })
+    if (copyFits(out && out.stdout) && checkCapture(out.stdout, { nonce, cmdDigest: digest }).ok) return parseJson(out.stdout)
+  }
+  return null
+}
+const runTest = (label) => runCapture({ bash: testCmd(), task: `${S.plan.id}-gate`, label, phase: 'Gate', tests: true, cwd: ROOT })
 
 // The tests before the first launch, recorded once in run.baseline ("none" or no command records a green baseline without running); a baseline that fails or runs 0 tests stops the run before the first step.
 const ensureBaseline = async () => {
@@ -1501,7 +1499,7 @@ const ensureBaseline = async () => {
     return null
   }
   const out = await runTest('baseline')
-  if (!out || !Number.isInteger(out.exit)) return failWith('the baseline test run returned nothing')
+  if (!out) return failWith('the baseline test run returned nothing')
   queue(baselineEvent(test, out))
   const why = baselineProblem(out)
   if (why === null) return null
@@ -1510,7 +1508,7 @@ const ensureBaseline = async () => {
   const cmd = String(test)
   const question = `${why} (command: ${cmd.length > room ? cmd.slice(0, Math.max(0, room - 3)) + '...' : cmd}${tail}`
   queue({ type: 'block', text: question })
-  return stopWith('ask', { question, excerpt: tailOf(out.stdout) })
+  return stopWith('ask', { question, excerpt: out.tail })
 }
 
 // `again` is lost with a kill: once per run, before any launch (the worktree then only holds work from before the kill),
@@ -1662,8 +1660,8 @@ try {
         let excerpt = ''
         if (testCmd() !== 'none') {
           const out = await runTest(`wave-gate-${act.wave}`)
-          gate = out && Number.isInteger(out.exit) ? { exit: out.exit, failedNames: failedTestNames(out.stdout) } : { exit: -1, failedNames: [] }
-          excerpt = tailOf(out && out.stdout)
+          gate = waveGateOf(out)
+          excerpt = out ? out.tail : ''
         }
         if (waveGatePasses(gate, S.run.baseline)) {
           queue({ type: 'wave-gate', value: 'pass' })

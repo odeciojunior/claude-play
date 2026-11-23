@@ -342,3 +342,30 @@ test('C2: a state that keeps changing is not read: the restart happens once and 
   assert.equal(byAgent(sim, IMPL).length, 0);
   assert.equal(firstReads(sim).filter((c) => sliceOf(c.cmd) === 0).length, 2, 'one restart and no more');
 }));
+
+test('E41 AC1: a test command of 400 lines (about 12.7 KB) runs through capture.mjs; the baseline event has the exit and the tail of the checked JSON', () => withSandbox(widePlan(2), async (sb) => {
+  const big = join(sb.dir, 'big.mjs');
+  const rows = Array.from({ length: 400 }, (_, i) => `# line ${String(i).padStart(3, '0')} ${'x'.repeat(20)}`);
+  writeFileSync(big, `console.log(${JSON.stringify(rows.join('\n'))}); console.log('# tests 3'); console.log('# pass 3'); process.exit(0);\n`);
+  const direct = spawnSync(process.execPath, [big], { encoding: 'utf8' });
+  assert.ok(bytes(direct.stdout) > 12000, 'about 12.7 KB: ' + bytes(direct.stdout));
+  let seen = null;
+  const sim = makeSim(sb, {
+    runner: (rec, res) => {
+      if (/capture\.mjs' run /.test(rec.cmd)) { seen = JSON.parse(res.stdout); return cutter(rec, res); }
+      return cutter(rec, res);
+    },
+  });
+  const args = { ...launchArgs(sb), test: `node ${shq(big.replace(/\\/g, '/'))}` };
+  await sim.go(args);
+  assert.ok(seen, 'the test ran through capture.mjs');
+  assert.equal(seen.exit, 0);
+  assert.equal(seen.bytes, bytes(direct.stdout));
+  assert.equal(seen.lines, 402);
+  const base = readState(sb).run.baseline;
+  assert.equal(base.exit, seen.exit);
+  assert.equal(base.tail, seen.tail);
+  assert.ok(base.tail.includes('# pass 3'));
+  const gateCall = byAgent(sim, RUNNER).find((c) => c.o.label === 'baseline');
+  assert.match(gateCall.cmd, /--tests --cwd /);
+}));

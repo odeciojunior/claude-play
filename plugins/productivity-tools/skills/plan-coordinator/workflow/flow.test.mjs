@@ -47,7 +47,7 @@ SYNTHETIC FIXTURE
 
 // The test command of the gate: green unless the file check.mjs.fail exists.
 const CHECK = `import { existsSync } from 'node:fs';
-if (existsSync(process.argv[1] + '.fail')) { console.log('not ok 1 - new failure'); process.exit(1); }
+if (existsSync(process.argv[1] + '.fail')) { console.log('not ok 1 - new failure'); console.log('# tests 1'); console.log('# pass 0'); console.log('# fail 1'); process.exit(1); }
 console.log('ok 1 - fine');
 `;
 
