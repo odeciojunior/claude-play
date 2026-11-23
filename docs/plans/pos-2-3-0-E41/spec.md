@@ -201,7 +201,7 @@ Em `specLoadOnce` e `planLoadOnce`, o `emit` e o `check --json` deixam de ser co
 - `roadmap-release.js` tem hoje 244.883 caracteres LF (247.930 bytes em disco, CRLF). O orçamento do E41 é de até +15.000 caracteres LF, para no máximo 259.883, abaixo do teto de 300.000 da DEC-003 e com mais de 40.000 de folga para E35 a E37. Em disco fica perto de 263 KB, metade do limite de lançamento de 524.288 bytes.
 - `coordinator.js` tem 76.187 caracteres LF. O orçamento é de até +12.000, para no máximo 88.187, abaixo de 120.000.
 - O embutido de `plan-digest.mjs` cresce cerca de 4 a 5 KB nos dois alvos.
-- `size.test.mjs` não muda (R14).
+- `size.test.mjs`: tetos não mudam (R14); a asserção de folga passa a `> 10000` (DEC-034).
 
 ## Deixado para o plano
 
@@ -292,12 +292,12 @@ Em `specLoadOnce` e `planLoadOnce`, o `emit` e o `check --json` deixam de ser co
       "id": "R4",
       "question": "As leituras antigas por --page (READ_PAGE_CHARS, DISCOVERY_PAGE_CHARS) saem ou ficam?",
       "decision": "Ficam, sem mudança, só para os chamadores por subprocess (coordinator-agy.py e roadmap-release-agy.py); os workflows JS passam a usar só --slice.",
-      "basis": "O caminho agy lê progress.mjs read --page e preflight.mjs discover --page por subprocess, sem recópia por LLM; removê-los obrigaria a mexer no agy, que o intake deixa fora de escopo salvo dependência real; manter evita a dependência.",
+      "basis": "O caminho agy lê progress.mjs read --page e preflight.mjs discover --page por subprocess, sem recópia por LLM; removê-los obrigaria a mexer no agy, que o intake deixa fora de escopo salvo dependência real; manter evita a dependência.; a divergência da letra de DEC-024 foi ratificada pelo dono como DEC-033 (2026-11-23)",
       "alternative": "Remover --page e migrar também o agy para --slice.",
       "costIfWrong": "low",
       "reversible": true,
       "scope": "local",
-      "contradicts": "DEC-024"
+      "contradicts": null
     },
     {
       "id": "R5",
@@ -402,7 +402,7 @@ Em `specLoadOnce` e `planLoadOnce`, o `emit` e o `check --json` deixam de ser co
       "id": "R14",
       "question": "O impacto de tamanho dos workflows precisa de teste novo?",
       "decision": "Não: declarar orçamento (roadmap-release.js até +15.000 caracteres LF, máximo 259.883; coordinator.js até +12.000, máximo 88.187) e manter size.test.mjs com os tetos atuais (300.000 e 120.000).",
-      "basis": "DEC-003 e o risco transversal da estratégia pedem declarar o impacto em cada spec; os tetos já são verificados pelo G1.",
+      "basis": "DEC-003 e o risco transversal da estratégia pedem declarar o impacto em cada spec; os tetos já são verificados pelo G1.; a folga mínima da asserção de size.test.mjs é regida pela DEC-034 (> 10000, gatilho de 290.000 da DEC-003)",
       "alternative": "Teto novo e mais baixo em size.test.mjs só para o E41.",
       "costIfWrong": "low",
       "reversible": true,
