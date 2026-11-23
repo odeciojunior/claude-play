@@ -527,13 +527,22 @@ async def call_agent(role, prompt, schema_name, model, tag=None):
     text = BODIES[role] + '\n\n' + prompt
     schema = SCHEMAS[schema_name]
     try:
-        return await agent(text, schema, role=role, type_name='self', model=model)
+        out = await agent(text, schema, role=role, type_name='self', model=model)
     except Exception as e:
         msg = '%s: %s' % (type(e).__name__, str(e)[:300])
         _log('agent %s failed: %s' % (role, msg))
         if tag is not None:
             ERRORS[tag] = msg
         return None
+    # an agent that ends without calling finish returns its final text, not the schema shape
+    want = {'object': dict, 'array': list}.get(schema.get('type'))
+    if want is not None and not isinstance(out, want):
+        msg = 'agent %s returned %s where %s was expected: %s' % (role, type(out).__name__, 'an object' if want is dict else 'an array', repr(out)[:200])
+        _log(msg)
+        if tag is not None:
+            ERRORS[tag] = msg
+        return None
+    return out
 
 
 def guard_snapshot():

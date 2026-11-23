@@ -631,6 +631,20 @@ pyTest('T5 plan-only: a review whose agent() raises is a lost return: round 1b, 
   }
 });
 
+pyTest('T5 plan-only: a review whose agent() returns a string where an object is expected is a lost return, not an AttributeError', () => {
+  const repo = makeRepo();
+  try {
+    const r = runWorkflow(planOnlyArgs(repo), okResponses(repo, { 'spec-review': 'done' }));
+    assert.equal(r.result.results[0].failKind, 'infra');
+    assert.match(r.result.results[0].error, /^spec: null review/);
+    assert.deepEqual(modelsOf(r.calls, 'spec-review'), ['pro', 'pro'], 'the round 1b retry');
+    const lg = r.logs.filter((l) => l === "agent spec-review returned str where an object was expected: 'done'");
+    assert.equal(lg.length, 2, r.logs.join(' | '));
+  } finally {
+    rmAll(repo);
+  }
+});
+
 pyTest('T5 plan-only: a preflight with a dirty integration worktree asks the operator and runs no agent', () => {
   const repo = makeRepo();
   try {

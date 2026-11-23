@@ -365,7 +365,14 @@ pyTest('an implementer that raises leaves the other steps of the wave passed on 
   for (const h of holds) assert.match(h, /^step T2 returned no report in \d+ attempts: RuntimeError: boom-from-agy/, 'the hold carries the last error');
 }));
 
-pyTest('a reviewer that raises counts as lost: three losses ask the person', () => withSandbox(async (sb) => {
+pyTest('an implementer that returns a string where an object is expected becomes no-report with the message, not an AttributeError', () => withSandbox(async (sb) => {
+  const run = runScript(launchArgs(sb), { impl: { 2: { reply: 'done' } } });
+  assert.notEqual(run.result.status, 'error', JSON.stringify(run.result) + run.stderr);
+  const applies = procs(run).filter((p) => p.argv.includes('apply') && p.argv.includes('--events')).map((p) => decodeURIComponent(p.argv[p.argv.indexOf('--events') + 1])).join(' ');
+  assert.match(applies, /"type":"no-report","step":2[^}]*"text":"agent implementer returned str where an object was expected: 'done'"/);
+}));
+
+pyTest('a reviewer that raises counts as lost: three losses ask the person',() => withSandbox(async (sb) => {
   const run = runScript(launchArgs(sb), { review: { raise: true } });
   assert.equal(run.result.status, 'stopped', JSON.stringify(run.result) + run.stderr);
   assert.equal(run.result.stop.kind, 'ask');
