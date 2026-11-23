@@ -1,0 +1,731 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E41/plan.md",
+    "id": "E41",
+    "digest": "4606ae5f",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "blocked",
+    "wave": 5,
+    "worktree": null,
+    "branch": null,
+    "base": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "Exit code: 0. The full stdout is 2686 lines (about 119 KB) and was not inlined here. It is saved verbatim at C:\\Users\\odeci\\AppData\\Local\\Temp\\claude\\25a90f2008b31a17\\e72362ce-7f45-4ae3-be2b-098d60840f3d\\tasks\\bkd3qq5ft.output\n\nFinal summary block, verbatim from that file:\nℹ largest load: 1 Decision = 26279 bytes LF (SKILL.md -> 8157; references/events.md -> 4495; references/events/01-decision.md -> 4563; references/rubric-contradiction.md -> 4077; formats.md sections 6; total 26279)\nℹ tests 2368\nℹ suites 11\nℹ pass 2366\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 848682.0084\n\nLines starting with ✖ (failures): 0.\nThe command was run once, in Bash, from D:/projects/claude-play. It was moved to the background after the 120 s timeout and ran to completion.",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": 5,
+    "question": "the gate of wave 5 failed (exit -1, no failing test name recognized); the person decides",
+    "updated": "2026-11-23T22:13:30.998Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        4,
+        10
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3,
+        5,
+        7,
+        8
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        9
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        6
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        11
+      ]
+    },
+    {
+      "n": 7,
+      "tasks": [
+        12
+      ]
+    },
+    {
+      "n": 8,
+      "tasks": [
+        13
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Troca da folga de size.test.mjs para > 10000 (DEC-034)",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/size.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "size.test.mjs now asserts MAX_WORKFLOW_CHARS - size > 10000 (DEC-034), and the failure message cites DEC-034 and DEC-003 (290000 trigger). The top comment has one added line on the 290.000 trigger. MAX_WORKFLOW_CHARS = 300000 and the CRLF test are unchanged. Only size.test.mjs was edited. Downstream steps rely on roadmap-release.js staying below 290.000 LF chars.</summary> <parameter name=\"concerns\">The brief's step 3 says to commit, but the task rules say never commit, so I did not commit; the ",
+      "sha": "bb0a9281380915daeb4b62bc9eb1374a43ba62d8",
+      "replacedBy": null,
+      "note": "size.test.mjs now asserts MAX_WORKFLOW_CHARS - size > 10000 (DEC-034), and the failure message cites DEC-034 and DEC-003 (290000 trigger). The top comment has one added line on the 290.000 trigger. MAX_WORKFLOW_CHARS = 300000 and the CRLF test are unchanged. Only size.test.mjs was edited. Downstream steps rely on roadmap-release.js staying below 290.000 LF chars.</summary>\n<parameter name=\"concern",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Fatias, SHA-256 puro e conferência do capture em lib/plan-digest.mjs",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/lib/plan-digest.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/scripts/fixtures/plan-tool/workflow-copy.js",
+        "plugins/productivity-tools/scripts/signed-output.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "lib/plan-digest.mjs now exports MAX_COPY_BYTES (3500), SLICE_BYTES (3072), utf8Length, sha256Hex (pure JS), sliceEnvelopes(head,text), checkSlice, joinSlices, commandDigest and checkCapture. Envelope shape: {...head, slice, slices, total:{sha256,bytes}, text, digest}. Slices cut by code point, so no surrogate pair is split. Downstream (plan B) uses checkSlice and joinSlices to read paged output and restart once on a C2 mix. checkCapture checks capture lines. The embed was regenerated in the 3 ta",
+      "sha": "818e5bf07116167afdb24be6e984b30affd49fda",
+      "replacedBy": null,
+      "note": "lib/plan-digest.mjs now exports MAX_COPY_BYTES (3500), SLICE_BYTES (3072), utf8Length, sha256Hex (pure JS), sliceEnvelopes(head,text), checkSlice, joinSlices, commandDigest and checkCapture.\nEnvelope shape: {...head, slice, slices, total:{sha256,bytes}, text, digest}. Slices cut by code point, so no surrogate pair is split.\nDownstream (plan B) uses checkSlice and joinSlices to read paged output an",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "checkSigned e checkRun como fonte única em lib/plan-digest.mjs",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/lib/plan-digest.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/scripts/fixtures/plan-tool/workflow-copy.js"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "checkSigned and checkRun are now exported from D:/projects/claude-play/plugins/productivity-tools/lib/plan-digest.mjs, with the same bodies and messages as before. I removed the local copies from coordinator.js and roadmap-release.js. The embed was regenerated, so both functions now come from the embedded lib block inside // <pure>. Plan B and the agy `call_pure` get checkRun from the embed. Nothing is committed, as instructed.",
+      "sha": "c60bd1223545dccf338753f0cb45a580317e5e17",
+      "replacedBy": null,
+      "note": "checkSigned and checkRun are now exported from D:/projects/claude-play/plugins/productivity-tools/lib/plan-digest.mjs, with the same bodies and messages as before. I removed the local copies from coordinator.js and roadmap-release.js. The embed was regenerated, so both functions now come from the embedded lib block inside // <pure>. Plan B and the agy `call_pure` get checkRun from the embed. Nothi",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Extrator determinístico de saída do node:test",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/test-extract.mjs",
+        "plugins/productivity-tools/scripts/test-extract.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Criei plugins/productivity-tools/scripts/test-extract.mjs, que exporta extractTests(text, exit) e tem uma CLI (`node test-extract.mjs <arquivo> [--exit n]`). Ele devolve {format, exit, total, pass, fail, skipped, failedNames} para node-tap, node-spec ou unknown (campos null e failedNames []). O exit vem sempre de quem chama. Suítes não contam como falha. Nomes saem sem `# SKIP/TODO` nem `(Xms)`, sem repetição e ordenados. O teste test-extract.test.mjs usa uma suíte real de 63 testes em diretório",
+      "sha": "e3f32d286065a6486b73d57dbfd44b8cf1e155d4",
+      "replacedBy": null,
+      "note": "Criei plugins/productivity-tools/scripts/test-extract.mjs, que exporta extractTests(text, exit) e tem uma CLI (`node test-extract.mjs <arquivo> [--exit n]`).\nEle devolve {format, exit, total, pass, fail, skipped, failedNames} para node-tap, node-spec ou unknown (campos null e failedNames []). O exit vem sempre de quem chama.\nSuítes não contam como falha. Nomes saem sem `# SKIP/TODO` nem `(Xms)`, s",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "capture.mjs run com prova gravada no git-dir e JSON assinado",
+      "wave": 3,
+      "deps": [
+        2,
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/capture.mjs",
+        "plugins/productivity-tools/scripts/capture.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Created plugins/productivity-tools/scripts/capture.mjs (exports runCapture(argv,{platform,env,now}) -> {code,line}, plus the CLI `capture.mjs run`) and capture.test.mjs. It runs the command with shell:false and writes <seq>-stdout.txt and <seq>-stderr.txt under <git-dir>/pt-evidence/<task>/. It sweeps files older than 14 days first. It prints one signed JSON line of at most SLICE_BYTES, which checkCapture accepts, and exits with the command's exit code. Invalid use, a /tmp path on win32, a bad -",
+      "sha": "bdae308498a1bb46f0daf69fe9726eca27a94678",
+      "replacedBy": null,
+      "note": "Created plugins/productivity-tools/scripts/capture.mjs (exports runCapture(argv,{platform,env,now}) -> {code,line}, plus the CLI `capture.mjs run`) and capture.test.mjs.\nIt runs the command with shell:false and writes <seq>-stdout.txt and <seq>-stderr.txt under <git-dir>/pt-evidence/<task>/. It sweeps files older than 14 days first. It prints one signed JSON line of at most SLICE_BYTES, which chec",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "capture.mjs slice e prune",
+      "wave": 5,
+      "deps": [
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/capture.mjs",
+        "plugins/productivity-tools/scripts/capture.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "capture.mjs now has `slice --nonce --path [--cwd] --sha --slice k` and `prune --task-prefix p [--cwd]`, both exported through runCapture. slice: reads a file under <git-dir>/pt-evidence/, checks sha256 against --sha, then prints sliceEnvelopes({tool:'capture',command:'slice',nonce},text)[k]. Exit 1 on sha mismatch, exit 2 on a bad index, a path outside pt-evidence, or a msys path on win32. prune: deletes the pt-evidence folders that start with the prefix and prints a signed {tool,command:'prune'",
+      "sha": "de548f9dcc83b47a1a023fde8cdaf1c174ddca1b",
+      "replacedBy": null,
+      "note": "capture.mjs now has `slice --nonce --path [--cwd] --sha --slice k` and `prune --task-prefix p [--cwd]`, both exported through runCapture.\nslice: reads a file under <git-dir>/pt-evidence/, checks sha256 against --sha, then prints sliceEnvelopes({tool:'capture',command:'slice',nonce},text)[k]. Exit 1 on sha mismatch, exit 2 on a bad index, a path outside pt-evidence, or a msys path on win32.\nprune: ",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "progress.mjs read --slice com payload determinístico",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/scripts/progress.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/scripts/progress.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "progress.mjs read now accepts --slice k: it slices the canon JSON of {root, planChanged, stateDigest, state with history []} through sliceEnvelopes and prints envelope k. Nothing is written, and --page is unchanged. --slice outside 0..slices-1, or combined with --page, exits 2. USAGE is updated. progress.test.mjs has 4 new tests: 40 steps, a 5 KB multibyte step with emoji, determinism across nonces, and exit codes. All slices are at most 3072 bytes, pass checkSlice and are rebuilt by joinSlices.",
+      "sha": "72248d577f59e028d41554d62f53e819b575ee0f",
+      "replacedBy": null,
+      "note": "progress.mjs read now accepts --slice k: it slices the canon JSON of {root, planChanged, stateDigest, state with history []} through sliceEnvelopes and prints envelope k. Nothing is written, and --page is unchanged.\n--slice outside 0..slices-1, or combined with --page, exits 2. USAGE is updated.\nprogress.test.mjs has 4 new tests: 40 steps, a 5 KB multibyte step with emoji, determinism across nonce",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "verify-run.mjs read em fatias pelo campo slice",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "verify-run.mjs `read` accepts an optional integer `slice` >= 0. With it, the output is `sliceEnvelopes({tool,mode,nonce}, JSON.stringify(canon(buildRead output)))[slice]`, built with an empty nonce, so `total.sha256` is the same across slices and nonces. A non-integer or negative `slice` exits 2, and an out-of-range `slice` exits 2 with the slice count. Without `slice` the output is unchanged. Plan B pages `read` with `slice` k=0..slices-1, checks each with `checkSlice({tool:'verify-run',command",
+      "sha": "1ed020e500f3d14e4fc9a418c65d163634835d92",
+      "replacedBy": null,
+      "note": "verify-run.mjs `read` accepts an optional integer `slice` >= 0. With it, the output is `sliceEnvelopes({tool,mode,nonce}, JSON.stringify(canon(buildRead output)))[slice]`, built with an empty nonce, so `total.sha256` is the same across slices and nonces. A non-integer or negative `slice` exits 2, and an out-of-range `slice` exits 2 with the slice count. Without `slice` the output is unchanged. Pla",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    },
+    {
+      "n": 9,
+      "title": "preflight.mjs discover --slice sem remover campos",
+      "wave": 4,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`preflight.mjs discover` now takes `--slice k` and prints one signed envelope (`tool: release-discovery`, `command: discover`, `nonce`) of the whole discovery data, cut by `sliceEnvelopes` at up to 3072 bytes. No field is removed. The payload is `JSON.stringify(canon(discoverRoadmap(opts)))`, and `--page`, `discoveryPages` and `DISCOVERY_PAGE_CHARS` are untouched. `--slice` with `--page` or with a negative or non-integer value exits 2. A slice past the end exits 1. Plan B reads slices 0..n-1 wit",
+      "sha": "7e615706045b901e8edd0b25c2b3f1cd3d3ba00e",
+      "replacedBy": null,
+      "note": "`preflight.mjs discover` now takes `--slice k` and prints one signed envelope (`tool: release-discovery`, `command: discover`, `nonce`) of the whole discovery data, cut by `sliceEnvelopes` at up to 3072 bytes.\nNo field is removed. The payload is `JSON.stringify(canon(discoverRoadmap(opts)))`, and `--page`, `discoveryPages` and `DISCOVERY_PAGE_CHARS` are untouched.\n`--slice` with `--page` or with a",
+      "outputs": null,
+      "brief": "briefs/T9.md",
+      "gated": true
+    },
+    {
+      "n": 10,
+      "title": "review-package.mjs imprime sha256 e lines do pacote",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/review-package.mjs",
+        "plugins/productivity-tools/scripts/review-package.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "review-package.mjs buildPackage now returns sha256 (SHA-256 of the written UTF-8 bytes, via createHash from node:crypto) and lines (count of \\n, plus 1 when the text does not end in \\n). Existing fields ok, path, base, tip, commits and bytes are unchanged. The test file asserts both new fields against the file on disk. Downstream steps can read json.sha256 and json.lines from the stdout JSON. No commit made, as the prompt requires.",
+      "sha": "67349f2e4f4ed7be1fdd8ca3307a3311326c5e1b",
+      "replacedBy": null,
+      "note": "review-package.mjs buildPackage now returns sha256 (SHA-256 of the written UTF-8 bytes, via createHash from node:crypto) and lines (count of \\n, plus 1 when the text does not end in \\n). Existing fields ok, path, base, tip, commits and bytes are unchanged. The test file asserts both new fields against the file on disk. Downstream steps can read json.sha256 and json.lines from the stdout JSON. No c",
+      "outputs": null,
+      "brief": "briefs/T10.md",
+      "gated": true
+    },
+    {
+      "n": 11,
+      "title": "Teste copy-budget de nenhuma resposta copiada acima de 3.500 bytes",
+      "wave": 6,
+      "deps": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/copy-budget.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T11.md"
+    },
+    {
+      "n": 12,
+      "title": "Conferência final do plano A",
+      "wave": 7,
+      "deps": [
+        3,
+        10,
+        11
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T12.md"
+    },
+    {
+      "n": 13,
+      "title": "Sonda paga AC2b (efeito do plano B; recusar no plano A)",
+      "wave": 8,
+      "deps": [
+        12
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pending",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T13.md"
+    }
+  ],
+  "finalGate": {
+    "status": "pending",
+    "rounds": 0,
+    "lastVerdict": null
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-23T20:13:07.441Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+      "at": "2026-11-23T20:13:07.441Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-23T20:13:13.150Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-23T20:13:13.150Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        10,
+        4
+      ],
+      "at": "2026-11-23T20:13:13.150Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-23T20:33:32.233Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-23T20:33:32.233Z"
+    },
+    {
+      "event": "report",
+      "step": 10,
+      "value": "pass",
+      "at": "2026-11-23T20:33:32.233Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-23T20:34:36.407Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-23T20:34:55.458Z"
+    },
+    {
+      "event": "commit",
+      "step": 10,
+      "at": "2026-11-23T20:35:16.105Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T20:35:35.585Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T20:35:35.585Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-23T20:35:35.585Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-23T20:56:23.188Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-23T20:58:11.057Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T20:58:31.971Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T20:58:31.971Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3,
+        5,
+        7,
+        8
+      ],
+      "at": "2026-11-23T20:58:31.971Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-23T21:12:52.019Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-23T21:12:52.019Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-23T21:12:52.019Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-23T21:12:52.019Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-23T21:30:06.527Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-23T21:30:28.062Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-23T21:30:48.998Z"
+    },
+    {
+      "event": "commit",
+      "step": 8,
+      "at": "2026-11-23T21:31:09.487Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T21:31:30.298Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T21:31:30.298Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        9
+      ],
+      "at": "2026-11-23T21:31:30.298Z"
+    },
+    {
+      "event": "report",
+      "step": 9,
+      "value": "pass",
+      "at": "2026-11-23T21:47:21.035Z"
+    },
+    {
+      "event": "commit",
+      "step": 9,
+      "at": "2026-11-23T21:50:43.674Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T21:51:04.388Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T21:51:04.388Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-23T21:51:04.388Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-23T22:11:56.985Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-23T22:13:09.669Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-23T22:13:30.998Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-23T22:13:30.998Z"
+    }
+  ]
+}
