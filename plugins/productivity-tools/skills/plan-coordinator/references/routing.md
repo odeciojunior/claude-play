@@ -59,5 +59,5 @@ Only when the host is Antigravity (`run_workflow` present, no `Workflow` tool), 
 - **Translation:** haiku -> flash_lite, sonnet -> flash, opus -> pro. A `(sonnet, high)` step is promoted to pro.
 - **Reviewers:** `agyReviewModel` is `pro` for every gate, and for every executor already on `pro`; `task-reviewer` and `final-reviewer` run on `pro`.
 - **Escalation:** `nextAgyTier` (flash_lite -> flash -> pro -> null) is used only by `roadmap-release-agy.py` in the fix rounds; `coordinator-agy.py` redoes a step at the planned tier (§5).
-- **Experimental:** the path is experimental, with judgments (spec, plan, review) from a single model family, and must be checked before going to `main`.
+- **Experimental:** the path is experimental, with judgments (spec, plan, review) from a single model family, and must be checked before going to `main`. Run it on an exclusive checkout: a concurrent edit by another session during a review stops the run (`error` in `coordinator-agy.py`).
 - `route(task, ctx)` and the plan digest are unchanged; only the dispatch differs.
