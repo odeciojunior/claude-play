@@ -3,6 +3,7 @@
 // log do intervalo) seguido de `git diff base tip`. Uso: node review-package.mjs <repo> <base> <tip> <out>
 // Sai com 0 e imprime JSON ok; sai com 1 e imprime {"ok":false,"error":...} se a ref não
 // resolve ou a base não é ancestral da ponta (nada é gravado); sai com 2 se o uso estiver errado.
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -64,8 +65,12 @@ export function buildPackage(repo, base, tip, out) {
 
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, text, 'utf8');
-  const bytes = Buffer.byteLength(text, 'utf8');
-  return { ok: true, path: out, base: baseSha, tip: tipSha, commits, bytes };
+  const data = Buffer.from(text, 'utf8');
+  const bytes = data.length;
+  const sha256 = createHash('sha256').update(data).digest('hex');
+  const newlines = text.split('\n').length - 1;
+  const lines = newlines + (text.endsWith('\n') ? 0 : 1);
+  return { ok: true, path: out, base: baseSha, tip: tipSha, commits, bytes, sha256, lines };
 }
 
 function main(argv) {

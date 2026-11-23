@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -51,6 +52,8 @@ test('AC4: review-package writes one file with the header and the diff of the ra
     assert.equal(json.bytes, statSync(out).size);
     assert.equal(existsSync(out), true);
     const text = readFileSync(out, 'utf8');
+    assert.equal(json.sha256, createHash('sha256').update(readFileSync(out)).digest('hex'));
+    assert.equal(json.lines, text.split('\n').length - (text.endsWith('\n') ? 1 : 0));
     const log = git(repo, ['log', '--format=%h %s', `${json.base}..${json.tip}`]);
     for (const line of log.split('\n').filter(Boolean)) {
       assert.ok(text.includes(line), `cabeçalho sem a linha do log: ${line}`);
