@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-23 | E41 | cartão E41 cita DEC-033 (ratificada); pendência de ratificação removida | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
+| 2026-11-23 | E41 | DEC-033 ratificada pelo dono | `decisions.md` |
 | 2026-11-23 | E41 | DEC-033 registrada (ratificação pendente) | `decisions.md` |
 | 2026-11-23 | E41 | cartão E41: marcas verify dos critérios de teste alinhadas aos arquivos da spec (DEC-032) | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-23 | E41 | DEC-032 ratificada pelo dono via Fable (questão aberta da v1.1 respondida pela spec do E41) | `decisions.md` |
