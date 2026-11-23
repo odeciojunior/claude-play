@@ -1421,3 +1421,74 @@ test('read pagination does not depend on the nonce length', () => withSandbox((s
     assert.deepEqual(got, steps.map((x) => x.n), 'pad ' + pad);
   }
 }));
+
+// E41 T7: read --slice pages a deterministic payload in envelopes of at most SLICE_BYTES.
+import { checkSlice, joinSlices, SLICE_BYTES } from '../../../lib/plan-digest.mjs';
+
+function sliceState(sb, count, patch) {
+  const st = readJson(sb.state);
+  const base = st.steps[0];
+  st.steps = Array.from({ length: count }, (_, i) => ({ ...base, n: i + 1, title: 't' + (i + 1), files: ['src/a' + i + '.mjs'], status: 'pass', note: 'n'.repeat(250), handoff: 'h'.repeat(150), sha: 'a'.repeat(40), ...(patch ? patch(i) : {}) }));
+  writeJson(sb.state, st);
+  return st;
+}
+
+function readAllSlices(sb, tag) {
+  const first = cli(['read', sb.state, '--nonce', tag + '00', '--slice', '0', '--json']);
+  assert.equal(first.code, 0, first.err);
+  const n = JSON.parse(first.out).slices;
+  const envs = [];
+  for (let k = 0; k < n; k++) {
+    const r = k === 0 ? first : cli(['read', sb.state, '--nonce', tag + String(k).padStart(2, '0'), '--slice', String(k), '--json']);
+    assert.equal(r.code, 0, r.err);
+    assert.ok(Buffer.byteLength(r.out.trim()) <= SLICE_BYTES, 'slice ' + k + ' has ' + Buffer.byteLength(r.out.trim()) + ' bytes');
+    const env = JSON.parse(r.out);
+    assert.equal(checkSlice(env, { tool: 'progress', command: 'read', nonce: tag + String(k).padStart(2, '0'), slice: k }).ok, true);
+    envs.push(env);
+  }
+  return envs;
+}
+
+test('read --slice of a 40-step plan passes checkSlice and joins back to the state', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const st = sliceState(sb, 40);
+  const envs = readAllSlices(sb, 'S');
+  assert.ok(envs.length > 3, 'many slices: ' + envs.length);
+  const joined = joinSlices(envs);
+  assert.equal(joined.ok, true, joined.why);
+  const p = JSON.parse(joined.text);
+  assert.deepEqual(Object.keys(p).sort(), ['planChanged', 'root', 'state', 'stateDigest']);
+  assert.equal(p.planChanged, false);
+  assert.equal(p.stateDigest, stateDigest(st));
+  assert.deepEqual(p.state, { ...st, history: [] });
+}));
+
+test('read --slice splits one step of 5 KB with multi-byte characters and an emoji', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const big = ('é€漢' + '\u{1F600}').repeat(400);
+  const st = sliceState(sb, 2, (i) => (i === 1 ? { title: big, note: big } : {}));
+  const envs = readAllSlices(sb, 'M');
+  assert.ok(envs.length > 2);
+  const joined = joinSlices(envs);
+  assert.equal(joined.ok, true, joined.why);
+  assert.deepEqual(JSON.parse(joined.text).state, { ...st, history: [] });
+}));
+
+test('read --slice is deterministic across nonces and writes nothing', () => withSandbox((sb) => {
+  initSandbox(sb);
+  sliceState(sb, 10);
+  const before = fs.readFileSync(sb.state, 'utf8');
+  const a = JSON.parse(cli(['read', sb.state, '--nonce', 'A', '--slice', '0', '--json']).out);
+  const b = JSON.parse(cli(['read', sb.state, '--nonce', 'B', '--slice', '0', '--json']).out);
+  assert.deepEqual(a.total, b.total);
+  assert.equal(fs.readFileSync(sb.state, 'utf8'), before);
+}));
+
+test('read --slice refuses an index out of range and --slice with --page', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--slice', '0', '--json']).out);
+  assert.equal(cli(['read', sb.state, '--nonce', 'N', '--slice', String(j.slices), '--json']).code, 2);
+  assert.equal(cli(['read', sb.state, '--nonce', 'N', '--slice', '-1', '--json']).code, 2);
+  assert.equal(cli(['read', sb.state, '--nonce', 'N', '--slice', '0', '--page', '0', '--json']).code, 2);
+  assert.equal(cli(['read', sb.state, '--nonce', 'N', '--page', '0', '--json']).code, 0);
+}));

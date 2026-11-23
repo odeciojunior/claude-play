@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { emitPlan, buildBriefs, checkPlan } from '../../../scripts/plan-tool.mjs';
 import { readDataBlock } from '../../../lib/data-block.mjs';
-import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, sliceEnvelopes } from '../../../lib/plan-digest.mjs';
 import { initState, applyEvent, applyEvents, nextAction, STATE_SCHEMA, EVENT_TYPES } from '../../../lib/progress-state.mjs';
 
 const NO_DATA_BLOCK = 'plano sem bloco de dados: o coordinator não interpreta planos em prosa; adote-o com a skill plan-writer (modo de adoção), que o reescreve no formato plan/1 no mesmo caminho';
@@ -18,7 +18,7 @@ const USAGE = [
   '     node progress.mjs next <progress.json> [--json]',
   '     node progress.mjs apply <progress.json> <evento> [--step <n>] [--steps <n,...>] [--value <v>] [--text <t>] [--agent-id <id>] [--sha <sha>] [--tier <t>] [--json]',
   '     node progress.mjs apply <progress.json> --events <carga> --nonce <n> [--json]',
-  '     node progress.mjs read <progress.json> --nonce <n> [--page <k>] [--json]',
+  '     node progress.mjs read <progress.json> --nonce <n> [--page <k> | --slice <k>] [--json]',
   '     node progress.mjs token',
   '     node progress.mjs show <progress.json>',
   '     node progress.mjs select [--query <texto>] [--root <pasta>] [--json]',
@@ -259,7 +259,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   try {
     if (cmd === 'init') parsed = parseArgs(rest, ['--spec', '--max-width', '--piece', '--base', '--commits'], ['--restart', '--json']);
     else if (cmd === 'apply') parsed = parseArgs(rest, ['--step', '--steps', '--value', '--text', '--agent-id', '--sha', '--tier', '--events', '--nonce'], ['--json']);
-    else if (cmd === 'read') parsed = parseArgs(rest, ['--nonce', '--page'], ['--json']);
+    else if (cmd === 'read') parsed = parseArgs(rest, ['--nonce', '--page', '--slice'], ['--json']);
     else if (cmd === 'next') parsed = parseArgs(rest, [], ['--json']);
     else parsed = parseArgs(rest, [], []);
   } catch (e) {
@@ -390,6 +390,16 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     }
     const base = path.dirname(path.resolve(file));
     const g = git(base, ['rev-parse', '--show-toplevel']);
+    if (opts.slice !== undefined) {
+      if (opts.page !== undefined) return bad('--slice e --page não se combinam');
+      // Deterministic payload (no clock): sliced by sliceEnvelopes; nothing is written.
+      const text = JSON.stringify(canon({ root: g ? path.resolve(g) : base, planChanged: changed, stateDigest: stateDigest(state), state: { ...state, history: [] } }));
+      const envs = sliceEnvelopes({ tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString() }, text);
+      const k = /^[0-9]+$/.test(opts.slice) ? Number(opts.slice) : -1;
+      if (k < 0 || k >= envs.length) return bad('--slice deve ser um inteiro de 0 a ' + (envs.length - 1));
+      out(JSON.stringify(envs[k]));
+      return 0;
+    }
     // The output stays under 30 KB (the Bash tool spills more to a file): compact JSON, and the steps split into pages of READ_PAGE_CHARS.
     // Page 0 carries the state without its steps' tail; the other pages carry only steps. stateDigest is of the whole state, the same on every page.
     const page = opts.page === undefined ? 0 : Number(opts.page);
