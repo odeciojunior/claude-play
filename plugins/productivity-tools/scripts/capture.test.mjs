@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCapture } from './capture.mjs';
-import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, checkCapture } from '../lib/plan-digest.mjs';
+import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, checkCapture, checkSlice, joinSlices, canon, fnv1a } from '../lib/plan-digest.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE = path.join(HERE, 'capture.mjs');
@@ -331,5 +331,102 @@ test('limpeza de 14 dias: 15 dias some, 13 dias fica, pasta vazia some', () => {
     assert.equal(fs.existsSync(loose), false);
     assert.equal(fs.existsSync(path.join(root, 'velha')), false);
     assert.equal(fs.existsSync(young), true);
+  });
+});
+
+function runBig(repo, task = 'E41-T1') {
+  const script = path.join(repo, 'gen127.js');
+  fs.writeFileSync(script, "for (let i = 0; i < 400; i++) console.log('line ' + String(i).padStart(3, '0') + ' ' + 'x'.repeat(22));\n");
+  const r = runCli(['run', '--nonce', 'S0', '--task', task, '--cwd', fwd(repo), '--', 'node', script]);
+  assert.equal(r.code, 0, r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('slice: fatias remontam com o mesmo sha256 do run e cada uma passa em checkSlice', () => {
+  withRepo((repo) => {
+    const o = runBig(repo);
+    assert.ok(o.bytes > 12000);
+    const envs = [];
+    let slices = 1;
+    for (let k = 0; k < slices; k++) {
+      const r = runCli(['slice', '--nonce', 'S1', '--path', o.path, '--cwd', fwd(repo), '--sha', o.sha256, '--slice', String(k)]);
+      assert.equal(r.code, 0, r.stderr + r.stdout);
+      assert.ok(utf8Length(r.stdout.trimEnd()) <= SLICE_BYTES);
+      const env = JSON.parse(r.stdout);
+      assert.equal(checkSlice(env, { tool: 'capture', command: 'slice', nonce: 'S1', slice: k }).ok, true);
+      slices = env.slices;
+      envs.push(env);
+    }
+    assert.ok(envs.length > 3);
+    const joined = joinSlices(envs);
+    assert.equal(joined.ok, true, joined.why);
+    assert.equal(sha256Of(Buffer.from(joined.text)), o.sha256);
+    assert.equal(envs[0].total.sha256, o.sha256);
+  });
+});
+
+test('slice: --sha diferente sai 1, --slice fora do intervalo sai 2, --path fora de pt-evidence sai 2', () => {
+  withRepo((repo) => {
+    const o = runBig(repo);
+    const base = ['slice', '--nonce', 'S1', '--path', o.path, '--cwd', fwd(repo)];
+    const bad = runCli([...base, '--sha', 'a'.repeat(64), '--slice', '0']);
+    assert.equal(bad.code, 1);
+    assert.equal(JSON.parse(bad.stdout).tool, 'capture');
+    assert.ok(JSON.parse(bad.stdout).error);
+    for (const k of ['999', '-1', 'x']) {
+      const r = runCli([...base, '--sha', o.sha256, '--slice', k]);
+      assert.equal(r.code, 2, k);
+    }
+    const outside = path.join(repo, 'fora.txt');
+    fs.writeFileSync(outside, 'x');
+    const r = runCli(['slice', '--nonce', 'S1', '--path', fwd(outside), '--cwd', fwd(repo), '--sha', sha256Of('x'), '--slice', '0']);
+    assert.equal(r.code, 2);
+    const trav = runCli(['slice', '--nonce', 'S1', '--path', `${gitDirOf(repo)}/pt-evidence/../config`, '--cwd', fwd(repo), '--sha', sha256Of('x'), '--slice', '0']);
+    assert.equal(trav.code, 2);
+  });
+});
+
+test('slice: --path /tmp/x no win32 injetado da o erro msys e saida 2', () => {
+  withRepo((repo) => {
+    const res = runCapture(['slice', '--nonce', 'S1', '--path', '/tmp/x', '--cwd', fwd(repo), '--sha', 'a'.repeat(64), '--slice', '0'],
+      { platform: 'win32', env: cleanEnv() });
+    assert.equal(res.code, 2);
+    assert.deepEqual(JSON.parse(res.line), {
+      tool: 'capture',
+      error: 'caminho no estilo msys (/tmp/...) não é aceito no Windows; use C:/...',
+    });
+  });
+});
+
+test('prune: apaga so as pastas do prefixo e imprime a linha assinada', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    for (const d of ['E41-T1', 'E41-T2', 'E40-T1']) {
+      fs.mkdirSync(path.join(root, d), { recursive: true });
+      fs.writeFileSync(path.join(root, d, '0001-stdout.txt'), 'x');
+    }
+    const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const o = JSON.parse(r.stdout);
+    assert.deepEqual(o, { tool: 'capture', command: 'prune', removed: ['E41-T1', 'E41-T2'], digest: o.digest });
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed }))), o.digest);
+    assert.equal(fs.existsSync(path.join(root, 'E41-T1')), false);
+    assert.equal(fs.existsSync(path.join(root, 'E41-T2')), false);
+    assert.equal(fs.existsSync(path.join(root, 'E40-T1')), true);
+  });
+});
+
+test('prune: prefixo vazio ou com / sai 2 e nada e apagado', () => {
+  withRepo((repo) => {
+    const dir = path.join(repo, '.git', 'pt-evidence', 'E41-T1');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const p of ['', 'E41/', '../x', 'a\b']) {
+      const r = runCli(['prune', '--task-prefix', p, '--cwd', fwd(repo)]);
+      assert.equal(r.code, 2, JSON.stringify(p));
+      assert.equal(JSON.parse(r.stdout).tool, 'capture');
+    }
+    const none = runCli(['prune', '--cwd', fwd(repo)]);
+    assert.equal(none.code, 2);
+    assert.equal(fs.existsSync(dir), true);
   });
 });

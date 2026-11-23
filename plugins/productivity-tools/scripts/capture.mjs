@@ -2,13 +2,15 @@
 // Roda um comando, grava stdout e stderr em <git-dir>/pt-evidence/<task>/ e imprime uma linha JSON
 // assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")
+//      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <sha256> --slice <k>
+//      node capture.mjs prune --task-prefix <p> [--cwd <dir>]
 // Sai com o exit do comando; sai com 2 e imprime {"tool":"capture","error":...} se o uso ou o ambiente estiver errado.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { SLICE_BYTES, utf8Length, commandDigest, canon, fnv1a } from '../lib/plan-digest.mjs';
+import { SLICE_BYTES, utf8Length, commandDigest, canon, fnv1a, sliceEnvelopes } from '../lib/plan-digest.mjs';
 import { extractTests } from './test-extract.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
@@ -49,6 +51,70 @@ function parseArgs(argv) {
     else throw new UsageError(`argumento desconhecido: ${a}. ${USAGE}`);
   }
   return opts;
+}
+
+function parseFlags(argv, spec) {
+  const opts = {};
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i];
+    const key = spec[a];
+    if (!key) throw new UsageError(`argumento desconhecido: ${a}`);
+    if (i + 1 >= argv.length) throw new UsageError(`${a} sem valor`);
+    opts[key] = argv[++i];
+  }
+  return opts;
+}
+
+function gitDirOrThrow(cwdOpt) {
+  const cwd = path.resolve(cwdOpt ?? globalThis.process.cwd());
+  const gitDir = gitOut(['-C', cwd, 'rev-parse', '--absolute-git-dir']);
+  if (!gitDir) throw new UsageError(`${fwd(cwd)} não está dentro de um repositório git (git rev-parse --absolute-git-dir falhou)`);
+  return { cwd, gitDir };
+}
+
+const MSYS_MSG = 'caminho no estilo msys (/tmp/...) não é aceito no Windows; use C:/...';
+const isMsys = (p) => /^\/(?![/\\])/.test(p);
+
+function runSlice(argv, platform) {
+  const o = parseFlags(argv, { '--nonce': 'nonce', '--path': 'path', '--cwd': 'cwd', '--sha': 'sha', '--slice': 'slice' });
+  if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
+  if (o.path === undefined) throw new UsageError('--path ausente');
+  if (platform === 'win32' && (isMsys(o.path) || (o.cwd !== undefined && isMsys(o.cwd)))) throw new UsageError(MSYS_MSG);
+  if (o.sha === undefined || !/^[0-9a-f]{64}$/.test(o.sha)) throw new UsageError('--sha ausente ou não é um sha256 em hexadecimal minúsculo');
+  if (o.slice === undefined || !/^\d+$/.test(o.slice)) throw new UsageError('--slice ausente ou não é um inteiro >= 0');
+  const { cwd, gitDir } = gitDirOrThrow(o.cwd);
+  const root = path.join(gitDir, 'pt-evidence');
+  const file = path.resolve(cwd, o.path);
+  let realFile;
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(root);
+    realFile = fs.realpathSync(file);
+  } catch {
+    throw new UsageError(`arquivo não encontrado em ${fwd(root)}: ${fwd(o.path)}`);
+  }
+  const rel = path.relative(realRoot, realFile);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new UsageError(`--path fora de ${fwd(root)}/`);
+  const buf = fs.readFileSync(realFile);
+  if (sha256Of(buf) !== o.sha) return { code: 1, line: JSON.stringify({ tool: 'capture', error: 'o sha256 do arquivo não confere com --sha' }) };
+  const envs = sliceEnvelopes({ tool: 'capture', command: 'slice', nonce: o.nonce }, buf.toString('utf8'));
+  const k = Number(o.slice);
+  if (k >= envs.length) throw new UsageError(`--slice ${k} fora do intervalo 0..${envs.length - 1}`);
+  return { code: 0, line: JSON.stringify(envs[k]) };
+}
+
+function runPrune(argv, platform) {
+  const o = parseFlags(argv, { '--task-prefix': 'prefix', '--cwd': 'cwd' });
+  if (o.prefix === undefined || !TASK_RE.test(o.prefix)) throw new UsageError('--task-prefix ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras)');
+  if (o.prefix === '.' || o.prefix === '..') throw new UsageError('--task-prefix inválido');
+  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
+  const { gitDir } = gitDirOrThrow(o.cwd);
+  const root = path.join(gitDir, 'pt-evidence');
+  let names = [];
+  try { names = fs.readdirSync(root, { withFileTypes: true }); } catch { /* sem pasta */ }
+  const removed = names.filter((d) => d.isDirectory() && d.name.startsWith(o.prefix)).map((d) => d.name).sort();
+  for (const name of removed) fs.rmSync(path.join(root, name), { recursive: true, force: true });
+  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', removed })) };
 }
 
 function validate(opts, platform) {
@@ -170,6 +236,8 @@ function buildLine(base, text, tests, exit) {
 
 export function runCapture(argv, { platform = process.platform, env = process.env, now = Date.now } = {}) {
   try {
+    if (argv[0] === 'slice') return runSlice(argv, platform);
+    if (argv[0] === 'prune') return runPrune(argv, platform);
     const opts = parseArgs(argv);
     validate(opts, platform);
     const cwd = path.resolve(opts.cwd ?? process.cwd());
