@@ -16,6 +16,12 @@ const VERIFY = path.join(PLUGIN, 'skills', 'roadmap-release', 'scripts', 'verify
 const PREFLIGHT = path.join(PLUGIN, 'skills', 'roadmap-release', 'scripts', 'preflight.mjs');
 const FIXTURES = path.join(HERE, 'fixtures');
 const FIXTURE_VALID = path.join(PLUGIN, 'skills', 'roadmap-tracker', 'scripts', 'fixtures', 'valid');
+// 400 lines, ~12.7 KB; every 4th line carries 2-, 3- and 4-byte UTF-8 chars (e-acute, euro, CJK, surrogate-pair emoji).
+const GEN_SCRIPT = [
+  'const mb = ["\u00e9", "\u20ac", "\u6f22", "\ud83d\ude00"].join("");',
+  "for (let i = 0; i < 400; i++) console.log('line ' + String(i).padStart(3, '0') + ' ' + (i % 4 === 0 ? mb + 'x'.repeat(10) : 'x'.repeat(22)));",
+  '',
+].join('\n');
 const fwd = (p) => p.replace(/\\/g, '/');
 const GIT = ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false'];
 
@@ -65,7 +71,7 @@ test('the single limit is 3500 and slices stay below it', () => {
 test('capture run: 12.7 KB of stdout and the 63-test suite with --tests', () => {
   withRepo((repo) => {
     const script = path.join(repo, 'gen.js');
-    fs.writeFileSync(script, "for (let i = 0; i < 400; i++) console.log('line ' + String(i).padStart(3, '0') + ' ' + 'x'.repeat(22));\n");
+    fs.writeFileSync(script, GEN_SCRIPT);
     const a = node([CAPTURE, 'run', '--nonce', 'B1', '--task', 'E41-T1', '--cwd', fwd(repo), '--', 'node', script]);
     assert.equal(a.code, 0, a.stderr);
     assert.ok(JSON.parse(a.stdout).bytes > 12000);
@@ -96,7 +102,7 @@ test('capture run: 12.7 KB of stdout and the 63-test suite with --tests', () => 
 test('capture slice: every slice of the 12.7 KB stdout', () => {
   withRepo((repo) => {
     const script = path.join(repo, 'gen.js');
-    fs.writeFileSync(script, "for (let i = 0; i < 400; i++) console.log('line ' + String(i).padStart(3, '0') + ' ' + 'x'.repeat(22));\n");
+    fs.writeFileSync(script, GEN_SCRIPT);
     const run = node([CAPTURE, 'run', '--nonce', 'S0', '--task', 'E41-T1', '--cwd', fwd(repo), '--', 'node', script]);
     assert.equal(run.code, 0, run.stderr);
     const o = JSON.parse(run.stdout);
@@ -203,6 +209,10 @@ test('preflight discover --slice: every slice of a roadmap with many cards', () 
   });
 });
 
+function isBinary(buf) {
+  return buf.subarray(0, 8192).includes(0);
+}
+
 function walk(dir, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'node_modules' || e.name === 'fixtures' || e.name === '.git') continue;
@@ -212,7 +222,6 @@ function walk(dir, out) {
   }
   return out;
 }
-
 // Removes the blocks `// <embed src=".../plan-digest.mjs" ...>` through `// </embed>`.
 function stripDigestEmbeds(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
@@ -229,12 +238,17 @@ function stripDigestEmbeds(text) {
   return keep.join('\n');
 }
 
-test('the literal 3500 appears only in lib/plan-digest.mjs among non-test plugin files', () => {
+test('the literal 3500 appears exactly once in non-test plugin files, in lib/plan-digest.mjs', () => {
   const hits = [];
+  let total = 0;
   for (const file of walk(PLUGIN, [])) {
-    if (!/\.(mjs|js|md|py|json|sh|ps1)$/.test(file)) continue;
-    const text = stripDigestEmbeds(fs.readFileSync(file, 'utf8'));
-    if (/\b3500\b/.test(text)) hits.push(fwd(path.relative(PLUGIN, file)));
+    const buf = fs.readFileSync(file);
+    if (isBinary(buf)) continue;
+    const found = stripDigestEmbeds(buf.toString('utf8')).match(/\b3500\b/g);
+    if (!found) continue;
+    total += found.length;
+    hits.push(fwd(path.relative(PLUGIN, file)));
   }
   assert.deepEqual(hits, ['lib/plan-digest.mjs']);
+  assert.equal(total, 1, 'occurrences of 3500: ' + total);
 });
