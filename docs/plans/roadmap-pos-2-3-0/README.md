@@ -25,4 +25,5 @@ Rode `node <pasta-do-roadmap>/check-roadmap.mjs` (Node 18 ou mais novo). Sai com
 | Uma branch é integrada ou removida | "em andamento" em `state.md` e `log.md` |
 | Uma execução paga ou medição | `measurements.md` e `log.md` |
 | Um bloqueio abre ou fecha | `state.md` e `critical-path.md` |
+| Um pacote é publicado | o bloco `releases` em `state.md` e `log.md` |
 | Uma peça ou fase termina | propor uma revisão da estratégia |

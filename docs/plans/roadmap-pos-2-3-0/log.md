@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-23 | E40 | achado que afeta a estratégia: 2.4.0 publicada antes de E40; revisão v1.1 pendente de aprovação do dono | `state.md` |
+| 2026-11-23 | E34,E35,E38 | pacote productivity-tools 2.4.0 publicado no marketplace claude-play (tag productivity-tools--v2.4.0; leva o código de E35, cuja AC2 segue pendente; volta volta/productivity-tools-2.4.1 em 6f2eaf7) | `3f36054` |
+| 2026-11-23 | E34, E38 | E34, E38 integrada(s) em main via release/pos-2.3.0 | `3f36054` |
 | 2026-11-21 | E38 | E38 critérios comparados: nenhum mudou; item de now podado e pendência de conferência humana de AC2 registrada em state.md | `docs/plans/pos-2-3-0-E38/spec.md, state.md` |
 | 2026-11-21 | E38 | E38 fechada na-branch: T1-T5 concluidas (AC1 298/298, WSL2 Linux procs real B12, G1-G5 verdes); aguarda conferencia humana de AC2 | `docs/plans/pos-2-3-0-E38/progress.json, docs/reports/2026-11-21-E38-arnes-e-procs-linux.md, 625fcab, 7a2a470, e52c2d7, 5c9d8ab, 1b694f2` |
 | 2026-11-21 | E38 | DEC-020 a DEC-023 (E38) ratificadas pelo dono via Fable (DEC-012) | `decisions.md` |
