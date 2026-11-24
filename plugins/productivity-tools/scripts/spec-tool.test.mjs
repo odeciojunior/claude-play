@@ -199,6 +199,19 @@ test('six edge cases -> edge-cases-limit warning', () => {
   assert.ok(r.warnings.some((w) => w.code === 'edge-cases-limit'));
 });
 
+test('id-invalid (espaço, "/", 65 caracteres, "$")', () => {
+  for (const id of ['E 41', 'a/b', 'a'.repeat(65), 'E$41']) {
+    const r = checkSpec(mutate((d) => (d.id = id)));
+    assert.equal(find(r, 'id-invalid').ref, 'id', id);
+  }
+});
+
+test('ids E41, correcoes-2.0.1, pos-2-3-0-E41 e 64 caracteres passam o formato', () => {
+  for (const id of ['E41', 'correcoes-2.0.1', 'pos-2-3-0-E41', 'a'.repeat(64)]) {
+    assert.equal(find(checkSpec(mutate((d) => (d.id = id))), 'id-invalid'), undefined, id);
+  }
+});
+
 test('missing mode -> field-missing; mode "batch" -> field-type', () => {
   let r = checkSpec(mutate((d) => { delete d.mode; }));
   assert.equal(find(r, 'field-missing').ref, 'mode');

@@ -44,6 +44,8 @@ export const EXTERNAL_PATTERNS = [
 const collapse = (s) => norm(s).replace(/\s+/g, ' ').trim();
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = (v) => typeof v === 'string' && v.trim() !== '';
+// o id vira nome de pasta de provas e de task: só caracteres seguros, até 64
+const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const isInt = (v) => Number.isInteger(v);
 const isStrList = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 const normPath = (p) => String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
@@ -254,6 +256,7 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
   else if (data.schema !== SCHEMA) err('schema-version', 'schema', `esperado "${SCHEMA}", encontrado ${JSON.stringify(data.schema)}`);
   if (!('id' in data)) err('field-missing', 'id', 'campo obrigatório "id" ausente');
   else if (!isStr(data.id)) err('field-type', 'id', '"id" deve ser uma string não vazia');
+  else if (!ID_RE.test(data.id)) err('id-invalid', 'id', `"id" deve casar com ${ID_RE.source} (letras, dígitos, ".", "_" e "-", de 1 a 64 caracteres), encontrado ${JSON.stringify(data.id)}`);
   if ('title' in data && typeof data.title !== 'string') err('field-type', 'title', '"title" deve ser string');
   if (!('spec' in data)) err('field-missing', 'spec', 'campo obrigatório "spec" ausente');
   else if (!isStr(data.spec)) err('field-type', 'spec', '"spec" deve ser uma string não vazia');

@@ -270,6 +270,19 @@ test('schema: spec-id-mismatch', () => {
   assert.ok(find(r, 'spec-id-mismatch'));
 });
 
+test('schema: id-invalid (espaço, "/", 65 caracteres, "$")', () => {
+  for (const id of ['E 41', 'a/b', 'a'.repeat(65), 'E$41']) {
+    const r = check(mutate((d) => (d.id = id)));
+    assert.equal(find(r, 'id-invalid').ref, 'id', id);
+  }
+});
+
+test('schema: ids E41, correcoes-2.0.1, pos-2-3-0-E41 e 64 caracteres passam o formato', () => {
+  for (const id of ['E41', 'correcoes-2.0.1', 'pos-2-3-0-E41', 'a'.repeat(64)]) {
+    assert.equal(find(check(mutate((d) => (d.id = id))), 'id-invalid'), undefined, id);
+  }
+});
+
 test('schema: field-unknown is a warning', () => {
   const r = check(mutate((d) => {
     d.extra = 1;
