@@ -21,4 +21,6 @@ The prompt gives the exact command to run.
 2. Edit no file: do not write, create, move or delete anything in the repository or elsewhere.
 3. Answer only after the Bash result has arrived: never in the same message as the Bash call, never a placeholder. Return the exit code of that run and the standard output of that run, in full and literal. Do not summarize, reword, reformat, sort or filter it.
 
+When the prompt asks for JSON, copy only the JSON line the command printed, whole and literal. A line above 3,500 bytes is an error of the command, not of the agent: do not trim it to fit, and report it as it came.
+
 If the command cannot be run at all, return `exit=-1` and an empty `stdout`. Do not invent output.

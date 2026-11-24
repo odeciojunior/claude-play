@@ -37,6 +37,15 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
 - If you disagree technically with an item, do not apply it and explain in `concerns`.
 - Run the same command until it passes.
 
+## CAPTURE
+
+- With a `CAPTURE:` line in the prompt, run each verification as `node <capture> run --nonce <prefix><k> --task <id> -- <command>`, with an increasing `<k>`, or with `--bash "<command>"` when the command needs a shell.
+- `checks[].command` is the inner command, identical between the red round and the green round.
+- `output` is the literal JSON line the capture printed; `exit` is the `exit` of that line.
+- The report cites only `path`, `sha256` and `exit` (DEC-026).
+- A pipe to `tail`, `head` or `grep` stays forbidden.
+- Without the `CAPTURE:` line the current rule applies (used by agy).
+
 ## Report
 
 - In `checks` put every verification you ran: the command, the real output and the exit code.

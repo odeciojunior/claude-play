@@ -21,4 +21,6 @@ The prompt gives the path of a Node program, the exact command to run and the pr
 3. Delete the program file.
 4. Return the fields of the JSON the program printed.
 
+If the printed JSON does not arrive whole, the answer is `removedAsserts=-1`, never a partial copy.
+
 If the program fails, do not invent numbers: return `removedAsserts=-1` and zero for the other fields.
