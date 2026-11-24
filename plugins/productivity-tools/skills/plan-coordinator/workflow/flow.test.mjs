@@ -61,12 +61,12 @@ function sh(cwd, cmd, args) {
 }
 
 // A git repository in os.tmpdir() with the fixture plan, its spec and a test command, and the real `progress.mjs init --commits per-step`.
-function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-step', id = 'FX' } = {}) {
+function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-step', id = 'FX', dirName = 'fx' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'coordwf-'));
-  const planDir = join(dir, 'docs', 'plans', 'fx');
+  const planDir = join(dir, 'docs', 'plans', dirName);
   mkdirSync(planDir, { recursive: true });
   writeFileSync(join(planDir, 'plan.md'), plan);
-  writeFileSync(join(planDir, 'spec.md'), SPEC.replace('"id": "FX"', `"id": "${id}"`));
+  writeFileSync(join(planDir, 'spec.md'), SPEC);
   writeFileSync(join(dir, 'check.mjs'), CHECK);
   sh(dir, 'git', ['init', '-q', '-b', 'main']);
   sh(dir, 'git', ['config', 'core.autocrlf', 'false']);
@@ -75,6 +75,8 @@ function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-ste
   const planFile = join(planDir, 'plan.md');
   const init = spawnSync(process.execPath, [PROGRESS, 'init', planFile, '--commits', commits, '--json'], { cwd: dir, encoding: 'utf8' });
   assert.equal(init.status, 0, init.stderr + init.stdout);
+  // plan-tool init refuses an id outside [A-Za-z0-9._-]{1,64}: the test writes the odd id into the state after init (the coordinator reads plan.id from there).
+  if (id !== 'FX') { const st = JSON.parse(readFileSync(join(planDir, 'progress.json'), 'utf8')); st.plan.id = id; writeFileSync(join(planDir, 'progress.json'), JSON.stringify(st, null, 2)); }
   return {
     dir,
     planDir,
@@ -86,6 +88,8 @@ function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-ste
 }
 
 const readState = (sb) => JSON.parse(readFileSync(sb.stateFile, 'utf8'));
+// The proofs prefix the way coordinator.js builds it: sanitized id (55 chars) + '_' + fnv1a(id|path).
+const proofPrefix = (st, bad = /[^A-Za-z0-9._-]/g) => String(st.plan.id).replace(bad, '_').slice(0, 55) + '_' + fnv1a(String(st.plan.id) + '|' + st.plan.path);
 let tokenSeq = 0;
 const launchArgs = (sb, over = {}) => ({
   plan: sb.planFile.replace(/\\/g, '/'),
@@ -698,7 +702,6 @@ test('E41 T3 N1: a git status with exit 0 and null stdout is a handled error, ne
 
 test('E41 T3: a plan id of 200 characters gives a --task-prefix that capture.mjs accepts, and done prunes', () => {
   const id = 'P'.repeat(200);
-  const plan = readFileSync(FIXTURE_PLAN, 'utf8').replace('"id": "FX"', `"id": "${id}"`);
   return withSandbox(async (sb) => {
     const sim = makeSim(sb);
     const r = await sim.go(launchArgs(sb));
@@ -713,7 +716,7 @@ test('E41 T3: a plan id of 200 characters gives a --task-prefix that capture.mjs
       assert.match(w[w.indexOf('--nonce') + 1].replace(/<k>$/, 'k'), /^[A-Za-z0-9:._@-]{1,160}$/);
       assert.ok((w[w.indexOf('--task') + 1] + '-').startsWith(t[t.indexOf('--task-prefix') + 1]));
     }
-  }, { plan, id });
+  }, { id });
 });
 
 test('E41 T3: two plan ids of 200 characters with the same first 64 get different 64-character prefixes', async () => {
@@ -724,7 +727,7 @@ test('E41 T3: two plan ids of 200 characters with the same first 64 get differen
       assert.equal((await sim.go(launchArgs(sb))).status, 'done');
       const t = tokenize(byAgent(sim, RUNNER).find((c) => /capture\.mjs" prune /.test(c.cmd)).cmd);
       p = t[t.indexOf('--task-prefix') + 1];
-    }, { plan: readFileSync(FIXTURE_PLAN, 'utf8').replace('"id": "FX"', `"id": "${id}"`), id });
+    }, { id });
     return p;
   };
   const a = await prefixOf('P'.repeat(199) + 'A');
@@ -737,7 +740,7 @@ test('B2 T5: the implementer prompt carries the CAPTURE line, the final review p
   const sim = makeSim(sb);
   const r = await sim.go(launchArgs(sb));
   assert.equal(r.status, 'done', JSON.stringify(r));
-  const id = readState(sb).plan.id;
+  const id = proofPrefix(readState(sb));
   const t1 = implOf(sim, 1);
   assert.match(t1.prompt, /^CAPTURE: node "[^"]*\/scripts\/capture\.mjs" run --nonce [^\s:]+:[^\s:]+:T1:<k> --task [^\s]+-T1 --cwd '[^']+' -- <command>$/m);
   assert.ok(t1.prompt.includes(`:${id}:T1:<k> --task ${id}-T1 --cwd '`), t1.prompt);
@@ -765,10 +768,61 @@ test('B2 T5: with commits none the final review also asks for the worktree diff'
   const r = await sim.go(launchArgs(sb));
   assert.equal(r.status, 'done', JSON.stringify(r));
   const diff = byAgent(sim, FINAL)[0].prompt.split('\n').find((l) => l.startsWith('Diff:'));
-  const id = readState(sb).plan.id;
+  const id = proofPrefix(readState(sb));
   assert.ok(diff.includes('diff HEAD') && diff.includes('pt-evidence/review/' + id + '-worktree.diff'), diff);
   assert.ok(diff.includes('ls-files --others --exclude-standard'), diff);
 }, { commits: 'none' }));
+
+// Runs the fixture plan to done with the given plan id and folder; returns the --task-prefix of the prune and the final-review Diff line.
+const runIds = async (id, dirName) => {
+  let out = null;
+  await withSandbox(async (sb) => {
+    const sim = makeSim(sb);
+    const r = await sim.go(launchArgs(sb));
+    assert.equal(r.status, 'done', JSON.stringify(r));
+    const t = tokenize(byAgent(sim, RUNNER).find((c) => /capture\.mjs" prune /.test(c.cmd)).cmd);
+    out = { prefix: t[t.indexOf('--task-prefix') + 1], diff: byAgent(sim, FINAL)[0].prompt.split('\n').find((l) => l.startsWith('Diff:')), state: readState(sb) };
+  }, { id, dirName });
+  return out;
+};
+
+test('E41 prefix: ids that collide after sanitizing ("Plano B", "Plano_B") get different prefixes', async () => {
+  const a = await runIds('Plano B', 'fx');
+  const b = await runIds('Plano_B', 'fx');
+  assert.notEqual(a.prefix, b.prefix);
+  assert.equal(a.prefix, proofPrefix(a.state) + '-');
+});
+
+test('E41 prefix: two plans with the same id in different paths get different prefixes', async () => {
+  const a = await runIds('E41', 'plano-b1');
+  const b = await runIds('E41', 'plano-b2');
+  assert.notEqual(a.state.plan.path, b.state.plan.path);
+  assert.notEqual(a.prefix, b.prefix);
+});
+
+test('E41 prefix: an id with $x or ../ never reaches the Diff line and the review path stays inside pt-evidence/review/', async () => {
+  const r = await runIds('../$x', 'fx');
+  assert.ok(!r.diff.includes('$x'), r.diff);
+  assert.ok(!r.diff.includes('../'), r.diff);
+  const m = /pt-evidence\/review\/([^"]*)"/.exec(r.diff);
+  assert.ok(m, r.diff);
+  assert.match(m[1], /^[A-Za-z0-9._-]+-final\.txt$/);
+  assert.ok(m[1].startsWith(proofPrefix(r.state)), m[1]);
+});
+
+test('E41 prefix: a resume with the same state and a new runToken keeps the prefix', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { impl: (n) => (n === 2 ? dieAfterWriting(sb, 2) : undefined) });
+  await assert.rejects(sim.go(launchArgs(sb)), /killed/);
+  const first = byAgent(sim, IMPL).map((c) => c.prompt.split('\n').find((l) => l.startsWith('CAPTURE:'))).map((l) => tokenize(l)).map((w) => w[w.indexOf('--task') + 1].replace(/-T\d+$/, ''));
+  const sim2 = makeSim(sb);
+  const r2 = await sim2.go(launchArgs(sb));
+  assert.equal(r2.status, 'done', JSON.stringify(r2));
+  const t = tokenize(byAgent(sim2, RUNNER).find((c) => /capture\.mjs" prune /.test(c.cmd)).cmd);
+  const prefix = t[t.indexOf('--task-prefix') + 1];
+  assert.ok(first.length > 0);
+  for (const f of first) assert.equal(f + '-', prefix);
+  assert.equal(prefix, proofPrefix(readState(sb)) + '-');
+}));
 
 test('coordinator.js stays within the E41 budget of 88500 LF characters (R14)', () => {
   const size = readFileSync(join(HERE, 'coordinator.js'), 'utf8').replace(/\r\n/g, '\n').length;

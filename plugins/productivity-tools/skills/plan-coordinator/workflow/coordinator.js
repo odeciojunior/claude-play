@@ -1326,10 +1326,10 @@ const runPrompt = (cmd, writes, json) => `Run this command once and return its e
 const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
 // Runner stdout, or null if not a string.
 const stdoutOf = (out) => (out && typeof out.stdout === 'string' ? out.stdout : null)
-// Plan id for capture.mjs: over 64, 55 chars + '_' + fnv1a(id).
-const idCut = (s) => (s.length > 64 ? s.slice(0, 55) + '_' + fnv1a(String(S.plan.id)) : s)
-const taskId = () => idCut(String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_'))
-const nonceId = () => idCut(String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_'))
+// Proofs prefix: sanitized id (55 chars) + fnv1a(id|path), unique per plan.
+const pfx = (re) => String(S.plan.id).replace(re, '_').slice(0, 55) + '_' + fnv1a(String(S.plan.id) + '|' + S.plan.path)
+const taskId = () => pfx(/[^A-Za-z0-9._-]/g)
+const nonceId = () => pfx(/[^A-Za-z0-9:._@-]/g)
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
 const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`
@@ -1521,7 +1521,7 @@ const finalPrompt = () => {
   return [
     'Mode: review, lens: all',
     `Final review of the whole change of plan ${S.plan.id} (${ROOT}/${S.plan.path}), read-only, in ${ROOT}.`,
-    `Diff: node "${REVIEW_PKG}" ${shq(ROOT)} ${base} HEAD "${evDir}/${S.plan.id}-final.txt" (read that file instead of git diff)${S.run.commits === 'none' ? `, then git -C ${shq(ROOT)} diff HEAD > "${evDir}/${S.plan.id}-worktree.diff" and read it` : ''}, and git -C ${shq(ROOT)} ls-files --others --exclude-standard (the steps are committed one by one: git -C ${shq(ROOT)} log -p ${base}..HEAD shows them).`,
+    `Diff: node "${REVIEW_PKG}" ${shq(ROOT)} ${base} HEAD "${evDir}/${taskId()}-final.txt" (read that file instead of git diff)${S.run.commits === 'none' ? `, then git -C ${shq(ROOT)} diff HEAD > "${evDir}/${taskId()}-worktree.diff" and read it` : ''}, and git -C ${shq(ROOT)} ls-files --others --exclude-standard (the steps are committed one by one: git -C ${shq(ROOT)} log -p ${base}..HEAD shows them).`,
     `Steps:\n${steps}`,
     bl ? `Baseline of the tests: exit ${bl.exit}${bl.failedNames && bl.failedNames.length ? `, already failing: ${bl.failedNames.join('; ')}` : ''}.` : 'Baseline of the tests: none recorded.',
     'Look for broken contracts between steps, regressions outside the changed files and acceptance criteria with no test. Give each finding its file.',

@@ -79,7 +79,7 @@ function sandbox(plan, id = 'FX') {
   const planDir = join(dir, 'docs', 'plans', 'fx');
   mkdirSync(planDir, { recursive: true });
   writeFileSync(join(planDir, 'plan.md'), plan);
-  writeFileSync(join(planDir, 'spec.md'), SPEC.replace('"id": "FX"', `"id": "${id}"`));
+  writeFileSync(join(planDir, 'spec.md'), SPEC);
   writeFileSync(join(dir, 'check.mjs'), CHECK);
   sh(dir, 'git', ['init', '-q', '-b', 'main']);
   sh(dir, 'git', ['config', 'core.autocrlf', 'false']);
@@ -88,9 +88,13 @@ function sandbox(plan, id = 'FX') {
   const planFile = join(planDir, 'plan.md');
   const init = spawnSync(process.execPath, [PROGRESS, 'init', planFile, '--commits', 'per-step', '--json'], { cwd: dir, encoding: 'utf8' });
   assert.equal(init.status, 0, init.stderr + init.stdout);
+  // plan-tool init refuses an id outside [A-Za-z0-9._-]{1,64}: the test writes the odd id into the state after init (the coordinator reads plan.id from there).
+  if (id !== 'FX') { const st = JSON.parse(readFileSync(join(planDir, 'progress.json'), 'utf8')); st.plan.id = id; writeFileSync(join(planDir, 'progress.json'), JSON.stringify(st, null, 2)); }
   return { dir, planFile, stateFile: join(planDir, 'progress.json'), check: join(dir, 'check.mjs').replace(/\\/g, '/'), done: () => rmSync(dir, { recursive: true, force: true }) };
 }
 const readState = (sb) => JSON.parse(readFileSync(sb.stateFile, 'utf8'));
+// The proofs prefix the way coordinator.js builds it: sanitized id (55 chars) + '_' + fnv1a(id|path).
+const proofPrefix = (st, bad = /[^A-Za-z0-9._-]/g) => String(st.plan.id).replace(bad, '_').slice(0, 55) + '_' + fnv1a(String(st.plan.id) + '|' + st.plan.path);
 let tokenSeq = 0;
 const launchArgs = (sb) => ({
   plan: sb.planFile.replace(/\\/g, '/'),
@@ -413,8 +417,7 @@ test('E41 T3: a null stdout of a capture is retried as capture, and null twice i
 }));
 
 test('E41 T3: a plan id outside [A-Za-z0-9._-] gives a valid --task and --nonce, and the CAPTURE line carries --cwd', () => {
-  const plan = widePlan(2).replace('"id": "FX"', '"id": "Plano B"');
-  return withSandbox(plan, async (sb) => {
+  return withSandbox(widePlan(2), async (sb) => {
     const sim = makeSim(sb);
     const r = await sim.go(launchArgs(sb));
     assert.ok(typeof r.status === 'string', JSON.stringify(r));
@@ -428,14 +431,15 @@ test('E41 T3: a plan id outside [A-Za-z0-9._-] gives a valid --task and --nonce,
     }
     assert.ok(caps.every((c) => c.exit !== 2), 'capture.mjs accepted every call');
     const line = byAgent(sim, IMPL)[0].prompt.split('\n').find((l) => l.startsWith('CAPTURE:'));
-    assert.match(line, /--task Plano_B-T1 --cwd '[^']+' -- <command>$/);
-    assert.match(line, /--nonce [^\s]+:Plano_B:T1:<k>/);
+    assert.ok(line.includes(`--task ${proofPrefix(readState(sb))}-T1 --cwd '`), line);
+    assert.match(line, / -- <command>$/);
+    assert.ok(line.includes(`:${proofPrefix(readState(sb), /[^A-Za-z0-9:._@-]/g)}:T1:<k>`), line);
   }, 'Plano B');
 });
 
 test('E41 T3: a plan id of 200 characters is cut so --task and --nonce fit capture.mjs', () => {
   const id = 'P'.repeat(200);
-  return withSandbox(widePlan(2).replace('"id": "FX"', `"id": "${id}"`), async (sb) => {
+  return withSandbox(widePlan(2), async (sb) => {
     const sim = makeSim(sb);
     const r = await sim.go(launchArgs(sb));
     assert.ok(typeof r.status === 'string', JSON.stringify(r));
