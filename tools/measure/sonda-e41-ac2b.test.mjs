@@ -112,8 +112,27 @@ test('summarize exits 1 on a failed run or a sum above US$ 1', () => {
   }
 });
 
+test('summarize adds aborted runs to the cost without counting them as runs', () => {
+  const work = tmp();
+  const cfg = tmp();
+  try {
+    fakeRuns(work);
+    fs.writeFileSync(path.join(work, 'runs', 'abortada-1-on-sonnet.json'), JSON.stringify({ is_error: true, total_cost_usd: 0.170395 }));
+    let r = node([tool, 'summarize', '--work', work, '--config', cfg]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /\| 6 execucoes \| parada authorize em 6\/6 \|.*custo US\$ 0\.7704 \|/);
+    fs.writeFileSync(path.join(work, 'runs', 'abortada-2.json'), JSON.stringify({ is_error: true, total_cost_usd: 0.3 }));
+    r = node([tool, 'summarize', '--work', work, '--config', cfg]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /custo somado/);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+    fs.rmSync(cfg, { recursive: true, force: true });
+  }
+});
+
 test('the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir', () => {
-  const cmds = roteiro.split('\n').filter((l) => /^CLAUDE_CONFIG_DIR=.*--max-budget-usd 0\.16.*runs\/[123]-(on|off)\.json$/.test(l));
+  const cmds = roteiro.split('\n').filter((l) => /^CLAUDE_CONFIG_DIR=.*--max-budget-usd 0\.13.*runs\/[123]-(on|off)\.json$/.test(l));
   assert.equal(cmds.length, 6);
   assert.equal((roteiro.match(/<k>-on\.json|[123]-on\.json/g) ?? []).length >= 3, true);
   assert.equal((roteiro.match(/[123]-off\.json/g) ?? []).length >= 3, true);

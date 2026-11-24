@@ -14,7 +14,7 @@ import { extract, loadPrices } from './session-metrics.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(here, '..', '..');
-export const BUDGET_PER_RUN = 0.16;
+export const BUDGET_PER_RUN = 0.13;
 export const BUDGET_TOTAL = 1;
 export const STEPS = 40;
 const KS = [1, 2, 3];
@@ -151,6 +151,17 @@ export function summarize({ work, config }) {
         const r = extract({ root, sessions: [out.session_id], prices }).runs[0];
         for (const [label, a] of Object.entries(r?.agents ?? {})) if (/-slice\d+-retry\d+$/.test(label)) retries += a.calls;
       }
+    }
+  }
+  // Execucoes abortadas (runs/abortada-*.json) contam no custo, nao como execucao (DEC-038).
+  const runsDir = path.join(path.resolve(work), 'runs');
+  for (const f of fs.existsSync(runsDir) ? fs.readdirSync(runsDir) : []) {
+    if (!/^abortada-.*\.json$/.test(f)) continue;
+    try {
+      const out = JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
+      if (typeof out.total_cost_usd === 'number') cost += out.total_cost_usd;
+    } catch (e) {
+      problems.push(f + ': saida ilegivel');
     }
   }
   const total = Math.round(cost * 1e6) / 1e6;

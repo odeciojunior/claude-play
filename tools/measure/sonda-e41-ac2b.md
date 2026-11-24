@@ -19,14 +19,16 @@ Cria `<work>/sandbox` (repositorio git com `docs/plans/sonda/spec.md` e `plan.md
 
 ## 2. Execucoes
 
-O plugin vem de `--plugin-dir` (o da branch); nada e instalado na config. Rode cada comando em `<work>/sandbox`, com a saida em `<work>/runs/<k>-<on|off>.json`. Cada execucao tem `--max-budget-usd 0.16` (6 x 0,16 = 0,96, ate US$ 1, DEC-029). Se o arquivo da execucao ja existe, nao rode de novo.
+O plugin vem de `--plugin-dir` (o da branch); nada e instalado na config. Rode cada comando em `<work>/sandbox`, com a saida em `<work>/runs/<k>-<on|off>.json`. Cada execucao tem `--model haiku` e `--max-budget-usd 0.13` (DEC-038): 6 x 0,13 = 0,78, mais US$ 0,170395 da execucao abortada em sonnet, ate US$ 1 (DEC-029). Se o arquivo da execucao ja existe, nao rode de novo.
+
+A 1-on e o piloto: no primeiro `is_error` ou sem a parada `authorize`, pare e avise o dono antes de qualquer outra execucao. Uma execucao que parou sem despachar nenhum agente e inconclusiva, nao negativa. Execucao abortada fica em `<work>/runs/abortada-<k>-<on|off>-<motivo>.json`: o `summarize` soma o custo dela, sem conta-la como execucao.
 
 Pedido `<pedido>`: `Execute o plano docs/plans/sonda/plan.md com o coordinator e pare quando a proxima acao for authorize; nao autorize nada.`
 
 Comando base (troque `<k>` e `<on|off>`):
 
 ```
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json
 ```
 
 ### Com context-mode ligado (X2)
@@ -45,9 +47,9 @@ O `install` ja deixa o plugin ligado; o `enable` so garante isso. Confira no `pl
 Execucoes (saida em `<work>/runs/1-on.json`, `2-on.json`, `3-on.json`):
 
 ```
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/1-on.json
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/2-on.json
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/3-on.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/1-on.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/2-on.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/3-on.json
 ```
 
 ### Com context-mode desligado
@@ -57,9 +59,9 @@ Desligue-o em seguida, so com `CLAUDE_CONFIG_DIR=<cfg>`: `CLAUDE_CONFIG_DIR=<cfg
 Execucoes (saida em `<work>/runs/1-off.json`, `2-off.json`, `3-off.json`):
 
 ```
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/1-off.json
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/2-off.json
-CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model sonnet --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.16 --output-format json > <work>/runs/3-off.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/1-off.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/2-off.json
+CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedido>" --plugin-dir <repo>/plugins/productivity-tools --model haiku --permission-mode acceptEdits --allowedTools "Bash(git:*)" "Bash(node:*)" "Workflow(productivity-tools:coordinator-workflow)" --max-budget-usd 0.13 --output-format json > <work>/runs/3-off.json
 ```
 
 ## 3. Resumir (offline)
