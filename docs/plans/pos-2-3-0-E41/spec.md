@@ -136,7 +136,7 @@ Testes: `plugins/productivity-tools/scripts/test-extract.test.mjs` gera a suíte
 
 O prompt do implementer, nos dois workflows, passa a trazer a linha do capture com o caminho do `capture.mjs` e um prefixo de nonce `<RUN_TAG>:<E ou plano>:T<n>:`. `agents/implementer.md` troca a regra que proíbe pipe para `tail` (linhas 43 a 46) pelo uso obrigatório do capture:
 
-- cada verificação roda como `node <capture> run --nonce <prefixo><k> --task <E>-T<n> -- <comando>`;
+- cada verificação roda como `node <capture> run --nonce <prefixo><k> --task <taskId>-T<n> -- <comando>` (no `roadmap-release.js`, `<taskId>` é `<E>`; no `coordinator.js`, é o plano higienizado, cortado em 55 caracteres, mais `_` e o fnv1a de 8 hex de `id|plan.path`, único por plano e estável na retomada; gates em `<taskId>-gate`, ou `<E>-gates` e `<E>-load`; a revisão final grava `pt-evidence/review/<taskId>-final.txt` e `<taskId>-worktree.diff`);
 - `checks[].output` é a linha JSON do capture, literal;
 - `checks[].exit` é o `exit` dela;
 - o relatório cita path, sha256 e exit (DEC-026).
@@ -178,7 +178,7 @@ No Windows (`process.platform === 'win32'`, injetável nos testes), todo argumen
 **Provas, limpeza e retomada (DEC-026, DEC-028).**
 
 - `capture.mjs run` apaga, ao começar, arquivos de `pt-evidence` com mais de 14 dias.
-- `capture.mjs prune --task-prefix <p>` roda no fecho: no `coordinator.js`, quando o plano termina, para o prefixo do plano; no `roadmap-release.js`, no estágio CLEANUP, para `<E>-`.
+- `capture.mjs prune --task-prefix <p>` roda no fecho: no `coordinator.js`, quando o plano termina, para o prefixo `<taskId>-` (com o hífen); no `roadmap-release.js`, no estágio CLEANUP, para `<E>-`. Remove as pastas `<p><resto>` cujo resto não tem hífen e os arquivos `review/<p><resto>`, e depois varre o que tem mais de 14 dias (no Windows o prefixo ignora a caixa). `prune --older-than <dias>` só varre por idade; `capture.mjs list [--cwd]` imprime uma linha JSON assinada com `{name, files, bytes, newest}` por pasta. `plan-tool` e `spec-tool` recusam id fora de `^[A-Za-z0-9._-]{1,64}$` com `id-invalid`.
 - A pasta some com o worktree porque fica no git-dir dele.
 - `SKILL.md` e `references/state.md` do plan-coordinator, e `SKILL.md` e `references/operator.md` do roadmap-release, documentam a pasta, a limpeza e que `resumeFromRunId` de execuções da 2.4.0 não é retomável. Os trechos que `workflow/docs.test.mjs` exige continuam lá.
 
@@ -390,7 +390,7 @@ Em `specLoadOnce` e `planLoadOnce`, o `emit` e o `check --json` deixam de ser co
     {
       "id": "R13",
       "question": "Quem limpa a pasta de provas e quando?",
-      "decision": "capture.mjs run apaga arquivos de pt-evidence com mais de 14 dias ao começar; capture.mjs prune --task-prefix roda no fecho do plano (coordinator.js) e no estágio CLEANUP de cada entregável (roadmap-release.js); a pasta de um worktree some com ele.",
+      "decision": "capture.mjs run apaga arquivos de pt-evidence com mais de 14 dias ao começar; capture.mjs prune --task-prefix roda no fecho do plano (coordinator.js, prefixo taskId único por plano: id higienizado até 55 caracteres mais fnv1a de id|plan.path) e no estágio CLEANUP de cada entregável (roadmap-release.js, <E>-); remove as pastas <p><resto> sem hífen no resto e os arquivos review/<p><resto>, e varre o que tem mais de 14 dias; prune --older-than só varre; capture.mjs list lista as pastas; a pasta de um worktree some com ele.",
       "basis": "DEC-026 (limpeza no fecho do entregável e de arquivos com mais de 14 dias, provas fora do commit no git-dir); mesmo padrão dos marcadores de verify-run.mjs, podados no início.",
       "alternative": "Limpeza só manual pelo dono.",
       "costIfWrong": "low",
