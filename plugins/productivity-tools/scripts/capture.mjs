@@ -7,9 +7,10 @@
 //        --task-prefix: apaga as pastas <p><resto> de pt-evidence e os arquivos <p><resto> de pt-evidence/review/ (resto sem hifen,
 //        ex.: final.txt, worktree.diff; subpastas de review/ nunca) e varre o que tem mais de 14 dias. No win32 o prefixo ignora a caixa.
 //        Saida: {tool,command:'prune',[nonce],removed:[pastas],removedReview:[arquivos],swept:[caminhos relativos a pt-evidence
-//        dos arquivos apagados pela varredura de 14 dias],digest}.
+//        dos arquivos apagados pela varredura de 14 dias],digest}. Se a linha passar de MAX_COPY_BYTES corta swept (depois removedReview e
+//        removed, se ainda assim passar), mantem as primeiras entradas em ordem e acrescenta sweptCut:<n omitidos> (removedReviewCut, removedCut).
 //        --older-than: so a varredura, com corte em agora - <dias> (inteiro >= 0; 0 apaga tudo com mtime anterior a agora).
-//        Saida: {tool,command:'prune',[nonce],olderThan,removed:[caminhos relativos a pt-evidence],digest}. Os dois juntos ou nenhum: exit 2.
+//        Saida: {tool,command:'prune',[nonce],olderThan,removed:[caminhos relativos a pt-evidence],digest}; se passar de MAX_COPY_BYTES corta removed e acrescenta removedCut:<n omitidos>. Os dois juntos ou nenhum: exit 2.
 //        --nonce (opcional, ^[A-Za-z0-9:._@-]{1,160}$): entra no objeto assinado, para que uma linha antiga copiada nao passe pelo digest.
 //      node capture.mjs list [--nonce <n>] [--cwd <dir>]
 //        Saida: {tool,command:'list',[nonce],tasks:[{name,files,bytes,newest}],digest}, uma entrada por pasta de pt-evidence (review/ inclusa),
@@ -140,7 +141,9 @@ function runPrune(argv, platform, now) {
     const days = Number(o.older);
     const removed = [];
     sweep(root, now() - days * 24 * 3600 * 1000, true, removed, '');
-    return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', ...withNonce(o), olderThan: days, removed: removed.sort() })) };
+    removed.sort();
+    const make = (k) => sign({ tool: 'capture', command: 'prune', ...withNonce(o), olderThan: days, removed: removed.slice(0, k), ...(k < removed.length ? { removedCut: removed.length - k } : {}) });
+    return { code: 0, line: JSON.stringify(make(fitCount(make, removed.length))) };
   }
   const norm = platform === 'win32' ? (x) => x.toLowerCase() : (x) => x;
   const mine = (name) => norm(name).startsWith(norm(o.prefix)) && SUFFIX_RE.test(name.slice(o.prefix.length));
@@ -152,7 +155,21 @@ function runPrune(argv, platform, now) {
   for (const name of removedReview) fs.rmSync(path.join(reviewDir, name), { force: true });
   const swept = [];
   sweep(root, cutoff, true, swept);
-  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', ...withNonce(o), removed, removedReview, swept: swept.sort() })) };
+  swept.sort();
+  // Corta primeiro swept (o que cresce sem limite); so se mesmo sem ele passar do limite corta removedReview e removed.
+  const keep = { swept: swept.length, removedReview: removedReview.length, removed: removed.length };
+  const make = () => sign({
+    tool: 'capture', command: 'prune', ...withNonce(o),
+    removed: removed.slice(0, keep.removed), ...(keep.removed < removed.length ? { removedCut: removed.length - keep.removed } : {}),
+    removedReview: removedReview.slice(0, keep.removedReview), ...(keep.removedReview < removedReview.length ? { removedReviewCut: removedReview.length - keep.removedReview } : {}),
+    swept: swept.slice(0, keep.swept), ...(keep.swept < swept.length ? { sweptCut: swept.length - keep.swept } : {}),
+  });
+  const total = { swept: swept.length, removedReview: removedReview.length, removed: removed.length };
+  for (const key of ['swept', 'removedReview', 'removed']) {
+    keep[key] = fitCount((k) => { keep[key] = k; return make(); }, total[key]);
+    if (utf8Length(JSON.stringify(make())) <= MAX_COPY_BYTES) break;
+  }
+  return { code: 0, line: JSON.stringify(make()) };
 }
 
 function walkStats(dir) {
@@ -187,14 +204,19 @@ function runList(argv, platform) {
     .sort((a, b) => b.newest - a.newest || (a.name < b.name ? -1 : 1))
     .map((t) => ({ name: t.name, files: t.files, bytes: t.bytes, newest: new Date(t.newest).toISOString() }));
   const make = (k) => sign({ tool: 'capture', command: 'list', ...withNonce(o), tasks: all.slice(0, k), ...(k < all.length ? { cut: all.length - k } : {}) });
+  return { code: 0, line: JSON.stringify(make(fitCount(make, all.length))) };
+}
+
+// Maior k em [0, n] tal que a linha de make(k) cabe em MAX_COPY_BYTES (make(k) mantem as k primeiras entradas e assina).
+function fitCount(make, n) {
   let lo = 0;
-  let hi = all.length;
+  let hi = n;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
     if (utf8Length(JSON.stringify(make(mid))) <= MAX_COPY_BYTES) lo = mid;
     else hi = mid - 1;
   }
-  return { code: 0, line: JSON.stringify(make(lo)) };
+  return lo;
 }
 
 function validate(opts, platform) {

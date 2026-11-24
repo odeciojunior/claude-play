@@ -642,6 +642,52 @@ test('sweep: pasta vazia recem-criada fica (corrida com mkdir); pasta vazia anti
   });
 });
 
+const digestOk = (o) => { const { digest, ...rest } = o; return fnv1a(JSON.stringify(canon(rest))) === digest; };
+function manyOld(root, n, days) {
+  for (let i = 0; i < n; i++) ago(put(root, `sobra-${String(i).padStart(4, '0')}/arquivo-com-nome-comprido-${i}-stdout.txt`), days);
+}
+
+test('prune --task-prefix: swept passa do limite de copia e sai cortado com sweptCut e digest valido', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    manyOld(root, 400, 20);
+    const line = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]).stdout.trim();
+    assert.ok(utf8Length(line) <= MAX_COPY_BYTES);
+    const o = JSON.parse(line);
+    assert.ok(o.sweptCut > 0);
+    assert.equal(o.swept.length + o.sweptCut, 400);
+    assert.equal(o.swept[0], 'sobra-0000/arquivo-com-nome-comprido-0-stdout.txt');
+    assert.ok(digestOk(o));
+  });
+});
+
+test('prune --older-than: removed passa do limite de copia e sai cortado com removedCut e digest valido', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    manyOld(root, 400, 20);
+    const line = runCli(['prune', '--older-than', '1', '--cwd', fwd(repo)]).stdout.trim();
+    assert.ok(utf8Length(line) <= MAX_COPY_BYTES);
+    const o = JSON.parse(line);
+    assert.ok(o.removedCut > 0);
+    assert.equal(o.removed.length + o.removedCut, 400);
+    assert.ok(digestOk(o));
+  });
+});
+
+test('prune: sem corte, sweptCut e removedCut nao aparecem', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    manyOld(root, 3, 20);
+    const a = JSON.parse(runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]).stdout);
+    assert.equal(a.swept.length, 3);
+    assert.ok(!('sweptCut' in a) && !('removedCut' in a) && !('removedReviewCut' in a));
+    manyOld(root, 3, 20);
+    const b = JSON.parse(runCli(['prune', '--older-than', '1', '--cwd', fwd(repo)]).stdout);
+    assert.equal(b.removed.length, 3);
+    assert.ok(!('removedCut' in b));
+  });
+});
+
 test('prune e list: --nonce opcional entra no objeto assinado e e validado', () => {
   withRepo((repo) => {
     const root = path.join(repo, '.git', 'pt-evidence');
