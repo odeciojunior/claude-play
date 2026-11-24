@@ -135,7 +135,7 @@ function planChanged(state, stateFile) {
 // Id fora da regra (plano antigo): o dono precisa renomear, não é "plano mudou". Outros erros do check seguem como plan-changed.
 // Texto curto: cabe no read assinado.
 function invalidPlanAsk(errors) {
-  const ids = errors.filter((x) => x.code === 'id-invalid' || (x.code === 'spec-invalid' && Array.isArray(x.inner) && x.inner.some((i) => i.code === 'id-invalid' && i.ref === 'id')));
+  const ids = errors.filter((x) => (x.code === 'id-invalid' && x.top === true) || (x.code === 'spec-invalid' && Array.isArray(x.inner) && x.inner.some((i) => i.code === 'id-invalid' && i.top === true)));
   if (!ids.length) return null;
   const list = ids.slice(0, 3).map((x) => x.code + ': ' + String(x.message).slice(0, 160)).join('; ');
   return 'o plano não passa no check (' + list + '); renomeie o id em plan.md e spec.md (mesmo valor, ^[A-Za-z0-9._-]{1,64}$), rode init --restart e relance sem answers';

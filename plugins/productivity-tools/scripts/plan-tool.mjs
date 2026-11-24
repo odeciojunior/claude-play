@@ -256,7 +256,7 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
   else if (data.schema !== SCHEMA) err('schema-version', 'schema', `esperado "${SCHEMA}", encontrado ${JSON.stringify(data.schema)}`);
   if (!('id' in data)) err('field-missing', 'id', 'campo obrigatório "id" ausente');
   else if (!isStr(data.id)) err('field-type', 'id', '"id" deve ser uma string não vazia');
-  else if (!ID_RE.test(data.id)) err('id-invalid', 'id', `"id" deve casar com ${ID_RE.source} (letras, dígitos, ".", "_" e "-", de 1 a 64 caracteres), encontrado ${JSON.stringify(data.id)}`);
+  else if (!ID_RE.test(data.id)) err('id-invalid', 'id', `"id" deve casar com ${ID_RE.source} (letras, dígitos, ".", "_" e "-", de 1 a 64 caracteres), encontrado ${JSON.stringify(data.id)}`, { top: true });
   if ('title' in data && typeof data.title !== 'string') err('field-type', 'title', '"title" deve ser string');
   if (!('spec' in data)) err('field-missing', 'spec', 'campo obrigatório "spec" ausente');
   else if (!isStr(data.spec)) err('field-type', 'spec', '"spec" deve ser uma string não vazia');
@@ -340,7 +340,7 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
     const s = checkSpec(specSource);
     if (s.errors.length) {
       const first = s.errors[0];
-      err('spec-invalid', 'spec', `spec com erro (${s.errors.length}): ${first.code} ${first.ref}: ${first.message}`, { inner: s.errors.slice(0, 5).map((x) => ({ code: x.code, ref: x.ref })) });
+      err('spec-invalid', 'spec', `spec com erro (${s.errors.length}): ${first.code} ${first.ref}: ${first.message}`, { inner: s.errors.slice().sort((x, y) => (y.top ? 1 : 0) - (x.top ? 1 : 0)).slice(0, 5).map((x) => (x.top ? { code: x.code, ref: x.ref, top: true } : { code: x.code, ref: x.ref })) });
     } else {
       spec = s.data;
       if (isStr(data.id) && spec.id !== data.id) err('spec-id-mismatch', 'id', `o plano é de "${data.id}" e o spec é de "${spec.id}"`);

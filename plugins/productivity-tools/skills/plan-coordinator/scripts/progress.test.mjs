@@ -925,6 +925,27 @@ test('spec item id changed after init (not the top-level id): plan-changed, no a
   assert.equal('planAsk' in j, false);
 }));
 
+test('ruling id r1 in the plan (item id, top-level id valid): plan-changed, no ask', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  fs.writeFileSync(sb.plan, fs.readFileSync(sb.plan, 'utf8').replace('"id": "R1",', '"id": "r1",'));
+  const n = JSON.parse(cli(['next', sb.state, '--json']).out).action;
+  assert.deepEqual(n, { action: 'plan-changed' });
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j.planChanged, true);
+  assert.equal('planAsk' in j, false);
+}));
+
+test('spec acceptance item with the literal id "id": plan-changed, no ask', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const spec = path.join(path.dirname(sb.plan), '..', 'spec-tool', 'spec.md');
+  fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8').replace('"id": "AC1"', '"id": "id"'));
+  const n = JSON.parse(cli(['next', sb.state, '--json']).out).action;
+  assert.deepEqual(n, { action: 'plan-changed' });
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j.planChanged, true);
+  assert.equal('planAsk' in j, false);
+}));
+
 test('spec.md missing in a folder named id-invalid: plan-changed, no ask', () => withSandbox((sb) => {
   assert.equal(cli(['init', sb.plan]).code, 0);
   const spec = path.join(path.dirname(sb.plan), '..', 'spec-tool', 'spec.md');

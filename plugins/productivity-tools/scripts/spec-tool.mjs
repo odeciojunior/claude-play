@@ -115,7 +115,7 @@ export function checkRecords(name, items, { roadmap = null } = {}) {
 export function checkSpec(text, { roadmap = null } = {}) {
   const errors = [];
   const warnings = [];
-  const err = (code, ref, message) => errors.push({ code, ref, message });
+  const err = (code, ref, message, extra) => errors.push({ code, ref, message, ...extra });
   const warn = (code, ref, message) => warnings.push({ code, ref, message });
 
   const read = readDataBlock(text);
@@ -134,7 +134,7 @@ export function checkSpec(text, { roadmap = null } = {}) {
   else if (data.schema !== SCHEMA) err('schema-version', 'schema', `esperado "${SCHEMA}", encontrado ${JSON.stringify(data.schema)}`);
   if (!('id' in data)) err('field-missing', 'id', 'campo obrigatório "id" ausente');
   else if (!isStr(data.id)) err('field-type', 'id', '"id" deve ser uma string não vazia');
-  else if (!ID_RE.test(data.id)) err('id-invalid', 'id', `"id" deve casar com ${ID_RE.source} (letras, dígitos, ".", "_" e "-", de 1 a 64 caracteres), encontrado ${JSON.stringify(data.id)}`);
+  else if (!ID_RE.test(data.id)) err('id-invalid', 'id', `"id" deve casar com ${ID_RE.source} (letras, dígitos, ".", "_" e "-", de 1 a 64 caracteres), encontrado ${JSON.stringify(data.id)}`, { top: true });
   if ('title' in data && typeof data.title !== 'string') err('field-type', 'title', '"title" deve ser string');
   if (!('mode' in data)) err('field-missing', 'mode', 'campo obrigatório "mode" ausente');
   else if (!MODES.includes(data.mode)) err('field-type', 'mode', `"mode" deve ser ${MODES.map((m) => `"${m}"`).join(' ou ')}`);
