@@ -888,6 +888,8 @@ async def main():
     ROOT = slash(first['data']['root'])
     if not same_plan(S['plan']['path'], A['plan']):
         return fail_with('the state belongs to another plan: it records %s and the launch names %s' % (S['plan']['path'], A['plan']))
+    if first['data'].get('planAsk'):  # an id outside the rule: rename it, not a bare plan-changed
+        return stop_with('ask', question=first['data']['planAsk'])
     if first['data'].get('planChanged') is True:
         return stop_with('plan-changed', message='the plan changed after progress.mjs init; the state is kept as it is. Recreate it with init --restart only if the person asks')
 

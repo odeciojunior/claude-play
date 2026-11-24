@@ -382,6 +382,16 @@ pyTest('a reviewer that raises counts as lost: three losses ask the person',() =
   assert.equal(agents(run, 'task-reviewer').length, 3);
 }));
 
+pyTest('a plan whose id breaks the id rule stops with ask that says to rename it, not with plan-changed', () => withSandbox(async (sb) => {
+  for (const f of [sb.planFile, path.join(path.dirname(sb.planFile), 'spec.md')]) fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('"id": "FX"', '"id": "Plano B"'));
+  const run = runScript(launchArgs(sb));
+  assert.equal(run.result.status, 'stopped', JSON.stringify(run.result) + run.stderr);
+  assert.equal(run.result.stop.kind, 'ask');
+  assert.match(run.result.stop.question, /id-invalid/);
+  assert.match(run.result.stop.question, /init --restart/);
+  assert.equal(agents(run, 'implementer').length, 0, 'no implementer ran');
+}));
+
 // ---- base vermelha, retomada e estado concorrente
 pyTest('a red baseline stops with ask before any implementer and unblock resumes the run', () => withSandbox(async (sb) => {
   fs.writeFileSync(sb.check + '.fail', 'red\n');
