@@ -1235,6 +1235,7 @@ const STATE_FILE = slash(A.state)
 const CAPTURE = PROGRESS.replace(/\/skills\/plan-coordinator\/scripts\/progress\.mjs$/, '/scripts/capture.mjs')
 // The run token stays only in the first read: every later nonce carries a hash of it, so a resume by the runtime re-runs everything live.
 const RUN_TAG = fnv1a(A.runToken)
+const REVIEW_PKG = PROGRESS.replace(/\/skills\/plan-coordinator\/scripts\/progress\.mjs$/, '/scripts/review-package.mjs')
 
 // ---------------------------------------------------------------- schemas (the same as the release workflow)
 const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boolean' }
@@ -1414,6 +1415,7 @@ const implPrompt = (s, defects) => {
     `Repository: ${ROOT}. Read the brief of the step first: ${briefOf(s)} (plan constraints, files, checks and the interfaces this step consumes). Never read the plan file.`,
     `Files of this step: ${filesOf(s).length ? filesOf(s).join(', ') : 'none (this step writes no file)'}.`,
     handoffs.length ? handoffs.join('\n') : 'HANDOFF: none (no dependency of this step left a handoff).',
+    `CAPTURE: node "${CAPTURE}" run --nonce ${RUN_TAG}:${S.plan.id}:T${s.n}:<k> --task ${S.plan.id}-T${s.n} -- <command>`,
     s.external ? `This step is external and the owner authorized it (plan:T${s.n}@${S.plan.digest}): perform the external effect exactly as the brief says, once, and report what happened.` : '',
     prev,
     'Rules:',
@@ -1447,10 +1449,11 @@ const finalPrompt = () => {
   const base = S.run.base || 'HEAD'
   const steps = S.steps.map((s) => `- T${s.n} ${s.title} [${s.status}]${s.noCommit ? ' (no commit)' : ''}: ${filesOf(s).join(', ') || 'no files'}`).join('\n')
   const bl = S.run.baseline
+  const evDir = `$(git -C ${shq(ROOT)} rev-parse --absolute-git-dir)/pt-evidence/review`
   return [
     'Mode: review, lens: all',
     `Final review of the whole change of plan ${S.plan.id} (${ROOT}/${S.plan.path}), read-only, in ${ROOT}.`,
-    `Diff: git -C ${shq(ROOT)} diff ${base} and git -C ${shq(ROOT)} ls-files --others --exclude-standard (the steps are committed one by one: git -C ${shq(ROOT)} log -p ${base}..HEAD shows them).`,
+    `Diff: node "${REVIEW_PKG}" ${shq(ROOT)} ${base} HEAD "${evDir}/${S.plan.id}-final.txt" (read that file instead of git diff)${S.run.commits === 'none' ? `, then git -C ${shq(ROOT)} diff HEAD > "${evDir}/${S.plan.id}-worktree.diff" and read it` : ''}, and git -C ${shq(ROOT)} ls-files --others --exclude-standard (the steps are committed one by one: git -C ${shq(ROOT)} log -p ${base}..HEAD shows them).`,
     `Steps:\n${steps}`,
     bl ? `Baseline of the tests: exit ${bl.exit}${bl.failedNames && bl.failedNames.length ? `, already failing: ${bl.failedNames.join('; ')}` : ''}.` : 'Baseline of the tests: none recorded.',
     'Look for broken contracts between steps, regressions outside the changed files and acceptance criteria with no test. Give each finding its file.',
@@ -1707,6 +1710,7 @@ try {
       case 'ask':
         return await finish(stopWith('ask', { question: act.question || S.run.question || (act.manual || []).map((m) => `T${m.step}: ${m.text}`).join(' | '), manual: act.manual || [] }))
       case 'done':
+        await runCmd(`node "${CAPTURE}" prune --task-prefix ${shq(S.plan.id + '-')} --cwd ${shq(ROOT)}`, 'capture-prune', { phase: 'Gate', writes: true, json: true }).catch(() => null) // R12: a failed cleanup never changes done
         return await finish({ status: 'done', ...summaryOf() })
       case 'prelaunch-review': { // external steps are reviewed before the person is asked, read-only on the brief
         phase('Review')

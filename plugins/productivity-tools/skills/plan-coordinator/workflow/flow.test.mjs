@@ -61,7 +61,7 @@ function sh(cwd, cmd, args) {
 }
 
 // A git repository in os.tmpdir() with the fixture plan, its spec and a test command, and the real `progress.mjs init --commits per-step`.
-function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8') } = {}) {
+function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-step' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'coordwf-'));
   const planDir = join(dir, 'docs', 'plans', 'fx');
   mkdirSync(planDir, { recursive: true });
@@ -73,7 +73,7 @@ function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8') } = {}) {
   sh(dir, 'git', [...GIT, 'add', '-A']);
   sh(dir, 'git', [...GIT, 'commit', '-q', '-m', 'init']);
   const planFile = join(planDir, 'plan.md');
-  const init = spawnSync(process.execPath, [PROGRESS, 'init', planFile, '--commits', 'per-step', '--json'], { cwd: dir, encoding: 'utf8' });
+  const init = spawnSync(process.execPath, [PROGRESS, 'init', planFile, '--commits', commits, '--json'], { cwd: dir, encoding: 'utf8' });
   assert.equal(init.status, 0, init.stderr + init.stdout);
   return {
     dir,
@@ -682,3 +682,40 @@ test('E32: a review-owed step resumed without its report tells the reviewer it w
     assert.doesNotMatch(rv.prompt, /resumed from a previous run/);
   });
 }));
+
+test('B2 T5: the implementer prompt carries the CAPTURE line, the final review packs the diff and done prunes the captures', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'done', JSON.stringify(r));
+  const id = readState(sb).plan.id;
+  const t1 = implOf(sim, 1);
+  assert.match(t1.prompt, /^CAPTURE: node "[^"]*\/scripts\/capture\.mjs" run --nonce [^\s:]+:[^\s:]+:T1:<k> --task [^\s]+-T1 -- <command>$/m);
+  assert.ok(t1.prompt.includes(`:${id}:T1:<k> --task ${id}-T1 -- <command>`), t1.prompt);
+  const fin = byAgent(sim, FINAL)[0].prompt;
+  const diff = fin.split('\n').find((l) => l.startsWith('Diff:'));
+  assert.match(diff, /review-package\.mjs/);
+  assert.match(diff, / HEAD /);
+  assert.ok(diff.includes('rev-parse --absolute-git-dir)/pt-evidence/review/' + id + '-final.txt'), diff);
+  assert.ok(diff.includes('ls-files --others --exclude-standard'), diff);
+  assert.ok(!diff.includes('-worktree.diff'), 'per-step commits: no worktree diff');
+  const prune = byAgent(sim, RUNNER).filter((c) => /capture\.mjs" prune --task-prefix /.test(c.cmd));
+  assert.equal(prune.length, 1);
+  assert.ok(prune[0].cmd.includes(`--task-prefix '${id}-'`) || prune[0].cmd.includes(`--task-prefix ${id}-`), prune[0].cmd);
+  assert.ok(prune[0].seq > byAgent(sim, FINAL)[0].seq, 'prune comes after the final review');
+}));
+
+test('B2 T5: a failed prune keeps status done', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb, { runner: (rec) => (/ prune /.test(rec.cmd) ? { exit: 1, stdout: 'boom' } : undefined) });
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'done', JSON.stringify(r));
+}));
+
+test('B2 T5: with commits none the final review also asks for the worktree diff', () => withSandbox(async (sb) => {
+  const sim = makeSim(sb);
+  const r = await sim.go(launchArgs(sb));
+  assert.equal(r.status, 'done', JSON.stringify(r));
+  const diff = byAgent(sim, FINAL)[0].prompt.split('\n').find((l) => l.startsWith('Diff:'));
+  const id = readState(sb).plan.id;
+  assert.ok(diff.includes('diff HEAD') && diff.includes('pt-evidence/review/' + id + '-worktree.diff'), diff);
+  assert.ok(diff.includes('ls-files --others --exclude-standard'), diff);
+}, { commits: 'none' }));
