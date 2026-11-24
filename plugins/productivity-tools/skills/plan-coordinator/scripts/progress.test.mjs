@@ -899,6 +899,19 @@ test('plan with an id outside the rule after init: next and read ask to rename, 
   assert.ok(fs.readFileSync(sb.state).equals(before));
 }));
 
+for (const which of ['spec', 'plan']) test('id outside the rule only in ' + which + '.md still asks to rename, with the relaunch instruction', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const spec = path.join(path.dirname(sb.plan), '..', 'spec-tool', 'spec.md');
+  const f = which === 'spec' ? spec : sb.plan;
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('"id": "E1",', '"id": "Plano B",'));
+  const n = JSON.parse(cli(['next', sb.state, '--json']).out).action;
+  assert.equal(n.action, 'ask');
+  assert.match(n.question, /id-invalid/);
+  assert.match(n.question, /init --restart e relance sem answers/);
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.match(j.planAsk, /id-invalid/);
+}));
+
 test('read has no planAsk while the plan is valid, even after a content edit', () => withSandbox((sb) => {
   assert.equal(cli(['init', sb.plan]).code, 0);
   fs.appendFileSync(sb.plan, '\nmudou\n');

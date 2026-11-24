@@ -15,7 +15,7 @@ What the session does around the `productivity-tools:coordinator-workflow` run. 
 A stopped return is `{ status: 'stopped', stop: { kind, ... }, resumeArgs }`. Show the person what the stop says, in their language, and nothing the workflow did not return.
 
 - **`authorize`**: `stop.items` lists the external steps and the exact items to authorize, each `plan:T<n>@<8 hex>` (the digest is part of the item). Show the items exactly as listed, with what each step does. Never authorize for the person and never edit an item.
-- **`ask`**: a question, or the open `manual` entries in one question. Ask it as returned.
+- **`ask`**: a question, or the open `manual` entries in one question. Ask it as returned. If it reports an `id-invalid` plan, the person renames the id in `plan.md` and `spec.md`, you run `init --restart` and relaunch without `answers` (the state is `map-ready` again, so `unblock` would be `wrong-status`).
 - **`plan-changed`**: the plan no longer matches the state. Keep the state as it is and ask whether to recreate it; see Restart.
 - **`state-divergence`**: the state or the repository does not match what the workflow expects. Pass the message on; do not repair the state by hand.
 - **`error`**: pass the error verbatim and stop.
