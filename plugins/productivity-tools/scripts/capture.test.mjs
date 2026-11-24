@@ -433,8 +433,8 @@ test('prune: apaga so as pastas do prefixo e imprime a linha assinada', () => {
     const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
     assert.equal(r.code, 0, r.stderr + r.stdout);
     const o = JSON.parse(r.stdout);
-    assert.deepEqual(o, { tool: 'capture', command: 'prune', removed: ['E41-T1', 'E41-T2'], digest: o.digest });
-    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed }))), o.digest);
+    assert.deepEqual(o, { tool: 'capture', command: 'prune', removed: ['E41-T1', 'E41-T2'], removedReview: [], digest: o.digest });
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview }))), o.digest);
     assert.equal(fs.existsSync(path.join(root, 'E41-T1')), false);
     assert.equal(fs.existsSync(path.join(root, 'E41-T2')), false);
     assert.equal(fs.existsSync(path.join(root, 'E40-T1')), true);
@@ -446,6 +446,7 @@ test('prune: o prefixo api- apaga api-T1 e api-gate e mantem api-v2-T1; E4- nao 
     const root = path.join(repo, '.git', 'pt-evidence');
     for (const d of ['api-T1', 'api-gate', 'api-v2-T1', 'api-v2-gate', 'E41-T1']) {
       fs.mkdirSync(path.join(root, d), { recursive: true });
+      fs.writeFileSync(path.join(root, d, '0001-stdout.txt'), 'x'); // pasta vazia seria apagada pela varredura
     }
     const r = runCli(['prune', '--task-prefix', 'api-', '--cwd', fwd(repo)]);
     assert.equal(r.code, 0, r.stderr + r.stdout);
@@ -471,5 +472,140 @@ test('prune: prefixo vazio ou com / sai 2 e nada e apagado', () => {
     const none = runCli(['prune', '--cwd', fwd(repo)]);
     assert.equal(none.code, 2);
     assert.equal(fs.existsSync(dir), true);
+  });
+});
+
+const DAY = 24 * 3600 * 1000;
+const ago = (p, days) => { const w = new Date(Date.now() - days * DAY); fs.utimesSync(p, w, w); };
+const put = (root, rel, text = 'x') => {
+  const p = path.join(root, ...rel.split('/'));
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, text);
+  return p;
+};
+
+test('prune: remove review/<p>final.txt e mantem review/<p>v2-final.txt e review/outro-final.txt', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    for (const f of ['E41-final.txt', 'E41-worktree.diff', 'E41-v2-final.txt', 'outro-final.txt']) put(root, `review/${f}`);
+    fs.mkdirSync(path.join(root, 'review', 'E41-sub'), { recursive: true });
+    put(root, 'review/E41-sub/a.txt');
+    const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const o = JSON.parse(r.stdout);
+    assert.deepEqual(o.removedReview, ['E41-final.txt', 'E41-worktree.diff']);
+    assert.deepEqual(o.removed, []);
+    const left = fs.readdirSync(path.join(root, 'review')).sort();
+    assert.deepEqual(left, ['E41-sub', 'E41-v2-final.txt', 'outro-final.txt']);
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview }))), o.digest);
+  });
+});
+
+test('prune com prefixo tambem varre arquivos com mais de 14 dias', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    const old = put(root, 'velha/0001-stdout.txt');
+    const young = put(root, 'nova/0001-stdout.txt');
+    ago(old, 15);
+    ago(young, 13);
+    const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.equal(fs.existsSync(old), false);
+    assert.equal(fs.existsSync(path.join(root, 'velha')), false);
+    assert.equal(fs.existsSync(young), true);
+  });
+});
+
+test('prune --older-than 1 remove so o que e antigo e lista os caminhos relativos', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    const old = put(root, 'E41-T1/0001-stdout.txt');
+    const old2 = put(root, 'review/a-final.txt');
+    const fresh = put(root, 'E41-T2/0001-stdout.txt');
+    ago(old, 2);
+    ago(old2, 3);
+    const r = runCli(['prune', '--older-than', '1', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const o = JSON.parse(r.stdout);
+    assert.deepEqual(o, { tool: 'capture', command: 'prune', olderThan: 1, removed: ['E41-T1/0001-stdout.txt', 'review/a-final.txt'], digest: o.digest });
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, olderThan: o.olderThan, removed: o.removed }))), o.digest);
+    assert.equal(fs.existsSync(fresh), true);
+    assert.equal(fs.existsSync(old), false);
+  });
+});
+
+test('prune: --older-than com --task-prefix, ou valor invalido, sai 2 e nada e apagado', () => {
+  withRepo((repo) => {
+    const keep = put(path.join(repo, '.git', 'pt-evidence'), 'E41-T1/0001-stdout.txt');
+    ago(keep, 30);
+    for (const args of [['--older-than', '1', '--task-prefix', 'E41-'], ['--older-than', '-1'], ['--older-than', '1.5'], ['--older-than', 'x']]) {
+      const r = runCli(['prune', ...args, '--cwd', fwd(repo)]);
+      assert.equal(r.code, 2, args.join(' '));
+      assert.equal(JSON.parse(r.stdout).tool, 'capture');
+    }
+    assert.equal(fs.existsSync(keep), true);
+  });
+});
+
+test('prune: no win32 o prefixo ignora a caixa; em linux nao', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    put(root, 'E41-T1/0001-stdout.txt');
+    put(root, 'review/E41-final.txt');
+    const args = ['prune', '--task-prefix', 'e41-', '--cwd', fwd(repo)];
+    const lin = runCapture(args, { platform: 'linux', env: cleanEnv() });
+    assert.equal(lin.code, 0);
+    assert.deepEqual([JSON.parse(lin.line).removed, JSON.parse(lin.line).removedReview], [[], []]);
+    assert.equal(fs.existsSync(path.join(root, 'E41-T1')), true);
+    const win = runCapture(args, { platform: 'win32', env: cleanEnv() });
+    assert.equal(win.code, 0);
+    const o = JSON.parse(win.line);
+    assert.deepEqual([o.removed, o.removedReview], [['E41-T1'], ['E41-final.txt']]);
+    assert.equal(fs.existsSync(path.join(root, 'E41-T1')), false);
+  });
+});
+
+test('list: tarefas e review com contagens, bytes e newest corretos', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    put(root, 'E41-T1/0001-stdout.txt', 'abc');
+    put(root, 'E41-T1/0001-stderr.txt', 'de');
+    const t2 = put(root, 'E41-T2/0001-stdout.txt', 'f');
+    put(root, 'review/E41-final.txt', 'gggg');
+    ago(t2, 3);
+    const r = runCli(['list', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const o = JSON.parse(r.stdout);
+    assert.equal(o.tool, 'capture');
+    assert.equal(o.command, 'list');
+    assert.equal(o.cut, undefined);
+    const by = Object.fromEntries(o.tasks.map((t) => [t.name, t]));
+    assert.deepEqual(Object.keys(by).sort(), ['E41-T1', 'E41-T2', 'review']);
+    assert.deepEqual([by['E41-T1'].files, by['E41-T1'].bytes], [2, 5]);
+    assert.deepEqual([by['E41-T2'].files, by['E41-T2'].bytes], [1, 1]);
+    assert.deepEqual([by.review.files, by.review.bytes], [1, 4]);
+    assert.equal(by['E41-T2'].newest, new Date(fs.statSync(t2).mtimeMs).toISOString());
+    assert.equal(o.tasks[o.tasks.length - 1].name, 'E41-T2');
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, tasks: o.tasks }))), o.digest);
+  });
+});
+
+test('list: sem pt-evidence devolve tasks vazio; passando do limite corta e informa cut', () => {
+  withRepo((repo) => {
+    const empty = JSON.parse(runCli(['list', '--cwd', fwd(repo)]).stdout);
+    assert.deepEqual(empty.tasks, []);
+    const root = path.join(repo, '.git', 'pt-evidence');
+    for (let i = 0; i < 80; i++) {
+      const p = put(root, `plano-longo-${String(i).padStart(3, '0')}-T1/0001-stdout.txt`);
+      ago(p, i / 10);
+    }
+    const r = runCli(['list', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr);
+    const line = r.stdout.trim();
+    assert.ok(utf8Length(line) <= MAX_COPY_BYTES);
+    const o = JSON.parse(line);
+    assert.ok(o.cut > 0);
+    assert.equal(o.tasks.length + o.cut, 80);
+    assert.equal(o.tasks[0].name, 'plano-longo-000-T1');
   });
 });

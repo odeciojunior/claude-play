@@ -3,14 +3,22 @@
 // assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")
 //      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <sha256> --slice <k>
-//      node capture.mjs prune --task-prefix <p> [--cwd <dir>]
+//      node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--cwd <dir>]
+//        --task-prefix: apaga as pastas <p><resto> de pt-evidence e os arquivos <p><resto> de pt-evidence/review/ (resto sem hifen,
+//        ex.: final.txt, worktree.diff; subpastas de review/ nunca) e varre o que tem mais de 14 dias. No win32 o prefixo ignora a caixa.
+//        Saida: {tool,command:'prune',removed:[pastas],removedReview:[arquivos],digest}.
+//        --older-than: so a varredura, com corte em agora - <dias> (inteiro >= 0; 0 apaga tudo com mtime anterior a agora).
+//        Saida: {tool,command:'prune',olderThan,removed:[caminhos relativos a pt-evidence],digest}. Os dois juntos ou nenhum: exit 2.
+//      node capture.mjs list [--cwd <dir>]
+//        Saida: {tool,command:'list',tasks:[{name,files,bytes,newest}],digest}, uma entrada por pasta de pt-evidence (review/ inclusa),
+//        mais recentes primeiro; se passar de MAX_COPY_BYTES corta tasks e acrescenta cut:<n omitidas>.
 // Sai com o exit do comando; sai com 2 e imprime {"tool":"capture","error":...} se o uso ou o ambiente estiver errado.
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { SLICE_BYTES, utf8Length, commandDigest, canon, fnv1a, sliceEnvelopes } from '../lib/plan-digest.mjs';
+import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, canon, fnv1a, sliceEnvelopes } from '../lib/plan-digest.mjs';
 import { extractTests } from './test-extract.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
@@ -19,6 +27,7 @@ const TAIL_LINES = 40;
 const TASK_RE = /^[A-Za-z0-9._-]+$/;
 const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
 const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")';
+const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--cwd <dir>] (exatamente um dos dois)';
 
 class UsageError extends Error {}
 
@@ -33,7 +42,7 @@ function countLines(buf) {
 }
 
 function parseArgs(argv) {
-  if (argv[0] !== 'run') throw new UsageError(USAGE);
+  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, prune, list (ver o cabeçalho de capture.mjs)`);
   const opts = { nonce: null, task: null, cwd: null, tests: false, program: null, bash: null };
   let i = 1;
   const value = (flag) => {
@@ -106,18 +115,75 @@ function runSlice(argv, platform) {
 // Only prefix + a suffix without hyphen is ours: the prefix `api-` must not reach `api-v2-T1` of another plan.
 const SUFFIX_RE = /^[A-Za-z0-9._]+$/;
 
-function runPrune(argv, platform) {
-  const o = parseFlags(argv, { '--task-prefix': 'prefix', '--cwd': 'cwd' });
-  if (o.prefix === undefined || !TASK_RE.test(o.prefix)) throw new UsageError('--task-prefix ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras)');
-  if (o.prefix === '.' || o.prefix === '..') throw new UsageError('--task-prefix invÃ¡lido');
+function runPrune(argv, platform, now) {
+  const o = parseFlags(argv, { '--task-prefix': 'prefix', '--older-than': 'older', '--cwd': 'cwd' });
+  if ((o.prefix === undefined) === (o.older === undefined)) throw new UsageError(`informe --task-prefix ou --older-than, só um dos dois. ${PRUNE_USAGE}`);
+  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
+  if (o.older !== undefined && !/^\d{1,6}$/.test(o.older)) throw new UsageError('--older-than não é um inteiro >= 0 (dias)');
+  if (o.prefix !== undefined) {
+    if (!TASK_RE.test(o.prefix)) throw new UsageError('--task-prefix ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras)');
+    if (o.prefix === '.' || o.prefix === '..') throw new UsageError('--task-prefix inválido');
+  }
+  const { gitDir } = gitDirOrThrow(o.cwd);
+  const root = path.join(gitDir, 'pt-evidence');
+  const cutoff = now() - KEEP_MS;
+  if (o.older !== undefined) {
+    const days = Number(o.older);
+    const removed = [];
+    sweep(root, now() - days * 24 * 3600 * 1000, true, removed, '');
+    return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', olderThan: days, removed: removed.sort() })) };
+  }
+  const norm = platform === 'win32' ? (x) => x.toLowerCase() : (x) => x;
+  const mine = (name) => norm(name).startsWith(norm(o.prefix)) && SUFFIX_RE.test(name.slice(o.prefix.length));
+  const list = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } };
+  const removed = list(root).filter((d) => d.isDirectory() && mine(d.name)).map((d) => d.name).sort();
+  for (const name of removed) fs.rmSync(path.join(root, name), { recursive: true, force: true });
+  const reviewDir = path.join(root, 'review');
+  const removedReview = list(reviewDir).filter((d) => d.isFile() && mine(d.name)).map((d) => d.name).sort();
+  for (const name of removedReview) fs.rmSync(path.join(reviewDir, name), { force: true });
+  sweep(root, cutoff, true);
+  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', removed, removedReview })) };
+}
+
+function walkStats(dir) {
+  let files = 0;
+  let bytes = 0;
+  let newest = 0;
+  const visit = (d) => {
+    let names;
+    try { names = fs.readdirSync(d); } catch { return; }
+    for (const n of names) {
+      const p = path.join(d, n);
+      let st;
+      try { st = fs.statSync(p); } catch { continue; }
+      if (st.isDirectory()) visit(p);
+      else { files++; bytes += st.size; newest = Math.max(newest, st.mtimeMs); }
+    }
+  };
+  visit(dir);
+  if (files === 0) { try { newest = fs.statSync(dir).mtimeMs; } catch { /* segue */ } }
+  return { files, bytes, newest };
+}
+
+function runList(argv, platform) {
+  const o = parseFlags(argv, { '--cwd': 'cwd' });
   if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
   const { gitDir } = gitDirOrThrow(o.cwd);
   const root = path.join(gitDir, 'pt-evidence');
-  let names = [];
-  try { names = fs.readdirSync(root, { withFileTypes: true }); } catch { /* sem pasta */ }
-  const removed = names.filter((d) => d.isDirectory() && d.name.startsWith(o.prefix) && SUFFIX_RE.test(d.name.slice(o.prefix.length))).map((d) => d.name).sort();
-  for (const name of removed) fs.rmSync(path.join(root, name), { recursive: true, force: true });
-  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', removed })) };
+  let dirs = [];
+  try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { /* sem pasta */ }
+  const all = dirs.map((d) => ({ name: d.name, ...walkStats(path.join(root, d.name)) }))
+    .sort((a, b) => b.newest - a.newest || (a.name < b.name ? -1 : 1))
+    .map((t) => ({ name: t.name, files: t.files, bytes: t.bytes, newest: new Date(t.newest).toISOString() }));
+  const make = (k) => sign({ tool: 'capture', command: 'list', tasks: all.slice(0, k), ...(k < all.length ? { cut: all.length - k } : {}) });
+  let lo = 0;
+  let hi = all.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (utf8Length(JSON.stringify(make(mid))) <= MAX_COPY_BYTES) lo = mid;
+    else hi = mid - 1;
+  }
+  return { code: 0, line: JSON.stringify(make(lo)) };
 }
 
 function validate(opts, platform) {
@@ -145,16 +211,17 @@ function findBash(platform, env) {
   return bash;
 }
 
-// Apaga arquivos de pt-evidence mais velhos que 14 dias e pastas vazias que sobrarem.
-function sweep(dir, cutoff, isRoot) {
+// Apaga arquivos de pt-evidence com mtime anterior a cutoff e pastas vazias que sobrarem; acrescenta a removed (se dado)
+// os caminhos relativos (com /) dos arquivos apagados.
+function sweep(dir, cutoff, isRoot, removed, rel = '') {
   let names;
   try { names = fs.readdirSync(dir); } catch { return; }
   for (const name of names) {
     const p = path.join(dir, name);
     let st;
     try { st = fs.statSync(p); } catch { continue; }
-    if (st.isDirectory()) sweep(p, cutoff, false);
-    else if (st.mtimeMs < cutoff) { try { fs.unlinkSync(p); } catch { /* segue */ } }
+    if (st.isDirectory()) sweep(p, cutoff, false, removed, `${rel}${name}/`);
+    else if (st.mtimeMs < cutoff) { try { fs.unlinkSync(p); removed?.push(`${rel}${name}`); } catch { /* segue */ } }
   }
   if (!isRoot) {
     try { if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir); } catch { /* segue */ }
@@ -251,7 +318,8 @@ function buildLine(base, text, tests, exit) {
 export function runCapture(argv, { platform = process.platform, env = process.env, now = Date.now } = {}) {
   try {
     if (argv[0] === 'slice') return runSlice(argv, platform);
-    if (argv[0] === 'prune') return runPrune(argv, platform);
+    if (argv[0] === 'prune') return runPrune(argv, platform, now);
+    if (argv[0] === 'list') return runList(argv, platform);
     const opts = parseArgs(argv);
     validate(opts, platform);
     const cwd = path.resolve(opts.cwd ?? process.cwd());
