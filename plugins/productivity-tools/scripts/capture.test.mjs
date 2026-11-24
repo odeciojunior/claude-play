@@ -433,8 +433,8 @@ test('prune: apaga so as pastas do prefixo e imprime a linha assinada', () => {
     const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
     assert.equal(r.code, 0, r.stderr + r.stdout);
     const o = JSON.parse(r.stdout);
-    assert.deepEqual(o, { tool: 'capture', command: 'prune', removed: ['E41-T1', 'E41-T2'], removedReview: [], digest: o.digest });
-    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview }))), o.digest);
+    assert.deepEqual(o, { tool: 'capture', command: 'prune', removed: ['E41-T1', 'E41-T2'], removedReview: [], swept: [], digest: o.digest });
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview, swept: o.swept }))), o.digest);
     assert.equal(fs.existsSync(path.join(root, 'E41-T1')), false);
     assert.equal(fs.existsSync(path.join(root, 'E41-T2')), false);
     assert.equal(fs.existsSync(path.join(root, 'E40-T1')), true);
@@ -497,7 +497,7 @@ test('prune: remove review/<p>final.txt e mantem review/<p>v2-final.txt e review
     assert.deepEqual(o.removed, []);
     const left = fs.readdirSync(path.join(root, 'review')).sort();
     assert.deepEqual(left, ['E41-sub', 'E41-v2-final.txt', 'outro-final.txt']);
-    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview }))), o.digest);
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview, swept: o.swept }))), o.digest);
   });
 });
 
@@ -607,5 +607,61 @@ test('list: sem pt-evidence devolve tasks vazio; passando do limite corta e info
     assert.ok(o.cut > 0);
     assert.equal(o.tasks.length + o.cut, 80);
     assert.equal(o.tasks[0].name, 'plano-longo-000-T1');
+  });
+});
+
+test('prune --task-prefix: swept lista os arquivos que a varredura de 14 dias apagou', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    ago(put(root, 'velha/0001-stdout.txt'), 15);
+    ago(put(root, 'review/outro-final.txt'), 20);
+    put(root, 'nova/0001-stdout.txt');
+    put(root, 'E41-T1/0001-stdout.txt');
+    const o = JSON.parse(runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]).stdout);
+    assert.deepEqual(o.removed, ['E41-T1']);
+    assert.deepEqual(o.swept, ['review/outro-final.txt', 'velha/0001-stdout.txt']);
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: o.tool, command: o.command, removed: o.removed, removedReview: o.removedReview, swept: o.swept }))), o.digest);
+  });
+});
+
+test('sweep: pasta vazia recem-criada fica (corrida com mkdir); pasta vazia antiga some', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    fs.mkdirSync(path.join(root, 'fresca'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'review'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'antiga-vazia'), { recursive: true });
+    ago(path.join(root, 'antiga-vazia'), 15);
+    const r = runCli(['prune', '--task-prefix', 'E41-', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.equal(fs.existsSync(path.join(root, 'fresca')), true);
+    assert.equal(fs.existsSync(path.join(root, 'review')), true);
+    assert.equal(fs.existsSync(path.join(root, 'antiga-vazia')), false);
+    const r2 = runCli(['run', '--nonce', 'N1', '--task', 'E41-T1', '--cwd', fwd(repo), '--', 'node', '-e', '1']);
+    assert.equal(r2.code, 0, r2.stderr);
+    assert.equal(fs.existsSync(path.join(root, 'fresca')), true);
+  });
+});
+
+test('prune e list: --nonce opcional entra no objeto assinado e e validado', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    put(root, 'E41-T1/0001-stdout.txt');
+    const l = JSON.parse(runCli(['list', '--nonce', 'L:1', '--cwd', fwd(repo)]).stdout);
+    assert.equal(l.nonce, 'L:1');
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: l.tool, command: l.command, nonce: l.nonce, tasks: l.tasks }))), l.digest);
+    const noNonce = JSON.parse(runCli(['list', '--cwd', fwd(repo)]).stdout);
+    assert.equal('nonce' in noNonce, false);
+    assert.notEqual(noNonce.digest, l.digest);
+    const p = JSON.parse(runCli(['prune', '--older-than', '1', '--nonce', 'P-1', '--cwd', fwd(repo)]).stdout);
+    assert.equal(p.nonce, 'P-1');
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: p.tool, command: p.command, nonce: p.nonce, olderThan: p.olderThan, removed: p.removed }))), p.digest);
+    const q = JSON.parse(runCli(['prune', '--task-prefix', 'E41-', '--nonce', 'P2', '--cwd', fwd(repo)]).stdout);
+    assert.equal(q.nonce, 'P2');
+    assert.equal(fnv1a(JSON.stringify(canon({ tool: q.tool, command: q.command, nonce: q.nonce, removed: q.removed, removedReview: q.removedReview, swept: q.swept }))), q.digest);
+    for (const args of [['list'], ['prune', '--older-than', '1']]) {
+      const bad = runCli([...args, '--nonce', 'a b', '--cwd', fwd(repo)]);
+      assert.equal(bad.code, 2);
+      assert.match(JSON.parse(bad.stdout).error, /--nonce/);
+    }
   });
 });

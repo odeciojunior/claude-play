@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writePackage } from './review-package.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'review-package.mjs');
 
@@ -112,4 +113,22 @@ test('AC4: review-package accepts an empty range', () => {
 test('review-package with fewer than four arguments exits with 2', () => {
   const res = run(['so-um', 'dois', 'tres']);
   assert.equal(res.status, 2);
+});
+
+test('writePackage refaz o mkdir e tenta de novo quando o write der ENOENT (pasta apagada por outro prune)', () => {
+  const calls = [];
+  let failures = 1;
+  const io = {
+    mkdirSync: (d) => calls.push(['mkdir', d]),
+    writeFileSync: (f) => {
+      calls.push(['write', f]);
+      if (failures-- > 0) throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+    },
+  };
+  writePackage(join('x', 'y', 'p.md'), 'texto', io);
+  assert.deepEqual(calls.map((c) => c[0]), ['mkdir', 'write', 'mkdir', 'write']);
+  const other = { mkdirSync: () => {}, writeFileSync: () => { throw Object.assign(new Error('perm'), { code: 'EACCES' }); } };
+  assert.throws(() => writePackage('p.md', 't', other), { code: 'EACCES' });
+  const always = { mkdirSync: () => {}, writeFileSync: () => { throw Object.assign(new Error('gone'), { code: 'ENOENT' }); } };
+  assert.throws(() => writePackage('p.md', 't', always), { code: 'ENOENT' });
 });

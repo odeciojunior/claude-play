@@ -24,6 +24,20 @@ function fail(message) {
   process.exit(1);
 }
 
+// Another capture.mjs prune/sweep may remove the (empty) parent folder between the mkdir and the write: ENOENT recreates
+// the folder and tries again, as saveEvidence in capture.mjs does. `io` is injectable for the test.
+export function writePackage(out, text, io = { mkdirSync, writeFileSync }) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      io.mkdirSync(dirname(out), { recursive: true });
+      io.writeFileSync(out, text, 'utf8');
+      return;
+    } catch (e) {
+      if (e.code !== 'ENOENT' || attempt >= 20) throw e;
+    }
+  }
+}
+
 export function buildPackage(repo, base, tip, out) {
   let baseSha;
   let tipSha;
@@ -63,8 +77,7 @@ export function buildPackage(repo, base, tip, out) {
     diff,
   ].join('\n');
 
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, text, 'utf8');
+  writePackage(out, text);
   const data = Buffer.from(text, 'utf8');
   const bytes = data.length;
   const sha256 = createHash('sha256').update(data).digest('hex');

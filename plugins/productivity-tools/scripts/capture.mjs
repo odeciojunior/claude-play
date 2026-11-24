@@ -3,14 +3,16 @@
 // assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")
 //      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <sha256> --slice <k>
-//      node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--cwd <dir>]
+//      node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>]
 //        --task-prefix: apaga as pastas <p><resto> de pt-evidence e os arquivos <p><resto> de pt-evidence/review/ (resto sem hifen,
 //        ex.: final.txt, worktree.diff; subpastas de review/ nunca) e varre o que tem mais de 14 dias. No win32 o prefixo ignora a caixa.
-//        Saida: {tool,command:'prune',removed:[pastas],removedReview:[arquivos],digest}.
+//        Saida: {tool,command:'prune',[nonce],removed:[pastas],removedReview:[arquivos],swept:[caminhos relativos a pt-evidence
+//        dos arquivos apagados pela varredura de 14 dias],digest}.
 //        --older-than: so a varredura, com corte em agora - <dias> (inteiro >= 0; 0 apaga tudo com mtime anterior a agora).
-//        Saida: {tool,command:'prune',olderThan,removed:[caminhos relativos a pt-evidence],digest}. Os dois juntos ou nenhum: exit 2.
-//      node capture.mjs list [--cwd <dir>]
-//        Saida: {tool,command:'list',tasks:[{name,files,bytes,newest}],digest}, uma entrada por pasta de pt-evidence (review/ inclusa),
+//        Saida: {tool,command:'prune',[nonce],olderThan,removed:[caminhos relativos a pt-evidence],digest}. Os dois juntos ou nenhum: exit 2.
+//        --nonce (opcional, ^[A-Za-z0-9:._@-]{1,160}$): entra no objeto assinado, para que uma linha antiga copiada nao passe pelo digest.
+//      node capture.mjs list [--nonce <n>] [--cwd <dir>]
+//        Saida: {tool,command:'list',[nonce],tasks:[{name,files,bytes,newest}],digest}, uma entrada por pasta de pt-evidence (review/ inclusa),
 //        mais recentes primeiro; se passar de MAX_COPY_BYTES corta tasks e acrescenta cut:<n omitidas>.
 // Sai com o exit do comando; sai com 2 e imprime {"tool":"capture","error":...} se o uso ou o ambiente estiver errado.
 import { createHash } from 'node:crypto';
@@ -27,7 +29,7 @@ const TAIL_LINES = 40;
 const TASK_RE = /^[A-Za-z0-9._-]+$/;
 const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
 const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")';
-const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--cwd <dir>] (exatamente um dos dois)';
+const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>] (exatamente um dos dois)';
 
 class UsageError extends Error {}
 
@@ -42,7 +44,7 @@ function countLines(buf) {
 }
 
 function parseArgs(argv) {
-  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, prune, list (ver o cabeçalho de capture.mjs)`);
+  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, prune, list (ver o cabeÃ§alho de capture.mjs)`);
   const opts = { nonce: null, task: null, cwd: null, tests: false, program: null, bash: null };
   let i = 1;
   const value = (flag) => {
@@ -115,14 +117,21 @@ function runSlice(argv, platform) {
 // Only prefix + a suffix without hyphen is ours: the prefix `api-` must not reach `api-v2-T1` of another plan.
 const SUFFIX_RE = /^[A-Za-z0-9._]+$/;
 
+function checkOptionalNonce(nonce) {
+  if (nonce !== undefined && !NONCE_RE.test(nonce)) throw new UsageError('--nonce fora de ^[A-Za-z0-9:._@-]{1,160}$');
+}
+
+const withNonce = (o) => (o.nonce === undefined ? {} : { nonce: o.nonce });
+
 function runPrune(argv, platform, now) {
-  const o = parseFlags(argv, { '--task-prefix': 'prefix', '--older-than': 'older', '--cwd': 'cwd' });
-  if ((o.prefix === undefined) === (o.older === undefined)) throw new UsageError(`informe --task-prefix ou --older-than, só um dos dois. ${PRUNE_USAGE}`);
+  const o = parseFlags(argv, { '--task-prefix': 'prefix', '--older-than': 'older', '--nonce': 'nonce', '--cwd': 'cwd' });
+  checkOptionalNonce(o.nonce);
+  if ((o.prefix === undefined) === (o.older === undefined)) throw new UsageError(`informe --task-prefix ou --older-than, sÃ³ um dos dois. ${PRUNE_USAGE}`);
   if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
-  if (o.older !== undefined && !/^\d{1,6}$/.test(o.older)) throw new UsageError('--older-than não é um inteiro >= 0 (dias)');
+  if (o.older !== undefined && !/^\d{1,6}$/.test(o.older)) throw new UsageError('--older-than nÃ£o Ã© um inteiro >= 0 (dias)');
   if (o.prefix !== undefined) {
     if (!TASK_RE.test(o.prefix)) throw new UsageError('--task-prefix ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras)');
-    if (o.prefix === '.' || o.prefix === '..') throw new UsageError('--task-prefix inválido');
+    if (o.prefix === '.' || o.prefix === '..') throw new UsageError('--task-prefix invÃ¡lido');
   }
   const { gitDir } = gitDirOrThrow(o.cwd);
   const root = path.join(gitDir, 'pt-evidence');
@@ -131,7 +140,7 @@ function runPrune(argv, platform, now) {
     const days = Number(o.older);
     const removed = [];
     sweep(root, now() - days * 24 * 3600 * 1000, true, removed, '');
-    return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', olderThan: days, removed: removed.sort() })) };
+    return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', ...withNonce(o), olderThan: days, removed: removed.sort() })) };
   }
   const norm = platform === 'win32' ? (x) => x.toLowerCase() : (x) => x;
   const mine = (name) => norm(name).startsWith(norm(o.prefix)) && SUFFIX_RE.test(name.slice(o.prefix.length));
@@ -141,8 +150,9 @@ function runPrune(argv, platform, now) {
   const reviewDir = path.join(root, 'review');
   const removedReview = list(reviewDir).filter((d) => d.isFile() && mine(d.name)).map((d) => d.name).sort();
   for (const name of removedReview) fs.rmSync(path.join(reviewDir, name), { force: true });
-  sweep(root, cutoff, true);
-  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', removed, removedReview })) };
+  const swept = [];
+  sweep(root, cutoff, true, swept);
+  return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', ...withNonce(o), removed, removedReview, swept: swept.sort() })) };
 }
 
 function walkStats(dir) {
@@ -166,7 +176,8 @@ function walkStats(dir) {
 }
 
 function runList(argv, platform) {
-  const o = parseFlags(argv, { '--cwd': 'cwd' });
+  const o = parseFlags(argv, { '--nonce': 'nonce', '--cwd': 'cwd' });
+  checkOptionalNonce(o.nonce);
   if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
   const { gitDir } = gitDirOrThrow(o.cwd);
   const root = path.join(gitDir, 'pt-evidence');
@@ -175,7 +186,7 @@ function runList(argv, platform) {
   const all = dirs.map((d) => ({ name: d.name, ...walkStats(path.join(root, d.name)) }))
     .sort((a, b) => b.newest - a.newest || (a.name < b.name ? -1 : 1))
     .map((t) => ({ name: t.name, files: t.files, bytes: t.bytes, newest: new Date(t.newest).toISOString() }));
-  const make = (k) => sign({ tool: 'capture', command: 'list', tasks: all.slice(0, k), ...(k < all.length ? { cut: all.length - k } : {}) });
+  const make = (k) => sign({ tool: 'capture', command: 'list', ...withNonce(o), tasks: all.slice(0, k), ...(k < all.length ? { cut: all.length - k } : {}) });
   let lo = 0;
   let hi = all.length;
   while (lo < hi) {
@@ -213,9 +224,16 @@ function findBash(platform, env) {
 
 // Apaga arquivos de pt-evidence com mtime anterior a cutoff e pastas vazias que sobrarem; acrescenta a removed (se dado)
 // os caminhos relativos (com /) dos arquivos apagados.
+// Corrida: uma pasta recem-criada (mkdirSync de outra captura ou de review-package.mjs, antes do writeFile) esta vazia e com mtime
+// novo. Por isso uma pasta que JA estava vazia antes da varredura so some se o proprio mtime for anterior ao corte. Uma pasta que
+// esvaziou porque a varredura apagou arquivos velhos dela some sempre (apagar atualiza o mtime da pasta, entao o mtime nao serve
+// de criterio ai); quem escreve nela ao mesmo tempo cobre o resto com o retry de ENOENT (saveEvidence, writePackage).
 function sweep(dir, cutoff, isRoot, removed, rel = '') {
   let names;
   try { names = fs.readdirSync(dir); } catch { return; }
+  const wasEmpty = names.length === 0;
+  let dirMtime = Infinity;
+  if (!isRoot && wasEmpty) { try { dirMtime = fs.statSync(dir).mtimeMs; } catch { return; } }
   for (const name of names) {
     const p = path.join(dir, name);
     let st;
@@ -223,7 +241,7 @@ function sweep(dir, cutoff, isRoot, removed, rel = '') {
     if (st.isDirectory()) sweep(p, cutoff, false, removed, `${rel}${name}/`);
     else if (st.mtimeMs < cutoff) { try { fs.unlinkSync(p); removed?.push(`${rel}${name}`); } catch { /* segue */ } }
   }
-  if (!isRoot) {
+  if (!isRoot && (!wasEmpty || dirMtime < cutoff)) {
     try { if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir); } catch { /* segue */ }
   }
 }
