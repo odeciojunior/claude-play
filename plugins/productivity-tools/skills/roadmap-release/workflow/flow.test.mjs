@@ -198,6 +198,25 @@ function withCapture(prompt, m, gatesCfg) {
   }
   return { ...m, gates };
 }
+// E41 B2 T4: the spec and plan loads run each command by capture.mjs run (and read a cut output by capture.mjs slice). A test still answers the first label
+// (spec-load<k>, plan-load<k>) with the old load answer { checkExit, checkStdout, emitExit, emitStdout, blob, head, clean }; the answers of the labels
+// that follow (-emit, -blob, -head, -porcelain, -<name>-slice<j>) are made from it: the JSON line capture.mjs prints and the slice envelopes of its text.
+const LOAD_LABEL = /^(E\d+:(?:spec|plan)-load\d)(?:-(check|emit|blob|head|porcelain))?(-slice\d+)?(-retry\d)?$/;
+const loadTexts = (t) => ({ check: [t.checkExit, t.checkStdout], emit: [t.emitExit, t.emitStdout], blob: [t.blob ? 0 : 128, t.blob], head: [0, t.head], porcelain: [0, t.clean === false ? ' M x' : ''] });
+function loadAnswer(prompt, name, t) {
+  const [exit, raw] = loadTexts(t)[name];
+  const text = raw == null ? '' : String(raw);
+  const m = /capture\.mjs" run --nonce (\S+) --task (\S+) --cwd (?:'[^']*'|\S+) -- (.*)$/m.exec(prompt);
+  const argv = [...m[3].matchAll(/'((?:[^']|'\\'')*)'/g)].map((x) => x[1].split("'\\''").join("'"));
+  const lines = text === '' ? 0 : text.split('\n').length;
+  const base = { tool: 'capture', nonce: m[1], task: m[2], cmdDigest: commandDigest({ argv }), exit, bytes: utf8Length(text), sha256: createHash('sha256').update(text, 'utf8').digest('hex'), lines, path: `/wt/pt-evidence/${m[2]}/${name}.txt`, stderrBytes: 0, stderrSha256: '0', stderrPath: 'q' };
+  const whole = signedOut({ ...base, tail: text, tailCut: 0 });
+  return { exit, stdout: utf8Length(whole) <= MAX_COPY_BYTES ? whole : signedOut({ ...base, tail: '', tailCut: lines }) };
+}
+function loadSlice(prompt, name, t) {
+  const text = loadTexts(t)[name][1];
+  return { exit: 0, stdout: sliceStdout({ tool: 'capture', command: 'slice', nonce: / --nonce (\S+)/.exec(prompt)[1] }, text == null ? '' : String(text), sliceNo(prompt)) };
+}
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
@@ -216,7 +235,21 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (v && typeof v === 'object' && Array.isArray(v.results) && typeof v.headSha === 'string') return { ...v, headSha: v.headSha.padEnd(40, '0') };
     return v;
   };
+  const loads = new Map();
   const answerOf = async (prompt, o) => {
+    const lm = LOAD_LABEL.exec(o.label);
+    if (lm && (lm[2] || lm[3])) {
+      const t = loads.get(lm[1]);
+      if (!t) throw new Error('unmocked load step ' + o.label);
+      return lm[3] ? loadSlice(prompt, lm[2] || 'check', t) : loadAnswer(prompt, lm[2], t);
+    }
+    const v = await answerRaw(prompt, o);
+    const shaped = lm && v && typeof v === 'object' && Number.isInteger(v.checkExit) && Number.isInteger(v.emitExit);
+    if (!shaped) return v;
+    loads.set(lm[1], v);
+    return loadAnswer(prompt, 'check', v);
+  };
+  const answerRaw = async (prompt, o) => {
     const l = o.label;
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v && typeof v === 'object' && isRead(l) && 'status' in v && !('stdout' in v) ? { exit: 0, stdout: readStdout(prompt, v) } : v; }
@@ -4335,7 +4368,7 @@ test('E31: the load prompts name the exit codes by command, not by value', async
   for (const l of ['E1:spec-load1', 'E1:plan-load1']) {
     const p = calls.find((c) => c.label === l).prompt;
     assert.ok(!p.includes('checkExit = 1') && !p.includes('emitExit = 2'), l);
-    assert.ok(p.includes('checkExit from command 1') && p.includes('emitExit from command 2'), l);
+    assert.match(p, /capture\.mjs" run --nonce \S+ --task E1-load /, l); // the exit codes come from the capture line of each command, not from the prompt
   }
 });
 
@@ -4545,7 +4578,7 @@ test('frozen tasks: the previous plan is loaded without --spec, the new plan wit
   const loads = calls.filter((c) => c.label === 'E1:plan-load1')
   assert.ok(loads.length >= 2)
   assert.doesNotMatch(loads[0].prompt, /--spec/)
-  assert.match(loads[1].prompt, /emit "[^"]*" --spec/)
+  assert.match(loads[1].prompt, /plan-tool\.mjs' 'check' '[^']*' '--spec'/)
 })
 
 test('a native plan reused without owner note calls no author and makes no commit', async () => {

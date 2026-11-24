@@ -442,7 +442,7 @@ function reviewTruth(r, minCommits, label, marks = 0) {
   if (r && !r.clean) iss.push({ severity: 'critical', category: 'defeito', description: 'dirty working tree (uncommitted files)' })
   return iss
 }
-// The route of the plan/1 emit (recalculated here from the score, checked against the emitted one) drives the implementer model and effort; the per-task reviewer is opus by default.
+// The route of the plan/1 emit (recalculated from the score, checked against the emitted one) drives the implementer model and effort; the task reviewer is opus by default.
 function implModel(task) {
   const t = task && task.route && task.route.tier
   return ['haiku', 'sonnet', 'opus'].includes(t) ? t : 'sonnet'
@@ -494,7 +494,7 @@ function tasksFromPlan(plan) {
 function evidenceFromPlan(plan) {
   return ((plan && plan.evidence) || []).map(e => ({ ac: e.ac, kind: e.kind, command: e.command, testRef: e.testRef === undefined ? null : e.testRef, blq: e.blq, external: e.external, externalDedupe: e.externalDedupe }))
 }
-// Differences on tasks already committed between two plans (canonical JSON of the fields the author writes; wave, fileCount and route are derived by plan-tool from the whole plan, so they are ignored); a committed task missing from the next plan is a difference.
+// Differences on committed tasks between two plans (canonical JSON of the authored fields; derived wave, fileCount and route are ignored); a committed task missing from the next plan is a difference.
 const authoredTask = t => { const { wave, fileCount, route, ...rest } = t || {}; return rest }
 function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   const find = (p, n) => ((p && p.tasks) || []).find(t => t.n === n)
@@ -508,7 +508,7 @@ function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   }
   return out
 }
-// The raw output of one plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit and the blob is a git object id.
+// One plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit; the blob must be a git object id.
 function checkPlanLoad(t, { E, RM } = {}) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit code of emit' }
@@ -1083,11 +1083,11 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
     if (!list) failures.push('reread pending-decisions --json is missing or is not JSON of the CLI')
     else for (const id of changedIds) if (!list.includes(id)) failures.push(trunc ? `${id} written by add-decision is not in the truncated pending-decisions list (the read keeps the newest ${list.length} of ${pend.result.total}): fail safe` : `${id} written by add-decision is not in pending-decisions`)
   }
-  // holdIds: decisions that can hold dependents. An existing: true answer (the CLI dedupes regardless of status) holds only while the reread still lists it as pending; without a readable list it holds (fail safe).
+  // holdIds: decisions that can hold dependents. An existing: true answer holds only while the reread lists it as pending; without a readable list it holds.
   const holdIds = decisionIds.filter(d => d.changed || !list || trunc || list.includes(d.id)).map(d => d.id)
   return { ok: failures.length === 0, failures, decisionIds: decisionIds.map(d => d.id), holdIds }
 }
-// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence, or a trailing "(local)" / "(contract)" / "(scope: local)" parenthetical, sets the scope and leaves the text; anything else is contrato.
+// Decision text of the spec: a final "Alcance: local." / "Scope: local." sentence or a trailing "(local)", "(contract)" or "(scope: local)" sets the scope; anything else is contrato.
 function parseDecision(text) {
   const t = collapseWs(text)
   const m = /\s*\b(?:Alcance|Scope):\s*(local|contrato|contract)\.?$/i.exec(t) || /\s*\(\s*(?:(?:alcance|scope)\s*:\s*)?(local|contrato|contract)\s*\)\.?$/i.exec(t)
@@ -1144,7 +1144,7 @@ function pluginRootOf(trackerCli) {
 function approveKey(ruling) {
   return `${ruling.id}:${fnv1a(collapseWs(ruling.decision))}`
 }
-// Stop rules over the spec data (same stop set as spec-tool stopsOf, plus the approval release): blocking human input, a ruling that contradicts a decision or gate, a costly irreversible ruling not yet approved. The rest is carried on.
+// Stop rules over the spec data (as stopsOf, plus the approval release): blocking human input, a ruling against a decision or gate, a costly irreversible ruling not yet approved. The rest is carried on.
 function stopOrCarry({ rulings, needsPerson, approved }) {
   const ok = Array.isArray(approved) ? approved : []
   const filled = v => v !== null && v !== undefined && v !== ''
@@ -1162,7 +1162,7 @@ function stopOrCarry({ rulings, needsPerson, approved }) {
 function rulingDecisions(rulings) {
   return (rulings || []).map(r => ({ text: r.decision, scope: r.scope === 'contract' ? 'contrato' : 'local', discarded: r.alternative }))
 }
-// Differences between the emitted spec and the card of the deliverable (empty = matches): id, criteria ids, text without tag, normalized verify (compared only when the card criterion carries a valid tag, as spec-tool check --roadmap does).
+// Differences between the emitted spec and the card (empty = matches): id, criteria ids, text without tag, verify (only when the card criterion has a valid tag).
 function specCardMismatch(data, E, card) {
   const out = []
   if (!data || data.id !== E) out.push(`spec id ${data && data.id} is not ${E}`)
@@ -1184,8 +1184,7 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
-// Verdict over the raw output of the spec load agent (spec-tool check --json, then emit): a check exit that disagrees with its summary.exitCode is a failed load, a failed check is not a failed load (it becomes a critical issue of the review),
-// an emit that is not the spec/1 envelope of this deliverable, or that differs from the card, is a failed load.
+// Verdict over the spec load (check --json, then emit): a check exit that disagrees with its summary.exitCode, or an emit that is not this deliverable's spec/1 or differs from the card, fails the load; a failed check is a review issue.
 function checkSpecLoad(t, E, card) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.checkExit) || !Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit codes of check and emit' }
@@ -1632,8 +1631,6 @@ const ISSUES = { type: 'array', items: { type: 'object', properties: {
   severity: { type: 'string', enum: ['critical', 'important', 'minor'] },
   category: { type: 'string', enum: ['defeito', 'decisao', 'ambiente', 'fora-do-escopo', 'pelo-plano'] },
   description: STR, file: STR, blq: STR, id: STR }, required: ['severity', 'description'] } }
-const TIER = { type: 'string', enum: ['haiku', 'sonnet', 'opus'] }
-const S_TOOLOUT = { type: 'object', properties: { checkExit: INT, checkStdout: STR, emitExit: INT, emitStdout: STR, blob: STR, head: STR, clean: BOOL }, required: ['checkExit', 'emitExit', 'emitStdout'] }
 const S_COMMITTED = { type: 'object', properties: { ok: BOOL, head: STR, commit: STR, blob: STR, pending: STR, error: STR }, required: ['ok'] }
 const S_SPEC = { type: 'object', properties: { specPath: STR, slug: STR, decisions: STRS, humanInputs: HUMAN, reused: BOOL }, required: ['specPath', 'decisions', 'humanInputs'] }
 const S_REVIEW = { type: 'object', properties: { issues: ISSUES, summary: STR, headSha: STR, clean: BOOL, commitsInRange: INT }, required: ['issues', 'headSha', 'clean', 'commitsInRange'] }
@@ -1673,10 +1670,9 @@ const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // A copy above the limit never reaches the agent whole: refused before any JSON.parse.
 const copyFits = stdout => utf8Length(stdout) <= MAX_COPY_BYTES
-// A signed read in slices (a read only, so it repeats): slice 0 gives the count, each next slice has its own nonce, only the slice that failed repeats (attempts 1-2 haiku, 3+ sonnet);
-// a total that does not match (the state changed between slices) drops every slice and restarts the read once. Returns { text, envs } or { why }.
-// The cut points of sliceEnvelopes depend on the header, nonce included: every nonce of one read has the length of the first (padded or cut at the front), or the slices would not line up.
-const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonceOf, tries }) => {
+// A signed read in slices: slice 0 gives the count, each has its own nonce, only a failed slice repeats (1-2 haiku, 3+ sonnet); a total that differs between slices restarts the read once.
+// Returns { text, envs } or { why }. The cut points depend on the header: every nonce of a read has the length of the first (padded or cut).
+const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonceOf, tries, sn = (p, k) => (k === 0 ? p : `${p}-slice${k}`) }) => {
   const one = async (base, k, nonce) => {
     let why = ''
     for (let t = 1; t <= tries; t++) {
@@ -1698,7 +1694,7 @@ const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonc
     const n0 = firstNonce ?? nonceOf(0)
     for (let k = 0; k === 0 || k < envs[0].slices; k++) {
       const n = k === 0 ? n0 : nonceOf(k)
-      const r = await one(k === 0 ? pre : `${pre}-slice${k}`, k, n.length >= n0.length ? n.slice(n.length - n0.length) : n.padStart(n0.length, '0'))
+      const r = await one(sn(pre, k), k, n.length >= n0.length ? n.slice(n.length - n0.length) : n.padStart(n0.length, '0'))
       if (!r.env) return { why: r.why }
       if (k === 0 && !(Number.isInteger(r.env.slices) && r.env.slices > 0)) return { why: 'slice 0: the slice count is not valid' }
       envs.push(r.env)
@@ -1709,7 +1705,7 @@ const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonc
   }
   return { why }
 }
-// Read-back of a record: verify-run.mjs read runs status/brief/pending-decisions/head/porcelain and the script-runner copies it slice by slice (slice in the payload); each envelope is confirmed by tool, command, nonce and digest, and the joined text is the buildRead output.
+// Read-back of a record: verify-run.mjs read copied slice by slice; each envelope is confirmed by tool, command, nonce and digest, and the joined text is the buildRead output.
 let readSeq = 0
 const readBack = async (E, label, phase, cwd, folder, piece) => {
   const readCmd = (nonce, slice) => `node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E, slice, ...(piece ? { piece } : {}) })}`
@@ -1717,7 +1713,7 @@ const readBack = async (E, label, phase, cwd, folder, piece) => {
   const r = await readSlices({ label, phase, cmdOf: readCmd, tool: 'verify-run', command: 'read', nonceOf: () => `${RUN_TAG}:${E}:read${++readSeq}`, tries: 5 })
   try { return r.text === undefined ? null : JSON.parse(r.text) } catch { return null }
 }
-// The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, one signed slice per call (--slice k).
+// The discovery is code: preflight.mjs discover; a script-runner agent only copies its stdout, one signed slice per call (--slice k).
 // The run token is the nonce of slice 0 and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
 const discCmd = nonce => [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(nonce)}`].filter(Boolean).join(' ')
 let disc = null
@@ -1882,7 +1878,7 @@ ${PROJECT}`
 
 // ---------------------------------------------------------------- preflight
 phase('Preflight')
-// The nonce and the task of the capture line of gate i of a measure call (a gate name may hold spaces: capture takes only ^[A-Za-z0-9:._@-]{1,160}$ and a task without ':').
+// The nonce of the capture line of gate i (a gate name may hold spaces: capture takes only ^[A-Za-z0-9:._@-]{1,160}$) and its task.
 const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
 const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
 const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
@@ -1981,7 +1977,7 @@ const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a f
 const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 const implAgent = (p, o) => agent(p, { agentType: 'productivity-tools:implementer', schema: S_IMPL, ...o })
 const revAgent = (p, o) => agent(p, { agentType: 'productivity-tools:task-reviewer', schema: S_TASKREVIEW, ...o })
-// Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the permission rule is for the Bash tool).
+// Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the rule is for the Bash tool).
 const LANG = disc.language || ''
 const CELL_CHARS = Number.isInteger(disc.cellChars) && disc.cellChars > 0 ? disc.cellChars : 300
 const absFolder = INTWT.replace(/\/+$/, '') + '/' + RM.replace(/\/+$/, '')
@@ -2028,7 +2024,7 @@ const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   let results = { runs: [] }
   for (let k = 0; k < chunks.length && results; k++) {
     const g = grp(k, chunks[k])
-    // The copy repeats (the group is idempotent by nonce in verify-run.mjs, DEC-714): the SAME command up to 5 attempts, 1-2 haiku, 3-5 sonnet; a refusal signed by the script is final.
+    // The copy repeats (the group is idempotent by nonce, DEC-714): the SAME command up to 5 attempts, 1-2 haiku, 3-5 sonnet; a refusal signed by the script is final.
     const base = `${E}:status-${status}${k ? `-part${k + 1}` : ''}`
     let v = { ok: false }
     for (let a = 1; a <= 5; a++) {
@@ -2177,7 +2173,7 @@ Commit only that file ("${E}: accepted merge-stage risks"). Return head (git rev
     return fullRef(w.head)
   }
 
-  // Evidence effects run after the last branch log: commit them on the target, where a finish-merge reads them. Returns the head the next measure must expect (null when the head is not a full SHA: then it expects no commit).
+  // Evidence effects run after the last branch log: commit them on the target. Returns the head the next measure expects (null when not a full SHA).
   const persistMergeEffects = async exp => {
     const ran = out.externalRun.filter(e => e.command)
     if (!ran.length) return exp
@@ -2393,7 +2389,6 @@ Return ok (true only if baseCommit and head are not empty), worktree, branch, ba
   const specAbs = `${wt}/${AP.spec}`
   const rmAbs = `${wt}/${RM.replace(/\/+$/, '')}`
   const R_WT = `Every task of the plan, the external ones included, runs in the deliverable worktree ${wt} on ${br} before the merge; no task of the plan runs in the integration worktree (the workflow's own merge, post-merge gates and docs stages run there), and no task needs the merge, the target or that worktree.`
-  const R_LOAD = 'Run these commands exactly, one per call, and return the raw stdout and the exit code of each one, not summarized and not reformatted: checkStdout and checkExit from command 1, emitStdout and emitExit from command 2,'
   const R_COUNT = `commitsInRange (git -C "${wt}" rev-list --count ${TARGET}..HEAD)`
   const R_NOTE = noteE ? `Owner instruction or answer for ${E}: ${noteE}\nNever write or quote a credential, token or key from it in any file; write 'provided through environment variable <NAME>' instead.\n` : ''
   const R_NOCOMMIT = 'Do not commit: the caller commits. One simple command per call: no heredoc, no loop, no && and no ;.'
@@ -2425,18 +2420,37 @@ ${NO_ASK}`,
 - Record every external effect in externalEffects; never perform it.
 - ${R_WT}
 - ${R_NOCOMMIT}`
-  const specLoadOnce = k => agent(`${Cs()}
-
-SPEC LOAD of deliverable ${E} (mechanical, read-only; change no file). ${R_LOAD} head = 3, clean = true when 4 prints nothing.
-${numbered([`node "${specTool}" check "${specAbs}" --roadmap "${rmAbs}" --json`, `node "${specTool}" emit "${specAbs}" --roadmap "${rmAbs}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
-${BASH_ONLY}
-${NO_ASK}`,
-    { label: `${E}:spec-load${k}`, phase: 'Spec', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+  // Loads by capture.mjs: one signed line per command; a cut line (tailCut > 0) is read back by capture.mjs slice, same --cwd. Returns the load result or { loadWhy }.
+  const CAP = `node "${pluginRoot}/scripts/capture.mjs"`
+  const gitIn = (...a) => ['git', '-C', wt, ...a]
+  let loadSeq = 0
+  const loadVia = async (E, base, k, cmds) => {
+    const m = k < 3 ? 'haiku' : 'sonnet', ph = base[0] === 's' ? 'Spec' : 'Plan', got = {}, nonceOf = () => `${RUN_TAG}:${E}:load${++loadSeq}`
+    for (const [i, [name, ...argv]] of cmds.entries()) {
+      const label = `${E}:${base}${k}${i ? '-' + name : ''}`, nonce = nonceOf()
+      const r = await agent(runPrompt(`${CAP} run --nonce ${nonce} --task ${E}-load --cwd ${shq(wt)} -- ${argv.map(shq).join(' ')}`, `${NO_ASK}\n`), { agentType: 'productivity-tools:script-runner', label, phase: ph, schema: S_RUN, model: m, effort: effortFor(m) })
+      const raw = String(r && r.stdout != null ? r.stdout : ''), v = checkCapture(raw, { nonce, cmdDigest: commandDigest({ argv }) })
+      const o = v.ok ? JSON.parse(raw) : {}
+      if (!v.ok || !Number.isInteger(o.tailCut)) return { loadWhy: `${label}: ${v.why || 'tailCut is not a number'}` }
+      got[name] = { ...o, text: o.tail }
+      if (o.tailCut > 0) {
+        const s = await readSlices({ label, phase: ph, tool: 'capture', command: 'slice', tries: 5, nonceOf, sn: (p, j) => `${p}-slice${j}`, cmdOf: (n, j) => `${CAP} slice --nonce ${n} --cwd ${shq(wt)} --path ${shq(o.path)} --sha ${o.sha256} --slice ${j}` })
+        if (s.text === undefined || s.envs[0].total.sha256 !== o.sha256) return { loadWhy: `${label}: ${s.why || 'the slices do not match the sha256'}` }
+        got[name].text = s.text
+      }
+    }
+    const top = n => (got[n] && got[n].exit === 0 && !got[n].tailCut ? got[n].text.trim() : '')
+    return { checkExit: got.check.exit, checkStdout: got.check.text, emitExit: got.emit.exit, emitStdout: got.emit.text, blob: top('blob'), head: top('head'), clean: got.porcelain.exit === 0 && got.porcelain.bytes === 0 }
+  }
+  const loadCmds = (tool, abs, ...x) => [['check', 'node', tool, 'check', abs, ...x, '--json'], ['emit', 'node', tool, 'emit', abs, ...x]]
+  const gitCmds = [['head', ...gitIn('rev-parse', 'HEAD')], ['porcelain', ...gitIn('status', '--porcelain')]]
+  const specLoadOnce = k => loadVia(E, 'spec-load', k, [...loadCmds(specTool, specAbs, '--roadmap', rmAbs), ...gitCmds])
   // Attempts 1-2 haiku, 3-5 sonnet; a failed check is not a failed load.
   const load3 = async (once, check) => {
     let why = ''
     for (let k = 1; k <= 5; k++) {
-      const v = check(await once(k))
+      const t = await once(k)
+      const v = t && t.loadWhy ? { ok: false, why: t.loadWhy } : check(t)
       if (v.ok) return v
       why = v.why
     }
@@ -2554,13 +2568,7 @@ ${NO_ASK}`,
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - ${R_NOCOMMIT}`
-  const planLoadOnce = (k, useSpec = true) => agent(`${Cs()}
-
-PLAN LOAD of deliverable ${E} (mechanical, read-only; change no file). ${R_LOAD} blob = 3 (empty when it fails), head = 4, clean = true when 5 prints nothing.
-${numbered([`node "${planTool}" check "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""} --json`, `node "${planTool}" emit "${planAbs}"${useSpec ? ` --spec "${specAbs}"` : ""}`, `git -C "${wt}" rev-parse "HEAD:${AP.plan}"`, `git -C "${wt}" rev-parse HEAD`, `git -C "${wt}" status --porcelain`])}
-${BASH_ONLY}
-${NO_ASK}`,
-    { label: `${E}:plan-load${k}`, phase: 'Plan', schema: S_TOOLOUT, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
+  const planLoadOnce = (k, useSpec = true) => loadVia(E, 'plan-load', k, [...loadCmds(planTool, planAbs, ...(useSpec ? ['--spec', specAbs] : [])), ['blob', ...gitIn('rev-parse', `HEAD:${AP.plan}`)], ...gitCmds])
   // The digest is recalculated here from the emit.
   // useSpec false: the frozen plan is read against no spec.
   const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => ({ ...checkPlanLoad(t, { E, RM }), head: t && t.head }))
@@ -3186,7 +3194,7 @@ for (const r of RESULTS) {
 }
 // Final deterministic check: what the agents claimed is compared with git itself.
 const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).map(r => ({ id: r.id, commit: r.merge.mergeCommit }))
-// verify-run.mjs check measures git and lists what the run claimed against it; the report agent runs it as its first step and copies the stdout, which checkRun confirms below.
+// verify-run.mjs check measures git and lists what the run claimed against it; the report agent copies its stdout, which checkRun confirms below.
 const CHECK_NONCE = `${RUN_TAG}:check`
 const checkFull = MODE === 'plan-only' ? '' : `node "${VERIFY_RUN}" check ${encArg({ nonce: CHECK_NONCE, repo: REPO, intwt: INTWT, wtRoot: WT, target: TARGET, lastGood, order, claims, reported: slim.map(r => ({ id: r.id, merged: r.merged, broken: r.broken, planOnly: r.planOnly })), integBroken: !!(integBroken || foreignHold) })}`
 const checkTooBig = checkFull.length > CMD_CAP
