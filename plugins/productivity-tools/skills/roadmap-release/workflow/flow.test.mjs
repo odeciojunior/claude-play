@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
-import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, sliceEnvelopes, MAX_COPY_BYTES, utf8Length } from '../../../lib/plan-digest.mjs';
 import { truthDivergences, buildRead } from '../scripts/verify-run.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
@@ -121,13 +121,16 @@ function checkStdout(prompt, truth = TRUTH_OK) {
   return signedOut({ tool: 'verify-run', mode: 'check', nonce: p.nonce, ok: divergences.length === 0, divergences, truth });
 }
 const reportOf = (prompt, truth) => ({ report: 'REPORT', truthStdout: verifyArg(prompt, 'check') ? checkStdout(prompt, truth) : '' });
-// What verify-run.mjs read prints for the raw stdouts of the five commands ({ status, brief, pendingDecisions, head, porcelain }): the reduction is the script's own.
-const readStdout = (prompt, raw) => {
-  const p = verifyArg(prompt, 'read');
+// E41 B2: the stdout of slice k of text as the script prints it (a slice out of range is the script's refusal).
+const sliceStdout = (head, text, k) => { const envs = sliceEnvelopes(head, text); return JSON.stringify(k < envs.length ? envs[k] : { tool: head.tool, error: `slice ${k} does not exist` }); };
+const sliceNo = (prompt) => Number((/ --slice (\d+)/.exec(prompt) || [0, '0'])[1]);
+// What verify-run.mjs read prints for the raw stdouts of the five commands ({ status, brief, pendingDecisions, head, porcelain }): the reduction is the script's own, printed as the slice of the payload.
+const readOf = (p, raw) => {
   const o = (stdout) => ({ exit: 0, stdout: String(stdout == null ? '' : stdout) });
-  return signedOut({ tool: 'verify-run', mode: 'read', nonce: p.nonce, ...buildRead({ status: o(raw.status), brief: o(raw.brief), pending: o(raw.pendingDecisions), head: o(raw.head), porcelain: o(raw.porcelain) }, p.deliverable) });
+  return buildRead({ status: o(raw.status), brief: o(raw.brief), pending: o(raw.pendingDecisions), head: o(raw.head), porcelain: o(raw.porcelain) }, p.deliverable);
 };
-const isRead = (l) => /(:status-.*-read|:docs-read\d)(-retry\d)?$/.test(l);
+const readStdout = (prompt, raw) => { const p = verifyArg(prompt, 'read'); return sliceStdout({ tool: 'verify-run', mode: 'read', nonce: p.nonce }, JSON.stringify(canon(readOf(p, raw))), p.slice === undefined ? 0 : p.slice); };
+const isRead = (l) => /(:status-.*-read|:docs-read\d)(-slice\d+)?(-retry\d)?$/.test(l);
 function makeRecordMock(cardsOf) {
   const st = {};
   let decN = 900;
@@ -172,6 +175,9 @@ function makeRecordMock(cardsOf) {
 // E10 T5: the discovery is the stdout of `preflight.mjs discover`, signed the way the script signs it (canon/fnv1a of lib/plan-digest.mjs) over { nonce, data }.
 const discStdout = (nonce, data) => JSON.stringify({ tool: 'release-discovery', nonce, digest: fnv1a(JSON.stringify(canon({ nonce, data }))), data });
 const nonceOf = (prompt) => (/--nonce '([^']*)'/.exec(prompt) || [])[1];
+// E41 B2: the discovery is read in signed slices (discover --slice k); discSlices is the stdout of the slice the prompt asks for.
+const discSlices = (prompt, data) => sliceStdout({ tool: 'release-discovery', command: 'discover', nonce: nonceOf(prompt) }, JSON.stringify(canon(data)), sliceNo(prompt));
+const isDisc = (l) => /^discovery(-redo)?(-slice\d+)?(-retry\d)?$/.test(l);
 
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
@@ -193,7 +199,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     calls.push({ label: l, prompt, opts: o });
     if (over) { const v = over(l, prompt, o); if (v !== undefined) return v && typeof v === 'object' && isRead(l) && 'status' in v && !('stdout' in v) ? { exit: 0, stdout: readStdout(prompt, v) } : v; }
     const E = (/^(E\d+):/.exec(l) || [])[1];
-    if (l === 'discovery' || /^discovery-retry\d$/.test(l)) return { exit: 0, stdout: discStdout(nonceOf(prompt), { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
+    if (isDisc(l)) return { exit: 0, stdout: discSlices(prompt, { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
     if (l === 'discovery-donot') return { donotHolds: [] };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
@@ -208,8 +214,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:t\d+:(spec|quality)\d+$/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 3 };
     if (/spec-review|:t\d+:(spec|quality)|:final-/.test(l)) return { issues: [], headSha: 'a1', clean: true, commitsInRange: 2 };
     if (/:impl$/.test(l)) return { status: 'DONE', summary: 's', checks: [{ command: 'x', output: 'y', exit: 0 }] };
-    if (/:status-.*-read(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, recMock.read(E)) };
-    if (/:docs-read\d(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, { ...recMock.read(E), pendingDecisions: '', head: 'm2' }) };
+    if (/:status-.*-read(-slice\d+)?(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, recMock.read(E)) };
+    if (/:docs-read\d(-slice\d+)?(-retry\d)?$/.test(l)) return { exit: 0, stdout: readStdout(prompt, { ...recMock.read(E), pendingDecisions: '', head: 'm2' }) };
     if (/:status-/.test(l)) return { exit: 0, stdout: groupStdout(prompt, recMock.run(prompt, E).runs) };
     if (/:progress$/.test(l)) return { head: 'h0', clean: true, done: [] };
     if (/:sync$/.test(l)) return { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
@@ -778,7 +784,7 @@ test('E10 AC1: discovery dispatches the script-runner with preflight.mjs" discov
 });
 
 test('a wrong digest retries up to 5 times and stops with discovery failed', async () => {
-  const tampered = (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discStdout(nonceOf(p), { repo: '/r', today: '2026-11-09', cards: [card('E1')] }).replace('2026-11-09', '2026-11-08') } : undefined);
+  const tampered = (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discSlices(p, { repo: '/r', today: '2026-11-09', cards: [card('E1')] }).replace('2026-11-09', '2026-11-08') } : undefined);
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: tampered });
   assert.equal(x.r.status, 'error');
   assert.match(x.r.error, /^discovery failed: .*digest/);
@@ -791,7 +797,7 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
   const flaky = (l, p) => {
     if (l !== 'discovery' && !/^discovery-retry/.test(l)) return undefined;
     n++;
-    if (n === 1) return { exit: 0, stdout: discStdout('other', { cards: [] }) };
+    if (n === 1) return { exit: 0, stdout: discSlices(p.replace(/--nonce '[^']*'/, "--nonce 'other'"), { cards: [] }) };
     if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no roadmap folder' }) };
     if (n === 3) return { exit: 0, stdout: 'not json' };
     return undefined;
@@ -803,38 +809,31 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
 });
 
 
-// E10 final-fix: a big roadmap is read in signed pages (page 0 = fields and count, pages 1..n = cards), each by its own call.
-const PAGED_META = { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', pendingDecisions: [] };
-const pagedOver = (cardList, { meta = {}, pageData = (p, cs) => ({ page: p, pages: cardList.length, cards: cs }) } = {}) => (l, p) => {
-  const m = /^discovery-page(\d+)(-retry\d)?$/.exec(l);
-  if (m) return { exit: 0, stdout: discStdout(nonceOf(p), pageData(Number(m[1]), [cardList[Number(m[1]) - 1]])) };
-  if (l === 'discovery') return { exit: 0, stdout: discStdout(nonceOf(p), { ...PAGED_META, pages: cardList.length, cardCount: cardList.length, ...meta }) };
-  return undefined;
-};
+// E41 B2: a big roadmap is read in signed slices (discover --slice k, each answer within the copy limit), each by its own call; --page stays for the agy bridge.
+const BIG = (n, extra = {}) => Array.from({ length: n }, (_, i) => card('E' + (i + 1), { title: 'T' + i + ' ' + 'x'.repeat(380), ...extra }));
+const slicesOf = (cs) => sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: 'n' }, JSON.stringify(canon({ repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: cs, pendingDecisions: [] }))).length;
 
-test('E10 final-fix: discovery in signed pages is read page by page and the cards are joined', async () => {
-  const cs = [card('E1'), card('E2')];
-  const x = await exec({ cards: cs, deliverables: ['E1', 'E2'], args: { mode: 'dry-run' }, over: pagedOver(cs) });
+test('E41 B2: discovery in signed slices is read slice by slice and the cards are joined', async () => {
+  const cs = BIG(14);
+  const n = slicesOf(cs);
+  assert.ok(n >= 3, 'slices ' + n);
+  const x = await exec({ cards: cs, deliverables: ['E14'], args: { mode: 'dry-run' } });
   assert.equal(x.r.status, 'done');
-  assert.deepEqual(x.labels.slice(0, 3), ['discovery', 'discovery-page1', 'discovery-page2']);
-  const pg = x.calls.find((c) => c.label === 'discovery-page2');
-  assert.match(pg.prompt, /preflight\.mjs" discover .* --page 2\n/);
-  assert.doesNotMatch(x.calls.find((c) => c.label === 'discovery').prompt, /--page/);
+  assert.deepEqual(x.labels.slice(0, n), ['discovery', ...Array.from({ length: n - 1 }, (_, i) => 'discovery-slice' + (i + 1))]);
+  assert.deepEqual(x.r.selection.order, ['E14']);
+  assert.match(x.calls[2].prompt, /preflight\.mjs" discover .* --slice 2\n/);
+  assert.doesNotMatch(x.calls[0].prompt, /--page/);
 });
 
-test('E10 final-fix: a page that is not the one asked for, or a count that does not add up, stops with discovery failed', async () => {
-  const cs = [card('E1'), card('E2')];
-  const wrong = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { pageData: (p, c) => ({ page: 1, pages: 2, cards: c }) }) });
-  assert.match(wrong.r.error, /^discovery failed: page 2 is not the page asked for/);
-  const count = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { meta: { cardCount: 3 } }) });
-  assert.match(count.r.error, /^discovery failed: the cards of the pages do not add up/);
-  const bad = await exec({ cards: cs, deliverables: ['E1'], over: pagedOver(cs, { meta: { pages: 0 } }) });
-  assert.match(bad.r.error, /^discovery failed: the pages count/);
-  // a page that never matches its digest is tried 5 times, then the run stops
-  const tamper = pagedOver(cs);
-  const x = await exec({ cards: cs, deliverables: ['E1'], over: (l, p) => { const v = tamper(l, p); return /^discovery-page1/.test(l) ? { exit: 0, stdout: v.stdout.replace('E1', 'E9') } : v; } });
-  assert.match(x.r.error, /^discovery failed: page 1: .*digest/);
-  assert.equal(x.calls.filter((c) => /^discovery-page1/.test(c.label)).length, 5);
+test('E41 B2: a slice that is not the one asked for stops with discovery failed naming the slice', async () => {
+  const cs = BIG(14);
+  const wrong = await exec({ cards: cs, deliverables: ['E1'], over: (l, p) => (/^discovery-slice2/.test(l) ? { exit: 0, stdout: discSlices(p.replace('--slice 2', '--slice 1'), { repo: '/r', cards: cs }) } : undefined) });
+  assert.equal(wrong.r.status, 'error');
+  assert.match(wrong.r.error, /^discovery failed: slice 2: /);
+  // a slice that never comes back as an envelope is tried 5 times, then the run stops
+  const x = await exec({ cards: cs, deliverables: ['E1'], over: (l) => (/^discovery-slice1/.test(l) ? { exit: 0, stdout: 'not json' } : undefined) });
+  assert.match(x.r.error, /^discovery failed: slice 1: the output is not JSON/);
+  assert.equal(x.calls.filter((c) => /^discovery-slice1/.test(c.label)).length, 5);
 });
 
 test('discovery-donot only with donot items', async () => {
@@ -4676,7 +4675,7 @@ test('discovery requires pendingDecisions as a list', async () => {
   assert.match(bad.r.error, /pendingDecisions/);
   const missing = await exec({ cards: [card('E1')], deliverables: ['E1'], discOver: { pendingDecisions: undefined } });
   assert.match(missing.r.error, /pendingDecisions/);
-  const wrong = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discStdout(nonceOf(p), { pendingDecisions: [] }).replace('"digest":"', '"digest":"0') } : undefined) });
+  const wrong = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discSlices(p, { pendingDecisions: [] }).replace('"digest":"', '"digest":"0') } : undefined) });
   assert.match(wrong.r.error, /^discovery failed: /);
   assert.equal(r.results[0].merged, true);
 });
@@ -5165,11 +5164,52 @@ test('releitura: output re-signed with a foreign nonce, and a tampered body with
   assert.equal(b.r.results[0].merged, true);
 });
 
+// E41 B2: the read-back is read in signed slices (verify-run.mjs read with slice in the payload) and rebuilt as the output of buildRead, without tool, mode or nonce.
+const LONG_READ = (over = {}) => readWith('d', {
+  status: cliJson({ result: { panel: [{ id: 'E1', segments: [{ label: '', word: 'd', note: 'n'.repeat(300) }] }] } }),
+  brief: cliJson({ result: { checker: { errors: 0, warnings: 0, errorCodes: Array.from({ length: 10 }, (_, i) => 'E' + i + 'x'.repeat(50)), warningCodes: Array.from({ length: 10 }, (_, i) => 'W' + i + 'y'.repeat(50)) } } }),
+  pendingDecisions: cliJson({ result: { decisions: Array.from({ length: 100 }, (_, i) => ({ id: 'DEC-' + (100 + i) })) } }),
+  ...over,
+});
+const isStatusRead = (l) => /:status-d-read(-redo)?(-slice\d+)?(-retry\d)?$/.test(l);
+
+test('E41 B2: a long status and brief arrive in slices within the copy limit and the record is accepted', async () => {
+  const seen = [];
+  const over = (l, p) => { if (!isStatusRead(l)) return undefined; const out = readStdout(p, LONG_READ()); seen.push({ l, size: utf8Length(out), nonce: verifyArg(p, 'read').nonce, slice: verifyArg(p, 'read').slice }); return { exit: 0, stdout: out }; };
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.ok(seen.length >= 2, 'slices ' + seen.length);
+  assert.deepEqual(seen.map((s) => s.l), ['E1:status-d-read', ...seen.slice(1).map((s, i) => 'E1:status-d-read-slice' + (i + 1))]);
+  assert.deepEqual(seen.map((s) => s.slice), seen.map((s, i) => i));
+  assert.ok(seen.every((s) => s.size <= MAX_COPY_BYTES), JSON.stringify(seen.map((s) => s.size)));
+  assert.equal(new Set(seen.map((s) => s.nonce)).size, seen.length, 'a nonce for each slice');
+  assert.equal(new Set(seen.map((s) => s.nonce.length)).size, 1, 'the nonces have one length, so the slices line up');
+  assert.equal(x.r.results[0].merged, true);
+  assert.deepEqual(x.r.results[0].concerns, []);
+});
+
+test('E41 B2: a slice of another command, a copy over the limit or slices of two reads repeat only what failed', async () => {
+  const run = async (fail) => {
+    const over = (l, p) => { if (!isStatusRead(l)) return undefined; const out = readStdout(p, LONG_READ(fail(l, p) === 'mix' ? { head: 'abc1235' } : {})); return { exit: 0, stdout: fail(l, p) === 'mode' ? out.replace('"mode":"read"', '"mode":"check"') : fail(l, p) === 'big' ? 'x'.repeat(MAX_COPY_BYTES + 1) : out }; };
+    return exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  };
+  const mode = await run((l) => (l === 'E1:status-d-read-slice1' ? 'mode' : ''));
+  assert.ok(mode.labels.includes('E1:status-d-read-slice1-retry2'));
+  assert.ok(!mode.labels.includes('E1:status-d-read-retry2') && !mode.labels.includes('E1:status-d-read-redo'));
+  assert.equal(mode.r.results[0].merged, true);
+  const big = await run((l) => (l === 'E1:status-d-read' ? 'big' : ''));
+  assert.ok(big.labels.includes('E1:status-d-read-retry2'));
+  assert.ok(!big.labels.includes('E1:status-d-read-slice1-retry2'));
+  assert.equal(big.r.results[0].merged, true);
+  const mix = await run((l) => (l === 'E1:status-d-read-slice1' ? 'mix' : ''));
+  assert.ok(mix.labels.includes('E1:status-d-read-redo') && mix.labels.includes('E1:status-d-read-redo-slice1'), 'the read starts again once');
+  assert.equal(mix.r.results[0].merged, true);
+});
+
 // The read payload (cwd, cli, folder, deliverable) is always smaller than a group chunk (cli and folder in every step), so a long path trips the group cap first: the read guard is a second line, checked in the source.
 test('releitura: readBack compares its command with CMD_CAP before the first dispatch (fail safe)', async () => {
   const body = /const readBack = async[\s\S]*?\r?\n}\r?\n/.exec(SRC)[0];
   assert.match(body, /readCmd\([^)]*\)\.length > CMD_CAP\) return null/);
-  assert.ok(body.indexOf('> CMD_CAP') < body.indexOf('await agent('), 'the check comes before any dispatch');
+  assert.ok(body.indexOf('> CMD_CAP') < body.indexOf('readSlices('), 'the check comes before any dispatch');
   const id = 'E' + 'x'.repeat(2400);
   const { labels, r } = await exec({ cards: [card(id)], deliverables: [id] });
   assert.ok(!labels.some((l) => /-read/.test(l)), 'nothing is read when the commands are over the cap');

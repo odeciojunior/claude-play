@@ -1632,56 +1632,62 @@ const runPrompt = (cmd, extra = '') => `Run this command once and return its exi
 // The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
-// Read-back of a record: verify-run.mjs read runs status/brief/pending-decisions/head/porcelain; a script-runner only copies its stdout, which checkRun confirms by tool, nonce and digest. A read only, so it repeats (as readDisc).
-let readSeq = 0
-const readBack = async (E, label, phase, cwd, folder, piece) => {
-  const readCmd = nonce => `node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E, ...(piece ? { piece } : {}) })}`
-  if (readCmd(`${RUN_TAG}:${E}:read999999`).length > CMD_CAP) return null  // fail safe: a command above the cap is not dispatched
-  for (let k = 1; k <= 5; k++) {
-    const nonce = `${RUN_TAG}:${E}:read${++readSeq}`
-    const out = await agent(runPrompt(readCmd(nonce)),
-      { agentType: 'productivity-tools:script-runner', label: k === 1 ? label : `${label}-retry${k}`, phase, schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-    const v = checkRun(out && out.stdout, 'verify-run', nonce)
-    if (v.ok && v.data.mode === 'read') return v.data
+// A copy above the limit never reaches the agent whole: refused before any JSON.parse.
+const copyFits = stdout => utf8Length(stdout) <= MAX_COPY_BYTES
+// A signed read in slices (a read only, so it repeats): slice 0 gives the count, each next slice has its own nonce, only the slice that failed repeats (attempts 1-2 haiku, 3+ sonnet);
+// a total that does not match (the state changed between slices) drops every slice and restarts the read once. Returns { text, envs } or { why }.
+// The cut points of sliceEnvelopes depend on the header, nonce included: every nonce of one read has the length of the first (padded or cut at the front), or the slices would not line up.
+const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonceOf, tries }) => {
+  const one = async (base, k, nonce) => {
+    let why = ''
+    for (let t = 1; t <= tries; t++) {
+      const out = await agent(runPrompt(cmdOf(nonce, k)),
+        { agentType: 'productivity-tools:script-runner', label: t === 1 ? base : `${base}-retry${t}`, phase, schema: S_RUN, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
+      const raw = String(out && out.stdout != null ? out.stdout : '').replace(/\s+$/, '')
+      let env = null
+      if (!copyFits(raw)) why = 'the output is larger than the copy limit'
+      else try { env = JSON.parse(raw) } catch { why = 'the output is not JSON' }
+      if (env && env.error !== undefined) { why = `${tool} refused: ${env.error}`; env = null }
+      if (env) { const v = checkSlice(env, { tool, command, nonce, slice: k }); if (v.ok) return { env }; why = v.why }
+    }
+    return { why: `slice ${k}: ${why}` }
   }
-  return null
-}
-// The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, which checkRun confirms by tool, nonce and digest.
-// The run token is the nonce and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
-const discCmd = [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(RUN_TOKEN)}`].filter(Boolean).join(' ')
-let disc = null
-let discWhy = ''
-// One signed page of the discovery. A read only, so it repeats: attempts 1-2 haiku, 3-5 sonnet (as load3). Page 0 has no --page and keeps the first label.
-const readDisc = async (page) => {
   let why = ''
-  for (let k = 1; k <= 5; k++) {
-    const base = page === 0 ? 'discovery' : `discovery-page${page}`
-    const out = await agent(runPrompt(page === 0 ? discCmd : `${discCmd} --page ${page}`),
-      { agentType: 'productivity-tools:script-runner', label: k === 1 ? base : `${base}-retry${k}`, phase: 'Discovery', schema: S_RUN, model: k < 3 ? 'haiku' : 'sonnet', effort: k < 3 ? 'low' : 'medium' })
-    const v = checkRun(out && out.stdout, 'release-discovery', RUN_TOKEN)
-    if (v.ok) return { data: v.data }
-    why = v.why
+  for (let round = 1; round <= 2; round++) {
+    const pre = round === 1 ? label : `${label}-redo`
+    const envs = []
+    const n0 = firstNonce ?? nonceOf(0)
+    for (let k = 0; k === 0 || k < envs[0].slices; k++) {
+      const n = k === 0 ? n0 : nonceOf(k)
+      const r = await one(k === 0 ? pre : `${pre}-slice${k}`, k, n.length >= n0.length ? n.slice(n.length - n0.length) : n.padStart(n0.length, '0'))
+      if (!r.env) return { why: r.why }
+      if (k === 0 && !(Number.isInteger(r.env.slices) && r.env.slices > 0)) return { why: 'slice 0: the slice count is not valid' }
+      envs.push(r.env)
+    }
+    const j = joinSlices(envs)
+    if (j.ok) return { text: j.text, envs }
+    why = j.why
   }
   return { why }
 }
+// Read-back of a record: verify-run.mjs read runs status/brief/pending-decisions/head/porcelain and the script-runner copies it slice by slice (slice in the payload); each envelope is confirmed by tool, command, nonce and digest, and the joined text is the buildRead output.
+let readSeq = 0
+const readBack = async (E, label, phase, cwd, folder, piece) => {
+  const readCmd = (nonce, slice) => `node "${VERIFY_RUN}" read ${encArg({ nonce, cwd, cli: A.trackerCli, folder, deliverable: E, slice, ...(piece ? { piece } : {}) })}`
+  if (readCmd(`${RUN_TAG}:${E}:read999999`, 999).length > CMD_CAP) return null  // fail safe: a command above the cap is not dispatched
+  const r = await readSlices({ label, phase, cmdOf: readCmd, tool: 'verify-run', command: 'read', nonceOf: () => `${RUN_TAG}:${E}:read${++readSeq}`, tries: 5 })
+  try { return r.text === undefined ? null : JSON.parse(r.text) } catch { return null }
+}
+// The discovery is code: preflight.mjs discover reads the roadmap with the parser of the checker and measures git; a script-runner agent only copies its stdout, one signed slice per call (--slice k).
+// The run token is the nonce of slice 0 and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
+const discCmd = nonce => [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(nonce)}`].filter(Boolean).join(' ')
+let disc = null
+let discWhy = ''
 {
-  const r0 = await readDisc(0)
-  disc = r0.data || null
-  discWhy = r0.why || ''
-  // A big roadmap comes in signed pages (a Bash output over ~30 KB never reaches the agent whole): page 0 has the fields and the count, pages 1..n the cards.
-  if (disc && disc.pages !== undefined) {
-    const n = disc.pages
-    if (!Number.isInteger(n) || n < 1 || !Number.isInteger(disc.cardCount)) { disc = null; discWhy = 'the pages count of the discovery is not valid' }
-    const cards = []
-    for (let p = 1; disc && p <= n; p++) {
-      const rp = await readDisc(p)
-      if (!rp.data) { disc = null; discWhy = `page ${p}: ${rp.why}`; break }
-      if (rp.data.page !== p || rp.data.pages !== n || !Array.isArray(rp.data.cards)) { disc = null; discWhy = `page ${p} is not the page asked for`; break }
-      cards.push(...rp.data.cards)
-    }
-    if (disc && (cards.length !== disc.cardCount || new Set(cards.map(c => c.id)).size !== cards.length)) { disc = null; discWhy = 'the cards of the pages do not add up to the count of page 0' }
-    if (disc) disc.cards = cards
-  }
+  let seq = 0
+  const r = await readSlices({ label: 'discovery', phase: 'Discovery', cmdOf: (nonce, k) => `${discCmd(nonce)} --slice ${k}`, tool: 'release-discovery', command: 'discover', firstNonce: RUN_TOKEN, nonceOf: () => `${RUN_TAG}:disc${++seq}`, tries: 5 })
+  discWhy = r.why || ''
+  try { disc = r.text === undefined ? null : JSON.parse(r.text) } catch { discWhy = 'the joined discovery is not JSON' }
 }
 if (!disc) return { status: 'error', error: `discovery failed: ${discWhy}` }
 if (!disc.cards || !disc.cards.length) return { status: 'error', error: 'discovery failed: no cards' }
