@@ -4,6 +4,8 @@
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
 | 2026-11-24 | E41 | DEC-035 a DEC-038 (E41) conferidas: 035 a 037 do executor pendentes de ratificação do dono, 038 vigente; xor-base64 funcionou no relançamento real (10 fatias, 1 tentativa cada, sonda 6/6) | `decisions.md` |
+| 2026-11-24 | E41 | H1 da sonda AC2b conferida (subagent opus, delegação do dono): confere com ressalvas; soma 0,392104 e summarize idênticos; retry único na 1-on, fatia 7; context-mode presente só nas on; teto 0,13 não gravado no JSON (custos ≤ 0,042) | `measurements.md` |
+| 2026-11-24 | E41 | portão T3 da branch aprovado na 3ª rodada (correções 08ca89b, 45fd130, 5610c42, 918f77c; DEC-039); suíte 2499 testes, 0 fail | `918f77c` |
 | 2026-11-24 | E41 | E41 critérios comparados: nenhum mudou (8 critérios iguais ao cartão) | `docs/plans/pos-2-3-0-E41/spec.md` |
 | 2026-11-24 | E41 | E41 plano B2 concluído (T11 stopped, substituída pela T12 que passou; portão final na 4ª rodada com 5aaed01, 0e4dfe2, 207aacd, a9d544f); planos A, B1, B2 e B3 na branch, E41 na-branch; provas copiadas para D:/claude-pos23-out/e41-evidencias após o prune | `docs/plans/pos-2-3-0-E41/plano-b2/progress.json, 2868ced` |
 | 2026-11-24 | E41 | medição paga AC2b registrada: US$ 0,3921 em 6 execuções (inclui US$ 0,170395 da 1-on abortada, DEC-038); parada authorize 6/6; H1 pendente do dono | `measurements.md` |
