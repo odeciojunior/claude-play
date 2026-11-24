@@ -3,7 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
-| 2026-11-24 | E41 | Correções pré-2.5.0 do prefixo de provas e do id fechadas: taskId único por plano, prune de review/ com varredura e cortes (sweptCut/removedCut), list, id-invalid só para o id de topo (top: true), spec-writer sem ambiguidade de tópico; DEC-040 e DEC-041 (orçamento 90.000); suíte 2531 pass, 0 fail em bf1a213; portão T3 (opus/high) aprova a 2.5.0 | `35a0db1..5d1b6cc`, `decisions.md` |
+| 2026-11-24 | E41 | Correções pré-2.5.0 fechadas (taskId único, prune de review/ com cortes, list, id-invalid do topo, spec-writer); DEC-040, DEC-041; suíte 2531 pass, 0 fail; T3 aprova a 2.5.0 | `35a0db1..5d1b6cc`, `decisions.md` |
 | 2026-11-24 | E41 | DEC-035 a DEC-038 (E41) conferidas: 035 a 037 do executor pendentes de ratificação do dono, 038 vigente; xor-base64 funcionou no relançamento real (10 fatias, 1 tentativa cada, sonda 6/6) | `decisions.md` |
 | 2026-11-24 | E41 | H1 da sonda AC2b conferida (subagent opus, delegação do dono): confere com ressalvas; soma 0,392104 e summarize idênticos; retry único na 1-on, fatia 7; context-mode presente só nas on; teto 0,13 não gravado no JSON (custos ≤ 0,042) | `measurements.md` |
 | 2026-11-24 | E41 | portão T3 da branch aprovado na 3ª rodada (correções 08ca89b, 45fd130, 5610c42, 918f77c; DEC-039); suíte 2499 testes, 0 fail | `918f77c` |
