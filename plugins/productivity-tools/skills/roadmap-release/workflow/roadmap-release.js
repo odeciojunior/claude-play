@@ -183,8 +183,33 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
 // ---- gates: generic measurement and baseline comparison
 // def = { name, kind: 'exit'|'tests', invariant?, ignoreFailuresWhenChanged?: { paths, failurePrefix } }
 // result = { name, ran, exit, total, skipped, failedNames }; baseline = map name -> result
+// A test name without its file prefix (path/of/file.test.mjs::name): the extractor and the agent may differ in it.
+function nameKey(n) { return String(n).replace(/^[^\s:]+\.[A-Za-z0-9]+::/, '') }
 function gateSubset(xs, base) {
-  return (xs || []).every(x => (base || []).includes(x))
+  const keys = (base || []).map(nameKey)
+  return (xs || []).every(x => keys.includes(nameKey(x)))
+}
+// One gate result from the JSON line of capture.mjs the agent copied (null when it does not check against expect = { nonce, cmdDigest }):
+// the exit always comes from it; total, skipped and names come from its extract, except for a format the extractor does not know or a gate
+// that ignores failures, which take the agent's and are marked fallback. A cut list of names carries failedNamesCut.
+function gateFromCapture(def, g, expect) {
+  const raw = g && typeof g.capture === 'string' ? g.capture : null
+  if (raw === null || !checkCapture(raw, expect).ok) return null
+  const o = JSON.parse(raw.replace(/\s+$/, ''))
+  if (!Number.isInteger(o.exit)) return null
+  const r = { name: def.name, ran: true, exit: o.exit }
+  if (def.kind !== 'tests') return r
+  const e = o.extract
+  if (e && e.format !== 'unknown' && !def.ignoreFailuresWhenChanged && Number.isInteger(e.total) && Array.isArray(e.failedNames)) {
+    return { ...r, total: e.total, skipped: Number.isInteger(e.skipped) ? e.skipped : 0, failedNames: e.failedNames, ...(e.failedNamesCut > 0 ? { failedNamesCut: e.failedNamesCut } : {}) }
+  }
+  return { ...r, total: g.total, skipped: g.skipped, failedNames: g.failedNames || [], fallback: true }
+}
+// The measure of an agent with each gate replaced by its result checked against capture; a gate without a valid line is absent (never green).
+function capturedMeasure(defs, m, nonceOf) {
+  if (!m || typeof m !== 'object') return m
+  const gates = (defs || []).map((d, i) => gateFromCapture(d, gateResult(m, d.name), { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) })).filter(Boolean)
+  return { ...m, gates }
 }
 function gateShaMatch(x, y) {
   return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
@@ -222,7 +247,7 @@ function gatePasses(def, result, baselineResult) {
   if (def.invariant) return result.exit === 0
   if (def.kind === 'exit') return result.exit === 0 || (!!b && b.exit !== 0)
   const names = result.failedNames || []
-  if (result.exit !== 0 && !names.length) return false
+  if (result.exit !== 0 && (!names.length || result.failedNamesCut > 0)) return false
   if (!(result.exit === 0 || gateSubset(names, b && b.failedNames))) return false
   return (result.total || 0) >= Math.max(1, (b && b.total) || 0) && (result.skipped || 0) <= ((b && b.skipped) || 0)
 }
@@ -680,7 +705,7 @@ function integrityAlerts(integ) {
 function integrityAckMatches(ack, E, sha) {
   return !!ack && typeof ack === 'object' && typeof ack[E] === 'string' && !!sha && ack[E] === sha
 }
-const resultTxt = r => (r ? 'exit ' + r.exit + (typeof r.total === 'number' ? ', total ' + r.total + ', skipped ' + (r.skipped || 0) + ', failing [' + (r.failedNames || []).join(', ') + ']' : '') : 'not measured')
+const resultTxt = r => (r ? 'exit ' + r.exit + (typeof r.total === 'number' ? ', total ' + r.total + ', skipped ' + (r.skipped || 0) + ', failing [' + (r.failedNames || []).join(', ') + ']' + (r.failedNamesCut > 0 ? ' +' + r.failedNamesCut + ' cut' : '') : '') + (r.fallback ? ' (fallback: figures from the agent, not from capture)' : '') : 'not measured')
 function gateSummary(defs, m, base) {
   if (!m) return 'not measured'
   return (defs || []).map(d => d.name + ': ' + resultTxt(gateResult(m, d.name)) + ' (baseline: ' + resultTxt((base || {})[d.name]) + ')').join(' | ')
@@ -857,8 +882,9 @@ function dropConsumedNotes(args, consumed) {
 }
 // ---- Roadmap record through the tracker CLI (E18): pure assembly of the exact commands and verdict over the CLI JSON.
 // POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
+function oneLine(s) { return String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ') }
 function shq(s) {
-  return "'" + String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/'/g, "'\\''") + "'"
+  return "'" + oneLine(s).replace(/'/g, "'\\''") + "'"
 }
 const isPt = lang => /^pt/i.test(String(lang || ''))
 const collapseWs = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
@@ -1581,7 +1607,7 @@ let blqIds = new Set()  // blockers registered on the roadmap (filled after disc
 // ---------------------------------------------------------------- schemas
 const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boolean' }
 const STRS = { type: 'array', items: STR }
-const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS }, required: ['name', 'ran', 'exit'] }
+const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS, capture: STR }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
 const S_PRE = { type: 'object', properties: {
   ok: BOOL, errorKind: { type: 'string', enum: ['dirty', 'setup', 'target', 'other'] }, error: STR,
@@ -1843,8 +1869,11 @@ ${PROJECT}`
 
 // ---------------------------------------------------------------- preflight
 phase('Preflight')
-const measureTxt = defs => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
-` : ''}For each gate run its command and report { name, ran, exit, total, skipped, failedNames }:\n${defs.map(d => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (only name, ran and exit matter)'}`).join('\n')}\nFor "tests" gates read the output: total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
+// The nonce and the task of the capture line of gate i of a measure call (a gate name may hold spaces: capture takes only ^[A-Za-z0-9:._@-]{1,160}$ and a task without ':').
+const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
+const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
+const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
+` : ''}For each gate run the line under it, unchanged (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (only name, ran and exit matter)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
 const FOREIGN_ITEM = 'checkout:' + TARGET
 const foreignOk = authorized(FOREIGN_ITEM)
 const foreignRule = foreignOk
@@ -1856,7 +1885,7 @@ PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only step
 1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
 2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. ${foreignRule} If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort only in ${WT}/_integracao, never elsewhere. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
 3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Only if step 2 did not stop. Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
-4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES)}`}
+4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES, i => gateNonce('preflight', i), '"<integration worktree>"', 'preflight-gates')}`}
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (e.g. CRLF, scripts that require bash).
 Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : `, recorded (raw stdout of step 4's first command, verbatim, as a string; then no baseline) or baseline { headSha, clean, gates } (none when step 2 stopped)`}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
@@ -1864,6 +1893,7 @@ const rawHead = pre && pre.targetHead
 if (pre) pre.targetHead = fullRef(pre.targetHead)
 // Rejected record: no baseline (stop).
 if (pre && MODE === 'run' && pre.recorded) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES)
+else if (pre && MODE === 'run' && pre.baseline) pre.baseline = capturedMeasure(GATES, pre.baseline, i => gateNonce('preflight', i))
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
 // Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
@@ -1908,13 +1938,13 @@ const snapshotBase = () => JSON.parse(JSON.stringify(BASE))
 const gateOnce = (g, dir, label, ph, range) => withLocks(g.locks, () => agent(`${COMMON_SLIM()}
 
 MEASURE the gates below in ${dir} (fix nothing). ${lockNote(g.locks)} First, BEFORE any command: clean (git status --porcelain empty; line-ending-only differences: git checkout -- <file>) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first if a dependency manifest changed${INSTALL ? ` (${INSTALL})` : ''}.
-${measureTxt(g.defs)}
+${measureTxt(g.defs, i => gateNonce(label, i), shq(dir), gateTask(label))}
 Also return changedFiles = git diff --name-only ${range}, and in log the relevant part of each failing output.`,
   { label, phase: ph, schema: S_MEASURE, model: 'sonnet', effort: 'medium' }))
 // An invalid measure (null agent, dirty tree, wrong commit, exit and names disagreeing) is retried once and then counts as an infra failure, never as green.
 const measuredGroup = async (g, dir, label, ph, exp, range) => {
   for (const suffix of ['', '-retry']) {
-    const r = await gateOnce(g, dir, label + suffix, ph, range)
+    const r = capturedMeasure(g.defs, await gateOnce(g, dir, label + suffix, ph, range), i => gateNonce(label + suffix, i))
     if (validMeasure(r, exp, g.defs)) return { ...r, headSha: normSha(r.headSha) }
   }
   return null

@@ -1,8 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
+import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
-const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor } = loadPure();
+const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
 const T = { name: 'unit', kind: 'tests' };
 const X = { name: 'lint', kind: 'exit' };
 const INV = { name: 'drift', kind: 'exit', invariant: true };
@@ -133,4 +139,134 @@ test('ignoreFailuresWhenChanged on an exit gate never erases a failure', () => {
   const lint = { name: 'lint', kind: 'exit', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 'x:' } };
   const m = meas([res('lint', { exit: 1 })]);
   assert.equal(allPass([lint], m, { lint: res('lint') }, ['functions/x.ts']).ok, false);
+});
+
+// ---- E41 B2 T2: the gates are measured from the JSON of capture.mjs, not from copied text
+const CAPTURE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'capture.mjs');
+const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
+const signedLine = (o) => JSON.stringify({ ...o, digest: fnv1a(JSON.stringify(canon(o))) });
+const expectOf = (def, nonce) => ({ nonce, cmdDigest: commandDigest({ bash: def.cmd }) });
+// A real run of capture.mjs in a throwaway git repository (the suite of 63 tests: 60 pass, FAIL_A, FAIL_B and FAIL_C fail).
+function realCapture(def, nonce, files = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'rr-gate-'));
+  try {
+    assert.equal(spawnSync('git', ['init', '-q', dir]).status, 0);
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
+    const args = [CAPTURE, 'run', '--nonce', nonce, '--task', 'E1-gates', ...(def.kind === 'tests' ? ['--tests'] : []), '--cwd', dir, '--bash', def.cmd];
+    const { NODE_TEST_CONTEXT, ...env } = process.env; // a child node --test must not think it runs inside this runner
+    const r = spawnSync('node', args, { encoding: 'utf8', env });
+    return r.stdout.trim();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+const SUITE = "import { test } from 'node:test';\nfor (let i = 0; i < 60; i++) test('ok ' + i, () => {});\nfor (const n of ['FAIL_A', 'FAIL_B', 'FAIL_C']) test(n, () => { throw new Error('x'); });\n";
+const UNIT = { name: 'unit', kind: 'tests', cmd: 'node --test suite.test.mjs' };
+
+test('AC4: failedNames and total come from the JSON of capture, not from the text the agent copied', () => {
+  const nonce = 'abc12345:E1:gates1-1:g0';
+  const line = realCapture(UNIT, nonce, { 'suite.test.mjs': SUITE });
+  const g = { name: 'unit', ran: true, exit: 0, total: 99, skipped: 7, failedNames: ['x'], capture: line };
+  const r = gateFromCapture(UNIT, g, expectOf(UNIT, nonce));
+  assert.equal(r.exit, 1);
+  assert.equal(r.total, 63);
+  assert.deepEqual(r.failedNames, ['FAIL_A', 'FAIL_B', 'FAIL_C']);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.name, 'unit');
+  assert.ok(!r.fallback);
+  assert.ok(!r.failedNamesCut);
+  assert.equal(gateFromCapture(UNIT, { ...g, capture: line + '\n' }, expectOf(UNIT, nonce)).total, 63);
+});
+
+test('C3: format unknown with exit 1 takes the exit from capture and total and names from the agent, marked as fallback', () => {
+  const def = { name: 'unit', kind: 'tests', cmd: "node -e 'console.log(1);process.exit(1)'" };
+  const nonce = 'abc12345:E1:gates1-1:g0';
+  const line = realCapture(def, nonce);
+  assert.equal(JSON.parse(line).extract.format, 'unknown');
+  const g = { name: 'unit', ran: true, exit: 0, total: 5, skipped: 1, failedNames: ['t/a.test.mjs::boom'], capture: line };
+  const r = gateFromCapture(def, g, expectOf(def, nonce));
+  assert.equal(r.exit, 1);
+  assert.equal(r.total, 5);
+  assert.equal(r.skipped, 1);
+  assert.deepEqual(r.failedNames, ['t/a.test.mjs::boom']);
+  assert.equal(r.fallback, true);
+  assert.match(gateSummary([def], { gates: [r] }, {}), /fallback/);
+  // a failure without a recognizable name never passes
+  const bare = gateFromCapture(def, { ...g, failedNames: [] }, expectOf(def, nonce));
+  assert.equal(gatePasses(def, bare, null), false);
+});
+
+test('an exit gate takes only the exit from capture', () => {
+  const def = { name: 'lint', kind: 'exit', cmd: 'node -e "process.exit(3)"' };
+  const nonce = 'abc12345:E1:gates1-1:g0';
+  const line = realCapture(def, nonce);
+  const r = gateFromCapture(def, { name: 'lint', ran: true, exit: 0, capture: line }, expectOf(def, nonce));
+  assert.equal(r.exit, 3);
+  assert.equal(r.ran, true);
+});
+
+const capJson = (def, nonce, extract, exit = 1) => signedLine({ tool: 'capture', nonce, task: 'E1-gates', cmdDigest: commandDigest({ bash: def.cmd }), exit, bytes: 1, sha256: 'x', lines: 1, path: 'p', stderrBytes: 0, stderrSha256: 'y', stderrPath: 'q', tail: '', tailCut: 0, extract });
+const ex = (o) => ({ format: 'node-tap', exit: 1, total: 63, pass: 60, fail: 3, skipped: 0, failedNames: ['a', 'b'], failedNamesCut: 0, ...o });
+
+test('C4: a cut list of names carries failedNamesCut and never passes a failure against a red baseline with the same names', () => {
+  const nonce = 'n:E1:g0';
+  const base = res('unit', { exit: 1, total: 63, failedNames: ['a', 'b'] });
+  const whole = gateFromCapture(UNIT, { name: 'unit', capture: capJson(UNIT, nonce, ex()) }, expectOf(UNIT, nonce));
+  assert.equal(gatePasses(UNIT, whole, base), true);
+  const cut = gateFromCapture(UNIT, { name: 'unit', capture: capJson(UNIT, nonce, ex({ failedNamesCut: 2 })) }, expectOf(UNIT, nonce));
+  assert.equal(cut.failedNamesCut, 2);
+  assert.deepEqual(cut.failedNames, ['a', 'b']);
+  assert.equal(gatePasses(UNIT, cut, base), false);
+  assert.equal(allPass([UNIT], meas([cut]), { unit: base }, []).ok, false);
+});
+
+test('a wrong nonce, a tampered digest, a foreign command or a missing JSON give no result and the measure is invalid', () => {
+  const nonce = 'n:E1:g0';
+  const good = capJson(UNIT, nonce, ex());
+  const ok = (g, e = expectOf(UNIT, nonce)) => gateFromCapture(UNIT, g, e);
+  assert.notEqual(ok({ name: 'unit', capture: good }), null);
+  assert.equal(ok({ name: 'unit', capture: good }, expectOf(UNIT, 'n:E1:g1')), null);
+  assert.equal(ok({ name: 'unit', capture: good.replace('"exit":1', '"exit":0') }), null);
+  assert.equal(ok({ name: 'unit', capture: good }, { nonce, cmdDigest: commandDigest({ bash: 'npm test' }) }), null);
+  assert.equal(ok({ name: 'unit' }), null);
+  assert.equal(ok(undefined), null);
+  assert.equal(ok({ name: 'unit', capture: 'not json' }), null);
+  assert.equal(ok({ name: 'unit', capture: capJson(UNIT, nonce, ex({ failedNames: ['n'.repeat(4000)] })) }), null);
+  const m = { headSha: 'a'.repeat(40), clean: true, gates: [{ name: 'unit', ran: true, exit: 1, total: 63, failedNames: ['a'], capture: good.replace('"exit":1', '"exit":0') }] };
+  const checked = capturedMeasure([UNIT], m, () => nonce);
+  assert.equal(checked.gates.length, 0);
+  assert.equal(validMeasure(checked, null, [UNIT]), false);
+  assert.equal(capturedMeasure([UNIT], null, () => nonce), null);
+  assert.equal(validMeasure(capturedMeasure([UNIT], { ...m, gates: [{ ...m.gates[0], capture: good }] }, () => nonce), null, [UNIT]), true);
+});
+
+test('a gate with a space in the name and a single quote in the command: the real capture gives a digest that matches', () => {
+  const def = { name: 'unit tests', kind: 'exit', cmd: "node -e 'process.exit(0)'" };
+  const nonce = 'abc12345:E1:gates1-1:g0';
+  assert.match(nonce, NONCE_RE);
+  const line = realCapture(def, nonce);
+  assert.equal(JSON.parse(line).cmdDigest, commandDigest({ bash: def.cmd }));
+  const r = gateFromCapture(def, { name: 'unit tests', ran: true, exit: 5, capture: line }, expectOf(def, nonce));
+  assert.equal(r.exit, 0);
+});
+
+test('R4: gateSubset compares the names without the file prefix', () => {
+  assert.equal(gateSubset(['path/of/file.test.mjs::nome'], ['nome']), true);
+  assert.equal(gateSubset(['nome'], ['path/of/file.test.mjs::nome']), true);
+  assert.equal(gateSubset(['a/x.test.mjs::nome'], ['b/y.test.mjs::nome']), true);
+  assert.equal(gateSubset(['a/x.test.mjs::outro'], ['nome']), false);
+  assert.equal(gateSubset([], undefined), true);
+  assert.equal(gateSubset(['nome'], undefined), false);
+});
+
+test('R4: ignoreFailuresWhenChanged takes the names (with the file prefix) from the agent and the exit from capture', () => {
+  const smoke = { name: 'smoke', kind: 'tests', cmd: 'npm run smoke', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 'smoke/e2e.test.mjs::' } };
+  const nonce = 'n:E1:g0';
+  const line = capJson(smoke, nonce, ex({ failedNames: ['boom'] }));
+  const r = gateFromCapture(smoke, { name: 'smoke', ran: true, exit: 0, total: 9, skipped: 0, failedNames: ['smoke/e2e.test.mjs::boom'], capture: line }, expectOf(smoke, nonce));
+  assert.equal(r.exit, 1);
+  assert.deepEqual(r.failedNames, ['smoke/e2e.test.mjs::boom']);
+  assert.equal(r.total, 9);
+  assert.equal(r.fallback, true);
+  const base = { smoke: res('smoke', { total: 9 }) };
+  assert.equal(allPass([smoke], meas([r]), base, ['functions/x.ts']).ok, true);
+  assert.equal(allPass([smoke], meas([r]), base, ['src/x.ts']).ok, false);
 });

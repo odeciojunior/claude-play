@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
-import { canon, fnv1a, sliceEnvelopes, MAX_COPY_BYTES, utf8Length } from '../../../lib/plan-digest.mjs';
+import { canon, fnv1a, sliceEnvelopes, MAX_COPY_BYTES, utf8Length, commandDigest } from '../../../lib/plan-digest.mjs';
 import { truthDivergences, buildRead } from '../scripts/verify-run.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
@@ -37,11 +37,11 @@ function makeJournal() {
           if (dead) throw new Error('process killed');
           const key = createHash('sha256').update(JSON.stringify([prev, prompt, o])).digest('hex');
           prev = key;
-          if (!live && results.has(key)) { cached.push(o.label); return results.get(key); }
+          if (!live && results.has(key)) { cached.push(o.label); return structuredClone(results.get(key)); } // a copy, as the runtime's serialized journal gives: the workflow edits what it receives
           live = true;
           if (killAt instanceof RegExp ? killAt.test(o.label) : o.label === killAt) { if (ranFirst) await run(); dead = true; throw new Error('process killed'); }
           const v = await run();
-          if (!dead) results.set(key, v);
+          if (!dead) results.set(key, structuredClone(v));
           return v;
         },
       };
@@ -179,6 +179,25 @@ const nonceOf = (prompt) => (/--nonce '([^']*)'/.exec(prompt) || [])[1];
 const discSlices = (prompt, data) => sliceStdout({ tool: 'release-discovery', command: 'discover', nonce: nonceOf(prompt) }, JSON.stringify(canon(data)), sliceNo(prompt));
 const isDisc = (l) => /^discovery(-redo)?(-slice\d+)?(-retry\d)?$/.test(l);
 
+// E41 B2 T2: a measure answered without capture gets, per gate, the JSON line capture.mjs would print: the nonce (by index), the task and the command (shq undone) are read in the capture lines of the prompt.
+const CAP_LINE = /^\s*node "[^"]*\/capture\.mjs" run --nonce (\S+) --task (\S+)( --tests)? --cwd .* --bash ('(?:[^']|'\\'')*')\s*$/gm;
+const unshq = (q) => q.slice(1, -1).split("'\\''").join("'");
+function captureLine(l, def, g) {
+  const base = { tool: 'capture', nonce: l.nonce, task: l.task, cmdDigest: commandDigest({ bash: l.bash }), exit: g.exit, bytes: 0, sha256: '0', lines: 0, path: 'p', stderrBytes: 0, stderrSha256: '0', stderrPath: 'q', tail: '', tailCut: 0 };
+  const extract = l.tests ? { format: Number.isInteger(g.total) ? 'node-tap' : 'unknown', exit: g.exit, total: Number.isInteger(g.total) ? g.total : null, pass: null, fail: null, skipped: Number.isInteger(g.skipped) ? g.skipped : 0, failedNames: g.failedNames || [], failedNamesCut: 0 } : undefined;
+  return signedOut(extract ? { ...base, extract } : base);
+}
+function withCapture(prompt, m, gatesCfg) {
+  if (!m || !Array.isArray(m.gates) || m.gates.some((g) => g && g.capture !== undefined)) return m;
+  const lines = [...prompt.matchAll(CAP_LINE)].map((x) => ({ nonce: x[1], task: x[2], tests: !!x[3], bash: unshq(x[4]) }));
+  const gates = [];
+  for (const l of lines) {
+    const def = gatesCfg.find((d) => d.cmd === l.bash);
+    const g = def && m.gates.find((x) => x && x.name === def.name);
+    if (g && g.ran !== false) gates.push({ ...g, capture: captureLine(l, def, g) });
+  }
+  return { ...m, gates };
+}
 // over(label, prompt, opts) may return a value (including null) to override the default answer.
 async function exec({ cards, over, deliverables, config = {}, args = {}, discOver = {}, budget = { total: null }, journal = null }) {
   const calls = [];
@@ -187,7 +206,10 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
   const agent = (prompt, o) => (journal ? journal.call(prompt, o, () => liveAgent(prompt, o)) : liveAgent(prompt, o));
   // E8 T6: a test still answers the plan author (and the plan fixer) with the old transcribed plan; the plan load then returns the plan-tool emit of that plan.
   const liveAgent = async (prompt, o) => {
-    const v = await answerOf(prompt, o);
+    let v = await answerOf(prompt, o);
+    const gatesCfg = config.gates || GATES;
+    if (v && typeof v === 'object' && Array.isArray(v.gates)) v = withCapture(prompt, v, gatesCfg);
+    else if (v && typeof v === 'object' && o.label === 'preflight' && v.baseline && !v.recorded) v = { ...v, baseline: withCapture(prompt, v.baseline, gatesCfg) };
     const id = (/^(E\d+):/.exec(o.label) || [])[1];
     if (/:plan(-fix\d+)?$/.test(o.label) && v && typeof v === 'object' && Array.isArray(v.tasks) && v.tasks.length) { planOf[id] = v; return 'plan written'; }
     // The workflow only trusts a full 40-hex headSha on an evidence measure; the fixtures name short commits.
@@ -250,6 +272,43 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
   return { r, calls, labels: calls.map((c) => c.label) };
 }
 
+// E41 B2 T2: the measure prompts hand the agent one capture line per gate, with a safe nonce and the command quoted for the shell.
+test('E41 B2 T2: a gate with a space in the name and a single quote in the command gets a capture line with a safe nonce and a shq command', async () => {
+  const def = { name: 'unit tests', cmd: "node -e 'process.exit(0)'", kind: 'exit' };
+  const gm2 = (h) => ({ headSha: FULL(h), clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'unit tests', ran: true, exit: 0 }] });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { gates: [def], locks: [] },
+    over: (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm2('abc1234') } : /merge-gates/.test(l) ? gm2('e1') : /gates\d/.test(l) && !/fix/.test(l) ? gm2(/:regates/.test(l) ? 'a3' : 'a2') : undefined) });
+  assert.equal(r.results[0].merged, true);
+  const measured = calls.filter((c) => c.label === 'preflight' || /gates\d/.test(c.label)).filter((c) => /capture\.mjs/.test(c.prompt));
+  assert.ok(measured.length >= 3, measured.map((c) => c.label).join(','));
+  for (const c of measured) {
+    const lines = [...c.prompt.matchAll(CAP_LINE)];
+    assert.equal(lines.length, 1, c.label);
+    const [, nonce, task, tests, quoted] = lines[0];
+    assert.match(nonce, /^[A-Za-z0-9:._@-]{1,160}$/, c.label);
+    assert.match(nonce, /:g0$/);
+    assert.match(task, /^[A-Za-z0-9._-]+-gates$/);
+    assert.ok(!tests, 'an exit gate takes no --tests');
+    assert.equal(quoted, PURE_X.shq(def.cmd));
+    assert.equal(unshq(quoted), def.cmd);
+    assert.ok(!c.prompt.includes('capture.mjs" run --nonce unit'), 'the nonce never holds the raw gate name');
+  }
+  assert.match(calls.find((c) => c.label === 'preflight').prompt, /--task preflight-gates /);
+  assert.match(calls.find((c) => c.label === 'E1:gates1').prompt, /--task E1-gates /);
+});
+
+test('E41 B2 T2: a tests gate runs capture with --tests and a measure whose gate has no valid capture line is retried once and then an infra failure', async () => {
+  let n = 0;
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
+    over: (l) => (/^E1:gates1-2/.test(l) ? (n++, { ...gm('a2'), gates: gm('a2').gates.map((g) => ({ ...g, capture: 'nothing' })) }) : undefined) });
+  assert.equal(r.results[0].merged, false);
+  assert.ok(labels.includes('E1:gates1-2-retry'), labels.join(','));
+  assert.equal(n, 2);
+  const unit = calls.find((c) => c.label === 'E1:gates1-2').prompt;
+  assert.match(unit, / --tests --cwd /);
+  assert.doesNotMatch(calls.find((c) => c.label === 'E1:gates1-1').prompt, / --tests /);
+});
+
 test('happy path merges, persists the log before the re-sync gates, and cleanup is scoped', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(r.results[0].merged, true);
@@ -310,7 +369,7 @@ test('gates-fix review is logged and the log is committed before re-measuring', 
   let n = 0;
   const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
-      if (l === 'E1:gates1-1' && n++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
+      if (l === 'E1:gates1-2' && n++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
       if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
       if (l === 'E1:gates-fix1-review') return { issues: [{ severity: 'minor', description: 'm' }], headSha: 'a2b', clean: true, commitsInRange: 1 };
       if (/^E1:gates2-/.test(l)) return gm('a2c');
@@ -2427,7 +2486,7 @@ test('R3/I-2: the gates and final fixers may not edit the spec or the plan, and 
   let g = 0;
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'],
     over: (l) => {
-      if (l === 'E1:gates1-1' && g++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
+      if (l === 'E1:gates1-2' && g++ === 0) return gm('a2', { exit: 1, failedNames: ['new'] });
       if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
       if (l === 'E1:final-1-r1') return { issues: [{ severity: 'important', category: 'defeito', description: 'd' }], headSha: 'a1', clean: true, commitsInRange: 2 };
       if (l === 'E1:final-fix1') return { status: 'DONE', summary: 'f', checks: [] };
