@@ -199,7 +199,7 @@ Em `specLoadOnce` e `planLoadOnce`, o `emit` e o `check --json` deixam de ser co
 **Impacto de tamanho.**
 
 - `roadmap-release.js` tem hoje 244.883 caracteres LF (247.930 bytes em disco, CRLF). O orçamento do E41 é de até +15.000 caracteres LF, para no máximo 259.883, abaixo do teto de 300.000 da DEC-003 e com mais de 40.000 de folga para E35 a E37. Em disco fica perto de 263 KB, metade do limite de lançamento de 524.288 bytes.
-- `coordinator.js` tem 76.187 caracteres LF. O orçamento é de até +12.000, para no máximo 88.187, abaixo de 120.000.
+- `coordinator.js` tem 76.187 caracteres LF. O orçamento é de até +12.000, para no máximo 88.187, abaixo de 120.000 (subido para 88.500 pela DEC-039, depois das correções do portão T3).
 - O embutido de `plan-digest.mjs` cresce cerca de 4 a 5 KB nos dois alvos.
 - `size.test.mjs`: tetos não mudam (R14); a asserção de folga passa a `> 10000` (DEC-034).
 

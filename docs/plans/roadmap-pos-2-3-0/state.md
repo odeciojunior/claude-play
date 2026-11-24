@@ -25,7 +25,6 @@ Estratégia v1.1 -- 2026-11-23
 - (executor) Manter intocadas as pastas de transcrições pagas dos três lotes do pós-2.2.0 em D:/claude-e3x-out até o fechamento de E35 e E39; apagá-las em E40 (decisão 35 do pós-2.2.0; REQ-008).
 - (dono) Conferir o relatório docs/reports/2026-11-21-E38-arnes-e-procs-linux.md para aceite humano de E38 AC2 (conferência Linux/WSL real de verify-run procs).
 - (dono) Conferência humana H1 da sonda AC2b do E41 (linha de measurements.md de 2026-11-24; AC2b é verify: human)
-- (dono) Ratificar DEC-035, DEC-036 e DEC-037 (decisões do executor do E41, pendentes; DEC-038 já vigente)
 - (dono) Integrar release/pos-2.3.0 em main (E41 na-branch; provas copiadas para D:/claude-pos23-out/e41-evidencias porque o prune do fecho limpou .git/pt-evidence)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
