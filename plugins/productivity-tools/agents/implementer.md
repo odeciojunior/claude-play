@@ -40,7 +40,7 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
 ## CAPTURE
 
 - With a `CAPTURE:` line in the prompt, run each verification as `node <capture> run --nonce <prefix><k> --task <id> -- <command>`, with an increasing `<k>`, or with `--bash "<command>"` when the command needs a shell.
-- The `CAPTURE:` line already carries `--cwd <deliverable worktree>`: run it unchanged, adding only `--nonce` and the command.
+- The `CAPTURE:` line already carries `--cwd` (the worktree it names) and `--nonce <prefix>`: run it unchanged, replacing only `<k>` and `<command>`.
 - `checks[].command` is the inner command, identical between the red round and the green round.
 - `output` is the literal JSON line the capture printed; `exit` is the `exit` of that line.
 - The report cites only `path`, `sha256` and `exit` (DEC-026).

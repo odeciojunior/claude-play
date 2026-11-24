@@ -441,6 +441,24 @@ test('prune: apaga so as pastas do prefixo e imprime a linha assinada', () => {
   });
 });
 
+test('prune: o prefixo api- apaga api-T1 e api-gate e mantem api-v2-T1; E4- nao toca E41-T1', () => {
+  withRepo((repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    for (const d of ['api-T1', 'api-gate', 'api-v2-T1', 'api-v2-gate', 'E41-T1']) {
+      fs.mkdirSync(path.join(root, d), { recursive: true });
+    }
+    const r = runCli(['prune', '--task-prefix', 'api-', '--cwd', fwd(repo)]);
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.deepEqual(JSON.parse(r.stdout).removed, ['api-T1', 'api-gate']);
+    assert.equal(fs.existsSync(path.join(root, 'api-v2-T1')), true);
+    assert.equal(fs.existsSync(path.join(root, 'api-v2-gate')), true);
+    const r2 = runCli(['prune', '--task-prefix', 'E4-', '--cwd', fwd(repo)]);
+    assert.equal(r2.code, 0, r2.stderr + r2.stdout);
+    assert.deepEqual(JSON.parse(r2.stdout).removed, []);
+    assert.equal(fs.existsSync(path.join(root, 'E41-T1')), true);
+  });
+});
+
 test('prune: prefixo vazio ou com / sai 2 e nada e apagado', () => {
   withRepo((repo) => {
     const dir = path.join(repo, '.git', 'pt-evidence', 'E41-T1');

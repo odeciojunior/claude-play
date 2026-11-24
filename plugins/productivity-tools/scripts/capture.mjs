@@ -103,6 +103,9 @@ function runSlice(argv, platform) {
   return { code: 0, line: JSON.stringify(envs[k]) };
 }
 
+// Only prefix + a suffix without hyphen is ours: the prefix `api-` must not reach `api-v2-T1` of another plan.
+const SUFFIX_RE = /^[A-Za-z0-9._]+$/;
+
 function runPrune(argv, platform) {
   const o = parseFlags(argv, { '--task-prefix': 'prefix', '--cwd': 'cwd' });
   if (o.prefix === undefined || !TASK_RE.test(o.prefix)) throw new UsageError('--task-prefix ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras)');
@@ -112,7 +115,7 @@ function runPrune(argv, platform) {
   const root = path.join(gitDir, 'pt-evidence');
   let names = [];
   try { names = fs.readdirSync(root, { withFileTypes: true }); } catch { /* sem pasta */ }
-  const removed = names.filter((d) => d.isDirectory() && d.name.startsWith(o.prefix)).map((d) => d.name).sort();
+  const removed = names.filter((d) => d.isDirectory() && d.name.startsWith(o.prefix) && SUFFIX_RE.test(d.name.slice(o.prefix.length))).map((d) => d.name).sort();
   for (const name of removed) fs.rmSync(path.join(root, name), { recursive: true, force: true });
   return { code: 0, line: JSON.stringify(sign({ tool: 'capture', command: 'prune', removed })) };
 }
