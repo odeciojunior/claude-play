@@ -88,6 +88,10 @@ A config derived by the preflight carries `generated: true`, and the run uses `m
 3. Remove `"generated": true` and commit the file on the target branch.
 4. Run again. `maxParallel` now applies (default 3, or the value in the config or args).
 
+## Evidence folder, cleanup and resume
+
+Every command run through `capture.mjs run` keeps its output in `<absolute git-dir>/pt-evidence/<task>/`, outside the working tree and outside `docs/` (DEC-026). `capture.mjs run` deletes files older than 14 days. The CLEANUP of each deliverable runs `capture.mjs prune --task-prefix '<E>-'`. A worktree's folder disappears with the worktree. Reports cite only the path, the sha256 and the exit code, never the output. Runs started on 2.4.0 cannot be resumed with `resumeFromRunId` (DEC-028): launch again with a new `runToken`.
+
 ## Known limits
 
 A resume never uses the Workflow cache: the `runToken` of each preflight sits in the first agent call, so even with `resumeFromRunId` every stage runs again. Each stop for a person therefore costs, on the resume, the discovery, the preflight (reusing the gate baseline from `run.json` when the target and gates are unchanged, or re-measuring every gate otherwise), the setup and the reading of the spec and the plan, before the work goes on where it stopped.

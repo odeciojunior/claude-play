@@ -67,3 +67,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 `plan-no-data-block`, `plan-invalid`, `state-exists`, `state-schema`, `concurrent-change` (the file changed since the read; read again), `unknown-step`, `unknown-event`, `blocked`, `wrong-status`, `wave-order`, `dependency-not-passed`, `dependency-held`, `tier-down`, `inline-not-allowed`, `external-relaunch`, `external-unauthorized`, `gate-owed`, `steps-open`.
 
 A refusal changes nothing: read `next`, then act on what it says.
+
+## Evidence folder, cleanup and resume
+
+Every command run through `capture.mjs run` keeps its output in `<absolute git-dir>/pt-evidence/<task>/`, outside the working tree and outside `docs/` (DEC-026). `capture.mjs run` deletes files older than 14 days. At the end of the plan the coordinator runs `capture.mjs prune --task-prefix '<plan id>-'`. A worktree's folder disappears with the worktree. Reports cite only the path, the sha256 and the exit code, never the output. Runs started on 2.4.0 cannot be resumed with `resumeFromRunId` (DEC-028): launch again with a new `runToken`.
