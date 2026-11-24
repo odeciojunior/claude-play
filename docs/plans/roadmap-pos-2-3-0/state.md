@@ -2,8 +2,7 @@ Estratégia v1.1 -- 2026-11-23
 
 <!-- roadmap:now -->
 1. Concluir E35 (AC2: logar a config descartável D:/claude-pos23-cfg e rodar o lote pago de confirmação de 10 execuções do braço opus em lentes-semeadas-A/B, teto US$ 7). Executa: dono + executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado), E38 (publicado).
-2. Iniciar E41 (Saída de script sem recópia por LLM): spec via spec-writer no tópico docs/plans/pos-2-3-0-E41/ com AC1 a AC7, depois plan-writer e plan-coordinator (DEC-030). Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado).
-3. Depois de E41: E36 e E37 em série. Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado), E41.
+2. E36 e E37 em série, agora que o E41 está na branch release/pos-2.3.0. Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado), E41 (na-branch).
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
@@ -15,7 +14,7 @@ Estratégia v1.1 -- 2026-11-23
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Conferência humana de AC2 em docs/reports/2026-11-21-E38-arnes-e-procs-linux.md; resto em E40 |
 | E39 | nao-iniciado | - | - |
 | E40 | nao-iniciado | - | - |
-| E41 | spec | `docs/plans/pos-2-3-0-E41/spec.md` | Planos A e B via plan-writer |
+| E41 | na-branch | `docs/plans/pos-2-3-0-E41/spec.md`, `docs/plans/pos-2-3-0-E41/plano-b2/progress.json`, `2868ced`, `a9d544f`, `7636dd7` | Conferência humana do AC2b e de H1 (dono) em measurements.md; integrar release/pos-2.3.0 em main; depois E36 e E37 em série |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
@@ -25,10 +24,14 @@ Estratégia v1.1 -- 2026-11-23
 - (dono) Logar a config descartável quando o primeiro lote pago (E35) estiver pronto para rodar e fazer logout ao fim de E40 antes de apagar a pasta da config.
 - (executor) Manter intocadas as pastas de transcrições pagas dos três lotes do pós-2.2.0 em D:/claude-e3x-out até o fechamento de E35 e E39; apagá-las em E40 (decisão 35 do pós-2.2.0; REQ-008).
 - (dono) Conferir o relatório docs/reports/2026-11-21-E38-arnes-e-procs-linux.md para aceite humano de E38 AC2 (conferência Linux/WSL real de verify-run procs).
+- (dono) Conferência humana H1 da sonda AC2b do E41 (linha de measurements.md de 2026-11-24; AC2b é verify: human)
+- (dono) Ratificar DEC-035, DEC-036 e DEC-037 (decisões do executor do E41, pendentes; DEC-038 já vigente)
+- (dono) Integrar release/pos-2.3.0 em main (E41 na-branch; provas copiadas para D:/claude-pos23-out/e41-evidencias porque o prune do fecho limpou .git/pt-evidence)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| release/pos-2.3.0 | viva | E41 (planos A, B1, B2 e B3) concluído; não integrada em main |
 <!-- /roadmap:inflight -->
 <!-- roadmap:releases -->
 | Pacote | Entregáveis | Estado | SHA carimbado | Data | Ambiente |

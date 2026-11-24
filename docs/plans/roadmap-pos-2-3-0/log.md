@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-24 | E41 | DEC-035 a DEC-038 (E41) conferidas: 035 a 037 do executor pendentes de ratificação do dono, 038 vigente; xor-base64 funcionou no relançamento real (10 fatias, 1 tentativa cada, sonda 6/6) | `decisions.md` |
+| 2026-11-24 | E41 | E41 critérios comparados: nenhum mudou (8 critérios iguais ao cartão) | `docs/plans/pos-2-3-0-E41/spec.md` |
+| 2026-11-24 | E41 | E41 plano B2 concluído (T11 stopped, substituída pela T12 que passou; portão final na 4ª rodada com 5aaed01, 0e4dfe2, 207aacd, a9d544f); planos A, B1, B2 e B3 na branch, E41 na-branch; provas copiadas para D:/claude-pos23-out/e41-evidencias após o prune | `docs/plans/pos-2-3-0-E41/plano-b2/progress.json, 2868ced` |
+| 2026-11-24 | E41 | medição paga AC2b registrada: US$ 0,3921 em 6 execuções (inclui US$ 0,170395 da 1-on abortada, DEC-038); parada authorize 6/6; H1 pendente do dono | `measurements.md` |
 | 2026-11-23 | E41 | DEC-034 (folga de size.test.mjs > 10000) decidida pelo dono via Fable | `decisions.md` |
 | 2026-11-23 | E41 | cartão E41 cita DEC-033 (ratificada); pendência de ratificação removida | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-23 | E41 | DEC-033 ratificada pelo dono | `decisions.md` |
