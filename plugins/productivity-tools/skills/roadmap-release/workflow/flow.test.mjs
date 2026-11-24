@@ -241,6 +241,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (lm && (lm[2] || lm[3])) {
       const t = loads.get(lm[1]);
       if (!t) throw new Error('unmocked load step ' + o.label);
+      calls.push({ label: o.label, prompt, opts: o }); // every answered call counts, the derived load steps too
       return lm[3] ? loadSlice(prompt, lm[2] || 'check', t) : loadAnswer(prompt, lm[2], t);
     }
     const v = await answerRaw(prompt, o);
@@ -3458,8 +3459,10 @@ const ANTES = 39;
 test('E10 AC3: the happy path of a one-task deliverable makes ANTES - 1 calls, no git-truth, status write before read', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(r.results[0].merged, true);
-  // + 1: the E41 B2 T3 call `E1:prune-evidence` (capture.mjs prune) runs once per merged deliverable, after the cleanup.
-  assert.equal(labels.length, ANTES - 1 + 1);
+  // E41 B2: + 1 for `E1:prune-evidence` (capture.mjs prune, once per merged deliverable, after the cleanup) and + 7 for the load commands run
+  // by capture.mjs: E1:spec-load1-emit/-head/-porcelain and E1:plan-load1-emit/-blob/-head/-porcelain (no slice on the happy path).
+  assert.equal(labels.length, ANTES - 1 + 1 + 7);
+  for (const l of ['E1:spec-load1-emit', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain', 'E1:prune-evidence']) assert.ok(labels.includes(l), l);
   assert.ok(!labels.includes('git-truth'));
   const w = labels.indexOf('E1:status-d');
   const rd = labels.indexOf('E1:status-d-read');
