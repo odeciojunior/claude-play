@@ -4326,7 +4326,7 @@ test('a spec load that keeps diverging from the card fails as infra after five t
   assert.equal(r.results[0].failKind, 'infra');
   assert.match(r.results[0].error, /spec load/);
   const five = ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3', 'E1:spec-load4', 'E1:spec-load5'];
-  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), five);
+  assert.deepEqual(labels.filter((l) => /:spec-load\d$/.test(l)), five);
   assert.deepEqual(five.map((l) => [calls.find((c) => c.label === l).opts.model, calls.find((c) => c.label === l).opts.effort]), [['haiku', 'low'], ['haiku', 'low'], ['sonnet', 'medium'], ['sonnet', 'medium'], ['sonnet', 'medium']]);
   assert.ok(!labels.includes('E1:spec-commit'));
   assert.ok(!labels.includes('E1:plan'));
@@ -4342,7 +4342,7 @@ test('a spec load with output that is not the spec/1 envelope is retried, and a 
     return undefined;
   };
   const { labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: flaky });
-  assert.deepEqual(labels.filter((l) => /:spec-load/.test(l)), ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3']);
+  assert.deepEqual(labels.filter((l) => /:spec-load\d$/.test(l)), ['E1:spec-load1', 'E1:spec-load2', 'E1:spec-load3']);
   assert.ok(labels.includes('E1:spec-commit'));
   assert.ok(labels.includes('E1:plan'));
 });
