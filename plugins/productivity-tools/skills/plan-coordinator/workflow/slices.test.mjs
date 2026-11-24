@@ -74,12 +74,12 @@ function widePlan(n, titleOf = (k) => `Módulo ${k}`) {
   return prose.join('\n') + '\n## Bloco de dados\n\n```json data\n' + JSON.stringify(data, null, 2) + '\n```\n';
 }
 
-function sandbox(plan) {
+function sandbox(plan, id = 'FX') {
   const dir = mkdtempSync(join(tmpdir(), 'coordsl-'));
   const planDir = join(dir, 'docs', 'plans', 'fx');
   mkdirSync(planDir, { recursive: true });
   writeFileSync(join(planDir, 'plan.md'), plan);
-  writeFileSync(join(planDir, 'spec.md'), SPEC);
+  writeFileSync(join(planDir, 'spec.md'), SPEC.replace('"id": "FX"', `"id": "${id}"`));
   writeFileSync(join(dir, 'check.mjs'), CHECK);
   sh(dir, 'git', ['init', '-q', '-b', 'main']);
   sh(dir, 'git', ['config', 'core.autocrlf', 'false']);
@@ -180,8 +180,8 @@ function makeSim(sb, over = {}) {
   return { calls, go: (args) => runWorkflow(args, agent, parallel, () => {}, () => {}, {}) };
 }
 
-const withSandbox = async (plan, fn) => {
-  const sb = sandbox(plan);
+const withSandbox = async (plan, fn, id) => {
+  const sb = sandbox(plan, id);
   try {
     await fn(sb);
   } finally {
@@ -370,3 +370,65 @@ test('E41 AC1: a test command of 400 lines (about 12.7 KB) runs through capture.
   const gateCall = byAgent(sim, RUNNER).find((c) => c.o.label === 'baseline');
   assert.match(gateCall.cmd, /--tests --cwd /);
 }));
+
+// E41 T3: a runner that returns no stdout (null) is an invalid output, not a TypeError: retry or handled error.
+const isApply = (c) => c.cmd !== undefined && / apply /.test(c.cmd) && / --events /.test(c.cmd);
+const isCapture = (c) => c.cmd !== undefined && /capture\.mjs' run /.test(c.cmd);
+
+test('E41 T3: a null stdout of a slice read is retried, and always null is a handled error', () => withSandbox(widePlan(2), async (sb) => {
+  let hit = false;
+  const sim = makeSim(sb, { runner: (rec, res) => { if (isRead(rec) && sliceOf(rec.cmd) === 0 && !hit) { hit = true; return { exit: 0, stdout: null }; } return cutter(rec, res); } });
+  const r = await sim.go(launchArgs(sb));
+  assert.ok(byAgent(sim, IMPL).length > 0, JSON.stringify(r));
+  assert.ok(byAgent(sim, RUNNER).some((c) => c.o.label === 'read-slice0-retry2'), 'the null read was repeated');
+  await withSandbox(widePlan(2), async (sb2) => {
+    const sim2 = makeSim(sb2, { runner: (rec, res) => (isRead(rec) && sliceOf(rec.cmd) === 0 ? { exit: 0, stdout: null } : cutter(rec, res)) });
+    const r2 = await sim2.go(launchArgs(sb2));
+    assert.equal(r2.status, 'error', JSON.stringify(r2));
+    assert.equal(byAgent(sim2, IMPL).length, 0);
+  });
+}));
+
+test('E41 T3: a null stdout of an apply goes to the signed re-read, not to a TypeError', () => withSandbox(widePlan(2), async (sb) => {
+  let hit = false;
+  const sim = makeSim(sb, { runner: (rec, res) => { if (isApply(rec) && !hit) { hit = true; return { exit: 0, stdout: null }; } return cutter(rec, res); } });
+  const r = await sim.go(launchArgs(sb));
+  assert.ok(hit, 'an apply ran');
+  assert.ok(typeof r.status === 'string', JSON.stringify(r));
+  assert.ok(byAgent(sim, RUNNER).some((c) => /^reread:/.test(c.o.label) || /^apply:.*retry/.test(c.o.label)), 'the null apply was re-read or repeated');
+}));
+
+test('E41 T3: a null stdout of a capture is retried as capture, and null twice is a handled return', () => withSandbox(widePlan(2), async (sb) => {
+  let hit = false;
+  const sim = makeSim(sb, { runner: (rec, res) => { if (isCapture(rec) && !hit) { hit = true; return { exit: 0, stdout: null }; } return cutter(rec, res); } });
+  const r = await sim.go(launchArgs(sb));
+  assert.ok(hit);
+  assert.ok(byAgent(sim, RUNNER).some((c) => /^baseline-retry$/.test(c.o.label)), 'the null capture was repeated');
+  assert.ok(typeof r.status === 'string', JSON.stringify(r));
+  await withSandbox(widePlan(2), async (sb2) => {
+    const sim2 = makeSim(sb2, { runner: (rec, res) => (isCapture(rec) ? { exit: 0, stdout: null } : cutter(rec, res)) });
+    const r2 = await sim2.go(launchArgs(sb2));
+    assert.ok(typeof r2.status === 'string', JSON.stringify(r2));
+  });
+}));
+
+test('E41 T3: a plan id outside [A-Za-z0-9._-] gives a valid --task and --nonce, and the CAPTURE line carries --cwd', () => {
+  const plan = widePlan(2).replace('"id": "FX"', '"id": "Plano B"');
+  return withSandbox(plan, async (sb) => {
+    const sim = makeSim(sb);
+    const r = await sim.go(launchArgs(sb));
+    assert.ok(typeof r.status === 'string', JSON.stringify(r));
+    assert.equal(readState(sb).plan.id, 'Plano B');
+    const caps = byAgent(sim, RUNNER).filter(isCapture);
+    assert.ok(caps.length > 0, 'a capture ran');
+    for (const c of caps) {
+      const t = tokenize(c.cmd);
+      assert.match(t[t.indexOf('--task') + 1], /^[A-Za-z0-9._-]+$/);
+      assert.match(t[t.indexOf('--nonce') + 1], /^[A-Za-z0-9:._@-]{1,160}$/);
+    }
+    assert.ok(caps.every((c) => c.exit !== 2), 'capture.mjs accepted every call');
+    const line = byAgent(sim, IMPL)[0].prompt.split('\n').find((l) => l.startsWith('CAPTURE:'));
+    assert.match(line, /--task Plano_B-T1 --cwd '[^']+' -- <command>$/);
+    assert.match(line, /--nonce [^\s]+:Plano_B:T1:<k>/);
+  }, 'Plano B');
+});

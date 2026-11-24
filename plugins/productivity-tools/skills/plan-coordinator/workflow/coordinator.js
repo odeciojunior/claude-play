@@ -1324,6 +1324,11 @@ const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in 
 const runPrompt = (cmd, writes, json) => `Run this command once and return its exit code and ${json ? `the one JSON line it prints, literal (a line above ${MAX_COPY_BYTES} bytes is an error of the command: return it as it is)` : 'its full stdout, literal'}${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
 // An output an agent copied must fit the copy limit, or it was cut.
 const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
+// The stdout of a runner return, or null when the agent returned nothing or a non-string.
+const stdoutOf = (out) => (out && typeof out.stdout === 'string' ? out.stdout : null)
+// The plan id as capture.mjs accepts it in --task and in --nonce.
+const taskId = () => String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_')
+const nonceId = () => String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_')
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
 const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`
@@ -1377,8 +1382,10 @@ const readSigned = async (label, first) => {
         const nonce = first && k === 0 ? A.runToken : sliceNonce()
         const out = await runCmd(`node ${shq(PROGRESS)} read ${shq(STATE_FILE)} --nonce ${shq(nonce)} --slice ${k} --json`,
           `${label}-slice${k}${t > 1 ? `-retry${t}` : ''}`, { phase: 'Read', json: true, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
-        if (!copyFits(out && out.stdout)) { why = 'the output of the read is larger than the copy limit'; continue }
-        const data = parseJson(out.stdout)
+        const so = stdoutOf(out)
+        if (so === null) { why = 'the read returned no output'; continue }
+        if (!copyFits(so)) { why = 'the output of the read is larger than the copy limit'; continue }
+        const data = parseJson(so)
         const v = checkSlice(data, { tool: 'progress', command: 'read', nonce, slice: k })
         if (!v.ok) { why = v.why; continue }
         if (k === 0 && !(Number.isInteger(data.slices) && data.slices >= 1 && data.slices <= 200)) { why = 'the first slice has no valid slice count'; continue }
@@ -1412,7 +1419,8 @@ const flushChunk = async (why, events) => {
     const nonce = nonceOf()
     const out = await runCmd(applyCmd(expect, events, nonce),
       `apply:${why}${attempt > 1 ? '-retry' : ''}`, { phase: 'Read', writes: true, json: true })
-    const data = copyFits(out && out.stdout) ? parseJson(out.stdout) : null
+    const so = stdoutOf(out)
+    const data = so !== null && copyFits(so) ? parseJson(so) : null
     if (checkSigned(data, nonce, 'apply').ok) {
       if (data.ok !== true) {
         if (data.code === 'concurrent-change') return divergence('progress.json changed while the run was writing (concurrent-change); this chunk was not written')
@@ -1474,7 +1482,7 @@ const implPrompt = (s, defects) => {
     `Repository: ${ROOT}. Read the brief of the step first: ${briefOf(s)} (plan constraints, files, checks and the interfaces this step consumes). Never read the plan file.`,
     `Files of this step: ${filesOf(s).length ? filesOf(s).join(', ') : 'none (this step writes no file)'}.`,
     handoffs.length ? handoffs.join('\n') : 'HANDOFF: none (no dependency of this step left a handoff).',
-    `CAPTURE: node "${CAPTURE}" run --nonce ${RUN_TAG}:${S.plan.id}:T${s.n}:<k> --task ${S.plan.id}-T${s.n} -- <command>`,
+    `CAPTURE: node "${CAPTURE}" run --nonce ${RUN_TAG}:${nonceId()}:T${s.n}:<k> --task ${taskId()}-T${s.n} --cwd ${shq(ROOT)} -- <command>`,
     s.external ? `This step is external and the owner authorized it (plan:T${s.n}@${S.plan.digest}): perform the external effect exactly as the brief says, once, and report what happened.` : '',
     prev,
     'Rules:',
@@ -1545,11 +1553,12 @@ const runCapture = async ({ argv, bash, task, label, phase, tests, cwd }) => {
     const nonce = nonceOf()
     const cmd = `node ${shq(CAPTURE)} run --nonce ${shq(nonce)} --task ${shq(task)}${tests ? ' --tests' : ''} --cwd ${shq(cwd)} ${bash !== undefined ? `--bash ${shq(bash)}` : `-- ${argv.map(shq).join(' ')}`}`
     const out = await runCmd(cmd, `${label}${t > 1 ? '-retry' : ''}`, { phase, json: true, writes: true, model: t > 1 ? 'sonnet' : 'haiku', effort: t > 1 ? 'medium' : 'low' })
-    if (copyFits(out && out.stdout) && checkCapture(out.stdout, { nonce, cmdDigest: digest }).ok) return parseJson(out.stdout)
+    const so = stdoutOf(out)
+    if (so !== null && copyFits(so) && checkCapture(so, { nonce, cmdDigest: digest }).ok) return parseJson(so)
   }
   return null
 }
-const runTest = (label) => runCapture({ bash: testCmd(), task: `${S.plan.id}-gate`, label, phase: 'Gate', tests: true, cwd: ROOT })
+const runTest = (label) => runCapture({ bash: testCmd(), task: `${taskId()}-gate`, label, phase: 'Gate', tests: true, cwd: ROOT })
 
 const ensureBaseline = async () => {
   if (S.run.baseline !== null && S.run.baseline !== undefined) return null
@@ -1760,7 +1769,7 @@ try {
       case 'ask':
         return await finish(stopWith('ask', { question: act.question || S.run.question || (act.manual || []).map((m) => `T${m.step}: ${m.text}`).join(' | '), manual: act.manual || [] }))
       case 'done':
-        await runCmd(`node "${CAPTURE}" prune --task-prefix ${shq(S.plan.id + '-')} --cwd ${shq(ROOT)}`, 'capture-prune', { phase: 'Gate', writes: true, json: true }).catch(() => null) // R12: a failed cleanup never changes done
+        await runCmd(`node "${CAPTURE}" prune --task-prefix ${shq(taskId() + '-')} --cwd ${shq(ROOT)}`, 'capture-prune', { phase: 'Gate', writes: true, json: true }).catch(() => null) // R12: a failed cleanup never changes done
         return await finish({ status: 'done', ...summaryOf() })
       case 'prelaunch-review': { // external steps are reviewed before the person is asked, read-only on the brief
         phase('Review')

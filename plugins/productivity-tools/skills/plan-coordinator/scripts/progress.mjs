@@ -426,7 +426,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     if (digest !== fnv1a(JSON.stringify(canon(rest)))) return bad('--events: digest da carga não confere; nada foi gravado');
     const now = new Date().toISOString();
     const reply = (ok, code, extra) => {
-      out(JSON.stringify(signed({ tool: 'progress', command: 'apply', nonce: opts.nonce, now, ok, code, ...extra, action: ok ? nextAction(extra.finalState) : null, stateDigest: stateDigest(extra.finalState), finalState: undefined }), null, 2));
+      out(JSON.stringify(signed({ tool: 'progress', command: 'apply', nonce: opts.nonce, now, ok, code, ...extra, action: ok ? nextAction(extra.finalState) : null, stateDigest: stateDigest(extra.finalState), finalState: undefined })));
       return ok ? 0 : 1;
     };
     if (rest.expect !== stateDigest(state)) return reply(false, 'concurrent-change', { finalState: state });
