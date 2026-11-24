@@ -494,3 +494,19 @@ test('E35 AC1 (S3-24): task-reviewer restricts verdicts to restricted mode and s
   assert.ok(slice('Restricted mode').includes('Return `verdicts` (only in `restricted` mode) with `{ id, open }` for every open finding.'));
   assert.ok(slice('Review mode').includes('return `spec` and `quality` (`pass` or `fail`, only in `review` mode).'));
 });
+
+test('E41 T3: with ctx.capture the implementer prompt carries the CAPTURE line; without it (agy) the prompt is unchanged', () => {
+  const plain = P.buildImplPrompt(ctx, task);
+  assert.ok(!plain.includes('CAPTURE:'));
+  const capture = { path: '/plug/scripts/capture.mjs', noncePrefix: 'ab12cd34:E7:T3:', task: 'E7-T3' };
+  const p = P.buildImplPrompt({ ...ctx, capture }, task);
+  assert.ok(p.includes('\nCAPTURE: node "/plug/scripts/capture.mjs" run --nonce ab12cd34:E7:T3:<k> --task E7-T3 -- <command>'), p);
+  // the capture line is the only addition
+  assert.equal(p.replace(/\nCAPTURE: [^\n]*/, ''), plain);
+  assert.equal(P.buildImplPrompt({ ...ctx, capture: undefined }, task), plain);
+});
+
+test('E41 T3: the implementation context of runDeliverable carries the capture data of the task', () => {
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8');
+  assert.ok(src.includes("capture: { path: `${pluginRoot}/scripts/capture.mjs`, noncePrefix: `${RUN_TAG}:${E}:T${t.n}:`, task: `${E}-T${t.n}` }"));
+});

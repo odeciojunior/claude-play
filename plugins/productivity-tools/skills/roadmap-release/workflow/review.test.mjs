@@ -456,7 +456,7 @@ test('tasksFromPlan copies testFirst (true and exempt)', () => {
 test('AC1: the test-first check runs before the first task reviewer and fails without a reviewer', () => {
   const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
   const close = body.indexOf('closeEffect(t, awaitingPerson.includes(t.n))');
-  const call = body.indexOf('testFirstGap(t, impl, resumed)');
+  const call = body.indexOf('testFirstGap(t, impl, resumed, ');
   const loop = body.indexOf('reviewLoop(`T${t.n}:${kind}`');
   assert.ok(close > 0 && call > close && loop > call, 'order: closeEffect, testFirstGap, reviewLoop');
   const between = body.slice(call, loop);
@@ -791,3 +791,101 @@ test('E35 AC1: task-reviewer.md restricts verdicts to restricted and spec/qualit
   assert.match(section('Restricted mode'), /Return `verdicts` \(only in `restricted` mode\) with `\{ id, open \}`/);
   assert.match(section('Review mode'), /return `spec` and `quality` \(`pass` or `fail`, only in `review` mode\)\./);
 });
+
+// ---- E41 T3: the test-first pair is checked by the signed JSON lines of capture.mjs ----
+import { spawnSync as spawnCap } from 'node:child_process';
+import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+const CAPTURE_MJS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'capture.mjs');
+const NONCE_PREFIX = 'ab12cd34:E9:T2:';
+const capDir = mkdtempSync(join(tmpdir(), 'tf-capture-'));
+{
+  const git = spawnCap('git', ['init', '-q', capDir], { encoding: 'utf8' });
+  assert.equal(git.status, 0, git.stderr);
+}
+const marker = join(capDir, 'red.marker');
+writeFileSync(join(capDir, 'gen.mjs'), `import { existsSync } from 'node:fs';\nconsole.log('x'.repeat(7200));\nprocess.exit(existsSync(${JSON.stringify(marker)}) ? 1 : 0);\n`);
+writeFileSync(join(capDir, 'other.mjs'), `console.log('y'.repeat(7200));\nprocess.exit(0);\n`);
+const capRun = (nonce, script) => {
+  const r = spawnCap(process.execPath, [CAPTURE_MJS, 'run', '--nonce', nonce, '--task', 'E9-T2', '--cwd', capDir, '--', 'node', script], { encoding: 'utf8' });
+  const line = r.stdout.trim();
+  return { line, status: r.status, cmd: `node ${script}` };
+};
+writeFileSync(marker, 'red');
+const redRun = capRun(`${NONCE_PREFIX}1`, 'gen.mjs');
+rmSync(marker);
+const greenRun = capRun(`${NONCE_PREFIX}2`, 'gen.mjs');
+const otherRun = capRun(`${NONCE_PREFIX}2`, 'other.mjs');
+const outsideRun = capRun('zz99:E9:T2:2', 'gen.mjs');
+const asCheck = (r) => ({ command: r.cmd, output: r.line, exit: JSON.parse(r.line).exit });
+const capTask = { n: 2, testFirst: true, noCommit: false, files: ['a.js'] };
+const capOf = { noncePrefix: NONCE_PREFIX };
+
+test('E41 T3: the capture fixture is real: 7 KB of output, exit 1 then exit 0, one line under the copy limit', () => {
+  assert.equal(redRun.status, 1);
+  assert.equal(greenRun.status, 0);
+  for (const r of [redRun, greenRun]) {
+    const o = JSON.parse(r.line);
+    assert.ok(o.bytes >= 7000, `bytes ${o.bytes}`);
+    assert.ok(Buffer.byteLength(r.line, 'utf8') <= 3500);
+    assert.equal(o.tool, 'capture');
+  }
+});
+
+test('E41 T3: testFirstGap with a noncePrefix accepts a red then green pair of capture lines of 7 KB', () => {
+  for (const status of ['DONE', 'DONE_WITH_CONCERNS']) {
+    assert.equal(testFirstGap(capTask, { status, checks: [asCheck(redRun), asCheck(greenRun)] }, false, capOf), '');
+  }
+  // extra checks around the pair do not matter
+  assert.equal(testFirstGap(capTask, { status: 'DONE', checks: [ck('git status', 0), asCheck(redRun), asCheck(greenRun)] }, false, capOf), '');
+});
+
+test('E41 T3: testFirstGap with a noncePrefix refuses a tampered digest, another command, a nonce outside the prefix, green only and green before red', () => {
+  const red = asCheck(redRun), green = asCheck(greenRun);
+  const tampered = { ...red, output: JSON.stringify({ ...JSON.parse(red.output), exit: 1, bytes: 1 }) };
+  const flipped = { ...green, output: JSON.stringify({ ...JSON.parse(green.output), exit: 0, sha256: '0'.repeat(64) }) };
+  const bad = {
+    'tampered red': [tampered, green],
+    'tampered green': [red, flipped],
+    'another command in the second round': [red, asCheck(otherRun)],
+    'nonce outside the prefix': [red, asCheck(outsideRun)],
+    'green only': [green],
+    'red only': [red],
+    'green before red': [green, red],
+    'plain text outputs': [ck('t', 1), ck('t', 0)],
+    'no checks': [],
+  };
+  for (const [name, checks] of Object.entries(bad)) {
+    const gap = testFirstGap(capTask, { status: 'DONE', checks }, false, capOf);
+    assert.ok(gap && gap.includes('2') && gap.includes(`(${checks.length} checks)`), `${name}: ${gap}`);
+  }
+});
+
+test('E41 T3: without the fourth argument testFirstGap keeps the plain rule (R9)', () => {
+  assert.equal(testFirstGap(tfTask, { status: 'DONE', checks: [ck('t', 1), ck('t', 0)] }, false), '');
+  assert.equal(testFirstGap(tfTask, { status: 'DONE', checks: [ck('t', 1), ck('t', 0)] }, false, undefined), '');
+  assert.ok(testFirstGap(tfTask, { status: 'DONE', checks: [ck('t', 0)] }, false));
+});
+
+test('E41 T3: the call site passes the nonce prefix of the task', () => {
+  const body = SRC.slice(SRC.indexOf('async function runDeliverable('));
+  assert.ok(body.includes('testFirstGap(t, impl, resumed, { noncePrefix: `${RUN_TAG}:${E}:T${t.n}:` })'));
+});
+
+test('E41 T3: fmtChecks shows path, sha256, exit and the tail of a capture line, and the old text otherwise', () => {
+  const { fmtChecks } = loadPure();
+  const o = JSON.parse(redRun.line);
+  const txt = fmtChecks([asCheck(redRun)]);
+  assert.ok(txt.includes('$ node gen.mjs'));
+  assert.ok(txt.includes('exit 1'));
+  assert.ok(txt.includes(o.path), 'path');
+  assert.ok(txt.includes(o.sha256), 'sha256');
+  assert.ok(txt.includes('xxxx'), 'tail');
+  assert.ok(!txt.includes('"cmdDigest"'), 'the raw line is not repeated');
+  assert.equal(fmtChecks([ck('npm test', 1)]), '$ npm test\nexit 1\no');
+  assert.equal(fmtChecks([{ command: 'x', output: '{"a":1}', exit: 0 }]), '$ x\nexit 0\n{"a":1}');
+  assert.equal(fmtChecks([]), '(no checks reported)');
+});
+
+test.after(() => { try { rmSync(capDir, { recursive: true, force: true }); } catch { /* ignore */ } });

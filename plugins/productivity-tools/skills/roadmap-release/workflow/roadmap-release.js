@@ -616,7 +616,7 @@ function buildImplPrompt(ctx, task) {
 WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); a command that depends on the current directory uses the tool's own directory flag (npm --prefix ${ctx.wt}, make -C ${ctx.wt}, go -C ${ctx.wt}, node --test ${ctx.wt}/tests/...); never cd, never chain with &&.
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, in that worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}`
+Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}${ctx.capture ? `\nCAPTURE: node "${ctx.capture.path}" run --nonce ${ctx.capture.noncePrefix}<k> --task ${ctx.capture.task} -- <command>` : ''}`
 }
 // Failures show at the end of the output, so a long output keeps its tail.
 function tailOf(output) {
@@ -626,9 +626,16 @@ function tailOf(output) {
 function repeatRule() {
   return 'If an item of the previous round is still unresolved, report it again with the exact same file and description as listed (same wording), so the script can detect the repeat; do not reword it.'
 }
+// The capture.mjs line copied into a check output, or null.
+function captureLine(output) {
+  try { const o = JSON.parse(String(output).trim()); return o && o.tool === 'capture' && o.error === undefined ? o : null } catch { return null }
+}
 function fmtChecks(checks) {
   if (!checks || !checks.length) return '(no checks reported)'
-  return checks.map(c => `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`).join('\n---\n')
+  return checks.map(c => {
+    const o = captureLine(c.output)
+    return o ? `$ ${c.command}\nexit ${o.exit}\npath: ${o.path}\nsha256: ${o.sha256}\n${tailOf(o.tail)}` : `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`
+  }).join('\n---\n')
 }
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
   const rr = restrictedRound(ctx), w = ctx.wt
@@ -830,9 +837,15 @@ function commandKey(s) {
   return inner.includes('`') || oddSlashes(v, v.length - 1) ? v : inner
 }
 // A test-first task must report a failing check, then the same check passing.
-function testFirstGap(task, impl, resumed) {
+// With cap.noncePrefix a pair counts only as capture lines that check out (prefix, digest) of the same cmdDigest, red first.
+function testFirstGap(task, impl, resumed, cap) {
   if (resumed || !task || task.testFirst !== true || noFiles(task) || !impl || !/^DONE/.test(impl.status)) return ''
   const c = impl.checks || []
+  if (cap && cap.noncePrefix !== undefined) {
+    const k = c.map(a => { const o = captureLine(a.output); return o && checkCapture(String(a.output), { nonce: o.nonce, noncePrefix: cap.noncePrefix }).ok ? o : null })
+    if (k.some((a, i) => a && a.exit !== 0 && k.slice(i + 1).some(b => b && b.exit === 0 && a.cmdDigest === b.cmdDigest))) return ''
+    return `task ${task.n}: test-first without a failing capture line then the same one passing (${c.length} checks)`
+  }
   if (c.some((a, i) => a.exit !== 0 && c.slice(i + 1).some(b => b.exit === 0 && commandKey(a.command) === commandKey(b.command)))) return ''
   return `task ${task.n}: test-first without a failing check then the same check passing (${c.length} checks)`
 }
@@ -2277,6 +2290,9 @@ ${BASH_ONLY}`,
     const cl = await agent(`CLEANUP of deliverable ${E}: run once: node "${VERIFY_RUN}" procs ${encArg({ nonce: `${RUN_TAG}:${E}:procs`, wt, ports: [port, port + 9] })} and put in leftovers each pid of its failed and each item of its unchecked; stop any service you find that was started for ${E}; FIRST: if ${wt} still exists and git -C "${wt}" status --porcelain is not empty, a patch is needed: mkdir -p "${WT}/_tmp/${E}-dirty", save it (git -C "${wt}" diff --binary HEAD > "${WT}/_tmp/${E}-dirty/cleanup.patch", plus the untracked files list and copies) and confirm the file was written; if it cannot be written, do not remove the worktree and list it in leftovers. Then, when no patch was needed, or only after the patch was written: git -C "${REPO}" worktree remove --force "${wt}"; delete "${WT}/_tmp/${E}-"* (the dash is part of the pattern: it must not touch other deliverables such as ${E}0), except every folder whose name ends with -dirty; ${A.keepBranches ? 'keep the branch' : `git -C "${INTWT}" branch -d ${br} (only if merged)`}. List in leftovers what you could not remove.`,
       { label: `${E}:cleanup`, phase: 'Merge', schema: S_CLEAN, model: 'haiku', effort: 'low' })
     if (!cl || !cl.ok || (cl.leftovers || []).length) out.concerns.push(`incomplete cleanup: ${cl ? (cl.leftovers || []).join(', ') : 'null agent'}`)
+    const pr = await safe(() => agent(runPrompt(`node "${pluginRoot}/scripts/capture.mjs" prune --task-prefix ${shq(`${E}-`)} --cwd ${shq(INTWT)}`),
+      { agentType: 'productivity-tools:script-runner', label: `${E}:prune-evidence`, phase: 'Merge', schema: S_RUN, model: 'haiku', effort: 'low' }))
+    if (!pr || pr.exit !== 0) out.concerns.push(`capture evidence not pruned (exit ${pr ? pr.exit : 'none'})`)
     log(`${E}: merged into ${TARGET} (${result.mergeCommit})`)
     return out
   }
@@ -2808,7 +2824,7 @@ ${NO_ASK}`,
         return fail('externo', `external task ${t.n} awaits authorization (${held[0].item})`)
       }
     }
-    const runImpl = label => withLocks(locks, () => implAgent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt }), t), { label, phase: 'Implementation', model: implModel(t), effort: implEffort(t) }))
+    const runImpl = label => withLocks(locks, () => implAgent(buildImplPrompt(ctxFor({ locks, authorizedExternal: authorizedExt, capture: { path: `${pluginRoot}/scripts/capture.mjs`, noncePrefix: `${RUN_TAG}:${E}:T${t.n}:`, task: `${E}-T${t.n}` } }), t), { label, phase: 'Implementation', model: implModel(t), effort: implEffort(t) }))
     let impl = { status: 'DONE', summary: 'resumed: task already committed by a previous run; no checks reported, run the task verifications yourself', checks: [] }
     if (!resumed) {
       if (authorizedExt) {
@@ -2839,7 +2855,7 @@ ${NO_ASK}`,
         }
       }
     }
-    const gap = testFirstGap(t, impl, resumed)
+    const gap = testFirstGap(t, impl, resumed, { noncePrefix: `${RUN_TAG}:${E}:T${t.n}:` })
     if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null

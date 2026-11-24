@@ -19,3 +19,18 @@ test('E32: the cleanup prompt ends processes through verify-run procs', () => {
   assert.ok(check, 'the incomplete-cleanup concern follows the cleanup call');
   assert.ok(check.includes('if (!cl || !cl.ok || (cl.leftovers || []).length) out.concerns.push(`incomplete cleanup: '), check);
 });
+
+test('E41 T3: after the CLEANUP call a script-runner call prunes the capture evidence of the deliverable', () => {
+  const text = readFileSync(WF, 'utf8').replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const at = lines.findIndex((l) => l.includes('CLEANUP of deliverable'));
+  const check = lines.findIndex((l, i) => i > at && l.includes('incomplete cleanup'));
+  assert.ok(check > at);
+  const rest = lines.slice(check + 1, check + 6).join('\n');
+  assert.ok(rest.includes('capture.mjs" prune --task-prefix '), rest);
+  assert.ok(rest.includes('--task-prefix ${shq(`${E}-`)}'), 'the prefix is <E>- so E4 never prunes E40');
+  assert.ok(rest.includes('--cwd ${shq(INTWT)}'), 'run in the integration worktree');
+  assert.ok(rest.includes("agentType: 'productivity-tools:script-runner'"));
+  assert.ok(rest.includes('out.concerns.push('), 'a failure only reaches the concerns');
+  assert.ok(!/return fail\(/.test(rest.split('log(`${E}: merged')[0]), 'a failed prune never fails the deliverable');
+});
