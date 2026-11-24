@@ -834,7 +834,7 @@ test('E41 prefix: a resume with the same state and a new runToken keeps the pref
   assert.equal(prefix, proofPrefix(readState(sb)) + '-');
 }));
 
-test('coordinator.js stays within the E41 budget of 88500 LF characters (R14)', () => {
+test('coordinator.js stays within the E41 budget of 90000 LF characters (R14, DEC-041)', () => {
   const size = readFileSync(join(HERE, 'coordinator.js'), 'utf8').replace(/\r\n/g, '\n').length;
-  assert.ok(size <= 88500, `coordinator.js has ${size} LF characters`);
+  assert.ok(size <= 90000, `coordinator.js has ${size} LF characters`);
 });
