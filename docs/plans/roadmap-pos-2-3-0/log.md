@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-24 | - | estratégia v1.2: absorve DEC-042 e DEC-043 | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-24 | E41 | DEC-043: dono aborta qualquer avaliação do context-mode | `decisions.md` |
 | 2026-11-24 | E41 | pacote productivity-tools 2.5.0 publicado no marketplace claude-play (tag productivity-tools--v2.5.0; volta/productivity-tools-2.5.1 local) | `6abab96` |
 | 2026-11-24 | E41 | E41 integrada(s) em main via release/pos-2.3.0 | `0090d3c` |

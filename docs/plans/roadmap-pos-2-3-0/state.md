@@ -1,4 +1,4 @@
-Estratégia v1.1 -- 2026-11-23
+Estratégia v1.2 -- 2026-11-24
 
 <!-- roadmap:now -->
 1. Concluir E35 (AC2: logar a config descartável D:/claude-pos23-cfg e rodar o lote pago de confirmação de 10 execuções do braço opus em lentes-semeadas-A/B, teto US$ 7). Executa: dono + executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado), E38 (publicado).
@@ -14,7 +14,7 @@ Estratégia v1.1 -- 2026-11-23
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Conferência humana de AC2 em docs/reports/2026-11-21-E38-arnes-e-procs-linux.md; resto em E40 |
 | E39 | nao-iniciado | - | - |
 | E40 | nao-iniciado | - | - |
-| E41 | publicado | `docs/plans/pos-2-3-0-E41/spec.md`, `docs/plans/pos-2-3-0-E41/plano-b2/progress.json`, `2868ced`, `a9d544f`, `7636dd7`, `0090d3c`, `6abab96` | E36 e E37 em série; revisão da estratégia pela DEC-042 |
+| E41 | publicado | `docs/plans/pos-2-3-0-E41/spec.md`, `docs/plans/pos-2-3-0-E41/plano-b2/progress.json`, `2868ced`, `a9d544f`, `7636dd7`, `0090d3c`, `6abab96` | E36 e E37 em série |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
@@ -24,7 +24,7 @@ Estratégia v1.1 -- 2026-11-23
 - (dono) Logar a config descartável quando o primeiro lote pago (E35) estiver pronto para rodar e fazer logout ao fim de E40 antes de apagar a pasta da config.
 - (executor) Manter intocadas as pastas de transcrições pagas dos três lotes do pós-2.2.0 em D:/claude-e3x-out até o fechamento de E35 e E39; apagá-las em E40 (decisão 35 do pós-2.2.0; REQ-008).
 - (dono) Conferir o relatório docs/reports/2026-11-21-E38-arnes-e-procs-linux.md para aceite humano de E38 AC2 (conferência Linux/WSL real de verify-run procs).
-- (dono) Aprovar a revisão da estratégia pedida pela DEC-042: a 2.5.0 saiu com o E41, e o E40 (com E36, E37 e E39) passa a publicar uma versão seguinte. Provas do E41 em D:/claude-pos23-out/e41-evidencias.
+- (executor) Provas do E41 guardadas em D:/claude-pos23-out/e41-evidencias
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
