@@ -538,6 +538,17 @@ test('finish-merge without merge-fix commits proceeds and runs no review', async
   assert.ok(!labels.includes('E1:resume-fix-review'));
 });
 
+test('E41 T1 F1: a validated finish-merge prunes the capture evidence of the deliverable without a concern', async () => {
+  const { r, calls } = await resume();
+  const e1 = r.results.find((x) => x.id === 'E1');
+  assert.equal(e1.merged, true);
+  assert.ok(!e1.broken);
+  const prune = calls.filter((c) => c.label === 'E1:prune-evidence');
+  assert.equal(prune.length, 1, 'the prune call runs once on the finish-merge path');
+  assert.match(prune[0].prompt, /scripts\/capture\.mjs" prune --task-prefix 'E1-' --cwd /);
+  assert.ok(!e1.concerns.some((c) => /capture evidence not pruned/.test(c)), e1.concerns.join('; '));
+});
+
 test('finish-merge with a null probe stays broken', async () => {
   const { r } = await resume((l) => (/:merge-fix-probe$/.test(l) ? null : undefined));
   assert.equal(r.results.find((x) => x.id === 'E1').broken, true);
