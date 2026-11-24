@@ -128,7 +128,17 @@ function planChanged(state, stateFile) {
   const text = fs.readFileSync(planAbs, 'utf8');
   const specPath = state.plan.spec ? path.resolve(root, state.plan.spec) : null;
   const e = emitPlan(text, { planPath: planAbs, root, specPath, maxWidth: state.plan.maxWidth });
-  return e.out === null || e.out.digest !== state.plan.digest;
+  if (e.out === null) return { changed: true, ask: invalidPlanAsk(e.errors) };
+  return { changed: e.out.digest !== state.plan.digest, ask: null };
+}
+
+// Id fora da regra (plano antigo): o dono precisa renomear, não é "plano mudou". Outros erros do check seguem como plan-changed.
+// Texto curto: cabe no read assinado.
+function invalidPlanAsk(errors) {
+  const ids = errors.filter((x) => x.code === 'id-invalid');
+  if (!ids.length) return null;
+  const list = ids.slice(0, 3).map((x) => x.code + ': ' + String(x.message).slice(0, 160)).join('; ');
+  return 'o plano não passa no check (' + list + '); renomeie o id em plan.md e spec.md (mesmo valor, ^[A-Za-z0-9._-]{1,64}$) e rode init --restart';
 }
 
 const NO_PLAN_QUESTION = 'não há plano em docs/plans/ que corresponda; quer escrever o plano agora com a skill plan-writer?';
@@ -371,7 +381,8 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   if (cmd === 'next') {
     let action;
     try {
-      action = planChanged(state, file) ? { action: 'plan-changed' } : nextAction(state);
+      const pc = planChanged(state, file);
+      action = pc.ask ? { action: 'ask', question: pc.ask } : pc.changed ? { action: 'plan-changed' } : nextAction(state);
     } catch (e) {
       return bad('não foi possível conferir o plano: ' + e.message);
     }
@@ -393,7 +404,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     if (opts.slice !== undefined) {
       if (opts.page !== undefined) return bad('--slice e --page não se combinam');
       // Deterministic payload (no clock): sliced by sliceEnvelopes; nothing is written.
-      const text = JSON.stringify(canon({ root: g ? path.resolve(g) : base, planChanged: changed, stateDigest: stateDigest(state), state: { ...state, history: [] } }));
+      const text = JSON.stringify(canon({ root: g ? path.resolve(g) : base, planChanged: changed.changed, ...(changed.ask ? { planAsk: changed.ask } : {}), stateDigest: stateDigest(state), state: { ...state, history: [] } }));
       const envs = sliceEnvelopes({ tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString() }, text);
       const k = /^[0-9]+$/.test(opts.slice) ? Number(opts.slice) : -1;
       if (k < 0 || k >= envs.length) return bad('--slice deve ser um inteiro de 0 a ' + (envs.length - 1));
@@ -403,7 +414,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     // The output stays under 30 KB (the Bash tool spills more to a file): compact JSON, and the steps split into pages of READ_PAGE_CHARS.
     // Page 0 carries the state without its steps' tail; the other pages carry only steps. stateDigest is of the whole state, the same on every page.
     const page = opts.page === undefined ? 0 : Number(opts.page);
-    const headBase = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed, stateDigest: stateDigest(state) };
+    const headBase = { tool: 'progress', command: 'read', nonce: opts.nonce, now: new Date().toISOString(), root: g ? path.resolve(g) : base, planChanged: changed.changed, ...(changed.ask ? { planAsk: changed.ask } : {}), stateDigest: stateDigest(state) };
     const baseSize = JSON.stringify({ ...headBase, nonce: '', page: 0, pages: 0, state: { ...state, history: [], steps: [] } }).length + 400;
     const pages = readPages(state.steps, baseSize);
     if (!Number.isInteger(page) || page < 0 || page >= pages.length) return bad('--page deve ser um inteiro de 0 a ' + (pages.length - 1));

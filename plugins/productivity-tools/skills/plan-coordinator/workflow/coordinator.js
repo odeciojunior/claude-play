@@ -18,9 +18,9 @@ export const meta = {
 //   plan (required): absolute path of the plan.md
 //   state (required): absolute path of the progress.json written by progress.mjs init
 //   runToken (required): fresh token from `progress.mjs token`, new for each call
-//   progress (required): absolute path of scripts/progress.mjs of the plan-coordinator skill; every read and write of the state goes through it
+//   progress (required): absolute path of the skill's scripts/progress.mjs; all state reads and writes go through it
 //   authorizeExternal: ["plan:T3@<8 hex>"]: external steps the owner authorizes; the digest is part of the item
-//   answers: [{ event|type: answer|unblock|release|hold|refuse, step, value, text }]: events the person answered, applied before the run (`event` is the documented key, `type` is accepted)
+//   answers: [{ event|type: answer|unblock|release|hold|refuse, step, value, text }]: events the person answered, applied first (key `event` or `type`)
 //   test: the test command of the wave gate ("none" or absent: no baseline and no wave gate run)
 //
 // RETURN: { status: 'done', run, wave, map, steps, finalGate, open }
@@ -1400,7 +1400,7 @@ const readSigned = async (label, first) => {
     const p = parseJson(j.text)
     if (!p || !p.state || p.state.schema !== 'progress/1' || !Array.isArray(p.state.steps) || typeof p.root !== 'string') { why = 'the signed read has no valid progress/1 state'; continue }
     if (stateDigest(p.state) !== p.stateDigest) { why = 'the state of the signed read does not match the digest it signs'; continue }
-    return { data: { root: p.root, planChanged: p.planChanged, stateDigest: p.stateDigest, state: p.state, now: envs[envs.length - 1].now } }
+    return { data: { root: p.root, planChanged: p.planChanged, planAsk: p.planAsk, stateDigest: p.stateDigest, state: p.state, now: envs[envs.length - 1].now } }
   }
   return { why }
 }
@@ -1646,6 +1646,7 @@ S = DISK = first.data.state
 NOW = first.data.now
 ROOT = slash(first.data.root)
 if (!samePlan(S.plan.path, A.plan)) return failWith(`the state belongs to another plan: it records ${S.plan.path} and the launch names ${A.plan}`)
+if (first.data.planAsk) return stopWith('ask', { question: first.data.planAsk })
 if (first.data.planChanged === true) return stopWith('plan-changed', { message: 'the plan changed after progress.mjs init; the state is kept as it is. Recreate it with init --restart only if the person asks' })
 
 try {

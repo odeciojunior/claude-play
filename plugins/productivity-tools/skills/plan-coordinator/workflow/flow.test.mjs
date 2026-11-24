@@ -370,6 +370,16 @@ test('state divergence and plan changes stop the run', async () => {
     assert.equal(byAgent(sim, IMPL).length, 0);
     assert.ok(runnerCmds(sim).every((c) => / read /.test(c)), 'nothing is written');
   });
+  // an id outside the rule written into the plan after init: the stop asks, with the instruction
+  await withSandbox(async (sb) => {
+    writeFileSync(sb.planFile, readFileSync(sb.planFile, 'utf8').replace('"id": "FX",', '"id": "Plano B",'));
+    const sim = makeSim(sb);
+    const r = await sim.go(launchArgs(sb));
+    assert.equal(r.status, 'stopped', JSON.stringify(r));
+    assert.equal(r.stop.kind, 'ask');
+    assert.match(r.stop.question, /id-invalid.*renomeie o id em plan\.md e spec\.md.*init --restart/);
+    assert.equal(byAgent(sim, IMPL).length, 0);
+  });
   // an output copied with one character changed: the read repeats
   await withSandbox(async (sb) => {
     let first = true;

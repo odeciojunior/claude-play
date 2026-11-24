@@ -60,7 +60,7 @@ Step: `pending`, `launched`, `review-owed`, `pass`, `skip`, `skip-manual` (held,
 
 ## Next action (`next`)
 
-`approve-map`, `await`, `review`, `wave-gate`, `hold`, `prelaunch-review`, `authorize`, `launch` (steps with `mode`), `advance`, `final-gate`, `ask` (a `question`, or open `manual` entries), `done`, and `plan-changed` (the plan no longer matches `plan.digest`).
+`approve-map`, `await`, `review`, `wave-gate`, `hold`, `prelaunch-review`, `authorize`, `launch` (steps with `mode`), `advance`, `final-gate`, `ask` (a `question`, or open `manual` entries), `done`, and `plan-changed` (the plan no longer matches `plan.digest`). A plan whose id is outside `^[A-Za-z0-9._-]{1,64}$` (an old plan) is not `plan-changed`: `next` returns `ask` and the signed `read` carries `planAsk`, both telling to rename the id in plan.md and spec.md and run `init --restart`.
 
 ## Refusal codes
 

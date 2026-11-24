@@ -881,6 +881,32 @@ test('next returns plan-changed after the plan text changes', () => withSandbox(
   assert.ok(fs.readFileSync(sb.state).equals(before));
 }));
 
+test('plan with an id outside the rule after init: next and read ask to rename, plan-changed stays for content edits', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  const spec = path.join(path.dirname(sb.plan), '..', 'spec-tool', 'spec.md');
+  for (const f of [sb.plan, spec]) fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('"id": "E1",', '"id": "Plano B",'));
+  const before = fs.readFileSync(sb.state);
+  const n = JSON.parse(cli(['next', sb.state, '--json']).out).action;
+  assert.equal(n.action, 'ask');
+  assert.match(n.question, /id-invalid/);
+  assert.match(n.question, /renomeie o id em plan\.md e spec\.md/);
+  assert.match(n.question, /init --restart/);
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j.planChanged, true);
+  assert.match(j.planAsk, /id-invalid/);
+  assert.match(j.planAsk, /init --restart/);
+  assert.ok(j.planAsk.length < 600);
+  assert.ok(fs.readFileSync(sb.state).equals(before));
+}));
+
+test('read has no planAsk while the plan is valid, even after a content edit', () => withSandbox((sb) => {
+  assert.equal(cli(['init', sb.plan]).code, 0);
+  fs.appendFileSync(sb.plan, '\nmudou\n');
+  const j = JSON.parse(cli(['read', sb.state, '--nonce', 'N', '--json']).out);
+  assert.equal(j.planChanged, true);
+  assert.equal('planAsk' in j, false);
+}));
+
 test('next and apply refuse state-schema', () => withSandbox((sb) => {
   assert.equal(cli(['init', sb.plan]).code, 0);
   const state = readJson(sb.state);
