@@ -114,3 +114,9 @@ test('a refusal of the script and an envelope of another command are named', asy
   const other = await drive({ over: (l, k, res) => ({ exit: 0, stdout: res.stdout.replace('"command":"discover"', '"command":"read"') }) });
   assert.match(other.r.error, /^discovery failed: slice 0: the slice is from another command/);
 });
+
+test('roadmap-release.js stays within the E41 size budget (spec R14, DEC-034), measured in LF characters', () => {
+  const file = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
+  const size = file.split('\r\n').join('\n').length;
+  assert.ok(size <= 259883, `roadmap-release.js has ${size} LF characters`);
+});

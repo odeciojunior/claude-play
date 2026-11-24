@@ -18,16 +18,13 @@ export const meta = {
 }
 
 // roadmap-release workflow script. Self-contained: no imports, no filesystem or Node API.
-// Runtime API: agent(prompt, {label, phase, model, schema}), phase(), log(), args, budget, parallel().
-// All project-specific settings come from args.config (the object validated by scripts/preflight.mjs).
+// Runtime API: agent(prompt, {label, phase, model, schema}), phase(), log(), args, budget, parallel(). Project settings come from args.config (validated by scripts/preflight.mjs).
 //
 // ARGS (all optional except config)
 //   config: release config validated by preflight.mjs (gates, install, setup, locks, projectContext, conflictRules...)
-//   runToken: from the preflight of this call, new each time; only in the discovery read (the first agent call), so a resume
-//     with resumeFromRunId reruns everything live, at the cost of a resume without it; never returned in resumeArgs/resumeWith.
-//     Without it no authorized external task is launched
-//   deliverables: string[] | "next" | "ready" | "all" (default "next")
-//   phase, priority, track: filters on card attributes
+//   runToken: new on each preflight; only in the discovery read (the first agent call), so a resume with resumeFromRunId reruns
+//     everything live; never returned in resumeArgs/resumeWith. Without it no authorized external task is launched
+//   deliverables: string[] | "next" | "ready" | "all" (default "next")   phase, priority, track: filters on card attributes
 //   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>")
 //   baseBranch: where the target is created from when missing (default: the roadmap integrationBranch)
 //   allowIntegrationBranch (false): allows targetBranch == integrationBranch
@@ -37,15 +34,13 @@ export const meta = {
 //   overrideDonot: ["E19"] releases a deliverable vetoed by the roadmap "do not" block
 //   acceptRisks: ["E18"] accepts a critical risk on a direct merge into the integrationBranch
 //   acceptRedBaseline (false): lets the run go on with a red baseline
-//   acceptIntegrityAlerts: { "E18": "<full merge SHA>" } on resume, accepts the hard test-integrity alerts of exactly that merge
-//     of that deliverable (they become a concern); another SHA is ignored. Only read from args, never set by the workflow itself
-//   wtRoot (required): where the workflow creates its worktrees; the skill passes <dirname(repo)>/<basename(repo)>-wt
-//   roadmap, repo, today: detected when absent
-//   authorizeExternal: ["gate:G3", "E18:T4", "E18:T4@<fp>", "E18:AC1", "E18:AC1@<fp>", "checkout:<target>"]: external effects the owner authorizes (only a person sets it; silence is never authorization).
-//     A bare E18:T4 or E18:AC1 binds to the plan fingerprint on first use; any redone plan invalidates the binding
-//   notes: { E19: "owner instruction or answer for this deliverable" } (also used to resume)
-//   approveRulings: { "E8": ["R2:<key>"] }: releases a costly irreversible spec ruling; the key is shown in the approve-ruling operator action and ties
-//     the approval to the exact text of the decision. Only a person sets it; it is never returned in resumeArgs or resumeWith
+//   acceptIntegrityAlerts: { "E18": "<full merge SHA>" } on resume: accepts the hard test-integrity alerts of exactly that merge (they become a concern); only read from args
+//   wtRoot (required): where worktrees are created; the skill passes <dirname(repo)>/<basename(repo)>-wt   roadmap, repo, today: detected when absent
+//   authorizeExternal: ["gate:G3", "E18:T4", "E18:T4@<fp>", "E18:AC1", "E18:AC1@<fp>", "checkout:<target>"]: external effects the owner authorizes (only a person sets it).
+//     A bare E18:T4 or E18:AC1 binds to the plan fingerprint on first use; a redone plan invalidates the binding
+//   notes: { E19: "owner instruction or answer" } (also used to resume)
+//   approveRulings: { "E8": ["R2:<key>"] }: releases a costly irreversible spec ruling (the key is shown in the approve-ruling operator action and
+//     ties the approval to the decision text). Only a person sets it; never returned in resumeArgs or resumeWith
 //   trailer, branchPrefix ("feat/")
 //
 // RETURN: { status: done|partial|needs-operator|error, operatorActions[], resumeArgs, selection,
@@ -181,17 +176,16 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
   return { order, skipped, notes }
 }
 // ---- gates: generic measurement and baseline comparison
-// def = { name, kind: 'exit'|'tests', invariant?, ignoreFailuresWhenChanged?: { paths, failurePrefix } }
-// result = { name, ran, exit, total, skipped, failedNames }; baseline = map name -> result
+// def = { name, kind: 'exit'|'tests', invariant?, ignoreFailuresWhenChanged?: { paths, failurePrefix } }; result = { name, ran, exit, total, skipped, failedNames }; baseline = map name -> result
 // A test name without its file prefix (path/of/file.test.mjs::name): the extractor and the agent may differ in it.
 function nameKey(n) { return String(n).replace(/^[^\s:]+\.[A-Za-z0-9]+::/, '') }
 function gateSubset(xs, base) {
   const keys = (base || []).map(nameKey)
   return (xs || []).every(x => keys.includes(nameKey(x)))
 }
-// One gate result from the JSON line of capture.mjs the agent copied (null when it does not check against expect = { nonce, cmdDigest }):
-// the exit always comes from it; total, skipped and names come from its extract, except for a format the extractor does not know or a gate
-// that ignores failures, which take the agent's and are marked fallback. A cut list of names carries failedNamesCut.
+// One gate result from the JSON line of capture.mjs the agent copied (null when it does not check against expect = { nonce, cmdDigest }): the exit always
+// comes from it; total, skipped and names come from its extract, except for a format the extractor does not know or a gate that ignores failures
+// (the agent's, marked fallback). A cut list of names carries failedNamesCut.
 function gateFromCapture(def, g, expect) {
   const raw = g && typeof g.capture === 'string' ? g.capture : null
   if (raw === null || !checkCapture(raw, expect).ok) return null
@@ -205,7 +199,6 @@ function gateFromCapture(def, g, expect) {
   }
   return { ...r, total: g.total, skipped: g.skipped, failedNames: g.failedNames || [], fallback: true }
 }
-// The measure of an agent with each gate replaced by its result checked against capture; a gate without a valid line is absent (never green).
 function capturedMeasure(defs, m, nonceOf) {
   if (!m || typeof m !== 'object') return m
   const gates = (defs || []).map((d, i) => gateFromCapture(d, gateResult(m, d.name), { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) })).filter(Boolean)
@@ -232,7 +225,6 @@ function gateCoherent(def, r) {
   if (def.kind === 'tests') return (r.exit === 0) === !(r.failedNames || []).length
   return true
 }
-// A measure only counts if taken on a clean tree, at the expected commit, with every gate present and exit/failed names agreeing.
 function validMeasure(m, expectedSha, gateDefs) {
   return !!m && m.clean === true && fullSha(normSha(m.headSha)) && (!expectedSha || gateShaMatch(normSha(m.headSha), normSha(expectedSha)))
     && (gateDefs || []).every(def => gateCoherent(def, gateResult(m, def.name)))
@@ -283,7 +275,6 @@ function zeroTestGates(defs, baseline) {
     return def.kind === 'tests' && !def.invariant && !!r && r.ran !== false && !(r.total > 0)
   }).map(def => def.name)
 }
-// Post-merge floor: the target may not have fewer tests than the branch measured (minus baseline failures already unstable).
 function mergeFloor(baseline, branchMeasure) {
   const floor = JSON.parse(JSON.stringify(baseline || {}))
   for (const name of Object.keys(floor)) {
@@ -454,7 +445,6 @@ function implEffort(task) {
 function reviewModelFor() {
   return 'opus'
 }
-// ---- plan/1 adapter (E8): the plan-tool emit is parsed and checked here; nothing is trusted from an agent's transcription.
 function loadPlanEmit(stdout, { E, RM } = {}) {
   let o
   try { o = JSON.parse(String(stdout)) } catch (e) { return { ok: false, why: `plan-tool emit output is not JSON (${e.message})` } }
@@ -508,7 +498,6 @@ function frozenTaskDiffs(prevPlan, nextPlan, committed) {
   }
   return out
 }
-// One plan load (emit + blob of the committed file): accepted only when the emit passes loadPlanEmit; the blob must be a git object id.
 function checkPlanLoad(t, { E, RM } = {}) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit code of emit' }
@@ -542,9 +531,8 @@ function criteriaOpen(cardAc, planAc) {
   for (const p of planAc || []) if (open(p.kind) && !(cardAc || []).some(a => matchesCriterion(p.ac, a))) add(p.ac, p.kind, p.blq)
   return out
 }
-// One review/fix cycle. env = { maxFix, blqIds, reviews, concerns, acceptRisks(stage, issues) }.
-// A finding that reappears after a fix escalates the fixer one tier (nextTier); the first escalation earns one extra
-// round so a haiku task can reach opus; a repeat at opus stops the deliverable.
+// One review/fix cycle. env = { maxFix, blqIds, reviews, concerns, acceptRisks(stage, issues) }. A finding that reappears after a fix escalates the fixer one tier
+// (nextTier); the first escalation earns one extra round so a haiku task can reach opus; a repeat at opus stops the deliverable.
 async function runReviewLoop(env, stage, review, fix, truth, opt = {}) {
   let tier = opt.tier || 'opus'
   const rm = opt.reviewModel || 'sonnet'
@@ -683,7 +671,6 @@ function gateGroups(defs) {
   }
   return [...groups.values()].filter(g => g.defs.length)
 }
-// New baseline after an approved merge: measured gates replace the old result (ignored failures stay out), the rest is kept.
 function refreshBaseline(base, defs, m, changedFiles) {
   const next = JSON.parse(JSON.stringify(base || {}))
   for (const def of defs || []) {
@@ -733,7 +720,6 @@ function withoutConfig(resumeWith) {
   const { config, notes, trackerCli, ...rest } = resumeWith
   return rest
 }
-// Argv of the git log listing non-merge commits on the target's first-parent line after a merge, ignoring docs-only ones.
 function postMergeFixArgs(mergeSha, roadmapDir, docsPaths) {
   const skip = [...new Set([roadmapDir, ...(docsPaths || [])].filter(Boolean))].map(p => ':!' + p)
   return ['log', '--first-parent', '--no-merges', '--format=%H%x09%s', mergeSha + '..HEAD', '--', '.', ...skip]
@@ -746,15 +732,13 @@ function postMergeFixes(commits, E) {
   })
 }
 
-// True only for <wtRoot>/_integracao: the integration worktree this workflow creates. Any other path is the person's checkout.
 function isOwnWorktree(path, wtRoot) {
   const norm = p => String(p == null ? '' : p).replace(/[\\]/g, '/').replace(/\/+$/, '')
   const a = norm(path), b = norm(wtRoot) + '/_integracao'
   return /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 }
-// Deterministic 32-bit FNV-1a; 8 hex digits. With a planBlob that looks like a git object id (40-64 hex; the blob of the committed plan file) the hash depends only on it:
-// the agent retranscribes the task fields on each run, so they must not move it. Without a valid blob it falls back to the tasks (n, trimmed title,
-// sorted files, external, externalDedupe), so a missing blob still fails safe.
+// Deterministic 32-bit FNV-1a; 8 hex digits. With a planBlob that looks like a git object id (40-64 hex) the hash depends only on it (the agent
+// retranscribes the task fields on each run). Without a valid blob it falls back to the tasks (n, trimmed title, sorted files, external, externalDedupe).
 function planFingerprint(tasks, planBlob = '') {
   const raw = String(planBlob || '').trim()
   const blob = /^[0-9a-f]{40,64}$/.test(raw) ? raw : ''
@@ -820,9 +804,8 @@ function evidenceExternalGaps(cardAc, planAc) {
     ...(p.external === true && !(ids.includes(p.ac) && /^AC[1-9]\d*$/.test(p.ac)) ? [gap(`external evidence row ${p.ac} must use a criterion id of the card (AC<n>), which is what the authorization names`)] : []),
   ])
 }
-// The command as compared and as dispatched. Exact inside: on one line only ASCII spaces around the value go away (never an escaped one),
-// and a multi-line value is never trimmed, since the spaces can belong to a heredoc. One pair of backticks around the whole value also goes:
-// a retranscription adds it and a shell would otherwise execute it. Quotes always stay, because "./my tool" means something else without them.
+// The command as compared and as dispatched. On one line only ASCII spaces around the value go away (never an escaped one); a multi-line value is
+// never trimmed (heredoc). One pair of backticks around the whole value also goes (a shell would execute it). Quotes always stay.
 function commandKey(s) {
   const t = String(s == null ? '' : s)
   const oddSlashes = (x, end) => { let n = 0; while (end - n - 1 >= 0 && x[end - n - 1] === '\\') n++; return n % 2 === 1 }
@@ -856,7 +839,7 @@ function blankCommand(s) {
 }
 const RAN_MARK = 'already authorized and run in this run'
 // A human item is never removed: one that asks for approval of something this run was authorized for and ran may also carry a real need, so it stays
-// with a mark that the command it names already ran. Naming the command alone does not mark it, since a real input (a key the command needs) is still open.
+// with a mark that the command already ran. Naming the command alone does not mark it (a real input may still be open).
 function annotateAuthorizedHuman(human, ran) {
   const norm = v => String(v || '').trim().replace(/\s+/g, ' ')
   const asks = /authori[sz]|autoriz|approv|aprov|permiss/i
@@ -960,10 +943,9 @@ function phrases(lang) {
     critNoEvidence: (E, ac, kind, blq) => `${E}: criterion ${ac} has no automatic evidence (${kind}${blq ? ', ' + blq : ''})`,
   }
 }
-// statusEvidence (optional) replaces the evidence of set-status only: the CLI appends it to the panel Evidence cell, which already holds
-// the spec and plan references and refuses a cell over the limit, so a long list belongs to the log row, not to the panel.
-// Ordered command list of one record: block-close, set-status + log (or block-open), add-decision, add-pending, inflight-*.
-// Every variable text goes through fitCell with the room the CLI leaves in the cell; `cuts` lists the texts that were cut.
+// statusEvidence (optional) replaces the evidence of set-status only: the CLI appends it to the panel Evidence cell and refuses a cell over the limit,
+// so a long list belongs to the log row. Ordered command list of one record: block-close, set-status + log (or block-open), add-decision, add-pending,
+// inflight-*. Every variable text goes through fitCell with the room the CLI leaves; `cuts` lists the texts that were cut.
 function recordCommands({ cli, folder, E, word, piece, blockedBy, evidence, statusEvidence, next, logWhat, decisions, pending, inflight, skipStatus, lang, cellChars, source, blockedStatus }) {
   const P = phrases(lang)
   const max = cellChars || 300
@@ -1094,12 +1076,6 @@ function parseDecision(text) {
   if (!m) return { text: t, scope: 'contrato' }
   return { text: t.slice(0, m.index).trim(), scope: m[1].toLowerCase() === 'local' ? 'local' : 'contrato' }
 }
-// Instruction for the agents whose decisions go through parseDecision: how each decision line must end.
-function scopeEndingRule(lang) {
-  const w = isPt(lang) ? 'Alcance' : 'Scope'
-  const c = isPt(lang) ? 'contrato' : 'contract'
-  return `Each decision line ends with the sentence "${w}: local." or "${w}: ${c}." (exactly that, as the last words of the line, no parenthetical): ${c} when the decision binds other deliverables or a public interface, local when it only affects this deliverable.`
-}
 // A run of the record agent that counts as done: exit 0 and the JSON of the CLI without errors.
 function runDone(r) {
   if (!r || r.exit !== 0) return false
@@ -1162,7 +1138,6 @@ function stopOrCarry({ rulings, needsPerson, approved }) {
 function rulingDecisions(rulings) {
   return (rulings || []).map(r => ({ text: r.decision, scope: r.scope === 'contract' ? 'contrato' : 'local', discarded: r.alternative }))
 }
-// Differences between the emitted spec and the card (empty = matches): id, criteria ids, text without tag, verify (only when the card criterion has a valid tag).
 function specCardMismatch(data, E, card) {
   const out = []
   if (!data || data.id !== E) out.push(`spec id ${data && data.id} is not ${E}`)
@@ -1184,7 +1159,7 @@ function specCardMismatch(data, E, card) {
   }
   return out
 }
-// Verdict over the spec load (check --json, then emit): a check exit that disagrees with its summary.exitCode, or an emit that is not this deliverable's spec/1 or differs from the card, fails the load; a failed check is a review issue.
+// Verdict over the spec load (check --json, then emit): a check exit that disagrees with its summary.exitCode, or an emit that is not this deliverable's spec/1 or differs from the card, fails the load.
 function checkSpecLoad(t, E, card) {
   if (!t || typeof t !== 'object') return { ok: false, why: 'the load agent returned nothing' }
   if (!Number.isInteger(t.checkExit) || !Number.isInteger(t.emitExit)) return { ok: false, why: 'the load agent did not return the exit codes of check and emit' }
@@ -1203,7 +1178,6 @@ function checkSpecLoad(t, E, card) {
   if (diff.length) return { ok: false, why: `the emitted spec differs from the card: ${diff.join('; ')}` }
   return { ok: true, data: o.data }
 }
-// Selected, not started dependents (direct or transitive, by card deps) of each pending contract decision; the owner is never held.
 function heldBy({ cards, selected, contractDecisions, started }) {
   const byId = Object.fromEntries((cards || []).map(c => [c.id, c]))
   const sel = new Set(selected || [])
@@ -1579,9 +1553,8 @@ function encArg(obj) {
 // </pure>
 
 // ---------------------------------------------------------------- args and config
-// runToken comes fresh from each preflight. On a resume (resumeFromRunId) the runtime returns cached results for the
-// unchanged prefix of agent() calls, so a git read would repeat what the dead run saw: the token, in its discovery read
-// (the first agent call), makes every call differ on every invocation. It never goes back into resume args, so a resume cannot reuse an old one.
+// runToken comes fresh from each preflight. On a resume the runtime returns cached results for the unchanged prefix of agent() calls: the token, in the
+// discovery read (the first agent call), makes every call differ on every invocation. It never goes back into resume args.
 const { runToken: RUN_TOKEN_ARG, ...A } = args || {}
 const RUN_TOKEN = typeof RUN_TOKEN_ARG === 'string' ? RUN_TOKEN_ARG.trim() : ''
 const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
@@ -1601,13 +1574,11 @@ const mkResult = (status, extra) => ({
 if (!CFG || typeof CFG !== 'object' || !Array.isArray(CFG.gates) || !CFG.gates.length) {
   return { status: 'error', error: 'args.config is missing or has no gates: run scripts/preflight.mjs and pass its config' }
 }
-// Every launch carries the run token from preflight (a whitespace-only token counts as missing): refuse before any agent call.
 if (!RUN_TOKEN) return { status: 'error', error: 'runToken is missing: launch the workflow through the roadmap-release skill, which runs scripts/preflight.mjs and passes its config, runToken and trackerCli' }
 if (typeof A.trackerCli !== 'string' || !A.trackerCli.trim()) return { status: 'error', error: 'args.trackerCli is missing: run scripts/preflight.mjs and pass its trackerCli' }
 if (!['run', 'plan-only', 'dry-run'].includes(MODE)) return { status: 'error', error: `invalid mode: ${MODE}` }
 const unfilledNotes = Object.keys(A.notes || {}).filter(k => /^\s*<.*>\s*$/.test(String(A.notes[k])))
 if (unfilledNotes.length) return { status: 'error', error: `notes still hold the template text, without the owner's answer: ${unfilledNotes.join(', ')}` }
-// The worktree root decides where worktrees go and which checkout is the workflow's own: the skill passes it, nothing guesses it.
 if (!A.wtRoot) return { status: 'error', error: 'args.wtRoot is missing: the skill passes <dirname(repo)>/<basename(repo)>-wt (or the folder the user named)' }
 // An authorized task is never launched without a run token: fail before paying for discovery, preflight and the plan.
 if (MODE === 'run' && !RUN_TOKEN && AUTH.items.some(i => /^(?!gate:|checkout:)[^:]+:T[1-9]\d*/.test(i))) return { status: 'error', error: 'runToken is missing: run preflight again and pass its runToken (an authorized external task is never launched without it)' }
@@ -1742,13 +1713,12 @@ const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in 
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
 const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${BASH_ONLY}`
-// The nonces of the group and check calls carry a hash of the run token, never the token itself: it stays only in the discovery read.
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // A copy above the limit never reaches the agent whole: refused before any JSON.parse.
 const copyFits = stdout => utf8Length(stdout) <= MAX_COPY_BYTES
 // A signed read in slices: slice 0 gives the count, each has its own nonce, only a failed slice repeats (1-2 haiku, 3+ sonnet); a total that differs between slices restarts the read once.
-// Returns { text, envs } or { why }. The cut points depend on the header: every nonce of a read has the length of the first (padded or cut).
+// Returns { text, envs } or { why }. Every nonce of a read has the length of the first (the cut points depend on the header).
 const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonceOf, tries, sn = (p, k) => (k === 0 ? p : `${p}-slice${k}`) }) => {
   const one = async (base, k, nonce) => {
     let why = ''
@@ -1791,7 +1761,7 @@ const readBack = async (E, label, phase, cwd, folder, piece) => {
   try { return r.text === undefined ? null : JSON.parse(r.text) } catch { return null }
 }
 // The discovery is code: preflight.mjs discover; a script-runner agent only copies its stdout, one signed slice per call (--slice k).
-// The run token is the nonce of slice 0 and sits in the FIRST agent() call: on a resume with resumeFromRunId nothing comes from the cache, so every git read is fresh.
+// The run token is the nonce of slice 0, in the FIRST agent() call, so on a resume nothing comes from the cache.
 const discCmd = nonce => [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(nonce)}`].filter(Boolean).join(' ')
 let disc = null
 let discWhy = ''
@@ -1865,7 +1835,6 @@ const notes = [...picked.notes, ...(disc.donot || []).map(d => `roadmap "do not"
 const interrupted = unfinishedOutside(disc.cards, STATUSES, order)
 for (const id of interrupted) notes.push(`${id}: interrupted merge on the target, outside this selection`)
 if (A.force) for (const id of order) if (isUnfinished(byId[id], STATUSES)) notes.push(`${id}: force does not apply to an interrupted merge: it is validated and documented first`)
-// Contract decisions still pending ratification: dependents of their owner that did not start are held (the owner never is).
 const isContract = d => d && (d.scope === 'contract' || d.scope === 'contrato')
 const pendContract = disc.pendingDecisions.filter(d => isContract(d) && d.id && d.deliverable).map(d => ({ id: d.id, deliverable: d.deliverable }))
 const startedByPending = disc.pendingDecisions.flatMap(d => (isContract(d) && Array.isArray(d.startedDependents) ? d.startedDependents : []))
@@ -2010,10 +1979,6 @@ if (MODE === 'run' && !foreignHold) {
   }
 }
 const baseTxt = () => GATES.map(d => `${d.name}: ${resultTxt(BASE[d.name])}`).join(' | ')
-const COMMON = () => `${COMMON_BASE}
-ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
-INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN_ITEM} ${authorized(FOREIGN_ITEM) ? 'authorized by the operator' : 'NOT authorized: do not touch it'})` : 'created by this workflow'}.
-CURRENT BASELINE OF THE TARGET (a failure is pre-existing only if it is listed here): ${baseTxt()}`
 const COMMON_SLIM = () => `${COMMON_SLIM_BASE}
 ENVIRONMENT MEASURED IN THE PREFLIGHT: ${pre.envFacts || '(not reported)'}
 INTEGRATION WORKTREE ${INTWT}: ${FOREIGN ? `the person's own checkout (${FOREIGN_ITEM} ${authorized(FOREIGN_ITEM) ? 'authorized by the operator' : 'NOT authorized: do not touch it'})` : 'created by this workflow'}.`
@@ -2054,7 +2019,6 @@ const NO_REVISION = `Do NOT propose, write or approve a strategy revision or a f
 const NO_ASK = 'Never ask the person anything: no question, no AskUserQuestion, no choice handed back in your answer. Take the recommended option, record it and go on.'
 const implAgent = (p, o) => agent(p, { agentType: 'productivity-tools:implementer', schema: S_IMPL, ...o })
 const revAgent = (p, o) => agent(p, { agentType: 'productivity-tools:task-reviewer', schema: S_TASKREVIEW, ...o })
-// Fixed clause of every prompt that hands over assembled shell commands (the shq escape is POSIX; the rule is for the Bash tool).
 const LANG = disc.language || ''
 const CELL_CHARS = Number.isInteger(disc.cellChars) && disc.cellChars > 0 ? disc.cellChars : 300
 const absFolder = INTWT.replace(/\/+$/, '') + '/' + RM.replace(/\/+$/, '')
@@ -2070,7 +2034,7 @@ const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
 // Git Bash on Windows cuts bash -c strings at 8186 chars; the Bash tool wrapper takes ~500.
 const CMD_CAP = 6000
 // Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
-// extra = { rulings?: spec rulings (the only source of recorded decisions), pending?: string[], inflight?: { add|remove, note }, reason?: string, source?: string }.
+// extra = { rulings?: spec rulings (the only source of recorded decisions), pending?, inflight?: { add|remove, note }, reason?, source? }.
 const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
   if (integBroken) return null
   const x = extra || {}
@@ -2228,7 +2192,6 @@ Review (read-only) the conflict resolutions of the merge ${sha} in ${dir}: git -
     return { ok: true }
   }
 
-  // A merge already on the target that failed validation: it cannot be undone without a human decision (work may sit on top).
   const markBroken = async (why, kind = 'conteudo', doNow = null) => {
     // The merge is already on the target: whatever the failure kind, it stays unvalidated and later merges must stop.
     integBroken = `the merge of ${E} is already on ${TARGET} and ${kind === 'infra' ? 'could not be validated' : 'failed validation'}: ${why}`
@@ -2818,7 +2781,6 @@ ${NO_ASK}`,
     if (!rl || rl.found !== true) out.concerns.push('resume: review log not read, so accepted risks and human inputs of the earlier run may be missing')
     else restoreFromLog(rl, [...awaitingPerson, ...launchOpen].map(n => `${E}:T${n}`))  // an old line must not state an effect that a person denied or that is now in doubt
   }
-  // A completed mark is the record of the effect when the log has none (a person's commit, or a crash before the first log).
   out.externalRun.push(...missingFrom(out.externalRun, plan.tasks.filter(t => effectCompleted.includes(t.n)).map(t => ({ item: `${E}:T${t.n}`, title: t.title, status: 'confirmed by mark', reviewed: false })), x => x.item))
   annotateHuman()
   // In doubt whether an external effect happened: stop and ask, never repeat it. Only the person's commit reopens or closes the task.
@@ -2867,7 +2829,7 @@ ${NO_ASK}`,
     return fail('humano', fromFix ? `authorized external task ${t.n}: a fix round needs a person; the implementer reported the external effect done: ${needed}` : `authorized external task ${t.n} needs a person; whether its external effect started is unknown: ${needed}`)
   }
   // Written as soon as the implementer reports completion: a later review failure must not make a resume launch the effect again.
-  // A local task has no effect to close: its wait ends with a neutral mark, never with a completion that would read as an effect.
+  // A local task has no effect to close: its wait ends with a neutral mark, never a completion.
   const closeSubject = (t, wasAwaiting) => (t.external === false ? `${E} T${t.n}: resumed after awaiting person` : `${effectDone(t.n)}${wasAwaiting ? ', clears the awaiting-person mark' : ''}`)
   const closeEffect = async (t, wasAwaiting) => {
     const r = await safe(() => agent(`Only in the worktree ${wt} (branch ${br}): git -C "${wt}" reset -q; git -C "${wt}" commit --allow-empty -m "${closeSubject(t, wasAwaiting)}". Change nothing else. Return ok = true only if that commit is now HEAD.`,
@@ -3205,9 +3167,8 @@ Return mergeCommit (git rev-parse HEAD after the commit), firstParent (git rev-p
 const safe = fn => Promise.resolve().then(fn).catch(e => { log(`unhandled failure: ${String(e)}`); return null })
 const sem = makeSem(MAXPAR)
 const runs = {}
-// Interrupted merges finish (validate and document) before any new deliverable asks for the semaphore.
-// An interrupted deliverable waits only for dependencies that are also interrupted: waiting for a new one
-// would deadlock, because the new one waits for every interrupted one.
+// Interrupted merges finish (validate and document) before any new deliverable asks for the semaphore. An interrupted deliverable waits only for
+// interrupted dependencies: waiting for a new one would deadlock, because the new one waits for every interrupted one.
 const FINISH = order.filter(id => MODE === 'run' && resumeAction(byId[id], STATUSES) === 'finish-merge')
 order.forEach((id, idx) => {
   runs[id] = (async () => {
@@ -3271,7 +3232,6 @@ for (const r of RESULTS) {
 }
 // Final deterministic check: what the agents claimed is compared with git itself.
 const claims = RESULTS.filter(r => r.merged && r.merge && r.merge.mergeCommit).map(r => ({ id: r.id, commit: r.merge.mergeCommit }))
-// verify-run.mjs check measures git and lists what the run claimed against it; the report agent copies its stdout, which checkRun confirms below.
 const CHECK_NONCE = `${RUN_TAG}:check`
 const checkFull = MODE === 'plan-only' ? '' : `node "${VERIFY_RUN}" check ${encArg({ nonce: CHECK_NONCE, repo: REPO, intwt: INTWT, wtRoot: WT, target: TARGET, lastGood, order, claims, reported: slim.map(r => ({ id: r.id, merged: r.merged, broken: r.broken, planOnly: r.planOnly })), integBroken: !!(integBroken || foreignHold) })}`
 const checkTooBig = checkFull.length > CMD_CAP
@@ -3297,7 +3257,6 @@ const finalResume = () => {
   const settled = settleAuth(AUTH.items)
   return { ...base, authorizeExternal: resumeIds.length ? settled : settled.filter(i => !/^(gate|checkout):/.test(i)) }  // with nothing left to run they authorize nothing
 }
-// Every operator action resumes with the same settled authorizations: bound to the approved plan, none for a delivery already merged.
 for (const o of OPS) if (o.resumeWith && Array.isArray(o.resumeWith.authorizeExternal)) o.resumeWith = { ...o.resumeWith, authorizeExternal: settleAuth([...new Set(o.resumeWith.authorizeExternal)]) }
 for (const o of OPS) if (o.resumeWith) o.resumeWith = withoutApprove(dropConsumedNotes(o.resumeWith, NOTES_READ))
 const resumeFinal = finalResume()
