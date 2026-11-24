@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-24 | E41 | pacote productivity-tools 2.5.0 publicado no marketplace claude-play (tag productivity-tools--v2.5.0; volta/productivity-tools-2.5.1 local) | `6abab96` |
 | 2026-11-24 | E41 | E41 integrada(s) em main via release/pos-2.3.0 | `0090d3c` |
 | 2026-11-24 | E41 | Correções pré-2.5.0 fechadas (taskId único, prune de review/ com cortes, list, id-invalid do topo, spec-writer); DEC-040, DEC-041; suíte 2531 pass, 0 fail; T3 aprova a 2.5.0 | `35a0db1..5d1b6cc`, `decisions.md` |
 | 2026-11-24 | E41 | DEC-035 a DEC-038 (E41) conferidas: 035 a 037 do executor pendentes de ratificação do dono, 038 vigente; xor-base64 funcionou no relançamento real (10 fatias, 1 tentativa cada, sonda 6/6) | `decisions.md` |

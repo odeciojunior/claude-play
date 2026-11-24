@@ -29,4 +29,4 @@ graph LR
   E41 --> E40
 ```
 
-Caminho crítico: E41 -> E37 -> E39 -> E40 (E34 já publicado na 2.4.0). Próximo marco por trilha: engineering -> E36 e E37 em série (E41 integrado em main local, 0090d3c, sem push); release -> E40 publica a 2.5.0 (volta volta/productivity-tools-2.5.1, DEC-028); measurement -> lote pago de confirmação de E35 (AC2) e sonda AC2b de E41 registrada (conferência H1 do dono pendente; DEC-029), seguidos de E39.
+Caminho crítico: E41 -> E37 -> E39 -> E40 (E34 já publicado na 2.4.0). Próximo marco por trilha: engineering -> E36 e E37 em série (E41 publicado na 2.5.0, 6abab96); release -> 2.5.0 publicada com o E41 (DEC-042); E40 publica a versão seguinte, a definir na revisão da estratégia; measurement -> lote pago de confirmação de E35 (AC2) e sonda AC2b de E41 registrada (conferência H1 do dono pendente; DEC-029), seguidos de E39.
