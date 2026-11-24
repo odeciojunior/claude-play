@@ -1320,15 +1320,16 @@ const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required
 
 // ---------------------------------------------------------------- script-runner calls
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return exit=-1 with an empty stdout.'
-// The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
+// Script-runner prompt: one command, exit and stdout literal.
 const runPrompt = (cmd, writes, json) => `Run this command once and return its exit code and ${json ? `the one JSON line it prints, literal (a line above ${MAX_COPY_BYTES} bytes is an error of the command: return it as it is)` : 'its full stdout, literal'}${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
-// An output an agent copied must fit the copy limit, or it was cut.
+// A copied output must fit the limit, or it was cut.
 const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
-// Stdout of a runner return, or null when missing or not a string.
+// Runner stdout, or null if not a string.
 const stdoutOf = (out) => (out && typeof out.stdout === 'string' ? out.stdout : null)
-// Plan id as capture.mjs takes it (cut to 64).
-const taskId = () => String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
-const nonceId = () => String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_').slice(0, 64)
+// Plan id for capture.mjs: over 64, 55 chars + '_' + fnv1a(id).
+const idCut = (s) => (s.length > 64 ? s.slice(0, 55) + '_' + fnv1a(String(S.plan.id)) : s)
+const taskId = () => idCut(String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_'))
+const nonceId = () => idCut(String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_'))
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
 const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`

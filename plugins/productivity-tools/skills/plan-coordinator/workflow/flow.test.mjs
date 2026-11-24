@@ -716,6 +716,23 @@ test('E41 T3: a plan id of 200 characters gives a --task-prefix that capture.mjs
   }, { plan, id });
 });
 
+test('E41 T3: two plan ids of 200 characters with the same first 64 get different 64-character prefixes', async () => {
+  const prefixOf = async (id) => {
+    let p = null;
+    await withSandbox(async (sb) => {
+      const sim = makeSim(sb);
+      assert.equal((await sim.go(launchArgs(sb))).status, 'done');
+      const t = tokenize(byAgent(sim, RUNNER).find((c) => /capture\.mjs" prune /.test(c.cmd)).cmd);
+      p = t[t.indexOf('--task-prefix') + 1];
+    }, { plan: readFileSync(FIXTURE_PLAN, 'utf8').replace('"id": "FX"', `"id": "${id}"`), id });
+    return p;
+  };
+  const a = await prefixOf('P'.repeat(199) + 'A');
+  const b = await prefixOf('P'.repeat(199) + 'B');
+  assert.notEqual(a, b);
+  for (const p of [a, b]) assert.match(p, /^P{55}_[0-9a-f]{8}-$/);
+});
+
 test('B2 T5: the implementer prompt carries the CAPTURE line, the final review packs the diff and done prunes the captures', () => withSandbox(async (sb) => {
   const sim = makeSim(sb);
   const r = await sim.go(launchArgs(sb));
