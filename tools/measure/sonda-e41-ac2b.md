@@ -31,7 +31,16 @@ CLAUDE_CONFIG_DIR=<cfg> CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "<pedid
 
 ### Com context-mode ligado (X2)
 
-Ligue o context-mode so com `CLAUDE_CONFIG_DIR=<cfg>` (a config descartavel): `CLAUDE_CONFIG_DIR=<cfg> claude plugin enable context-mode@context-mode`. A config do dono nao e tocada.
+Ligue o context-mode so com `CLAUDE_CONFIG_DIR=<cfg>` (a config descartavel). Numa config nova nem o marketplace nem o plugin existem, entao `enable` sozinho falha; instale os dois nela antes (gratis, sem chamada de modelo):
+
+```
+CLAUDE_CONFIG_DIR=<cfg> claude plugin marketplace add mksglu/context-mode
+CLAUDE_CONFIG_DIR=<cfg> claude plugin install context-mode@context-mode
+CLAUDE_CONFIG_DIR=<cfg> claude plugin enable context-mode@context-mode
+CLAUDE_CONFIG_DIR=<cfg> claude plugin list
+```
+
+O `install` ja deixa o plugin ligado; o `enable` so garante isso. Confira no `plugin list` que `context-mode@context-mode` aparece ligado antes da primeira execucao. A config do dono nao e tocada.
 
 Execucoes (saida em `<work>/runs/1-on.json`, `2-on.json`, `3-on.json`):
 
