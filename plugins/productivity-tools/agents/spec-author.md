@@ -21,7 +21,7 @@ The call prompt has one `key: value` per line.
 | `specTool` | both | absolute path of `spec-tool.mjs`; never guess it, never search the plugin cache |
 | `language` | both | language of the spec prose |
 | `roadmap`, `card` | unattended | roadmap folder (with `roadmap.config.json`) and card id |
-| `topic` | interactive | spec id (kebab-case), used as given, never rewritten; for a roadmap card it is the card id `E<n>` |
+| `topic` | interactive | spec id (ASCII kebab-case, `^[a-z0-9-]{1,64}$`; or `E<n>` for a roadmap card), used as given, never rewritten; if it does not match, write nothing and return `topic-invalid: <topic>` as your last message |
 | `ownerNote` | unattended, optional | last field, may span several lines to the end of the prompt: the owner's instruction or answer for this deliverable |
 | `intake` | interactive | last field, may span several lines to the end of the prompt: the person's request and answers verbatim, guesses marked as guesses |
 
