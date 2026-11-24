@@ -256,6 +256,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'e9', clean: true, commitsInRange: 1 };
     if (/:merge-risks$/.test(l)) return { head: 'e1', commit: 'e1' };
     if (/:cleanup$/.test(l)) return { ok: true };
+    if (/:prune-evidence$/.test(l)) return { exit: 0, stdout: JSON.stringify({ tool: 'capture', command: 'prune', removed: [] }) }; // what the script-runner returns for capture.mjs prune
     if (/:rollback/.test(l)) return { ok: true, head: 'abc1234', clean: true };
     if (l === 'report') return reportOf(prompt);
     if (/:resume-review-log$/.test(l)) return { found: true, acceptedRisks: [], humanInputs: [] };
@@ -3411,7 +3412,8 @@ const ANTES = 39;
 test('E10 AC3: the happy path of a one-task deliverable makes ANTES - 1 calls, no git-truth, status write before read', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   assert.equal(r.results[0].merged, true);
-  assert.equal(labels.length, ANTES - 1);
+  // + 1: the E41 B2 T3 call `E1:prune-evidence` (capture.mjs prune) runs once per merged deliverable, after the cleanup.
+  assert.equal(labels.length, ANTES - 1 + 1);
   assert.ok(!labels.includes('git-truth'));
   const w = labels.indexOf('E1:status-d');
   const rd = labels.indexOf('E1:status-d-read');
