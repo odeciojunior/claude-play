@@ -236,7 +236,7 @@ const writeSet = (t) => new Set([...t.files.create, ...t.files.modify, ...t.file
 export function checkPlan(text, { planPath, specText = null, specPath = null } = {}) {
   const errors = [];
   const warnings = [];
-  const err = (code, ref, message) => errors.push({ code, ref, message });
+  const err = (code, ref, message, extra) => errors.push({ code, ref, message, ...extra });
   const warn = (code, ref, message) => warnings.push({ code, ref, message });
   const levels = new Map();
 
@@ -340,7 +340,7 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
     const s = checkSpec(specSource);
     if (s.errors.length) {
       const first = s.errors[0];
-      err('spec-invalid', 'spec', `spec com erro (${s.errors.length}): ${first.code} ${first.ref}: ${first.message}`);
+      err('spec-invalid', 'spec', `spec com erro (${s.errors.length}): ${first.code} ${first.ref}: ${first.message}`, { inner: s.errors.slice(0, 5).map((x) => ({ code: x.code, ref: x.ref })) });
     } else {
       spec = s.data;
       if (isStr(data.id) && spec.id !== data.id) err('spec-id-mismatch', 'id', `o plano é de "${data.id}" e o spec é de "${spec.id}"`);
