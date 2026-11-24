@@ -133,9 +133,9 @@ const SHA_K = [
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-// SHA-256 em JS puro sobre a codificação UTF-8 de str: 64 dígitos hexadecimais minúsculos.
-function sha256Hex(str) {
-  const b = utf8Bytes(str);
+// SHA-256 em JS puro sobre uma lista de bytes: devolve os 32 bytes do digest (núcleo único do algoritmo).
+function sha256Bytes(input) {
+  const b = Array.from(input);
   const bits = b.length * 8;
   b.push(0x80);
   while (b.length % 64 !== 56) b.push(0);
@@ -161,7 +161,27 @@ function sha256Hex(str) {
     const v = [a, bb, c, d, e, f, g, k];
     for (let i = 0; i < 8; i++) h[i] = (h[i] + v[i]) >>> 0;
   }
-  return h.map((x) => x.toString(16).padStart(8, '0')).join('');
+  const out = [];
+  for (const x of h) out.push((x >>> 24) & 255, (x >>> 16) & 255, (x >>> 8) & 255, x & 255);
+  return out;
+}
+
+// SHA-256 em JS puro sobre a codificação UTF-8 de str: 64 dígitos hexadecimais minúsculos.
+function sha256Hex(str) {
+  return sha256Bytes(utf8Bytes(str)).map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// XOR dos bytes com o keystream da fatia: concatenação de sha256(`${nonce}:${slice}:${c}`), c = 0, 1, 2...
+// (bytes brutos do digest). O índice da fatia entra no keystream para não repetir entre fatias.
+// Ofuscação, não sigilo: o nonce vai no próprio envelope; serve só para o texto não ser legível a quem copia.
+function xorStream(bytes, nonce, slice) {
+  const out = new Array(bytes.length);
+  let ks = [];
+  for (let i = 0, c = 0; i < bytes.length; i++) {
+    if (i % 32 === 0) ks = sha256Bytes(utf8Bytes(`${nonce}:${slice}:${c++}`));
+    out[i] = bytes[i] ^ ks[i % 32];
+  }
+  return out;
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -214,13 +234,14 @@ function utf8Decode(b) {
   return out;
 }
 
-// Envelope assinado: o cabeçalho, enc, slice, slices, total, text (base64) e o digest FNV do resto.
+// Envelope assinado: o cabeçalho, enc, slice, slices, total, text (xor-base64) e o digest FNV do resto.
 function signEnv(head, slice, slices, total, text) {
-  const rest = { ...head, enc: 'base64', slice, slices, total, text };
+  const rest = { ...head, enc: 'xor-base64', slice, slices, total, text };
   return { ...rest, digest: fnv1a(JSON.stringify(canon(rest))) };
 }
 
-// Corta os bytes UTF-8 de text em envelopes de até SLICE_BYTES serializados; text vai em base64.
+// Corta os bytes UTF-8 de text em envelopes de até SLICE_BYTES serializados; text vai em xor-base64
+// (bytes XOR keystream de head.nonce e do índice da fatia, depois base64; ofuscação, não sigilo).
 // Partes de múltiplos de 3 bytes (sem "=" no meio); uma parte pode cortar um caractere multibyte.
 function sliceEnvelopes(head, text) {
   const total = { sha256: sha256Hex(text), bytes: utf8Length(text) };
@@ -233,7 +254,7 @@ function sliceEnvelopes(head, text) {
     const parts = [];
     let from = 0;
     do {
-      parts.push(b64Encode(bytes.slice(from, from + step)));
+      parts.push(b64Encode(xorStream(bytes.slice(from, from + step), head.nonce, parts.length)));
       from += step;
     } while (from < bytes.length);
     if (String(parts.length).length <= d) return parts.map((p, i) => signEnv(head, i, parts.length, total, p));
@@ -247,14 +268,14 @@ function checkSlice(env, { tool, command, nonce, slice } = {}) {
   if ((env.command ?? env.mode) !== command) return { ok: false, why: 'the slice is from another command' };
   if (env.nonce !== nonce) return { ok: false, why: 'the slice has another nonce' };
   if (env.slice !== slice) return { ok: false, why: 'the slice has another index' };
-  if (env.enc !== 'base64') return { ok: false, why: 'the slice is not base64' };
+  if (env.enc !== 'xor-base64') return { ok: false, why: 'the slice is not xor-base64' };
   if (typeof env.text !== 'string') return { ok: false, why: 'the slice has no text' };
   const { digest, ...rest } = env;
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the slice does not match: the copy is not literal' };
   return { ok: true, why: null };
 }
 
-// Remonta o texto de uma leitura completa; recusa mistura, falta, ordem trocada, base64 inválido e SHA divergente.
+// Remonta o texto de uma leitura completa; recusa mistura, falta, ordem trocada, enc diferente de xor-base64, base64 inválido e SHA divergente.
 // Junta os bytes de todas as fatias antes de converter para texto (uma fatia pode cortar um caractere).
 function joinSlices(envs) {
   if (!Array.isArray(envs) || envs.length === 0) return { ok: false, why: 'there are no slices' };
@@ -264,7 +285,7 @@ function joinSlices(envs) {
   for (let i = 0; i < envs.length; i++) {
     const env = envs[i];
     if (!env || typeof env !== 'object' || typeof env.text !== 'string' || !env.total) return { ok: false, why: `slice ${i} is malformed` };
-    if (env.enc !== 'base64') return { ok: false, why: `slice ${i} is not base64` };
+    if (env.enc !== 'xor-base64') return { ok: false, why: `slice ${i} is not xor-base64` };
     if (env.slice !== i) return { ok: false, why: `slice ${i} is missing or out of order` };
     if (env.slices !== envs.length) return { ok: false, why: 'the slice count does not match the slices received' };
     if (env.total.sha256 !== first.total.sha256 || env.total.bytes !== first.total.bytes) return { ok: false, why: 'the slices come from different reads' };
@@ -272,7 +293,8 @@ function joinSlices(envs) {
     if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: `the digest of slice ${i} does not match` };
     const part = b64Decode(env.text);
     if (part === null) return { ok: false, why: `slice ${i} is not valid base64` };
-    for (let k = 0; k < part.length; k++) all.push(part[k]);
+    const plain = xorStream(part, env.nonce, env.slice);
+    for (let k = 0; k < plain.length; k++) all.push(plain[k]);
   }
   if (all.length !== first.total.bytes) return { ok: false, why: 'the joined bytes do not match the total byte count' };
   const text = utf8Decode(all);

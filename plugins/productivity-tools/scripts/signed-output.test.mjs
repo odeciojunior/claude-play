@@ -55,13 +55,13 @@ test('C1: multibyte characters cut in the middle by a slice boundary', () => {
     const text = 'a'.repeat(Math.max(0, pad)) + '😀é漢😀'.repeat(900)
     const envs = sliceEnvelopes(head, text)
     for (const env of envs) {
-      assert.equal(env.enc, 'base64')
+      assert.equal(env.enc, 'xor-base64')
       assert.ok(utf8Length(JSON.stringify(env)) <= SLICE_BYTES)
       assert.match(env.text, /^[A-Za-z0-9+/]*={0,2}$/)
     }
     // some slice ends inside a character: its bytes alone are not valid UTF-8
     for (const env of envs) {
-      const raw = Buffer.from(env.text, 'base64')
+      const raw = nodeUnxor(env)
       if (Buffer.from(raw.toString('utf8'), 'utf8').length !== raw.length) cut++
     }
     const j = joinSlices(envs)
@@ -72,11 +72,19 @@ test('C1: multibyte characters cut in the middle by a slice boundary', () => {
   assert.ok(cut > 0, 'the test must cut at least one character')
 })
 
-test('slice text is base64 of UTF-8 bytes and decoding refuses invalid base64', () => {
+// Independent reference (Node crypto/Buffer): the keystream is sha256(`${nonce}:${slice}:${c}`) raw bytes, c = 0, 1, 2...
+function nodeUnxor(env) {
+  const raw = Buffer.from(env.text, 'base64')
+  const ks = Buffer.concat(Array.from({ length: Math.ceil(raw.length / 32) }, (_, c) => createHash('sha256').update(`${env.nonce}:${env.slice}:${c}`).digest()))
+  return Buffer.from(raw.map((b, i) => b ^ ks[i]))
+}
+
+test('slice text is xor-base64 of UTF-8 bytes and decoding refuses invalid base64', () => {
   const text = 'ação, é útil\n"aspas" 漢字 😀'
   const [env] = sliceEnvelopes(head, text)
-  assert.equal(env.enc, 'base64')
-  assert.equal(env.text, Buffer.from(text, 'utf8').toString('base64'))
+  assert.equal(env.enc, 'xor-base64')
+  assert.equal(nodeUnxor(env).toString('utf8'), text)
+  assert.ok(!Buffer.from(env.text, 'base64').toString('utf8').includes('aspas'), 'no visible content')
   assert.deepEqual(joinSlices([env]), { ok: true, text })
   for (const bad of [env.text + 'AA==', env.text.slice(1), env.text.replace(/.$/, '!'), '=' + env.text.slice(1)]) {
     const { digest, ...rest } = env
@@ -84,6 +92,7 @@ test('slice text is base64 of UTF-8 bytes and decoding refuses invalid base64', 
     assert.equal(out.ok, false)
   }
   assert.equal(joinSlices([sign({ ...env, digest: undefined, enc: undefined })]).ok, false)
+  assert.equal(joinSlices([sign({ ...env, digest: undefined, enc: 'base64' })]).ok, false)
   assert.equal(checkSlice(sign({ ...env, digest: undefined, enc: 'hex' }), { tool: 'progress', command: 'read', nonce: 'n1', slice: 0 }).ok, false)
   assert.deepEqual(joinSlices(sliceEnvelopes(head, '')), { ok: true, text: '' })
 })

@@ -264,7 +264,7 @@ test('retries of a slice: haiku, haiku, then sonnet; three bad copies of one sli
   assert.equal(byAgent(sim, IMPL).length, 0);
 }));
 
-test('AC6 (C1): a title with multibyte characters and an emoji is read back as the same state, and the slices are base64 of UTF-8 bytes', () => {
+test('AC6 (C1): a title with multibyte characters and an emoji is read back as the same state, and the slices are xor-base64 of UTF-8 bytes', () => {
   const title = (k) => `${k} ` + '😀é漢ç'.repeat(150);
   return withSandbox(widePlan(8, title), async (sb) => {
     const onDisk = readState(sb);
@@ -290,7 +290,7 @@ test('AC6 (C1): characters cut on the boundary of a slice, whatever the byte off
     const envs = P.sliceEnvelopes(head, text);
     for (const e of envs) {
       assert.ok(bytes(JSON.stringify(e)) <= SLICE, `pad ${pad}: ${bytes(JSON.stringify(e))}`);
-      assert.equal(e.enc, "base64");
+      assert.equal(e.enc, "xor-base64");
       assert.match(e.text, /^[A-Za-z0-9+/]*={0,2}$/, `pad ${pad}: the text is base64`);
     }
     const joined = P.joinSlices(envs);

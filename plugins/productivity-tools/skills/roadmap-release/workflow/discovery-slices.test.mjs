@@ -43,7 +43,7 @@ async function drive({ alt = () => dataOf(), over } = {}) {
   return { r, calls, labels: calls.map((c) => c.label), maxBytes };
 }
 const sliceLabels = (n) => ['discovery', ...Array.from({ length: n - 1 }, (_, i) => `discovery-slice${i + 1}`)];
-// The text of a slice is base64: a copy that changes one character of it (the digest must catch it).
+// The text of a slice is xor-base64: a copy that changes one character of it (the digest must catch it).
 const tamper = (res) => ({ exit: 0, stdout: res.stdout.replace(/("text":")(.)/, (m, a, c) => a + (c === 'A' ? 'B' : 'A')) });
 
 test('a big discovery is read slice by slice, each answer within the copy limit, and the cards are joined', async () => {

@@ -1,4 +1,4 @@
-# E41 plano B3: texto das fatias em base64 (DEC-036)
+# E41 plano B3: texto das fatias em base64 (DEC-036), xor-base64 (DEC-037)
 
 Executado fora do plan-coordinator (DEC-036, como DEC-035). Implementer sonnet, revisor opus, suíte completa antes do relançamento do B2.
 
@@ -21,3 +21,6 @@ Medição de 2026-11-24 (`.git/pt-evidence/E41-B3-b64/`): 10 cópias do mesmo tr
    - Os orçamentos de `size.test.mjs` e `copy-budget.test.mjs` continuam verdes.
 4. Sonda: `tools/measure/sonda-e41-ac2b.mjs prepare` grava `note`/`handoff` com prosa (vírgulas, `\n`, aspas, acentos) no estado de exemplo. Reconferir se `--max-budget-usd 0.16` cobre as fatias a mais.
 5. Suíte completa, lint e embed `--check`. Depois, revisão opus e relançamento do coordinator do B2 sobre o estado real: ler os 20,5 KB e parar em `authorize` é a prova da correção.
+
+## Complemento (DEC-037): xor-base64
+No relançamento real, os modelos decodificaram o base64 de cabeça e reescreveram o conteúdo (haiku removeu um `\"`, sonnet trocou `per run` por `por run`) e re-encodaram válido; o digest pegou. O `enc` passa a ser `"xor-base64"`: os bytes UTF-8 da fatia k são XOR com o keystream `sha256(`${nonce}:${k}:${c}`)` (bytes brutos, c = 0, 1, 2...), depois base64. O nonce é o do envelope; o índice da fatia evita keystream repetido. `total` e o digest do envelope não mudam de forma. É ofuscação, não sigilo: o nonce vai no envelope e o objetivo é só não deixar conteúdo visível para o modelo reescrever. `lib/plan-digest.mjs` expõe `sha256Bytes` (núcleo único do SHA-256; `sha256Hex` o usa). Medição: haiku 20/20, sonnet 6/6 (`.git/pt-evidence/E41-B3-b64/`).
