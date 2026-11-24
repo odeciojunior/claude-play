@@ -1,0 +1,337 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E41/plano-b1/plan.md",
+    "id": "E41",
+    "digest": "0bb6ac21",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 4,
+    "worktree": null,
+    "branch": null,
+    "base": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": -1,
+      "tail": ": taskIssues keeps open and missing verdicts and drops closed ones (0.1258ms)\n✔ AC2: the per-task loop turns the restricted mode on only when taskReview.restricted is true (0.1483ms)\n✔ AC2: taskReview is normalized once in runDeliverable and only true turns a mode on (0.4135ms)\n✔ AC2: runReviewLoop hands the next review the previous findings and the measured head (0.1088ms)\n✔ AC3: by default each task gets the spec and quality reviews on today's model (0.1215ms)\n✔ E35 AC1: reviewModelFor returns opus by default for every task route (0.0665ms)\n✔ E29 AC1: taskIssues ignores verdicts and returns the restricted join or r.issues (0.0461ms)\n✔ AC3: by default the final review has no verification call and today's fix rounds; the single wave has one fix and one re-review (0.3111ms)\n✔ AC1: splitRefuted drops only an explicitly refuted finding and keeps its reason (0.1765ms)\n✔ AC1: with the adversarial mode a refuted finding gets no fix and is recorded as refuted (0.375ms)\n✔ AC2: a confirmed finding or a null verification goes to the fix (0.1882ms)\n✔ E29 AC1: the release, the preflight and the task-reviewer carry no single review (1.107ms)\n✔ E35 AC1: task-reviewer.md restricts verdicts to restricted and spec/quality to review (S3-24) (0.2298ms)\nSeveral node.exe processes were running when checked, so the test process may still be alive or hung. It was not restarted, because the instructions forbid a second copy while one runs. exit=-1 means the run did not finish, not that tests failed.",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-24T00:47:53.687Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "B1: leitura assinada do coordinator por fatias com retry por fatia",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/slices.test.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "coordinator.js now reads the signed state with `read --slice k --json`, one runner call per slice. Each slice gets up to 3 tries (haiku, haiku, sonnet) with labels `read-slice<k>` and `read-slice<k>-retry<j>`. `joinSlices` joins them, and a mixed read restarts once. `copyFits`, `runPrompt(cmd, writes, json)` and `CAPTURE` exist, and `flushChunk` checks `copyFits` before the parse. New `slices.test.mjs` has 7 tests (AC2a, retry per slice, C1, C2); `flow.test.mjs` moves from `--page` to `--slice` ",
+      "sha": "1cb8bf980e8f00ef0bd7251ffc0e9ed35b891f72",
+      "replacedBy": null,
+      "note": "coordinator.js now reads the signed state with `read --slice k --json`, one runner call per slice. Each slice gets up to 3 tries (haiku, haiku, sonnet) with labels `read-slice<k>` and `read-slice<k>-retry<j>`. `joinSlices` joins them, and a mixed read restarts once. `copyFits`, `runPrompt(cmd, writes, json)` and `CAPTURE` exist, and `flushChunk` checks `copyFits` before the parse.\nNew `slices.test",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "B1: linha de base e portão de onda do coordinator pelo capture.mjs com extrator",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/gate.test.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/slices.test.mjs",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "coordinator.js now runs the baseline and the wave gate through capture.mjs with --tests, in a new runCapture({argv|bash,task,label,phase,tests,cwd}) that checks with copyFits and checkCapture and retries once in sonnet. New pure functions: waveGateOf(cap), baselineEvent(test,cap), baselineProblem(cap). A cut or unknown-format name list never passes a failure. failedTestNames was removed (no other use). coordinator.js is 86830 LF chars (limit 88187). Test changes: gate.test.mjs has real-capture t",
+      "sha": "d52565e95a88b9860e84f73aea7fa69215fa3516",
+      "replacedBy": null,
+      "note": "coordinator.js now runs the baseline and the wave gate through capture.mjs with --tests, in a new runCapture({argv|bash,task,label,phase,tests,cwd}) that checks with copyFits and checkCapture and retries once in sonnet.\nNew pure functions: waveGateOf(cap), baselineEvent(test,cap), baselineProblem(cap). A cut or unknown-format name list never passes a failure.\nfailedTestNames was removed (no other ",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "B1: conferência final do B1 (sem commit)",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 2,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T3 is a verification-only step: no file written, no commit. The embed check, both size tests, the lint and the coordinator.js measure all pass. The full suite (G1) exited 0 this time: 2428 tests, 2426 pass, 0 fail, 2 skipped, in about 738 s. coordinator.js measures 86830 LF characters, under the 88187 limit, leaving 1357 for the B2 T7 to use.</summary> <parameter name=\"concerns\">1) The full suite is slow: it ran about 738 s and passed, but the earlier attempt hung with no output in roadmap-relea",
+      "sha": null,
+      "replacedBy": null,
+      "note": "T3 is a verification-only step: no file written, no commit. The embed check, both size tests, the lint and the coordinator.js measure all pass. The full suite (G1) exited 0 this time: 2428 tests, 2426 pass, 0 fail, 2 skipped, in about 738 s. coordinator.js measures 86830 LF characters, under the 88187 limit, leaving 1357 for the B2 T7 to use.</summary>\n<parameter name=\"concerns\">1) The full suite ",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "B1: sonda paga AC2b (efeito do B2; recusar no B1)",
+      "wave": 4,
+      "deps": [
+        3
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip-manual",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": "pass",
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T4.md"
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [
+    {
+      "kind": "refused",
+      "step": 4,
+      "text": "autorização do passo externo 4 não concedida",
+      "open": false
+    }
+  ],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-23T22:50:28.479Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+      "at": "2026-11-23T22:50:28.479Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-23T22:50:33.725Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-23T22:50:33.725Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-23T22:50:33.725Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-23T22:59:30.676Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-23T22:59:41.970Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-23T22:59:47.749Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-23T23:10:41.280Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T23:11:01.980Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T23:11:01.980Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-23T23:11:01.980Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-23T23:29:24.607Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-23T23:39:00.935Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-23T23:39:24.204Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-23T23:39:24.204Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-23T23:39:24.204Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "blocked",
+      "at": "2026-11-24T00:00:16.823Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-24T00:12:02.112Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-24T00:12:07.946Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T00:25:40.961Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T00:25:40.961Z"
+    },
+    {
+      "event": "prelaunch-review",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-24T00:25:40.961Z"
+    },
+    {
+      "event": "refuse",
+      "step": 4,
+      "value": "refused",
+      "at": "2026-11-24T00:47:05.164Z"
+    },
+    {
+      "event": "answer",
+      "step": 4,
+      "value": "no",
+      "at": "2026-11-24T00:47:38.235Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-24T00:47:53.687Z"
+    }
+  ]
+}
