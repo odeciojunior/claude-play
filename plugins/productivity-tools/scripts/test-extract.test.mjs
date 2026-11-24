@@ -48,7 +48,7 @@ for (const [reporter, format] of [['tap', 'node-tap'], ['spec', 'node-spec']]) {
   });
 }
 
-test('tap: suite nao conta, SKIP/TODO saem do nome, sem repeticao e ordenado', () => {
+test('tap: suite nao conta, SKIP/TODO nao sao falha, sem repeticao e ordenado', () => {
   const text = [
     'TAP version 13',
     '# Subtest: s',
@@ -67,8 +67,29 @@ test('tap: suite nao conta, SKIP/TODO saem do nome, sem repeticao e ordenado', (
   ].join('\n');
   const r = extractTests(text, 1);
   assert.equal(r.format, 'node-tap');
-  assert.deepEqual(r.failedNames, ['alfa', 'zeta']);
+  assert.deepEqual(r.failedNames, ['alfa']);
   assert.equal(r.total, 3);
+});
+
+test('tap: todo que falha sai 0 com fail 0 e failedNames vazio', () => {
+  const text = [
+    'TAP version 13',
+    'not ok 1 - quebrado # TODO',
+    '  ---',
+    '  duration_ms: 1',
+    '  ...',
+    'ok 2 - bom',
+    '1..2',
+    '# tests 2',
+    '# pass 1',
+    '# fail 0',
+    '# skipped 0',
+    '# todo 1',
+  ].join('\n');
+  const r = extractTests(text, 0);
+  assert.equal(r.exit, 0);
+  assert.equal(r.fail, 0);
+  assert.deepEqual(r.failedNames, []);
 });
 
 test('spec: secao failing tests nao duplica e a duracao sai do nome', () => {

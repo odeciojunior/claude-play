@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCapture } from './capture.mjs';
 import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, checkCapture, checkSlice, joinSlices, canon, fnv1a } from '../lib/plan-digest.mjs';
@@ -33,6 +33,11 @@ function gitDirOf(repo) {
 function runCli(args, opts = {}) {
   const r = spawnSync(process.execPath, [CAPTURE, ...args], { encoding: 'utf8', env: cleanEnv(), ...opts });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+function withRepoAsync(fn) {
+  const repo = makeRepo();
+  return fn(repo).finally(() => fs.rmSync(repo, { recursive: true, force: true }));
 }
 
 function withRepo(fn) {
@@ -331,6 +336,26 @@ test('limpeza de 14 dias: 15 dias some, 13 dias fica, pasta vazia some', () => {
     assert.equal(fs.existsSync(loose), false);
     assert.equal(fs.existsSync(path.join(root, 'velha')), false);
     assert.equal(fs.existsSync(young), true);
+  });
+});
+
+test('capturas paralelas na mesma pasta de provas: todas gravam e imprimem a linha JSON', async () => {
+  await withRepoAsync(async (repo) => {
+    const root = path.join(repo, '.git', 'pt-evidence');
+    for (let i = 0; i < 6; i++) fs.mkdirSync(path.join(root, `vazia${i}`), { recursive: true });
+    const runOne = (k) => new Promise((resolve) => {
+      const c = spawn(process.execPath, [CAPTURE, 'run', '--nonce', `P${k}`, '--task', 'E41-par', '--cwd', fwd(repo), '--', 'node', '-e', '1'], { env: cleanEnv() });
+      let out = '';
+      c.stdout.on('data', (d) => { out += d; });
+      c.on('close', (code) => resolve({ code, out }));
+    });
+    const rs = await Promise.all(Array.from({ length: 8 }, (_, k) => runOne(k)));
+    for (const r of rs) {
+      assert.equal(r.code, 0, r.out);
+      assert.equal(JSON.parse(r.out).tool, 'capture');
+    }
+    const files = fs.readdirSync(path.join(root, 'E41-par')).filter((n) => n.endsWith('-stdout.txt'));
+    assert.equal(files.length, 8);
   });
 });
 

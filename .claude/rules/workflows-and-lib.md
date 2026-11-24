@@ -7,7 +7,7 @@ paths:
 
 # Productivity Workflows, Scripts, and Pure Libraries
 
-- **Pure sources (DEC-058):** Modules in `plugins/productivity-tools/lib/` (`roadmap-format.mjs`, `roadmap-edit.mjs`, `data-block.mjs`, `routing.mjs`, `plan-digest.mjs`, `external-auth.mjs`, `progress-state.mjs`, `agy-routing.mjs` (not embedded; consumed by the agy bridge)) must have zero imports and no Node/`fs`/env/clock APIs so they can be embedded verbatim. Utility scripts in `plugins/productivity-tools/scripts/`: `embed.mjs`, `spec-tool.mjs`, `plan-tool.mjs`, `review-package.mjs`, `run-record.mjs`.
+- **Pure sources (DEC-058):** Modules in `plugins/productivity-tools/lib/` (`roadmap-format.mjs`, `roadmap-edit.mjs`, `data-block.mjs`, `routing.mjs`, `plan-digest.mjs`, `external-auth.mjs`, `progress-state.mjs`, `agy-routing.mjs` (not embedded; consumed by the agy bridge)) must have zero imports and no Node/`fs`/env/clock APIs so they can be embedded verbatim. Utility scripts in `plugins/productivity-tools/scripts/`: `embed.mjs`, `spec-tool.mjs`, `plan-tool.mjs`, `review-package.mjs`, `run-record.mjs`, `capture.mjs`, `test-extract.mjs`.
 - **agy bridge:** `plugins/productivity-tools/scripts/agy-bridge.py` is loaded by `exec` from the agy workflows (unique basename) and calls `lib/*.mjs` via `node --input-type=module`.
 - **Embed sync:** After editing any embedded `lib/` module, regenerate and verify all 4 targets:
   `node plugins/productivity-tools/scripts/embed.mjs --check plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js plugins/productivity-tools/scripts/fixtures/plan-tool/workflow-copy.js`

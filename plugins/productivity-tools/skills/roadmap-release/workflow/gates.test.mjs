@@ -270,3 +270,12 @@ test('R4: ignoreFailuresWhenChanged takes the names (with the file prefix) from 
   assert.equal(allPass([smoke], meas([r]), base, ['functions/x.ts']).ok, true);
   assert.equal(allPass([smoke], meas([r]), base, ['src/x.ts']).ok, false);
 });
+
+test('E41 T3: ran=false without a capture line is kept (exit -1 when none given), not dropped', () => {
+  const r = gateFromCapture(X, { name: 'lint', ran: false }, { nonce: 'n', cmdDigest: 'x' });
+  assert.deepEqual(r, { name: 'lint', ran: false, exit: -1 });
+  assert.deepEqual(gateFromCapture(T, { name: 'unit', ran: false, exit: 127 }, { nonce: 'n', cmdDigest: 'x' }), { name: 'unit', ran: false, exit: 127 });
+  const m = capturedMeasure([X], meas([{ name: 'lint', ran: false }]), () => 'n');
+  assert.equal(m.gates.length, 1);
+  assert.equal(m.gates[0].ran, false);
+});

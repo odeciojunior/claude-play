@@ -187,6 +187,8 @@ function gateSubset(xs, base) {
 // comes from it; total, skipped and names come from its extract, except for a format the extractor does not know or a gate that ignores failures
 // (the agent's, marked fallback). A cut list of names carries failedNamesCut.
 function gateFromCapture(def, g, expect) {
+  // ran=false (the command could not run, so there is no capture line): kept as reported, with exit -1 when the agent gave none.
+  if (g && g.ran === false) return { name: def.name, ran: false, exit: Number.isInteger(g.exit) ? g.exit : -1 }
   const raw = g && typeof g.capture === 'string' ? g.capture : null
   if (raw === null || !checkCapture(raw, expect).ok) return null
   const o = JSON.parse(raw.replace(/\s+$/, ''))
@@ -604,7 +606,7 @@ function buildImplPrompt(ctx, task) {
 WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); a command that depends on the current directory uses the tool's own directory flag (npm --prefix ${ctx.wt}, make -C ${ctx.wt}, go -C ${ctx.wt}, node --test ${ctx.wt}/tests/...); never cd, never chain with &&.
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, in that worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}${ctx.capture ? `\nCAPTURE: node "${ctx.capture.path}" run --nonce ${ctx.capture.noncePrefix}<k> --task ${ctx.capture.task} -- <command>` : ''}`
+Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}${ctx.capture ? `\nCAPTURE: node "${ctx.capture.path}" run --nonce ${ctx.capture.noncePrefix}<k> --task ${ctx.capture.task} --cwd ${shq(ctx.wt)} -- <command>` : ''}`
 }
 // Failures show at the end of the output, so a long output keeps its tail.
 function tailOf(output) {

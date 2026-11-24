@@ -29,6 +29,8 @@ function tapNames(lines) {
   for (let i = 0; i < lines.length; i++) {
     const m = /^(\s*)not ok\s+\d+\s*-?\s*(.*)$/.exec(lines[i]);
     if (!m) continue;
+    // Node 18-22: a test that fails inside a todo prints `not ok N - name # TODO`, exits 0 and counts as pass; a skip is not a failure either.
+    if (/\s#\s*(SKIP|TODO)\b/i.test(m[2])) continue;
     const ind = m[1].length;
     let suite = false;
     for (let j = i + 1; j < lines.length; j++) {

@@ -159,7 +159,18 @@ function sweep(dir, cutoff, isRoot) {
 }
 
 // Reserva <seq>-stdout.txt (abertura wx) e grava os dois arquivos; devolve os caminhos com barras normais.
+// Outra captura em paralelo pode apagar a pasta vazia entre o mkdir e a abertura (sweep): ENOENT recria a pasta e tenta de novo.
 function saveEvidence(taskDir, stdout, stderr) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return saveEvidenceOnce(taskDir, stdout, stderr);
+    } catch (e) {
+      if (e.code !== 'ENOENT' || attempt >= 20) throw e;
+    }
+  }
+}
+
+function saveEvidenceOnce(taskDir, stdout, stderr) {
   fs.mkdirSync(taskDir, { recursive: true });
   let seq = 0;
   for (const name of fs.readdirSync(taskDir)) {
