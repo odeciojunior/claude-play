@@ -328,6 +328,8 @@ test('E41 B2 T2: a gate with a space in the name and a single quote in the comma
     assert.ok(!c.prompt.includes('capture.mjs" run --nonce unit'), 'the nonce never holds the raw gate name');
   }
   assert.match(calls.find((c) => c.label === 'preflight').prompt, /--task preflight-gates /);
+  assert.match(calls.find((c) => c.label === 'preflight').prompt, /with "<integration worktree>" replaced by the integration worktree path of step 2 \(keep the double quotes\) and nothing else changed/);
+  assert.match(calls.find((c) => c.label === 'E1:gates1').prompt, /run the line under it, unchanged/);
   assert.match(calls.find((c) => c.label === 'E1:gates1').prompt, /--task E1-gates /);
 });
 
