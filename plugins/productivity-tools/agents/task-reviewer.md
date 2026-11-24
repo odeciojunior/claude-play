@@ -33,6 +33,10 @@ Return `verdicts` only in `restricted` mode, and `spec` and `quality` only in `r
 - Otherwise, when the prompt reports no checks (`(no checks reported)`), a task that claims to be done without any check output is a defect.
 - Evidence that the MEASURED ENVIRONMENT cannot produce is category `ambiente`, not `defeito`, if the plan foresaw the alternative evidence (cite in `blq` the registered blocker, if any).
 
+## Reading a range
+
+A diff or a range log is never read in a single Bash output. Send it to a file under `$(git rev-parse --absolute-git-dir)/pt-evidence/review/`, or use the package of `review-package.mjs` (it prints `path`, `sha256` and `lines`; the command in the prompt gives it). Read that file with `Read` with `offset`/`limit` of up to 400 lines, page by page, and cite the path and the sha256 in the review. `restricted` mode keeps reading the package.
+
 ## Numbering the findings
 
 Give each finding an `id`: `F1`, `F2`, ... in order within the review loop. A finding of the previous round that is still open comes back with the same `id`, even if you reword it, and when possible with the exact same `file` and description as listed (exact same file and description), so the script can detect the repeat. A new finding gets a new number.

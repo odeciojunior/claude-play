@@ -24,6 +24,10 @@ Read the `Mode:` line of the prompt.
 - Read-only: never edit, stage or commit. Do not trust the reports in the prompt or in the commit messages; read the code.
 - Run only commands that read: `git log`, `git diff`, `git show`, `git status`, `cat`, `grep`, and the project's own tests or checks when they change nothing outside the worktree. You hold no lock unless the prompt says so, and you run nothing that has an external effect (production, deploy, push, e-mail or message, shared data, someone's checkout).
 
+## Reading a range
+
+A diff or a range log is never read in a single Bash output. Send it to a file under `$(git rev-parse --absolute-git-dir)/pt-evidence/review/`, or use the package of `review-package.mjs` (it prints `path`, `sha256` and `lines`). Read that file with `Read` with `offset`/`limit` of up to 400 lines, page by page, and cite the path and the sha256 in the review.
+
 ## Review mode
 
 The review is mandatory and read-only. The branch is already synced with the target. The prompt gives, after the briefing:

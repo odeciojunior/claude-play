@@ -44,6 +44,20 @@ test('implementer has a CAPTURE section with the capture.mjs contract', () => {
   ]) assert.ok(s.includes(p), p);
 });
 
+test('reviewers never read a range diff or log from one Bash output and read the file by offset/limit', () => {
+  for (const n of ['task-reviewer.md', 'final-reviewer.md']) {
+    const t = read(n);
+    assert.ok(t.includes('never read in a single Bash output'), n);
+    assert.ok(t.includes('pt-evidence/review/'), n);
+    assert.ok(t.includes('git rev-parse --absolute-git-dir'), n);
+    assert.ok(t.includes('review-package.mjs'), n);
+    assert.ok(t.includes('`path`, `sha256` and `lines`'), n);
+    assert.ok(t.includes('Read` with `offset`/`limit` of up to 400 lines'), n);
+    assert.ok(t.includes('cite the path and the sha256'), n);
+  }
+  assert.match(read('task-reviewer.md'), /`restricted` mode keeps reading the package/);
+});
+
 test('no agent file writes the copy limit as a bare digit run or the forbidden word', () => {
   for (const n of names) {
     const t = read(n);
