@@ -721,3 +721,8 @@ test('B2 T5: with commits none the final review also asks for the worktree diff'
   assert.ok(diff.includes('diff HEAD') && diff.includes('pt-evidence/review/' + id + '-worktree.diff'), diff);
   assert.ok(diff.includes('ls-files --others --exclude-standard'), diff);
 }, { commits: 'none' }));
+
+test('coordinator.js stays within the E41 budget of 88187 LF characters (R14)', () => {
+  const size = readFileSync(join(HERE, 'coordinator.js'), 'utf8').replace(/\r\n/g, '\n').length;
+  assert.ok(size <= 88187, `coordinator.js has ${size} LF characters`);
+});

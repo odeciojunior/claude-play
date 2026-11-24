@@ -1159,10 +1159,8 @@ function tailOf(text, n = 1500) {
   return t.length > n ? t.slice(t.length - n) : t
 }
 
-// Event size caps: the gate question, the failed names kept in the baseline and the command sent to the script-runner.
 const GATE_Q_CAP = 600
 const NAMES_CAP = 50
-// Git Bash cuts a `bash -c` string near 8186 characters and the Bash tool wraps about 500 more: an apply command stays under CMD_CAP.
 const CMD_CAP = 6000
 
 // At most NAMES_CAP names; cut counts the rest. The "+N" marker is never part of a name.
@@ -1171,7 +1169,6 @@ function capNames(list) {
   return { names: all.slice(0, NAMES_CAP), cut: Math.max(0, all.length - NAMES_CAP) }
 }
 
-// The question of a failed wave gate, at most GATE_Q_CAP characters; a cut keeps the "..." mark and the +N count.
 function gateQuestion(wave, exit, failedNames) {
   const { names, cut } = capNames(failedNames)
   const more = cut > 0 ? ` +${cut}` : ''
@@ -1184,7 +1181,6 @@ function gateQuestion(wave, exit, failedNames) {
   return head + list.slice(0, Math.max(0, keep)) + '...' + more + tail
 }
 
-// The gate of a wave from the checked JSON of capture: a cut or missing list of names never passes a failure.
 function waveGateOf(cap) {
   if (!cap || !Number.isInteger(cap.exit)) return { exit: -1, failedNames: [] }
   const ex = cap.extract
@@ -1220,7 +1216,6 @@ function cmdOverCap(cmd) {
 // What progress.mjs read, apply --events and the local copy compare: the state without its history.
 function stateDigest(state) { return fnv1a(JSON.stringify(canon({ ...state, history: [] }))) }
 
-// The state belongs to the plan of the launch: same file, slashes normalized, compared by the relative suffix.
 function samePlan(statePath, planArg) {
   const a = slash(statePath).replace(/^\.\//, '')
   const b = slash(planArg)
@@ -1250,12 +1245,10 @@ function parseLogLine(stdout, planId, n) {
   return m && m[2].startsWith(`${planId} T${n}:`) ? m[1] : null
 }
 
-// Passed steps that still need their commit: no sha yet, or passed again after a fix and already committed once.
 function stepsToCommit(state, again) {
   return state.steps.filter((s) => s.status === 'pass' && s.noCommit !== true && (!s.sha || again.has(s.n))).sort((a, b) => a.n - b.n)
 }
 
-// The event of an implementer return: DONE and DONE_WITH_CONCERNS pass, BLOCKED and NEEDS_HUMAN block, no return is no-report.
 function reportEvent(n, out, at) {
   if (!out || typeof out !== 'object' || typeof out.status !== 'string') return { type: 'no-report', step: n, at }
   const summary = String(out.summary || '').trim()
@@ -1270,7 +1263,6 @@ function issuesText(issues) {
   return issues.map((i) => `${i.id ? i.id + ' ' : ''}[${i.severity}${i.category ? '/' + i.category : ''}]${i.file ? ' ' + i.file : ''} ${i.description}`).join('\n')
 }
 
-// Findings that block: not minor, and not an environment limit, a pre-existing problem or something the plan foresaw.
 function blockingIssues(review) {
   const out = []
   for (const i of (review && Array.isArray(review.issues)) ? review.issues : []) {
@@ -1288,7 +1280,6 @@ function reviewVerdict(out) {
   return { verdict: 'defects', text: blocking.length ? issuesText(blocking) : 'the review marked spec or quality as fail without a finding' }
 }
 
-// The lowest step whose files hold the file of a blocking finding; null when no finding names a file of a step.
 function owningStep(state, issues) {
   const hits = []
   for (const i of issues) {
@@ -1310,7 +1301,6 @@ const A = args
 const PROGRESS = slash(A.progress)
 const STATE_FILE = slash(A.state)
 const CAPTURE = PROGRESS.replace(/\/skills\/plan-coordinator\/scripts\/progress\.mjs$/, '/scripts/capture.mjs')
-// The run token stays only in the first read: every later nonce carries a hash of it, so a resume by the runtime re-runs everything live.
 const RUN_TAG = fnv1a(A.runToken)
 const REVIEW_PKG = PROGRESS.replace(/\/skills\/plan-coordinator\/scripts\/progress\.mjs$/, '/scripts/review-package.mjs')
 
@@ -1331,13 +1321,11 @@ const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required
 // ---------------------------------------------------------------- script-runner calls
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return exit=-1 with an empty stdout.'
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
-// With json the command prints one JSON line: an agent copies it literally, and a line above the copy limit is an error of the command.
 const runPrompt = (cmd, writes, json) => `Run this command once and return its exit code and ${json ? `the one JSON line it prints, literal (a line above ${MAX_COPY_BYTES} bytes is an error of the command: return it as it is)` : 'its full stdout, literal'}${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
 // An output an agent copied must fit the copy limit, or it was cut.
 const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
-// sliceEnvelopes sizes a slice by the length of its nonce: all the slices of a read need nonces of one length, the one of the run token.
 const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`
 const runCmd = (cmd, label, o = {}) => {
   const over = cmdOverCap(cmd)
@@ -1379,8 +1367,6 @@ const queue = (ev) => {
   queued.push(e)
 }
 
-// A signed read of progress.mjs, slice by slice (read --slice k): every envelope fits the copy limit and only a bad slice is repeated.
-// Per slice 3 tries (haiku, haiku, sonnet). Slices of different reads are refused by joinSlices and the read restarts once. Slice 0 of the first read carries the run token.
 const readSigned = async (label, first) => {
   let why = ''
   for (let round = 0; round < 2; round++) {
@@ -1415,9 +1401,7 @@ const divergence = (message) => stopWith('state-divergence', { message })
 
 const applyCmd = (expect, events, nonce) => `node ${shq(PROGRESS)} apply ${shq(STATE_FILE)} --events ${shq(eventsPayload(expect, events))} --nonce ${shq(nonce)} --json`
 
-// One signed apply of consecutive events on top of DISK. Returns null when they are on disk, else the result to return.
-// A write is not repeated blindly: an output that does not check leads to a new read, and the chunk is sent again
-// only when the state read still has the digest the chunk started from.
+// One signed apply of consecutive events; a chunk is resent only if the state still has its starting digest.
 const flushChunk = async (why, events) => {
   const expect = stateDigest(DISK)
   const after = applyEvents(DISK, events, NOW)
@@ -1447,8 +1431,6 @@ const flushChunk = async (why, events) => {
   return failWith('the events could not be written')
 }
 
-// Writes the queued events in order, in signed applies of at most CMD_CAP characters each. Every chunk starts from the digest
-// the previous one left on disk; a failed chunk stops the next ones and nothing of it is half-applied. Returns null when all are on disk.
 const flush = async (why) => {
   if (queued.length === 0) return null
   const events = queued.slice()
@@ -1557,7 +1539,6 @@ const recordReports = (results) => {
   }
 }
 const testCmd = () => S.run.test || A.test || 'none'
-// capture.mjs runs the command and signs one JSON line (exit, tail, extract); the line is checked and the run repeated once in sonnet. null when no line checks.
 const runCapture = async ({ argv, bash, task, label, phase, tests, cwd }) => {
   const digest = commandDigest(bash !== undefined ? { bash } : { argv })
   for (let t = 1; t <= 2; t++) {
@@ -1570,7 +1551,6 @@ const runCapture = async ({ argv, bash, task, label, phase, tests, cwd }) => {
 }
 const runTest = (label) => runCapture({ bash: testCmd(), task: `${S.plan.id}-gate`, label, phase: 'Gate', tests: true, cwd: ROOT })
 
-// The tests before the first launch, recorded once in run.baseline ("none" or no command records a green baseline without running); a baseline that fails or runs 0 tests stops the run before the first step.
 const ensureBaseline = async () => {
   if (S.run.baseline !== null && S.run.baseline !== undefined) return null
   const test = testCmd()
@@ -1591,12 +1571,10 @@ const ensureBaseline = async () => {
   return stopWith('ask', { question, excerpt: out.tail })
 }
 
-// `again` is lost with a kill: once per run, before any launch (the worktree then only holds work from before the kill),
-// a committed step whose files changed after a fix goes back to the list.
+// Once per run, before any launch: a committed step whose files changed after a fix goes back to the list.
 const sweepCommitted = async () => {
   if (S.run.commits !== 'per-step' || swept) return
   swept = true
-  // A file that an unfinished step also owns may hold that step's partial work: it is left to the step that commits it.
   const open = new Set(S.steps.filter((x) => x.status !== 'pass').flatMap(filesOf))
   for (const s of S.steps) {
     if (s.status !== 'pass' || s.noCommit === true || !s.sha || filesOf(s).length === 0) continue
@@ -1606,7 +1584,6 @@ const sweepCommitted = async () => {
   }
 }
 
-// Per-step commits, one at a time in the order of n, after every return of the wave and its review. Returns { result } to stop or { did }.
 const commitSteps = async () => {
   if (S.run.commits !== 'per-step') return { did: false }
   const todo = stepsToCommit(S, again)
@@ -1617,7 +1594,6 @@ const commitSteps = async () => {
   for (const s of todo) {
     const paths = filesOf(s).map(shq).join(' ')
     const g = `git -C ${shq(ROOT)}`
-    // A clean pathspec means the files are already committed (a kill between the commit and its event, a fix that changed nothing).
     const dirty = await runCmd(`${g} status --porcelain -- ${paths}`, `T${s.n}:git-status`, { phase: 'Commit' })
     if (!dirty || dirty.exit !== 0) return { result: failWith(`git status failed for step T${s.n}: ${tailOf(dirty && dirty.stdout, 400)}`, { step: s.n }) }
     const clean = String(dirty.stdout || '').trim() === ''
@@ -1663,12 +1639,9 @@ if (!samePlan(S.plan.path, A.plan)) return failWith(`the state belongs to anothe
 if (first.data.planChanged === true) return stopWith('plan-changed', { message: 'the plan changed after progress.mjs init; the state is kept as it is. Recreate it with init --restart only if the person asks' })
 
 try {
-  // A step still launched on disk belongs to a run that died: no report came. A common step goes back to pending; an external
-  // step becomes stopped and the person is asked, because its effect may have happened (it never runs twice).
   for (const s of S.steps.filter((x) => x.status === 'launched').sort((a, b) => a.n - b.n)) {
     queue({ type: 'no-report', step: s.n, text: 'the run that launched this step ended without its report' })
   }
-  // What the person answered is applied before the loop, then both are on disk before anything is dispatched.
   for (const a of Array.isArray(A.answers) ? A.answers : []) queue(normalizeAnswer(a))
   const resumed = await flush('resume')
   if (resumed) return resumed
