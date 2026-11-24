@@ -274,7 +274,7 @@ function joinSlices(envs) {
     if (part === null) return { ok: false, why: `slice ${i} is not valid base64` };
     for (let k = 0; k < part.length; k++) all.push(part[k]);
   }
-  if (all.length !== first.total.bytes) return { ok: false, why: 'the joined text does not match the total sha256' };
+  if (all.length !== first.total.bytes) return { ok: false, why: 'the joined bytes do not match the total byte count' };
   const text = utf8Decode(all);
   if (utf8Length(text) !== first.total.bytes || sha256Hex(text) !== first.total.sha256) return { ok: false, why: 'the joined text does not match the total sha256' };
   return { ok: true, text };

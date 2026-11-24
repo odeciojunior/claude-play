@@ -406,10 +406,10 @@
       "agentId": null,
       "preLaunchReview": null,
       "authorized": null,
-      "handoff": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in D:/projects/claude-play/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the reading of \"caracteres LF\" matters. coordinator.js is 87,784 characters, under 88,187. Downstream: the or",
+      "handoff": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in <repo>/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the reading of \"caracteres LF\" matters. coordinator.js is 87,784 characters, under 88,187. Downstream: the or",
       "sha": null,
       "replacedBy": null,
-      "note": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in D:/projects/claude-play/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the readi",
+      "note": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in <repo>/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the readi",
       "outputs": null,
       "brief": "briefs/T10.md",
       "gated": true
@@ -454,7 +454,7 @@
     {
       "kind": "prelaunch-failed",
       "step": 11,
-      "text": "F1 [important/defeito] docs/plans/pos-2-3-0-E41/plano-b2/briefs/T11.md X2 cannot be done as written in a fresh disposable config. To turn context-mode on, the brief and the runbook it points to (tools/measure/sonda-e41-ac2b.md) give only `CLAUDE_CONFIG_DIR=<cfg> claude plugin enable context-mode@context-mode`. D:/claude-pos23-cfg does not exist yet (the owner creates it at login, H2). In a new config neither the context-mode marketplace (mksglu/context-mode, today only in the owner's known_marketplaces.json) nor the plugin is installed, so `enable` fails. Neither file says to install the marke",
+      "text": "F1 [important/defeito] docs/plans/pos-2-3-0-E41/plano-b2/briefs/T11.md X2 cannot be done as written in a fresh disposable config. To turn context-mode on, the brief and the runbook it points to (tools/measure/sonda-e41-ac2b.md) give only `CLAUDE_CONFIG_DIR=<cfg> claude plugin enable context-mode@context-mode`. <cfg> does not exist yet (the owner creates it at login, H2). In a new config neither the context-mode marketplace (mksglu/context-mode, today only in the owner's known_marketplaces.json) nor the plugin is installed, so `enable` fails. Neither file says to install the marke",
       "open": true
     }
   ],
