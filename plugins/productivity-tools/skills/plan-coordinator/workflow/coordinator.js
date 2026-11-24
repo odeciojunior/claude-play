@@ -891,63 +891,118 @@ function sha256Hex(str) {
   return h.map((x) => x.toString(16).padStart(8, '0')).join('');
 }
 
-// Envelope assinado: o cabeçalho, slice, slices, total, text e o digest FNV do resto.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Base64 padrão (com "=") de uma lista de bytes.
+function b64Encode(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
+    out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63];
+    out += i + 1 < bytes.length ? B64[(n >> 6) & 63] : '=';
+    out += i + 2 < bytes.length ? B64[n & 63] : '=';
+  }
+  return out;
+}
+
+// Bytes de um base64 padrão estrito; null se inválido (alfabeto, tamanho, padding).
+function b64Decode(str) {
+  if (typeof str !== 'string' || str.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(str)) return null;
+  const out = [];
+  for (let i = 0; i < str.length; i += 4) {
+    const q = str.slice(i, i + 4);
+    const pad = q.endsWith('==') ? 2 : q.endsWith('=') ? 1 : 0;
+    if (pad && i + 4 !== str.length) return null;
+    const n = (B64.indexOf(q[0]) << 18) | (B64.indexOf(q[1]) << 12) | ((pad === 2 ? 0 : B64.indexOf(q[2])) << 6) | (pad ? 0 : B64.indexOf(q[3]));
+    out.push((n >> 16) & 255);
+    if (pad < 2) out.push((n >> 8) & 255);
+    if (pad < 1) out.push(n & 255);
+  }
+  return out;
+}
+
+// Texto de uma lista de bytes UTF-8; sequência inválida vira U+FFFD.
+function utf8Decode(b) {
+  let out = '';
+  for (let i = 0; i < b.length;) {
+    const c = b[i];
+    const len = c < 0x80 ? 1 : c >= 0xc2 && c < 0xe0 ? 2 : c >= 0xe0 && c < 0xf0 ? 3 : c >= 0xf0 && c < 0xf5 ? 4 : 0;
+    let cp = len === 1 ? c : len === 2 ? c & 31 : len === 3 ? c & 15 : c & 7;
+    let ok = len > 0 && i + len <= b.length;
+    for (let k = 1; ok && k < len; k++) {
+      if ((b[i + k] & 0xc0) !== 0x80) ok = false;
+      else cp = (cp << 6) | (b[i + k] & 63);
+    }
+    if (ok && ((len === 3 && (cp < 0x800 || (cp >= 0xd800 && cp <= 0xdfff))) || (len === 4 && (cp < 0x10000 || cp > 0x10ffff)))) ok = false;
+    if (!ok) { out += String.fromCharCode(0xfffd); i++; continue; }
+    out += String.fromCodePoint(cp);
+    i += len;
+  }
+  return out;
+}
+
+// Envelope assinado: o cabeçalho, enc, slice, slices, total, text (base64) e o digest FNV do resto.
 function signEnv(head, slice, slices, total, text) {
-  const rest = { ...head, slice, slices, total, text };
+  const rest = { ...head, enc: 'base64', slice, slices, total, text };
   return { ...rest, digest: fnv1a(JSON.stringify(canon(rest))) };
 }
 
-// Corta text em envelopes de até SLICE_BYTES serializados, guloso por ponto de código.
+// Corta os bytes UTF-8 de text em envelopes de até SLICE_BYTES serializados; text vai em base64.
+// Partes de múltiplos de 3 bytes (sem "=" no meio); uma parte pode cortar um caractere multibyte.
 function sliceEnvelopes(head, text) {
   const total = { sha256: sha256Hex(text), bytes: utf8Length(text) };
-  const cps = Array.from(text);
-  const cost = cps.map((c) => utf8Length(JSON.stringify(c)) - 2);
+  const bytes = utf8Bytes(text);
   for (let d = 1; ; d++) {
     const big = 10 ** d - 1;
     const room = SLICE_BYTES - utf8Length(JSON.stringify(signEnv(head, big, big, total, '')));
+    const step = Math.floor(room / 4) * 3;
+    if (step < 3) throw new Error('slice header larger than the slice limit');
     const parts = [];
     let from = 0;
     do {
-      let used = 0;
-      let to = from;
-      while (to < cps.length && used + cost[to] <= room) used += cost[to++];
-      if (to === from && from < cps.length) throw new Error('slice header larger than the slice limit');
-      parts.push(cps.slice(from, to).join(''));
-      from = to;
-    } while (from < cps.length);
+      parts.push(b64Encode(bytes.slice(from, from + step)));
+      from += step;
+    } while (from < bytes.length);
     if (String(parts.length).length <= d) return parts.map((p, i) => signEnv(head, i, parts.length, total, p));
   }
 }
 
-// Confere um envelope: tool, comando (command ou mode), nonce, índice e digest.
+// Confere um envelope: tool, comando (command ou mode), nonce, índice, codificação e digest.
 function checkSlice(env, { tool, command, nonce, slice } = {}) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) return { ok: false, why: 'the slice is not an object' };
   if (env.tool !== tool) return { ok: false, why: 'the slice is from another tool' };
   if ((env.command ?? env.mode) !== command) return { ok: false, why: 'the slice is from another command' };
   if (env.nonce !== nonce) return { ok: false, why: 'the slice has another nonce' };
   if (env.slice !== slice) return { ok: false, why: 'the slice has another index' };
+  if (env.enc !== 'base64') return { ok: false, why: 'the slice is not base64' };
   if (typeof env.text !== 'string') return { ok: false, why: 'the slice has no text' };
   const { digest, ...rest } = env;
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the slice does not match: the copy is not literal' };
   return { ok: true, why: null };
 }
 
-// Remonta o texto de uma leitura completa; recusa mistura, falta, ordem trocada e SHA divergente.
+// Remonta o texto de uma leitura completa; recusa mistura, falta, ordem trocada, base64 inválido e SHA divergente.
+// Junta os bytes de todas as fatias antes de converter para texto (uma fatia pode cortar um caractere).
 function joinSlices(envs) {
   if (!Array.isArray(envs) || envs.length === 0) return { ok: false, why: 'there are no slices' };
   const first = envs[0];
   if (!first || !first.total) return { ok: false, why: 'the slice has no total' };
-  let text = '';
+  const all = [];
   for (let i = 0; i < envs.length; i++) {
     const env = envs[i];
     if (!env || typeof env !== 'object' || typeof env.text !== 'string' || !env.total) return { ok: false, why: `slice ${i} is malformed` };
+    if (env.enc !== 'base64') return { ok: false, why: `slice ${i} is not base64` };
     if (env.slice !== i) return { ok: false, why: `slice ${i} is missing or out of order` };
     if (env.slices !== envs.length) return { ok: false, why: 'the slice count does not match the slices received' };
     if (env.total.sha256 !== first.total.sha256 || env.total.bytes !== first.total.bytes) return { ok: false, why: 'the slices come from different reads' };
     const { digest, ...rest } = env;
     if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: `the digest of slice ${i} does not match` };
-    text += env.text;
+    const part = b64Decode(env.text);
+    if (part === null) return { ok: false, why: `slice ${i} is not valid base64` };
+    for (let k = 0; k < part.length; k++) all.push(part[k]);
   }
+  if (all.length !== first.total.bytes) return { ok: false, why: 'the joined text does not match the total sha256' };
+  const text = utf8Decode(all);
   if (utf8Length(text) !== first.total.bytes || sha256Hex(text) !== first.total.sha256) return { ok: false, why: 'the joined text does not match the total sha256' };
   return { ok: true, text };
 }

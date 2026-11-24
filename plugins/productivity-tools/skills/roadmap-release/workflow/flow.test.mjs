@@ -877,7 +877,7 @@ test('E10 AC1: discovery dispatches the script-runner with preflight.mjs" discov
 });
 
 test('a wrong digest retries up to 5 times and stops with discovery failed', async () => {
-  const tampered = (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discSlices(p, { repo: '/r', today: '2026-11-09', cards: [card('E1')] }).replace('2026-11-09', '2026-11-08') } : undefined);
+  const tampered = (l, p) => (/^discovery(-retry\d)?$/.test(l) ? { exit: 0, stdout: discSlices(p, { repo: '/r', today: '2026-11-09', cards: [card('E1')] }).replace(/("text":")(.)/, (m, q, c) => q + (c === 'A' ? 'B' : 'A')) } : undefined);
   const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: tampered });
   assert.equal(x.r.status, 'error');
   assert.match(x.r.error, /^discovery failed: .*digest/);

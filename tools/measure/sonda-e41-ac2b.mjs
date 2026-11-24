@@ -76,6 +76,10 @@ function planText() {
   return prose.join('\n') + '## Bloco de dados\n\n```json data\n' + JSON.stringify(data, null, 2) + '\n```\n';
 }
 
+// Texto de exemplo com o que quebrou a copia crua da fatia 6: virgulas, quebras de linha, aspas e acentos.
+export const PROSE_NOTE = 'Criei o script, o roteiro e o teste.\nO subcomando "prepare" monta o sandbox, roda init e aplica approve-map, depois confere a ação seguinte.\nVerifiquei: passou, sem retries, sem avisos; custo, tempo e tokens dentro do previsto.';
+export const PROSE_HANDOFF = 'Entrego tools/measure/sonda-e41-ac2b.mjs (prepare e summarize), o roteiro e o teste.\nPróximo passo: ler o estado, conferir as fatias, parar em authorize; não executar nada externo, nem "de leve".\n' + 'Detalhe de aceitação, órfão de contexto, útil só para a sonda: vírgulas, pontos e vírgulas; aspas "duplas" e \'simples\'. '.repeat(12);
+
 function run(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' });
   if (r.status !== 0) throw new Error([cmd, ...args].slice(0, 4).join(' ') + ' saiu ' + r.status + ': ' + (r.stderr || r.stdout));
@@ -109,6 +113,11 @@ export function prepare({ work, plugin }) {
   const load = { ...rest, digest: fnv1a(JSON.stringify(canon(rest))) };
   const nonce = crypto.randomBytes(8).toString('hex');
   run('node', [progress, 'apply', stateFile, '--events', encodeURIComponent(JSON.stringify(load)), '--nonce', nonce], sandbox);
+  // Prosa real no estado (virgulas, quebras de linha, aspas, acentos): as fatias em base64 tem de passar por ela (E41 B3).
+  const withProse = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  withProse.steps[8].note = PROSE_NOTE;
+  withProse.steps[8].handoff = PROSE_HANDOFF;
+  fs.writeFileSync(stateFile, JSON.stringify(withProse, null, 2) + '\n');
   const next = JSON.parse(run('node', [progress, 'next', stateFile, '--json'], sandbox));
   return { sandbox, stateFile, action: next.action };
 }

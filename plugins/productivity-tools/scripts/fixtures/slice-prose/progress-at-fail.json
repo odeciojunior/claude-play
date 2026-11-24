@@ -1,0 +1,717 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E41/plano-b2/plan.md",
+    "id": "E41",
+    "digest": "7f153612",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "in-progress",
+    "wave": 7,
+    "worktree": null,
+    "branch": null,
+    "base": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for the empty string (0.7625ms)\n✔ wordCount is 0 for blank text (0.1139ms)\n✔ slugify joins lowercase words with single hyphens (7.1144ms)\n✔ slugify drops punctuation and trims hyphens at the ends (0.1573ms)\n✔ truncate shortens long text and ends with an ellipsis (0.6278ms)\n✔ truncate keeps short text unchanged (0.1556ms)\n✔ truncate throws a RangeError for a negative max (1.01ms)\n✔ wordCount counts whitespace-separated words (0.7073ms)\n✔ wordCount is 0 for empty text (0.131ms)\n✔ counts usage once per message id, keeping the largest output (4.0905ms)\n✔ splits cache writes into 5m and 1h (1.0338ms)\n✔ counts agent calls by dominant model family (1.3368ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.9197ms)\n✔ estimates cost and keeps unpriced models null (0.9045ms)\n✔ readJsonl tolerates CRLF and a partial last line (8.9972ms)\n✔ classifies every label family of the role table (0.3485ms)\n✔ status, progress, review log and report come out as separate rows (4.1659ms)\n✔ records review rounds per loop (3.5821ms)\n✔ counts tasks and the task loop (3.5859ms)\n✔ writes metrics.json and one csv row per run and role (189.5066ms)\n✔ groups sessions of one attempt with --runs (141.7833ms)\n✔ requires --root and --out (492.9445ms)\n✔ refuses --out inside the repository outside tools/measure/out (1670.1173ms)\n✔ real price table is dated and sourced (0.2991ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (57.7102ms)\n✔ privacy scan catches a planted personal path and session id (9.2751ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (55.3518ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (13.4842ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (31.8803ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (41.1789ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (21.3794ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (33.4436ms)\nℹ tests 2428\nℹ suites 11\nℹ pass 2426\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 716854.5667",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-24T05:40:06.697Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        6,
+        9
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2,
+        5,
+        7
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        8
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        10
+      ]
+    },
+    {
+      "n": 7,
+      "tasks": [
+        11
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "B2: roadmap-release lê discovery e readBack por fatias e recusa cópia acima do limite",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/discovery-slices.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js now reads the discovery (preflight discover --slice k) and the readBack (verify-run read, with slice in the payload) through one function, readSlices, with tries: 5. Only the slice that failed is repeated. Slices from different reads are dropped and the read restarts once, with -redo labels. A copy above MAX_COPY_BYTES is refused by copyFits before JSON.parse. Labels: slice 0 keeps the old label (discovery, or the readBack label) and slices k >= 1 are <label>-slice<k>, with -r",
+      "sha": "4963a024977dab4be8f47fc274382c4986390c1b",
+      "replacedBy": null,
+      "note": "roadmap-release.js now reads the discovery (preflight discover --slice k) and the readBack (verify-run read, with slice in the payload) through one function, readSlices, with tries: 5. Only the slice that failed is repeated. Slices from different reads are dropped and the read restarts once, with -redo labels. A copy above MAX_COPY_BYTES is refused by copyFits before JSON.parse.\nLabels: slice 0 ke",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "B2: portões do roadmap-release medidos pelo JSON do capture.mjs (gateFromCapture)",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/gates.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js now measures each gate with a capture.mjs line and takes the exit, total, skipped and failedNames from the signed JSON. It does this through the pure functions gateFromCapture(def, g, expect) and capturedMeasure(defs, m, nonceOf). measureTxt(defs, nonceOf, dir, task) emits one capture line per gate. The nonce is `${RUN_TAG}:<label>:g<i>`, cwd goes through shq, and --tests is added only for tests gates. gateOnce, measuredGroup and preflight step 4 pass each measure through capt",
+      "sha": "ab29d71f93bd58f7234ec716332670effe71625a",
+      "replacedBy": null,
+      "note": "roadmap-release.js now measures each gate with a capture.mjs line and takes the exit, total, skipped and failedNames from the signed JSON. It does this through the pure functions gateFromCapture(def, g, expect) and capturedMeasure(defs, m, nonceOf).\nmeasureTxt(defs, nonceOf, dir, task) emits one capture line per gate. The nonce is `${RUN_TAG}:<label>:g<i>`, cwd goes through shq, and --tests is add",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "B2: prompt do implementer, teste primeiro pelo capture.mjs e limpeza no CLEANUP do roadmap-release",
+      "wave": 3,
+      "deps": [
+        2,
+        6
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/review.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/cleanup.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js now checks the test-first pair by the signed capture.mjs JSON lines. testFirstGap(task, impl, resumed, cap) with cap.noncePrefix counts a pair only when both lines pass checkCapture (own nonce, prefix, digest), the red one comes first and the cmdDigest is the same; without cap the old rule is unchanged (agy). buildImplPrompt adds the \"CAPTURE: node \"<path>\" run --nonce <prefix><k> --task <E>-T<n> -- <command>\" line only when ctx.capture exists. The implementation ctxFor passes",
+      "sha": "c1044b266fde93b4dfb2b0b5b16c44e8c21375f6",
+      "replacedBy": null,
+      "note": "roadmap-release.js now checks the test-first pair by the signed capture.mjs JSON lines. testFirstGap(task, impl, resumed, cap) with cap.noncePrefix counts a pair only when both lines pass checkCapture (own nonce, prefix, digest), the red one comes first and the cmdDigest is the same; without cap the old rule is unchanged (agy).\nbuildImplPrompt adds the \"CAPTURE: node \"<path>\" run --nonce <prefix><",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "B2: cargas de spec e plano (B07) por fatias do capture.mjs no roadmap-release",
+      "wave": 4,
+      "deps": [
+        3
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/load-slices.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "The spec load and plan load in roadmap-release.js now run each command through `capture.mjs run --task <E>-load --cwd <wt>` and read any cut output back with `capture.mjs slice` and the same `--cwd`. Slices go through `readSlices`, and the joined text must match the capture's `sha256`. `loadVia(E, base, k, cmds)` returns `{checkExit, checkStdout, emitExit, emitStdout, blob, head, clean}` for `checkSpecLoad`/`checkPlanLoad`, which are unchanged, or `{loadWhy}`; `load3` keeps its 5 attempts and re",
+      "sha": "723aaeba6a6f902238234498ecfdcf04b4a65a99",
+      "replacedBy": null,
+      "note": "The spec load and plan load in roadmap-release.js now run each command through `capture.mjs run --task <E>-load --cwd <wt>` and read any cut output back with `capture.mjs slice` and the same `--cwd`. Slices go through `readSlices`, and the joined text must match the capture's `sha256`.\n`loadVia(E, base, k, cmds)` returns `{checkExit, checkStdout, emitExit, emitStdout, blob, head, clean}` for `chec",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "B2: prompt do implementer, revisão final por review-package e limpeza no fecho do coordinator",
+      "wave": 2,
+      "deps": [
+        6
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "coordinator.js now puts the CAPTURE line in the implementer prompt, with nonce <RUN_TAG>:<plan id>:T<n>:<k> and task <plan id>-T<n>. The final-reviewer Diff: line now runs review-package.mjs (ROOT, base, HEAD) into <git-dir>/pt-evidence/review/<id>-final.txt, and keeps ls-files --others. With commits none it also asks for git diff HEAD into <id>-worktree.diff. The done case runs capture.mjs prune --task-prefix '<id>-' --cwd ROOT through the script-runner before finish, and a failure never change",
+      "sha": "1fe63046d1bfcf94658f7dc1336891b1dcc30e9e",
+      "replacedBy": null,
+      "note": "coordinator.js now puts the CAPTURE line in the implementer prompt, with nonce <RUN_TAG>:<plan id>:T<n>:<k> and task <plan id>-T<n>.\nThe final-reviewer Diff: line now runs review-package.mjs (ROOT, base, HEAD) into <git-dir>/pt-evidence/review/<id>-final.txt, and keeps ls-files --others. With commits none it also asks for git diff HEAD into <id>-worktree.diff.\nThe done case runs capture.mjs prune ",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "B2: contratos do script-runner, do test-integrity e do implementer com capture.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/agent-contracts.test.mjs",
+        "plugins/productivity-tools/agents/script-runner.md",
+        "plugins/productivity-tools/agents/test-integrity.md",
+        "plugins/productivity-tools/agents/implementer.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Created agent-contracts.test.mjs (4 tests). The three agent contracts now carry the capture.mjs rules in English. script-runner.md: copy only the JSON line; a line above 3,500 bytes is an error of the command, not of the agent. test-integrity.md: an incomplete JSON gives removedAsserts=-1, never a partial copy. implementer.md: new \"## CAPTURE\" section (nonce/task/--bash form, command identical between rounds, output is the literal JSON line, report cites path/sha256/exit, no tail/head/grep pipes",
+      "sha": "47cf2ca01d7721c49e8e629ab8a4ce6b29a07727",
+      "replacedBy": null,
+      "note": "Created agent-contracts.test.mjs (4 tests). The three agent contracts now carry the capture.mjs rules in English.\nscript-runner.md: copy only the JSON line; a line above 3,500 bytes is an error of the command, not of the agent.\ntest-integrity.md: an incomplete JSON gives removedAsserts=-1, never a partial copy.\nimplementer.md: new \"## CAPTURE\" section (nonce/task/--bash form, command identical bet",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "B2: contratos do task-reviewer e do final-reviewer com leitura por offset/limit",
+      "wave": 2,
+      "deps": [
+        6
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/agents/task-reviewer.md",
+        "plugins/productivity-tools/agents/final-reviewer.md",
+        "plugins/productivity-tools/scripts/agent-contracts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "task-reviewer.md and final-reviewer.md now have a \"## Reading a range\" section. A range diff or log is never read in one Bash output. It goes to a file under pt-evidence/review/ or comes from the review-package.mjs package. The file is read with Read offset/limit of up to 400 lines, and the review cites the path and sha256. task-reviewer says restricted mode keeps reading the package. agent-contracts.test.mjs has a new test for this. The prompt lines in roadmap-release.js and the tools/measure a",
+      "sha": "2f1f122c9108af52f00ad60f1315c541b54f9d3a",
+      "replacedBy": null,
+      "note": "task-reviewer.md and final-reviewer.md now have a \"## Reading a range\" section. A range diff or log is never read in one Bash output. It goes to a file under pt-evidence/review/ or comes from the review-package.mjs package. The file is read with Read offset/limit of up to 400 lines, and the review cites the path and sha256. task-reviewer says restricted mode keeps reading the package. agent-contra",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "B2: documentação da pasta de provas, da limpeza e da retomada nas duas skills",
+      "wave": 5,
+      "deps": [
+        4,
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/plan-coordinator/SKILL.md",
+        "plugins/productivity-tools/skills/plan-coordinator/references/state.md",
+        "plugins/productivity-tools/skills/roadmap-release/SKILL.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Both skills now document the pt-evidence folder, the 14-day cleanup, prune at plan close and in each deliverable's CLEANUP, path/sha256/exit-only reports, and the 2.4.0 no-resume rule. The full text is a new section \"Evidence folder, cleanup and resume\" in plan-coordinator/references/state.md and in roadmap-release/references/operator.md (before \"Known limits\"). roadmap-release/SKILL.md ends with a short paragraph pointing to operator.md. plan-coordinator/SKILL.md gets one sentence after \"After ",
+      "sha": "98ff8d122c8f64382d35769687491ac56d5c9f29",
+      "replacedBy": null,
+      "note": "Both skills now document the pt-evidence folder, the 14-day cleanup, prune at plan close and in each deliverable's CLEANUP, path/sha256/exit-only reports, and the 2.4.0 no-resume rule.\nThe full text is a new section \"Evidence folder, cleanup and resume\" in plan-coordinator/references/state.md and in roadmap-release/references/operator.md (before \"Known limits\").\nroadmap-release/SKILL.md ends with ",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    },
+    {
+      "n": 9,
+      "title": "B2: roteiro e preparador offline da sonda AC2b em tools/measure",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/sonda-e41-ac2b.md",
+        "tools/measure/sonda-e41-ac2b.mjs",
+        "tools/measure/sonda-e41-ac2b.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Criei tools/measure/sonda-e41-ac2b.mjs com os subcomandos prepare e summarize, o roteiro sonda-e41-ac2b.md e o teste sonda-e41-ac2b.test.mjs. prepare --work <dir> --plugin <dir> monta um sandbox git com spec/1 e plan/1 de 40 passos (T1 externo), roda init e aplica approve-map e prelaunch-review pass. O nextAction fica authorize. summarize --work <dir> --config <dir> imprime a linha para measurements.md e sai com 0 ou 1 conforme a regra do brief. A T11 usa os dois comandos conforme o roteiro. Os ",
+      "sha": "f3bbf488280c9c6a76f4b88815632878f6f52743",
+      "replacedBy": null,
+      "note": "Criei tools/measure/sonda-e41-ac2b.mjs com os subcomandos prepare e summarize, o roteiro sonda-e41-ac2b.md e o teste sonda-e41-ac2b.test.mjs.\nprepare --work <dir> --plugin <dir> monta um sandbox git com spec/1 e plan/1 de 40 passos (T1 externo), roda init e aplica approve-map e prelaunch-review pass. O nextAction fica authorize.\nsummarize --work <dir> --config <dir> imprime a linha para measuremen",
+      "outputs": null,
+      "brief": "briefs/T9.md",
+      "gated": true
+    },
+    {
+      "n": 10,
+      "title": "B2: verificação final dos critérios e dos portões G1 a G5",
+      "wave": 6,
+      "deps": [
+        4,
+        5,
+        7,
+        8,
+        9
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": true,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in D:/projects/claude-play/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the reading of \"caracteres LF\" matters. coordinator.js is 87,784 characters, under 88,187. Downstream: the or",
+      "sha": null,
+      "replacedBy": null,
+      "note": "Verification only, no file changed, nothing committed. All AC test runs (AC1, AC2, AC4, AC5, AC6, AC7, AC8), the embed check, and gates G1 to G5 exited 0. Evidence for each run is in D:/projects/claude-play/.git/pt-evidence/E41-T10/ (0001 to 0013). Size: roadmap-release.js is 259,857 characters without CR (UTF-8 code points), under 259,883; its byte count is 259,897, which is 14 over, so the readi",
+      "outputs": null,
+      "brief": "briefs/T10.md",
+      "gated": true
+    },
+    {
+      "n": 11,
+      "title": "B2: sonda paga AC2b (externa, só com autorização do dono)",
+      "wave": 7,
+      "deps": [
+        9,
+        10
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip-manual",
+      "attempts": 0,
+      "rounds": 2,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": null,
+      "brief": "briefs/T11.md"
+    }
+  ],
+  "finalGate": {
+    "status": "pending",
+    "rounds": 0,
+    "lastVerdict": null
+  },
+  "manual": [
+    {
+      "kind": "prelaunch-failed",
+      "step": 11,
+      "text": "F1 [important/defeito] docs/plans/pos-2-3-0-E41/plano-b2/briefs/T11.md X2 cannot be done as written in a fresh disposable config. To turn context-mode on, the brief and the runbook it points to (tools/measure/sonda-e41-ac2b.md) give only `CLAUDE_CONFIG_DIR=<cfg> claude plugin enable context-mode@context-mode`. D:/claude-pos23-cfg does not exist yet (the owner creates it at login, H2). In a new config neither the context-mode marketplace (mksglu/context-mode, today only in the owner's known_marketplaces.json) nor the plugin is installed, so `enable` fails. Neither file says to install the marke",
+      "open": true
+    }
+  ],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-24T01:13:58.561Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "3f36054f4df02e527521af4f42cb6d1983d973f1",
+      "at": "2026-11-24T01:13:58.561Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-24T01:14:42.796Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-24T01:14:42.796Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        6,
+        9
+      ],
+      "at": "2026-11-24T01:14:42.796Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-24T01:31:30.521Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-24T01:31:30.521Z"
+    },
+    {
+      "event": "report",
+      "step": 9,
+      "value": "pass",
+      "at": "2026-11-24T01:31:30.521Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-24T01:50:38.069Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-24T01:50:59.479Z"
+    },
+    {
+      "event": "commit",
+      "step": 9,
+      "at": "2026-11-24T01:51:20.458Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T01:51:41.055Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T01:51:41.055Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2,
+        5,
+        7
+      ],
+      "at": "2026-11-24T01:51:41.055Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-24T02:13:01.101Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-24T02:13:01.101Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-24T02:13:01.101Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-24T02:42:22.366Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-24T02:42:43.068Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-24T02:43:06.169Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T02:43:28.910Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T02:43:28.910Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-24T02:43:28.910Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-24T03:05:11.306Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-24T03:18:09.634Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-24T03:18:33.800Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-24T03:18:33.800Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-24T04:18:53.453Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T04:19:01.930Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T04:19:01.930Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-24T04:19:01.930Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-24T04:31:30.441Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-24T04:58:21.517Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T04:58:43.530Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T04:58:43.530Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        8
+      ],
+      "at": "2026-11-24T04:58:43.530Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-24T05:10:55.848Z"
+    },
+    {
+      "event": "commit",
+      "step": 8,
+      "at": "2026-11-24T05:11:35.979Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T05:11:57.452Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T05:11:57.452Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        10
+      ],
+      "at": "2026-11-24T05:11:57.452Z"
+    },
+    {
+      "event": "report",
+      "step": 10,
+      "value": "pass",
+      "at": "2026-11-24T05:24:04.523Z"
+    },
+    {
+      "event": "review-result",
+      "step": 10,
+      "value": "pass",
+      "at": "2026-11-24T05:40:06.697Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-24T05:40:06.697Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-24T05:40:06.697Z"
+    },
+    {
+      "event": "prelaunch-review",
+      "step": 11,
+      "value": "defects",
+      "at": "2026-11-24T05:40:06.697Z"
+    },
+    {
+      "event": "prelaunch-review",
+      "step": 11,
+      "value": "defects",
+      "at": "2026-11-24T05:40:06.697Z"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ const META = { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-
 const mkCard = (i, mark = 'a') => ({ id: `E${i}`, deps: [], reqs: ['R1'], status: 'pronta', onTarget: false, mergeFound: false, critical: false, title: `Cartão ${i} ação ${mark}`, acceptance: [{ id: 'AC1', text: `funciona ${'ç'.repeat(150)}` }] });
 const N = 30;
 const dataOf = (mark = 'a') => ({ ...META, cards: Array.from({ length: N }, (_, i) => mkCard(i + 1, i === 25 ? mark : 'a')) });
-const SLICES = sliceEnvelopes(HEAD('n'), JSON.stringify(canon(dataOf()))).length;
+const SLICES = sliceEnvelopes(HEAD('pf-test'), JSON.stringify(canon(dataOf()))).length;
 
 // alt(k, redo) picks the data of the slice (default: the same read); over(label, k, answer, prompt) may replace the answer.
 async function drive({ alt = () => dataOf(), over } = {}) {
@@ -43,7 +43,8 @@ async function drive({ alt = () => dataOf(), over } = {}) {
   return { r, calls, labels: calls.map((c) => c.label), maxBytes };
 }
 const sliceLabels = (n) => ['discovery', ...Array.from({ length: n - 1 }, (_, i) => `discovery-slice${i + 1}`)];
-const tamper = (res) => ({ exit: 0, stdout: res.stdout.replace('ação', 'acao') });
+// The text of a slice is base64: a copy that changes one character of it (the digest must catch it).
+const tamper = (res) => ({ exit: 0, stdout: res.stdout.replace(/("text":")(.)/, (m, a, c) => a + (c === 'A' ? 'B' : 'A')) });
 
 test('a big discovery is read slice by slice, each answer within the copy limit, and the cards are joined', async () => {
   assert.ok(SLICES >= 4, `the synthetic roadmap has ${SLICES} slices`);

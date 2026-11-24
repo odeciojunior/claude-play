@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { joinSlices } from '../../plugins/productivity-tools/lib/plan-digest.mjs';
+import { PROSE_NOTE, PROSE_HANDOFF } from './sonda-e41-ac2b.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..', '..');
@@ -36,6 +38,14 @@ test('prepare builds the sandbox and stops at authorize', () => {
     const s0 = node([progress, 'read', path.join(dir, 'progress.json'), '--nonce', 'abc', '--slice', '0']);
     assert.equal(s0.status, 0, s0.stderr);
     assert.ok(JSON.parse(s0.stdout).slices >= 2);
+    assert.equal(state.steps[8].note, PROSE_NOTE);
+    assert.equal(state.steps[8].handoff, PROSE_HANDOFF);
+    const n = JSON.parse(s0.stdout).slices;
+    const envs = [];
+    for (let k = 0; k < n; k++) envs.push(JSON.parse(node([progress, 'read', path.join(dir, 'progress.json'), '--nonce', 'abc', '--slice', String(k)]).stdout));
+    const joined = joinSlices(envs);
+    assert.equal(joined.ok, true);
+    assert.equal(JSON.parse(joined.text).state.steps[8].handoff, PROSE_HANDOFF);
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

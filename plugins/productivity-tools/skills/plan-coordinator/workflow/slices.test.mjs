@@ -264,7 +264,7 @@ test('retries of a slice: haiku, haiku, then sonnet; three bad copies of one sli
   assert.equal(byAgent(sim, IMPL).length, 0);
 }));
 
-test('AC6 (C1): a title with multibyte characters and an emoji is read back as the same state, and no slice splits a code point', () => {
+test('AC6 (C1): a title with multibyte characters and an emoji is read back as the same state, and the slices are base64 of UTF-8 bytes', () => {
   const title = (k) => `${k} ` + '😀é漢ç'.repeat(150);
   return withSandbox(widePlan(8, title), async (sb) => {
     const onDisk = readState(sb);
@@ -283,14 +283,15 @@ test('AC6 (C1): a title with multibyte characters and an emoji is read back as t
   });
 });
 
-test('AC6 (C1): the code points on the boundary of a slice, whatever the byte offset', () => {
+test('AC6 (C1): characters cut on the boundary of a slice, whatever the byte offset', () => {
   const head = { tool: 'progress', command: 'read', nonce: 'n', now: '2026-01-01T00:00:00.000Z' };
   for (let pad = 0; pad < 8; pad++) {
     const text = 'x'.repeat(pad) + '😀é漢ç"\\\n'.repeat(1200);
     const envs = P.sliceEnvelopes(head, text);
     for (const e of envs) {
       assert.ok(bytes(JSON.stringify(e)) <= SLICE, `pad ${pad}: ${bytes(JSON.stringify(e))}`);
-      assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(e.text), `pad ${pad}: a pair was split`);
+      assert.equal(e.enc, "base64");
+      assert.match(e.text, /^[A-Za-z0-9+/]*={0,2}$/, `pad ${pad}: the text is base64`);
     }
     const joined = P.joinSlices(envs);
     assert.equal(joined.ok, true, joined.why);

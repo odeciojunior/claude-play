@@ -46,23 +46,46 @@ test('sliceEnvelopes: size, indexes, total, digest', () => {
   assert.deepEqual(joinSlices(envs), { ok: true, text })
 })
 
-test('C1: surrogate pair and multibyte at the slice boundary', () => {
+test('C1: multibyte characters cut in the middle by a slice boundary', () => {
   const base = sliceEnvelopes(head, 'a'.repeat(10))[0]
   const room = SLICE_BYTES - utf8Length(JSON.stringify({ ...base, text: '' }))
-  for (let pad = room - 8; pad <= room + 8; pad++) {
+  const step = Math.floor(room / 4) * 3
+  let cut = 0
+  for (let pad = step - 8; pad <= step + 8; pad++) {
     const text = 'a'.repeat(Math.max(0, pad)) + '😀é漢😀'.repeat(900)
     const envs = sliceEnvelopes(head, text)
     for (const env of envs) {
+      assert.equal(env.enc, 'base64')
       assert.ok(utf8Length(JSON.stringify(env)) <= SLICE_BYTES)
-      const first = env.text.charCodeAt(0)
-      const last = env.text.charCodeAt(env.text.length - 1)
-      assert.ok(!(last >= 0xd800 && last <= 0xdbff))
-      assert.ok(!(first >= 0xdc00 && first <= 0xdfff))
+      assert.match(env.text, /^[A-Za-z0-9+/]*={0,2}$/)
+    }
+    // some slice ends inside a character: its bytes alone are not valid UTF-8
+    for (const env of envs) {
+      const raw = Buffer.from(env.text, 'base64')
+      if (Buffer.from(raw.toString('utf8'), 'utf8').length !== raw.length) cut++
     }
     const j = joinSlices(envs)
     assert.equal(j.ok, true)
+    assert.equal(j.text, text)
     assert.equal(sha256Hex(j.text), ref(text))
   }
+  assert.ok(cut > 0, 'the test must cut at least one character')
+})
+
+test('slice text is base64 of UTF-8 bytes and decoding refuses invalid base64', () => {
+  const text = 'ação, é útil\n"aspas" 漢字 😀'
+  const [env] = sliceEnvelopes(head, text)
+  assert.equal(env.enc, 'base64')
+  assert.equal(env.text, Buffer.from(text, 'utf8').toString('base64'))
+  assert.deepEqual(joinSlices([env]), { ok: true, text })
+  for (const bad of [env.text + 'AA==', env.text.slice(1), env.text.replace(/.$/, '!'), '=' + env.text.slice(1)]) {
+    const { digest, ...rest } = env
+    const out = joinSlices([sign({ ...rest, text: bad })])
+    assert.equal(out.ok, false)
+  }
+  assert.equal(joinSlices([sign({ ...env, digest: undefined, enc: undefined })]).ok, false)
+  assert.equal(checkSlice(sign({ ...env, digest: undefined, enc: 'hex' }), { tool: 'progress', command: 'read', nonce: 'n1', slice: 0 }).ok, false)
+  assert.deepEqual(joinSlices(sliceEnvelopes(head, '')), { ok: true, text: '' })
 })
 
 test('checkSlice', () => {
@@ -73,7 +96,7 @@ test('checkSlice', () => {
   assert.equal(checkSlice(envs[1], { ...want, command: 'y' }).ok, false)
   assert.equal(checkSlice(envs[1], { ...want, nonce: 'n2' }).ok, false)
   assert.equal(checkSlice(envs[1], { ...want, slice: 2 }).ok, false)
-  assert.equal(checkSlice({ ...envs[1], text: envs[1].text + 'x' }, want).ok, false)
+  assert.equal(checkSlice({ ...envs[1], text: envs[1].text + 'AA==' }, want).ok, false)
   const m = sliceEnvelopes({ tool: 'progress', mode: 'read', nonce: 'n1' }, 'oi')
   assert.equal(checkSlice(m[0], { tool: 'progress', command: 'read', nonce: 'n1', slice: 0 }).ok, true)
 })
@@ -88,7 +111,7 @@ test('joinSlices refusals', () => {
   const other = sliceEnvelopes(head, text + 'mais')
   assert.equal(joinSlices([envs[0], other[1], ...envs.slice(2)]).ok, false)
   const bad = envs.map((e) => ({ ...e }))
-  bad[2] = sign({ ...bad[2], digest: undefined, text: bad[2].text.replace('a', 'b') })
+  bad[2] = sign({ ...bad[2], digest: undefined, text: bad[2].text.replace('Z', 'Y').replace(/^./, (c) => (c === 'A' ? 'B' : 'A')) })
   assert.equal(joinSlices(bad).ok, false)
 })
 

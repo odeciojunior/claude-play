@@ -372,8 +372,10 @@ test('state divergence and plan changes stop the run', async () => {
     const sim = makeSim(sb, { runner: (rec, res) => { if (first && / read /.test(rec.cmd)) { first = false; return { exit: res.exit, stdout: garble(res.stdout) }; } return undefined; } });
     const r = await sim.go(launchArgs(sb));
     assert.equal(r.status, 'done', JSON.stringify(r));
-    assert.equal(runnerCmds(sim).filter((c) => / read /.test(c)).length, 2, 'the read is repeated once');
-    assert.deepEqual(byAgent(sim, RUNNER).filter((c) => / read /.test(c.cmd)).map((c) => c.o.label), ['read-slice0', 'read-slice0-retry2'], 'only the slice that came back wrong is repeated');
+    const readLabels = byAgent(sim, RUNNER).filter((c) => / read /.test(c.cmd)).map((c) => c.o.label);
+    assert.deepEqual(readLabels.slice(0, 2), ['read-slice0', 'read-slice0-retry2'], 'only the slice that came back wrong is repeated');
+    assert.equal(readLabels.filter((l) => /retry/.test(l)).length, 1, 'the read is repeated once');
+    assert.ok(readLabels.slice(2).every((l, k) => l === `read-slice${k + 1}`), 'the other slices are read once each');
   });
   // a write whose output was copied wrong: a new read, and the batch that already landed is not written twice
   await withSandbox(async (sb) => {
