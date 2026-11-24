@@ -1324,11 +1324,11 @@ const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in 
 const runPrompt = (cmd, writes, json) => `Run this command once and return its exit code and ${json ? `the one JSON line it prints, literal (a line above ${MAX_COPY_BYTES} bytes is an error of the command: return it as it is)` : 'its full stdout, literal'}${writes ? '' : ' (change no file)'}:\n${cmd}\n${BASH_ONLY}`
 // An output an agent copied must fit the copy limit, or it was cut.
 const copyFits = (stdout) => utf8Length(String(stdout == null ? '' : stdout).replace(/\s+$/, '')) <= MAX_COPY_BYTES
-// The stdout of a runner return, or null when the agent returned nothing or a non-string.
+// Stdout of a runner return, or null when missing or not a string.
 const stdoutOf = (out) => (out && typeof out.stdout === 'string' ? out.stdout : null)
-// The plan id as capture.mjs accepts it in --task and in --nonce.
-const taskId = () => String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_')
-const nonceId = () => String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_')
+// Plan id as capture.mjs takes it (cut to 64).
+const taskId = () => String(S.plan.id).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
+const nonceId = () => String(S.plan.id).replace(/[^A-Za-z0-9:._@-]/g, '_').slice(0, 64)
 let seq = 0
 const nonceOf = () => `${RUN_TAG}-${++seq}`
 const sliceNonce = () => `${RUN_TAG}-${String(++seq).padStart(Math.max(1, A.runToken.length - 9), '0')}`
@@ -1589,7 +1589,7 @@ const sweepCommitted = async () => {
     if (s.status !== 'pass' || s.noCommit === true || !s.sha || filesOf(s).length === 0) continue
     if (filesOf(s).some((f) => open.has(f))) continue
     const d = await runCmd(`git -C ${shq(ROOT)} status --porcelain -- ${filesOf(s).map(shq).join(' ')}`, `T${s.n}:git-status`, { phase: 'Commit' })
-    if (d && d.exit === 0 && String(d.stdout || '').trim() !== '') again.add(s.n)
+    if (d && d.exit === 0 && (stdoutOf(d) === null || stdoutOf(d).trim() !== '')) again.add(s.n)
   }
 }
 
@@ -1604,8 +1604,8 @@ const commitSteps = async () => {
     const paths = filesOf(s).map(shq).join(' ')
     const g = `git -C ${shq(ROOT)}`
     const dirty = await runCmd(`${g} status --porcelain -- ${paths}`, `T${s.n}:git-status`, { phase: 'Commit' })
-    if (!dirty || dirty.exit !== 0) return { result: failWith(`git status failed for step T${s.n}: ${tailOf(dirty && dirty.stdout, 400)}`, { step: s.n }) }
-    const clean = String(dirty.stdout || '').trim() === ''
+    if (!dirty || dirty.exit !== 0 || stdoutOf(dirty) === null) return { result: failWith(`git status failed for step T${s.n}: ${tailOf(dirty && dirty.stdout, 400)}`, { step: s.n }) }
+    const clean = stdoutOf(dirty).trim() === ''
     if (!clean) {
       const add = await runCmd(`${g} add -- ${paths}`, `T${s.n}:git-add`, { phase: 'Commit', writes: true })
       if (!add || add.exit !== 0) return { result: failWith(`git add failed for step T${s.n}: ${tailOf(add && add.stdout, 400)}`, { step: s.n }) }

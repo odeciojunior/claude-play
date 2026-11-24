@@ -432,3 +432,20 @@ test('E41 T3: a plan id outside [A-Za-z0-9._-] gives a valid --task and --nonce,
     assert.match(line, /--nonce [^\s]+:Plano_B:T1:<k>/);
   }, 'Plano B');
 });
+
+test('E41 T3: a plan id of 200 characters is cut so --task and --nonce fit capture.mjs', () => {
+  const id = 'P'.repeat(200);
+  return withSandbox(widePlan(2).replace('"id": "FX"', `"id": "${id}"`), async (sb) => {
+    const sim = makeSim(sb);
+    const r = await sim.go(launchArgs(sb));
+    assert.ok(typeof r.status === 'string', JSON.stringify(r));
+    const caps = byAgent(sim, RUNNER).filter(isCapture);
+    assert.ok(caps.length > 0, 'a capture ran');
+    for (const c of caps) {
+      const t = tokenize(c.cmd);
+      assert.match(t[t.indexOf('--task') + 1], /^[A-Za-z0-9._-]{1,128}$/);
+      assert.match(t[t.indexOf('--nonce') + 1], /^[A-Za-z0-9:._@-]{1,160}$/);
+    }
+    assert.ok(caps.every((c) => c.exit !== 2), 'capture.mjs accepted every call');
+  }, id);
+});

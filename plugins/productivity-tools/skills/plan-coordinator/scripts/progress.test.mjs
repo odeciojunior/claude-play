@@ -837,6 +837,15 @@ test('AC1: apply refused leaves the file byte-identical', () => withSandbox((sb)
   assert.ok(fs.readFileSync(sb.state).equals(before));
 }));
 
+test('apply --events --json prints a single signed line', () => withSandbox((sb) => {
+  initSandbox(sb);
+  const expect = stateDigest(readJson(sb.state));
+  const r = cli(['apply', sb.state, '--events', payloadOf(expect, [{ type: 'approve-map' }]), '--nonce', 'N9', '--json']);
+  assert.equal(r.code, 0, r.err);
+  assert.ok(!r.out.trim().includes('\n'), r.out);
+  assert.equal(JSON.parse(r.out).ok, true);
+}));
+
 test('apply accepted writes LF and appends history', () => withSandbox((sb) => {
   assert.equal(cli(['init', sb.plan]).code, 0);
   const r = cli(['apply', sb.state, 'approve-map', '--json']);

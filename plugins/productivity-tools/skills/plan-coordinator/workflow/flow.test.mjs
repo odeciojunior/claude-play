@@ -61,12 +61,12 @@ function sh(cwd, cmd, args) {
 }
 
 // A git repository in os.tmpdir() with the fixture plan, its spec and a test command, and the real `progress.mjs init --commits per-step`.
-function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-step' } = {}) {
+function sandbox({ plan = readFileSync(FIXTURE_PLAN, 'utf8'), commits = 'per-step', id = 'FX' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'coordwf-'));
   const planDir = join(dir, 'docs', 'plans', 'fx');
   mkdirSync(planDir, { recursive: true });
   writeFileSync(join(planDir, 'plan.md'), plan);
-  writeFileSync(join(planDir, 'spec.md'), SPEC);
+  writeFileSync(join(planDir, 'spec.md'), SPEC.replace('"id": "FX"', `"id": "${id}"`));
   writeFileSync(join(dir, 'check.mjs'), CHECK);
   sh(dir, 'git', ['init', '-q', '-b', 'main']);
   sh(dir, 'git', ['config', 'core.autocrlf', 'false']);
@@ -684,6 +684,37 @@ test('E32: a review-owed step resumed without its report tells the reviewer it w
     assert.doesNotMatch(rv.prompt, /resumed from a previous run/);
   });
 }));
+
+test('E41 T3 N1: a git status with exit 0 and null stdout is a handled error, never a step done with a sha and no commit', () => withSandbox(async (sb) => {
+  let hit = false;
+  const sim = makeSim(sb, { runner: (rec) => { if (!hit && rec.o.label === 'T1:git-status') { hit = true; return { exit: 0, stdout: null }; } return undefined; } });
+  const r = await sim.go(launchArgs(sb));
+  assert.ok(hit, 'the status of T1 ran');
+  assert.notEqual(r.status, 'done', JSON.stringify(r));
+  assert.ok(typeof r.status === 'string', JSON.stringify(r));
+  const s1 = readState(sb).steps[0];
+  if (s1.sha) assert.ok(sh(sb.dir, 'git', ['log', '-1', '--format=%s', s1.sha]).startsWith(`${readState(sb).plan.id} T1:`), 'a recorded sha is the commit of the step');
+}));
+
+test('E41 T3: a plan id of 200 characters gives a --task-prefix that capture.mjs accepts, and done prunes', () => {
+  const id = 'P'.repeat(200);
+  const plan = readFileSync(FIXTURE_PLAN, 'utf8').replace('"id": "FX"', `"id": "${id}"`);
+  return withSandbox(async (sb) => {
+    const sim = makeSim(sb);
+    const r = await sim.go(launchArgs(sb));
+    assert.equal(r.status, 'done', JSON.stringify(r));
+    const prune = byAgent(sim, RUNNER).filter((c) => /capture\.mjs" prune --task-prefix /.test(c.cmd));
+    assert.equal(prune.length, 1);
+    const t = tokenize(prune[0].cmd);
+    assert.match(t[t.indexOf('--task-prefix') + 1], /^[A-Za-z0-9._-]{1,128}$/);
+    for (const c of byAgent(sim, IMPL)) {
+      const line = c.prompt.split('\n').find((l) => l.startsWith('CAPTURE:'));
+      const w = tokenize(line);
+      assert.match(w[w.indexOf('--nonce') + 1].replace(/<k>$/, 'k'), /^[A-Za-z0-9:._@-]{1,160}$/);
+      assert.ok((w[w.indexOf('--task') + 1] + '-').startsWith(t[t.indexOf('--task-prefix') + 1]));
+    }
+  }, { plan, id });
+});
 
 test('B2 T5: the implementer prompt carries the CAPTURE line, the final review packs the diff and done prunes the captures', () => withSandbox(async (sb) => {
   const sim = makeSim(sb);
