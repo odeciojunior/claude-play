@@ -23,6 +23,7 @@ Suíte completa de `AC1` (`node --test tools/measure/session-metrics.test.mjs to
   - `ps`: `ps from procps-ng 4.0.4` (`/usr/bin/ps`)
   - `lsof`: `lsof` revisão `4.95.0` (`/usr/bin/lsof`)
 - **Sessão fora de worktree:** script isolado executado em `/tmp/e38-linux-verify-<pid>` com `cp` somente leitura de `verify-run.mjs`, `verify-run.test.mjs` e `lib/plan-digest.mjs` do repositório e remoção em `trap EXIT`.
+- **Versão e payload (anotação de 2026-11-24, conferência do AC2):** cópia de `verify-run.mjs` no commit `e52c2d7` (inferido pela contagem de testes 11 + 2 + 29 = 42; o caminho Linux do `procs` não mudou até a 2.5.0); payload inferido do relatório, não registrado na execução: `{nonce:'e38-linux:0', wt:'/tmp/e38-wt-KSybtU', ports:[39120,39454]}`.
 - **Nota operacional:** ao chamar `wsl.exe` sem `--cd ~` a partir de uma sessão Windows neste ambiente, a tradução do CWD Windows / inicialização de perfil interativo excedeu o timeout de 8 s; com `wsl.exe -d ubuntu --cd ~ -e /bin/sh`, o kernel e os comandos Linux responderam em menos de 3 s.
 
 ### Exercício ponta a ponta com processos e portas TCP reais
