@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-// Extrator deterministico da saida do node:test (TAP e spec). Puro: o exit vem de quem chama.
+// Extrator deterministico da saida do node:test (TAP e spec) e do resumo do vitest, com o ANSI removido antes de decidir o formato.
+// Puro: o exit vem de quem chama. No vitest failedNames e null porque os nomes nao sao lidos.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 // lib/ and spec-tool.mjs load only in `removed` (dynamic import): capture.mjs imports extractTests and must stay standalone.
+
+// Remove toda sequencia CSI (cor SGR, movimento de cursor, limpeza de linha).
+export function stripAnsi(text) {
+  return String(text ?? '').replace(/\x1b\[[0-?]*[ -\/]*[@-~]/g, '');
+}
 
 const indentOf = (line) => line.length - line.trimStart().length;
 
@@ -67,6 +73,21 @@ function specNames(lines) {
   return names;
 }
 
+const VITEST_TESTS = /^\s*Tests\s+(.+?)\s+\((\d+)\)\s*$/;
+
+// Vale a ultima linha Tests: o resumo vem no fim, depois do que os testes imprimem. todo e expected fail nao entram.
+function vitestSummary(lines) {
+  const m = lines.map((l) => VITEST_TESTS.exec(l)).findLast(Boolean);
+  if (!m) return null;
+  const counts = { total: Number(m[2]), pass: 0, fail: 0, skipped: 0 };
+  const keys = { passed: 'pass', failed: 'fail', skipped: 'skipped' };
+  for (const part of m[1].split('|')) {
+    const p = /^\s*(\d+)\s+(passed|failed|skipped)\s*$/.exec(part);
+    if (p) counts[keys[p[2]]] = Number(p[1]);
+  }
+  return counts;
+}
+
 // Todos os nomes (ok, not ok, skip, todo), sem suites e sem a secao "failing tests" do spec.
 function tapAllNames(lines) {
   const names = [];
@@ -104,14 +125,14 @@ function specAllNames(lines) {
 }
 
 export function allTestNames(text) {
-  const lines = String(text ?? '').split(/\r?\n/);
+  const lines = stripAnsi(text).split(/\r?\n/);
   if (lines.some((l) => /^\s*# tests\s+\d+\s*$/.test(l))) return tapAllNames(lines);
   if (lines.some((l) => /^\s*ℹ tests\s+\d+\s*$/.test(l))) return specAllNames(lines);
   return [];
 }
 
 export function extractTests(text, exit) {
-  const lines = String(text ?? '').split(/\r?\n/);
+  const lines = stripAnsi(text).split(/\r?\n/);
   let format = 'unknown';
   let counts = {};
   let names = [];
@@ -123,6 +144,9 @@ export function extractTests(text, exit) {
     format = 'node-spec';
     counts = summary(lines, 'ℹ');
     names = specNames(lines);
+  } else {
+    const vitest = vitestSummary(lines);
+    if (vitest) return { format: 'vitest', exit, ...vitest, failedNames: null };
   }
   if (format === 'unknown') {
     return { format, exit, total: null, pass: null, fail: null, skipped: null, failedNames: [] };

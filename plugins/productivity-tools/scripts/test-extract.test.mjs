@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { extractTests, allTestNames } from './test-extract.mjs';
+import { extractTests, allTestNames, stripAnsi } from './test-extract.mjs';
 import { MAX_COPY_BYTES, canon, fnv1a, checkRun } from '../lib/plan-digest.mjs';
 
 const SUITE = [
@@ -120,6 +120,108 @@ test('C3: texto que nao e node:test', () => {
   assert.deepEqual(extractTests('hello world', 1), {
     format: 'unknown', exit: 1, total: null, pass: null, fail: null, skipped: null, failedNames: [],
   });
+});
+
+// E44: resumo do vitest e saida colorida. As linhas SGR reproduzem o que o vitest 4.1.12 imprime.
+const VITEST_PASS = [
+  ' Test Files  2 passed (2)',
+  '      Tests  97 passed (97)',
+].join('\n');
+const VITEST_PASS_SGR = [
+  '\x1b[2m Test Files \x1b[22m \x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m\x1b[90m (2)\x1b[39m',
+  '\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[32m97 passed\x1b[39m\x1b[22m\x1b[90m (97)\x1b[39m',
+].join('\n');
+const VITEST_MIXED = '      Tests  1 failed | 2 passed | 1 skipped | 1 todo (5)';
+const SEP_SGR = '\x1b[2m | \x1b[22m';
+const VITEST_MIXED_SGR = '\x1b[2m      Tests \x1b[22m ' + [
+  '\x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m',
+  '\x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m',
+  '\x1b[33m1 skipped\x1b[39m',
+  '\x1b[90m1 todo\x1b[39m',
+].join(SEP_SGR) + '\x1b[90m (5)\x1b[39m';
+const VITEST_XFAIL = '      Tests  1 failed | 2 passed | 1 expected fail | 1 skipped | 1 todo (6)';
+const VITEST_XFAIL_SGR = '\x1b[2m      Tests \x1b[22m ' + [
+  '\x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m',
+  '\x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m',
+  '\x1b[36m1 expected fail\x1b[39m',
+  '\x1b[33m1 skipped\x1b[39m',
+  '\x1b[90m1 todo\x1b[39m',
+].join(SEP_SGR) + '\x1b[90m (6)\x1b[39m';
+const SPEC_PLAIN = [
+  '▶ grupo',
+  '  ✔ passa (0.4ms)',
+  '  ✖ falha um (1.2ms)',
+  '✖ grupo (2.1ms)',
+  '✖ falha dois (0.5ms)',
+  'ℹ tests 3',
+  'ℹ suites 1',
+  'ℹ pass 1',
+  'ℹ fail 2',
+  'ℹ skipped 0',
+  '',
+  '✖ failing tests:',
+  '',
+  '✖ falha um (1.2ms)',
+].join('\n');
+const SPEC_SGR = [
+  '▶ grupo',
+  '  \x1b[32m✔ passa \x1b[90m(0.4ms)\x1b[39m\x1b[39m',
+  '  \x1b[31m✖ falha um \x1b[90m(1.2ms)\x1b[39m\x1b[39m',
+  '\x1b[31m✖ grupo \x1b[90m(2.1ms)\x1b[39m\x1b[39m',
+  '\x1b[31m✖ falha dois \x1b[90m(0.5ms)\x1b[39m\x1b[39m',
+  '\x1b[34mℹ tests 3\x1b[39m',
+  '\x1b[34mℹ suites 1\x1b[39m',
+  '\x1b[34mℹ pass 1\x1b[39m',
+  '\x1b[34mℹ fail 2\x1b[39m',
+  '\x1b[34mℹ skipped 0\x1b[39m',
+  '',
+  '\x1b[31m✖ failing tests:\x1b[39m',
+  '',
+  '\x1b[31m✖ falha um \x1b[90m(1.2ms)\x1b[39m\x1b[39m',
+].join('\n');
+
+test('E44 stripAnsi: remove SGR e outras sequencias CSI', () => {
+  const text = '\x1b[2K\x1b[1G\x1b[1m\x1b[32mverde\x1b[39m\x1b[22m um\r\n\x1b[?25l\x1b[38;5;196mdois\x1b[0m\n\x1b[3Atres [4] x';
+  assert.equal(stripAnsi(text), 'verde um\r\ndois\ntres [4] x');
+});
+
+test('E44 AC1: resumo do vitest 4 sem cor informa total 97', () => {
+  assert.deepEqual(extractTests(VITEST_PASS, 0), {
+    format: 'vitest', exit: 0, total: 97, pass: 97, fail: 0, skipped: 0, failedNames: null,
+  });
+});
+
+test('E44 C1: partes failed, passed, skipped e todo', () => {
+  assert.deepEqual(extractTests(VITEST_MIXED, 1), {
+    format: 'vitest', exit: 1, total: 5, pass: 2, fail: 1, skipped: 1, failedNames: null,
+  });
+  assert.deepEqual(extractTests(VITEST_XFAIL, 1), {
+    format: 'vitest', exit: 1, total: 6, pass: 2, fail: 1, skipped: 1, failedNames: null,
+  });
+});
+
+test('E44 C2: saida colorida da o mesmo extrato do texto sem cor', () => {
+  for (const [colored, plain, exit] of [[VITEST_PASS_SGR, VITEST_PASS, 0], [VITEST_MIXED_SGR, VITEST_MIXED, 1], [VITEST_XFAIL_SGR, VITEST_XFAIL, 1]]) {
+    const got = extractTests(colored, exit);
+    assert.equal(got.format, 'vitest');
+    assert.deepEqual(got, extractTests(plain, exit));
+  }
+  const spec = extractTests(SPEC_SGR, 1);
+  assert.equal(spec.format, 'node-spec');
+  assert.deepEqual(spec.failedNames, ['falha dois', 'falha um']);
+  assert.deepEqual(spec, extractTests(SPEC_PLAIN, 1));
+});
+
+test('E44 C3: so a linha Test Files nao reconhece o formato', () => {
+  const r = extractTests(' Test Files  2 passed (2)\n   Duration  1.20s', 0);
+  assert.equal(r.format, 'unknown');
+  assert.equal(r.total, null);
+});
+
+test('E44 allTestNames: saida colorida lista os nomes; vitest devolve lista vazia', () => {
+  assert.deepEqual([...allTestNames(SPEC_SGR)].sort(), ['falha dois', 'falha um', 'passa']);
+  assert.deepEqual(allTestNames(VITEST_MIXED), []);
+  assert.deepEqual(allTestNames(VITEST_MIXED_SGR), []);
 });
 
 test('CLI imprime o JSON', () => {
