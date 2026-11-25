@@ -47,3 +47,5 @@ If `planTool` is missing or unreadable, return the failure text literally and st
 - A credential is a `needsPerson` entry with `kind: credential`, named only by its environment variable (for example "provided through environment variable `NAME`"); never write a value.
 - An external effect is marked on the task (`external: true`, with `externalDedupe`), never performed.
 - Write only to `output`; in `adopt` mode `source` is only read.
+- Never read or Grep the code of the plugin tools (`spec-tool.mjs`, `plan-tool.mjs` and the rest of `scripts/`); use only their commands and outputs.
+- Edit only with Edit or Write, never with `sed -i`.

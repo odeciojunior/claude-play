@@ -66,6 +66,14 @@ test('spec-author and plan-author declare removedTests as { file, name, why, gat
   }
 });
 
+test('spec-author and plan-author never read or Grep the plugin tools code and edit only with Edit or Write', () => {
+  for (const n of ['spec-author.md', 'plan-author.md']) {
+    const t = read(n);
+    assert.ok(t.includes('Never read or Grep the code of the plugin tools (`spec-tool.mjs`, `plan-tool.mjs` and the rest of `scripts/`); use only their commands and outputs'), n);
+    assert.ok(t.includes('Edit only with Edit or Write, never with `sed -i`'), n);
+  }
+});
+
 test('no agent file writes the copy limit as a bare digit run or the forbidden word', () => {
   for (const n of names) {
     const t = read(n);
