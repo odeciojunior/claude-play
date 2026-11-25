@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { checkPureSource } from './embed.mjs';
 import { findDataBlocks, readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
-import { checkSpec, loadRoadmap, main, summarize, formatRecords } from './spec-tool.mjs';
+import { checkSpec, checkRemovedTests, loadRoadmap, main, summarize, formatRecords } from './spec-tool.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(HERE, '..', 'lib', 'data-block.mjs');
@@ -612,4 +612,58 @@ test('spec-author keeps ruling ids when merging an owner note', () => {
   const { body } = splitAgent();
   assert.match(body, /ruling ids/i);
   assert.match(body, /ownerNote/);
+});
+
+// ---- E36 T1: removedTests ----
+function removedCheck(list) {
+  const errors = [];
+  const warnings = [];
+  checkRemovedTests(list, (code, ref, message) => errors.push({ code, ref, message }), (code, ref, message) => warnings.push({ code, ref, message }), 'removedTests');
+  return { errors, warnings };
+}
+const rt = (extra = {}) => ({ file: 'a.test.mjs', name: 'caso', why: 'motivo', ...extra });
+
+test('E36 removedTests: accepts empty list and entries with or without gate', () => {
+  for (const l of [[], [rt()], [rt({ gate: 'unit' })]]) {
+    const r = removedCheck(l);
+    assert.deepEqual([r.errors, r.warnings], [[], []]);
+  }
+});
+
+test('E36 removedTests: field-type for bad list, entry, file, name, why, gate', () => {
+  const bad = [
+    'x',
+    ['x'],
+    [rt({ file: '' })],
+    [rt({ name: 3 })],
+    [rt({ why: '' })],
+    [rt({ gate: 5 })],
+  ];
+  for (const l of bad) {
+    const r = removedCheck(l);
+    assert.ok(r.errors.length >= 1 && r.errors.every((e) => e.code === 'field-type'), JSON.stringify(l));
+  }
+});
+
+test('E36 removedTests: removed-duplicate rules', () => {
+  const codesOf = (l) => removedCheck(l).errors.map((e) => e.code);
+  assert.deepEqual(codesOf([rt(), rt()]), ['removed-duplicate']);
+  assert.deepEqual(codesOf([rt({ gate: 'g' }), rt({ gate: 'g' })]), ['removed-duplicate']);
+  assert.deepEqual(codesOf([rt(), rt({ gate: 'g' })]), ['removed-duplicate']);
+  assert.deepEqual(codesOf([rt({ gate: 'g' }), rt()]), ['removed-duplicate']);
+  assert.deepEqual(codesOf([rt({ gate: 'g1' }), rt({ gate: 'g2' })]), []);
+});
+
+test('E36 removedTests: unknown key warns field-unknown', () => {
+  const r = removedCheck([rt({ extra: 1 })]);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings.map((w) => w.code), ['field-unknown']);
+});
+
+test('E36 removedTests: checkSpec with valid removedTests has no top-level warning', () => {
+  const ok = checkSpec(mutate((d) => { d.removedTests = [rt()]; }));
+  assert.ok(!ok.warnings.some((w) => w.code === 'field-unknown' && w.ref === 'removedTests'));
+  assert.deepEqual(ok.errors, []);
+  const bad = checkSpec(mutate((d) => { d.removedTests = 'x'; }));
+  assert.ok(bad.errors.some((e) => e.code === 'field-type' && e.ref === 'removedTests'));
 });

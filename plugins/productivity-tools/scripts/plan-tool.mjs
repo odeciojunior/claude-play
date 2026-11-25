@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { readDataBlock } from '../lib/data-block.mjs';
 import { norm, parseVerifyTag, EXECUTABLE_KINDS } from '../lib/roadmap-format.mjs';
-import { checkSpec, checkRecords, SUMMARY_LANGS, mdTable, stopsOf, formatRecords } from './spec-tool.mjs';
+import { checkSpec, checkRecords, checkRemovedTests, SUMMARY_LANGS, mdTable, stopsOf, formatRecords } from './spec-tool.mjs';
 import { route } from '../lib/routing.mjs';
 import { canon, fnv1a, planDigest } from '../lib/plan-digest.mjs';
 
 export const SCHEMA = 'plan/1';
-const TOP = ['schema', 'id', 'title', 'spec', 'roadmap', 'constraints', 'externalPatterns', 'tasks', 'evidence', 'rulings', 'needsPerson'];
+const TOP = ['schema', 'id', 'title', 'spec', 'roadmap', 'constraints', 'externalPatterns', 'tasks', 'evidence', 'rulings', 'needsPerson', 'removedTests'];
 const TASK_FIELDS = ['n', 'title', 'deps', 'files', 'writes', 'score', 'produces', 'consumes', 'covers', 'testFirst', 'checks', 'locks', 'external', 'externalDedupe', 'noCommit'];
 const FILE_KINDS = ['create', 'modify', 'test'];
 const SCORE_KEYS = ['ambiguity', 'reasoning', 'blast', 'verifiability'];
@@ -320,6 +320,8 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
     errors.push(...r.errors);
     warnings.push(...r.warnings);
   }
+
+  if ('removedTests' in data) checkRemovedTests(data.removedTests, err, warn, 'removedTests');
 
   // spec
   let spec = null;
@@ -654,6 +656,7 @@ export function leanEmit(full) {
     })),
     evidence: plan.evidence,
   };
+  if (Array.isArray(plan.removedTests) && plan.removedTests.length) lean.removedTests = plan.removedTests;
   return { tool: full.tool, schema: full.schema, path: full.path, source, plan: lean, digest: planDigest({ plan: lean, source }) };
 }
 

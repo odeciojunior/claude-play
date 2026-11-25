@@ -26,7 +26,7 @@ const RECORDS = {
   externalEffects: { prefix: 'X', fields: ['id', 'what', 'target'] },
   edgeCases: { prefix: 'C', fields: ['id', 'input', 'expected'] },
 };
-const TOP = ['schema', 'id', 'title', 'mode', 'acceptance', 'rulings', 'needsPerson', 'externalEffects', 'edgeCases'];
+const TOP = ['schema', 'id', 'title', 'mode', 'acceptance', 'rulings', 'needsPerson', 'externalEffects', 'edgeCases', 'removedTests'];
 
 // Le a pasta do roadmap: config, estrategia e arquivos de estado existentes.
 export function loadRoadmap(dir) {
@@ -112,6 +112,40 @@ export function checkRecords(name, items, { roadmap = null } = {}) {
   return { errors, warnings };
 }
 
+// E36: removedTests (opcional): testes removidos de propósito, declarados com motivo; (file, name, gate) é a chave.
+const REMOVED_FIELDS = ['file', 'name', 'why', 'gate'];
+export function checkRemovedTests(list, err, warn, ref = 'removedTests') {
+  if (!Array.isArray(list)) return err('field-type', ref, `"${ref}" deve ser uma lista`);
+  const keys = new Map();
+  list.forEach((item, i) => {
+    const at = `${ref}[${i + 1}]`;
+    if (!isObj(item)) return err('field-type', at, 'item deve ser um objeto');
+    for (const k of Object.keys(item)) {
+      if (!REMOVED_FIELDS.includes(k)) warn('field-unknown', `${at}.${k}`, `campo desconhecido "${k}"`);
+    }
+    let ok = true;
+    for (const k of ['file', 'name', 'why']) {
+      if (!isStr(item[k])) {
+        ok = false;
+        err('field-type', at, `"${k}" deve ser uma string não vazia`);
+      }
+    }
+    if ('gate' in item && typeof item.gate !== 'string') {
+      ok = false;
+      err('field-type', at, '"gate" deve ser uma string');
+    }
+    if (!ok) return;
+    const pair = JSON.stringify([item.file, item.name]);
+    const gates = keys.get(pair) || new Set();
+    const g = 'gate' in item ? item.gate : null;
+    if (gates.has(g) || (g === null && gates.size) || (g !== null && gates.has(null))) {
+      err('removed-duplicate', at, `teste removido "${item.name}" de ${item.file} repetido`);
+    }
+    gates.add(g);
+    keys.set(pair, gates);
+  });
+}
+
 export function checkSpec(text, { roadmap = null } = {}) {
   const errors = [];
   const warnings = [];
@@ -180,6 +214,8 @@ export function checkSpec(text, { roadmap = null } = {}) {
       }
     });
   }
+
+  if ('removedTests' in data) checkRemovedTests(data.removedTests, err, warn, 'removedTests');
 
   const card = roadmap && isStr(data.id) ? roadmap.cards.find((c) => c.id === data.id) : null;
   if (roadmap && isStr(data.id) && !card) err('card-not-found', 'id', `card "${data.id}" não existe no roadmap`);

@@ -120,7 +120,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { readDataBlock, replaceDataBlock } from '../lib/data-block.mjs';
 import { checkPlan, SCHEMA, main } from './plan-tool.mjs';
-import { checkSpec, checkRecords } from './spec-tool.mjs';
+import { checkSpec, checkRecords, checkRemovedTests } from './spec-tool.mjs';
 
 const PLAN_PATH = path.join(HERE, 'fixtures', 'plan-tool', 'plan.md');
 const SPEC_PATH = path.join(HERE, 'fixtures', 'spec-tool', 'spec.md');
@@ -1090,4 +1090,28 @@ test('E20: plan summary --json returns tasks, evidence, rulings, needsPerson and
   assert.equal(s.evidence.length, data.evidence.length);
   assert.deepEqual(Object.keys(s.tasks[0]), ['n', 'title', 'deps', 'tier', 'effort', 'reviewTier', 'external']);
   assert.deepEqual(Object.keys(s.evidence[0]), ['ac', 'kind', 'command']);
+});
+
+// ---- E36 T1: removedTests ----
+test('E36 removedTests: plan with invalid removedTests gives the same errors as the spec', () => {
+  const rt = { file: 'a.test.mjs', name: 'caso', why: 'motivo' };
+  const r = check(mutate((d) => { d.removedTests = [rt, rt, 'x']; }));
+  assert.deepEqual(r.errors.map((e) => e.code).filter((c) => c === 'removed-duplicate' || c === 'field-type'), ['removed-duplicate', 'field-type']);
+  const ok = check(mutate((d) => { d.removedTests = [rt]; }));
+  assert.ok(!ok.warnings.some((w) => w.ref === 'removedTests'));
+  assert.ok(!ok.errors.some((e) => String(e.ref).startsWith('removedTests')));
+});
+
+test('E36 removedTests: leanEmit carries it only when non-empty; digest unchanged without it', () => {
+  const base = emit(PLAN_TEXT).out;
+  const lean = leanEmit(base);
+  assert.ok(!('removedTests' in lean.plan));
+  assert.equal(lean.digest, planDigest({ plan: lean.plan, source: lean.source }));
+  const empty = leanEmit(emit(mutate((d) => { d.removedTests = []; })).out);
+  assert.ok(!('removedTests' in empty.plan));
+  assert.equal(empty.digest.length, lean.digest.length);
+  const list = [{ file: 'a.test.mjs', name: 'caso', why: 'motivo' }];
+  const withList = leanEmit(emit(mutate((d) => { d.removedTests = list; })).out);
+  assert.deepEqual(withList.plan.removedTests, list);
+  assert.notEqual(withList.digest, lean.digest);
 });
