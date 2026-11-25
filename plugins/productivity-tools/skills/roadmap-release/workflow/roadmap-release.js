@@ -1059,7 +1059,7 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   const status = parseCli(rd.status)
   const panel = status && status.result && Array.isArray(status.result.panel) ? status.result.panel : null
   const exSt = rd.exits && rd.exits.status
-  const refused = status ? !!status.summary && status.summary.exitCode !== 0 : typeof exSt === 'number' && exSt !== 0
+  const refused = status ? (!!status.summary && status.summary.exitCode !== 0) || (Array.isArray(status.errors) && status.errors.length > 0) : typeof exSt === 'number' && exSt !== 0
   if (!panel) {
     const codes = status && Array.isArray(status.errors) ? status.errors.map(e => e && e.code).filter(Boolean).join(', ') : ''
     failures.push(refused ? 'reread status --json refused' + (codes ? ': ' + codes : '') : 'reread status --json is missing or has no panel')
@@ -2720,7 +2720,7 @@ ${NO_ASK}`,
   }
   const declared = () => [...((specLoad.data || {}).removedTests || []), ...((planLoad && planLoad.plan.removedTests) || [])]
   const RM_CLAUSE = () => declared().length ? `\nremovedTests declared (${JSON.stringify(declared())}): check each entry against the diff; a test declared removed that was renamed, moved or still covers live behavior is a defeito.` : ''
-  const planSkip = skipRev('plan', specSkip && plan.reused && !planGaps().length)
+  const planSkip = skipRev('plan', specSkip && plan.reused && plan.planBlob === ((K0 && K0.recorded && K0.recorded.plan) || {}).plan && !planGaps().length)
   const planLoop = planSkip ? { ok: true } : await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 

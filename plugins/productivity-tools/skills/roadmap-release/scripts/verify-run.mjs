@@ -150,7 +150,7 @@ const capList = (a, n, f = (x) => x) => (Array.isArray(a) ? a.slice(0, n).map(f)
 const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i === hit || i < (hit >= 4 ? 3 : 4)); };
 const cliJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
 export function buildRead({ status, brief, pending, head, porcelain }, E, piece, nonce = '') {
-  const refusedJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 1 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
+  const refusedJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit !== 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
   const ro = cliJson(status) ? null : refusedJson(status);
   const so = cliJson(status), bo = cliJson(brief), po = cliJson(pending);
   const num = (v) => (v == null || typeof v === 'number' || typeof v === 'boolean' ? v : cap(v, 20)); // a non-number stays a non-number, bounded

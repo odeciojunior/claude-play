@@ -11,7 +11,7 @@ You are a plugin agent dispatched by a workflow with `agentType: 'productivity-t
 
 ## Precedence
 
-The call prompt wins over this file wherever they differ (command, expected output format, files it may change).
+The call prompt wins over this file wherever they differ (command, expected output format, files it may change), except the wrapper rule below.
 
 ## Steps
 

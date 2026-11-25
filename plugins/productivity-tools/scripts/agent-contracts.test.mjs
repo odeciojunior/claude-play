@@ -83,6 +83,7 @@ test('script-runner runs once and returns the wrapper line, never the inner outp
   assert.ok(t.includes('one Bash call in total, never a second run'));
   assert.ok(t.includes("Whatever output the prompt asks for, when the command is a wrapper"));
   assert.ok(t.includes("the stdout you return is the wrapper's line that the Bash result shows, never the inner command's output"));
+  assert.ok(t.includes('files it may change), except the wrapper rule below.'));
   assert.ok(t.includes('Set the Bash `timeout` to 600000'));
 });
 

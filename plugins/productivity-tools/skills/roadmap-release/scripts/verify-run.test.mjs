@@ -191,7 +191,7 @@ test('read: never writes; a dirty tree shows in porcelain and clean=false; a bad
   assert.match(o.json.porcelain, /dirty\.txt/);
   const bad = run('read', readPayload(r, { folder: join(r.dir, 'nope') }));
   assert.equal(bad.exit, 0);
-  assert.equal(bad.json.status, null);
+  assert.deepEqual(bad.json.status.errors, [{ code: 'not-found' }], 'a refusal envelope with exit 2 keeps its code');
   assert.equal(bad.json.brief, null);
   assert.notEqual(bad.json.exits.status, 0);
   const noGit = run('read', readPayload(r, { cwd: tmpdir() }));
@@ -244,6 +244,15 @@ test('read: a refused status (exit 1, CLI JSON) carries the codes with an empty 
   assert.deepEqual(e.status.result, {});
   const n = buildRead({ ...base, status: { exit: 1, stdout: 'boom' }, brief: refusedOut([]), pending: refusedOut([]) }, 'E99', 'code');
   assert.equal(n.status, null);
+});
+
+test('read: a refused status with exit 2 (usage envelope) keeps the code; exit 0 is still a success', async () => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const base = { head: { exit: 0, stdout: 'abc\n' }, porcelain: { exit: 0, stdout: '' } };
+  const out = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 2 }, errors: [{ code: 'usage' }] });
+  const d = buildRead({ ...base, status: { exit: 2, stdout: out }, brief: { exit: 2, stdout: out }, pending: { exit: 2, stdout: out } }, 'E99', 'code');
+  assert.deepEqual(d.status.errors, [{ code: 'usage' }]);
+  assert.deepEqual(d.status.result, {});
 });
 
 // Every cap filled: 100 pending ids of 20 chars, a 64-char head, 20 porcelain lines of 100 chars, the piece at segment 39, 5 BLQ ids of 20 chars in every note.
