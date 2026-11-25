@@ -1,0 +1,173 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E50/plan.md",
+    "id": "E50",
+    "digest": "5f8d16bc",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 1,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.163ms)\n✔ counts usage once per message id, keeping the largest output (39.3085ms)\n✔ splits cache writes into 5m and 1h (2.0413ms)\n✔ counts agent calls by dominant model family (1.2255ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.87ms)\n✔ estimates cost and keeps unpriced models null (0.8141ms)\n✔ readJsonl tolerates CRLF and a partial last line (2.8569ms)\n✔ classifies every label family of the role table (0.7852ms)\n✔ status, progress, review log and report come out as separate rows (280.0929ms)\n✔ records review rounds per loop (6.4189ms)\n✔ counts tasks and the task loop (5.1042ms)\n✔ writes metrics.json and one csv row per run and role (325.6661ms)\n✔ groups sessions of one attempt with --runs (195.3399ms)\n✔ requires --root and --out (74.2426ms)\n✔ refuses --out inside the repository outside tools/measure/out (1015.625ms)\n✔ real price table is dated and sourced (0.3036ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (611.3653ms)\n✔ privacy scan catches a planted personal path and session id (8.5416ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (27.8606ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (11.3006ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (15.2802ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (13.9431ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (10.0023ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (15.294ms)\n✔ prepare builds the sandbox and stops at authorize (6164.349ms)\n✔ prepare refuses a work dir inside the repository (88.2397ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (102.2714ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (533.7585ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (211.6762ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.4117ms)\nℹ tests 2630\nℹ suites 11\nℹ pass 2628\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 491849.0154",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-25T22:19:14.177Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Helper gitBash() compartilhado nos testes",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/git-bash.mjs",
+        "plugins/productivity-tools/scripts/capture.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/load-slices.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Novo D:/projects/claude-play-wt/pos-2-6-0-E50/plugins/productivity-tools/scripts/git-bash.mjs exporta só gitBash() -> string|null (PT_BASH como está; fora do win32 'bash'; no win32 bin/bash.exe via git --exec-path), para uso apenas em testes. capture.test.mjs, load-slices.test.mjs e flow.test.mjs usam o helper; os testes de Git Bash em capture e load-slices pulam pela opção { skip } quando não há bash. findBash de capture.mjs não mudou. Vermelho (run 1, módulo ausente) e verde (run 2) com o mesm",
+      "sha": "e05e78dca19aab0fc5b70abfb4e02ec047110065",
+      "replacedBy": null,
+      "note": "Novo D:/projects/claude-play-wt/pos-2-6-0-E50/plugins/productivity-tools/scripts/git-bash.mjs exporta só gitBash() -> string|null (PT_BASH como está; fora do win32 'bash'; no win32 bin/bash.exe via git --exec-path), para uso apenas em testes.\ncapture.test.mjs, load-slices.test.mjs e flow.test.mjs usam o helper; os testes de Git Bash em capture e load-slices pulam pela opção { skip } quando não há ",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "FAIL do lint para commands/ e caminhos customizados",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.mjs",
+        "plugins/marketplace-tools/skills/validate-plugin/SKILL.md",
+        "docs/claude-code-extensibility-reference.md",
+        "plugins/marketplace-tools/skills/validate-plugin/scripts/lint-plugin.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "lintPlugin now has the check \"No commands/ or custom component paths (#29)\", placed after the DEC-057 block: one FAIL per finding (commands/, plugin.json \"commands\", plugin.json \"skills\"), otherwise one OK. Four E50 tests added to lint-plugin.test.mjs (red in run 1, green in runs 2 and 5); validate-plugin/SKILL.md and docs/claude-code-extensibility-reference.md describe the check. All five folders under plugins/ (including _template) print the OK line and the four non-template plugins lint with ",
+      "sha": "6b0814f435f24979765c548d774d1af76af29881",
+      "replacedBy": null,
+      "note": "lintPlugin now has the check \"No commands/ or custom component paths (#29)\", placed after the DEC-057 block: one FAIL per finding (commands/, plugin.json \"commands\", plugin.json \"skills\"), otherwise one OK.\nFour E50 tests added to lint-plugin.test.mjs (red in run 1, green in runs 2 and 5); validate-plugin/SKILL.md and docs/claude-code-extensibility-reference.md describe the check.\nAll five folders",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-25T22:05:28.882Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-25T22:05:28.882Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-25T22:05:35.018Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-25T22:05:35.018Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        2
+      ],
+      "at": "2026-11-25T22:05:35.018Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-25T22:14:13.117Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-25T22:14:13.117Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-25T22:18:34.752Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-25T22:18:54.155Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T22:19:14.177Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-25T22:19:14.177Z"
+    }
+  ]
+}
