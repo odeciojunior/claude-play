@@ -61,6 +61,49 @@ function specNames(lines) {
   return names;
 }
 
+// Todos os nomes (ok, not ok, skip, todo), sem suites e sem a secao "failing tests" do spec.
+function tapAllNames(lines) {
+  const names = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)(?:not ok|ok)\s+\d+\s*-?\s*(.*)$/.exec(lines[i]);
+    if (!m) continue;
+    const ind = m[1].length;
+    let suite = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      if (indentOf(lines[j]) <= ind) break;
+      if (/^\s*type:\s*'suite'\s*$/.test(lines[j])) { suite = true; break; }
+    }
+    if (!suite) names.push(cleanName(m[2]));
+  }
+  return names;
+}
+
+function specAllNames(lines) {
+  const names = [];
+  const open = [];
+  for (const l of lines) {
+    if (/^\s*✖\s+failing tests:?\s*$/.test(l)) break;
+    const o = /^(\s*)▶\s+(.*)$/.exec(l);
+    if (o) { open.push({ ind: o[1].length, name: o[2].trim() }); continue; }
+    const m = /^(\s*)[✔✖﹣]\s+(.*)$/.exec(l);
+    if (!m) continue;
+    const ind = m[1].length;
+    const name = cleanName(m[2]);
+    const idx = open.findIndex((s) => s.ind === ind && s.name === name);
+    if (idx >= 0) { open.splice(idx, 1); continue; }
+    names.push(name);
+  }
+  return names;
+}
+
+export function allTestNames(text) {
+  const lines = String(text ?? '').split(/\r?\n/);
+  if (lines.some((l) => /^\s*# tests\s+\d+\s*$/.test(l))) return tapAllNames(lines);
+  if (lines.some((l) => /^\s*ℹ tests\s+\d+\s*$/.test(l))) return specAllNames(lines);
+  return [];
+}
+
 export function extractTests(text, exit) {
   const lines = String(text ?? '').split(/\r?\n/);
   let format = 'unknown';

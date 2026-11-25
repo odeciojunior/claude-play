@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { extractTests } from './test-extract.mjs';
+import { extractTests, allTestNames } from './test-extract.mjs';
 
 const SUITE = [
   "const { describe, it } = require('node:test');",
@@ -132,4 +132,36 @@ test('CLI imprime o JSON', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const ALL_SUITE = [
+  "const { describe, it } = require('node:test');",
+  "describe('grupo', () => {",
+  "  it('p1', () => {});",
+  "  it('s1', { skip: true }, () => {});",
+  "  it('t1', { todo: true }, () => {});",
+  "  it('f1', () => { throw new Error('x'); });",
+  "});",
+  "",
+].join('\n');
+
+for (const reporter of ['tap', 'spec']) {
+  test(`allTestNames em ${reporter}: todos os nomes, sem suite, duracao ou repeticao`, () => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-extract-all-'));
+    try {
+      const file = path.join(dir, 'a.test.js');
+      fs.writeFileSync(file, ALL_SUITE);
+      const r = spawnSync(process.execPath, ['--test', `--test-reporter=${reporter}`, file], { encoding: 'utf8', env });
+      assert.deepEqual([...allTestNames(r.stdout)].sort(), ['f1', 'p1', 's1', 't1']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('allTestNames: texto desconhecido devolve lista vazia', () => {
+  assert.deepEqual(allTestNames('hello world'), []);
+  assert.deepEqual(allTestNames(undefined), []);
 });
