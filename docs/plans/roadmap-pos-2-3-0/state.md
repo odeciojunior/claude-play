@@ -12,7 +12,7 @@ Estratégia v1.4 -- 2026-11-25
 | E37 | publicado (Publicado na 2.6.0 com o AC2 reprovado pela DEC-052 e reconferido no E39) | `docs/plans/pos-2-3-0-E37/spec.md`, `docs/plans/pos-2-3-0-E37/plan.md`, `5b7b059`, `docs/plans/pos-2-3-0-E37/progress.json`, `b443374` | Integrar com a release no E40; AC2 reprovado pela DEC-052, reconferência na 1ª execução válida do E39 |
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Resto em E40 |
 | E39 | medido (2 válidas integradas, limites provisórios da DEC-060, custo US$ 14,65 de 15, publicado na 2.6.0) | `docs/reports/2026-11-25-E39-linha-de-base-parada-retomada.md`, `b443374` | Integrar com a release no E40; conferência humana dos AC1 e AC2 via Fable |
-| E40 | publicado (2.6.0 publicada em b443374 e conferida no cache) | `docs/reports/2026-11-25-E40-roteiro-publicacao.md`, `b443374` | Prova S3-01 com loja fixada na tag, limpeza das pastas D:/claude-e3x-out e logout da config descartável |
+| E40 | publicado (2.6.0 publicada, S3-01 forte e limpeza B25 concluídas) | `docs/reports/2026-11-25-E40-roteiro-publicacao.md`, `b443374` | Conferência humana dos AC1 e AC2 do E40 e revisão da estratégia para absorver DEC-053 e DEC-056 |
 | E41 | publicado | `docs/plans/pos-2-3-0-E41/spec.md`, `docs/plans/pos-2-3-0-E41/plano-b2/progress.json`, `2868ced`, `a9d544f`, `7636dd7`, `0090d3c`, `6abab96` | E36 e E37 em série |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
@@ -34,5 +34,5 @@ Estratégia v1.4 -- 2026-11-25
 |---|---|---|---|---|---|
 | productivity-tools 2.4.0 (tag `productivity-tools--v2.4.0`) | E34 E35 E38 | publicado; E38 AC2 e E35 AC2 fechados em 2026-11-24 | `3f36054` | 2026-11-23 | marketplace claude-play (GitHub) |
 | productivity-tools 2.5.0 (tag `productivity-tools--v2.5.0`) | E41 | publicado; E41 AC3 com H1 conferida por subagent opus (delegação) | `6abab96` | 2026-11-24 | marketplace claude-play (GitHub) |
-| productivity-tools 2.6.0 (tag `productivity-tools--v2.6.0`) | E36 E37 E39 E40 | publicado; E37 AC2 reprovado (DEC-052), E39 com limites provisórios (DEC-060); S3-01 e limpeza pendentes no E40 | `b443374` | 2026-11-25 | marketplace claude-play (GitHub) |
+| productivity-tools 2.6.0 (tag `productivity-tools--v2.6.0`) | E36 E37 E39 E40 | publicado; E37 AC2 reprovado (DEC-052), E39 com limites provisórios (DEC-060); S3-01 forte e limpeza B25 concluídas no E40 | `b443374` | 2026-11-25 | marketplace claude-play (GitHub) |
 <!-- /roadmap:releases -->
