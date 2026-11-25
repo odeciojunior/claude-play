@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | - | tracker atualizado depois do E42: próximos passos de E43, E50 e E52 sem a espera pelas dependências | `b31ba00` |
+| 2026-11-25 | E42 | E42 executado em plan/pos-2-6-0-E42, a pedido do dono; plano ajustado antes da execução (worktree e piso do G1 2625/2623) | `5a558e3` |
 | 2026-11-25 | E42 | F1 da revisão final (commits T2-T4 sem a linha de paridade agy) tratado na mensagem do merge, sem reescrever os SHAs | `b31ba00` |
 | 2026-11-25 | E42 | E42 merged into release/pos-2.6.0; G1 em dbc59e0 (árvore igual à do merge): exit 0, tests 2630, pass 2628, fail 0, skipped 2; lint productivity-tools 57 OK | `b31ba00` |
 | 2026-11-25 | E42 | DEC-032 recorded: medida diz onde ler a saída com --brief; paridade agy: pendente #13 | `b7f0dc9` |
