@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
-const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, totalOnlyGates, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
+const { validMeasure, measureProblems, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, totalOnlyGates, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
 const T = { name: 'unit', kind: 'tests' };
 const X = { name: 'lint', kind: 'exit' };
 const INV = { name: 'drift', kind: 'exit', invariant: true };
@@ -147,12 +147,12 @@ const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
 const signedLine = (o) => JSON.stringify({ ...o, digest: fnv1a(JSON.stringify(canon(o))) });
 const expectOf = (def, nonce) => ({ nonce, cmdDigest: commandDigest({ bash: def.cmd }) });
 // A real run of capture.mjs in a throwaway git repository (the suite of 63 tests: 60 pass, FAIL_A, FAIL_B and FAIL_C fail).
-function realCapture(def, nonce, files = {}) {
+function realCapture(def, nonce, files = {}, { brief = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'rr-gate-'));
   try {
     assert.equal(spawnSync('git', ['init', '-q', dir]).status, 0);
     for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
-    const args = [CAPTURE, 'run', '--nonce', nonce, '--task', 'E1-gates', ...(def.kind === 'tests' ? ['--tests'] : []), '--cwd', dir, '--bash', def.cmd];
+    const args = [CAPTURE, 'run', '--nonce', nonce, '--task', 'E1-gates', ...(def.kind === 'tests' ? ['--tests'] : []), '--cwd', dir, ...(brief ? ['--brief'] : []), '--bash', def.cmd];
     const { NODE_TEST_CONTEXT, ...env } = process.env; // a child node --test must not think it runs inside this runner
     const r = spawnSync('node', args, { encoding: 'utf8', env });
     return r.stdout.trim();
@@ -246,6 +246,17 @@ test('a gate with a space in the name and a single quote in the command: the rea
   assert.equal(JSON.parse(line).cmdDigest, commandDigest({ bash: def.cmd }));
   const r = gateFromCapture(def, { name: 'unit tests', ran: true, exit: 5, capture: line }, expectOf(def, nonce));
   assert.equal(r.exit, 0);
+});
+
+test('E42 AC1: an exit gate with a real --brief capture enters the measure and is not reported missing', () => {
+  const def = { name: 'lint', kind: 'exit', cmd: 'node -e "process.exit(0)"' };
+  const nonce = 'abc12345:preflight:g0';
+  const line = realCapture(def, nonce, {}, { brief: true });
+  assert.equal('tail' in JSON.parse(line), false);
+  const m = capturedMeasure([def], meas([{ name: 'lint', ran: true, exit: 5, capture: line }]), () => nonce);
+  assert.deepEqual(m.gates, [{ name: 'lint', ran: true, exit: 0 }]);
+  assert.equal(validMeasure(m, null, [def]), true);
+  assert.deepEqual(measureProblems(m, null, [def]), []);
 });
 
 test('R4: gateSubset compares the names without the file prefix', () => {
