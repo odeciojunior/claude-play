@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
-const { validMeasure, measureProblems, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, totalOnlyGates, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
+const { validMeasure, measureProblems, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, totalOnlyGates, gateFromCapture, captureRejection, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
 const T = { name: 'unit', kind: 'tests' };
 const X = { name: 'lint', kind: 'exit' };
 const INV = { name: 'drift', kind: 'exit', invariant: true };
@@ -236,6 +236,86 @@ test('a wrong nonce, a tampered digest, a foreign command or a missing JSON give
   assert.equal(validMeasure(checked, null, [UNIT]), false);
   assert.equal(capturedMeasure([UNIT], null, () => nonce), null);
   assert.equal(validMeasure(capturedMeasure([UNIT], { ...m, gates: [{ ...m.gates[0], capture: good }] }, () => nonce), null, [UNIT]), true);
+});
+
+// ---- E42 T4: why a gate stayed out of the measure
+test('E42 AC2: wrong nonce, foreign command and tampered digest give a specific reason per gate', () => {
+  const names = ['nonce', 'command', 'tampered', 'absent', 'text', 'foreign', 'exit', 'down'];
+  const defs = names.map((name) => ({ name, kind: 'exit', cmd: `run ${name}` }));
+  const nonceOf = (i) => `n:E1:g${i}`;
+  const digestOf = (i) => commandDigest({ bash: defs[i].cmd });
+  const line = (i, o = {}) => signedLine({ tool: 'capture', nonce: nonceOf(i), cmdDigest: digestOf(i), exit: 0, path: `out/${names[i]}.txt`, ...o });
+  const other = commandDigest({ bash: 'npm test' });
+  const gates = [
+    { name: 'nonce', ran: true, capture: line(0, { nonce: 'n:E1:old' }) },
+    { name: 'command', ran: true, capture: line(1, { cmdDigest: other }) },
+    { name: 'tampered', ran: true, capture: line(2).replace('"exit":0', '"exit":1') },
+    { name: 'absent', ran: true, exit: 0 },
+    { name: 'text', ran: true, capture: 'not json' },
+    { name: 'foreign', ran: true, capture: JSON.stringify({ tool: 'other', nonce: 'x', path: 'out/foreign.txt' }) },
+    { name: 'exit', ran: true, exit: 0, capture: line(6, { exit: '0' }) },
+    { name: 'down', ran: false },
+  ];
+  const m = capturedMeasure(defs, meas(gates, { gateWhy: { down: 'written by the agent' } }), nonceOf);
+  assert.deepEqual(m.gates, [{ name: 'down', ran: false, exit: -1 }]);
+  const why = {
+    nonce: 'the nonce of the output is not the one of this run, expected n:E1:g0, got n:E1:old, path out/nonce.txt',
+    command: `the output is not from the expected command, expected ${digestOf(1)}, got ${other}, path out/command.txt`,
+    tampered: 'the digest of the output does not match: the copy is not literal, path out/tampered.txt',
+    absent: 'no capture line',
+    text: 'the output is not JSON',
+    foreign: 'the output is not from capture',
+    exit: 'the capture exit is not an integer',
+  };
+  assert.deepEqual(m.gateWhy, why);
+  assert.deepEqual(measureProblems(m, null, defs), Object.entries(why).map(([name, w]) => `gate ${name} missing from the measure: ${w}`));
+  // the script writes the field even when nothing was rejected, over whatever the agent sent
+  const clean = capturedMeasure([defs[0]], meas([{ name: 'nonce', ran: true, capture: line(0) }], { gateWhy: { nonce: 'written by the agent' } }), nonceOf);
+  assert.deepEqual(clean.gateWhy, {});
+  assert.deepEqual(measureProblems(clean, null, [defs[0]]), []);
+});
+
+test('E42 parity: captureRejection gives a reason only when gateFromCapture returns null', () => {
+  const nonce = 'n:E1:g0';
+  const exitDef = { name: 'lint', kind: 'exit', cmd: 'npm run lint' };
+  const good = capJson(UNIT, nonce, ex());
+  const goodExit = capJson(exitDef, nonce, undefined, 0);
+  const unknown = capJson(UNIT, nonce, ex({ format: 'unknown' }));
+  const base = { tool: 'capture', nonce, cmdDigest: commandDigest({ bash: UNIT.cmd }) };
+  const u = (capture) => [UNIT, { name: 'unit', ran: true, capture }];
+  const cases = {
+    'absent gate': [UNIT, undefined],
+    'null gate': [UNIT, null],
+    'no capture': [UNIT, { name: 'unit', ran: true, exit: 0 }],
+    'capture is a number': u(7),
+    'capture is an object': u(JSON.parse(good)),
+    'ran false': [UNIT, { name: 'unit', ran: false }],
+    'ran false with a bad capture': [UNIT, { name: 'unit', ran: false, capture: 'not json' }],
+    'not JSON': u('not json'),
+    'empty text': u(''),
+    'JSON null': u('null'),
+    'JSON of another tool': u(JSON.stringify({ tool: 'progress' })),
+    'capture refusal': u(JSON.stringify({ tool: 'capture', error: 'bad nonce' })),
+    'above the copy limit': u(capJson(UNIT, nonce, ex({ failedNames: ['n'.repeat(4000)] }))),
+    'wrong nonce': u(capJson(UNIT, 'n:E1:g1', ex())),
+    'wrong cmdDigest': u(capJson(exitDef, nonce, ex())),
+    'tampered digest': u(good.replace('"exit":1', '"exit":0')),
+    'exit not an integer': u(signedLine({ ...base, exit: 1.5 })),
+    'no exit': u(signedLine(base)),
+    'good exit gate': [exitDef, { name: 'lint', ran: true, capture: goodExit }],
+    'good tests gate': u(good),
+    'unknown format': u(unknown),
+  };
+  let rejected = 0;
+  for (const [label, [def, g]] of Object.entries(cases)) {
+    const expect = expectOf(def, nonce);
+    const why = captureRejection(g, expect);
+    if (gateFromCapture(def, g, expect) === null) {
+      rejected++;
+      assert.ok(typeof why === 'string' && why.length > 0, `${label}: expected a reason, got ${why}`);
+    } else assert.equal(why, null, label);
+  }
+  assert.equal(rejected, 16);
 });
 
 test('a gate with a space in the name and a single quote in the command: the real capture gives a digest that matches', () => {

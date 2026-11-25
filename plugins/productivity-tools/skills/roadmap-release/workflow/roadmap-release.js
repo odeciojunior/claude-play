@@ -201,10 +201,28 @@ function gateFromCapture(def, g, expect) {
   }
   return { ...r, total: g.total, skipped: g.skipped, failedNames: g.failedNames || [], fallback: true }
 }
+// Why gateFromCapture gives no result (null when it gives one): the same checks over the same data.
+function captureRejection(g, expect) {
+  if (g && g.ran === false) return null
+  const raw = g && typeof g.capture === 'string' ? g.capture : null
+  if (raw === null) return 'no capture line'
+  const v = checkCapture(raw, expect)
+  let o = null
+  try { o = JSON.parse(raw.replace(/\s+$/, '')) } catch {}
+  if (v.ok) return Number.isInteger(o.exit) ? null : 'the capture exit is not an integer'
+  return v.why + ('expected' in v ? `, expected ${v.expected}, got ${v.got}` : '') + (o && o.tool === 'capture' && typeof o.path === 'string' ? `, path ${o.path}` : '')
+}
+// gateWhy (gate name -> why it stayed out of gates) is always the script's, never the agent's.
 function capturedMeasure(defs, m, nonceOf) {
   if (!m || typeof m !== 'object') return m
-  const gates = (defs || []).map((d, i) => gateFromCapture(d, gateResult(m, d.name), { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) })).filter(Boolean)
-  return { ...m, gates }
+  const gates = [], why = []
+  for (const [i, d] of (defs || []).entries()) {
+    const g = gateResult(m, d.name), expect = { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) }
+    const r = gateFromCapture(d, g, expect)
+    if (r) gates.push(r)
+    else why.push([d.name, captureRejection(g, expect)])
+  }
+  return { ...m, gates, gateWhy: Object.fromEntries(why) }
 }
 function gateShaMatch(x, y) {
   return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
@@ -669,7 +687,7 @@ function measureProblems(m, expectedSha, gateDefs) {
   if (expectedSha && !gateShaMatch(normSha(m.headSha), normSha(expectedSha))) out.push('measured at commit ' + m.headSha + ', expected ' + expectedSha)
   for (const def of gateDefs || []) {
     const r = gateResult(m, def.name)
-    if (!r) out.push('gate ' + def.name + ' missing from the measure')
+    if (!r) out.push('gate ' + def.name + ' missing from the measure' + (m.gateWhy && Object.hasOwn(m.gateWhy, def.name) ? ': ' + m.gateWhy[def.name] : ''))
     else if (!gateCoherent(def, r)) out.push('gate ' + def.name + ': exit ' + r.exit + ' disagrees with its failing names')
   }
   return out
