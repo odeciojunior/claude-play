@@ -9,9 +9,9 @@ Estratégia v1.4 -- 2026-11-25
 | E34 | publicado | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md`, `docs/plans/pos-2-3-0-E34/progress.json`, `3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba`, `c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc`, `e0ace0fc6348d33ac3a1daac493cb4e19534af62`, `3f36054` | - |
 | E35 | medido | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md`, `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0`, `77a3236` | - |
 | E36 | na-branch | `docs/plans/pos-2-3-0-E36/spec.md`, `docs/plans/pos-2-3-0-E36/plan.md`, `docs/plans/pos-2-3-0-E36/progress.json`, `17fa90e`, `a81099d`, `1a1df35` | Integrar em main e publicar na 2.6.0 (E40) |
-| E37 | plano | `docs/plans/pos-2-3-0-E37/spec.md`, `docs/plans/pos-2-3-0-E37/plan.md` | Executar o plano com plan-coordinator; sonda plan-only (US$ 3,60) na T11 |
+| E37 | na-branch (Plano concluído 11/11, revisão final T3 aprovada com ressalvas corrigidas em 5b7b059, sonda AC2 reprovada em measurements de 2026-11-25) | `docs/plans/pos-2-3-0-E37/spec.md`, `docs/plans/pos-2-3-0-E37/plan.md`, `5b7b059`, `docs/plans/pos-2-3-0-E37/progress.json` | Integrar com a release no E40; AC2 reprovado pela DEC-052, reconferência na 1ª execução válida do E39 |
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Resto em E40 |
-| E39 | nao-iniciado | - | - |
+| E39 | nao-iniciado | - | Antes do lote: fator 1,85 no teto e prompt da sessão principal do arnês; 1ª execução válida reconfere 'de primeira' do E37 (DEC-052) e para via Fable se repetir |
 | E40 | nao-iniciado | - | - |
 | E41 | publicado | `docs/plans/pos-2-3-0-E41/spec.md`, `docs/plans/pos-2-3-0-E41/plano-b2/progress.json`, `2868ced`, `a9d544f`, `7636dd7`, `0090d3c`, `6abab96` | E36 e E37 em série |
 <!-- /roadmap:panel -->

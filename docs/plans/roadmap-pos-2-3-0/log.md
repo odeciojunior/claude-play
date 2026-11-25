@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E37 | Plano concluído; sonda AC2 reprovada (DEC-052); correções 9a16231 e 5b7b059; E37 na branch | `5b7b059` |
 | 2026-11-25 | E37 | E37 spec (R1-R16; decisões e aprovação pelo Fable delegado, 5 correções aplicadas) e plano de 11 tarefas (T11 sonda paga externa) | `docs/plans/pos-2-3-0-E37/plan.md` |
 | 2026-11-25 | E36 | E36 na-branch: 8 tarefas (plan-coordinator) + revisão final opus/high (4 menores; 3 corrigidas em 1a1df35, 1 aceita: desconto de teste fora do glob do gate, mitigado pela R13); suíte 2570/0/2 em 1a1df35 | `1a1df35` |
 | 2026-11-25 | - | estratégia v1.4: absorve DEC-049 a DEC-051 (orçamentos de tamanho do E36 e E37, teto da sonda do E37 em US$ 3,60, correções do cartão E37), decidida pelo Fable delegado | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
