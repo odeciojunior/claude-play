@@ -2708,13 +2708,15 @@ ${NO_ASK}`,
     if (!m) return [{ severity: 'critical', category: 'defeito', description: `the plan reviewer did not measure the plan blob (git rev-parse "HEAD:${plan.planPath}"); the plan load reported ${JSON.stringify(reported)}` }]
     return m === reported ? [] : [{ severity: 'critical', category: 'defeito', description: `planBlob reported by the plan load (${JSON.stringify(reported)}) differs from the blob measured by the reviewer (${JSON.stringify(m)}); the plan file changed after the load` }]
   }
+  const declared = () => [...((specLoad.data || {}).removedTests || []), ...((planLoad && planLoad.plan.removedTests) || [])]
+  const RM_CLAUSE = () => declared().length ? `\nremovedTests declared (${JSON.stringify(declared())}): check each entry against the diff; a test declared removed that was renamed, moved or still covers live behavior is a defeito.` : ''
   const planSkip = skipRev('plan', specSkip && plan.reused && !planGaps().length)
   const planLoop = planSkip ? { ok: true } : await reviewLoop('plan',
     (round, prev) => agent(`${C()}
 
 Review (read-only) the plan ${wt}/${plan.planPath} against the spec ${wt}/${spec.specPath} and the ${cardRef}.
 Blocks (defeito): an acceptance criterion with no task or no test; a task with no verification command; a command that does not exist or does not run in the MEASURED ENVIRONMENT (check scripts, paths and flags in the repository); wrong needsLock; wrong task order; a missing "**Roadmap:** ${RM}" line in the header; a task that edits the roadmap folder ${RM}; an evidence command that does not prove its criterion; a testable criterion labelled human or blocked; a {verify: ...} command of the card replaced instead of kept; a task tier or reviewTier that contradicts the blast radius (opus reviewTier is only for blast radius 2); a task with no boolean external declaration, or an external task with no externalDedupe (how running it twice avoids a duplicate effect); a task whose steps touch anything outside the branch but which declares external false; a task with noCommit true whose steps change or commit a file; an evidence row whose command touches anything outside the branch but which declares external false; an evidence row with a command and no boolean external, or an external one with no externalDedupe; an external effect that the card or the spec requires (a delivery, a send, a deploy) and that no task declared external performs, except merging the target into the integration branch and pushing it, which are the owner's (a criterion that needs them is a human act) (defeito, critical); a task of the plan, or an external effect, marked to run after the merge, in the integration worktree or in the target (defeito, critical); a canonical gate changed (decisao, critical).
-THE TASKS THE CODE ACTS ON (read by the script from the plan-tool emit, whose integrity digest it checked; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}
+THE TASKS THE CODE ACTS ON (read by the script from the plan-tool emit, whose integrity digest it checked; these external and noCommit flags and the files lists decide what is held and how many commits a task must leave, so compare each one with the plan file, and a flag or list that differs from the file is a defect): ${JSON.stringify({ tasks: plan.tasks })}${prev ? `\nIssues from the previous round (${repeatRule()}):\n${prev}` : ''}${RM_CLAUSE()}
 Measure: headSha, clean, ${R_COUNT}, measuredPlanBlob = the output of git -C "${wt}" rev-parse "HEAD:${plan.planPath}", run by you; do not copy it from the plan load.
 ${NO_ASK}`,
       { label: `${E}:plan-review${round}`, phase: 'Plan', schema: S_PLANREVIEW, model: 'opus', effort: 'medium' }),
@@ -2987,7 +2989,7 @@ Return ok (false if a conflict stayed unresolved; then git merge --abort), head,
       const rs = await parallel((card.critical ? ['correctness', 'security'] : ['all']).map((lens, li) => () => agent(`${C()}
 
 Mode: review, lens: ${lens}. Diff: git -C "${wt}" diff ${TARGET}...HEAD
-Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAlerts: ${alerts.join('; ')}.` : ''}${prev ? `\nPrevious issues (${repeatRule()}):\n${prev}` : ''}`,
+Spec ${spec.specPath}, plan ${plan.planPath}, ${cardRef}.${alerts.length ? `\nAlerts: ${alerts.join('; ')}.` : ''}${RM_CLAUSE()}${prev ? `\nPrevious issues (${repeatRule()}):\n${prev}` : ''}`,
         { label: `${E}:final-${li + 1}-r${round}`, schema: S_REVIEW, ...FRA })))
       if (rs.some(x => !x)) return null
       const r = { ...rs[0], issues: rs.flatMap(x => x.issues), clean: rs.every(x => x.clean) }, bl = blocking(r)
@@ -3048,7 +3050,6 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
   }
 
   // Only the total fell: removedTests checked by test-extract lower the floor, else stop.
-  const declared = () => [...((specLoad.data || {}).removedTests || []), ...((planLoad && planLoad.plan.removedTests) || [])]
   const removedFloor = async (g, tag, k) => {
     const one = GATES.filter(d => d.kind === 'tests' && !d.invariant && !d.ignoreFailuresWhenChanged).length === 1
     const n = {}, notes = []

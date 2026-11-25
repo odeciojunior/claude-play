@@ -510,3 +510,19 @@ test('E41 T3: the implementation context of runDeliverable carries the capture d
   const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8');
   assert.ok(src.includes("capture: { path: `${pluginRoot}/scripts/capture.mjs`, noncePrefix: `${RUN_TAG}:${E}:T${t.n}:`, task: `${E}-T${t.n}` }"));
 });
+
+test('E36 T6: the plan review and the final review carry the removedTests clause only when entries are declared', () => {
+  const src = readFileSync(join(here, 'roadmap-release.js'), 'utf8').replace(/\r\n/g, '\n');
+  const line = src.split('\n').find((l) => l.startsWith('  const RM_CLAUSE = '));
+  assert.ok(line, 'RM_CLAUSE constant exists');
+  const mk = (declared) => new Function('declared', `${line}\nreturn RM_CLAUSE`)(() => declared);
+  const entries = [{ file: 'src/a.test.js', name: 'old test', why: 'obsolete' }];
+  const text = mk(entries)();
+  assert.match(text, /old test/);
+  assert.match(text, /renamed, moved or still covers live behavior is a defeito/);
+  assert.equal(mk([])(), '', 'no declaration: the prompt stays as it was');
+  const slice = (from, to) => src.slice(src.indexOf(from), src.indexOf(to));
+  assert.ok(slice("await reviewLoop('plan',", '${E}:plan-review${round}').includes('${RM_CLAUSE()}'), 'plan review prompt');
+  assert.ok(slice("await reviewLoop('final',", '${E}:final-${li + 1}-r${round}').includes('${RM_CLAUSE()}'), 'final review prompt');
+  assert.ok(!slice("await reviewLoop('plan',", '${E}:plan-review${round}').includes('${RM_CLAUSE()}}'));
+});
