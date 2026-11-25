@@ -35,6 +35,7 @@ test('implementer has a CAPTURE section with the capture.mjs contract', () => {
     'node <capture> run --nonce <prefix><k> --task <id> -- <command>',
     'increasing `<k>`',
     '--bash "<command>"',
+    'When the `CAPTURE:` line carries `--brief`, the printed line has no `tail`: to see the output, read the file at its `path` (no pipe); copy the line as printed either way.',
     'identical between the red round and the green round',
     'literal JSON line',
     '`path`, `sha256` and `exit`',

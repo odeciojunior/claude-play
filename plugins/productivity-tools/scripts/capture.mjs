@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Roda um comando, grava stdout e stderr em <git-dir>/pt-evidence/<task>/ e imprime uma linha JSON
 // assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
-// Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")
-//      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <sha256> --slice <k>
+// Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")
+//        --brief: a linha impressa omite tail e tailCut (com --tests, failedNames e cortado como sem --brief, com tail vazio); o digest assina o objeto impresso. cmdDigest nao depende dos flags.
+//      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <prefixo sha256> --slice <k>
+//        --sha: prefixo hexadecimal minusculo do sha256 do arquivo, de 12 a 64 caracteres (a saida traz o total.sha256 completo).
 //      node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>]
 //        --task-prefix: apaga as pastas <p><resto> de pt-evidence e os arquivos <p><resto> de pt-evidence/review/ (resto sem hifen,
 //        ex.: final.txt, worktree.diff; subpastas de review/ nunca) e varre o que tem mais de 14 dias. No win32 o prefixo ignora a caixa.
@@ -29,7 +31,7 @@ const KEEP_MS = 14 * 24 * 3600 * 1000;
 const TAIL_LINES = 40;
 const TASK_RE = /^[A-Za-z0-9._-]+$/;
 const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
-const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] (-- <programa> [args...] | --bash "<string>")';
+const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")';
 const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>] (exatamente um dos dois)';
 
 class UsageError extends Error {}
@@ -46,7 +48,7 @@ function countLines(buf) {
 
 function parseArgs(argv) {
   if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, prune, list (ver o cabeçalho de capture.mjs)`);
-  const opts = { nonce: null, task: null, cwd: null, tests: false, program: null, bash: null };
+  const opts = { nonce: null, task: null, cwd: null, tests: false, brief: false, program: null, bash: null };
   let i = 1;
   const value = (flag) => {
     if (i + 1 >= argv.length) throw new UsageError(`${flag} sem valor. ${USAGE}`);
@@ -59,6 +61,7 @@ function parseArgs(argv) {
     else if (a === '--task') opts.task = value(a);
     else if (a === '--cwd') opts.cwd = value(a);
     else if (a === '--tests') opts.tests = true;
+    else if (a === '--brief') opts.brief = true;
     else if (a === '--bash') opts.bash = value(a);
     else throw new UsageError(`argumento desconhecido: ${a}. ${USAGE}`);
   }
@@ -92,7 +95,7 @@ function runSlice(argv, platform) {
   if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
   if (o.path === undefined) throw new UsageError('--path ausente');
   if (platform === 'win32' && (isMsys(o.path) || (o.cwd !== undefined && isMsys(o.cwd)))) throw new UsageError(MSYS_MSG);
-  if (o.sha === undefined || !/^[0-9a-f]{64}$/.test(o.sha)) throw new UsageError('--sha ausente ou não é um sha256 em hexadecimal minúsculo');
+  if (o.sha === undefined || !/^[0-9a-f]{12,64}$/.test(o.sha)) throw new UsageError('--sha ausente ou não é um prefixo sha256 hexadecimal minúsculo de 12 a 64 caracteres');
   if (o.slice === undefined || !/^\d+$/.test(o.slice)) throw new UsageError('--slice ausente ou não é um inteiro >= 0');
   const { cwd, gitDir } = gitDirOrThrow(o.cwd);
   const root = path.join(gitDir, 'pt-evidence');
@@ -108,7 +111,7 @@ function runSlice(argv, platform) {
   const rel = path.relative(realRoot, realFile);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new UsageError(`--path fora de ${fwd(root)}/`);
   const buf = fs.readFileSync(realFile);
-  if (sha256Of(buf) !== o.sha) return { code: 1, line: JSON.stringify({ tool: 'capture', error: 'o sha256 do arquivo não confere com --sha' }) };
+  if (!sha256Of(buf).startsWith(o.sha)) return { code: 1, line: JSON.stringify({ tool: 'capture', error: 'o sha256 do arquivo não confere com --sha' }) };
   const envs = sliceEnvelopes({ tool: 'capture', command: 'slice', nonce: o.nonce }, buf.toString('utf8'));
   const k = Number(o.slice);
   if (k >= envs.length) throw new UsageError(`--slice ${k} fora do intervalo 0..${envs.length - 1}`);
@@ -317,7 +320,7 @@ function tailLines(text) {
   return lines.map((l) => l.replace(/\r$/, ''));
 }
 
-function buildLine(base, text, tests, exit) {
+function buildLine(base, text, tests, exit, brief = false) {
   const lines = tailLines(text);
   const n = lines.length;
   let extract;
@@ -336,6 +339,7 @@ function buildLine(base, text, tests, exit) {
       extract = { ...extract, failedNames: all.slice(0, lo), failedNamesCut: all.length - lo };
     }
   }
+  if (brief) return sign({ ...base, ...(extract ? { extract } : {}) });
   const make = (tail, tailCut) => sign({ ...base, tail, tailCut, ...(extract ? { extract } : {}) });
   for (let k = Math.min(TAIL_LINES, n); k >= 1; k--) {
     const obj = make(lines.slice(n - k).join('\n'), n - k);
@@ -396,7 +400,7 @@ export function runCapture(argv, { platform = process.platform, env = process.en
       stderrSha256: sha256Of(stderr),
       stderrPath: saved.stderrPath,
     };
-    return { code: exit, line: JSON.stringify(buildLine(base, stdout.toString('utf8'), opts.tests, exit)) };
+    return { code: exit, line: JSON.stringify(buildLine(base, stdout.toString('utf8'), opts.tests, exit, opts.brief)) };
   } catch (e) {
     if (!(e instanceof UsageError)) throw e;
     return { code: 2, line: JSON.stringify({ tool: 'capture', error: e.message }) };

@@ -620,7 +620,7 @@ function buildImplPrompt(ctx, task) {
 WORKING DIRECTORY: the deliverable worktree ${ctx.wt}. Your shell does not start there and cd does not carry to the next call: run every command with absolute paths under ${ctx.wt} or git -C "${ctx.wt}" (a check written with relative paths runs with them made absolute there); a command that depends on the current directory uses the tool's own directory flag (npm --prefix ${ctx.wt}, make -C ${ctx.wt}, go -C ${ctx.wt}, node --test ${ctx.wt}/tests/...); never cd, never chain with &&.
 Implement ONLY Task ${task.n} ("${task.title}") of the plan ${ctx.wt}/${ctx.planPath}, in that worktree (no task of the plan runs in the integration worktree). STOP after this task: do not start the next one. ${lockNote(ctx.locks)}
 ${externalNote(ctx.authorizedExternal, task, { E: ctx.E, target: ctx.target })}
-Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}${ctx.capture ? `\nCAPTURE: node "${ctx.capture.path}" run --nonce ${ctx.capture.noncePrefix}<k> --task ${ctx.capture.task} --cwd ${shq(ctx.wt)} -- <command>` : ''}`
+Run the task's checks; a failure is pre-existing only if it is in the BASELINE or listed as expected in the plan. ${noFiles(task) ? 'This task changes no file: make no commit of your own (the plan lists no files for it).' : `Commit "${ctx.E} T${task.n}: ..." with only the task's files (plan list: ${(task.files || []).join(', ') || 'see the plan'}).`}${task.testFirst === true ? '\nThis is a test-first task: write the test, run it and report the failure before implementing.' : task.testFirst && task.testFirst.exempt ? `\nThis task is exempt from test-first: ${task.testFirst.exempt}.` : ''}${ctx.capture ? `\nCAPTURE: node "${ctx.capture.path}" run --nonce ${ctx.capture.noncePrefix}<k> --task ${ctx.capture.task} --cwd ${shq(ctx.wt)} --brief -- <command>` : ''}`
 }
 // Failures show at the end of the output, so a long output keeps its tail.
 function tailOf(output) {
@@ -638,7 +638,7 @@ function fmtChecks(checks) {
   if (!checks || !checks.length) return '(no checks reported)'
   return checks.map(c => {
     const o = captureLine(c.output)
-    return o ? `$ ${c.command}\nexit ${o.exit}\npath: ${o.path}\nsha256: ${o.sha256}\n${tailOf(o.tail)}` : `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`
+    return o ? `$ ${c.command}\nexit ${o.exit}\npath: ${o.path}\nsha256: ${o.sha256}\n${o.tail === undefined ? 'output: read the file at path (Read, offset/limit)' : tailOf(o.tail)}` : `$ ${c.command}\nexit ${c.exit}\n${tailOf(c.output)}`
   }).join('\n---\n')
 }
 function buildTaskReviewPrompt(ctx, task, kind, impl) {
@@ -2501,7 +2501,7 @@ ${ONE_CMD} ${NO_ASK}`,
       if (!v.ok || !Number.isInteger(o.tailCut)) return { loadWhy: `${label}: ${v.why || 'tailCut is not a number'}` }
       got[name] = { ...o, text: o.tail }
       if (o.tailCut > 0) {
-        const s = await readSlices({ label, phase: ph, tool: 'capture', command: 'slice', tries: 5, nonceOf, sn: (p, j) => `${p}-slice${j}`, cmdOf: (n, j) => `${CAP} slice --nonce ${n} --cwd ${shq(wt)} --path ${shq(o.path)} --sha ${o.sha256} --slice ${j}` })
+        const s = await readSlices({ label, phase: ph, tool: 'capture', command: 'slice', tries: 5, nonceOf, sn: (p, j) => `${p}-slice${j}`, cmdOf: (n, j) => `${CAP} slice --nonce ${n} --cwd ${shq(wt)} --path ${shq(o.path)} --sha ${o.sha256.slice(0, 12)} --slice ${j}` })
         if (s.text === undefined || s.envs[0].total.sha256 !== o.sha256) return { loadWhy: `${label}: ${s.why || 'the slices do not match the sha256'}` }
         got[name].text = s.text
       }

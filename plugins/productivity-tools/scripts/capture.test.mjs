@@ -711,3 +711,72 @@ test('prune e list: --nonce opcional entra no objeto assinado e e validado', () 
     }
   });
 });
+
+test('slice: prefixo de 12 caracteres confere, 64 continua valendo, saida traz total.sha256 completo', () => {
+  withRepo((repo) => {
+    const o = runBig(repo);
+    const base = ['slice', '--nonce', 'S1', '--path', o.path, '--cwd', fwd(repo), '--slice', '0'];
+    for (const sha of [o.sha256.slice(0, 12), o.sha256.slice(0, 40), o.sha256]) {
+      const r = runCli([...base, '--sha', sha]);
+      assert.equal(r.code, 0, r.stderr + r.stdout);
+      assert.equal(JSON.parse(r.stdout).total.sha256, o.sha256);
+    }
+  });
+});
+
+test('slice: prefixo errado sai 1; menos de 12, maiusculas, nao-hex ou acima de 64 saem 2', () => {
+  withRepo((repo) => {
+    const o = runBig(repo);
+    const base = ['slice', '--nonce', 'S1', '--path', o.path, '--cwd', fwd(repo), '--slice', '0'];
+    const wrong = runCli([...base, '--sha', '0'.repeat(12)]);
+    assert.equal(wrong.code, 1, wrong.stdout);
+    assert.match(JSON.parse(wrong.stdout).error, /não confere/);
+    for (const sha of [o.sha256.slice(0, 11), o.sha256.slice(0, 12).toUpperCase(), 'g'.repeat(12), `${o.sha256}0`]) {
+      const r = runCli([...base, '--sha', sha]);
+      assert.equal(r.code, 2, sha);
+      assert.match(JSON.parse(r.stdout).error, /prefixo sha256 hexadecimal minúsculo de 12 a 64/);
+    }
+  });
+});
+
+test('run --brief: sem tail e tailCut, digest confere pela regra do workflow e cmdDigest nao depende do flag', () => {
+  withRepo((repo) => {
+    const gen = ['node', '-e', "for (let i = 0; i < 100; i++) console.log('l' + i)"];
+    const plain = runCli(['run', '--nonce', 'B1', '--task', 'E39-B', '--cwd', fwd(repo), '--', ...gen]);
+    const brief = runCli(['run', '--nonce', 'B1', '--task', 'E39-B', '--cwd', fwd(repo), '--brief', '--', ...gen]);
+    const op = JSON.parse(plain.stdout);
+    const ob = JSON.parse(brief.stdout);
+    assert.ok('tail' in op && 'tailCut' in op);
+    assert.ok(!('tail' in ob) && !('tailCut' in ob));
+    assert.equal(ob.cmdDigest, op.cmdDigest);
+    assert.equal(ob.cmdDigest, commandDigest({ argv: gen }));
+    assert.equal(ob.lines, 100);
+    assert.equal(ob.exit, 0);
+    assert.ok(digestOk(ob));
+    assert.equal(checkCapture(brief.stdout, { nonce: 'B1', cmdDigest: commandDigest({ argv: gen }) }).ok, true);
+    const { tail, tailCut, digest, path: p1, stderrPath: e1, ...rest } = op;
+    const { digest: d2, path: p2, stderrPath: e2, ...restBrief } = ob;
+    assert.notEqual(digest, d2);
+    assert.deepEqual(restBrief, rest);
+  });
+});
+
+test('run --brief com --bash e com --tests: sem tail, cmdDigest igual ao sem --brief', () => {
+  withRepo((repo) => {
+    const a = JSON.parse(runCli(['run', '--nonce', 'B2', '--task', 'E39-B', '--cwd', fwd(repo), '--bash', 'echo oi; exit 4']).stdout);
+    const b = JSON.parse(runCli(['run', '--nonce', 'B2', '--task', 'E39-B', '--cwd', fwd(repo), '--brief', '--bash', 'echo oi; exit 4']).stdout);
+    assert.equal(b.exit, 4);
+    assert.ok(!('tail' in b) && !('tailCut' in b));
+    assert.equal(b.cmdDigest, a.cmdDigest);
+    assert.equal(b.cmdDigest, commandDigest({ bash: 'echo oi; exit 4' }));
+    assert.ok(digestOk(b));
+    const file = path.join(repo, 'big.test.js');
+    fs.writeFileSync(file, SUITE_63);
+    const t = runCli(['run', '--nonce', 'B3', '--task', 'E39-B', '--cwd', fwd(repo), '--tests', '--brief', '--', 'node', '--test', file]);
+    const ot = JSON.parse(t.stdout);
+    assert.ok(!('tail' in ot) && !('tailCut' in ot));
+    assert.deepEqual(ot.extract.failedNames, ['FAIL_A', 'FAIL_B', 'FAIL_C']);
+    assert.ok(digestOk(ot));
+    assert.equal(checkCapture(t.stdout, { nonce: 'B3' }).ok, true);
+  });
+});

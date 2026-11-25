@@ -166,6 +166,13 @@ test('head, blob and porcelain come from the checked tail (tailCut 0): they have
   assert.ok(!x.calls.some((c) => /capture\.mjs" slice/.test(c.prompt) && /-(head|blob|porcelain)/.test(c.label)));
 });
 
+test('the slice command passes only the first 12 hex of the sha256 (short argv), not the 64', async () => {
+  const x = await drive();
+  const shas = x.calls.filter((c) => /capture\.mjs" slice/.test(c.prompt)).map((c) => /--sha (\S+)/.exec(c.prompt)[1]);
+  assert.ok(shas.length > 0);
+  for (const s of shas) assert.match(s, /^[0-9a-f]{12}$/, s);
+});
+
 test('capture.mjs run and capture.mjs slice get the same --cwd, the worktree of the deliverable', async () => {
   const x = await drive();
   const cwds = x.calls.filter((c) => /^E1:(spec|plan)-load/.test(c.label)).map((c) => /capture\.mjs" (run|slice) .* --cwd (\S+)/.exec(c.prompt)).map((m) => `${m[1]}:${m[2]}`);

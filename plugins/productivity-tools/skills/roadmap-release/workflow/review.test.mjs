@@ -888,4 +888,35 @@ test('E41 T3: fmtChecks shows path, sha256, exit and the tail of a capture line,
   assert.equal(fmtChecks([]), '(no checks reported)');
 });
 
+// ---- DEC-054: pairs produced by capture.mjs run --brief ----
+const briefRun = (nonce) => {
+  const r = spawnCap(process.execPath, [CAPTURE_MJS, 'run', '--brief', '--nonce', nonce, '--task', 'E9-T2', '--cwd', capDir, '--', 'node', 'gen.mjs'], { encoding: 'utf8' });
+  return { line: r.stdout.trim(), status: r.status, cmd: 'node gen.mjs' };
+};
+writeFileSync(marker, 'red');
+const briefRed = briefRun(`${NONCE_PREFIX}3`);
+rmSync(marker);
+const briefGreen = briefRun(`${NONCE_PREFIX}4`);
+
+test('DEC-054: testFirstGap accepts a red/green pair of real --brief lines and refuses a tampered red', () => {
+  assert.equal(briefRed.status, 1);
+  assert.equal(briefGreen.status, 0);
+  assert.equal(JSON.parse(briefRed.line).tail, undefined);
+  assert.equal(testFirstGap(capTask, { status: 'DONE', checks: [asCheck(briefRed), asCheck(briefGreen)] }, false, capOf), '');
+  const red = asCheck(briefRed);
+  const forged = { ...red, output: JSON.stringify({ ...JSON.parse(red.output), exit: 0, bytes: 1 }) };
+  const gap = testFirstGap(capTask, { status: 'DONE', checks: [forged, asCheck(briefGreen)] }, false, capOf);
+  assert.ok(gap && gap.includes('2'), String(gap));
+});
+
+test('DEC-054: fmtChecks tells the reviewer to read the file for a --brief line and keeps the tail otherwise', () => {
+  const { fmtChecks } = loadPure();
+  const brief = fmtChecks([asCheck(briefRed)]);
+  assert.ok(brief.includes('output: read the file at path (Read, offset/limit)'));
+  assert.ok(brief.includes(JSON.parse(briefRed.line).path));
+  assert.ok(!brief.includes('xxxx'));
+  const full = fmtChecks([asCheck(redRun)]);
+  assert.ok(full.includes('xxxx') && !full.includes('read the file at path'));
+});
+
 test.after(() => { try { rmSync(capDir, { recursive: true, force: true }); } catch { /* ignore */ } });
