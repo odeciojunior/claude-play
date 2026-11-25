@@ -15,6 +15,9 @@ function cleanName(raw) {
     .trim();
 }
 
+// node:test TAP escapes `#` and `\` in names (`issue \#12`); undo it after cleanName, which needs the raw `# SKIP`.
+const tapName = (raw) => cleanName(raw).replace(/\\([#\\])/g, '$1');
+
 function summary(lines, re) {
   const out = {};
   for (const key of ['tests', 'pass', 'fail', 'skipped']) {
@@ -41,7 +44,7 @@ function tapNames(lines) {
       if (indentOf(lines[j]) <= ind) break;
       if (/^\s*type:\s*'suite'\s*$/.test(lines[j])) { suite = true; break; }
     }
-    if (!suite) names.push(cleanName(m[2]));
+    if (!suite) names.push(tapName(m[2]));
   }
   return names;
 }
@@ -77,7 +80,7 @@ function tapAllNames(lines) {
       if (indentOf(lines[j]) <= ind) break;
       if (/^\s*type:\s*'suite'\s*$/.test(lines[j])) { suite = true; break; }
     }
-    if (!suite) names.push(cleanName(m[2]));
+    if (!suite) names.push(tapName(m[2]));
   }
   return names;
 }

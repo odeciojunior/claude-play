@@ -358,3 +358,25 @@ test('removed: recusas assinadas com nonce e exit 2 (sha divergente, lista invá
     fs.rmSync(r.dir, { recursive: true, force: true });
   }
 });
+
+test('allTestNames: TAP real desfaz o escape de # e barra invertida nos nomes', () => {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-extract-esc-'));
+  try {
+    const file = path.join(dir, 'a.test.js');
+    fs.writeFileSync(file, [
+      "const { test } = require('node:test');",
+      "test('issue #12 fix', () => {});",
+      "test('path a\\\\b', () => {});",
+      "test('falha #7 x', () => { throw new Error('x'); });",
+      '',
+    ].join('\n'));
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', file], { encoding: 'utf8', env });
+    assert.match(r.stdout, /issue \\#12 fix/, 'a saida TAP escapa o #');
+    assert.deepEqual([...allTestNames(r.stdout)].sort(), ['falha #7 x', 'issue #12 fix', 'path a\\b']);
+    assert.deepEqual(extractTests(r.stdout, 1).failedNames, ['falha #7 x']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

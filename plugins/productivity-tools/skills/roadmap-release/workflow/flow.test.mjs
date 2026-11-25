@@ -5546,3 +5546,17 @@ test('E36 T5: the merge gates floor drops by the verified n only and the next ba
   assert.equal(next.unit.total, 8);
   assert.equal(pure.mergeFloor(next, gm('e2', { total: 8 }), {}).unit.total, 8);
 });
+
+test('E36 R8: a re-sync targetTip with a newline is normalized and the declared removal still passes', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ extra: (l) => (/:resync$/.test(l) ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'def5678\n', deltaFiles: ['src/x.js'] } : undefined) })) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.equal(/--base '([^']*)'/.exec(calls.find((c) => c.label === 'E1:reremoved-unit').prompt)[1], 'def5678');
+});
+
+test('E36 R12: a refusal without this call nonce is an invalid copy and is repeated', async () => {
+  let n = 0;
+  const answer = (p) => (++n === 1 ? { exit: 2, stdout: JSON.stringify({ tool: 'test-extract', command: 'removed', error: 'base invalida' }) } : { exit: 0, stdout: removedLine(p) });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer })) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.equal(rmCalls(calls).length, 2);
+});

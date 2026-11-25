@@ -3048,7 +3048,6 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     return { ok: !problems.length, summary: problems.join('\n') }
   }
 
-  // Verified removedTests lower the floor.
   const removedFloor = async (g, tag, k) => {
     const one = GATES.filter(d => d.kind === 'tests' && !d.invariant && !d.ignoreFailuresWhenChanged).length === 1
     const n = {}, notes = []
@@ -3061,7 +3060,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
       for (let t = 1; can && t <= 3; t++) {
         const m = t < 3 ? 'haiku' : 'sonnet', o = await agent(runPrompt(cmd), { agentType: 'productivity-tools:script-runner', label: `${E}:${tag}removed-${name}${t > 1 ? '-retry' + t : ''}`, phase: 'Gates', schema: S_RUN, model: m, effort: effortFor(m) })
         const v = checkRun(o && o.stdout, 'test-extract', nonce), d = v.data
-        if (!v.ok) { if (/ refused:/.test(v.why)) { why = v.why; break } continue }
+        if (!v.ok) { if (/ refused:/.test(v.why) && String(o.stdout).includes(nonce)) { why = v.why; break } continue }
         why = d.outputSha === r.outSha && d.gate === name && d.base === syncAt && Number.isInteger(d.verified) ? '' : 'wrong line'
         if (!why) { n[name] = d.verified; unv = (d.unverified || []).map(x => `; ${x.file}::${x.name} (${x.reason})`).join('') + (d.unverifiedCut > 0 ? `; ${d.unverifiedCut} more` : '') }
         break
@@ -3164,7 +3163,7 @@ ${fmt(iss)}`, { label: `${E}:delta-fix${k}`, phase: 'Merge', model: tier, effort
           { tier: 'sonnet', reviewModel: 'opus' })
         if (!dl.ok) return { ok: false, kind: dl.kind, why: `late-sync review: ${dl.msg}` }
       }
-      syncAt = rs.targetTip || syncAt
+      syncAt = normSha(rs.targetTip) || syncAt
       myBase = snapshotBase()
       await persistReviews('resync')  // conflict and delta reviews go into the log before the final measurement
       const rg = await branchGates('re', null)
