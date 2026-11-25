@@ -3055,14 +3055,14 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     for (const name of g.failures) {
       const r = gateResult(g.m, name), can = declared().some(e => e.gate === undefined || e.gate === name)
       const nonce = `${RUN_TAG}:${E}:removed:${tag}${name}:${k + 1}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
-      const cmd = `node "${pluginRoot}/scripts/test-extract.mjs" removed ${Object.entries({ nonce, spec: specAbs, plan: planAbs, base: TARGET, cwd: wt, output: r.outPath, sha: r.outSha, gate: name }).map(([a, v]) => `--${a} ${shq(v)}`).join(' ')}${one ? ' --single-tests-gate' : ''}`
+      const cmd = `node "${pluginRoot}/scripts/test-extract.mjs" removed ${Object.entries({ nonce, spec: specAbs, plan: planAbs, base: syncAt, cwd: wt, output: r.outPath, sha: r.outSha, gate: name }).map(([a, v]) => `--${a} ${shq(v)}`).join(' ')}${one ? ' --single-tests-gate' : ''}`
       let why = can ? 'bad copy' : 'none', unv = ''
       n[name] = 0
       for (let t = 1; can && t <= 3; t++) {
         const m = t < 3 ? 'haiku' : 'sonnet', o = await agent(runPrompt(cmd), { agentType: 'productivity-tools:script-runner', label: `${E}:${tag}removed-${name}${t > 1 ? '-retry' + t : ''}`, phase: 'Gates', schema: S_RUN, model: m, effort: effortFor(m) })
         const v = checkRun(o && o.stdout, 'test-extract', nonce), d = v.data
         if (!v.ok) { if (/ refused:/.test(v.why)) { why = v.why; break } continue }
-        why = d.outputSha === r.outSha && d.gate === name && d.base === TARGET && Number.isInteger(d.verified) ? '' : 'wrong line'
+        why = d.outputSha === r.outSha && d.gate === name && d.base === syncAt && Number.isInteger(d.verified) ? '' : 'wrong line'
         if (!why) { n[name] = d.verified; unv = (d.unverified || []).map(x => `; ${x.file}::${x.name} (${x.reason})`).join('') + (d.unverifiedCut > 0 ? `; ${d.unverifiedCut} more` : '') }
         break
       }

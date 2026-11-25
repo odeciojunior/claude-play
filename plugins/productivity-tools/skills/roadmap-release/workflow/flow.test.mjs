@@ -5412,7 +5412,7 @@ test('E29 C5: taskReview.single given straight to the workflow runs only spec1 a
 
 // ---- E36 T5: a tests gate whose only failure is a lower total stops without gates-fix; removedTests checked by test-extract lift the floor ----
 const RM_ENT = [{ file: 'src/a.test.js', name: 'old test', why: 'obsolete' }];
-const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: 'integracao/x', outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
+const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: (/--base '([^']*)'/.exec(prompt) || [])[1], outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
 const removedOver = ({ total = 8, answer = (p) => ({ exit: 0, stdout: removedLine(p) }), extra } = {}) => (l, p, o) => {
   if (/^E1:(re)?gates1-2$/.test(l)) return gm(/regates/.test(l) ? 'a3' : 'a2', { total });
   if (/^E1:(re)?removed-unit/.test(l)) return answer(p, l);
@@ -5440,7 +5440,8 @@ test('E36 T5 AC1: a spec declaration confirmed by the signed line lets the deliv
   assert.equal(c[0].opts.agentType, 'productivity-tools:script-runner');
   assert.equal(c[0].opts.model, 'haiku');
   const p = c[0].prompt;
-  assert.match(p, /test-extract\.mjs" removed --nonce '[^']*' --spec '\/wt\/E1\/docs\/plans\/x-E1\/spec\.md' --plan '\/wt\/E1\/docs\/plans\/x-E1\/plan\.md' --base 'integracao\/x' --cwd '\/wt\/E1' --output 'p' --sha '0' --gate 'unit' --single-tests-gate/);
+  assert.match(p, /test-extract\.mjs" removed --nonce '[^']*' --spec '\/wt\/E1\/docs\/plans\/x-E1\/spec\.md' --plan '\/wt\/E1\/docs\/plans\/x-E1\/plan\.md' --base '[^']*' --cwd '\/wt\/E1' --output 'p' --sha '0' --gate 'unit' --single-tests-gate/);
+  assert.ok(p.includes(` --base 'abc1234' `), 'the base is the target tip of the baseline (syncAt), a SHA, not the branch name that can move');
   assert.ok(!/old test/.test(p), 'names are never passed by argv');
   const concern = r.results[0].concerns.find((x) => /removed/.test(x));
   assert.ok(concern && /10/.test(concern) && /8/.test(concern) && /2/.test(concern), String(concern));
@@ -5463,7 +5464,7 @@ test('E36 T5: a drop beyond what was verified stops with the unverified entries,
 });
 
 test('E36 T5: a line for another output, gate or base counts n = 0 and is not repeated; a signed refusal is not repeated', async () => {
-  for (const bad of [{ outputSha: 'x' }, { gate: 'lint' }, { base: 'main' }]) {
+  for (const bad of [{ outputSha: 'x' }, { gate: 'lint' }, { base: 'main' }, { base: 'integracao/x' }]) {
     const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: (p) => ({ exit: 0, stdout: removedLine(p, bad) }) })) });
     assert.equal(r.results[0].failKind, 'conteudo', JSON.stringify(bad));
     assert.equal(rmCalls(calls).length, 1, JSON.stringify(bad));
@@ -5527,6 +5528,9 @@ test('E36 T5: the checker nonce is distinct for the first measurement and the on
   assert.match(a, /:E1:removed:unit:\d+$/);
   assert.match(b, /:E1:removed:reunit:\d+$/);
   assert.notEqual(a, b);
+  const baseOf = (l) => /--base '([^']*)'/.exec(calls.find((c) => c.label === l).prompt)[1];
+  assert.equal(baseOf('E1:removed-unit'), 'abc1234');
+  assert.equal(baseOf('E1:reremoved-unit'), 'def5678', 'after the re-sync the base is the new target tip');
 });
 
 test('E36 T5: the merge gates floor drops by the verified n only and the next baseline does not inherit it', async () => {
