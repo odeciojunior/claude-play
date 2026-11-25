@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E39 | Execução 1 fora da linha de base pela DEC-054. O rodou duas vezes da sonda do E37 é artefato de registro, tool_use duplicado com o mesmo id, e a reprovação vale pelos 12 Grep e rótulos de repetição | `e199792` |
 | 2026-11-25 | E37 | Plano concluído; sonda AC2 reprovada (DEC-052); correções 9a16231 e 5b7b059; E37 na branch | `5b7b059` |
 | 2026-11-25 | E37 | E37 spec (R1-R16; decisões e aprovação pelo Fable delegado, 5 correções aplicadas) e plano de 11 tarefas (T11 sonda paga externa) | `docs/plans/pos-2-3-0-E37/plan.md` |
 | 2026-11-25 | E36 | E36 na-branch: 8 tarefas (plan-coordinator) + revisão final opus/high (4 menores; 3 corrigidas em 1a1df35, 1 aceita: desconto de teste fora do glob do gate, mitigado pela R13); suíte 2570/0/2 em 1a1df35 | `1a1df35` |
