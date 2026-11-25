@@ -52,14 +52,14 @@ function makeJournal() {
 // The JSON of `spec-tool emit` for the card of E (acceptance copied from the card the way the tool derives it).
 const PURE_X = loadPure();
 const TOOL_PATH = '/p/productivity-tools/skills/roadmap-tracker/scripts/roadmap.mjs';
-function specEmitOf(E, { acceptance, rulings = [], needsPerson = [] }) {
+function specEmitOf(E, { acceptance, rulings = [], needsPerson = [], removedTests }) {
   const items = acceptance.map((a) => {
     const t = PURE_X.parseVerifyTag(a.text);
     const at = String(a.text).lastIndexOf('{verify:');
     const bare = at === -1 ? String(a.text).trim() : String(a.text).slice(0, at).trim();
     return { id: a.id, text: a.text, verify: t && !t.invalid ? { kind: t.kind, blq: t.blq || null, evidence: t.evidence } : null, textWithoutTag: bare };
   });
-  return JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', data: { id: E, title: 't', mode: 'unattended', acceptance: items, rulings, needsPerson, externalEffects: [], edgeCases: [] } });
+  return JSON.stringify({ tool: 'spec-tool', schema: 'spec/1', path: 'x', data: { id: E, title: 't', mode: 'unattended', acceptance: items, rulings, needsPerson, externalEffects: [], edgeCases: [], ...(removedTests ? { removedTests } : {}) } });
 }
 // ---- E8 T6: an old transcribed plan ({ planBlob, ac, tasks: [{ n, title, tier, reviewTier, files, needsLock, external, externalDedupe, noCommit }] }) becomes the plan-tool emit the plan load returns.
 const OLD_DEFAULT_PLAN = { planPath: 'docs/p.md', planBlob: B1, roadmapHeader: true, ac: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', external: false }], tasks: [{ n: 1, title: 't', tier: 'sonnet', external: false }] };
@@ -85,7 +85,7 @@ function planLoadOf(old, E, over = {}) {
     externalDedupe: t.externalDedupe === undefined ? null : t.externalDedupe, noCommit: t.noCommit === true, deps: [], score: scoreFor(t),
   }));
   const evidence = (old.ac || []).map((a) => ({ ac: a.ac, kind: a.kind, command: a.command === undefined ? null : a.command, testRef: a.testRef === undefined ? null : a.testRef, blq: a.blq === undefined ? null : a.blq, external: a.external, externalDedupe: a.externalDedupe === undefined ? null : a.externalDedupe }));
-  const emit = planEmitOf({ id: E, roadmap: 'docs/plans/roadmap-x/', tasks, evidence });
+  const emit = planEmitOf({ id: E, roadmap: 'docs/plans/roadmap-x/', tasks, evidence, removedTests: old.removedTests });
   return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: old.planBlob, head: 'a1', clean: true, ...over };
 }
 
@@ -4101,8 +4101,8 @@ const emitFixture = () => execFileSync('node', [PLAN_TOOL, 'emit', join(PLAN_TOO
 const fixtureEmit = () => JSON.parse(emitFixture());
 
 // Builds the JSON of `plan-tool emit` with route and digest computed by the lib copies.
-function planEmitOf({ id, roadmap, tasks, evidence = [] }) {
-  const plan = { schema: 'plan/1', id, roadmap, tasks: [], evidence };
+function planEmitOf({ id, roadmap, tasks, evidence = [], removedTests }) {
+  const plan = { schema: 'plan/1', id, roadmap, tasks: [], evidence, ...(removedTests ? { removedTests } : {}) };
   plan.tasks = tasks.map((t) => ({ locks: [], external: false, externalDedupe: null, noCommit: false, deps: [], ...t }));
   plan.tasks = plan.tasks.map((t) => ({ ...t, route: libRoute(t, { hasDependents: plan.tasks.some((x) => x.deps.includes(t.n)) }) }));
   const source = { path: 'plan.md', textDigest: 'abcd1234' };
@@ -5408,4 +5408,137 @@ test('E29 C5: taskReview.single given straight to the workflow runs only spec1 a
   for (const c of calls.filter((x) => /^E1:t1:(spec|quality)\d$/.test(x.label))) assert.equal(c.opts.agentType, 'productivity-tools:task-reviewer');
   assert.ok(!calls.some((c) => /^E1:t1:.*review1/.test(c.label)), 'no single review label on the task');
   for (const p of ['E1:t1:spec-fix', 'E1:t1:quality-fix', 'E1:t1:review-fix']) assert.ok(!calls.some((c) => c.label.startsWith(p)), `no fix ${p}`);
+});
+
+// ---- E36 T5: a tests gate whose only failure is a lower total stops without gates-fix; removedTests checked by test-extract lift the floor ----
+const RM_ENT = [{ file: 'src/a.test.js', name: 'old test', why: 'obsolete' }];
+const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: 'integracao/x', outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
+const removedOver = ({ total = 8, answer = (p) => ({ exit: 0, stdout: removedLine(p) }), extra } = {}) => (l, p, o) => {
+  if (/^E1:(re)?gates1-2$/.test(l)) return gm(/regates/.test(l) ? 'a3' : 'a2', { total });
+  if (/^E1:(re)?removed-unit/.test(l)) return answer(p, l);
+  return extra ? extra(l, p, o) : undefined;
+};
+const withSpecRemoved = (...fs) => both(specWith({ removedTests: RM_ENT }), ...fs);
+const rmCalls = (calls) => calls.filter((c) => /^E1:removed-unit/.test(c.label));
+
+test('E36 T5 AC2: a tests gate failing only on a lower total with nothing declared stops at the 1st measurement without gates-fix', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: removedOver() });
+  assert.equal(r.results[0].failKind, 'conteudo');
+  assert.match(r.results[0].error, /removedTests/);
+  assert.match(r.results[0].error, /restore/);
+  assert.ok(!labels.some((l) => /gates-fix/.test(l)), labels.join(','));
+  assert.ok(!labels.some((l) => /removed-unit/.test(l)), 'no declaration: the checker does not run');
+  assert.ok(!labels.includes('E1:gates2-1') && !labels.includes('E1:gates2-2'));
+});
+
+test('E36 T5 AC1: a spec declaration confirmed by the signed line lets the deliverable through, with a concern and the checker command', async () => {
+  const { r, calls, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver()) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.ok(!labels.some((l) => /gates-fix/.test(l)));
+  const c = rmCalls(calls);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].opts.agentType, 'productivity-tools:script-runner');
+  assert.equal(c[0].opts.model, 'haiku');
+  const p = c[0].prompt;
+  assert.match(p, /test-extract\.mjs" removed --nonce '[^']*' --spec '\/wt\/E1\/docs\/plans\/x-E1\/spec\.md' --plan '\/wt\/E1\/docs\/plans\/x-E1\/plan\.md' --base 'integracao\/x' --cwd '\/wt\/E1' --output 'p' --sha '0' --gate 'unit' --single-tests-gate/);
+  assert.ok(!/old test/.test(p), 'names are never passed by argv');
+  const concern = r.results[0].concerns.find((x) => /removed/.test(x));
+  assert.ok(concern && /10/.test(concern) && /8/.test(concern) && /2/.test(concern), String(concern));
+});
+
+test('E36 T5 AC1: a plan declaration works too', async () => {
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both((l) => (l === 'E1:plan' ? { ...OLD_DEFAULT_PLAN, removedTests: RM_ENT } : undefined), removedOver()) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.ok(!labels.some((l) => /gates-fix/.test(l)));
+  assert.ok(labels.includes('E1:removed-unit'));
+});
+
+test('E36 T5: a drop beyond what was verified stops with the unverified entries, their reasons and the cut count', async () => {
+  const line = (p) => ({ exit: 0, stdout: removedLine(p, { verified: 1, unverified: [{ file: 'src/b.test.js', name: 'other', reason: 'o nome continua no arquivo em HEAD' }], unverifiedCut: 3 }) });
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: line })) });
+  assert.equal(r.results[0].failKind, 'conteudo');
+  const e = r.results[0].error;
+  for (const re of [/src\/b\.test\.js/, /other/, /o nome continua no arquivo em HEAD/, /3 more|\+3|3 cut/, /baseline 10/, /branch 8/, /restore/]) assert.match(e, re);
+  assert.ok(!labels.some((l) => /gates-fix/.test(l)));
+});
+
+test('E36 T5: a line for another output, gate or base counts n = 0 and is not repeated; a signed refusal is not repeated', async () => {
+  for (const bad of [{ outputSha: 'x' }, { gate: 'lint' }, { base: 'main' }]) {
+    const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: (p) => ({ exit: 0, stdout: removedLine(p, bad) }) })) });
+    assert.equal(r.results[0].failKind, 'conteudo', JSON.stringify(bad));
+    assert.equal(rmCalls(calls).length, 1, JSON.stringify(bad));
+  }
+  const refusal = (p) => ({ exit: 2, stdout: JSON.stringify({ tool: 'test-extract', command: 'removed', nonce: nonceOf(p), error: 'base invalida' }) });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: refusal })) });
+  assert.equal(r.results[0].failKind, 'conteudo');
+  assert.match(r.results[0].error, /base invalida/);
+  assert.equal(rmCalls(calls).length, 1);
+});
+
+test('E36 T5: an invalid copy repeats the same command (attempts 1-2 haiku, 3 sonnet) and 3 invalid copies give n = 0', async () => {
+  let n = 0;
+  const flaky = (p) => (++n < 3 ? { exit: 0, stdout: removedLine(p).replace('"verified":2', '"verified":9') } : { exit: 0, stdout: removedLine(p) });
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: flaky })) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  const c = rmCalls(calls);
+  assert.deepEqual(c.map((x) => x.label), ['E1:removed-unit', 'E1:removed-unit-retry2', 'E1:removed-unit-retry3']);
+  assert.deepEqual(c.map((x) => x.opts.model), ['haiku', 'haiku', 'sonnet']);
+  assert.equal(new Set(c.map((x) => x.prompt)).size, 1, 'the same command each time');
+  const all = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ answer: () => ({ exit: 0, stdout: 'garbage' }) })) });
+  assert.equal(all.r.results[0].failKind, 'conteudo');
+  assert.equal(rmCalls(all.calls).length, 3);
+});
+
+test('E36 T5: a declaration with no drop records a concern and never calls the checker', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ total: 10 })) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.equal(rmCalls(calls).length, 0);
+  assert.ok(r.results[0].concerns.some((x) => /removedTests/.test(x)), r.results[0].concerns.join('|'));
+});
+
+test('E36 T5 R9: the 1st run stops asking for the declaration, the resumed run with it loaded passes without gates-fix', async () => {
+  const first = await exec({ cards: [card('E1')], deliverables: ['E1'], over: removedOver() });
+  assert.equal(first.r.results[0].failKind, 'conteudo');
+  assert.ok(!first.labels.some((l) => /gates-fix/.test(l)));
+  const again = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver()) });
+  assert.equal(again.r.results[0].merged, true, again.r.results[0].error);
+  assert.ok(!again.labels.some((l) => /gates-fix/.test(l)));
+});
+
+test('E36 T5: with a red exit gate alongside, gates-fix runs as before and a later total-only round short-circuits', async () => {
+  const lintRed = { ...gm('a2'), gates: [{ name: 'lint', ran: true, exit: 1 }, ...gm('a2').gates.slice(1)] };
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: removedOver({ extra: (l) => {
+    if (l === 'E1:gates1-1') return lintRed;
+    if (l === 'E1:gates-fix1') return { status: 'DONE', summary: 'f', checks: [] };
+    if (l === 'E1:gates-fix1-review') return { issues: [], headSha: 'a2b', clean: true, commitsInRange: 1 };
+    if (/^E1:gates2-2$/.test(l)) return gm('a2', { total: 8 });
+    return undefined;
+  } }) });
+  assert.ok(x.labels.includes('E1:gates-fix1'), x.labels.join(','));
+  assert.ok(!x.labels.includes('E1:gates-fix2'));
+  assert.equal(x.r.results[0].failKind, 'conteudo');
+  assert.match(x.r.results[0].error, /removedTests/);
+});
+
+test('E36 T5: the checker nonce is distinct for the first measurement and the one after the re-sync', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver()) });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  const [a, b] = ['E1:removed-unit', 'E1:reremoved-unit'].map((l) => nonceOf(calls.find((c) => c.label === l).prompt));
+  assert.match(a, /:E1:removed:unit:\d+$/);
+  assert.match(b, /:E1:removed:reunit:\d+$/);
+  assert.notEqual(a, b);
+});
+
+test('E36 T5: the merge gates floor drops by the verified n only and the next baseline does not inherit it', async () => {
+  const mergeAt = (total) => (l) => (/^E1:merge-gates1-2$/.test(l) ? gm('e1', { total }) : undefined);
+  const ok = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ extra: mergeAt(8) })) });
+  assert.equal(ok.r.results[0].merged, true, ok.r.results[0].error);
+  assert.ok(!ok.labels.includes('E1:merge-fix'));
+  const low = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ extra: (l, p, o) => (l === 'E1:merge-fix' ? { status: 'DONE', summary: 's', checks: [] } : l === 'E1:merge-fix-review' ? { issues: [], headSha: 'HEAD', clean: true, commitsInRange: 1 } : l === 'E1:merge-gates2-2' ? gm('f7') : mergeAt(7)(l, p, o)) })) });
+  assert.ok(low.labels.includes('E1:merge-fix'), 'a total of 7 is below the floor of 8 (10 - 2 verified)');
+  const pure = loadPure();
+  const defs = [{ name: 'unit', kind: 'tests' }];
+  const next = pure.refreshBaseline({ unit: { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [] } }, defs, gm('e1', { total: 8 }), []);
+  assert.equal(next.unit.total, 8);
+  assert.equal(pure.mergeFloor(next, gm('e2', { total: 8 }), {}).unit.total, 8);
 });

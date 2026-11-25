@@ -2248,7 +2248,7 @@ Commit only that file ("${E}: external effects of the acceptance evidence"). Ret
     let g
     let exp = firstExp
     for (let k = 0; ; k++) {
-      g = await gates(INTWT, `${E}:merge-gates${k + 1}`, 'Merge', mergeFloor(BASE, out.brM), exp, `${mergeCommit}^1..HEAD`)
+      g = await gates(INTWT, `${E}:merge-gates${k + 1}`, 'Merge', mergeFloor(BASE, out.brM, out.removedN), exp, `${mergeCommit}^1..HEAD`)
       if (g.ok) break
       if (k >= 1 || g.nullAgent) return onBad(`post-merge gates failed: ${g.summary}`, g.nullAgent ? 'infra' : 'conteudo')
       const preFix = g.m.headSha
@@ -3047,12 +3047,44 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     return { ok: !problems.length, summary: problems.join('\n') }
   }
 
+  // Only the total fell: removedTests checked by test-extract lower the floor, else stop.
+  const declared = () => [...((specLoad.data || {}).removedTests || []), ...((planLoad && planLoad.plan.removedTests) || [])]
+  const removedFloor = async (g, tag, k) => {
+    const one = GATES.filter(d => d.kind === 'tests' && !d.invariant && !d.ignoreFailuresWhenChanged).length === 1
+    const n = {}, notes = []
+    for (const name of g.failures) {
+      const r = gateResult(g.m, name), can = declared().some(e => e.gate === undefined || e.gate === name)
+      const nonce = `${RUN_TAG}:${E}:removed:${tag}${name}:${k + 1}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
+      const cmd = `node "${pluginRoot}/scripts/test-extract.mjs" removed ${Object.entries({ nonce, spec: specAbs, plan: planAbs, base: TARGET, cwd: wt, output: r.outPath, sha: r.outSha, gate: name }).map(([a, v]) => `--${a} ${shq(v)}`).join(' ')}${one ? ' --single-tests-gate' : ''}`
+      let why = can ? 'bad copy' : 'none', unv = ''
+      n[name] = 0
+      for (let t = 1; can && t <= 3; t++) {
+        const m = t < 3 ? 'haiku' : 'sonnet', o = await agent(runPrompt(cmd), { agentType: 'productivity-tools:script-runner', label: `${E}:${tag}removed-${name}${t > 1 ? '-retry' + t : ''}`, phase: 'Gates', schema: S_RUN, model: m, effort: effortFor(m) })
+        const v = checkRun(o && o.stdout, 'test-extract', nonce), d = v.data
+        if (!v.ok) { if (/ refused:/.test(v.why)) { why = v.why; break } continue }
+        why = d.outputSha === r.outSha && d.gate === name && d.base === TARGET && Number.isInteger(d.verified) ? '' : 'wrong line'
+        if (!why) { n[name] = d.verified; unv = (d.unverified || []).map(x => `; ${x.file}::${x.name} (${x.reason})`).join('') + (d.unverifiedCut > 0 ? `; ${d.unverifiedCut} more` : '') }
+        break
+      }
+      notes.push(`${name}: baseline ${myBase[name].total}, branch ${r.total}, verified ${n[name]}${why && ` (${why})`}${unv}`)
+    }
+    const msg = `only the total fell: ${notes.join(' | ')}`
+    return allPass(GATES, g.m, myBase, g.m.changedFiles, n).ok ? { ok: true, n, msg } : { ok: false, msg: `${msg}. Declare them in removedTests and resume, or restore them` }
+  }
   const branchGates = async (tag, firstExp) => {
     let exp = firstExp
     for (let k = 0; ; k++) {
-      const g = await gates(wt, `${E}:${tag}gates${k + 1}`, 'Gates', myBase, exp)
+      let g = await gates(wt, `${E}:${tag}gates${k + 1}`, 'Gates', myBase, exp)
       out.gates = g.summary
+      out.removedN = {}
       if (g.nullAgent) return { ok: false, kind: 'infra', msg: `gates: ${g.summary}` }
+      if (!g.ok && g.failures.every(n => totalOnlyGates(GATES, g.m, myBase, g.m.changedFiles).includes(n))) {
+        const rf = await removedFloor(g, tag, k)
+        if (!rf.ok) return { ok: false, kind: 'conteudo', msg: rf.msg }
+        out.removedN = rf.n
+        out.concerns.push(`${tag}removed tests: ${rf.msg}`)
+        g = { ...g, ok: true }
+      } else if (g.ok && declared().length) out.concerns.push(`${tag}removedTests declared, not needed`)
       let failText = `gates not green (${g.failures.join(', ')}): ${g.summary}`
       if (g.ok) {
         out.brM = g.m
