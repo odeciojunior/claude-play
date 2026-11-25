@@ -906,7 +906,7 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
     if (l !== 'discovery' && !/^discovery-retry/.test(l)) return undefined;
     n++;
     if (n === 1) return { exit: 0, stdout: discSlices(p.replace(/--nonce '[^']*'/, "--nonce 'other'"), { cards: [] }) };
-    if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no roadmap folder' }) };
+    if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'capture', error: 'no roadmap folder' }) };  // E37 T7: a refusal of the right tool stops; another tool's copy repeats
     if (n === 3) return { exit: 0, stdout: 'not json' };
     return undefined;
   };
@@ -5252,7 +5252,34 @@ test('releitura: 3a a 5a tentativas sobem para sonnet; 5 falhas = null como ante
   assert.ok(r.results[0].concerns.some((x) => /null re-read agent/.test(x)), r.results[0].concerns.join(' '));
 });
 
-test('releitura: o defeito do E8 (status "ok" e so o result em pendingDecisions) nao reprova um registro correto', async () => {
+// E37 T7 (S3-29): a script refusal (its own tool and an error) stops readSlices at once; another tool's copy is still a wrong copy and repeats.
+test('E37 T7: a discovery refused by the script is one call, and no -retry2', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/^discovery/.test(l) ? { exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no roadmap folder' }) } : undefined) });
+  assert.equal(x.r.status, 'error');
+  assert.match(x.r.error, /^discovery failed: slice 0: release-discovery refused: no roadmap folder/);
+  assert.deepEqual(x.labels.filter((l) => /^discovery/.test(l)), ['discovery']);
+});
+
+test('E37 T7: a load slice refused by capture is one call, and no -retry2', async () => {
+  const big = (l) => (l === 'E1:spec-load1' ? { checkExit: 0, checkStdout: 'x\n'.repeat(MAX_COPY_BYTES), emitExit: 0, emitStdout: '', head: 'a1', clean: true } : undefined);
+  const s = [];
+  const journal = { call: (p, o, live) => { if (/^E1:spec-load1-slice\d+/.test(o.label)) { s.push(o.label); return { exit: 1, stdout: JSON.stringify({ tool: 'capture', error: 'bad slice' }) }; } return live(); } };
+  await exec({ cards: [card('E1')], deliverables: ['E1'], over: big, journal });
+  assert.deepEqual(s, ['E1:spec-load1-slice0'], s.join());
+});
+
+test('E37 T7: a re-read refused by verify-run is one call, and the record fails as a null re-read', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:status-d-read/.test(l) ? { exit: 1, stdout: JSON.stringify({ tool: 'verify-run', error: 'no folder' }) } : undefined) });
+  assert.deepEqual(x.calls.filter((c) => /:status-d-read/.test(c.label)).map((c) => c.label), ['E1:status-d-read']);
+  assert.ok(x.r.results[0].concerns.some((c) => /null re-read agent/.test(c)), x.r.results[0].concerns.join(' '));
+});
+
+test('E37 T7: a refusal that names another tool is a wrong copy and repeats 5 times', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (/:status-d-read/.test(l) ? { exit: 1, stdout: JSON.stringify({ tool: 'capture', error: 'other' }) } : undefined) });
+  assert.equal(x.calls.filter((c) => /:status-d-read/.test(c.label)).length, 5);
+});
+
+test('releitura: o defeito do E8(status "ok" e so o result em pendingDecisions) nao reprova um registro correto', async () => {
   const E8 = (l) => (/:status-d-read$/.test(l) ? { exit: 0, stdout: JSON.stringify({ status: 'ok', brief: 'ok', pendingDecisions: { decisions: [] }, head: 'abc1234', porcelain: '' }) } : undefined);
   const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: E8 });
   assert.equal(r.results[0].merged, true);

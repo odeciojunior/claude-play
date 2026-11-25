@@ -1747,7 +1747,7 @@ const readSlices = async ({ label, phase, cmdOf, tool, command, firstNonce, nonc
       let env = null
       if (!copyFits(raw)) why = 'the output is larger than the copy limit'
       else try { env = JSON.parse(raw) } catch { why = 'the output is not JSON' }
-      if (env && env.error !== undefined) { why = `${tool} refused: ${env.error}`; env = null }
+      if (env && env.error !== undefined) { if (env.tool === tool) return { why: `slice ${k}: ${tool} refused: ${env.error}` }; why = `${tool} refused: ${env.error}`; env = null }
       if (env) { const v = checkSlice(env, { tool, command, nonce, slice: k }); if (v.ok) return { env }; why = v.why }
     }
     return { why: `slice ${k}: ${why}` }

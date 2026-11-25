@@ -111,6 +111,7 @@ test('a copy above the copy limit is refused before JSON.parse, naming the limit
 test('a refusal of the script and an envelope of another command are named', async () => {
   const refused = await drive({ over: () => ({ exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no roadmap folder' }) }) });
   assert.match(refused.r.error, /^discovery failed: slice 0: release-discovery refused: no roadmap folder/);
+  assert.equal(refused.calls.filter((c) => /^discovery/.test(c.label)).length, 1, 'one call per refusal (E37 T7)');
   const other = await drive({ over: (l, k, res) => ({ exit: 0, stdout: res.stdout.replace('"command":"discover"', '"command":"read"') }) });
   assert.match(other.r.error, /^discovery failed: slice 0: the slice is from another command/);
 });
