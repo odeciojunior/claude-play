@@ -197,7 +197,7 @@ function gateFromCapture(def, g, expect) {
   if (def.kind !== 'tests') return r
   const e = o.extract
   if (e && e.format !== 'unknown' && !def.ignoreFailuresWhenChanged && Number.isInteger(e.total) && Array.isArray(e.failedNames)) {
-    return { ...r, total: e.total, skipped: Number.isInteger(e.skipped) ? e.skipped : 0, failedNames: e.failedNames, ...(e.failedNamesCut > 0 ? { failedNamesCut: e.failedNamesCut } : {}) }
+    return { ...r, total: e.total, skipped: Number.isInteger(e.skipped) ? e.skipped : 0, failedNames: e.failedNames, ...(e.failedNamesCut > 0 ? { failedNamesCut: e.failedNamesCut } : {}), ...(typeof o.path === 'string' && typeof o.sha256 === 'string' ? { outPath: o.path, outSha: o.sha256 } : {}) }
   }
   return { ...r, total: g.total, skipped: g.skipped, failedNames: g.failedNames || [], fallback: true }
 }
@@ -235,7 +235,9 @@ function validMeasure(m, expectedSha, gateDefs) {
 function validEvidence(x, exp, needsBefore) {
   return !!x && x.clean === true && fullSha(normSha(x.headSha)) && (!exp || gateShaMatch(normSha(x.headSha), normSha(exp))) && (!needsBefore || x.beforeOk === true)
 }
-function gatePasses(def, result, baselineResult) {
+// removed: tests declared as removed, a positive integer or 0.
+const removedN = n => (Number.isInteger(n) && n > 0 ? n : 0)
+function gatePasses(def, result, baselineResult, removed = 0) {
   if (!result || result.ran === false) return false
   const b = baselineResult || null
   if (def.invariant) return result.exit === 0
@@ -243,7 +245,7 @@ function gatePasses(def, result, baselineResult) {
   const names = result.failedNames || []
   if (result.exit !== 0 && (!names.length || result.failedNamesCut > 0)) return false
   if (!(result.exit === 0 || gateSubset(names, b && b.failedNames))) return false
-  return (result.total || 0) >= Math.max(1, (b && b.total) || 0) && (result.skipped || 0) <= ((b && b.skipped) || 0)
+  return (result.total || 0) >= Math.max(1, ((b && b.total) || 0) - removedN(removed)) && (result.skipped || 0) <= ((b && b.skipped) || 0)
 }
 function gateEffective(def, r, changedFiles) {
   const ign = def.ignoreFailuresWhenChanged
@@ -254,10 +256,12 @@ function gateEffective(def, r, changedFiles) {
   const allIgnored = (r.failedNames || []).length > 0 && names.length === 0
   return Object.assign({}, r, { failedNames: names, exit: allIgnored ? 0 : r.exit })
 }
-function allPass(defs, m, baseline, changedFiles) {
+// removed = map name -> declared removed tests; it counts only for a tests gate measured by capture, without ignoreFailuresWhenChanged or invariant.
+function allPass(defs, m, baseline, changedFiles, removed = {}) {
   const failures = (defs || []).filter(def => {
     const r = gateEffective(def, gateResult(m, def.name), changedFiles)
-    return !gatePasses(def, r, (baseline || {})[def.name])
+    const n = def.invariant || def.ignoreFailuresWhenChanged || (r && r.fallback) ? 0 : (removed || {})[def.name]
+    return !gatePasses(def, r, (baseline || {})[def.name], n)
   }).map(def => def.name)
   return { ok: failures.length === 0, failures }
 }
@@ -277,12 +281,23 @@ function zeroTestGates(defs, baseline) {
     return def.kind === 'tests' && !def.invariant && !!r && r.ran !== false && !(r.total > 0)
   }).map(def => def.name)
 }
-function mergeFloor(baseline, branchMeasure) {
+// Names of the gates whose only failure is a lower total (failures within the baseline's, skipped within it).
+function totalOnlyGates(defs, m, base, changedFiles) {
+  return (defs || []).filter(def => {
+    const r = gateResult(m, def.name)
+    const b = (base || {})[def.name]
+    if (def.kind !== 'tests' || def.invariant || def.ignoreFailuresWhenChanged || !r || r.ran === false || r.fallback || !b) return false
+    const names = r.failedNames || []
+    if (r.exit !== 0 && (!names.length || r.failedNamesCut > 0 || !gateSubset(names, b.failedNames))) return false
+    return (r.skipped || 0) <= (b.skipped || 0) && (r.total || 0) < (b.total || 0)
+  }).map(def => def.name)
+}
+function mergeFloor(baseline, branchMeasure, removed = {}) {
   const floor = JSON.parse(JSON.stringify(baseline || {}))
   for (const name of Object.keys(floor)) {
     const br = gateResult(branchMeasure, name)
     if (!br || typeof br.total !== 'number') continue
-    floor[name].total = Math.max(floor[name].total || 0, br.total - (floor[name].failedNames || []).length)
+    floor[name].total = Math.max((floor[name].total || 0) - (floor[name].fallback ? 0 : removedN((removed || {})[name])), br.total - (floor[name].failedNames || []).length)
   }
   return floor
 }

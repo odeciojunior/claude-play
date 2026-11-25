@@ -4897,6 +4897,17 @@ test('E23: recordedBaseline accepts only a matching valid measure', () => {
   assert.equal(pure.recordedBaseline('', 'abc1234', 'k', defs), null);
 });
 
+test('E36 T4: recordedBaseline accepts a baseline whose tests gates carry outPath and outSha', () => {
+  const pure = loadPure();
+  const defs = [{ name: 'u', kind: 'tests' }];
+  const baseline = { clean: true, headSha: 'abc1234'.padEnd(40, '0'), gates: [{ name: 'u', ran: true, exit: 0, total: 3, skipped: 0, failedNames: [], outPath: '/r/.git/pt-evidence/E1-T1/0001-stdout.txt', outSha: 'a'.repeat(64) }] };
+  const out = JSON.stringify({ targetHead: 'abc1234', gatesKey: 'k', baseline });
+  assert.deepEqual(pure.recordedBaseline(out, 'abc1234', 'k', defs), baseline);
+  const next = pure.refreshBaseline({}, defs, baseline, []);
+  assert.equal(next.u.outPath, baseline.gates[0].outPath);
+  assert.equal(next.u.outSha, baseline.gates[0].outSha);
+});
+
 // ---- E23 T4: setup reads the record; the spec and plan reviews are skipped; the approval is written by the progress and review-log agents.
 const RUN_REC = { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' } };
 const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);

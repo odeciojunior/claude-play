@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a } from '../../../lib/plan-digest.mjs';
 
-const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
+const { validMeasure, validEvidence, gatePasses, allPass, isRedBaseline, mergeFloor, totalOnlyGates, gateFromCapture, capturedMeasure, gateSubset, gateSummary, commandDigest } = loadPure();
 const T = { name: 'unit', kind: 'tests' };
 const X = { name: 'lint', kind: 'exit' };
 const INV = { name: 'drift', kind: 'exit', invariant: true };
@@ -278,4 +278,82 @@ test('E41 T3: ran=false without a capture line is kept (exit -1 when none given)
   const m = capturedMeasure([X], meas([{ name: 'lint', ran: false }]), () => 'n');
   assert.equal(m.gates.length, 1);
   assert.equal(m.gates[0].ran, false);
+});
+
+// ---- E36 T4: discount of declared removed tests
+test('E36 gatePasses: a drop equal to n passes, a larger drop or a drop without n fails', () => {
+  const base = res('unit', { total: 10 });
+  assert.equal(gatePasses(T, res('unit', { total: 7 }), base, 3), true);
+  assert.equal(gatePasses(T, res('unit', { total: 6 }), base, 3), false);
+  assert.equal(gatePasses(T, res('unit', { total: 7 }), base), false);
+  assert.equal(gatePasses(T, res('unit', { total: 7 }), base, 0), false);
+  assert.equal(gatePasses(T, res('unit', { total: 0 }), res('unit', { total: 3 }), 3), false);
+});
+
+test('E36 gatePasses: n that is not an integer or is below 1 counts 0; failures and skips are not discounted', () => {
+  const base = res('unit', { total: 10 });
+  for (const n of [1.5, -2, '3', NaN, null, undefined]) assert.equal(gatePasses(T, res('unit', { total: 7 }), base, n), false);
+  assert.equal(gatePasses(T, res('unit', { total: 7, exit: 1, failedNames: ['x'] }), base, 3), false);
+  assert.equal(gatePasses(T, res('unit', { total: 7, skipped: 1 }), base, 3), false);
+});
+
+test('E36 allPass: n applies per tests gate and is ignored for fallback, invariant and ignoreFailuresWhenChanged', () => {
+  const base = { unit: res('unit', { total: 10 }), drift: res('drift') };
+  const m = meas([res('unit', { total: 7 }), res('drift')]);
+  assert.equal(allPass([T, INV], m, base, [], {}).ok, false);
+  assert.equal(allPass([T, INV], m, base, [], { unit: 3 }).ok, true);
+  assert.equal(allPass([T, INV], m, base, [], { unit: 2 }).ok, false);
+  const fb = meas([res('unit', { total: 7, fallback: true })]);
+  assert.equal(allPass([T], fb, base, [], { unit: 3 }).ok, false);
+  const ign = { name: 'unit', kind: 'tests', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 'smoke:' } };
+  assert.equal(allPass([ign], m, base, ['src/x.ts'], { unit: 3 }).ok, false);
+  const inv = { name: 'unit', kind: 'tests', invariant: true };
+  assert.equal(allPass([inv], meas([res('unit', { total: 7 })]), base, [], { unit: 3 }).ok, true);
+});
+
+test('E36 mergeFloor: n lowers the floor total, never below the branch measure minus baseline failures', () => {
+  const base = { unit: res('unit', { total: 10 }), lint: res('lint', { total: 0 }) };
+  assert.equal(mergeFloor(base, meas([res('unit', { total: 7 })])).unit.total, 10);
+  assert.equal(mergeFloor(base, meas([res('unit', { total: 7 })]), { unit: 3 }).unit.total, 7);
+  assert.equal(mergeFloor(base, meas([res('unit', { total: 12 })]), { unit: 3 }).unit.total, 12);
+  assert.equal(mergeFloor(base, meas([res('unit', { total: 7 })]), { unit: 1.5 }).unit.total, 10);
+  assert.equal(mergeFloor(base, null, { unit: 3 }).unit.total, 10);
+  assert.equal(base.unit.total, 10);
+});
+
+test('E36 totalOnlyGates: only tests gates that fail the total alone', () => {
+  const base = { unit: res('unit', { total: 10, skipped: 1 }), e2e: res('e2e', { total: 5, exit: 1, failedNames: ['a'] }), drift: res('drift', { total: 5 }), smk: res('smk', { total: 5 }) };
+  const E2E = { name: 'e2e', kind: 'tests' };
+  const DR = { name: 'drift', kind: 'tests', invariant: true };
+  const SMK = { name: 'smk', kind: 'tests', ignoreFailuresWhenChanged: { paths: ['functions/'], failurePrefix: 's:' } };
+  const run = (o) => totalOnlyGates([T, E2E, DR, SMK, X], meas(o), base, []);
+  assert.deepEqual(run([res('unit', { total: 7 }), res('e2e', { total: 3, exit: 1, failedNames: ['a'] }), res('drift', { total: 3 }), res('smk', { total: 3 }), res('lint')]), ['unit', 'e2e']);
+  assert.deepEqual(run([res('unit', { total: 7, skipped: 2 })]), []);
+  assert.deepEqual(run([res('unit', { total: 7, exit: 1, failedNames: ['new'] })]), []);
+  assert.deepEqual(run([res('unit', { total: 7, exit: 1, failedNames: ['a'], failedNamesCut: 1 })]), []);
+  assert.deepEqual(run([res('unit', { total: 7, fallback: true })]), []);
+  assert.deepEqual(run([res('unit', { total: 10 })]), []);
+  assert.deepEqual(run([res('unit', { total: 12 })]), []);
+  assert.deepEqual(run([res('unit', { total: 7, ran: false })]), []);
+  assert.deepEqual(run([]), []);
+});
+
+test('E36 gateFromCapture keeps outPath and outSha only for a tests gate that is not a fallback', () => {
+  const nonce = 'n:E36:g0';
+  const t = gateFromCapture(UNIT, { name: 'unit', capture: capJson(UNIT, nonce, ex()) }, expectOf(UNIT, nonce));
+  assert.equal(t.outPath, 'p');
+  assert.equal(t.outSha, 'x');
+  const lint = { name: 'lint', kind: 'exit', cmd: 'node -e 0' };
+  const e = gateFromCapture(lint, { name: 'lint', capture: capJson(lint, nonce, null, 0) }, expectOf(lint, nonce));
+  assert.equal('outPath' in e, false);
+  assert.equal('outSha' in e, false);
+  const unk = gateFromCapture(UNIT, { name: 'unit', total: 5, failedNames: ['a'], capture: capJson(UNIT, nonce, ex({ format: 'unknown' })) }, expectOf(UNIT, nonce));
+  assert.equal(unk.fallback, true);
+  assert.equal('outPath' in unk, false);
+  assert.equal('outSha' in unk, false);
+});
+
+test('E36 validMeasure accepts a measure whose gates carry outPath and outSha', () => {
+  const g = [res('unit', { outPath: 'p', outSha: 'x' })];
+  assert.equal(validMeasure(meas(g), 'abc1234', [T]), true);
 });
