@@ -8,12 +8,12 @@ Data: 2026-11-25. Sobre a 2.5.0. Fecha o roadmap pós-2.3.0: **E36** (gate de te
 
 - **`removedTests`.** Spec e plano aceitam, no bloco de dados, a lista `removedTests` com `{ file, name, why, gate? }` para cada teste que o entregável apaga de propósito. `spec-tool` e `plan-tool` conferem o formato.
 - **Gate aceita a queda declarada.** O subcomando novo `test-extract.mjs removed` confere cada teste declarado contra a base, o `HEAD` e a saída gravada do gate: o literal do nome existe uma vez na base como 1º argumento de `test(`/`it(`, sumiu do arquivo em `HEAD` e não roda mais. O total do gate passa a aceitar `base − n`, com `n` os testes conferidos. Teste declarado e não conferido continua derrubando o gate.
-- **Revisões contra mascaramento.** As revisões de plano e final passam a cobrar que remoção de teste esteja declarada e justificada.
+- **Revisões contra mascaramento.** Quando há remoção declarada, as revisões de plano e final conferem cada entrada contra o diff; a remoção não declarada derruba o gate pela queda do total.
 
 ### Cargas e commits conferidos contra a fonte (E37)
 
 - **Plano congelado sem spec.** `plan-tool` ganha `--no-spec`. O `roadmap-release` usa a flag para carregar o plano já aprovado de uma retomada sem reler a spec (B06).
-- **Revisão pulada só com o blob gravado.** Numa retomada, as revisões de spec e de plano só são puladas quando o blob do arquivo na carga é o mesmo gravado na aprovação (B08). Um autor que commita uma versão alterada sem mexer no `HEAD` passa por revisão.
+- **Revisão pulada só com o blob gravado.** Numa retomada, as revisões de spec e de plano só são puladas quando o blob do arquivo na carga é o mesmo gravado na aprovação (B08). Uma spec ou um plano cujo blob difere do gravado no `run.json` passa por revisão.
 - **Recusas que param na hora.** A leitura em fatias para na primeira recusa. O status recusado do `roadmap.mjs` (exit diferente de 0 ou `errors` não vazio) chega ao registro com o código. O `approve` do `run-record` tem guarda de tamanho do comando (6.000).
 - **Agentes.** O `script-runner` roda o comando uma única vez, com timeout de 10 min, e devolve a linha do wrapper (por exemplo a do `capture.mjs run`), nunca a saída do comando interno. `spec-author` e `plan-author` não fazem busca na pasta do plugin: o formato vem do próprio agente, dos exemplos `scripts/fixtures/spec-tool/spec.md` e `scripts/fixtures/plan-tool/plan.md` e das saídas das ferramentas.
 
@@ -32,11 +32,12 @@ Data: 2026-11-25. Sobre a 2.5.0. Fecha o roadmap pós-2.3.0: **E36** (gate de te
 ## Ainda em aberto
 
 - **Aspa perdida pelo `script-runner` ao copiar um comando** (DEC-059): o workflow recupera na repetição. Fica para depois da 2.6.0.
-- **Port agy** do `roadmap-release` não acompanha o E37 nem as correções do E39.
+- **Port agy** do `roadmap-release` não acompanha o E36, o E37 nem as correções do E39.
+- **Retomada depois do merge com testes removidos.** Se uma execução parar entre o merge e o registro, a retomada (`finish-merge`) passa pelo test-integrity sem descontar os testes declarados em `removedTests` e para com `conteudo`; siga com `acceptIntegrityAlerts` depois de conferir que os alertas são só das remoções declaradas.
 
 ## Retomada
 
-Execuções da 2.5.0 não são retomáveis com `resumeFromRunId`: lance de novo com um `runToken` novo.
+Execuções da 2.5.0 não são retomáveis com `resumeFromRunId`: lance de novo com um `runToken` novo. O extrator de testes passa a tirar o escape de `\#` e `\\` dos nomes no formato TAP; uma linha de base gravada pela 2.5.0 com teste falhando de nome com `#` ou `\` pode não casar no gate de uma execução nova, e nesse caso a linha de base deve ser refeita.
 
 ## Como atualizar
 
