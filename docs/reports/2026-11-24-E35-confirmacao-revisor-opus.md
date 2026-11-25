@@ -5,7 +5,7 @@ Data: 2026-11-24. Desenho: `docs/plans/2026-11-21-measure-e35-confirmacao-opus-d
 ## Resultado
 
 - **Veredito: o AC2 fica confirmado com amostra reduzida (8 válidas de 10, 32 oportunidades), e não com as 40 oportunidades da DEC-004.** O piso proporcional da DEC-048 foi atingido nas duas recontagens (sem menção, falha com risco aceito). A S3-24 (`reviewModelFor` padrão opus) fica; a regra de reprovação da DEC-044 não foi acionada.
-- **Ressalva:** o piso de 32 foi fixado depois de ver 4 execuções (A-1, B-1, A-2, B-2), antes da A-3. Ele não foi escolhido olhando os resultados: é a DEC-018 multiplicada por 0,8 (32 de 40), com os mínimos arredondados para cima e o máximo de perdidos para baixo. Mesmo assim, não é um piso pré-registrado antes de qualquer execução, e a confirmação vale como tal.
+- **Ressalva:** o piso de 32 foi fixado depois de ver 4 execuções (A-1, B-1, A-2, B-2), antes da A-3. Ele não foi escolhido olhando os resultados: é a DEC-018 multiplicada por 0,8 (32 de 40), com os mínimos arredondados para cima e o máximo de perdidos para baixo. Quando ele foi fixado, o placar já era conhecido: 13/16 capturas (spec 8/8, quality 5/8), 3 perdidos; faltavam 8 capturas nas 16 oportunidades restantes. Mesmo assim, não é um piso pré-registrado antes de qualquer execução, e a confirmação vale como tal.
 - **Custo:** US$ 8,313 contra o teto de US$ 9,00 (DEC-047); US$ 1,039 por válida, 1,85 vez o opus do E30 (0,561). Ver "Custo".
 
 ## Piso da DEC-048
@@ -79,7 +79,7 @@ Por semente (capturadas/perdidas/indeterminadas):
 | QL3 | 2/1/1 | 0/5/0 | 0/5/0 |
 | QL4 | 3/0/1 | 5/0/0 | 0/5/0 |
 
-O lote da 2.5.0 repete o padrão do E30 e vai além: o opus segue acima do sonnet em tudo, e agora pega a SP4 (4 de 4) e a QL3 (2 de 4), que antes eram 3 de 5 e 0 de 5. A QL4, que o opus pegava em 5 de 5 no E30, caiu para 3 de 4 determinadas (uma indeterminada pela B-3). A QL2 continua a semente mais difícil. O E35 não tem braço sonnet: a comparação com ele vem do E30, com outro ambiente (ver abaixo), e vale como ordem de grandeza.
+O lote da 2.5.0 repete o padrão do E30 e vai além: o opus segue acima do sonnet em tudo, e agora pega a SP4 (4 de 4) e a QL3 (2 de 4), que antes eram 3 de 5 e 0 de 5. A QL4, que o opus pegava em 5 de 5 no E30, ficou em 3 de 3 determinadas (3 de 4 oportunidades, uma indeterminada pela B-3, nenhuma perda). A QL2 continua a semente mais difícil. O E35 não tem braço sonnet: a comparação com ele vem do E30, com outro ambiente (ver abaixo), e vale como ordem de grandeza.
 
 ## Projeção informativa para 40
 
@@ -92,7 +92,7 @@ Só ilustrativa, não é medição nem substitui a DEC-048. Mantidas as taxas do
 | Válidas | 8 | 10 |
 | Total (US$) | 8,313 | 5,613 |
 | Por válida (US$) | 1,039 | 0,561 |
-| Artefato A / B por válida (US$) | 0,922 / 1,156 | 0,503 / 0,619 |
+| Artefato A / B por válida (US$) | 0,922 / 1,156 | 0,503 / 0,620 |
 
 **1,85 vez o E30 por válida.** A razão parcial era 1,74 quando a parada da DEC-047 disparou (US$ 3,910 em 4 válidas); com as 8 ela subiu, porque A-4 (1,147) e B-4 (1,472) custaram mais. Diagnóstico do Fable (DEC-047/DEC-048), resumido: a sessão principal passou a ler o script do harness, o corretor (sonnet) trabalha mais por chamada e a paginação do E41 aumentou a leitura. Conferido nas transcrições e nos agregados:
 
@@ -120,7 +120,7 @@ O número de chamadas mudou pouco (reviews 3,6 contra 3,5 por execução; corre�
 | superpowers | 7.0.0, `bb92a77`, loja local `pos23-fixo` | igual (`pos22-fixo`) |
 | `CLAUDE.md` | nenhum | havia cópia de 2026-11-17 |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | ausente (inerte: toda chamada do arnês passa `model`) | definida |
-| settings da config | só `env.DISABLE_AUTOUPDATER=1`, sem lojas extras | n/d |
+| settings da config | `env` só com `DISABLE_AUTOUPDATER=1`; única loja extra é a local `pos23-fixo`; plugins synced desligados | n/d |
 | Plugins synced do claude.ai | desligados | n/d |
 | Ritmo | execuções em sequência; pausa de cerca de 3 minutos entre B-2 e A-3 (a parada dos US$ 3,60) | n/d |
 | Modelo servido (`message.model` das transcrições) | `claude-opus-5-5` (reviews) e `claude-sonnet-5-5` (sessão principal e correções) | opus-5-5 e sonnet-5-5 |
@@ -133,7 +133,7 @@ O lote mede a 2.5.0 publicada, e não `fc1d9ee`. Reprovação no piso não rever
 
 ## Contador da R3 (laço quality)
 
-Capturas marginais do laço quality no E35 (semente capturada cujo primeiro achado que a nomeia vem de uma rodada quality, `capturadoPorMatriz`): **3** (B-1 QL3, A-4 QL2, B-4 QL3), todas na 1ª rodada quality, severidade importante, cada uma seguida de 1 correção. Sem menção: 0. Do restante das 10 capturas da lente quality, 7 vieram do laço spec (o spec já nomeia defeitos de qualidade: QL1 em 4 de 4 e QL4 em 3). Acumulado do braço opus: 1 (E30) + 3 (E35) = 4 em 18 válidas, acima do limiar de manutenção da R3 (2 ou mais no braço escolhido). Leitura informativa: o laço quality fica; o E35 não foi desenhado para decidir a R3.
+Capturas marginais do laço quality no E35 (semente capturada cujo primeiro achado que a nomeia vem de uma rodada quality, `capturadoPorMatriz`): **3** (B-1 QL3, A-4 QL2, B-4 QL3), todas na 1ª rodada quality, severidade importante, cada uma seguida de 1 correção. Sem menção: 0. Das 10 capturas da lente quality, 7 foram nomeadas primeiro pelo laço spec (QL1 em 4 de 4 e QL4 em 3), mas por remoção a divisão é 5 do laço spec e 5 do laço quality: na B-1 e na B-4 o spec nomeou a QL4 como `minor` sem removê-la, e quem a removeu foi a correção do laço quality. Acumulado do braço opus: 1 (E30) + 3 (E35) = 4 em 18 válidas, acima do limiar de manutenção da R3 (2 ou mais no braço escolhido). Leitura informativa: o laço quality fica; o E35 não foi desenhado para decidir a R3.
 
 ## Alerta de custo para E37 e E39
 
@@ -143,7 +143,7 @@ A DEC-047 já manda reprojetar o teto antes da sonda de E37 e E39. O custo unit�
 
 1. **Laço spec sem convergência (B-3):** com 3 rodadas, um achado menor/importante repetido (`performance.now() < 50`) impediu o laço quality de rodar. Isso reduz a amostra da lente quality e pode acontecer de novo; vale como cuidado ao ler lotes futuros (uma indeterminada por laço que não converge, não por falha do revisor).
 2. **Sementes nomeadas e não removidas** (contadas como perdidas, pela regra): A-1 QL2 (nomeada como achado menor pelo laço spec, não corrigida).
-3. **Captura marginal maior que no E30:** 3 em 8 válidas, contra 1 em 10 no E30 (opus). Ainda assim o laço spec do opus nomeia defeitos de qualidade sozinho (QL1 em 4 de 4, QL4 em 3), e 7 das 10 capturas da lente quality vieram dele.
+3. **Captura marginal maior que no E30:** 3 em 8 válidas, contra 1 em 10 no E30 (opus). Ainda assim o laço spec do opus nomeia defeitos de qualidade sozinho (QL1 em 4 de 4, QL4 em 3), e 7 das 10 capturas da lente quality foram nomeadas primeiro por ele; por remoção, a divisão é 5 e 5, o que reforça manter o laço quality.
 
 ## Saídas
 

@@ -8,7 +8,7 @@ Estratégia v1.2 -- 2026-11-24
 | Entregável | Status | Evidência | Próximo passo |
 |---|---|---|---|
 | E34 | publicado | `docs/plans/pos-2-3-0-E34/spec.md`, `docs/plans/pos-2-3-0-E34/plan.md`, `docs/plans/pos-2-3-0-E34/progress.json`, `3fd9ed62cbf1a93ed22c1f7fe18dc322da6c7eba`, `c40ca6dbc33ccbdb1ff62714f5fe06d75a3d67bc`, `e0ace0fc6348d33ac3a1daac493cb4e19534af62`, `3f36054` | - |
-| E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md`, `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0` | Dono confere AC2: docs/reports/2026-11-24-E35-confirmacao-revisor-opus.md e a linha de 2026-11-24 em measurements.md (8 válidas, 26/32, piso da DEC-048 atingido, US$ 8,31) |
+| E35 | executando | `docs/plans/pos-2-3-0-E35/spec.md`, `docs/plans/pos-2-3-0-E35/plan.md`, `docs/plans/pos-2-3-0-E35/progress.json`, `625e535781c0237cc3f75140c516c984ad6afa9e`, `78a3ad1876e32cd94807e2ae2ef30c6ea7fb20e9`, `fc1d9eef8553ed8c4601c42bbba2093bb6d4cbe0` | Dono ratifica o AC2 conferido pelo Fable (aprovado com ressalvas); o AC2 fecha pelas DEC-047 e DEC-048 (8 válidas, teto US$ 9), não pelo texto original (10 execuções, US$ 7) |
 | E36 | nao-iniciado | - | Aguarda E41 (DEC-030) |
 | E37 | nao-iniciado | - | Aguarda E41 (DEC-030) |
 | E38 | publicado | `docs/plans/pos-2-3-0-E38/spec.md`, `docs/plans/pos-2-3-0-E38/plan.md`, `docs/plans/pos-2-3-0-E38/progress.json`, `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md`, `625fcab`, `7a2a470`, `e52c2d7`, `5c9d8ab`, `1b694f2`, `3f36054` | Conferência humana de AC2 em docs/reports/2026-11-21-E38-arnes-e-procs-linux.md; resto em E40 |
