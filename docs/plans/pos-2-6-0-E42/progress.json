@@ -1,0 +1,329 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E42/plan.md",
+    "id": "E42",
+    "digest": "a68d3ad6",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 4,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.1116ms)\n✔ counts usage once per message id, keeping the largest output (37.1483ms)\n✔ splits cache writes into 5m and 1h (2.1671ms)\n✔ counts agent calls by dominant model family (2.586ms)\n✔ measures prompt bytes as UTF-8 of the first user message (1.495ms)\n✔ estimates cost and keeps unpriced models null (1.5153ms)\n✔ readJsonl tolerates CRLF and a partial last line (9.6857ms)\n✔ classifies every label family of the role table (0.8808ms)\n✔ status, progress, review log and report come out as separate rows (342.5092ms)\n✔ records review rounds per loop (9.6433ms)\n✔ counts tasks and the task loop (10.3554ms)\n✔ writes metrics.json and one csv row per run and role (69.0078ms)\n✔ groups sessions of one attempt with --runs (74.902ms)\n✔ requires --root and --out (90.0375ms)\n✔ refuses --out inside the repository outside tools/measure/out (598.1654ms)\n✔ real price table is dated and sourced (0.3336ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (750.9674ms)\n✔ privacy scan catches a planted personal path and session id (11.837ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (59.0139ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (18.6624ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (31.1478ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (29.528ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (17.4045ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (34.2018ms)\n✔ prepare builds the sandbox and stops at authorize (4420.2553ms)\n✔ prepare refuses a work dir inside the repository (94.977ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (95.2698ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (243.011ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (232.4797ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.512ms)\nℹ tests 2625\nℹ suites 11\nℹ pass 2623\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 510342.0958",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-25T21:02:31.177Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Trava de tamanho em 284.500 caracteres LF",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/discovery-slices.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Changed the size-budget test in discovery-slices.test.mjs (lines 119-123): limit 266673 -> 284500, test renamed to the DEC-007 (pos-2.6.0) name, assertion message cites DEC-007 with 284500. Same test count, nothing removed. size.test.mjs untouched. Uncommitted; orchestrator commits. Downstream: the E42 size gate now allows up to 284,500 LF characters for roadmap-release.js.",
+      "sha": "38651fb3c74d84d65aa97fde1e5713e54f68bb9f",
+      "replacedBy": null,
+      "note": "Changed the size-budget test in discovery-slices.test.mjs (lines 119-123): limit 266673 -> 284500, test renamed to the DEC-007 (pos-2.6.0) name, assertion message cites DEC-007 with 284500. Same test count, nothing removed. size.test.mjs untouched. Uncommitted; orchestrator commits. Downstream: the E42 size gate now allows up to 284,500 LF characters for roadmap-release.js.",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Captura exigida nos portões exit, com --brief",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/gates.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "measureTxt in roadmap-release.js now puts --brief between --cwd and --bash on every gate line (preflight and gateOnce), and non-tests gates read \"(no test counts; the capture line is still required, copied literally)\"; 266,047 LF chars (+46). Tests: E41 B2 T2 case in flow.test.mjs extended; new \"E42 AC1\" case in gates.test.mjs (realCapture takes { brief }); prompts.test.mjs unchanged. 553/553 pass. Uncommitted, 3 files; the commit body must carry \"paridade agy: pendente #13\" (.py untouched).",
+      "sha": "5a48b37e21ec8620603cc5431dbb53041dfb68bc",
+      "replacedBy": null,
+      "note": "measureTxt in roadmap-release.js now puts --brief between --cwd and --bash on every gate line (preflight and gateOnce), and non-tests gates read \"(no test counts; the capture line is still required, copied literally)\"; 266,047 LF chars (+46).\nTests: E41 B2 T2 case in flow.test.mjs extended; new \"E42 AC1\" case in gates.test.mjs (realCapture takes { brief }); prompts.test.mjs unchanged. 553/553 pass",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "expected e got no checkCapture",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/lib/plan-digest.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator.js",
+        "plugins/productivity-tools/scripts/fixtures/plan-tool/workflow-copy.js",
+        "plugins/productivity-tools/scripts/capture.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "checkCapture now returns expected/got on a nonce mismatch and on a cmdDigest mismatch (additive; why, other returns and gateFromCapture unchanged). Lib edited and the 3 targets regenerated with embed.mjs; new test \"E42 checkCapture\" in capture.test.mjs went red (90/91) then green (91/91). LF chars: roadmap-release.js 266047 -> 266117 (+70), coordinator.js 88499 -> 88569 (bytes 88704 -> 88774). Uncommitted, 5 files; commit body needs \"paridade agy: pendente #13\" (.py untouched).",
+      "sha": "f0119227f102952b3d3aa2502f0e2910be247560",
+      "replacedBy": null,
+      "note": "checkCapture now returns expected/got on a nonce mismatch and on a cmdDigest mismatch (additive; why, other returns and gateFromCapture unchanged). Lib edited and the 3 targets regenerated with embed.mjs; new test \"E42 checkCapture\" in capture.test.mjs went red (90/91) then green (91/91). LF chars: roadmap-release.js 266047 -> 266117 (+70), coordinator.js 88499 -> 88569 (bytes 88704 -> 88774). Unc",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Motivo por portão no baseline-invalid",
+      "wave": 4,
+      "deps": [
+        2,
+        3
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/gates.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/merge.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "New pure `captureRejection(g, expect)` gives a reason exactly when `gateFromCapture` returns null; `capturedMeasure` always writes `gateWhy` (gate name -> reason, `{}` if none) and `measureProblems` appends `: <reason>` to `gate X missing from the measure`, so preflight:baseline-invalid now shows it. 3 new tests: red 788/791, then green 791/791; embed --check exit 0; roadmap-release.js 266117 -> 267150 LF chars (+1033, ceiling 269001). Uncommitted, 3 files; commit body needs \"paridade agy: pende",
+      "sha": "13fa3a2e7559e68f98965bc6ad3944d430dbb1fe",
+      "replacedBy": null,
+      "note": "New pure `captureRejection(g, expect)` gives a reason exactly when `gateFromCapture` returns null; `capturedMeasure` always writes `gateWhy` (gate name -> reason, `{}` if none) and `measureProblems` appends `: <reason>` to `gate X missing from the measure`, so preflight:baseline-invalid now shows it.\n3 new tests: red 788/791, then green 791/791; embed --check exit 0; roadmap-release.js 266117 -> 2",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-25T20:01:57.998Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-25T20:01:57.998Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-25T20:02:14.329Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-25T20:02:14.329Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-25T20:02:14.329Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-25T20:11:09.143Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-25T20:11:29.367Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T20:11:49.884Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T20:11:49.884Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-25T20:11:49.884Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-25T20:20:10.840Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-25T20:21:56.188Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T20:22:16.110Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T20:22:16.110Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-25T20:22:16.110Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-25T20:31:30.187Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-25T20:35:33.635Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T20:35:53.104Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T20:35:53.104Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-25T20:35:53.104Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T20:44:55.605Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-25T21:02:11.398Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T21:02:31.177Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-25T21:02:31.177Z"
+    }
+  ]
+}
