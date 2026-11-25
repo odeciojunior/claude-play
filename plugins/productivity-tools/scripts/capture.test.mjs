@@ -901,3 +901,64 @@ test('pairs: flags faltando saem 2 com {tool, error}', () => {
     }
   });
 });
+
+test('E44 AC2: tail sem ANSI e stdout.txt intacto', () => {
+  withRepo((repo) => {
+    const script = path.join(repo, 'color.js');
+    fs.writeFileSync(script, "for (let i = 0; i < 3; i++) console.log('\x1b[32m✔ ok ' + i + '\x1b[39m');\n");
+    const direct = spawnSync(process.execPath, [script], { cwd: repo });
+    assert.equal(direct.status, 0);
+    const r = runCli(['run', '--nonce', 'E44A', '--task', 'E44-T2', '--cwd', fwd(repo), '--', 'node', script]);
+    assert.equal(r.code, 0, r.stderr);
+    const o = JSON.parse(r.stdout);
+    assert.ok(!o.tail.includes('\x1b'), JSON.stringify(o.tail));
+    assert.equal(o.tail, '✔ ok 0\n✔ ok 1\n✔ ok 2');
+    const saved = fs.readFileSync(o.path);
+    assert.ok(saved.includes(0x1b));
+    assert.equal(sha256Of(saved), o.sha256);
+    assert.equal(o.sha256, sha256Of(direct.stdout));
+    assert.equal(o.bytes, direct.stdout.length);
+    assert.equal(o.lines, countLines(direct.stdout));
+    const chk = checkCapture(r.stdout, { nonce: 'E44A' });
+    assert.equal(chk.ok, true, chk.why);
+  });
+});
+
+test('E44 C5: o filho recebe NO_COLOR=1 e FORCE_COLOR=0', () => {
+  withRepo((repo) => {
+    const script = path.join(repo, 'env.js');
+    fs.writeFileSync(script, "console.log(process.env.NO_COLOR + ' ' + process.env.FORCE_COLOR);\n");
+    const env = { ...cleanEnv(), FORCE_COLOR: '1' };
+    const r = runCapture(['run', '--nonce', 'E44B', '--task', 'E44-T2', '--cwd', fwd(repo), '--', 'node', script], { env });
+    assert.equal(r.code, 0, r.line);
+    assert.equal(JSON.parse(r.line).tail, '1 0');
+  });
+});
+
+test('E44 C4: portao vitest vermelho com --tests, com e sem --brief', () => {
+  withRepo((repo) => {
+    const script = path.join(repo, 'vitest-red.js');
+    const summary = '      \x1b[2mTests \x1b[22m \x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m\x1b[2m | \x1b[22m\x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m'
+      + '\x1b[2m | \x1b[22m\x1b[33m1 skipped\x1b[39m\x1b[2m | \x1b[22m\x1b[90m1 todo\x1b[39m\x1b[90m (5)\x1b[39m';
+    fs.writeFileSync(script, `console.log(${JSON.stringify(summary)}); process.exitCode = 1;\n`);
+    const direct = spawnSync(process.execPath, [script], { cwd: repo });
+    assert.equal(direct.status, 1);
+    for (const [nonce, extra] of [['E44C', []], ['E44D', ['--brief']]]) {
+      const r = runCli(['run', '--nonce', nonce, '--task', 'E44-T2', '--cwd', fwd(repo), '--tests', ...extra, '--', 'node', script]);
+      assert.equal(r.code, 1, r.stderr);
+      const o = JSON.parse(r.stdout);
+      assert.equal(o.exit, 1);
+      assert.deepEqual(o.extract, { format: 'vitest', exit: 1, total: 5, pass: 2, fail: 1, skipped: 1, failedNames: null, failedNamesCut: 0 });
+      assert.equal(o.bytes, direct.stdout.length);
+      assert.equal(o.sha256, sha256Of(direct.stdout));
+      assert.equal(o.lines, countLines(direct.stdout));
+      const chk = checkCapture(r.stdout, { nonce });
+      assert.equal(chk.ok, true, chk.why);
+      if (extra.length) assert.ok(!('tail' in o));
+      else {
+        assert.ok(!o.tail.includes('\x1b'), JSON.stringify(o.tail));
+        assert.match(o.tail, /Tests {2}1 failed \| 2 passed \| 1 skipped \| 1 todo \(5\)/);
+      }
+    }
+  });
+});

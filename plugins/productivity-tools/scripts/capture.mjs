@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Roda um comando, grava stdout e stderr em <git-dir>/pt-evidence/<task>/ e imprime uma linha JSON
-// assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
+// assinada (bytes, sha256, linhas, cauda, extrato do node:test ou do vitest) que um agente copia literal.
+// O comando roda com NO_COLOR=1 e FORCE_COLOR=0; cauda e extrato saem sem ANSI; stdout.txt, stderr.txt, bytes, sha256 e lines sao os bytes brutos.
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")
 //        --brief: a linha impressa omite tail e tailCut (com --tests, failedNames e cortado como sem --brief, com tail vazio); o digest assina o objeto impresso. cmdDigest nao depende dos flags.
 //        Grava tambem <seq>-line.json, a linha assinada identica a impressa, ao lado de <seq>-stdout.txt.
@@ -30,7 +31,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, canon, fnv1a, sliceEnvelopes } from '../lib/plan-digest.mjs';
-import { extractTests } from './test-extract.mjs';
+import { extractTests, stripAnsi } from './test-extract.mjs';
 
 const MAX_BUFFER = 512 * 1024 * 1024;
 const KEEP_MS = 14 * 24 * 3600 * 1000;
@@ -368,7 +369,8 @@ function buildLine(base, text, tests, exit, brief = false) {
   if (tests) {
     extract = { ...extractTests(text, exit), failedNamesCut: 0 };
     const withTail = (ex) => sign({ ...base, tail: '', tailCut: n, extract: ex });
-    if (!fits(withTail(extract))) {
+    // No vitest failedNames e null: nao ha o que cortar.
+    if (Array.isArray(extract.failedNames) && !fits(withTail(extract))) {
       const all = extract.failedNames;
       let lo = 0;
       let hi = all.length;
@@ -422,7 +424,8 @@ export function runCapture(argv, { platform = process.platform, env = process.en
     }
     const evidence = path.join(gitDir, 'pt-evidence');
     sweep(evidence, now() - KEEP_MS, true);
-    const r = spawnSync(file, args, { cwd, env, shell: false, maxBuffer: MAX_BUFFER, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const childEnv = { ...env, NO_COLOR: '1', FORCE_COLOR: '0' };
+    const r = spawnSync(file, args, { cwd, env: childEnv, shell: false, maxBuffer: MAX_BUFFER, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.error && r.error.code === 'ENOENT') throw new UsageError(`programa não encontrado: ${file}`);
     const stdout = r.stdout ?? Buffer.alloc(0);
     const stderr = r.stderr ?? Buffer.alloc(0);
@@ -442,7 +445,7 @@ export function runCapture(argv, { platform = process.platform, env = process.en
       stderrSha256: sha256Of(stderr),
       stderrPath: saved.stderrPath,
     };
-    const line = JSON.stringify(buildLine(base, stdout.toString('utf8'), opts.tests, exit, opts.brief));
+    const line = JSON.stringify(buildLine(base, stripAnsi(stdout.toString('utf8')), opts.tests, exit, opts.brief));
     fs.writeFileSync(saved.linePath, line);
     return { code: exit, line };
   } catch (e) {
