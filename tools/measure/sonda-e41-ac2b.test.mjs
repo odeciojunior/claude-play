@@ -13,7 +13,7 @@ const repo = path.resolve(here, '..', '..');
 const plugin = path.join(repo, 'plugins', 'productivity-tools');
 const tool = path.join(here, 'sonda-e41-ac2b.mjs');
 const progress = path.join(plugin, 'skills', 'plan-coordinator', 'scripts', 'progress.mjs');
-const roteiro = fs.readFileSync(path.join(here, 'sonda-e41-ac2b.md'), 'utf8');
+const roteiro = fs.readFileSync(path.join(here, 'sonda-e41-ac2b.md'), 'utf8').replace(/\r\n/g, '\n');
 
 const node = (args) => spawnSync(process.execPath, args, { encoding: 'utf8' });
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sonda-'));
