@@ -2500,7 +2500,7 @@ ${NO_ASK}`,
   }
   const loadCmds = (tool, abs, ...x) => [['check', 'node', tool, 'check', abs, ...x, '--json'], ['emit', 'node', tool, 'emit', abs, ...x]]
   const gitCmds = [['head', ...gitIn('rev-parse', 'HEAD')], ['porcelain', ...gitIn('status', '--porcelain')]]
-  const specLoadOnce = k => loadVia(E, 'spec-load', k, [...loadCmds(specTool, specAbs, '--roadmap', rmAbs), ...gitCmds])
+  const specLoadOnce = k => loadVia(E, 'spec-load', k, [...loadCmds(specTool, specAbs, '--roadmap', rmAbs), ['blob', ...gitIn('rev-parse', `HEAD:${AP.spec}`)], ...gitCmds])
   // Attempts 1-2 haiku, 3-5 sonnet; a failed check is not a failed load.
   const load3 = async (once, check) => {
     let why = ''
@@ -2512,7 +2512,7 @@ ${NO_ASK}`,
     }
     return { ok: false, why }
   }
-  const loadSpec = () => load3(specLoadOnce, t => ({ ...checkSpecLoad(t, E, card), head: t && t.head }))
+  const loadSpec = () => load3(specLoadOnce, t => ({ ...checkSpecLoad(t, E, card), head: t && t.head, blob: t && /^[0-9a-f]{40,64}$/.test(t.blob) ? t.blob : '' }))
   const reusedAsIs = setup.nativeSpec === true && !noteE
   if (!reusedAsIs) {
     const authored = await agent(`mode: unattended
@@ -2540,7 +2540,7 @@ ${Cn()}`,
   spec = { specPath: AP.spec, reused: specReused }
   let loadErr = ''
   const specLoadIssues = () => (specLoad.checkFailed ? [{ severity: 'critical', category: 'defeito', description: specLoad.why }] : [])
-  const specSkip = skipRev('spec', specReused && !specLoad.checkFailed)
+  const specSkip = skipRev('spec', specReused && !!specLoad.blob && specLoad.blob === ((K0 && K0.recorded && K0.recorded.spec) || {}).spec && !specLoad.checkFailed)
   const specLoop = specSkip ? { ok: true } : await reviewLoop('spec',
     (round, prev) => agent(`${C()}
 

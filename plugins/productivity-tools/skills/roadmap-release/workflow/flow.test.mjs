@@ -16,6 +16,7 @@ const run = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budg
 
 const B1 = '3f2a9c1d8e7b6a5f4c3d2e1f0a9b8c7d6e5f4a3b';
 const B2 = '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d';
+const SB = '5b1e0c9a8d7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d'; // the spec blob of the recorded run and of the spec load
 const GATES = [{ name: 'lint', cmd: 'npm run lint', kind: 'exit' }, { name: 'unit', cmd: 'npm test', kind: 'tests', needsLock: 'db' }];
 const gm = (head, over = {}) => ({ headSha: head.padEnd(40, '0'), clean: true, changedFiles: ['src/a.js'], log: '', gates: [{ name: 'lint', ran: true, exit: 0 }, { name: 'unit', ran: true, exit: 0, total: 10, skipped: 0, failedNames: [], ...over }] });
 const FULL = (s) => s.padEnd(40, '0');
@@ -90,7 +91,7 @@ function planLoadOf(old, E, over = {}) {
 }
 
 const np = (o) => ({ id: 'P1', blocking: false, ...o });
-const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'a1' });
+const specLoadOk = (E, o) => ({ checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: specEmitOf(E, o), clean: true, head: 'a1', blob: SB });
 const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfWrong: 'low', reversible: true, scope: 'local', contradicts: null, ...o });
 const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
 // What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
@@ -3461,8 +3462,9 @@ test('E10 AC3: the happy path of a one-task deliverable makes ANTES - 1 calls, n
   assert.equal(r.results[0].merged, true);
   // E41 B2: + 1 for `E1:prune-evidence` (capture.mjs prune, once per merged deliverable, after the cleanup) and + 7 for the load commands run
   // by capture.mjs: E1:spec-load1-emit/-head/-porcelain and E1:plan-load1-emit/-blob/-head/-porcelain (no slice on the happy path).
-  assert.equal(labels.length, ANTES - 1 + 1 + 7);
-  for (const l of ['E1:spec-load1-emit', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain', 'E1:prune-evidence']) assert.ok(labels.includes(l), l);
+  // E37 T5: + 1 for E1:spec-load1-blob (the spec blob measured at the load, B08).
+  assert.equal(labels.length, ANTES - 1 + 1 + 7 + 1);
+  for (const l of ['E1:spec-load1-emit', 'E1:spec-load1-blob', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain', 'E1:prune-evidence']) assert.ok(labels.includes(l), l);
   assert.ok(!labels.includes('git-truth'));
   const w = labels.indexOf('E1:status-d');
   const rd = labels.indexOf('E1:status-d-read');
@@ -4910,14 +4912,14 @@ test('E36 T4: recordedBaseline accepts a baseline whose tests gates carry outPat
 });
 
 // ---- E23 T4: setup reads the record; the spec and plan reviews are skipped; the approval is written by the progress and review-log agents.
-const RUN_REC = { schema: 'run/1', spec: { spec: 's1' }, plan: { spec: 's1', plan: 'p1' } };
-const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : undefined);
+const RUN_REC = { schema: 'run/1', spec: { spec: SB }, plan: { spec: SB, plan: 'p1' } };
+const recordedSetup = (rec) => (l) => (l === 'E1:setup' ? { ok: true, worktree: '/wt/E1', baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: true, nativePlan: true, record: JSON.stringify({ recorded: rec, spec: SB, plan: 'p1', tree: 't1' }) } : undefined);
 const RR_PATH = '/p/productivity-tools/scripts/run-record.mjs';
 const approvePrefix = (stages) => `node "${RR_PATH}" approve "/wt/E1" docs/plans/x-E1/ E1 ${stages} - '`;
 const payloadOf = (prompt) => JSON.parse(decodeURIComponent(prompt.slice(prompt.indexOf(" - '") + 4, prompt.indexOf("'", prompt.indexOf(" - '") + 4))));
 
-const FINAL_REC = { ...RUN_REC, final: { spec: 's1', plan: 'p1', tree: 't1', target: 'abc1234' } };
-const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: 's1', plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
+const FINAL_REC = { ...RUN_REC, final: { spec: SB, plan: 'p1', tree: 't1', target: 'abc1234' } };
+const withSync = (rec, tip) => (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: tip, deltaFiles: [], record: JSON.stringify({ recorded: rec, spec: SB, plan: 'p1', tree: 't1' }) } : recordedSetup(rec)(l));
 
 test('E33: a spec commit that moved HEAD without returning its hash is not a reuse: the spec review runs', async () => {
   const commitAs = (head) => (l) => (l === 'E1:spec-commit' ? { ok: true, head, commit: '', pending: '' } : undefined);
@@ -4934,6 +4936,48 @@ test('E33: a spec commit that moved HEAD without returning its hash is not a reu
   const same = await exec({ cards: [card('E1')], deliverables: ['E1'], args, over: both(commitAs('a1'), recordedSetup(RUN_REC)) });
   assert.ok(!same.labels.includes('E1:spec-review1'), same.labels.join(' '));
   assert.ok(same.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+});
+
+// E37 T5 (B08): the spec review is skipped only when the blob of the spec at the load is the recorded one.
+const specBlobIs = (blob) => (l) => (/:spec-load\d$/.test(l) ? { ...specLoadOk('E1', { acceptance: [{ id: 'AC1', text: 'works' }] }), blob } : undefined);
+const sameHeadCommit = (l) => (l === 'E1:spec-commit' ? { ok: true, head: 'a1', commit: '', pending: '' } : undefined);
+const noteArgs = { notes: { E1: 'use the X adapter' } };
+
+test('E37 T5 (a): an author who commits a changed spec in a way that leaves HEAD alone is reviewed (blob differs from the record)', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, specBlobIs(B2), recordedSetup(RUN_REC)) });
+  assert.ok(x.labels.includes('E1:spec-review1'), x.labels.join(' '));
+  assert.ok(!x.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+});
+
+test('E37 T5 (b): the blob of the load equal to the record skips the spec review as before; the load measures HEAD:<spec>', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, specBlobIs(SB), recordedSetup(RUN_REC)) });
+  assert.ok(!x.labels.includes('E1:spec-review1'), x.labels.join(' '));
+  assert.ok(x.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  const blob = x.calls.find((c) => c.label === 'E1:spec-load1-blob');
+  assert.ok(blob && blob.prompt.includes('rev-parse') && blob.prompt.includes('HEAD:docs/plans/x-E1/spec.md'), blob && blob.prompt);
+  assert.ok(x.labels.indexOf('E1:spec-load1-blob') < x.labels.indexOf('E1:spec-load1-head'));
+  // a blob that is not a hash is no blob: the review runs
+  const junk = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, specBlobIs('fatal: bad revision'), recordedSetup(RUN_REC)) });
+  assert.ok(junk.labels.includes('E1:spec-review1'), junk.labels.join(' '));
+});
+
+test('E37 T5 (c): a native spec inherited from the target, with a note and no record, is a reuse (no commit minimum) whose review still runs', async () => {
+  const none = { schema: 'run/1' };
+  const lowReview = (l) => (/^E1:spec-review\d$/.test(l) ? { issues: [], headSha: 'a1', clean: true, commitsInRange: 0 } : undefined);
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, lowReview, recordedSetup(none)) });
+  assert.ok(x.labels.includes('E1:spec-review1'), x.labels.join(' '));
+  assert.ok(!x.labels.includes('E1:spec-fix1'), x.labels.join(' '));
+  assert.ok(!x.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
+  const noRec = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, lowReview, recordedSetup(null)) });
+  assert.ok(noRec.labels.includes('E1:spec-review1') && !noRec.labels.includes('E1:spec-fix1'), noRec.labels.join(' '));
+});
+
+test('E37 T5 (d): a spec not committed yet at the load (rev-parse exits 128) is an empty blob, not a load failure; the review runs', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: noteArgs, over: both(sameHeadCommit, specBlobIs(''), recordedSetup(RUN_REC)) });
+  assert.ok(x.labels.includes('E1:spec-review1'), x.labels.join(' '));
+  assert.ok(!x.labels.includes('E1:spec-load2'), x.labels.join(' '));
+  assert.equal(x.r.results[0].merged, true);
+  assert.ok(!x.r.results[0].concerns.some((c) => /spec review skipped/.test(c)));
 });
 
 test('E33: a plan commit that moved HEAD without returning its hash is not a reuse: the plan review runs; a commit without its blob measures it again', async () => {
@@ -4976,7 +5020,7 @@ test('AC1: a resume with every recorded value skips the spec, plan and final rev
   assert.ok(setup.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
   assert.ok(setup.opts.schema.properties.record);
   // a stale plan blob: the spec stays skipped, the plan review runs
-  const stale = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup({ ...RUN_REC, plan: { spec: 's1', plan: 'p0' } }) });
+  const stale = await exec({ cards: [card('E1')], deliverables: ['E1'], over: recordedSetup({ ...RUN_REC, plan: { spec: SB, plan: 'p0' } }) });
   assert.ok(!stale.labels.includes('E1:spec-review1'));
   assert.ok(stale.labels.includes('E1:plan-review1'));
   // no record: both reviews run
@@ -4994,7 +5038,7 @@ test('AC1: a resume with every recorded value skips the spec, plan and final rev
   assert.ok(sync.prompt.includes(`node "${RR_PATH}" key "/wt/E1" docs/plans/x-E1/`));
   assert.ok(sync.opts.schema.properties.record);
   // a different tree after the sync: the final review runs
-  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: 's1', plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
+  const moved = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'E1:sync' ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [], record: JSON.stringify({ recorded: FINAL_REC, spec: SB, plan: 'p1', tree: 't2' }) } : recordedSetup(FINAL_REC)(l)) });
   assert.ok(moved.labels.includes('E1:final-1-r1'));
 });
 
