@@ -6,19 +6,19 @@ Lote pago da variante parada-retomada do arnês `tools/measure` sobre o producti
 
 - **2 válidas e integradas**, ambas no plugin `c588935`. O AC1 fecha com 2 válidas em vez de 3 (DEC-053, DEC-056).
 - **Limites para a 2.6.0 (DEC-060), provisórios com n=2:** opus 5, sonnet 11, ponderado sem haiku 420, iguais aos da DEC-026 do pós-2.2.0. Haiku e o contador por tarefa ficam só como referência.
-- **Custo total do E39:** US$ 11,32 de 15, contando duas inválidas (US$ 4,16) e duas válidas (US$ 7,16).
+- **Custo total do E39:** US$ 14,65 de 15, contando duas inválidas (US$ 5,94) e duas válidas (US$ 8,71). Nenhum gatilho de custo das DEC-053, DEC-056 e DEC-058 disparou nessa conta.
 - **Correções extras no produto antes das válidas:** duas, ambas da classe do E41 (um modelo barato recopiando texto longo). Detalhe abaixo.
 
 ## Execuções
 
 | # | Saída (`D:/claude-e39-out/`) | Plugin | Situação | haiku | sonnet | opus | ponderado | sem haiku | Custo (US$) |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `parada-retomada-20261125-074857` | a113615 | inválida (DEC-054): bloqueio na T2 pelo test-first | 48 | 6 | 4 | 328 | 280 | 2,0856 |
-| 2 | `parada-retomada-20261125-083658` | 72eb968 | inválida (DEC-056): bloqueio na T2 pelo test-first | 42 | 6 | 4 | 322 | 280 | 2,0765 |
-| 3 | `parada-retomada-20261125-091505` | c588935 | **válida**, merge 755bca1 | 49 | 11 | 5 | 469 | 420 | 3,6906 |
-| 4 | `parada-retomada-20261125-093629` | c588935 | **válida**, merge 6152ec2 | 50 | 12 | 5 | 490 | 440 | 3,4732 |
+| 1 | `parada-retomada-20261125-074857` | a113615 | inválida (DEC-054): bloqueio na T2 pelo test-first | 48 | 6 | 4 | 328 | 280 | 2,9626 |
+| 2 | `parada-retomada-20261125-083658` | 72eb968 | inválida (DEC-056): bloqueio na T2 pelo test-first | 42 | 6 | 4 | 322 | 280 | 2,9756 |
+| 3 | `parada-retomada-20261125-091505` | c588935 | **válida**, merge 755bca1 | 49 | 11 | 5 | 469 | 420 | 4,3731 |
+| 4 | `parada-retomada-20261125-093629` | c588935 | **válida**, merge 6152ec2 | 50 | 12 | 5 | 490 | 440 | 4,3386 |
 
-Pesos do ponderado: haiku 1, sonnet 20, opus 40. Custo pelo maior entre `cliCostUsd` e transcrições mais papéis. Nas válidas: `extraRounds` 0, `fixCalls` 0, zero Grep na pasta do plugin, checker do cenário com 0 erros. Contador por tarefa da execução 4: 81.
+Pesos do ponderado: haiku 1, sonnet 20, opus 40. Custo pelo maior entre `cliCostUsd` e a soma dos papéis dos subagentes com a transcrição da sessão principal (`attemptCostUsd` do arnês). A primeira versão deste relatório e as linhas de `measurements.md` registraram só os papéis (US$ 11,33 no total); a conferência do Fable apontou a diferença e os valores foram corrigidos. Nas válidas: `extraRounds` 0, `fixCalls` 0, zero Grep na pasta do plugin, checker do cenário com 0 erros. Contador por tarefa da execução 4: 81.
 
 ## Gatilhos e ressalvas das válidas
 

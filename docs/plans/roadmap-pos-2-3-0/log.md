@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E39 | AC1 e AC2 aceitos com ressalva pelo Fable por delegação do dono: amostra de 2 válidas e limites provisórios; custo corrigido para US$ 14,65 pela regra do arnês, SHA256SUMS conferidos 167 e 174 de 174 | `docs/reports/2026-11-25-E39-linha-de-base-parada-retomada.md` |
 | 2026-11-25 | E39 | Lote fechado com 2 válidas integradas, relatório e DEC-060 com limites provisórios | `docs/reports/2026-11-25-E39-linha-de-base-parada-retomada.md` |
 | 2026-11-25 | E39 | Segunda correção da DEC-056 commitada, revisão opus aprovada. O digest das linhas do capture é checksum de cópia, sem segredo, mesmo nível de confiança do caminho anterior. HMAC fica como melhoria futura | `e536d5d` |
 | 2026-11-25 | E39 | Execução 1 fora da linha de base pela DEC-054. O rodou duas vezes da sonda do E37 é artefato de registro, tool_use duplicado com o mesmo id, e a reprovação vale pelos 12 Grep e rótulos de repetição | `e199792` |
