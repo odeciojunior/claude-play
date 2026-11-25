@@ -45,6 +45,12 @@ test('implementer has a CAPTURE section with the capture.mjs contract', () => {
   ]) assert.ok(s.includes(p), p);
 });
 
+test('implementer Report: with a CAPTURE line, output is the printed capture line, not the file content (DEC-056)', () => {
+  const t = read('implementer.md');
+  const s = t.slice(t.indexOf('## Report'));
+  assert.ok(s.includes('With a `CAPTURE:` line in the prompt, `output` of each check is the JSON line the capture printed, copied whole, not the content of the file it points to.'));
+});
+
 test('reviewers never read a range diff or log from one Bash output and read the file by offset/limit', () => {
   for (const n of ['task-reviewer.md', 'final-reviewer.md']) {
     const t = read(n);

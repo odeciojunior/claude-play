@@ -5733,3 +5733,59 @@ test('E36 R12: a refusal without this call nonce is an invalid copy and is repea
   assert.equal(r.results[0].merged, true, r.results[0].error);
   assert.equal(rmCalls(calls).length, 2);
 });
+
+// ---- E39 DEC-056: a test-first pair the implementer copy lost is read from the capture files by `capture.mjs pairs`
+const TF_PRE = `${fnv1a('pf-test')}:E1:T1:`;
+const tfPlanLoad = () => {
+  const emit = planEmitOf({ id: 'E1', roadmap: 'docs/plans/roadmap-x/', tasks: [{ n: 1, title: 't', files: { create: [], modify: ['a.js'], test: [] }, locks: [], external: false, externalDedupe: null, noCommit: false, deps: [], score: scoreFor({ tier: 'sonnet' }), testFirst: true }],
+    evidence: [{ ac: 'AC1', kind: 'test', command: 'npm test -- a', testRef: null, blq: null, external: false, externalDedupe: null }] });
+  return { checkExit: 0, checkStdout: '{}', emitExit: 0, emitStdout: JSON.stringify(emit), blob: B1, head: 'a1', clean: true };
+};
+const tfLine = (seq, exit) => signedOut({ tool: 'capture', nonce: `${TF_PRE}${seq}`, task: 'E1-T1', cmdDigest: commandDigest({ argv: ['node', '--test', 'x'] }), exit, bytes: 0, sha256: '0', lines: 0, path: 'p', stderrBytes: 0, stderrSha256: '0', stderrPath: 'q' });
+const PROSE = [{ command: 'node --test x', output: 'summary of the red file', exit: 1 }, { command: 'node --test x', output: 'summary of the green file', exit: 0 }];
+const pairsLine = (prompt, over = {}) => signedOut({ tool: 'capture', command: 'pairs', nonce: nonceOf0(prompt), task: /--task (\S+)/.exec(prompt)[1], runs: 2, pair: true, red: 1, green: 2, cmdDigest: 'ab', ...over });
+const nonceOf0 = (prompt) => /--nonce (\S+)/.exec(prompt)[1];
+const tfExec = (impl, pairs) => exec({ cards: [card('E1')], deliverables: ['E1'],
+  over: (l, p) => (l === 'E1:plan-load1' ? tfPlanLoad() : l === 'E1:t1:impl' ? { status: 'DONE', summary: 's', checks: impl } : /^E1:t1:pairs/.test(l) ? pairs(p, l) : undefined) });
+const pairCalls = (calls) => calls.filter((c) => /^E1:t1:pairs/.test(c.label));
+
+test('E39 DEC-056: prose checks of a red/green pair and a pairs line with pair true let the task go on to its review', async () => {
+  const { r, calls } = await tfExec(PROSE, (p) => ({ exit: 0, stdout: pairsLine(p) }));
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  const pc = pairCalls(calls);
+  assert.equal(pc.length, 1);
+  assert.equal(pc[0].label, 'E1:t1:pairs');
+  assert.equal(pc[0].opts.agentType, 'productivity-tools:script-runner');
+  assert.match(pc[0].prompt, new RegExp(`capture\.mjs" pairs --nonce [^ ]+ --task E1-T1 --prefix '${TF_PRE}' --cwd `));
+  assert.ok(calls.some((c) => /^E1:t1:spec1$/.test(c.label)));
+});
+
+test('E39 DEC-056: a pairs line with pair false keeps the test-first block with the current message', async () => {
+  const { r, calls } = await tfExec(PROSE, (p) => ({ exit: 0, stdout: pairsLine(p, { pair: false, red: null, green: null }) }));
+  assert.equal(r.results[0].merged, false);
+  assert.match(r.results[0].error, /task 1: test-first without a failing capture line then the same one passing \(2 checks\)/);
+  assert.equal(pairCalls(calls).length, 1, 'a line that checks out is not repeated');
+  assert.ok(!calls.some((c) => /^E1:t1:spec1$/.test(c.label)));
+});
+
+test('E39 DEC-056: a tampered pairs line repeats once with a new nonce and then blocks', async () => {
+  const { r, calls } = await tfExec(PROSE, (p) => ({ exit: 0, stdout: pairsLine(p).replace('"pair":true', '"pair":false').replace('"runs":2', '"runs":3') }));
+  assert.equal(r.results[0].merged, false);
+  assert.match(r.results[0].error, /test-first without a failing capture line/);
+  const pc = pairCalls(calls);
+  assert.deepEqual(pc.map((c) => c.label), ['E1:t1:pairs', 'E1:t1:pairs-retry2']);
+  assert.notEqual(nonceOf0(pc[0].prompt), nonceOf0(pc[1].prompt));
+});
+
+test('E39 DEC-056: a pairs line of another command or task is refused like a bad copy, and a good retry passes', async () => {
+  let n = 0;
+  const { r, calls } = await tfExec(PROSE, (p) => ({ exit: 0, stdout: ++n === 1 ? pairsLine(p, { command: 'run' }) : pairsLine(p) }));
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.equal(pairCalls(calls).length, 2);
+});
+
+test('E39 DEC-056: a good copy of capture lines dispatches no pairs agent', async () => {
+  const { r, calls } = await tfExec([{ command: 'node --test x', output: tfLine(1, 1), exit: 1 }, { command: 'node --test x', output: tfLine(2, 0), exit: 0 }], () => { throw new Error('pairs dispatched'); });
+  assert.equal(r.results[0].merged, true, r.results[0].error);
+  assert.equal(pairCalls(calls).length, 0);
+});

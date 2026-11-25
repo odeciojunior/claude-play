@@ -2931,7 +2931,16 @@ ${NO_ASK}`,
         }
       }
     }
-    const gap = testFirstGap(t, impl, resumed, { noncePrefix: `${RUN_TAG}:${E}:T${t.n}:` })
+    let gap = testFirstGap(t, impl, resumed, { noncePrefix: `${RUN_TAG}:${E}:T${t.n}:` })
+    // DEC-056: a pair the copy lost is read from the capture files; a copy that does not check out repeats once.
+    for (let a = 1; gap && a <= 2; a++) {
+      const nonce = `${RUN_TAG}:${E}:pairs-T${t.n}-${a}`, task = `${E}-T${t.n}`
+      const r = await safe(() => agent(runPrompt(`${CAP} pairs --nonce ${nonce} --task ${task} --prefix ${shq(`${RUN_TAG}:${E}:T${t.n}:`)} --cwd ${shq(wt)}`, `${NO_ASK}
+`),
+        { agentType: 'productivity-tools:script-runner', label: `${E}:t${t.n}:pairs${a > 1 ? '-retry2' : ''}`, phase: 'Implementation', schema: S_RUN, model: 'haiku', effort: 'low' }))
+      const raw = String(r && r.stdout != null ? r.stdout : ''), o = checkCapture(raw, { nonce }).ok ? JSON.parse(raw) : {}
+      if (o.command === 'pairs' && o.task === task) { if (o.pair === true) gap = ''; break }
+    }
     if (gap) return fail('conteudo', `${gap}. A rerun takes the task as done and skips this check: ${authorizedExt || awaitingPerson.includes(t.n) ? `ask the owner, as its effect or wait marks count as done` : `first drop its commits, keeping the review log: git -C "${wt}" rebase --onto ${start} <last task commit> ${br}`}`)
     const cur = { summary: impl.summary, checks: impl.checks || [] }  // refreshed by each fix so the reviewer sees real output
     let lastR = null

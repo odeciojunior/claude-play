@@ -55,6 +55,7 @@ If the prompt lists problems to fix, work in fix mode. Otherwise work in impleme
   - Each entry is one run of that command alone in its own call, in both modes: nothing piped after it (`| grep`, `| tail`, `| head`) and nothing chained after it with `;`, `&&` or `||`. `exit` is the code that call returned, never one you inferred. A run that went through a pipe or a chain is not a check: run the command again alone and report that run.
   - The failing run and the passing run of a test-first task, or of a fix, are two separate calls of the same plain command. Long output is no reason to filter: run it plain and cut the quote in `output` with `[...]`.
   - `output` quotes the real output verbatim. Trim long output only by cutting, marked with `[...]`. Never reword, summarize or invent output.
+  - With a `CAPTURE:` line in the prompt, `output` of each check is the JSON line the capture printed, copied whole, not the content of the file it points to.
 - `humanInputs` is only for what truly needs a person: credentials, an external effect, or a product decision the spec cannot answer. A finding that contradicts the spec or plan is a technical disagreement: report it in the text report or in `concerns`, not as a question to a person.
 - Status:
   - `DONE`: the work is complete.

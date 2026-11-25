@@ -780,3 +780,124 @@ test('run --brief com --bash e com --tests: sem tail, cmdDigest igual ao sem --b
     assert.equal(checkCapture(t.stdout, { nonce: 'B3' }).ok, true);
   });
 });
+
+function taskDirOf(repo, task) {
+  return path.join(repo, '.git', 'pt-evidence', task);
+}
+
+test('run grava <seq>-line.json igual a linha impressa, com e sem --brief', () => {
+  withRepo((repo) => {
+    const a = runCli(['run', '--nonce', 'L1', '--task', 'E39-L', '--cwd', fwd(repo), '--bash', 'echo oi']);
+    const b = runCli(['run', '--nonce', 'L2', '--task', 'E39-L', '--cwd', fwd(repo), '--brief', '--bash', 'echo oi']);
+    const dir = taskDirOf(repo, 'E39-L');
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['0001-line.json', '0001-stderr.txt', '0001-stdout.txt', '0002-line.json', '0002-stderr.txt', '0002-stdout.txt']);
+    assert.equal(fs.readFileSync(path.join(dir, '0001-line.json'), 'utf8').replace(/\n$/, ''), a.stdout.replace(/\n$/, ''));
+    assert.equal(fs.readFileSync(path.join(dir, '0002-line.json'), 'utf8').replace(/\n$/, ''), b.stdout.replace(/\n$/, ''));
+  });
+});
+
+const pairsRun = (repo, nonce, bash) => runCli(['run', '--nonce', nonce, '--task', 'E39-P', '--cwd', fwd(repo), '--brief', '--bash', bash]);
+const pairsCli = (repo, prefix = 'P', extra = []) => {
+  const r = runCli(['pairs', '--nonce', 'PN', '--task', 'E39-P', '--prefix', prefix, '--cwd', fwd(repo), ...extra]);
+  assert.equal(r.code, 0, r.stderr + r.stdout);
+  return { raw: r.stdout, o: JSON.parse(r.stdout) };
+};
+
+test('pairs: comandos diferentes nao fazem par e a linha e curta', () => {
+  withRepo((repo) => {
+    pairsRun(repo, 'P1', 'exit 1');
+    pairsRun(repo, 'P2', 'exit 1');
+    pairsRun(repo, 'P3', 'exit 0');
+    const { o, raw } = pairsCli(repo);
+    assert.equal(o.tool, 'capture');
+    assert.equal(o.command, 'pairs');
+    assert.equal(o.nonce, 'PN');
+    assert.equal(o.task, 'E39-P');
+    assert.equal(o.runs, 3);
+    assert.equal(o.pair, false);
+    assert.ok(utf8Length(raw) < MAX_COPY_BYTES / 4);
+  });
+});
+
+test('pairs: dupla do mesmo comando e conferida pelo checkCapture e pela regra de digest', () => {
+  withRepo((repo) => {
+    pairsRun(repo, 'P1', 'exit 3');
+    pairsRun(repo, 'P2', 'exit 0');
+    const { o, raw } = pairsCli(repo);
+    assert.equal(o.pair, false);
+    // mesmo comando: usa um arquivo que muda de estado
+    const flag = fwd(path.join(repo, 'flag'));
+    const cmd = `test -f ${flag}`;
+    pairsRun(repo, 'P3', cmd);
+    fs.writeFileSync(flag, 'x');
+    pairsRun(repo, 'P4', cmd);
+    const r = pairsCli(repo);
+    assert.equal(r.o.runs, 4);
+    assert.equal(r.o.pair, true);
+    assert.equal(r.o.red, 'P3');
+    assert.equal(r.o.green, 'P4');
+    assert.equal(r.o.cmdDigest, commandDigest({ bash: cmd }));
+    assert.ok(digestOk(r.o));
+    assert.equal(checkCapture(r.raw, { nonce: 'PN' }).ok, true);
+    assert.ok(raw.length > 0);
+  });
+});
+
+test('pairs: so verde, verde antes do vermelho e cmdDigest diferente nao fazem par', () => {
+  withRepo((repo) => {
+    const flag = fwd(path.join(repo, 'flag'));
+    const cmd = `test -f ${flag}`;
+    fs.writeFileSync(flag, 'x');
+    pairsRun(repo, 'P1', cmd);
+    assert.deepEqual([pairsCli(repo).o.runs, pairsCli(repo).o.pair, pairsCli(repo).o.red, pairsCli(repo).o.green, pairsCli(repo).o.cmdDigest], [1, false, null, null, null]);
+    fs.rmSync(flag);
+    pairsRun(repo, 'P2', cmd);
+    assert.equal(pairsCli(repo).o.pair, false);
+    pairsRun(repo, 'P3', 'exit 1');
+    pairsRun(repo, 'P4', 'exit 0');
+    assert.equal(pairsCli(repo).o.pair, false);
+  });
+});
+
+test('pairs: linha de outro prefixo e line.json adulterado sao ignorados; pasta inexistente da runs 0', () => {
+  withRepo((repo) => {
+    const flag = fwd(path.join(repo, 'flag'));
+    const cmd = `test -f ${flag}`;
+    runCli(['run', '--nonce', 'X1', '--task', 'E39-P', '--cwd', fwd(repo), '--brief', '--bash', cmd]);
+    fs.writeFileSync(flag, 'x');
+    pairsRun(repo, 'P2', cmd);
+    let o = pairsCli(repo).o;
+    assert.equal(o.runs, 1);
+    assert.equal(o.pair, false);
+    fs.rmSync(flag);
+    pairsRun(repo, 'P3', cmd);
+    fs.writeFileSync(flag, 'x');
+    pairsRun(repo, 'P4', cmd);
+    const dir = taskDirOf(repo, 'E39-P');
+    const file = path.join(dir, '0004-line.json');
+    const text = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, text.replace('"exit":0', '"exit":1'));
+    o = pairsCli(repo).o;
+    assert.equal(o.runs, 2);
+    assert.equal(o.pair, false);
+    fs.writeFileSync(file, 'nao e json');
+    assert.equal(pairsCli(repo).o.runs, 2);
+    const none = runCli(['pairs', '--nonce', 'PN', '--task', 'sem-pasta', '--prefix', 'P', '--cwd', fwd(repo)]);
+    assert.equal(none.code, 0);
+    const on = JSON.parse(none.stdout);
+    assert.deepEqual([on.runs, on.pair, on.red, on.green, on.cmdDigest], [0, false, null, null, null]);
+    assert.ok(digestOk(on));
+  });
+});
+
+test('pairs: flags faltando saem 2 com {tool, error}', () => {
+  withRepo((repo) => {
+    for (const args of [['--task', 'T', '--prefix', 'P'], ['--nonce', 'N', '--prefix', 'P'], ['--nonce', 'N', '--task', 'T']]) {
+      const r = runCli(['pairs', ...args, '--cwd', fwd(repo)]);
+      assert.equal(r.code, 2);
+      const o = JSON.parse(r.stdout);
+      assert.equal(o.tool, 'capture');
+      assert.ok(typeof o.error === 'string');
+    }
+  });
+});

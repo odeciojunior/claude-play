@@ -3,9 +3,15 @@
 // assinada (bytes, sha256, linhas, cauda, extrato do node:test) que um agente copia literal.
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")
 //        --brief: a linha impressa omite tail e tailCut (com --tests, failedNames e cortado como sem --brief, com tail vazio); o digest assina o objeto impresso. cmdDigest nao depende dos flags.
+//        Grava tambem <seq>-line.json, a linha assinada identica a impressa, ao lado de <seq>-stdout.txt.
+//      node capture.mjs pairs --nonce <n> --task <id> --prefix <prefixo de nonce> [--cwd <dir>]
+//        Le os *-line.json de pt-evidence/<task> em ordem de seq, descarta os que nao parseiam, de digest errado ou com nonce fora do prefixo,
+//        e imprime {tool,command:'pairs',nonce,task,runs,pair,red,green,cmdDigest,digest} (exit 0). pair: um exit != 0 seguido (seq maior) de um
+//        exit 0 com o mesmo cmdDigest; red/green/cmdDigest sao da primeira dupla (ou null). Pasta inexistente: runs 0, pair false.
 //      node capture.mjs slice --nonce <n> --path <arquivo em pt-evidence> [--cwd <dir>] --sha <prefixo sha256> --slice <k>
 //        --sha: prefixo hexadecimal minusculo do sha256 do arquivo, de 12 a 64 caracteres (a saida traz o total.sha256 completo).
 //      node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>]
+//        (os <seq>-line.json saem junto com a pasta da task ou, na varredura de 14 dias, como qualquer arquivo velho)
 //        --task-prefix: apaga as pastas <p><resto> de pt-evidence e os arquivos <p><resto> de pt-evidence/review/ (resto sem hifen,
 //        ex.: final.txt, worktree.diff; subpastas de review/ nunca) e varre o que tem mais de 14 dias. No win32 o prefixo ignora a caixa.
 //        Saida: {tool,command:'prune',[nonce],removed:[pastas],removedReview:[arquivos],swept:[caminhos relativos a pt-evidence
@@ -32,6 +38,7 @@ const TAIL_LINES = 40;
 const TASK_RE = /^[A-Za-z0-9._-]+$/;
 const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
 const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")';
+const PAIRS_USAGE = 'uso: node capture.mjs pairs --nonce <n> --task <id> --prefix <prefixo de nonce> [--cwd <dir>]';
 const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>] (exatamente um dos dois)';
 
 class UsageError extends Error {}
@@ -47,7 +54,7 @@ function countLines(buf) {
 }
 
 function parseArgs(argv) {
-  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, prune, list (ver o cabeçalho de capture.mjs)`);
+  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, pairs, prune, list (ver o cabeçalho de capture.mjs)`);
   const opts = { nonce: null, task: null, cwd: null, tests: false, brief: false, program: null, bash: null };
   let i = 1;
   const value = (flag) => {
@@ -89,6 +96,40 @@ function gitDirOrThrow(cwdOpt) {
 
 const MSYS_MSG = 'caminho no estilo msys (/tmp/...) não é aceito no Windows; use C:/...';
 const isMsys = (p) => /^\/(?![/\\])/.test(p);
+
+function runPairs(argv, platform) {
+  const o = parseFlags(argv, { '--nonce': 'nonce', '--task': 'task', '--prefix': 'prefix', '--cwd': 'cwd' });
+  if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
+  if (o.task === undefined || !TASK_RE.test(o.task)) throw new UsageError(`--task ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras). ${PAIRS_USAGE}`);
+  if (o.prefix === undefined || o.prefix === '') throw new UsageError(`--prefix ausente. ${PAIRS_USAGE}`);
+  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
+  const { gitDir } = gitDirOrThrow(o.cwd);
+  const dir = path.join(gitDir, 'pt-evidence', o.task);
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { /* sem pasta */ }
+  const valid = [];
+  for (const name of names.filter((n) => /^\d{4,}-line\.json$/.test(n)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10))) {
+    let line;
+    try { line = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch { continue; }
+    if (!line || typeof line !== 'object' || Array.isArray(line) || line.tool !== 'capture') continue;
+    const { digest, ...rest } = line;
+    if (digest !== fnv1a(JSON.stringify(canon(rest)))) continue;
+    if (typeof line.nonce !== 'string' || !line.nonce.startsWith(o.prefix)) continue;
+    valid.push(line);
+  }
+  let red = null;
+  let green = null;
+  for (let i = 0; i < valid.length && green === null; i++) {
+    if (valid[i].exit === 0) continue;
+    const g = valid.slice(i + 1).find((l) => l.exit === 0 && l.cmdDigest === valid[i].cmdDigest);
+    if (g) { red = valid[i]; green = g; }
+  }
+  const line = sign({
+    tool: 'capture', command: 'pairs', nonce: o.nonce, task: o.task, runs: valid.length, pair: green !== null,
+    red: red ? red.nonce : null, green: green ? green.nonce : null, cmdDigest: red ? red.cmdDigest : null,
+  });
+  return { code: 0, line: JSON.stringify(line) };
+}
 
 function runSlice(argv, platform) {
   const o = parseFlags(argv, { '--nonce': 'nonce', '--path': 'path', '--cwd': 'cwd', '--sha': 'sha', '--slice': 'slice' });
@@ -304,7 +345,7 @@ function saveEvidenceOnce(taskDir, stdout, stderr) {
     try { fs.writeSync(fd, stdout, 0, stdout.length); } finally { fs.closeSync(fd); }
     const errPath = path.join(taskDir, `${prefix}-stderr.txt`);
     fs.writeFileSync(errPath, stderr);
-    return { stdoutPath: fwd(outPath), stderrPath: fwd(errPath) };
+    return { stdoutPath: fwd(outPath), stderrPath: fwd(errPath), linePath: path.join(taskDir, `${prefix}-line.json`) };
   }
 }
 
@@ -362,6 +403,7 @@ function buildLine(base, text, tests, exit, brief = false) {
 export function runCapture(argv, { platform = process.platform, env = process.env, now = Date.now } = {}) {
   try {
     if (argv[0] === 'slice') return runSlice(argv, platform);
+    if (argv[0] === 'pairs') return runPairs(argv, platform);
     if (argv[0] === 'prune') return runPrune(argv, platform, now);
     if (argv[0] === 'list') return runList(argv, platform);
     const opts = parseArgs(argv);
@@ -400,7 +442,9 @@ export function runCapture(argv, { platform = process.platform, env = process.en
       stderrSha256: sha256Of(stderr),
       stderrPath: saved.stderrPath,
     };
-    return { code: exit, line: JSON.stringify(buildLine(base, stdout.toString('utf8'), opts.tests, exit, opts.brief)) };
+    const line = JSON.stringify(buildLine(base, stdout.toString('utf8'), opts.tests, exit, opts.brief));
+    fs.writeFileSync(saved.linePath, line);
+    return { code: exit, line };
   } catch (e) {
     if (!(e instanceof UsageError)) throw e;
     return { code: 2, line: JSON.stringify({ tool: 'capture', error: e.message }) };

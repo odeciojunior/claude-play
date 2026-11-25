@@ -462,7 +462,10 @@ test('AC1: the test-first check runs before the first task reviewer and fails wi
   const between = body.slice(call, loop);
   assert.match(between, /if \(gap\) return fail\('conteudo'/);
   const ret = between.indexOf("return fail('conteudo'");
-  assert.ok(ret > 0 && !/agent\(/.test(between.slice(0, ret)), 'no agent call before the failing return');
+  // DEC-056: the only agent call before the failing return is the pairs script-runner.
+  const before = between.slice(0, ret);
+  assert.equal((before.match(/agent\(/g) || []).length, 1, 'one agent call before the failing return');
+  assert.ok(ret > 0 && /script-runner/.test(before) && /pairs/.test(before), 'it is the pairs script-runner');
 });
 
 test('AC1: the test-first failure names the start commit to reset to before a rerun', () => {
