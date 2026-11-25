@@ -23,12 +23,12 @@ claude plugin update <plugin>@claude-play
 
 | Plugin | Description | Category | Version |
 |--------|-------------|----------|---------|
-| [productivity-tools](plugins/productivity-tools/) | Research, analysis, planning, diagramming, and system health skills | productivity | 2.5.0 |
+| [productivity-tools](plugins/productivity-tools/) | Research, analysis, planning, diagramming, and system health skills | productivity | 2.6.0 |
 | [sql-server-tools](plugins/sql-server-tools/) | SQL Server performance monitoring, schema discovery, query optimization, T-SQL development, and code review agents | developer-tools | 1.1.0 |
 | [mcp-sql-server](plugins/mcp-sql-server/) | Automated MCP SQL Server setup — connects Claude Code to SQL Server databases | developer-tools | 1.3.0 |
 | [marketplace-tools](plugins/marketplace-tools/) | Maintainer tools: scaffold new plugins and validate plugin quality | developer-tools | 1.3.0 |
 
-What changed in productivity-tools 2.5.0: read the [2.5.0 note](docs/releases/2026-11-24-productivity-tools-2.5.0.md); in 2.4.0, the [2.4.0 note](docs/releases/2026-11-23-productivity-tools-2.4.0.md); in 2.3.0, the [2.3.0 note](docs/releases/2026-11-17-productivity-tools-2.3.0.md); in 2.2.0, the [2.2.0 note](docs/releases/2026-11-15-productivity-tools-2.2.0.md); and in 2.1.0, the [2.1.0 note](docs/releases/2026-11-15-productivity-tools-2.1.0.md). Upgrading from 1.7.0 (breaking format changes in 2.0.0)? Read the [2.0.0 upgrade note](docs/releases/2026-11-15-productivity-tools-2.0.0.md) first (all in Portuguese).
+What changed in productivity-tools 2.6.0: read the [2.6.0 note](docs/releases/2026-11-25-productivity-tools-2.6.0.md); in 2.5.0, the [2.5.0 note](docs/releases/2026-11-24-productivity-tools-2.5.0.md); in 2.4.0, the [2.4.0 note](docs/releases/2026-11-23-productivity-tools-2.4.0.md); in 2.3.0, the [2.3.0 note](docs/releases/2026-11-17-productivity-tools-2.3.0.md); in 2.2.0, the [2.2.0 note](docs/releases/2026-11-15-productivity-tools-2.2.0.md); and in 2.1.0, the [2.1.0 note](docs/releases/2026-11-15-productivity-tools-2.1.0.md). Upgrading from 1.7.0 (breaking format changes in 2.0.0)? Read the [2.0.0 upgrade note](docs/releases/2026-11-15-productivity-tools-2.0.0.md) first (all in Portuguese).
 
 ## Contributing
 
