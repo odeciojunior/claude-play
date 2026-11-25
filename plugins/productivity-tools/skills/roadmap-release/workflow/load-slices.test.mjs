@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { canon, sliceEnvelopes, utf8Length, MAX_COPY_BYTES, planDigest } from '../../../lib/plan-digest.mjs';
 import { route } from '../../../lib/routing.mjs';
+import { gitBash } from '../../../scripts/git-bash.mjs';
 
 // E41 B2 T4: the spec load and the plan load of roadmap-release.js run each command by capture.mjs run and read an output that does not fit the copy
 // limit back by capture.mjs slice. The fake runner below executes the real capture.mjs on real files of a temporary repository (the spec-tool and
@@ -18,6 +19,8 @@ const SRC = readFileSync(join(HERE, 'roadmap-release.js'), 'utf8').replace('expo
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const runWorkflow = new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', 'budget', SRC);
 const fwd = (p) => String(p).replace(/\\/g, '/');
+const BASH = gitBash();
+const NEEDS_BASH = { skip: BASH ? false : 'Git Bash não encontrado; instale o Git ou defina PT_BASH' };
 const git = (cwd, ...a) => { const r = spawnSync('git', ['-C', cwd, ...a], { encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`); return r.stdout.trim(); };
 
 const META = { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', pendingDecisions: [] };
@@ -78,7 +81,7 @@ async function drive({ hook, config = {} } = {}) {
   const calls = [];
   let planBlob = '';
   const answers = [];
-  const bash = (cmd) => { const r = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' }); return { exit: r.status ?? 1, stdout: r.stdout }; };
+  const bash = (cmd) => { const r = spawnSync(BASH, ['-c', cmd], { encoding: 'utf8' }); return { exit: r.status ?? 1, stdout: r.stdout }; };
   const seen = {};
   const agent = async (prompt, o) => {
     const l = o.label;
@@ -137,7 +140,7 @@ async function drive({ hook, config = {} } = {}) {
 const loadLabels = (labels) => labels.filter((l) => /^E1:(spec|plan)-load/.test(l));
 const sliceCount = (labels, load) => labels.filter((l) => new RegExp(`^E1:${load}1-emit-slice\\d+$`).test(l)).length;
 
-test('a spec emit and a plan emit of 19 KB or more are put back by slices and the stages go on (checkSpecLoad and checkPlanLoad accept them)', async () => {
+test('a spec emit and a plan emit of 19 KB or more are put back by slices and the stages go on (checkSpecLoad and checkPlanLoad accept them)', NEEDS_BASH, async () => {
   assert.ok(SPEC_EMIT_BYTES >= 19 * 1024, `spec emit ${SPEC_EMIT_BYTES}`);
   assert.ok(PLAN_EMIT_BYTES >= 19 * 1024, `plan emit ${PLAN_EMIT_BYTES}`);
   const x = await drive();
@@ -152,7 +155,7 @@ test('a spec emit and a plan emit of 19 KB or more are put back by slices and th
   assert.match(first.prompt, /capture\.mjs" run --nonce \S+ --task E1-load --cwd \S+ -- /);
 });
 
-test('the labels follow the commands: spec-load<k>, -emit, -blob (E37 R3), -head, -porcelain, plan-load<k>, -emit, -blob, -head, -porcelain and -emit-slice<j>', async () => {
+test('the labels follow the commands: spec-load<k>, -emit, -blob (E37 R3), -head, -porcelain, plan-load<k>, -emit, -blob, -head, -porcelain and -emit-slice<j>', NEEDS_BASH, async () => {
   const x = await drive();
   const L = loadLabels(x.labels);
   assert.deepEqual(L.filter((l) => !/-slice\d+$/.test(l)), ['E1:spec-load1', 'E1:spec-load1-emit', 'E1:spec-load1-blob', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain']);
@@ -160,20 +163,20 @@ test('the labels follow the commands: spec-load<k>, -emit, -blob (E37 R3), -head
   assert.ok(L.indexOf('E1:spec-load1-emit') < L.indexOf('E1:spec-load1-emit-slice0') && L.indexOf('E1:spec-load1-emit-slice0') < L.indexOf('E1:spec-load1-head'));
 });
 
-test('head, blob and porcelain come from the checked tail (tailCut 0): they have no slices', async () => {
+test('head, blob and porcelain come from the checked tail (tailCut 0): they have no slices', NEEDS_BASH, async () => {
   const x = await drive();
   assert.ok(!loadLabels(x.labels).some((l) => /-(head|blob|porcelain)(-|$)/.test(l) && /-slice\d+$/.test(l)));
   assert.ok(!x.calls.some((c) => /capture\.mjs" slice/.test(c.prompt) && /-(head|blob|porcelain)/.test(c.label)));
 });
 
-test('the slice command passes only the first 12 hex of the sha256 (short argv), not the 64', async () => {
+test('the slice command passes only the first 12 hex of the sha256 (short argv), not the 64', NEEDS_BASH, async () => {
   const x = await drive();
   const shas = x.calls.filter((c) => /capture\.mjs" slice/.test(c.prompt)).map((c) => /--sha (\S+)/.exec(c.prompt)[1]);
   assert.ok(shas.length > 0);
   for (const s of shas) assert.match(s, /^[0-9a-f]{12}$/, s);
 });
 
-test('capture.mjs run and capture.mjs slice get the same --cwd, the worktree of the deliverable', async () => {
+test('capture.mjs run and capture.mjs slice get the same --cwd, the worktree of the deliverable', NEEDS_BASH, async () => {
   const x = await drive();
   const cwds = x.calls.filter((c) => /^E1:(spec|plan)-load/.test(c.label)).map((c) => /capture\.mjs" (run|slice) .* --cwd (\S+)/.exec(c.prompt)).map((m) => `${m[1]}:${m[2]}`);
   assert.ok(cwds.some((c) => c.startsWith('slice:')) && cwds.some((c) => c.startsWith('run:')));
@@ -181,15 +184,15 @@ test('capture.mjs run and capture.mjs slice get the same --cwd, the worktree of 
   assert.match(cwds[0], /\/wt\/E1'?$/);
 });
 
-test('a slice of another repository is not found: the slice is refused and the load fails after its five attempts', async () => {
-  const x = await drive({ hook: ({ cmd, kind, world }) => (kind === 'slice' ? (() => { const r = spawnSync('bash', ['-c', cmd.replace(/--cwd '[^']*'/, `--cwd '${world.other}'`)], { encoding: 'utf8' }); return { exit: r.status ?? 1, stdout: r.stdout }; })() : undefined) });
+test('a slice of another repository is not found: the slice is refused and the load fails after its five attempts', NEEDS_BASH, async () => {
+  const x = await drive({ hook: ({ cmd, kind, world }) => (kind === 'slice' ? (() => { const r = spawnSync(BASH, ['-c', cmd.replace(/--cwd '[^']*'/, `--cwd '${world.other}'`)], { encoding: 'utf8' }); return { exit: r.status ?? 1, stdout: r.stdout }; })() : undefined) });
   assert.match(x.r.results[0].error, /spec load/);
   assert.ok(!x.labels.includes('E1:spec-commit'));
   assert.deepEqual(loadLabels(x.labels).filter((l) => /^E1:spec-load\d$/.test(l)), [1, 2, 3, 4, 5].map((k) => `E1:spec-load${k}`));
   assert.ok(x.calls.filter((c) => /capture\.mjs" slice/.test(c.prompt)).length >= 5);
 });
 
-test('a state that changes between two calls of a read (the sha of the file moves) is refused: the load starts again from load3, never mixing slices', async () => {
+test('a state that changes between two calls of a read (the sha of the file moves) is refused: the load starts again from load3, never mixing slices', NEEDS_BASH, async () => {
   const x = await drive({ hook: ({ label, kind, n, world, cmd }) => {
     if (kind === 'slice' && label === 'E1:spec-load1-emit-slice2' && n === 1) {
       const dir = `${git(world.wt, 'rev-parse', '--absolute-git-dir')}/pt-evidence/E1-load`;
@@ -203,7 +206,7 @@ test('a state that changes between two calls of a read (the sha of the file move
   assert.ok(x.labels.includes('E1:plan-commit'), 'the second attempt was accepted and the plan stage ran');
 });
 
-test('a slice that came back summarized in the first copy is repeated alone, the other slices are not read again', async () => {
+test('a slice that came back summarized in the first copy is repeated alone, the other slices are not read again', NEEDS_BASH, async () => {
   const x = await drive({ hook: ({ label, kind, n, answer }) => (kind === 'slice' && label === 'E1:spec-load1-emit-slice2' && n === 1 ? { exit: 0, stdout: answer.stdout.replace(/"text": ?"[^]{20}[^]*?"/, '"text":"[...]"') } : undefined) });
   assert.deepEqual(x.labels.filter((l) => /^E1:spec-load1-emit-slice\d+-retry\d$/.test(l)), ['E1:spec-load1-emit-slice2-retry2']);
   assert.ok(!x.labels.includes('E1:spec-load2'));
