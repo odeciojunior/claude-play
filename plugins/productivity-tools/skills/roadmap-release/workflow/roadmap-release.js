@@ -201,10 +201,28 @@ function gateFromCapture(def, g, expect) {
   }
   return { ...r, total: g.total, skipped: g.skipped, failedNames: g.failedNames || [], fallback: true }
 }
+// Why gateFromCapture gives no result (null when it gives one): the same checks over the same data.
+function captureRejection(g, expect) {
+  if (g && g.ran === false) return null
+  const raw = g && typeof g.capture === 'string' ? g.capture : null
+  if (raw === null) return 'no capture line'
+  const v = checkCapture(raw, expect)
+  let o = null
+  try { o = JSON.parse(raw.replace(/\s+$/, '')) } catch {}
+  if (v.ok) return Number.isInteger(o.exit) ? null : 'the capture exit is not an integer'
+  return v.why + ('expected' in v ? `, expected ${v.expected}, got ${v.got}` : '') + (o && o.tool === 'capture' && typeof o.path === 'string' ? `, path ${o.path}` : '')
+}
+// gateWhy (gate name -> why it stayed out of gates) is always the script's, never the agent's.
 function capturedMeasure(defs, m, nonceOf) {
   if (!m || typeof m !== 'object') return m
-  const gates = (defs || []).map((d, i) => gateFromCapture(d, gateResult(m, d.name), { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) })).filter(Boolean)
-  return { ...m, gates }
+  const gates = [], why = []
+  for (const [i, d] of (defs || []).entries()) {
+    const g = gateResult(m, d.name), expect = { nonce: nonceOf(i), cmdDigest: commandDigest({ bash: oneLine(d.cmd) }) }
+    const r = gateFromCapture(d, g, expect)
+    if (r) gates.push(r)
+    else why.push([d.name, captureRejection(g, expect)])
+  }
+  return { ...m, gates, gateWhy: Object.fromEntries(why) }
 }
 function gateShaMatch(x, y) {
   return !!x && !!y && (x.startsWith(y) || y.startsWith(x))
@@ -669,7 +687,7 @@ function measureProblems(m, expectedSha, gateDefs) {
   if (expectedSha && !gateShaMatch(normSha(m.headSha), normSha(expectedSha))) out.push('measured at commit ' + m.headSha + ', expected ' + expectedSha)
   for (const def of gateDefs || []) {
     const r = gateResult(m, def.name)
-    if (!r) out.push('gate ' + def.name + ' missing from the measure')
+    if (!r) out.push('gate ' + def.name + ' missing from the measure' + (m.gateWhy && Object.hasOwn(m.gateWhy, def.name) ? ': ' + m.gateWhy[def.name] : ''))
     else if (!gateCoherent(def, r)) out.push('gate ' + def.name + ': exit ' + r.exit + ' disagrees with its failing names')
   }
   return out
@@ -1541,9 +1559,9 @@ function checkCapture(stdout, { nonce, noncePrefix, cmdDigest } = {}) {
   try { o = JSON.parse(raw); } catch { return { ok: false, why: 'the output is not JSON' }; }
   if (!o || typeof o !== 'object' || Array.isArray(o) || o.tool !== 'capture') return { ok: false, why: 'the output is not from capture' };
   if (o.error !== undefined) return { ok: false, why: `capture refused: ${o.error}` };
-  if (nonce !== undefined && o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run' };
+  if (nonce !== undefined && o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run', expected: nonce, got: o.nonce };
   if (noncePrefix !== undefined && !(typeof o.nonce === 'string' && o.nonce.startsWith(noncePrefix))) return { ok: false, why: 'the nonce of the output is outside the expected prefix' };
-  if (cmdDigest !== undefined && o.cmdDigest !== cmdDigest) return { ok: false, why: 'the output is not from the expected command' };
+  if (cmdDigest !== undefined && o.cmdDigest !== cmdDigest) return { ok: false, why: 'the output is not from the expected command', expected: cmdDigest, got: o.cmdDigest };
   const { digest, ...rest } = o;
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' };
   return { ok: true, data: o.data };
@@ -1957,7 +1975,7 @@ phase('Preflight')
 const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
 const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
 const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
-` : ''}For each gate run the line under it${String(dir).startsWith('"<') ? `, with ${dir} replaced by the integration worktree path of step 2 (keep the double quotes) and nothing else changed` : ', unchanged'} (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (only name, ran and exit matter)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
+` : ''}For each gate run the line under it${String(dir).startsWith('"<') ? `, with ${dir} replaced by the integration worktree path of step 2 (keep the double quotes) and nothing else changed` : ', unchanged'} (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (no test counts; the capture line is still required, copied literally)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --brief --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. The capture line has no output: take them from the file at its path (Read, offset/limit). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
 const FOREIGN_ITEM = 'checkout:' + TARGET
 const foreignOk = authorized(FOREIGN_ITEM)
 const foreignRule = foreignOk

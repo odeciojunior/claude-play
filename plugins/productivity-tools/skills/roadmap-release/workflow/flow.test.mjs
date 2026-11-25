@@ -328,6 +328,10 @@ test('E41 B2 T2: a gate with a space in the name and a single quote in the comma
     assert.equal(quoted, PURE_X.shq(def.cmd));
     assert.equal(unshq(quoted), def.cmd);
     assert.ok(!c.prompt.includes('capture.mjs" run --nonce unit'), 'the nonce never holds the raw gate name');
+    assert.match(lines[0][0], / --cwd (?:'[^']*'|"[^"]*") --brief --bash /, c.label);
+    assert.ok(c.prompt.includes(`- unit tests (exit): ${def.cmd} (no test counts; the capture line is still required, copied literally)\n`), c.label);
+    assert.ok(!c.prompt.includes('only name, ran and exit matter'), c.label);
+    assert.ok(c.prompt.includes('The capture line has no output: take them from the file at its path (Read, offset/limit).'), c.label);
   }
   assert.match(calls.find((c) => c.label === 'preflight').prompt, /--task preflight-gates /);
   assert.match(calls.find((c) => c.label === 'preflight').prompt, /with "<integration worktree>" replaced by the integration worktree path of step 2 \(keep the double quotes\) and nothing else changed/);

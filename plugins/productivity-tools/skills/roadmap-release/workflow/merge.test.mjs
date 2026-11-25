@@ -41,6 +41,21 @@ test('measureProblems names the offending gate and the tree/sha problems', () =>
   assert.equal(measureProblems(null, 'a', defs).length, 1);
 });
 
+test('E42 measureProblems appends the gateWhy reason to the missing gate and keeps the old sentence without it', () => {
+  const defs = [{ name: 'unit', kind: 'tests' }, { name: 'lint', kind: 'exit' }];
+  const m = { headSha: 'a'.repeat(40), clean: true, gates: [] };
+  assert.deepEqual(measureProblems({ ...m, gateWhy: { unit: 'no capture line', lint: 'the output is not JSON' } }, null, defs), [
+    'gate unit missing from the measure: no capture line',
+    'gate lint missing from the measure: the output is not JSON',
+  ]);
+  // a baseline recorded by run-record carries no gateWhy
+  const old = ['gate unit missing from the measure', 'gate lint missing from the measure'];
+  assert.deepEqual(measureProblems(m, null, defs), old);
+  assert.deepEqual(measureProblems({ ...m, gateWhy: {} }, null, defs), old);
+  // a gate named like a member of Object has no reason of its own
+  assert.deepEqual(measureProblems({ ...m, gateWhy: {} }, null, [{ name: 'constructor', kind: 'exit' }]), ['gate constructor missing from the measure']);
+});
+
 test('gateGroups: one group without lock, one per distinct lock set (order-insensitive)', () => {
   const defs = [{ name: 'a' }, { name: 'b', needsLock: 'db' }, { name: 'c', needsLock: ['db'] }, { name: 'd', needsLock: ['x', 'db'] }, { name: 'e', needsLock: ['db', 'x'] }];
   const g = gateGroups(defs);

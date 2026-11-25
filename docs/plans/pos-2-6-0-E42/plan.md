@@ -1,6 +1,6 @@
 # Plano E42 -- Medida de base válida e com motivo por portão
 
-Spec: `docs/plans/pos-2-6-0-E42/spec.md`. Branch `release/pos-2.6.0`, no worktree `D:/projects/claude-play-wt/pos-2-6-0`. Todos os caminhos abaixo são relativos à raiz do repositório.
+Spec: `docs/plans/pos-2-6-0-E42/spec.md`. Branch `plan/pos-2-6-0-E42`, no worktree `D:/projects/claude-play-wt/pos-2-6-0-E42`, com merge em `release/pos-2.6.0` depois da conferência. Todos os caminhos abaixo são relativos à raiz do repositório.
 
 As quatro tarefas correm em sequência: a trava de tamanho entra primeiro, depois o texto da medida (AC1), depois `expected` e `got` na lib e, por último, o motivo por portão (AC2). As tarefas 2, 3 e 4 tocam `plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js`.
 
@@ -82,7 +82,7 @@ Fechamento do entregável:
 - medir o tamanho antes e depois;
 - rodar todos os testes da pasta do workflow e o `embed.mjs --check` com os quatro alvos (G5);
 - commitar só os arquivos da tarefa, com a linha `paridade agy: pendente #13` no corpo do commit;
-- depois do commit, rodar o G1 pelo Git Bash (se E44 ou E50 já estiverem no branch, refazer o piso de `tests`/`pass` com a linha de base remedida após esses merges), com o worktree parado (nenhum commit durante a execução, de nenhuma sessão): exit 0, `fail 0`, `tests` maior ou igual a 2616 e `pass` maior ou igual a 2614. O pwsh puro falha até o E50 e não serve de base. Se o HEAD mudar durante a execução, repetir com o HEAD estável.
+- depois do commit, rodar o G1 pelo Git Bash (se E44 ou E50 já estiverem no branch, refazer o piso de `tests`/`pass` com a linha de base remedida após esses merges), com o worktree parado (nenhum commit durante a execução, de nenhuma sessão): exit 0, `fail 0`, `tests` maior ou igual a 2625 e `pass` maior ou igual a 2623. O pwsh puro falha até o E50 e não serve de base. Se o HEAD mudar durante a execução, repetir com o HEAD estável.
 
 ## Bloco de dados
 
@@ -94,7 +94,7 @@ Fechamento do entregável:
   "spec": "spec.md",
   "roadmap": "docs/plans/roadmap-pos-2-6-0/",
   "constraints": [
-    "Trabalhar só no worktree D:/projects/claude-play-wt/pos-2-6-0, branch release/pos-2.6.0; autonomia só local: sem push, tag nem publicação (DEC-004).",
+    "Trabalhar só no worktree D:/projects/claude-play-wt/pos-2-6-0-E42, branch plan/pos-2-6-0-E42; autonomia só local: sem push, tag nem publicação (DEC-004).",
     "Sem bump de versão em plugin.json, README.md ou na linha 1 do check-roadmap.mjs; o bump é só no E54 (DEC-003, DEC-042).",
     "roadmap-release.js: trava de 284.500 caracteres LF e teto de 3.000 caracteres para o E42 (de 266.001 até no máximo 269.001); acima de 269.601, parar e voltar ao dono via subagente opus (DEC-007, DEC-021).",
     "coordinator.js continua abaixo da trava de 90.000 (hoje 88.499 caracteres LF, 88.704 bytes em LF).",
@@ -103,7 +103,7 @@ Fechamento do entregável:
     "Não pôr --brief depois de --bash.",
     "Paridade agy: pendente #13. Não tocar em workflow/roadmap-release-agy.py (DEC-008).",
     "Fora do escopo: releitura da linha de captura copiada errada (E43), leitura da linha por arquivo, extrator do vitest e de ANSI (E44), prompt do gates-fix, mensagem de medida nula do pós-merge e acúmulo de motivo em measuredGroup.",
-    "G1 roda pelo Git Bash com o worktree parado; linha de base: exit 0, tests 2616, pass 2614, fail 0, skipped 2."
+    "G1 roda pelo Git Bash com o worktree parado; linha de base: exit 0, tests 2625, pass 2623, fail 0, skipped 2 (remedida no merge do E44, 5fcf32a)."
   ],
   "tasks": [
     {
@@ -310,7 +310,7 @@ Fechamento do entregável:
         },
         {
           "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
-          "expect": "exit 0 pelo Git Bash com o worktree parado; fail 0, tests >= 2616, pass >= 2614"
+          "expect": "exit 0 pelo Git Bash com o worktree parado; fail 0, tests >= 2625, pass >= 2623"
         }
       ]
     }
