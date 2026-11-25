@@ -5071,6 +5071,53 @@ test('E23: progress records spec and plan only after a review ran', async () => 
   assert.ok(!skipped.calls.find((c) => c.label === 'E1:progress').prompt.includes('run-record.mjs'));
 });
 
+// E37 T8 (S3-30): a red baseline too big for the approve command is left out of it (CMD_CAP), with one concern.
+// the capture line the gate copy carries is capped at 3500 bytes, so the names stay under it; spaces and > make each one encode to three times its size
+const bigRed = () => gm('abc1234', { exit: 1, total: 900, failedNames: Array.from({ length: 46 }, (_, i) => `suite ${i} > a b c d e f g h i j k l m n o p q r s t u v w x y z ${i}`) });
+const bigPre = (l) => (l === 'preflight' ? { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: bigRed() } : undefined);
+const approveCalls = (calls) => calls.filter((c) => c.prompt.includes(`node "${RR_PATH}" approve "/wt/E1"`));
+const approveCmd = (p) => { const a = p.indexOf('node "' + RR_PATH + '" approve'); const q = p.indexOf(" '", a) + 2; return p.slice(a, p.indexOf("'", q) + 1); };
+
+test('E37 T8 (S3-30): recordCmd drops prep above CMD_CAP, calls the callback once, and keeps a small prep', () => {
+  const pure = loadPure();
+  const big = { trailer: 't', prep: { baseline: 'x'.repeat(9000) } };
+  const seen = [];
+  const cmd = pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'spec,plan', null, big, (n) => seen.push(n));
+  assert.ok(cmd.length <= 6000);
+  assert.equal('prep' in JSON.parse(decodeURIComponent(cmd.slice(cmd.indexOf(" - '") + 4, -1))), false);
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0] > 6000);
+  const small = { trailer: 't', prep: { baseline: 'x' } };
+  const kept = pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'docs/plans/x-E1/', 'E1', 'spec,plan', null, small, () => seen.push(0));
+  assert.ok(JSON.parse(decodeURIComponent(kept.slice(kept.indexOf(" - '") + 4, -1))).prep);
+  assert.equal(seen.length, 1);
+  // no prep and no callback: nothing to drop
+  assert.doesNotThrow(() => pure.recordCmd('/p/rr/run-record.mjs', '/w/E1', 'd/', 'E1', 'final', 't', { trailer: 'x'.repeat(7000) }));
+});
+
+test('E37 T8 (S3-30, C4): a big red baseline gives approve commands without prep (spec,plan and final), under 6000 characters, one concern', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(bigPre, withSync(null, 'def5678')) });
+  const cmds = approveCalls(x.calls);
+  assert.ok(cmds.length >= 2, cmds.map((c) => c.label).join(' '));
+  assert.ok(cmds.some((c) => c.prompt.includes('approve "/wt/E1" docs/plans/x-E1/ E1 spec,plan ')), cmds.map((c) => c.label).join(' '));
+  assert.ok(cmds.some((c) => / E1 final def5678 '/.test(c.prompt)), cmds.map((c) => c.label).join(' '));
+  for (const c of cmds) {
+    const cmd = approveCmd(c.prompt);
+    assert.ok(cmd.length <= 6000, `${c.label}: ${cmd.length}`);
+    assert.equal('prep' in JSON.parse(decodeURIComponent(cmd.slice(cmd.indexOf(" '", cmd.indexOf('approve')) + 2, -1))), false, c.label);
+  }
+  const cuts = x.r.results[0].concerns.filter((c) => /run record: prep left out/.test(c));
+  assert.equal(cuts.length, 1, JSON.stringify(x.r.results[0].concerns));
+  assert.match(cuts[0], /above CMD_CAP/);
+});
+
+test('E37 T8 (S3-30): a small baseline keeps prep in the approve command and adds no concern', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  const p = x.calls.find((c) => c.label === 'E1:progress').prompt;
+  assert.ok(payloadOf(p).prep);
+  assert.ok(!x.r.results[0].concerns.some((c) => /run record: prep left out/.test(c)));
+});
+
 test('E23: plan-only records spec and plan in the review log', async () => {
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'plan-only' } });
   assert.equal(r.results[0].planOnly, true);

@@ -1116,8 +1116,15 @@ function skipReview(stage, k, tip) {
   const ok = (a, b) => typeof a === 'string' && a !== '' && a === b
   return !!r && ok(r.spec, k.spec) && (stage === 'spec' || ok(r.plan, k.plan)) && (stage !== 'final' || (ok(r.tree, k.tree) && ok(r.target, tip)))
 }
-function recordCmd(RR, wt, dir, E, stages, tip, payload) {
-  return `node "${RR}" approve "${wt}" ${dir} ${E} ${stages} ${tip || '-'} '${encodeURIComponent(JSON.stringify(payload)).replace(/'/g, '%27')}'`
+// Git Bash cuts bash -c at 8186 chars (wrapper ~500)
+const CMD_CAP = 6000
+function recordCmd(RR, wt, dir, E, stages, tip, payload, onCut) {
+  const build = p => `node "${RR}" approve "${wt}" ${dir} ${E} ${stages} ${tip || '-'} '${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'`
+  const full = build(payload)
+  if (full.length <= CMD_CAP || !payload.prep) return full
+  const { prep, ...rest } = payload
+  if (onCut) onCut(full.length)
+  return build(rest)
 }
 function recordedBaseline(s, head, gatesKey, defs) {
   const p = runKey(s)
@@ -2049,8 +2056,6 @@ const lastWord = new Map(disc.cards.map(c => {
 }))
 const CHECKERS = {}  // E -> result.checker of the last brief --json read by the docs stage
 const numbered = list => list.map((c, i) => (i + 1) + '. ' + c).join('\n')
-// Git Bash on Windows cuts bash -c strings at 8186 chars; the Bash tool wrapper takes ~500.
-const CMD_CAP = 6000
 // Records one status of deliverable E through the tracker CLI; the verdict is computed over raw outputs only.
 // extra = { rulings?: spec rulings (the only source of recorded decisions), pending?, inflight?: { add|remove, note }, reason?, source? }.
 const recordStatus = (E, status, refs, extra) => mergeLock(async () => {
@@ -2415,7 +2420,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   // ---------- Setup
   const pluginRoot = pluginRootOf(A.trackerCli)
   const RR = `${pluginRoot}/scripts/run-record.mjs`
-  const recAt = (stages, tip) => recordCmd(RR, wt, AP.dir, E, stages, tip, { trailer: TRAILER, ...(MODE !== 'plan-only' && pre.baseline ? { prep: { targetHead: pre.targetHead, gatesKey: GATES_KEY, baseline: pre.baseline } } : {}) })
+  const recAt = (stages, tip) => recordCmd(RR, wt, AP.dir, E, stages, tip, { trailer: TRAILER, ...(MODE !== 'plan-only' && pre.baseline ? { prep: { targetHead: pre.targetHead, gatesKey: GATES_KEY, baseline: pre.baseline } } : {}) }, n => { if (!out.concerns.some(c => c.startsWith('run record: prep left out'))) out.concerns.push(`run record: prep left out of run.json, the approve command had ${n} characters, above CMD_CAP; the next run measures the baseline again`) })
   const setup = await setupLock(() => agent(`${C()}
 
 SETUP of deliverable ${E} (mechanical; do not change tracked files).
