@@ -1,0 +1,625 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E36/plan.md",
+    "id": "E36",
+    "digest": "254e94ca",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 5,
+    "worktree": null,
+    "branch": null,
+    "base": "1a7c1028322c26a15a68125d0b2ad4aa0513b120",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount counts whitespace-separated words (0.6663ms)\n✔ wordCount is 0 for empty text (0.1271ms)\n✔ counts usage once per message id, keeping the largest output (60.9908ms)\n✔ splits cache writes into 5m and 1h (5.6773ms)\n✔ counts agent calls by dominant model family (2.4496ms)\n✔ measures prompt bytes as UTF-8 of the first user message (1.8891ms)\n✔ estimates cost and keeps unpriced models null (1.6203ms)\n✔ readJsonl tolerates CRLF and a partial last line (9.675ms)\n✔ classifies every label family of the role table (0.4787ms)\n✔ status, progress, review log and report come out as separate rows (370.1128ms)\n✔ records review rounds per loop (5.4ms)\n✔ counts tasks and the task loop (5.7164ms)\n✔ writes metrics.json and one csv row per run and role (76.6651ms)\n✔ groups sessions of one attempt with --runs (66.303ms)\n✔ requires --root and --out (67.5701ms)\n✔ refuses --out inside the repository outside tools/measure/out (541.4867ms)\n✔ real price table is dated and sourced (0.3976ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (732.3151ms)\n✔ privacy scan catches a planted personal path and session id (9.9586ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (50.5621ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (23.9932ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (32.3087ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (30.9356ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (120.1559ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (29.5408ms)\n✔ prepare builds the sandbox and stops at authorize (3381.1544ms)\n✔ prepare refuses a work dir inside the repository (68.0481ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (87.9269ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (232.285ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (158.3464ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.5092ms)\nℹ tests 2533\nℹ suites 11\nℹ pass 2531\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 414586.7875",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-25T03:25:44.675Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        3,
+        7
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        5
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        6
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        8
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "removedTests em spec-tool e plan-tool",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/spec-tool.mjs",
+        "plugins/productivity-tools/scripts/plan-tool.mjs",
+        "plugins/productivity-tools/scripts/spec-tool.test.mjs",
+        "plugins/productivity-tools/scripts/plan-tool.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "spec-tool.mjs exports checkRemovedTests(list, err, warn, ref). Ela é chamada por checkSpec e importada por plan-tool.mjs. removedTests entrou em TOP dos dois arquivos, então não gera mais o aviso field-unknown de topo. leanEmit só inclui removedTests quando a lista existe e não está vazia. Sem o campo, o digest do emit enxuto não muda. Não commitei, conforme as regras. Os testes de spec-tool e plan-tool passaram (215), e embed --check deu exit 0.",
+      "sha": "17fa90ea41d7d394c8d1c9596a8a8a527dd3bdd5",
+      "replacedBy": null,
+      "note": "spec-tool.mjs exports checkRemovedTests(list, err, warn, ref). Ela é chamada por checkSpec e importada por plan-tool.mjs.\nremovedTests entrou em TOP dos dois arquivos, então não gera mais o aviso field-unknown de topo.\nleanEmit só inclui removedTests quando a lista existe e não está vazia. Sem o campo, o digest do emit enxuto não muda.\nNão commitei, conforme as regras. Os testes de spec-tool e pla",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "allTestNames em test-extract.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/test-extract.mjs",
+        "plugins/productivity-tools/scripts/test-extract.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "test-extract.mjs now exports allTestNames(text), a pure function. It returns every test name (pass, fail, SKIP, TODO) for TAP and spec output. It leaves out suites, the (Xms) durations and the spec \"failing tests\" section. Unknown text or undefined gives []. extractTests is untouched. Downstream steps import allTestNames to compare the names declared in spec and plan files against the names in test output. Not committed, as instructed.",
+      "sha": "2cdcf9532af34489b67b0b4525b97fd2023439a2",
+      "replacedBy": null,
+      "note": "test-extract.mjs now exports allTestNames(text), a pure function.\nIt returns every test name (pass, fail, SKIP, TODO) for TAP and spec output. It leaves out suites, the (Xms) durations and the spec \"failing tests\" section. Unknown text or undefined gives [].\nextractTests is untouched. Downstream steps import allTestNames to compare the names declared in spec and plan files against the names in tes",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Subcomando removed em test-extract.mjs",
+      "wave": 2,
+      "deps": [
+        1,
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/test-extract.mjs",
+        "plugins/productivity-tools/scripts/test-extract.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "test-extract.mjs ganhou o subcomando `removed --nonce --spec --plan --base --cwd --output --sha --gate [--single-tests-gate]`. Ele lê removedTests dos blocos de dados, valida com checkRemovedTests e confere cada par (file, name) por literal na base, ausência em HEAD e ausência na saída (nameKey + allTestNames). Imprime a linha assinada { tool, command, nonce, gate, base, outputSha, verified, unverified, unverifiedCut, digest }, cortada em MAX_COPY_BYTES. A recusa { tool, command, nonce, error } ",
+      "sha": "6e95c1a4dccfc7e15264a2be0ae8e000b9c3b642",
+      "replacedBy": null,
+      "note": "test-extract.mjs ganhou o subcomando `removed --nonce --spec --plan --base --cwd --output --sha --gate [--single-tests-gate]`.\nEle lê removedTests dos blocos de dados, valida com checkRemovedTests e confere cada par (file, name) por literal na base, ausência em HEAD e ausência na saída (nameKey + allTestNames).\nImprime a linha assinada { tool, command, nonce, gate, base, outputSha, verified, unver",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Desconto na regra pura de roadmap-release.js e outPath/outSha",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/gates.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 2,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "F1 fixed in roadmap-release.js removedFloor: the test-extract command now passes `--base ${syncAt}` (the target tip behind myBase) and accepts the signed line only when `d.base === syncAt`; TARGET is no longer used there. After a re-sync, syncAt is the new target tip, so the later removedFloor call uses that SHA. flow.test.mjs: removedLine echoes the `--base` of the command. The AC1 test asserts `--base 'abc1234'` (the test's syncAt), a base of `integracao/x` is now rejected (n=0), and the re-sy",
+      "sha": "a81099d700fa1c35b98910a933b2d0058a93752b",
+      "replacedBy": null,
+      "note": "F1 fixed in roadmap-release.js removedFloor: the test-extract command now passes `--base ${syncAt}` (the target tip behind myBase) and accepts the signed line only when `d.base === syncAt`; TARGET is no longer used there.\nAfter a re-sync, syncAt is the new target tip, so the later removedFloor call uses that SHA.\nflow.test.mjs: removedLine echoes the `--base` of the command. The AC1 test asserts `",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Curto-circuito de branchGates e conferidor no fluxo",
+      "wave": 3,
+      "deps": [
+        3,
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "branchGates now ends on the 1st measurement, without dispatching gates-fix, when the only failure of a tests gate is a lower total than the baseline. A declaration from specLoad.data.removedTests or planLoad.plan.removedTests triggers one script-runner call per failing gate (3 tries: haiku, haiku, sonnet) to test-extract.mjs removed. The signed line is accepted only if tool, nonce, digest, outputSha, gate and base all match. A line that passes sets out.removedN, adds a concern and goes on to the",
+      "sha": "379070461f903b1ab2619ff1a98aa9a42daa819e",
+      "replacedBy": null,
+      "note": "branchGates now ends on the 1st measurement, without dispatching gates-fix, when the only failure of a tests gate is a lower total than the baseline. A declaration from specLoad.data.removedTests or planLoad.plan.removedTests triggers one script-runner call per failing gate (3 tries: haiku, haiku, sonnet) to test-extract.mjs removed. The signed line is accepted only if tool, nonce, digest, outputS",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "Cláusula contra mascaramento nas revisões de plano e final",
+      "wave": 4,
+      "deps": [
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js now has RM_CLAUSE(), a short clause added to the E1:plan-review prompt and to each E1:final-N-rK prompt only when declared() has entries. With no declaration the clause is an empty string, so the prompts match today's. declared() moved up, before the plan review, so both reviews can call it. removedFloor from T5 still uses it, unchanged. The new test in prompts.test.mjs evaluates RM_CLAUSE with and without entries. It checks that both prompt templates include it. It does not r",
+      "sha": "b23708d1901844be6e99400322b985abf995d27e",
+      "replacedBy": null,
+      "note": "roadmap-release.js now has RM_CLAUSE(), a short clause added to the E1:plan-review prompt and to each E1:final-N-rK prompt only when declared() has entries. With no declaration the clause is an empty string, so the prompts match today's.\ndeclared() moved up, before the plan review, so both reviews can call it. removedFloor from T5 still uses it, unchanged.\nThe new test in prompts.test.mjs evaluate",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "Uma linha sobre removedTests em spec-author e plan-author",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/agents/spec-author.md",
+        "plugins/productivity-tools/agents/plan-author.md",
+        "plugins/productivity-tools/scripts/agent-contracts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added a contract test in agent-contracts.test.mjs requiring spec-author.md and plan-author.md to cite removedTests as `{ file, name, why, gate? }`. Added one line to each agent (spec-author step 4, plan-author step 3) declaring deleted tests in removedTests of the data block. Targeted tests now pass (26 in prose-budget and copy-budget plus the agent-contracts suite, exit 0). Nothing committed; the orchestrator commits. Downstream steps rely only on the prose contract; no code interface was added",
+      "sha": "f9f15e1f7b438e1bba46fbc6367f290492c06037",
+      "replacedBy": null,
+      "note": "Added a contract test in agent-contracts.test.mjs requiring spec-author.md and plan-author.md to cite removedTests as `{ file, name, why, gate? }`. Added one line to each agent (spec-author step 4, plan-author step 3) declaring deleted tests in removedTests of the data block. Targeted tests now pass (26 in prose-budget and copy-budget plus the agent-contracts suite, exit 0). Nothing committed; the",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "Conferência final",
+      "wave": 5,
+      "deps": [
+        5,
+        6,
+        7
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T8 is a verification step; no file was written and nothing was committed. The full suite passes (2569 tests, 2567 pass, 0 fail, 2 skipped, exit 0), up from the ~2533 baseline. embed.mjs --check passes on all 4 targets, lint-plugin reports 57 OK and 0 FAIL, and `claude plugin validate` passes. The git diff of plugins/productivity-tools/lib since 1a7c102 is empty. roadmap-release.js measures 263,647 characters with LF line endings, under the 263,673 budget. Downstream steps (T5, T6, T7 outputs) ar",
+      "sha": null,
+      "replacedBy": null,
+      "note": "T8 is a verification step; no file was written and nothing was committed. The full suite passes (2569 tests, 2567 pass, 0 fail, 2 skipped, exit 0), up from the ~2533 baseline. embed.mjs --check passes on all 4 targets, lint-plugin reports 57 OK and 0 FAIL, and `claude plugin validate` passes. The git diff of plugins/productivity-tools/lib since 1a7c102 is empty. roadmap-release.js measures 263,647",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 2,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-25T01:06:12.560Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "1a7c1028322c26a15a68125d0b2ad4aa0513b120",
+      "at": "2026-11-25T01:06:12.560Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-25T01:06:40.712Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-25T01:06:40.712Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1,
+        2,
+        4
+      ],
+      "at": "2026-11-25T01:06:40.712Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-25T01:13:59.933Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-25T01:13:59.933Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T01:13:59.933Z"
+    },
+    {
+      "event": "review-result",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T01:21:59.391Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-25T01:21:59.391Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-25T01:28:52.993Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-25T01:29:12.705Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-25T01:29:33.570Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T01:29:33.570Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T01:38:45.761Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T01:38:51.778Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T01:38:51.778Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        7,
+        3
+      ],
+      "at": "2026-11-25T01:38:51.778Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-25T01:46:19.805Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-25T01:46:19.805Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-25T01:49:33.232Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-25T01:49:52.984Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-25T01:50:12.576Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T01:50:12.576Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T02:01:52.180Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T02:01:59.406Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T02:01:59.406Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-25T02:01:59.406Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-25T02:09:48.063Z"
+    },
+    {
+      "event": "review-result",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-25T02:22:52.827Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-25T02:22:52.827Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T02:24:03.156Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T02:24:03.156Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-25T02:24:03.156Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-25T02:39:11.523Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-25T02:41:35.398Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-25T02:41:54.042Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T02:41:54.042Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T02:51:35.180Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T02:51:39.979Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T02:51:39.979Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        8
+      ],
+      "at": "2026-11-25T02:51:39.979Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-25T02:59:34.443Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T03:06:56.713Z"
+    },
+    {
+      "event": "final-gate",
+      "step": 4,
+      "value": "defects",
+      "at": "2026-11-25T03:06:56.713Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-25T03:06:56.713Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T03:23:41.422Z"
+    },
+    {
+      "event": "review-result",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T03:24:48.762Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-25T03:24:48.762Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T03:25:44.675Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T03:25:44.675Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T03:25:44.675Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T03:25:44.675Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T03:25:44.675Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-25T03:25:44.675Z"
+    }
+  ]
+}
