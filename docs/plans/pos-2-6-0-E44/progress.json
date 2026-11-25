@@ -1,0 +1,185 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E44/plan.md",
+    "id": "E44",
+    "digest": "f319a800",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "ebbc26ff4b03054d117a190cc9331cb235da0a72",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.1179ms)\n✔ counts usage once per message id, keeping the largest output (45.1926ms)\n✔ splits cache writes into 5m and 1h (2.2935ms)\n✔ counts agent calls by dominant model family (4.9239ms)\n✔ measures prompt bytes as UTF-8 of the first user message (4.4515ms)\n✔ estimates cost and keeps unpriced models null (2.2911ms)\n✔ readJsonl tolerates CRLF and a partial last line (8.3343ms)\n✔ classifies every label family of the role table (0.9944ms)\n✔ status, progress, review log and report come out as separate rows (328.1672ms)\n✔ records review rounds per loop (9.9814ms)\n✔ counts tasks and the task loop (6.6245ms)\n✔ writes metrics.json and one csv row per run and role (65.0098ms)\n✔ groups sessions of one attempt with --runs (69.7774ms)\n✔ requires --root and --out (128.4481ms)\n✔ refuses --out inside the repository outside tools/measure/out (747.8676ms)\n✔ real price table is dated and sourced (0.3222ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (772.3592ms)\n✔ privacy scan catches a planted personal path and session id (8.7836ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (42.1693ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (31.7329ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (33.5045ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (38.7932ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (19.6117ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (29.3761ms)\n✔ prepare builds the sandbox and stops at authorize (4183.1499ms)\n✔ prepare refuses a work dir inside the repository (59.9067ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (95.385ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (215.3787ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (187.1676ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.5305ms)\nℹ tests 2616\nℹ suites 11\nℹ pass 2614\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 493177.8249",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-25T19:07:11.519Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Extrator tira o ANSI e reconhece o resumo do vitest",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/test-extract.mjs",
+        "plugins/productivity-tools/scripts/test-extract.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "test-extract.mjs now exports stripAnsi(text); extractTests and allTestNames strip CSI sequences before splitting (signatures unchanged). New format 'vitest' (after node-tap and node-spec): { format, exit, total, pass, fail, skipped, failedNames: null }; todo and expected fail are not counted; 'unknown' keeps failedNames []. Downstream code must treat extract.failedNames as possibly null. Six E44 tests added; red run exit 1 (missing stripAnsi export), green run 22/22. Nothing committed.",
+      "sha": "354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4",
+      "replacedBy": null,
+      "note": "test-extract.mjs now exports stripAnsi(text); extractTests and allTestNames strip CSI sequences before splitting (signatures unchanged).\nNew format 'vitest' (after node-tap and node-spec): { format, exit, total, pass, fail, skipped, failedNames: null }; todo and expected fail are not counted; 'unknown' keeps failedNames [].\nDownstream code must treat extract.failedNames as possibly null. Six E44 t",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "capture.mjs roda sem cor e entrega cauda e extrato sem ANSI",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/capture.mjs",
+        "plugins/productivity-tools/scripts/capture.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "capture.mjs now runs the child with NO_COLOR=1 and FORCE_COLOR=0 (always), and passes stripAnsi'd stdout to buildLine, so tail and extract are ANSI-free before signing. stdout.txt, stderr.txt, bytes, sha256, lines, stderr hashes and cmdDigest are unchanged (raw bytes); the failedNames cut only runs when it is an array (vitest keeps null, failedNamesCut 0). Three E44 tests (AC2, C5, C4) added: red exit 1 (44 pass, 3 fail), green 47/47; full plugin suite 2060/2060, lint 57 OK, plugin validate pass",
+      "sha": "b88669e2e49cd1d623d6bccc86d24eafb78708e1",
+      "replacedBy": null,
+      "note": "capture.mjs now runs the child with NO_COLOR=1 and FORCE_COLOR=0 (always), and passes stripAnsi'd stdout to buildLine, so tail and extract are ANSI-free before signing.\nstdout.txt, stderr.txt, bytes, sha256, lines, stderr hashes and cmdDigest are unchanged (raw bytes); the failedNames cut only runs when it is an array (vitest keeps null, failedNamesCut 0).\nThree E44 tests (AC2, C5, C4) added: red ",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-25T18:38:08.985Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-25T18:38:16.228Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-25T18:38:16.228Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-25T18:38:16.228Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-25T18:46:54.846Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-25T18:48:49.643Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T18:49:08.151Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T18:49:08.151Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-25T18:49:08.151Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-25T18:57:11.921Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-25T19:06:51.460Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T19:07:11.519Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-25T19:07:11.519Z"
+    }
+  ]
+}

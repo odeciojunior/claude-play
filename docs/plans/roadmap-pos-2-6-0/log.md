@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E44 | DEC-030 recorded (pending ratification) | `decisions.md` |
+| 2026-11-25 | E44 | E44 criteria compared: none changed; branch plan/pos-2-6-0-E44 em voo | `docs/plans/pos-2-6-0-E44/spec.md` |
+| 2026-11-25 | E44 | E44 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E44/progress.json`, `354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4`, `b88669e2e49cd1d623d6bccc86d24eafb78708e1` |
 | 2026-11-25 | - | DEC-027 a DEC-029 registradas (tarefa de 5 arquivos do E42; ordem de merge; revisão da estratégia no desfecho cache do E45) | `decisions.md` |
 | 2026-11-25 | - | planos de E42, E44, E45, E50 e E51 escritos (plan-tool check: 0 erros; aviso task-too-wide no E42) e aprovados por opus por delegação, com ajustes em E42, E45 e E50 | `docs/plans/pos-2-6-0-E42/plan.md` |
 | 2026-11-25 | - | release/pos-2.6.0 em voo; pendência de comentar #13 #15 #16 #20 removida (feita; ficou no commit 1ee2fa7 por falha da edição); pendência do vitest no E43 aberta | `state.md` |
