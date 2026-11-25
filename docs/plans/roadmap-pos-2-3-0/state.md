@@ -1,4 +1,4 @@
-Estratégia v1.3 -- 2026-11-24
+Estratégia v1.4 -- 2026-11-25
 
 <!-- roadmap:now -->
 1. E36 e E37 em série, agora que o E41 saiu na 2.5.0 (6abab96). Executa: executor. Aprova: dono via Fable (DEC-012). Depende de: E34 (publicado), E41 (publicado).

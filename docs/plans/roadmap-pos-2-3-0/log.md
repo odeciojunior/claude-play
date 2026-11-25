@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | - | estratégia v1.4: absorve DEC-049 a DEC-051 (orçamentos de tamanho do E36 e E37, teto da sonda do E37 em US$ 3,60, correções do cartão E37), decidida pelo Fable delegado | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-24 | E36 | DEC-049: trava de tamanho do E41 em discovery-slices.test.mjs passa ao orçamento do E36 (263.673 LF), decidido pelo Fable após o gate da onda 1 falhar só nela | `decisions.md` |
 | 2026-11-24 | E36 | E36 spec (R1-R16; decisões e aprovação pelo Fable, delegado pelo dono, com 5 correções aplicadas) e plano de 8 tarefas escritos | `docs/plans/pos-2-3-0-E36/plan.md` |
 | 2026-11-24 | E38 | E38 AC2 conferido pelo Fable (APROVADO COM RESSALVAS: execução WSL2 real, digest recalculado bate, procs Linux intacto até a 2.5.0) e ratificado pelo dono; versão e payload inferidos anotados no relatório | `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md` |
