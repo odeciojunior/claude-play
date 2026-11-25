@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E42 | F1 da revisão final (commits T2-T4 sem a linha de paridade agy) tratado na mensagem do merge, sem reescrever os SHAs | `b31ba00` |
+| 2026-11-25 | E42 | E42 merged into release/pos-2.6.0; G1 em dbc59e0 (árvore igual à do merge): exit 0, tests 2630, pass 2628, fail 0, skipped 2; lint productivity-tools 57 OK | `b31ba00` |
 | 2026-11-25 | E42 | DEC-032 recorded: medida diz onde ler a saída com --brief; paridade agy: pendente #13 | `b7f0dc9` |
 | 2026-11-25 | E42 | E42 criteria compared: none changed; o AC2 é provado também por gates.test.mjs (F2 da revisão final) | `docs/plans/pos-2-6-0-E42/spec.md` |
 | 2026-11-25 | E42 | E42 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E42/progress.json`, `38651fb3c74d84d65aa97fde1e5713e54f68bb9f`, `5a48b37e21ec8620603cc5431dbb53041dfb68bc`, `f0119227f102952b3d3aa2502f0e2910be247560`, `13fa3a2e7559e68f98965bc6ad3944d430dbb1fe` |
