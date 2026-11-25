@@ -150,6 +150,8 @@ const capList = (a, n, f = (x) => x) => (Array.isArray(a) ? a.slice(0, n).map(f)
 const pickSegments = (segs, piece) => { const a = Array.isArray(segs) ? segs : []; const hit = piece ? a.findIndex((s) => s && s.label === piece) : -1; return a.filter((_, i) => i === hit || i < (hit >= 4 ? 3 : 4)); };
 const cliJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 0 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
 export function buildRead({ status, brief, pending, head, porcelain }, E, piece, nonce = '') {
+  const refusedJson = (r) => { try { const o = JSON.parse(r.stdout); return r.exit === 1 && o && typeof o === 'object' && o.tool === 'roadmap' ? o : null; } catch { return null; } };
+  const ro = cliJson(status) ? null : refusedJson(status);
   const so = cliJson(status), bo = cliJson(brief), po = cliJson(pending);
   const num = (v) => (v == null || typeof v === 'number' || typeof v === 'boolean' ? v : cap(v, 20)); // a non-number stays a non-number, bounded
   const sum = (o) => ({ exitCode: num(o.summary && typeof o.summary === 'object' ? o.summary.exitCode : undefined) });
@@ -159,6 +161,7 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece,
     const row = panel && panel.find((p) => p && p.id === E);
     st = { tool: 'roadmap', summary: sum(so), result: panel ? { panel: row ? [{ id: row.id, segments: pickSegments(row.segments, piece).map((s) => ({ label: cap(s && s.label, 40), word: cap(s && s.word, 40), note: cap(s && s.note, 200), blqIds: [...new Set(String((s && s.note) || '').match(/\bBLQ-\d+\b/g) || [])].filter((x) => x.length <= 20).slice(0, 5) })), evidence: cap(row.evidence, 200), next: cap(row.next, 200) }] : [] } : {} };
   }
+  if (ro) st = { tool: 'roadmap', summary: sum(ro), errors: capList(ro.errors, 3, (e) => ({ code: String((e && e.code) == null ? '' : e.code).slice(0, 40) })), result: {} };
   let br = null;
   if (bo) {
     const c = bo.result && bo.result.checker;
@@ -187,7 +190,7 @@ export function buildRead({ status, brief, pending, head, porcelain }, E, piece,
   for (let n = Math.min(lines.length, 20) - 1; n >= 1 && over(); n--) d.porcelain = porc(n);
   const decs = pd && pd.result && pd.result.decisions;
   while (decs && decs.length && over()) decs.shift();
-  if (over() && st && st.result.panel && st.result.panel[0]) for (const g of st.result.panel[0].segments) g.note = cap(g.note, 80);
+  if (over() && st && st.result && st.result.panel && st.result.panel[0]) for (const g of st.result.panel[0].segments) g.note = cap(g.note, 80);
   return d;
 }
 

@@ -240,6 +240,15 @@ test('status --deliverable de id fora do painel: deliverable-unknown, exit 1', (
   assert.deepEqual(snapshot(f.dir), before);
 });
 
+test('contrato: status --deliverable E99 recusa com JSON tool roadmap, summary.exitCode 1 e sem result.panel', (t) => {
+  const f = makeFolder(t);
+  const r = cli(f.dir, 'status', '--deliverable', 'E99');
+  assert.equal(r.output.tool, 'roadmap');
+  assert.equal(r.output.summary.exitCode, 1);
+  assert.equal(r.output.errors[0].code, 'deliverable-unknown');
+  assert.equal(r.output.result && r.output.result.panel, undefined);
+});
+
 test('status --deliverable malformado sai 2 (usage)', (t) => {
   const f = makeFolder(t);
   for (const bad of ['-', 'X1']) {

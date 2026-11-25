@@ -231,6 +231,21 @@ test('read: a huge CLI answer is cut so the output stays under 8000 characters, 
   assert.match(d.porcelain, /\[\+\d+ lines cut\]$/);
 });
 
+test('read: a refused status (exit 1, CLI JSON) carries the codes with an empty result; brief and pending stay null', async () => {
+  const { buildRead } = await import('./verify-run.mjs');
+  const refusedOut = (errors) => ({ exit: 1, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 1 }, errors }) });
+  const base = { head: { exit: 0, stdout: 'abc\n' }, porcelain: { exit: 0, stdout: '' } };
+  const d = buildRead({ ...base, status: refusedOut([{ code: 'deliverable-unknown' }, { code: 'b'.repeat(100) }, { code: 'c' }, { code: 'd' }]), brief: refusedOut([{ code: 'x' }]), pending: refusedOut([{ code: 'y' }]) }, 'E99', 'code');
+  assert.deepEqual(d.status, { tool: 'roadmap', summary: { exitCode: 1 }, errors: [{ code: 'deliverable-unknown' }, { code: 'b'.repeat(40) }, { code: 'c' }], result: {} });
+  assert.equal(d.brief, null);
+  assert.equal(d.pendingDecisions, null);
+  const e = buildRead({ ...base, status: { exit: 1, stdout: JSON.stringify({ tool: 'roadmap', summary: { exitCode: 1 } }) }, brief: refusedOut([]), pending: refusedOut([]) }, 'E99', 'code');
+  assert.deepEqual(e.status.errors, []);
+  assert.deepEqual(e.status.result, {});
+  const n = buildRead({ ...base, status: { exit: 1, stdout: 'boom' }, brief: refusedOut([]), pending: refusedOut([]) }, 'E99', 'code');
+  assert.equal(n.status, null);
+});
+
 // Every cap filled: 100 pending ids of 20 chars, a 64-char head, 20 porcelain lines of 100 chars, the piece at segment 39, 5 BLQ ids of 20 chars in every note.
 const maxRead = async ({ porcelain = true, nonce = 'n'.repeat(80) } = {}) => {
   const { buildRead } = await import('./verify-run.mjs');
