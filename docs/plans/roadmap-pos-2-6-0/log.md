@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E43 | spec do E43 incluída em Agora, a pedido do dono | `docs/plans/roadmap-pos-2-6-0/state.md` |
 | 2026-11-25 | - | tracker atualizado depois do E42: próximos passos de E43, E50 e E52 sem a espera pelas dependências | `b31ba00` |
 | 2026-11-25 | E42 | E42 executado em plan/pos-2-6-0-E42, a pedido do dono; plano ajustado antes da execução (worktree e piso do G1 2625/2623) | `5a558e3` |
 | 2026-11-25 | E42 | F1 da revisão final (commits T2-T4 sem a linha de paridade agy) tratado na mensagem do merge, sem reescrever os SHAs | `b31ba00` |

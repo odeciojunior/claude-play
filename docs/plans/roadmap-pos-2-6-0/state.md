@@ -2,7 +2,8 @@ Estratégia v1.2 -- 2026-11-25
 
 <!-- roadmap:now -->
 1. Executar os planos do E50 e do E51, nessa ordem. Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E42 integrado em b31ba00).
-2. Executar o plano do E45 por último; a tarefa 1 é paga (DEC-025, DEC-026). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: -.
+2. Escrever a spec do E43, próximo do caminho crítico; pode correr junto com o E50. Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E42 e E44 em release/pos-2.6.0).
+3. Executar o plano do E45 por último; a tarefa 1 é paga (DEC-025, DEC-026). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: -.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
