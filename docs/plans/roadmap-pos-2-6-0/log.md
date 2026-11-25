@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E43 | DEC-033 recorded: total do vitest no gateFromCapture fora do E43 e deste roadmap; spec escrita saiu de Agora | `decisions.md` |
+| 2026-11-25 | E50 | E50 execution started (plan-coordinator); plano ajustado para worktree próprio e piso do G1 2630/2628 | `02d3ec6` |
+| 2026-11-25 | E43 | E43 spec written; aprovada com dois ajustes por opus por delegação (DEC-021) | `45f08d5` |
 | 2026-11-25 | E43 | spec do E43 incluída em Agora, a pedido do dono | `docs/plans/roadmap-pos-2-6-0/state.md` |
 | 2026-11-25 | - | tracker atualizado depois do E42: próximos passos de E43, E50 e E52 sem a espera pelas dependências | `b31ba00` |
 | 2026-11-25 | E42 | E42 executado em plan/pos-2-6-0-E42, a pedido do dono; plano ajustado antes da execução (worktree e piso do G1 2625/2623) | `5a558e3` |
