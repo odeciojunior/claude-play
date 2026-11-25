@@ -152,10 +152,10 @@ test('a spec emit and a plan emit of 19 KB or more are put back by slices and th
   assert.match(first.prompt, /capture\.mjs" run --nonce \S+ --task E1-load --cwd \S+ -- /);
 });
 
-test('the labels follow the commands: spec-load<k>, -emit, -head, -porcelain, plan-load<k>, -emit, -blob, -head, -porcelain and -emit-slice<j>', async () => {
+test('the labels follow the commands: spec-load<k>, -emit, -blob (E37 R3), -head, -porcelain, plan-load<k>, -emit, -blob, -head, -porcelain and -emit-slice<j>', async () => {
   const x = await drive();
   const L = loadLabels(x.labels);
-  assert.deepEqual(L.filter((l) => !/-slice\d+$/.test(l)), ['E1:spec-load1', 'E1:spec-load1-emit', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain']);
+  assert.deepEqual(L.filter((l) => !/-slice\d+$/.test(l)), ['E1:spec-load1', 'E1:spec-load1-emit', 'E1:spec-load1-blob', 'E1:spec-load1-head', 'E1:spec-load1-porcelain', 'E1:plan-load1', 'E1:plan-load1-emit', 'E1:plan-load1-blob', 'E1:plan-load1-head', 'E1:plan-load1-porcelain']);
   assert.ok(L.includes('E1:spec-load1-emit-slice0') && L.includes('E1:spec-load1-emit-slice1'));
   assert.ok(L.indexOf('E1:spec-load1-emit') < L.indexOf('E1:spec-load1-emit-slice0') && L.indexOf('E1:spec-load1-emit-slice0') < L.indexOf('E1:spec-load1-head'));
 });
