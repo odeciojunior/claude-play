@@ -1,4 +1,4 @@
-Estratégia v1.0 -- 2026-11-25
+Estratégia v1.1 -- 2026-11-25
 
 <!-- roadmap:now -->
 1. Escrever a spec do E42 com spec-writer no worktree de release/pos-2.6.0 (DEC-020). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: -.
@@ -29,7 +29,6 @@ Estratégia v1.0 -- 2026-11-25
 - (dono) autorizar push e tag do E54
 - (executor) registrar o shq do coordinator.js como pendente fora do escopo (DEC-015)
 - (executor) comentar nas issues #13, #15, #16 e #20 o adiamento e o gatilho (DEC-008, DEC-019)
-- (dono) aprovar a estratégia v1.1 (absorve DEC-020 e DEC-021: 'via Fable' passa a 'via opus' nos riscos do E42)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
