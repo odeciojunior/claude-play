@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-24 | E36 | E36 spec (R1-R16; decisões e aprovação pelo Fable, delegado pelo dono, com 5 correções aplicadas) e plano de 8 tarefas escritos | `docs/plans/pos-2-3-0-E36/plan.md` |
 | 2026-11-24 | E38 | E38 AC2 conferido pelo Fable (APROVADO COM RESSALVAS: execução WSL2 real, digest recalculado bate, procs Linux intacto até a 2.5.0) e ratificado pelo dono; versão e payload inferidos anotados no relatório | `docs/reports/2026-11-21-E38-arnes-e-procs-linux.md` |
 | 2026-11-24 | - | estratégia v1.3: absorve DEC-044 a DEC-048 | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-24 | E35 | E35 AC2 ratificado pelo dono; E35 medido (lote de confirmação: 8 válidas, 26/32, US$ 8,31) | `docs/reports/2026-11-24-E35-confirmacao-revisor-opus.md` |
