@@ -3308,6 +3308,40 @@ test('recordVerdict: releitura com painel de uma linha só do E1 passa; linha de
   bad((x) => { x.read.status = panelOut('plano').replace('"id":"E1"', '"id":"E2"'); }, /reread panel has no segment of E1/);
 });
 
+// E37 T9 (S2-08, C5): a refused status re-read names the refusal; "no panel" stays for a status that is missing.
+test('recordVerdict: refused status re-read cites the code, or none when the JSON has no errors or is not JSON (E37 T9)', () => {
+  bad((v) => { v.read.status = failJson(1, [{ code: 'deliverable-unknown' }]); }, /^reread status --json refused: deliverable-unknown$/m);
+  bad((v) => { v.read.status = failJson(1, [{ code: 'a' }, { code: 'b' }]); }, /^reread status --json refused: a, b$/m);
+  bad((v) => { v.read.status = failJson(1, [{ code: 'deliverable-unknown' }]); }, /^(?!.*has no panel)/s);
+  const noCode = VX();
+  noCode.read.status = JSON.stringify({ tool: 'roadmap', summary: { exitCode: 1 }, result: {} });
+  assert.deepEqual(PU.recordVerdict(noCode).failures, ['reread status --json refused']);
+  const notJson = VX();
+  notJson.read.status = null;
+  notJson.read.exits = { status: 2 };
+  assert.deepEqual(PU.recordVerdict(notJson).failures, ['reread status --json refused']);
+  const missing = VX();
+  missing.read.status = null;
+  missing.read.exits = { status: 0 };
+  assert.deepEqual(PU.recordVerdict(missing).failures, ['reread status --json is missing or has no panel']);
+  const plain = VX();
+  plain.read.status = '';
+  assert.deepEqual(PU.recordVerdict(plain).failures, ['reread status --json is missing or has no panel']);
+});
+
+test('docs stage: a refused status re-read reaches the verdict with its code and the fix round cites it (E37 T9)', async () => {
+  const over = (l, prompt) => {
+    if (!/^E1:docs-read\d$/.test(l)) return undefined;
+    const p = verifyArg(prompt, 'read');
+    const ok = (stdout) => ({ exit: 0, stdout });
+    const d = buildRead({ status: { exit: 1, stdout: failJson(1, [{ code: 'deliverable-unknown' }]) }, brief: ok(readWith('e').brief), pending: ok(''), head: ok('m2'), porcelain: ok('') }, p.deliverable);
+    return { exit: 0, stdout: sliceStdout({ tool: 'verify-run', mode: 'read', nonce: p.nonce }, JSON.stringify(canon(d)), p.slice === undefined ? 0 : p.slice) };
+  };
+  const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over });
+  assert.match(calls.find((c) => c.label === 'E1:docs2').prompt, /reread status --json refused: deliverable-unknown/);
+  assert.equal(r.results[0].merge.docsOk, false);
+});
+
 test('status --deliverable: a releitura e o docs-measure pedem só a linha do E; nenhum prompt chama status sem a flag', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   for (const l of ['E1:status-d-read', 'E1:docs-read1']) {

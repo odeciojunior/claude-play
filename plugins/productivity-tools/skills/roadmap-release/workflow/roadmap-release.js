@@ -1058,8 +1058,12 @@ function recordVerdict({ expected, results, read, E, word, piece, blockedStatus 
   if (String(rd.porcelain == null ? '' : rd.porcelain).trim()) failures.push('the integration worktree is not clean after the record (git status --porcelain is not empty): the record agent did not commit')
   const status = parseCli(rd.status)
   const panel = status && status.result && Array.isArray(status.result.panel) ? status.result.panel : null
-  if (!panel) failures.push('reread status --json is missing or has no panel')
-  else {
+  const exSt = rd.exits && rd.exits.status
+  const refused = status ? !!status.summary && status.summary.exitCode !== 0 : typeof exSt === 'number' && exSt !== 0
+  if (!panel) {
+    const codes = status && Array.isArray(status.errors) ? status.errors.map(e => e && e.code).filter(Boolean).join(', ') : ''
+    failures.push(refused ? 'reread status --json refused' + (codes ? ': ' + codes : '') : 'reread status --json is missing or has no panel')
+  } else {
     const row = panel.find(p => p && p.id === E)
     const segs = row && Array.isArray(row.segments) ? row.segments : []
     const seg = piece ? segs.find(s => s.label === piece) : segs[0]
@@ -2317,7 +2321,7 @@ ${BASH_ONLY}`,
       meas = rd && mm ? { ...rd, measureOk: mm.measureOk, measureDetails: mm.measureDetails } : null
       if (docs && meas) {
         const maybeSet = new Set(docsMaybe)
-        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '' }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
+        verdict = recordVerdict({ expected: cmds, results: { error: docs.error, runs: (docs.runs || []).filter(r => !(r && maybeSet.has(r.command) && !cmds.includes(r.command))) }, read: { status: meas.status, brief: meas.brief, pendingDecisions: '', head: meas.head, porcelain: '', exits: meas.exits }, E, word: STATUS_AFTER_MERGE, piece: docPiece, blockedStatus: STATUSES.blocked })
         if (!cmds.length) verdict.failures = verdict.failures.filter(f => f !== 'the record agent ran no command')
         verdict.ok = verdict.failures.length === 0
         const bc = parseCli(meas.brief)
