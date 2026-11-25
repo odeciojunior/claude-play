@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 // Extrator deterministico da saida do node:test (TAP e spec). Puro: o exit vem de quem chama.
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readDataBlock } from '../lib/data-block.mjs';
+import { MAX_COPY_BYTES, canon, fnv1a } from '../lib/plan-digest.mjs';
+import { checkRemovedTests } from './spec-tool.mjs';
 
 const indentOf = (line) => line.length - line.trimStart().length;
 
@@ -132,10 +137,113 @@ export function extractTests(text, exit) {
   };
 }
 
+// E36: subcomando removed. Confere testes removidos declarados (removedTests) contra a base, HEAD e a saida gravada.
+const nameKey = (n) => String(n).replace(/^[^\s:]+\.[A-Za-z0-9]+::/, '');
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+
+function gitShow(cwd, spec) {
+  const r = spawnSync('git', ['-C', cwd, 'show', spec], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout.replace(/\r\n/g, '\n') : null;
+}
+
+// Posicoes do literal do nome entre aspas simples, duplas ou crases (escapado como o JS escreve); template com ${ nao casa.
+function literalHits(text, name) {
+  const hits = [];
+  for (const q of ["'", '"', '`']) {
+    if (q === '`' && name.includes('${')) continue;
+    const body = name.replace(/\\/g, '\\\\').split(q).join('\\' + q);
+    const lit = q + body + q;
+    for (let at = text.indexOf(lit); at >= 0; at = text.indexOf(lit, at + lit.length)) hits.push(at);
+  }
+  return hits.sort((a, b) => a - b);
+}
+
+const TEST_CALL = /\b(?:test|it)(?:\.(?:skip|only|todo))?\s*\(\s*$/;
+
+function refuse(nonce, error) {
+  console.log(JSON.stringify({ tool: 'test-extract', command: 'removed', nonce, error }));
+  return 2;
+}
+
+function removedCommand(args) {
+  const opt = {};
+  const flags = new Set();
+  for (let k = 0; k < args.length; k++) {
+    if (args[k] === '--single-tests-gate') flags.add('single');
+    else if (args[k].startsWith('--')) opt[args[k].slice(2)] = args[++k];
+  }
+  const nonce = opt.nonce;
+  for (const k of ['nonce', 'spec', 'plan', 'base', 'cwd', 'output', 'sha', 'gate']) {
+    if (typeof opt[k] !== 'string' || opt[k] === '') return refuse(nonce, `falta --${k}`);
+  }
+  let outBuf;
+  try { outBuf = fs.readFileSync(opt.output); } catch { return refuse(nonce, 'saida ilegivel'); }
+  const outputSha = sha256(outBuf);
+  if (outputSha !== opt.sha) return refuse(nonce, 'o sha256 de --output nao e o de --sha');
+  const entries = [];
+  for (const [label, file] of [['spec', opt.spec], ['plano', opt.plan]]) {
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return refuse(nonce, `${label} ilegivel`); }
+    const read = readDataBlock(text);
+    if (read.error) return refuse(nonce, `${label}: ${read.error.message}`);
+    const data = read.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !('removedTests' in data)) continue;
+    const errs = [];
+    checkRemovedTests(data.removedTests, (code, ref, message) => errs.push(`${code} ${ref}: ${message}`), () => {}, 'removedTests');
+    if (errs.length) return refuse(nonce, `${label}: ${errs[0]}`);
+    entries.push(...data.removedTests);
+  }
+  const base = spawnSync('git', ['-C', opt.cwd, 'rev-parse', '--verify', `${opt.base}^{commit}`], { encoding: 'utf8' });
+  if (base.status !== 0) return refuse(nonce, 'base invalida');
+
+  const pairs = new Map();
+  for (const e of entries) {
+    if ('gate' in e && e.gate !== opt.gate) continue;
+    const key = JSON.stringify([e.file, e.name]);
+    const cur = pairs.get(key) || { file: e.file, name: e.name, gated: false };
+    if ('gate' in e) cur.gated = true;
+    pairs.set(key, cur);
+  }
+  const running = new Set(allTestNames(outBuf.toString('utf8')).map(nameKey));
+  const cache = new Map();
+  const show = (spec) => {
+    if (!cache.has(spec)) cache.set(spec, gitShow(opt.cwd, spec));
+    return cache.get(spec);
+  };
+  let verified = 0;
+  const unverified = [];
+  for (const p of pairs.values()) {
+    const bad = (reason) => unverified.push({ file: p.file, name: p.name, reason });
+    if (!p.gated && !flags.has('single')) { bad('gate obrigatório'); continue; }
+    const before = show(`${opt.base}:${p.file}`);
+    if (before === null) { bad('arquivo ausente na base'); continue; }
+    const hits = literalHits(before, p.name);
+    if (hits.length === 0) { bad('nenhum literal do nome na base (teste gerado em laço ou nome diferente)'); continue; }
+    if (hits.length > 1) { bad(`o nome aparece ${hits.length} vezes na base`); continue; }
+    if (!TEST_CALL.test(before.slice(0, hits[0]))) { bad('o literal não é o 1º argumento de test( ou it('); continue; }
+    const after = show(`HEAD:${p.file}`);
+    if (after !== null && literalHits(after, p.name).length > 0) { bad('o nome continua no arquivo em HEAD'); continue; }
+    if (running.has(nameKey(p.name))) { bad('o teste ainda roda na saída da branch'); continue; }
+    verified++;
+  }
+  const mk = (list) => {
+    const rest = { tool: 'test-extract', command: 'removed', nonce, gate: opt.gate, base: opt.base, outputSha, verified, unverified: list, unverifiedCut: unverified.length - list.length };
+    return { ...rest, digest: fnv1a(JSON.stringify(canon(rest))) };
+  };
+  let keep = unverified.slice();
+  while (keep.length && Buffer.byteLength(JSON.stringify(mk(keep))) > MAX_COPY_BYTES) keep.pop();
+  console.log(JSON.stringify(mk(keep)));
+  return 0;
+}
+
 if (fileURLToPath(import.meta.url) === fs.realpathSync(globalThis.process.argv[1] ?? '')) {
   const args = globalThis.process.argv.slice(2);
-  const i = args.indexOf('--exit');
-  const exit = i >= 0 ? Number(args[i + 1]) : null;
-  const file = args.find((a, k) => a !== '--exit' && k !== i + 1);
-  console.log(JSON.stringify(extractTests(fs.readFileSync(file, 'utf8'), exit)));
+  if (args[0] === 'removed') {
+    globalThis.process.exitCode = removedCommand(args.slice(1));
+  } else {
+    const i = args.indexOf('--exit');
+    const exit = i >= 0 ? Number(args[i + 1]) : null;
+    const file = args.find((a, k) => a !== '--exit' && k !== i + 1);
+    console.log(JSON.stringify(extractTests(fs.readFileSync(file, 'utf8'), exit)));
+  }
 }

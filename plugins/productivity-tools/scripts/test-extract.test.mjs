@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { extractTests, allTestNames } from './test-extract.mjs';
+import { MAX_COPY_BYTES, canon, fnv1a, checkRun } from '../lib/plan-digest.mjs';
 
 const SUITE = [
   "const { describe, it } = require('node:test');",
@@ -164,4 +166,195 @@ for (const reporter of ['tap', 'spec']) {
 test('allTestNames: texto desconhecido devolve lista vazia', () => {
   assert.deepEqual(allTestNames('hello world'), []);
   assert.deepEqual(allTestNames(undefined), []);
+});
+
+// E36 T3: subcomando removed (repositorio git temporario com base e HEAD, saida TAP gravada).
+const SELF = fileURLToPath(new URL('./test-extract.mjs', import.meta.url));
+const GITARGS = ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false'];
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const sh = (cwd, ...args) => {
+  const r = spawnSync('git', [...GITARGS, ...args], { cwd, encoding: 'utf8' });
+  assert.equal(r.status, 0, args.join(' ') + ': ' + r.stderr);
+  return r.stdout.trim();
+};
+const T = (name) => `test('${name}', () => {});`;
+const BASE_A = [
+  "import { test, describe, it } from 'node:test';",
+  T('single removed'),
+  'for (const i of [1, 2]) test(`loop ${i}`, () => {});',
+  T('dup'),
+  T('dup'),
+  "describe('grupo', () => {",
+  "  it('g1', () => {});",
+  "  it.skip('g2', () => {});",
+  "  it('g3', () => {});",
+  '});',
+  T('stays'),
+  String.raw`test('com "aspas" e \\ barra', () => {});`,
+  T('moved'),
+  '',
+].join('\n');
+const HEAD_A = [
+  "import { test } from 'node:test';",
+  T('stays'),
+  '',
+].join('\n');
+const BASE_B = ["import { test } from 'node:test';", T('crlf one'), ''].join('\r\n');
+const HEAD_C = ["import { test } from 'node:test';", T('moved'), ''].join('\n');
+const TAP = ['TAP version 13', 'ok 1 - stays', 'ok 2 - moved', '1..2', '# tests 2', '# pass 2', '# fail 0', '# skipped 0', ''].join('\n');
+const dataFile = (obj) => 'texto\n\n```json data\n' + JSON.stringify(obj, null, 2) + '\n```\n';
+const ENTRY = (file, name, extra = {}) => ({ file, name, why: 'obsoleto', ...extra });
+
+function removedRepo(specObj, planObj, { output = TAP } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'te-removed-'));
+  const repo = path.join(dir, 'repo');
+  fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+  sh(repo, 'init', '-q');
+  fs.writeFileSync(path.join(repo, 'tests', 'a.test.mjs'), BASE_A);
+  fs.writeFileSync(path.join(repo, 'tests', 'b.test.mjs'), BASE_B);
+  sh(repo, 'add', '.');
+  sh(repo, 'commit', '-q', '-m', 'base');
+  const base = sh(repo, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(repo, 'tests', 'a.test.mjs'), HEAD_A);
+  fs.writeFileSync(path.join(repo, 'tests', 'c.test.mjs'), HEAD_C);
+  fs.rmSync(path.join(repo, 'tests', 'b.test.mjs'));
+  sh(repo, 'add', '-A');
+  sh(repo, 'commit', '-q', '-m', 'head');
+  const spec = path.join(dir, 'spec.md');
+  const plan = path.join(dir, 'plan.md');
+  const out = path.join(dir, 'out.tap');
+  fs.writeFileSync(spec, typeof specObj === 'string' ? specObj : dataFile(specObj));
+  fs.writeFileSync(plan, typeof planObj === 'string' ? planObj : dataFile(planObj));
+  fs.writeFileSync(out, output);
+  const args = (extra = []) => [SELF, 'removed', '--nonce', 'n-1', '--spec', spec, '--plan', plan, '--base', base, '--cwd', repo, '--output', out, '--sha', sha256(fs.readFileSync(out)), '--gate', 'tests', ...extra];
+  const call = (extra = []) => {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const r = spawnSync(process.execPath, args(extra), { encoding: 'utf8', env });
+    return { code: r.status, stdout: r.stdout, json: JSON.parse(r.stdout) };
+  };
+  return { dir, base, args, call };
+}
+
+const SPEC_ENTRIES = {
+  removedTests: [
+    ENTRY('tests/a.test.mjs', 'single removed'),
+    ENTRY('tests/a.test.mjs', 'loop ${i}'),
+    ENTRY('tests/a.test.mjs', 'dup'),
+    ENTRY('tests/a.test.mjs', 'grupo'),
+    ENTRY('tests/a.test.mjs', 'g1', { gate: 'tests' }),
+    ENTRY('tests/a.test.mjs', 'g2', { gate: 'tests' }),
+    ENTRY('tests/a.test.mjs', 'g3', { gate: 'tests' }),
+    ENTRY('tests/a.test.mjs', 'stays'),
+    ENTRY('tests/a.test.mjs', 'com "aspas" e \\ barra'),
+    ENTRY('tests/b.test.mjs', 'crlf one'),
+    ENTRY('tests/a.test.mjs', 'moved'),
+    ENTRY('tests/a.test.mjs', 'outro gate', { gate: 'integration' }),
+  ],
+};
+const PLAN_ENTRIES = { removedTests: [ENTRY('tests/a.test.mjs', 'single removed', { gate: 'tests' })] };
+
+test('removed: C1-C5, CRLF, escape, arquivo apagado e par repetido com --single-tests-gate', () => {
+  const r = removedRepo(SPEC_ENTRIES, PLAN_ENTRIES);
+  try {
+    const { code, json, stdout } = r.call(['--single-tests-gate']);
+    assert.equal(code, 0, stdout);
+    assert.equal(json.verified, 6);
+    assert.equal(json.gate, 'tests');
+    assert.equal(json.base, r.base);
+    assert.equal(json.unverifiedCut, 0);
+    const why = Object.fromEntries(json.unverified.map((u) => [u.name, u.reason]));
+    assert.deepEqual(Object.keys(why).sort(), ['dup', 'grupo', 'loop ${i}', 'moved', 'stays']);
+    assert.match(why['loop ${i}'], /nenhum literal/);
+    assert.match(why.dup, /2 vezes/);
+    assert.match(why.grupo, /test\( ou it\(/);
+    assert.match(why.stays, /continua no arquivo em HEAD/);
+    assert.match(why.moved, /ainda roda/);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
+test('removed: entradas sem gate sem --single-tests-gate saem com "gate obrigatório"', () => {
+  const r = removedRepo(SPEC_ENTRIES, PLAN_ENTRIES);
+  try {
+    const { code, json } = r.call();
+    assert.equal(code, 0);
+    assert.equal(json.verified, 4);
+    const why = Object.fromEntries(json.unverified.map((u) => [u.name, u.reason]));
+    assert.equal(why['com "aspas" e \\ barra'], 'gate obrigatório');
+    assert.equal(why['crlf one'], 'gate obrigatório');
+    assert.equal(why['outro gate'], undefined);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
+test('removed: a linha passa por checkRun e o describe com 3 testes dá verified 3, não 4', () => {
+  const only = { removedTests: ['grupo', 'g1', 'g2', 'g3'].map((n) => ENTRY('tests/a.test.mjs', n)) };
+  const r = removedRepo(only, { removedTests: [] });
+  try {
+    const { stdout, json } = r.call(['--single-tests-gate']);
+    assert.equal(json.verified, 3);
+    assert.deepEqual(json.unverified.map((u) => u.name), ['grupo']);
+    const c = checkRun(stdout, 'test-extract', 'n-1');
+    assert.equal(c.ok, true, c.why);
+    const { digest, ...rest } = json;
+    assert.equal(digest, fnv1a(JSON.stringify(canon(rest))));
+    assert.equal(checkRun(stdout, 'test-extract', 'outro').ok, false);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
+test('removed: unverified é cortado para caber em MAX_COPY_BYTES, com unverifiedCut', () => {
+  const many = { removedTests: Array.from({ length: 80 }, (_, i) => ENTRY('tests/a.test.mjs', 'inexistente '.repeat(8) + i)) };
+  const r = removedRepo(many, { removedTests: [] });
+  try {
+    const { stdout, json } = r.call(['--single-tests-gate']);
+    assert.equal(json.verified, 0);
+    assert.ok(Buffer.byteLength(stdout.trim()) <= MAX_COPY_BYTES, String(Buffer.byteLength(stdout)));
+    assert.ok(json.unverifiedCut > 0);
+    assert.equal(json.unverified.length + json.unverifiedCut, 80);
+    assert.equal(checkRun(stdout, 'test-extract', 'n-1').ok, true);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
+});
+
+test('removed: recusas assinadas com nonce e exit 2 (sha divergente, lista inválida, bloco ausente, base inválida)', () => {
+  const r = removedRepo(SPEC_ENTRIES, PLAN_ENTRIES);
+  try {
+    const args = r.args(['--single-tests-gate']);
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const run = (a) => {
+      const p = spawnSync(process.execPath, a, { encoding: 'utf8', env });
+      return { code: p.status, json: JSON.parse(p.stdout) };
+    };
+    const setArg = (name, value) => {
+      const a = args.slice();
+      a[a.indexOf(name) + 1] = value;
+      return a;
+    };
+    const bad = run(setArg('--sha', 'f'.repeat(64)));
+    assert.equal(bad.code, 2);
+    assert.deepEqual(Object.keys(bad.json), ['tool', 'command', 'nonce', 'error']);
+    assert.equal(bad.json.tool, 'test-extract');
+    assert.equal(bad.json.command, 'removed');
+    assert.equal(bad.json.nonce, 'n-1');
+    assert.match(bad.json.error, /sha256/);
+    assert.equal(checkRun(JSON.stringify(bad.json), 'test-extract', 'n-1').ok, false);
+
+    const specPath = args[args.indexOf('--spec') + 1];
+    fs.writeFileSync(specPath, dataFile({ removedTests: 'x' }));
+    const inv = run(args);
+    assert.equal(inv.code, 2);
+    assert.match(inv.json.error, /field-type/);
+    fs.writeFileSync(specPath, 'sem bloco');
+    assert.equal(run(args).code, 2);
+    assert.equal(run(setArg('--base', 'nao-existe')).code, 2);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
 });
