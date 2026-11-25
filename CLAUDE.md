@@ -1,5 +1,17 @@
 # CLAUDE.md
 
+<!-- agents-md:inicio -->
+## AGENTS.md e CLAUDE.md
+
+Cada `AGENTS.md` deste repositório é um link simbólico relativo para o `CLAUDE.md` da mesma pasta. Outros agentes (Antigravity, Codex e afins) leem o `AGENTS.md`, o Claude Code lê o `CLAUDE.md`, e os dois são o mesmo arquivo. Vale para a sessão principal e para todo subagent:
+
+- Edite sempre o `CLAUDE.md`, nunca o `AGENTS.md`. Um editor que grava por arquivo temporário troca o link por um arquivo comum, e os dois passam a divergir em silêncio.
+- Não apague, copie nem recrie `AGENTS.md` à mão. Para criar, conferir ou reparar os links, use o skill global `sync-agents-md`.
+- Ao criar um `CLAUDE.md` numa subpasta, rode o skill para gerar o `AGENTS.md` dela.
+- No git, o `AGENTS.md` fica com modo `120000` (symlink), com `core.symlinks=true` no `.git/config`.
+- Mantenha cada `CLAUDE.md` abaixo de 24 KB e de 200 linhas: o Antigravity trunca acima de 24 KB, e o Claude Code recomenda menos de 200 linhas. Para medir e decidir o que distribuir por pastas, use a análise de saúde do mesmo skill.
+<!-- agents-md:fim -->
+
 Claude Code plugin marketplace (`claude-play`). Install plugins with `claude plugin install <plugin>@claude-play`.
 
 ## Rules that matter
