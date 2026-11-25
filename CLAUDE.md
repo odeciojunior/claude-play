@@ -42,35 +42,13 @@ Commits: `type(scope): description` (`feat`, `fix`, `docs`, `chore`).
 
 ## Layout
 
-```
-.claude-plugin/marketplace.json  # Catalog & categories (no version)
-plugins/<name>/
-  .claude-plugin/plugin.json  # Kebab-case dir=name; required: name, description, version, author, license, keywords
-  skills/<skill>/  # SKILL.md, references/, scripts/, workflow/
-  agents/<agent>.md  # Shipped subagents (sql-server-tools, productivity-tools)
-  references/  # Plugin-root reference packs (sql-server-tools)
-  lib/  # Pure modules; .claude/rules/workflows-and-lib.md (productivity-tools module/embed map)
-  scripts/  # CLI/setup/check scripts; .claude/rules/workflows-and-lib.md
-plugins/_template/  # Protected starter template
-.claude/agents/plugin-reviewer.md  # Repo-local reviewer: "review plugin X"
-.claude/hooks/*.mjs  # Wired in .claude/settings.json
-.claude/rules/*.md  # Path-scoped rules
-docs/plans/  # Designs, plans, roadmap-<topic>/, <topic>-E<n>/
-docs/releases/  # Published release notes
-docs/reports/  # Research reports
-docs/diagrams/repo-architecture.{md,excalidraw}
-docs/claude-code-extensibility-reference.md  # Spec digest: plugin/skill/hook/agent formats
-tools/measure/  # Not shipped; .claude/rules/measure.md (--work/--out/paid-run rules)
-```
+- `plugins/<name>/.claude-plugin/plugin.json`: directory name = plugin name (kebab-case); required keys `name`, `description`, `version`, `author`, `license`, `keywords`.
+- `plugins/productivity-tools/{lib,scripts}/`: module and embed map in `.claude/rules/workflows-and-lib.md`.
+- `.claude/agents/plugin-reviewer.md`: repo-local reviewer ("review plugin X"); hooks in `.claude/rules/hooks.md`.
+- `docs/claude-code-extensibility-reference.md`: spec digest of plugin, skill, hook and agent formats.
+- `tools/measure/`: not shipped; rules in `.claude/rules/measure.md`.
 
 Human table: `README.md`. Adding/removing a plugin updates `marketplace.json`, `README.md`, and `docs/diagrams/repo-architecture.{md,excalidraw}` (validate `.excalidraw`).
-
-## Hooks
-
-Node >= 18:
-
-- `protect-template.mjs` (PreToolUse, `Edit|MultiEdit|Write|NotebookEdit`): exit 2 blocks `plugins/_template/` edits (normalizes `\`, case, `..`); shell commands unguarded.
-- `validate-marketplace-json.mjs` (PostToolUse, same matcher): runs 9 checks on `marketplace.json` (incl. `plugin.json` sync, no entry `version`); prints `{"decision":"block","reason":...}` on fail/error (no output = pass). Test: `echo '{"tool_input":{"file_path":".claude-plugin/marketplace.json"}}' | node .claude/hooks/validate-marketplace-json.mjs`.
 
 ## Windows
 
