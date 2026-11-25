@@ -1,6 +1,6 @@
 # Plano E50 -- Testes portáveis e disparador do lint
 
-Spec: `docs/plans/pos-2-6-0-E50/spec.md`. Cobre REQ-014 (#10) e REQ-015 (#29). Duas fatias independentes, uma tarefa e um commit por fatia, sem dependência entre elas. Todos os caminhos são relativos à raiz do repositório.
+Spec: `docs/plans/pos-2-6-0-E50/spec.md`. Cobre REQ-014 (#10) e REQ-015 (#29). Duas fatias independentes, uma tarefa e um commit por fatia, sem dependência entre elas. Branch `plan/pos-2-6-0-E50`, no worktree `D:/projects/claude-play-wt/pos-2-6-0-E50`, com merge em `release/pos-2.6.0` depois da conferência. Todos os caminhos são relativos à raiz do repositório.
 
 ## Estado medido na escrita do plano
 
@@ -67,7 +67,7 @@ Passos:
 
 ## Fechamento
 
-Pronto quando os dois critérios estão verdes em `release/pos-2.6.0` com os gates G1, G2 e G3 do roadmap verdes. A linha de base do G1 está na spec do E42 (`docs/plans/pos-2-6-0-E42/spec.md`). Não há bump de versão, push, tag nem comentário em issue.
+Pronto quando os dois critérios estão verdes em `release/pos-2.6.0` com os gates G1, G2 e G3 do roadmap verdes. Linha de base do G1, medida no merge do E42 (`b31ba00`): exit 0, tests 2630, pass 2628, fail 0, skipped 2. Pelo Git Bash, com o worktree parado, o G1 exige exit 0, `fail 0`, tests >= 2630 e pass >= 2628. Não há bump de versão, push, tag nem comentário em issue.
 
 ## Bloco de dados
 
@@ -79,6 +79,8 @@ Pronto quando os dois critérios estão verdes em `release/pos-2.6.0` com os gat
   "spec": "spec.md",
   "roadmap": "docs/plans/roadmap-pos-2-6-0/",
   "constraints": [
+    "Trabalhar só no worktree D:/projects/claude-play-wt/pos-2-6-0-E50, branch plan/pos-2-6-0-E50.",
+    "G1 roda pelo Git Bash com o worktree parado; linha de base: exit 0, tests 2630, pass 2628, fail 0, skipped 2 (medida no merge do E42, b31ba00).",
     "Sem bump de versão em nenhum plugin; o bump é do E54 (DEC-003).",
     "Autonomia só local: sem push, tag ou comentário em issue (DEC-004).",
     "O FAIL do lint vale só para a pasta commands/ e para as chaves commands ou skills do plugin.json (DEC-013, DEC-024).",
