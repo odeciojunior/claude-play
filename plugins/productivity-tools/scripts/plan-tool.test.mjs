@@ -1115,3 +1115,47 @@ test('E36 removedTests: leanEmit carries it only when non-empty; digest unchange
   assert.deepEqual(withList.plan.removedTests, list);
   assert.notEqual(withList.digest, lean.digest);
 });
+
+// ---- E37 T1: --no-spec ----
+test('--no-spec: check and emit pass over missing or invalid spec, fail without the flag', () => {
+  const dir = tmpDir();
+  try {
+    fs.writeFileSync(path.join(dir, 'bad-spec.md'), mutateSpec((d) => delete d.rulings[0].basis));
+    const cases = { 'missing.md': 'nao-existe.md', 'invalid.md': 'bad-spec.md' };
+    for (const [name, specRef] of Object.entries(cases)) {
+      const plan = path.join(dir, name);
+      fs.writeFileSync(plan, mutate((d) => (d.spec = specRef)));
+      const without = runCli(['check', plan]);
+      assert.equal(without.status, 1, name);
+      assert.match(without.stdout, /ERROR spec-invalid/);
+      const ck = runCli(['check', plan, '--no-spec']);
+      assert.equal(ck.status, 0, ck.stdout + ck.stderr);
+      assert.doesNotMatch(ck.stdout, /spec-invalid/);
+      assert.equal(runCli(['emit', plan]).status, 1);
+      const em = runCli(['emit', plan, '--no-spec']);
+      assert.equal(em.status, 0, em.stdout + em.stderr);
+      assert.doesNotMatch(em.stdout + em.stderr, /spec-invalid/);
+      const r = checkPlan(fs.readFileSync(plan, 'utf8'), { planPath: plan, noSpec: true });
+      assert.deepEqual(r.errors, []);
+      assert.equal(r.spec, null);
+      for (const cmd of [['map'], ['brief', '--out', path.join(dir, 'b-' + name)], ['summary']]) {
+        const x = runCli([cmd[0], plan, '--no-spec', ...cmd.slice(1)]);
+        assert.equal(x.status, 0, cmd[0] + x.stdout + x.stderr);
+      }
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--no-spec with --spec is a usage error (exit 2)', () => {
+  const r = runCli(['check', PLAN_PATH, '--no-spec', '--spec', SPEC_PATH]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /--no-spec/);
+  assert.match(r.stderr, /uso:/);
+  assert.equal(runCli(['emit', PLAN_PATH, '--spec', SPEC_PATH, '--no-spec']).status, 2);
+});
+
+test('without --no-spec the default check still passes', () => {
+  assert.equal(runCli(['check', PLAN_PATH]).status, 0);
+});

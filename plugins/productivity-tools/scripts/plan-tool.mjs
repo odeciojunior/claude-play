@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // plan-tool: valida um plano com bloco de dados `json data` no esquema plan/1 contra o spec.
-// Uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json] (ver USAGE)
+// Uso: node plan-tool.mjs check <plan.md> [--spec <spec.md> | --no-spec] [--json] (ver USAGE)
 // Saida: 0 sem erro, 1 com erro, 2 uso invalido ou arquivo ilegivel.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -233,7 +233,7 @@ function topoLevels(tasks) {
 
 const writeSet = (t) => new Set([...t.files.create, ...t.files.modify, ...t.files.test, ...t.writes].map(normPath));
 
-export function checkPlan(text, { planPath, specText = null, specPath = null } = {}) {
+export function checkPlan(text, { planPath, specText = null, specPath = null, noSpec = false } = {}) {
   const errors = [];
   const warnings = [];
   const err = (code, ref, message, extra) => errors.push({ code, ref, message, ...extra });
@@ -326,7 +326,7 @@ export function checkPlan(text, { planPath, specText = null, specPath = null } =
   // spec
   let spec = null;
   let resolvedSpec = null;
-  if (specText === null) {
+  if (specText === null && !noSpec) {
     if (specPath !== null) resolvedSpec = specPath;
     else if (isStr(data.spec)) resolvedSpec = path.resolve(planPath ? path.dirname(planPath) : '.', data.spec);
   }
@@ -617,8 +617,8 @@ function sourcePath(planPath, root) {
   return normPath(path.relative(base, abs));
 }
 
-export function emitPlan(text, { planPath, root = null, specText = null, specPath = null, maxWidth = 4 } = {}) {
-  const r = checkPlan(text, { planPath, specText, specPath });
+export function emitPlan(text, { planPath, root = null, specText = null, specPath = null, maxWidth = 4, noSpec = false } = {}) {
+  const r = checkPlan(text, { planPath, specText, specPath, noSpec });
   if (r.errors.length) return { errors: r.errors, warnings: r.warnings, out: null };
   const data = r.data;
   const waveOf = new Map(buildMap(data, r.levels, { maxWidth }).waves.flatMap((w) => w.tasks.map((t) => [t.n, w.n])));
@@ -701,7 +701,7 @@ export function formatPlanSummary(s, { lang = 'pt' } = {}) {
   ].join('\n');
 }
 
-const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md>] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md>] [--max-width <n>] [--full] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md>] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md>] [--max-width <n>] [--out <pasta>] [--task <n>]\n     node plan-tool.mjs summary <plan.md> [--spec <spec.md>] [--lang pt|en] [--json]';
+const USAGE = 'uso: node plan-tool.mjs check <plan.md> [--spec <spec.md> | --no-spec] [--json]\n     node plan-tool.mjs emit <plan.md> [--spec <spec.md> | --no-spec] [--max-width <n>] [--full] [--json]\n     node plan-tool.mjs map <plan.md> [--spec <spec.md> | --no-spec] [--max-width <n>] [--json]\n     node plan-tool.mjs brief <plan.md> [--spec <spec.md> | --no-spec] [--max-width <n>] [--out <pasta>] [--task <n>]\n     node plan-tool.mjs summary <plan.md> [--spec <spec.md> | --no-spec] [--lang pt|en] [--json]';
 
 export function main(argv, io = { stdout: process.stdout, stderr: process.stderr }) {
   const out = (s) => io.stdout.write(s + '\n');
@@ -715,6 +715,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
   let file = null;
   let json = false;
   let specPath = null;
+  let noSpec = false;
   let maxWidth = 4;
   let outDir = null;
   let only = null;
@@ -724,6 +725,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     const a = rest[i];
     if (a === '--json') json = true;
     else if (a === '--full' && cmd === 'emit') full = true;
+    else if (a === '--no-spec') noSpec = true;
     else if (a === '--spec') {
       if (i + 1 >= rest.length) return bad(`--spec exige um caminho\n${USAGE}`);
       specPath = rest[++i];
@@ -748,6 +750,8 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     else return bad(`argumento extra: ${a}\n${USAGE}`);
   }
   if (!file) return bad(USAGE);
+  if (noSpec && specPath !== null) return bad(`--no-spec não combina com --spec
+${USAGE}`);
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
@@ -755,7 +759,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     return bad(`não foi possível ler ${file}: ${e.message}`);
   }
   if (cmd === 'map' || cmd === 'brief') {
-    const r = checkPlan(text, { planPath: file, specPath });
+    const r = checkPlan(text, { planPath: file, specPath, noSpec });
     if (r.errors.length) {
       for (const x of r.errors) io.stderr.write('ERROR ' + x.code + ' ' + x.ref + ': ' + x.message + '\n');
       return 1;
@@ -779,7 +783,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     return 0;
   }
   if (cmd === 'summary') {
-    const r = checkPlan(text, { planPath: file, specPath });
+    const r = checkPlan(text, { planPath: file, specPath, noSpec });
     if (r.errors.length) {
       for (const e of r.errors) out(`ERROR ${e.code} ${e.ref}: ${e.message}`);
       for (const w of r.warnings) out(`WARN ${w.code} ${w.ref}: ${w.message}`);
@@ -791,7 +795,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     return 0;
   }
   if (cmd === 'emit') {
-    const e = emitPlan(text, { planPath: file, specPath, maxWidth });
+    const e = emitPlan(text, { planPath: file, specPath, maxWidth, noSpec });
     if (e.errors.length) {
       for (const x of e.errors) io.stderr.write(`ERROR ${x.code} ${x.ref}: ${x.message}
 `);
@@ -800,7 +804,7 @@ export function main(argv, io = { stdout: process.stdout, stderr: process.stderr
     out(JSON.stringify(full ? e.out : leanEmit(e.out))); // compact and lean (DEC-640): the workflow load agent copies this stdout whole
     return 0;
   }
-  const r = checkPlan(text, { planPath: file, specPath });
+  const r = checkPlan(text, { planPath: file, specPath, noSpec });
   const code = r.errors.length ? 1 : 0;
   if (json) {
     out(JSON.stringify({
