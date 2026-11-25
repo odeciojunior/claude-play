@@ -28,9 +28,10 @@ Estratégia v1.1 -- 2026-11-25
 <!-- roadmap:pending -->
 - (dono) autorizar push e tag do E54
 - (executor) registrar o shq do coordinator.js como pendente fora do escopo (DEC-015)
-- (executor) comentar nas issues #13, #15, #16 e #20 o adiamento e o gatilho (DEC-008, DEC-019)
+- (executor) E43: usar extract.format vitest no gateFromCapture (spec do E44, resposta Q3; DEC-022)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
 |---|---|---|
+| release/pos-2.6.0 | viva | branch de release no worktree D:/projects/claude-play-wt/pos-2-6-0 (DEC-020) |
 <!-- /roadmap:inflight -->
