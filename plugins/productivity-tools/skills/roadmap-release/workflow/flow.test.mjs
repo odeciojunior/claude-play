@@ -3676,8 +3676,11 @@ test('BASH_ONLY literal em todo prompt de registro e de releitura; a descoberta 
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const ps = statusPrompts(calls);
   assert.ok(ps.length >= 2);
-  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
-  for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+  const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return exit -1 with an empty stdout.';
+  for (const c of ps) { assert.ok(c.prompt.includes(clause), c.label); assert.doesNotMatch(c.prompt, /no-bash/, c.label); }
+  const one = 'One command per call; never append `; echo exit=$?`.';
+  for (const l of ['E1:spec-commit', 'E1:plan-commit', 'E1:progress']) { const c = calls.find((x) => x.label === l); assert.ok(c && c.prompt.includes(one), l); }
+  for (const c of calls.filter((x) => /^E1:status-/.test(x.label))) assert.ok(c.prompt.includes(one), c.label);
   const disc = calls.find((c) => c.label === 'discovery');
   assert.doesNotMatch(disc.prompt, /trackerAvailable/);
   assert.ok(disc.prompt.includes(clause));  // E10: the discovery is a script-runner call and carries the shell clause too
@@ -3812,10 +3815,11 @@ test('forma das chamadas de script: todo roadmap.mjs vem entre aspas, com argume
 
 test('BASH_ONLY literal em docs e docs-measure', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
-  const ps = docsPrompts(calls);
-  assert.ok(ps.length >= 2);
+  const ps = docsPrompts(calls).filter((c) => !/-read\d$/.test(c.label));  // docs-read is a runPrompt call: it carries the variant
+  assert.ok(ps.length >= 1);
   const clause = 'run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".';
   for (const c of ps) assert.ok(c.prompt.includes(clause), c.label);
+  for (const c of docsPrompts(calls).filter((x) => /-read\d$/.test(x.label))) assert.ok(c.prompt.endsWith('return exit -1 with an empty stdout.'), c.label);
 });
 
 test('recordVerdict: reprova worktree sujo na releitura (o agente não comitou)', () => {

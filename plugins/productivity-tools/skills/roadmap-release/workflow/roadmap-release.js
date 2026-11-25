@@ -1726,9 +1726,11 @@ const S_ROLLBACK = { type: 'object', properties: { ok: BOOL, head: STR, clean: B
 phase('Discovery')
 const PRE_TARGET = A.targetBranch || CFG.releaseBranch || ''
 const BASH_ONLY = 'SHELL: run each command exactly as written, one per call, in the Bash tool (Git Bash on Windows), never in the PowerShell tool or in cmd, without rewriting quotes or escapes. Without the Bash tool, run nothing and return an empty list with error "no-bash".'
+const BASH_RUN = BASH_ONLY.replace('return an empty list with error "no-bash".', 'return exit -1 with an empty stdout.')
+const ONE_CMD = 'One command per call; never append `; echo exit=$?`.'
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
-const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${BASH_ONLY}`
+const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${ONE_CMD} ${BASH_RUN}`
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // A copy above the limit never reaches the agent whole: refused before any JSON.parse.
@@ -2458,7 +2460,7 @@ COMMIT of the ${kind} of deliverable ${E} (mechanical). Only the file ${file} ma
 3. git -C "${wt}" diff --cached --name-only -- ${file}   (empty output means nothing changed: do not commit, delete the message file and return ok true with an empty commit)
 4. Only when step 3 printed the path: git -C "${wt}" commit -F "${msgFile}"
 5. Delete "${msgFile}". After the steps return head = the output of git -C "${wt}" rev-parse HEAD, commit = the same hash when a commit was made (empty when none), pending = the output of git -C "${wt}" status --porcelain -- ${file} (empty when clean)${tail}. ok is false, with error, when a command failed.
-${NO_ASK}`,
+${ONE_CMD} ${NO_ASK}`,
       { label: `${E}:${kind}-commit${k}`, phase, schema: S_COMMITTED, model, effort: model === 'haiku' ? 'low' : 'medium' })
   }
   // An empty commit with the file still pending is committed once more in sonnet; unmeasured counts as pending.
@@ -2782,7 +2784,7 @@ ${NO_ASK}`,
   const externalNs = plan.tasks.filter(t => t.external !== false).map(t => t.n)
   const TN = `${E} T<n>`
   const marksTxt = externalNs.length ? ` Marks of the external tasks: for each n of [${externalNs.join(', ')}], take the newest commit in ${TARGET}..HEAD whose subject starts with "${TN} launching", "${TN} started", "${TN} awaiting person:", "${TN} awaiting person (effect may have run):", "${TN} awaiting person (effect unknown):" or "${TN}: external effect completed". launchOpen = the n whose newest such commit starts "${TN} launching", "${TN} started", "${TN} awaiting person (effect unknown):" or "${TN} awaiting person: external effect did not complete"; effectCompleted = the n whose newest such commit starts "${TN}: external effect completed"; effectMayHaveRun = the n whose newest such commit starts "${TN} awaiting person (effect may have run):" or "${TN} awaiting person: a fix round needs a person" (empty lists when none).` : ''
-  const prog = await agent(`${specSkip && planSkip ? 'Read-only.' : `Run first: ${recAt('spec,plan')} (ignore a failure). Then, read-only:`} In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${TN}:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${TN} awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${TN}: external effect completed" or "${TN}: resumed after awaiting person"; any other "${TN}:" commit does not count (empty list when none).${marksTxt}`,
+  const prog = await agent(`${specSkip && planSkip ? 'Read-only.' : `Run first: ${recAt('spec,plan')} (ignore a failure). Then, read-only:`} In the worktree ${wt}: head = git rev-parse HEAD; clean = git status --porcelain empty; done = for each n in [${plan.tasks.map(t => t.n).join(', ')}], if git log --reverse --format=%H --grep "^${TN}:" ${TARGET}..HEAD finds commits: { n, firstParent: parent of the first of those commits, last: the last one }; awaitingPerson = every n of [${plan.tasks.map(t => t.n).join(', ')}] with a commit in ${TARGET}..HEAD whose subject starts "${TN} awaiting person:" and whose newest such commit is newer than every commit there with a subject starting "${TN}: external effect completed" or "${TN}: resumed after awaiting person"; any other "${TN}:" commit does not count (empty list when none).${marksTxt} ${ONE_CMD}`,
     { label: `${E}:progress`, phase: 'Implementation', schema: externalNs.length ? S_PROGRESS_EXT : S_PROGRESS, model: externalNs.length ? 'sonnet' : 'haiku', effort: externalNs.length ? 'medium' : 'low' })
   if (!prog) return fail('infra', 'progress read: null agent')
   if (!prog.clean && !(await sanitize('tasks'))) return fail('infra', `worktree ${wt} is still dirty after the automatic cleanup`)
