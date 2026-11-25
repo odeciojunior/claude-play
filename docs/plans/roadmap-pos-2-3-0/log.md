@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | - | Roadmap pós-2.3.0 fechado | `../2026-11-21-roadmap-pos-2-3-0.md` |
+| 2026-11-25 | E40 | AC1 e AC2 do E40 aceitos com ressalva pelo Fable por delegação do dono, DEC-061, estratégia v1.5 | `../2026-11-21-roadmap-pos-2-3-0.md` |
 | 2026-11-25 | E40 | Limpeza B25: removidas D:/claude-e30-out, D:/claude-e31-out e D:/claude-e33-out; logout da config descartável confirmado por claude auth status e a config, a worktree da sonda e as pastas de trabalho apagadas; saídas de E35, E37 e E39 mantidas como evidência | `docs/reports/2026-11-25-E40-roteiro-publicacao.md` |
 | 2026-11-25 | E40 | S3-01 forte conferida sem custo: loja fixada na tag productivity-tools--v2.6.0 ficou em b443374 depois do marketplace update e do plugin update com main em c1d3c36, versão 2.6.0 mantida | `c1d3c36` |
 | 2026-11-25 | E40 | productivity-tools 2.6.0 publicada com autorização do dono: main e tag em b443374, volta 2.6.1 no remoto, cache 2.6.0 conferido | `a492b28` |
