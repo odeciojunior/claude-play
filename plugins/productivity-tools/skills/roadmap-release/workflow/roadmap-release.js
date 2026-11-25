@@ -2624,9 +2624,9 @@ ${NO_ASK}`,
 - Say whether a task needs a browser and what counts as acceptable evidence when a step cannot be exercised in this environment.
 - Task commits start with "${E} T<n>:".
 - ${R_NOCOMMIT}`
-  const planLoadOnce = (k, useSpec = true) => loadVia(E, 'plan-load', k, [...loadCmds(planTool, planAbs, ...(useSpec ? ['--spec', specAbs] : [])), ['blob', ...gitIn('rev-parse', `HEAD:${AP.plan}`)], ...gitCmds])
+  const planLoadOnce = (k, useSpec = true) => loadVia(E, 'plan-load', k, [...loadCmds(planTool, planAbs, ...(useSpec ? ['--spec', specAbs] : ['--no-spec'])), ['blob', ...gitIn('rev-parse', `HEAD:${AP.plan}`)], ...gitCmds])
   // The digest is recalculated here from the emit.
-  // useSpec false: the frozen plan is read against no spec.
+  // useSpec false: the frozen plan is read with --no-spec.
   const loadPlan = (useSpec = true) => load3(k => planLoadOnce(k, useSpec), t => ({ ...checkPlanLoad(t, { E, RM }), head: t && t.head }))
   const planAuthorOnce = diffs => agent(`mode: unattended
 output: ${planAbs}

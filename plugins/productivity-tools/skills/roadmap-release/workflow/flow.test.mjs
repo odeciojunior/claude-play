@@ -4587,13 +4587,14 @@ test('frozen tasks: a note that touches only the tasks not yet committed is comm
   assert.match(calls.find((c) => c.label === 'E1:plan-commit').prompt, /commit -F/);
 });
 
-test('frozen tasks: the previous plan is loaded without --spec, the new plan with it', async () => {
+test('frozen tasks: the previous plan is loaded with --no-spec, the new plan with --spec', async () => {
   const P0 = { ...OLD_DEFAULT_PLAN, tasks: [tk(1, false), tk(2, false)] };
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { notes: { E1: 'add an edge case' } },
     over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(P0, 'E1') : undefined)) });
   const loads = calls.filter((c) => c.label === 'E1:plan-load1')
   assert.ok(loads.length >= 2)
-  assert.doesNotMatch(loads[0].prompt, /--spec/)
+  assert.match(loads[0].prompt, /plan-tool\.mjs' 'check' '[^']*' '--no-spec'/)
+  assert.doesNotMatch(loads[0].prompt, /'--spec'/)
   assert.match(loads[1].prompt, /plan-tool\.mjs' 'check' '[^']*' '--spec'/)
 })
 

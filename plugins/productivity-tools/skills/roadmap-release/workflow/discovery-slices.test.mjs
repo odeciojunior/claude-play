@@ -115,8 +115,8 @@ test('a refusal of the script and an envelope of another command are named', asy
   assert.match(other.r.error, /^discovery failed: slice 0: the slice is from another command/);
 });
 
-test('roadmap-release.js stays within the E36 size budget (E36 spec R14: E41 budget 259883 + 4000 approved, DEC-034), measured in LF characters', () => {
+test('roadmap-release.js stays within the E37 size budget (E37 spec R12, DEC-050: 263673 + 2000), measured in LF characters', () => {
   const file = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8');
   const size = file.split('\r\n').join('\n').length;
-  assert.ok(size <= 263673, `roadmap-release.js has ${size} LF characters, above the E36 budget of 263673`);
+  assert.ok(size <= 265673, `roadmap-release.js has ${size} LF characters, above the E37 budget of 265673`);
 });
