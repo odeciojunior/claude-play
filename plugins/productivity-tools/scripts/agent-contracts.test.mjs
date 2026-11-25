@@ -58,6 +58,14 @@ test('reviewers never read a range diff or log from one Bash output and read the
   assert.match(read('task-reviewer.md'), /`restricted` mode keeps reading the package/);
 });
 
+test('spec-author and plan-author declare removedTests as { file, name, why, gate? }', () => {
+  for (const n of ['spec-author.md', 'plan-author.md']) {
+    const t = read(n);
+    assert.match(t, /removedTests/, n);
+    assert.ok(t.includes('`{ file, name, why, gate? }`'), n);
+  }
+});
+
 test('no agent file writes the copy limit as a bare digit run or the forbidden word', () => {
   for (const n of names) {
     const t = read(n);
