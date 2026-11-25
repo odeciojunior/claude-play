@@ -235,7 +235,6 @@ function validMeasure(m, expectedSha, gateDefs) {
 function validEvidence(x, exp, needsBefore) {
   return !!x && x.clean === true && fullSha(normSha(x.headSha)) && (!exp || gateShaMatch(normSha(x.headSha), normSha(exp))) && (!needsBefore || x.beforeOk === true)
 }
-// removed: tests declared as removed, a positive integer or 0.
 const removedN = n => (Number.isInteger(n) && n > 0 ? n : 0)
 function gatePasses(def, result, baselineResult, removed = 0) {
   if (!result || result.ran === false) return false
@@ -256,7 +255,7 @@ function gateEffective(def, r, changedFiles) {
   const allIgnored = (r.failedNames || []).length > 0 && names.length === 0
   return Object.assign({}, r, { failedNames: names, exit: allIgnored ? 0 : r.exit })
 }
-// removed = map name -> declared removed tests; it counts only for a tests gate measured by capture, without ignoreFailuresWhenChanged or invariant.
+// removed: gate name -> verified removed tests.
 function allPass(defs, m, baseline, changedFiles, removed = {}) {
   const failures = (defs || []).filter(def => {
     const r = gateEffective(def, gateResult(m, def.name), changedFiles)
@@ -281,7 +280,7 @@ function zeroTestGates(defs, baseline) {
     return def.kind === 'tests' && !def.invariant && !!r && r.ran !== false && !(r.total > 0)
   }).map(def => def.name)
 }
-// Names of the gates whose only failure is a lower total (failures within the baseline's, skipped within it).
+// Tests gates failing only by a lower total.
 function totalOnlyGates(defs, m, base, changedFiles) {
   return (defs || []).filter(def => {
     const r = gateResult(m, def.name)
@@ -3049,7 +3048,7 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
     return { ok: !problems.length, summary: problems.join('\n') }
   }
 
-  // Only the total fell: removedTests checked by test-extract lower the floor, else stop.
+  // Verified removedTests lower the floor.
   const removedFloor = async (g, tag, k) => {
     const one = GATES.filter(d => d.kind === 'tests' && !d.invariant && !d.ignoreFailuresWhenChanged).length === 1
     const n = {}, notes = []
