@@ -3,6 +3,9 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E50 | E50 criteria compared: none changed | `docs/plans/pos-2-6-0-E50/spec.md` |
+| 2026-11-25 | E50 | E50 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2636, pass 2634, fail 0, skipped 2; G2 58 OK; G3 15 OK; G4 válido | `857624a` |
+| 2026-11-25 | E50 | E50 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881` |
 | 2026-11-25 | E43 | DEC-033 recorded: total do vitest no gateFromCapture fora do E43 e deste roadmap; spec escrita saiu de Agora | `decisions.md` |
 | 2026-11-25 | E50 | E50 execution started (plan-coordinator); plano ajustado para worktree próprio e piso do G1 2630/2628 | `02d3ec6` |
 | 2026-11-25 | E43 | E43 spec written; aprovada com dois ajustes por opus por delegação (DEC-021) | `45f08d5` |

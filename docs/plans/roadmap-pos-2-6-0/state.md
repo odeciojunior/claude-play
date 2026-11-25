@@ -1,7 +1,7 @@
 Estratégia v1.2 -- 2026-11-25
 
 <!-- roadmap:now -->
-1. Executar os planos do E50 e do E51, nessa ordem. Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E42 integrado em b31ba00).
+1. Executar o plano do E51. Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E50 integrado em 857624a).
 2. Executar o plano do E45 por último; a tarefa 1 é paga (DEC-025, DEC-026). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: -.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
@@ -15,8 +15,8 @@ Estratégia v1.2 -- 2026-11-25
 | E47 | nao-iniciado | - | - |
 | E48 | nao-iniciado | - | - |
 | E49 | nao-iniciado | - | - |
-| E50 | executando | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50` | conferir e integrar em release/pos-2.6.0; depois rodar os checks do E51 (DEC-028) |
-| E51 | plano | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md` | executar depois do E50 (DEC-028) |
+| E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
+| E51 | plano | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md` | executar o plano (E50 integrado em 857624a); antes, rodar de novo os checks dele (DEC-028) |
 | E52 | nao-iniciado | - | escrever a spec (E44 já em release/pos-2.6.0) |
 | E53 | nao-iniciado | - | - |
 | E54 | nao-iniciado | - | - |
@@ -37,5 +37,5 @@ Estratégia v1.2 -- 2026-11-25
 | release/pos-2.6.0 | viva | branch de release no worktree D:/projects/claude-play-wt/pos-2-6-0 (DEC-020) |
 | plan/pos-2-6-0-E44 | viva | integrado em release/pos-2.6.0 (5fcf32a); branch e worktree pos-2-6-0-E44 ainda existem |
 | plan/pos-2-6-0-E42 | viva | integrado em release/pos-2.6.0 (b31ba00); branch e worktree pos-2-6-0-E42 ainda existem |
-| plan/pos-2-6-0-E50 | viva | execução do plano do E50 no worktree D:/projects/claude-play-wt/pos-2-6-0-E50 |
+| plan/pos-2-6-0-E50 | viva | integrado em release/pos-2.6.0 (857624a); branch e worktree pos-2-6-0-E50 ainda existem |
 <!-- /roadmap:inflight -->
