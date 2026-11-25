@@ -66,12 +66,24 @@ test('spec-author and plan-author declare removedTests as { file, name, why, gat
   }
 });
 
-test('spec-author and plan-author never read or Grep the plugin tools code and edit only with Edit or Write', () => {
+test('spec-author and plan-author never search the plugin folder and edit only with Edit or Write (DEC-052)', () => {
   for (const n of ['spec-author.md', 'plan-author.md']) {
     const t = read(n);
-    assert.ok(t.includes('Never read or Grep the code of the plugin tools (`spec-tool.mjs`, `plan-tool.mjs` and the rest of `scripts/`); use only their commands and outputs'), n);
+    const [tool, v] = n === 'spec-author.md' ? ['spec', 'specTool'] : ['plan', 'planTool'];
+    assert.ok(t.includes(`The plugin folder is the one two levels above \`${v}\`. Never Grep, Glob or Read anything in it except the format example`), n);
+    assert.ok(t.includes(`\`${v}\` itself is only run, never read or Grepped`), n);
+    assert.ok(t.includes(`The ${tool}/1 format comes only from this file, that example`), n);
+    assert.doesNotMatch(t, /lib\/routing\.mjs/, n);
     assert.ok(t.includes('Edit only with Edit or Write, never with `sed -i`'), n);
   }
+});
+
+test('script-runner runs once and returns the wrapper line, never the inner output (DEC-052)', () => {
+  const t = read('script-runner.md');
+  assert.ok(t.includes('one Bash call in total, never a second run'));
+  assert.ok(t.includes("Whatever output the prompt asks for, when the command is a wrapper"));
+  assert.ok(t.includes("the stdout you return is the wrapper's line that the Bash result shows, never the inner command's output"));
+  assert.ok(t.includes('Set the Bash `timeout` to 600000'));
 });
 
 test('no agent file writes the copy limit as a bare digit run or the forbidden word', () => {

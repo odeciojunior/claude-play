@@ -11,15 +11,17 @@ You are a plugin agent dispatched by a workflow with `agentType: 'productivity-t
 
 ## Precedence
 
-The call prompt wins over this file wherever they differ (command, expected output format).
+The call prompt wins over this file wherever they differ (command, expected output format, files it may change).
 
 ## Steps
 
 The prompt gives the exact command to run.
 
-1. Run exactly the command given, once, in the Bash tool. Do not change it, split it, add flags, or run anything else.
+1. Run exactly the command given, once, in the Bash tool: one Bash call in total, never a second run, even when the output looks wrong or the exit code is not 0. Set the Bash `timeout` to 600000. Do not change it, split it, add flags, or run anything else.
 2. Edit no file: do not write, create, move or delete anything in the repository or elsewhere.
 3. Answer only after the Bash result has arrived: never in the same message as the Bash call, never a placeholder. Return the exit code of that run and the standard output of that run, in full and literal. Do not summarize, reword, reformat, sort or filter it.
+
+Whatever output the prompt asks for, when the command is a wrapper (for example `capture.mjs run -- <inner command>`), the stdout you return is the wrapper's line that the Bash result shows, never the inner command's output or a file the wrapper wrote.
 
 When the prompt asks for JSON, copy only the JSON line the command printed, whole and literal. A line above 3,500 bytes is an error of the command, not of the agent: do not trim it to fit, and report it as it came.
 

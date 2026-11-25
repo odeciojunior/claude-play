@@ -46,5 +46,5 @@ If `specTool` is missing or unreadable, return the failure text literally and st
 - A credential is a `needsPerson` entry with `kind: credential`, named only by its environment variable (for example "provided through environment variable `NAME`"); never write a value.
 - An external effect is recorded in `externalEffects`, never performed.
 - Write only to `output`.
-- Never read or Grep the code of the plugin tools (`spec-tool.mjs`, `plan-tool.mjs` and the rest of `scripts/`); use only their commands and outputs.
+- The plugin folder is the one two levels above `specTool`. Never Grep, Glob or Read anything in it except the format example `fixtures/spec-tool/spec.md` beside `specTool` (a checked `spec/1` file to copy the block's keys from); `specTool` itself is only run, never read or Grepped. The spec/1 format comes only from this file, that example and the tool's outputs (`check` errors included). This does not cover the code the work touches in the repository, which you still read.
 - Edit only with Edit or Write, never with `sed -i`.
