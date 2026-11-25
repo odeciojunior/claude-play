@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-24 | - | estratégia v1.3: absorve DEC-044 a DEC-048 | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
+| 2026-11-24 | E35 | E35 AC2 ratificado pelo dono; E35 medido (lote de confirmação: 8 válidas, 26/32, US$ 8,31) | `docs/reports/2026-11-24-E35-confirmacao-revisor-opus.md` |
 | 2026-11-24 | E35 | E35 AC2 conferido (Fable, delegado pelo dono; ratificação pendente): APROVADO COM RESSALVAS; recontagem dos 8 agregados bate (26/32, spec 16/16, quality 10/16, 4 perdidos, US$ 8,313), SHA256SUMS 158 OK, piso da DEC-048 commitado 12 s antes da A-3; amostra reduzida, não a DEC-004 | `docs/reports/2026-11-24-E35-confirmacao-revisor-opus.md` |
 | 2026-11-24 | E35 | lote pago AC2: 8 válidas, 26/32 capturas, piso da DEC-048 atingido, US$ 8,31; conferência do dono pendente | `docs/reports/2026-11-24-E35-confirmacao-revisor-opus.md` |
 | 2026-11-24 | - | estratégia v1.2: absorve DEC-042 e DEC-043 | `docs/plans/2026-11-21-roadmap-pos-2-3-0.md` |
