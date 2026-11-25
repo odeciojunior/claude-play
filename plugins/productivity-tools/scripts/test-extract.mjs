@@ -4,9 +4,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { readDataBlock } from '../lib/data-block.mjs';
-import { MAX_COPY_BYTES, canon, fnv1a } from '../lib/plan-digest.mjs';
-import { checkRemovedTests } from './spec-tool.mjs';
+// lib/ and spec-tool.mjs load only in `removed` (dynamic import): capture.mjs imports extractTests and must stay standalone.
 
 const indentOf = (line) => line.length - line.trimStart().length;
 
@@ -165,7 +163,10 @@ function refuse(nonce, error) {
   return 2;
 }
 
-function removedCommand(args) {
+async function removedCommand(args) {
+  const { readDataBlock } = await import('../lib/data-block.mjs');
+  const { MAX_COPY_BYTES, canon, fnv1a } = await import('../lib/plan-digest.mjs');
+  const { checkRemovedTests } = await import('./spec-tool.mjs');
   const opt = {};
   const flags = new Set();
   for (let k = 0; k < args.length; k++) {
@@ -239,7 +240,7 @@ function removedCommand(args) {
 if (fileURLToPath(import.meta.url) === fs.realpathSync(globalThis.process.argv[1] ?? '')) {
   const args = globalThis.process.argv.slice(2);
   if (args[0] === 'removed') {
-    globalThis.process.exitCode = removedCommand(args.slice(1));
+    globalThis.process.exitCode = await removedCommand(args.slice(1));
   } else {
     const i = args.indexOf('--exit');
     const exit = i >= 0 ? Number(args[i + 1]) : null;
