@@ -1541,9 +1541,9 @@ function checkCapture(stdout, { nonce, noncePrefix, cmdDigest } = {}) {
   try { o = JSON.parse(raw); } catch { return { ok: false, why: 'the output is not JSON' }; }
   if (!o || typeof o !== 'object' || Array.isArray(o) || o.tool !== 'capture') return { ok: false, why: 'the output is not from capture' };
   if (o.error !== undefined) return { ok: false, why: `capture refused: ${o.error}` };
-  if (nonce !== undefined && o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run' };
+  if (nonce !== undefined && o.nonce !== nonce) return { ok: false, why: 'the nonce of the output is not the one of this run', expected: nonce, got: o.nonce };
   if (noncePrefix !== undefined && !(typeof o.nonce === 'string' && o.nonce.startsWith(noncePrefix))) return { ok: false, why: 'the nonce of the output is outside the expected prefix' };
-  if (cmdDigest !== undefined && o.cmdDigest !== cmdDigest) return { ok: false, why: 'the output is not from the expected command' };
+  if (cmdDigest !== undefined && o.cmdDigest !== cmdDigest) return { ok: false, why: 'the output is not from the expected command', expected: cmdDigest, got: o.cmdDigest };
   const { digest, ...rest } = o;
   if (digest !== fnv1a(JSON.stringify(canon(rest)))) return { ok: false, why: 'the digest of the output does not match: the copy is not literal' };
   return { ok: true, data: o.data };

@@ -785,6 +785,24 @@ function taskDirOf(repo, task) {
   return path.join(repo, '.git', 'pt-evidence', task);
 }
 
+test('E42 checkCapture: a wrong nonce and a wrong cmdDigest return expected and got', () => {
+  withRepo((repo) => {
+    const r = runCli(['run', '--nonce', 'E42N', '--task', 'E42-T3', '--cwd', fwd(repo), '--bash', 'echo oi']);
+    assert.equal(r.code, 0, r.stderr);
+    const o = JSON.parse(r.stdout);
+    const cmdDigest = commandDigest({ bash: 'echo oi' });
+    assert.equal(o.cmdDigest, cmdDigest);
+    assert.deepEqual(checkCapture(r.stdout, { nonce: 'OUTRO', cmdDigest }), {
+      ok: false, why: 'the nonce of the output is not the one of this run', expected: 'OUTRO', got: o.nonce,
+    });
+    const other = commandDigest({ bash: 'echo outro' });
+    assert.notEqual(other, o.cmdDigest);
+    assert.deepEqual(checkCapture(r.stdout, { nonce: 'E42N', cmdDigest: other }), {
+      ok: false, why: 'the output is not from the expected command', expected: other, got: o.cmdDigest,
+    });
+  });
+});
+
 test('run grava <seq>-line.json igual a linha impressa, com e sem --brief', () => {
   withRepo((repo) => {
     const a = runCli(['run', '--nonce', 'L1', '--task', 'E39-L', '--cwd', fwd(repo), '--bash', 'echo oi']);
