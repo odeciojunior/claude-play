@@ -1,0 +1,813 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-3-0-E37/plan.md",
+    "id": "E37",
+    "digest": "6ca0e68b",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-3-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 9,
+    "worktree": null,
+    "branch": null,
+    "base": "1a7c1028322c26a15a68125d0b2ad4aa0513b120",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount counts whitespace-separated words (0.7243ms)\n✔ wordCount is 0 for empty text (0.1293ms)\n✔ counts usage once per message id, keeping the largest output (4.6694ms)\n✔ splits cache writes into 5m and 1h (1.9118ms)\n✔ counts agent calls by dominant model family (2.5243ms)\n✔ measures prompt bytes as UTF-8 of the first user message (1.4853ms)\n✔ estimates cost and keeps unpriced models null (1.403ms)\n✔ readJsonl tolerates CRLF and a partial last line (3.8888ms)\n✔ classifies every label family of the role table (0.8765ms)\n✔ status, progress, review log and report come out as separate rows (10.0128ms)\n✔ records review rounds per loop (8.8635ms)\n✔ counts tasks and the task loop (7.8365ms)\n✔ writes metrics.json and one csv row per run and role (116.5976ms)\n✔ groups sessions of one attempt with --runs (64.4151ms)\n✔ requires --root and --out (97.1379ms)\n✔ refuses --out inside the repository outside tools/measure/out (569.2259ms)\n✔ real price table is dated and sourced (0.2939ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (61.5143ms)\n✔ privacy scan catches a planted personal path and session id (11.9405ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (43.1613ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (55.5762ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (41.897ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (28.0107ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (15.194ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (28.3817ms)\n✔ prepare builds the sandbox and stops at authorize (3574.994ms)\n✔ prepare refuses a work dir inside the repository (77.1767ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (94.7954ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (215.8483ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (141.991ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.5449ms)\nℹ tests 2572\nℹ suites 11\nℹ pass 2570\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 395917.6927",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-25T06:57:23.017Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        4
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        5
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        6
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        7
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        8
+      ]
+    },
+    {
+      "n": 7,
+      "tasks": [
+        9
+      ]
+    },
+    {
+      "n": 8,
+      "tasks": [
+        10
+      ]
+    },
+    {
+      "n": 9,
+      "tasks": [
+        11
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Flag --no-spec em plan-tool.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/plan-tool.mjs",
+        "plugins/productivity-tools/scripts/plan-tool.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "plan-tool.mjs now accepts --no-spec in check, emit, map, brief and summary. checkPlan and emitPlan take a noSpec option: with it, data.spec is not resolved or read and spec is null. --no-spec together with --spec exits 2 with USAGE, and USAGE mentions the flag. Behavior without the flag is unchanged. Three tests were added to plan-tool.test.mjs. Downstream steps can call `plan-tool check|emit <plan> --no-spec` for frozen plans. Nothing was committed.",
+      "sha": "d1a021331dcae52511aaf1c81fc4c0797922a45d",
+      "replacedBy": null,
+      "note": "plan-tool.mjs now accepts --no-spec in check, emit, map, brief and summary. checkPlan and emitPlan take a noSpec option: with it, data.spec is not resolved or read and spec is null.\n--no-spec together with --spec exits 2 with USAGE, and USAGE mentions the flag.\nBehavior without the flag is unchanged. Three tests were added to plan-tool.test.mjs.\nDownstream steps can call `plan-tool check|emit <pla",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Status recusado em buildRead e contrato de roadmap.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-tracker/scripts/roadmap.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "buildRead in verify-run.mjs now accepts a refused status (exit 1, CLI JSON with tool \"roadmap\"). It returns { tool, summary, errors: [up to 3 {code <= 40 chars}], result: {} }. brief and pending-decisions refusals stay null. Non-JSON stdout and exit 2 (usage) also stay null, so exits.status is the signal there. The final-budget cut tolerates an empty result. roadmap.test.mjs gained a contract test for status --deliverable E99 (roadmap.mjs is unchanged). Downstream steps can read status.errors[].",
+      "sha": "b0da41a31b6bdbd28fb96bad0fdc394e44e7d438",
+      "replacedBy": null,
+      "note": "buildRead in verify-run.mjs now accepts a refused status (exit 1, CLI JSON with tool \"roadmap\"). It returns { tool, summary, errors: [up to 3 {code <= 40 chars}], result: {} }.\nbrief and pending-decisions refusals stay null. Non-JSON stdout and exit 2 (usage) also stay null, so exits.status is the signal there.\nThe final-budget cut tolerates an empty result.\nroadmap.test.mjs gained a contract test",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Regras de uma linha em spec-author e plan-author",
+      "wave": 1,
+      "deps": [],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/agents/spec-author.md",
+        "plugins/productivity-tools/agents/plan-author.md",
+        "plugins/productivity-tools/scripts/agent-contracts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added the two R9 rules to spec-author.md and plan-author.md (Fixed rules section): never read or Grep the plugin tools code (spec-tool.mjs, plan-tool.mjs, rest of scripts/) and edit only with Edit or Write, never sed -i. Added a contract test in agent-contracts.test.mjs that failed before the rules (red) and passes after (green). Downstream steps are unaffected: no interfaces produced or consumed. Nothing committed.</summary> <parameter name=\"concerns\">The brief does not give the exact R9 wordin",
+      "sha": "c5910a4523fb04b12dca62e5ec4888c99472e4d1",
+      "replacedBy": null,
+      "note": "Added the two R9 rules to spec-author.md and plan-author.md (Fixed rules section): never read or Grep the plugin tools code (spec-tool.mjs, plan-tool.mjs, rest of scripts/) and edit only with Edit or Write, never sed -i. Added a contract test in agent-contracts.test.mjs that failed before the rules (red) and passes after (green). Downstream steps are unaffected: no interfaces produced or consumed.",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Carga do plano congelado com --no-spec (B06) e trava de tamanho",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/discovery-slices.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "planLoadOnce in roadmap-release.js now passes ['--no-spec'] when useSpec is false, so the frozen plan load (loadPlan(false), plan-load0) calls plan-tool with --no-spec and the other loads keep --spec. The size lock in discovery-slices.test.mjs is now 265673, with the E37 / DEC-050 name and message. flow.test.mjs asserts that the frozen load carries --no-spec and not --spec, and that the new plan load still carries --spec. roadmap-release.js measured 263658 LF characters after T4 (budget 265673).",
+      "sha": "719858239c2359bbd8838a8e174b6ed4c993a8ca",
+      "replacedBy": null,
+      "note": "planLoadOnce in roadmap-release.js now passes ['--no-spec'] when useSpec is false, so the frozen plan load (loadPlan(false), plan-load0) calls plan-tool with --no-spec and the other loads keep --spec.\nThe size lock in discovery-slices.test.mjs is now 265673, with the E37 / DEC-050 name and message.\nflow.test.mjs asserts that the frozen load carries --no-spec and not --spec, and that the new plan l",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Pulo da revisão da spec por blob (B08)",
+      "wave": 3,
+      "deps": [
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "specLoadOnce now measures HEAD:<spec> (label spec-load<k>-blob, before the git commands); loadSpec passes blob only when it matches ^[0-9a-f]{40,64}$ (else ''). The spec-review skip gate is now specReused && blob non-empty && blob === K0.recorded.spec.spec && !checkFailed; specReused is unchanged, so C3 keeps its commit minimum and the review runs, and C2 (rev-parse exit 128) gives an empty blob and the review runs. flow.test.mjs: new tests E37 T5 (a)-(d); fixtures use a hex blob SB (specLoadOk ",
+      "sha": "18fc9655e035cf44cd0b0722c51ad116b5230597",
+      "replacedBy": null,
+      "note": "specLoadOnce now measures HEAD:<spec> (label spec-load<k>-blob, before the git commands); loadSpec passes blob only when it matches ^[0-9a-f]{40,64}$ (else '').\nThe spec-review skip gate is now specReused && blob non-empty && blob === K0.recorded.spec.spec && !checkFailed; specReused is unchanged, so C3 keeps its commit minimum and the review runs, and C2 (rev-parse exit 128) gives an empty blob a",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "Variante de BASH_ONLY em runPrompt e frase de um comando por chamada",
+      "wave": 4,
+      "deps": [
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js now has BASH_RUN (BASH_ONLY ending \"return exit -1 with an empty stdout.\") and ONE_CMD (\"One command per call; never append `; echo exit=$?`.\"). runPrompt uses both, so records, re-reads, discovery and loads carry them. commitAgent (spec-commit, plan-commit) and the progress prompt carry ONE_CMD. BASH_ONLY is unchanged in docs, docs-measure and the report. specRules, planRules, R_NOCOMMIT and the review prompts were not touched. Size of roadmap-release.js: 264.086 LF character",
+      "sha": "a29e2cfb9fd32736739a58df08655c45ac19f82f",
+      "replacedBy": null,
+      "note": "roadmap-release.js now has BASH_RUN (BASH_ONLY ending \"return exit -1 with an empty stdout.\") and ONE_CMD (\"One command per call; never append `; echo exit=$?`.\"). runPrompt uses both, so records, re-reads, discovery and loads carry them. commitAgent (spec-commit, plan-commit) and the progress prompt carry ONE_CMD. BASH_ONLY is unchanged in docs, docs-measure and the report. specRules, planRules, ",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "Parada na 1ª recusa em readSlices (S3-29)",
+      "wave": 5,
+      "deps": [
+        6
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/discovery-slices.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "readSlices.one now returns at once `{ why: 'slice <k>: <tool> refused: <error>' }` when the JSON has tool equal to the expected tool and an error. This applies to discovery, load slices and verify-run re-reads, with no -retryN and no -redo. A refusal naming another tool is still a wrong copy and repeats. Tests added in flow.test.mjs (discovery, load slice via journal, re-read -> \"null re-read agent\", other tool repeats 5x). The refusal test in discovery-slices.test.mjs also asserts a single call",
+      "sha": "e76f21924bfeec70122aa1b87c9b23d810d29d4a",
+      "replacedBy": null,
+      "note": "readSlices.one now returns at once `{ why: 'slice <k>: <tool> refused: <error>' }` when the JSON has tool equal to the expected tool and an error. This applies to discovery, load slices and verify-run re-reads, with no -retryN and no -redo. A refusal naming another tool is still a wrong copy and repeats.\nTests added in flow.test.mjs (discovery, load slice via journal, re-read -> \"null re-read agen",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "Guarda de tamanho do approve em recordCmd (S3-30)",
+      "wave": 6,
+      "deps": [
+        7
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "recordCmd (pure area of roadmap-release.js) takes an optional 8th callback. If the approve command passes CMD_CAP (6000, now declared just before recordCmd; old declaration removed) and the payload has prep, it rebuilds without prep and calls the callback with the original length. recAt passes a callback that adds \"run record: prep left out of run.json, the approve command had N characters, above CMD_CAP; the next run measures the baseline again\" to out.concerns once (dedupe by prefix, shared by",
+      "sha": "156bac794e9e550924f34a1624113e31bd5681dc",
+      "replacedBy": null,
+      "note": "recordCmd (pure area of roadmap-release.js) takes an optional 8th callback. If the approve command passes CMD_CAP (6000, now declared just before recordCmd; old declaration removed) and the payload has prep, it rebuilds without prep and calls the callback with the original length.\nrecAt passes a callback that adds \"run record: prep left out of run.json, the approve command had N characters, above ",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    },
+    {
+      "n": 9,
+      "title": "Código da recusa do status em recordVerdict (S2-08)",
+      "wave": 7,
+      "deps": [
+        2,
+        8
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "recordVerdict now emits 'reread status --json refused: <codes>' (up to 3 codes joined by ', ') when the status re-read has no panel and was refused (summary.exitCode != 0). It emits the same text without a code when the JSON has no errors, or when the status is not JSON and read.exits.status is a non-zero number. 'is missing or has no panel' stays only for a status that is really missing. The docs stage passes exits: meas.exits inside the read object; the record stage already passes the full rea",
+      "sha": "fbf62739b1914e9d1c46cad9abe00b51aad71489",
+      "replacedBy": null,
+      "note": "recordVerdict now emits 'reread status --json refused: <codes>' (up to 3 codes joined by ', ') when the status re-read has no panel and was refused (summary.exitCode != 0). It emits the same text without a code when the JSON has no errors, or when the status is not JSON and read.exits.status is a non-zero number. 'is missing or has no panel' stays only for a status that is really missing. The docs",
+      "outputs": null,
+      "brief": "briefs/T9.md",
+      "gated": true
+    },
+    {
+      "n": 10,
+      "title": "Conferência final",
+      "wave": 8,
+      "deps": [
+        3,
+        9
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T10 (conferência final) passed with no files changed and nothing committed. Full suite: 2591 tests, 2589 pass, 0 fail, 2 skipped, exit 0, which is at or above the ~2,580 baseline. embed --check on the 4 targets exits 0, lint-plugin exits 0 with 57 OK and 0 FAIL, and `git diff --stat 1a1df35 -- plugins/productivity-tools/lib` is empty. roadmap-release.js measures 264949 LF characters, within the 265673 budget. The suite evidence is in D:/projects/claude-play/.git/pt-evidence/E37_05c9591c-T10/0006",
+      "sha": null,
+      "replacedBy": null,
+      "note": "T10 (conferência final) passed with no files changed and nothing committed. Full suite: 2591 tests, 2589 pass, 0 fail, 2 skipped, exit 0, which is at or above the ~2,580 baseline. embed --check on the 4 targets exits 0, lint-plugin exits 0 with 57 OK and 0 FAIL, and `git diff --stat 1a1df35 -- plugins/productivity-tools/lib` is empty. roadmap-release.js measures 264949 LF characters, within the 26",
+      "outputs": null,
+      "brief": "briefs/T10.md",
+      "gated": true
+    },
+    {
+      "n": 11,
+      "title": "Sonda paga plan-only (externa, manual, sessão principal)",
+      "wave": 9,
+      "deps": [
+        10
+      ],
+      "tier": "sonnet",
+      "effort": "high",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": "pass",
+      "authorized": "2026-11-25T06:12:28.242Z",
+      "handoff": "Não rodei a sonda de novo: a única execução paga (R13) já existe, e rodar outra violaria o externalDedupe. X1 já estava cumprido: D:/claude-pos23-release está em fbf6273, igual à ponta de release/pos-2.3.0. A sonda está em D:/claude-e37-out/plan-only-20261125-055937: 1 válida, 0 inválidas, plugin fbf6273 (2.5.0), custo pelo arnês US$ 1,79, cliCostUsd US$ 2,1828. A linha `run` do E37 já está em measurements.md (alteração ainda sem commit) e diz que o AC2 falhou em \"de primeira\". Nenhum arquivo fo",
+      "sha": null,
+      "replacedBy": null,
+      "note": "Não rodei a sonda de novo: a única execução paga (R13) já existe, e rodar outra violaria o externalDedupe.\nX1 já estava cumprido: D:/claude-pos23-release está em fbf6273, igual à ponta de release/pos-2.3.0.\nA sonda está em D:/claude-e37-out/plan-only-20261125-055937: 1 válida, 0 inválidas, plugin fbf6273 (2.5.0), custo pelo arnês US$ 1,79, cliCostUsd US$ 2,1828.\nA linha `run` do E37 já está em mea",
+      "outputs": null,
+      "brief": "briefs/T11.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-25T04:02:17.127Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "1a7c1028322c26a15a68125d0b2ad4aa0513b120",
+      "at": "2026-11-25T04:02:17.127Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-25T04:03:00.294Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-25T04:03:00.294Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3,
+        1,
+        2
+      ],
+      "at": "2026-11-25T04:03:00.294Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-25T04:09:58.549Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-25T04:09:58.549Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-25T04:09:58.549Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-25T04:12:39.568Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-25T04:12:59.742Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-25T04:13:24.182Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T04:13:45.748Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T04:13:45.748Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-25T04:13:45.748Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T04:20:46.692Z"
+    },
+    {
+      "event": "review-result",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-25T04:21:28.337Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-25T04:21:28.337Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T04:22:18.591Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T04:22:18.591Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-25T04:22:18.591Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-25T04:29:17.450Z"
+    },
+    {
+      "event": "review-result",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-25T04:33:34.613Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-25T04:33:34.613Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-25T04:34:32.175Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T04:34:32.175Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T04:44:04.251Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T04:44:09.141Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T04:44:09.141Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-25T04:44:09.141Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-25T04:51:10.988Z"
+    },
+    {
+      "event": "review-result",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-25T04:52:55.196Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-25T04:52:55.196Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T05:00:38.886Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T05:00:38.886Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        7
+      ],
+      "at": "2026-11-25T05:00:38.886Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-25T05:07:47.316Z"
+    },
+    {
+      "event": "review-result",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-25T05:10:44.419Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-25T05:10:44.419Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T05:11:58.013Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T05:11:58.013Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        8
+      ],
+      "at": "2026-11-25T05:11:58.013Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-25T05:19:12.882Z"
+    },
+    {
+      "event": "review-result",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-25T05:21:58.843Z"
+    },
+    {
+      "event": "commit",
+      "step": 8,
+      "at": "2026-11-25T05:21:58.843Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T05:22:50.834Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T05:22:50.834Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        9
+      ],
+      "at": "2026-11-25T05:22:50.834Z"
+    },
+    {
+      "event": "report",
+      "step": 9,
+      "value": "pass",
+      "at": "2026-11-25T05:29:49.619Z"
+    },
+    {
+      "event": "review-result",
+      "step": 9,
+      "value": "pass",
+      "at": "2026-11-25T05:31:21.285Z"
+    },
+    {
+      "event": "commit",
+      "step": 9,
+      "at": "2026-11-25T05:31:21.285Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T05:32:11.002Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T05:32:11.002Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        10
+      ],
+      "at": "2026-11-25T05:32:11.002Z"
+    },
+    {
+      "event": "report",
+      "step": 10,
+      "value": "pass",
+      "at": "2026-11-25T05:39:11.898Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T05:50:48.522Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-25T05:50:48.522Z"
+    },
+    {
+      "event": "prelaunch-review",
+      "step": 11,
+      "value": "pass",
+      "at": "2026-11-25T05:50:48.522Z"
+    },
+    {
+      "event": "authorize",
+      "step": 11,
+      "at": "2026-11-25T06:12:28.242Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        11
+      ],
+      "at": "2026-11-25T06:12:28.242Z"
+    },
+    {
+      "event": "report",
+      "step": 11,
+      "value": "pass",
+      "at": "2026-11-25T06:13:11.395Z"
+    },
+    {
+      "event": "review-result",
+      "step": 11,
+      "value": "pass",
+      "at": "2026-11-25T06:13:43.320Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-25T06:13:43.320Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T06:13:43.320Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T06:50:45.013Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-25T06:50:55.406Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-25T06:57:12.513Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-25T06:57:23.017Z"
+    }
+  ]
+}
