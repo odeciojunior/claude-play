@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { loadPure } from './load-pure.mjs';
 import { canon, fnv1a, sliceEnvelopes, MAX_COPY_BYTES, utf8Length, commandDigest } from '../../../lib/plan-digest.mjs';
 import { truthDivergences, buildRead } from '../scripts/verify-run.mjs';
+import { gitBash } from '../../../scripts/git-bash.mjs';
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'roadmap-release.js'), 'utf8').replace('export const meta', 'const meta');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -3078,17 +3079,6 @@ test('assembled prompts: every task runs in the deliverable worktree before the 
 
 // ---------------------------------------------------------------- E18 T3: registro pela CLI (funções puras)
 
-const gitBashPath = () => {
-  try {
-    const ep = execFileSync('git', ['--exec-path']).toString().trim();
-    for (const up of [['..', '..', '..'], ['..', '..']]) {
-      const p = join(ep, ...up, 'bin', 'bash.exe');
-      if (existsSync(p)) return p;
-    }
-  } catch { /* sem git */ }
-  return null;
-};
-
 test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
   assert.equal(PU.shq("a'b"), "'a'\\''b'");
   assert.equal(PU.shq('a$b`c"d'), "'a$b`c\"d'");
@@ -3097,7 +3087,7 @@ test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
 });
 
 test('shq: o Git Bash entrega o texto literal', (t) => {
-  const bash = gitBashPath();
+  const bash = gitBash();
   const ok = bash && !/system32|windowsapps/i.test(bash) && spawnSync(bash, ['-c', 'true']).status === 0;
   if (!ok) { t.skip('Git Bash não resolvido por git --exec-path'); return; }
   for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'l1\nl2']) {

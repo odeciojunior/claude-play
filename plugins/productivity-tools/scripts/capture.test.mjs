@@ -7,10 +7,12 @@ import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCapture } from './capture.mjs';
+import { gitBash } from './git-bash.mjs';
 import { MAX_COPY_BYTES, SLICE_BYTES, utf8Length, commandDigest, checkCapture, checkSlice, joinSlices, canon, fnv1a } from '../lib/plan-digest.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE = path.join(HERE, 'capture.mjs');
+const BASH = gitBash();
 const fwd = (p) => p.replace(/\\/g, '/');
 
 function cleanEnv() {
@@ -212,8 +214,37 @@ test('tail: linha unica gigante e cortada pelo comeco e cabe na linha JSON', () 
   });
 });
 
-function shellTest(name, spawnShell) {
-  test(name, (t) => {
+// Roda fn com PT_BASH trocada (undefined apaga) e devolve a variável ao estado anterior.
+function withPtBash(value, fn) {
+  const old = process.env.PT_BASH;
+  const set = (v) => { if (v === undefined) delete process.env.PT_BASH; else process.env.PT_BASH = v; };
+  set(value);
+  try {
+    return fn();
+  } finally {
+    set(old);
+  }
+}
+
+test('gitBash: PT_BASH definida volta como está, mesmo sem o arquivo existir', () => {
+  const missing = path.join(os.tmpdir(), 'nao-existe-pt-bash', 'bash.exe');
+  assert.equal(fs.existsSync(missing), false);
+  withPtBash(missing, () => assert.equal(gitBash(), missing));
+});
+
+test('gitBash: sem PT_BASH devolve o bash do Git no win32 (ou null) e bash fora dele', () => {
+  const found = withPtBash(undefined, () => gitBash());
+  if (process.platform !== 'win32') {
+    assert.equal(found, 'bash');
+  } else if (found !== null) {
+    assert.ok(fs.existsSync(found), found);
+    assert.match(found, /bash\.exe$/i);
+    assert.doesNotMatch(found, /system32/i);
+  }
+});
+
+function shellTest(name, spawnShell, options = {}) {
+  test(name, options, (t) => {
     withRepo((repo) => {
       const probe = spawnShell(repo, ['node', '-e', 'process.exit(0)'], true);
       if (probe === null) {
@@ -235,10 +266,11 @@ function captureArgsText(repo, prog) {
 
 shellTest('AC8: Git Bash com --cwd C:/... preserva o exit 3', (repo, prog, probe) => {
   const cmd = `node '${fwd(CAPTURE)}' ${captureArgsText(repo, prog.slice(0, 2))} '${prog[2]}'`;
-  const r = spawnSync('bash', ['-c', probe ? 'exit 0' : cmd], { encoding: 'utf8', env: cleanEnv() });
+  if (probe && BASH === null) return null;
+  const r = spawnSync(BASH, ['-c', probe ? 'exit 0' : cmd], { encoding: 'utf8', env: cleanEnv() });
   if (probe) return r.error ? null : r;
   return r;
-});
+}, { skip: BASH ? false : 'Git Bash não encontrado; instale o Git ou defina PT_BASH' });
 
 shellTest('AC8: PowerShell com --cwd C:/... preserva o exit 3', (repo, prog, probe) => {
   const cmd = `node '${fwd(CAPTURE)}' ${captureArgsText(repo, prog.slice(0, 2))} '${prog[2]}'; exit $LASTEXITCODE`;

@@ -263,6 +263,8 @@ All fields are optional; Claude Code ignores unrecognized fields without an erro
 
 **Repo policy (claude-play)**: SKILL.md uses only `name`, `description`, `disable-model-invocation`, `user-invocable`, `argument-hint`, `compatibility`, `license`, `metadata`. Single exception (DEC-049, DEC-275): `plugins/productivity-tools/skills/roadmap-release/SKILL.md` declares `allowed-tools: Workflow(productivity-tools:release-workflow)` together with `disable-model-invocation: true`; `lint-plugin.mjs` fails `allowed-tools` in any other skill or with any other entry.
 
+`lint-plugin.mjs` also fails a plugin that has a `commands/` folder or a `commands` or `skills` key in `plugin.json`, until issue #29 checks `allowed-tools` in those paths (DEC-013).
+
 ### 2.3 Invocation Matrix
 
 | Configuration | User can invoke | Claude can invoke | Description in context |

@@ -270,6 +270,21 @@ export function lintPlugin(dir, { marketplace } = {}) {
     }
   }
 
+  // ---- DEC-013, DEC-024: allowed-tools is not linted in commands/ or custom component paths (#29) ----
+  {
+    const check = 'No commands/ or custom component paths (#29)';
+    const found = [];
+    if (isDir(path.join(dir, 'commands'))) found.push('commands/');
+    // The presence of the key triggers the check, whatever its value.
+    for (const key of ['commands', 'skills']) {
+      if (pj && Object.hasOwn(pj, key)) found.push(`plugin.json "${key}"`);
+    }
+    for (const f of found) {
+      add('FAIL', check, `found ${f}: allowed-tools is not linted there yet, see https://github.com/odeciojunior/claude-play/issues/29`);
+    }
+    if (found.length === 0) ok(check);
+  }
+
   // ---- Check 3 + 4: skills ----
   const skillsDir = path.join(dir, 'skills');
   const skillFiles = listDir(skillsDir)

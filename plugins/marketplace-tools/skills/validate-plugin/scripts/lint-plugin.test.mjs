@@ -858,3 +858,57 @@ test('E19: registered workflow path that does not exist -> no agent option resul
   const dir = freshWorkflow(null, './workflow/missing.js');
   assert.deepEqual(agentOption(lint(dir)), []);
 });
+
+// ---------- E50 / DEC-013, DEC-024: commands/ and custom component paths (#29) ----------
+
+const COMPONENT_PATHS_CHECK = 'No commands/ or custom component paths (#29)';
+const componentPaths = (results) => results.filter((x) => x.check === COMPONENT_PATHS_CHECK);
+const componentPathFails = (results) => componentPaths(results).filter((x) => x.level === 'FAIL');
+
+test('E50: commands/ folder -> FAIL pointing to #29, plus one FAIL per finding', () => {
+  const dir = fresh();
+  write(dir, 'commands/x.md', '# command\n');
+  const first = componentPathFails(lint(dir));
+  assert.equal(first.length, 1);
+  assert.match(first[0].detail, /found commands\//);
+  assert.match(first[0].detail, /issues\/29/);
+
+  mutatePluginJson(dir, (j) => { j.commands = './commands'; });
+  const both = componentPathFails(lint(dir));
+  assert.deepEqual(both.map((x) => x.detail.split(':')[0]), ['found commands/', 'found plugin.json "commands"']);
+
+  write(dir, '.claude-plugin/plugin.json', '{ not json');
+  const unreadable = componentPathFails(lint(dir));
+  assert.equal(unreadable.length, 1);
+  assert.match(unreadable[0].detail, /found commands\//);
+});
+
+test('E50: plugin.json "commands" key -> FAIL', () => {
+  const dir = fresh();
+  mutatePluginJson(dir, (j) => { j.commands = './cmds'; });
+  const fails = componentPathFails(lint(dir));
+  assert.equal(fails.length, 1);
+  assert.match(fails[0].detail, /found plugin\.json "commands"/);
+  assert.match(fails[0].detail, /issues\/29/);
+});
+
+test('E50: plugin.json "skills" key -> FAIL, even when it names the default path', () => {
+  for (const value of ['./extra', './skills']) {
+    const dir = fresh();
+    mutatePluginJson(dir, (j) => { j.skills = value; });
+    const fails = componentPathFails(lint(dir));
+    assert.equal(fails.length, 1, value);
+    assert.match(fails[0].detail, /found plugin\.json "skills"/);
+    assert.match(fails[0].detail, /issues\/29/);
+  }
+});
+
+test('E50: agents, hooks and mcpServers keys do not trigger the check', () => {
+  const dir = fresh();
+  mutatePluginJson(dir, (j) => {
+    j.agents = './extra-agents';
+    j.hooks = './extra-hooks.json';
+    j.mcpServers = './extra-mcp.json';
+  });
+  assert.deepEqual(componentPaths(lint(dir)), [{ level: 'OK', check: COMPONENT_PATHS_CHECK }]);
+});
