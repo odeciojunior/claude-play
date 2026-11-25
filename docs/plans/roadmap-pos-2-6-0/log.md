@@ -3,6 +3,10 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E44 | F1 da revisão final tratado no merge com mensagem no padrão, sem reescrever os SHAs; pendência removida | `5fcf32a` |
+| 2026-11-25 | - | estratégia v1.2: questão aberta do E44 respondida e a do E51 anotada; aprovada por opus por delegação | `docs/plans/2026-11-25-roadmap-pos-2-6-0.md` |
+| 2026-11-25 | E44 | DEC-030 ratificada com emenda (DEC-031) por opus por delegação | `decisions.md` |
+| 2026-11-25 | E44 | E44 merged into release/pos-2.6.0; G1 no merge: exit 0, tests 2625, pass 2623, fail 0, skipped 2; lint productivity-tools 57 OK | `5fcf32a` |
 | 2026-11-25 | E44 | DEC-030 recorded (pending ratification) | `decisions.md` |
 | 2026-11-25 | E44 | E44 criteria compared: none changed; branch plan/pos-2-6-0-E44 em voo | `docs/plans/pos-2-6-0-E44/spec.md` |
 | 2026-11-25 | E44 | E44 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E44/progress.json`, `354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4`, `b88669e2e49cd1d623d6bccc86d24eafb78708e1` |
