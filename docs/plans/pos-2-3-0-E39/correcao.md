@@ -19,3 +19,13 @@ Fora: o espaço inserido no stdout devolvido (detectado e repetido pelo desenho 
 ## Verificação
 
 Testes offline em `capture.test.mjs`, `flow.test.mjs` e `agent-contracts.test.mjs`; suíte completa; `roadmap-release.js` dentro de 265.673 caracteres LF (DEC-050); revisão por tarefa opus. Sem sonda própria: a reconferência é a execução 1 do lote reiniciado.
+
+## Segunda correção (DEC-056, DEC-057)
+
+A execução 1 do lote reiniciado (72eb968) bloqueou de novo na T2: o implementer rodou o par vermelho-verde certo com `--brief`, mas pôs em `checks[].output` um resumo do arquivo em vez da linha do capture (a seção Report do implementer.md manda citar a saída real, contradizendo a seção CAPTURE). O test-first passa a ser conferido por script.
+
+- `capture.mjs run` grava também `<seq>-line.json` com a linha assinada, idêntica à impressa, ao lado de `<seq>-stdout.txt`.
+- `capture.mjs pairs --nonce <n> --task <id> --prefix <prefixo de nonce> [--cwd <dir>]`: lê os `*-line.json` da pasta da task em ordem de seq, descarta os de digest errado ou nonce fora do prefixo, e imprime linha assinada curta `{tool:'capture', command:'pairs', nonce, task, runs, pair, red, green, cmdDigest}` com exit 0; `pair` é verdadeiro quando há um exit diferente de 0 seguido de um exit 0 com o mesmo cmdDigest.
+- `roadmap-release.js`: quando `testFirstGap` falha, um script-runner roda o `pairs` com nonce novo; o workflow confere com `checkCapture` e `command === 'pairs'`; `pair` verdadeiro zera a falha; cópia que não confere repete uma vez; senão, o bloqueio atual. A cópia do implementer continua sendo a primeira tentativa.
+- `implementer.md`, seção Report: com `CAPTURE:`, `output` é a linha do capture, não o conteúdo do arquivo.
+- Tamanho: +1.000 caracteres LF (DEC-057), trava de `discovery-slices.test.mjs` de 265.673 para 266.673.
