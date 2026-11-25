@@ -598,6 +598,32 @@ test('harness launches with the sandbox root on feat/E5 and the seeded blob at H
   }
 });
 
+test('harnessSessionPrompt: one Workflow call with scriptPath, no reads, no other tools', async () => {
+  const { harnessSessionPrompt } = await import('./run-batch.mjs');
+  const p = harnessSessionPrompt('C:\\work\\sb');
+  assert.match(p, /Workflow/);
+  assert.ok(p.includes('scriptPath'));
+  assert.ok(p.includes('C:/work/sb/review-only.js'));
+  assert.match(p, /exactly once|a single time|only once/i);
+  assert.match(p, /Do not read (that|the) script/i);
+  assert.match(p, /any other file/i);
+  assert.match(p, /Do not use any other tool/i);
+  assert.match(p, /Reply with only/i);
+});
+
+test('--stage launches the session with harnessSessionPrompt', async () => {
+  const { harnessSessionPrompt } = await import('./run-batch.mjs');
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { journal: planReview(BLOCKER), afterRun: fixP1 });
+    await runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', arm: 'atual' }), { exec: fake.exec, now: NOW });
+    const call = fake.calls.find((c) => c.cmd === 'claude' && c.args[0] === '-p');
+    assert.equal(call.args[1], harnessSessionPrompt(call.cwd));
+  } finally {
+    s.done();
+  }
+});
+
 test('harness writes the script in the sandbox and launches it with Workflow allowed', async () => {
   const s = setup();
   try {

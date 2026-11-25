@@ -1342,6 +1342,11 @@ export function prepareHarness(opts) {
 
 const slash = (p) => p.replace(/\\/g, '/');
 
+// Main-session prompt of --stage: one Workflow call, nothing else (E35: "Run the workflow script at ..." made the session read the script and its transcript).
+export function harnessSessionPrompt(dir) {
+  return `Call the Workflow tool exactly once, with scriptPath set to ${slash(dir)}/review-only.js. Do not read that script or any other file. Do not use any other tool, before or after the Workflow call. Reply with only what the workflow returns.`;
+}
+
 function harnessPrompts(h, scenario) {
   if (h.stage === 'final-review') return {}; // buildFinalLoopScript fills the two arms itself
   const sb = slash(scenario.dir);
@@ -2433,7 +2438,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         : buildReviewOnlyScript({ stage: h.stage, ...h.reviewer, ...prompts });
       writeFileSync(join(scenario.dir, 'review-only.js'), script);
       excludeFromGit(scenario.dir, 'review-only.js');
-      scenario.prompts = [`Run the workflow script at ${slash(scenario.dir)}/review-only.js`];
+      scenario.prompts = [harnessSessionPrompt(scenario.dir)];
       launchOpts = { ...opts, allow: [...(opts.allow ?? []), 'Workflow'] };
     }
     for (let i = 0; i < scenario.prompts.length; i++) {
