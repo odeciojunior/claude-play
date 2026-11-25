@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E40 | Preparação da 2.6.0: bump, nota, volta 2.6.1, G1 a G5 verdes nas duas branches, revisão final opus/high aprovada com ressalvas e roteiro de publicação | `docs/reports/2026-11-25-E40-roteiro-publicacao.md` |
 | 2026-11-25 | E39 | AC1 e AC2 aceitos com ressalva pelo Fable por delegação do dono: amostra de 2 válidas e limites provisórios; custo corrigido para US$ 14,65 pela regra do arnês, SHA256SUMS conferidos 167 e 174 de 174 | `docs/reports/2026-11-25-E39-linha-de-base-parada-retomada.md` |
 | 2026-11-25 | E39 | Lote fechado com 2 válidas integradas, relatório e DEC-060 com limites provisórios | `docs/reports/2026-11-25-E39-linha-de-base-parada-retomada.md` |
 | 2026-11-25 | E39 | Segunda correção da DEC-056 commitada, revisão opus aprovada. O digest das linhas do capture é checksum de cópia, sem segredo, mesmo nível de confiança do caminho anterior. HMAC fica como melhoria futura | `e536d5d` |
