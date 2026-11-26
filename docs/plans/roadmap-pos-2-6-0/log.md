@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E52 | E52 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
 | 2026-11-26 | E43 | E43 criteria compared: none changed | `docs/plans/pos-2-6-0-E43/spec.md` |
 | 2026-11-26 | E43 | E43 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2670, pass 2668, fail 0, skipped 2; G2 58 OK; G4 válido; G5 em dia; roadmap-release.js 269471 LF | `18b8e18` |
 | 2026-11-26 | E43 | E43 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E43/progress.json`, `c55df7cf21127d85f94fdaec7134750489731d08`, `5525bf64ac5fbdcc388eb51c50a112c9ea0f6ed7` |

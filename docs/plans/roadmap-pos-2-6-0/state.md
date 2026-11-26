@@ -17,7 +17,7 @@ Estratégia v1.2 -- 2026-11-25
 | E49 | nao-iniciado | - | - |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
-| E52 | plano | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md` | executar o plano em plan/pos-2-6-0-E52; o AC3 é conferência manual no pwsh pelo executor |
+| E52 | executando | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52` | conferir, rodar o AC3 no pwsh e integrar em release/pos-2.6.0 |
 | E53 | nao-iniciado | - | - |
 | E54 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
@@ -47,4 +47,5 @@ Estratégia v1.2 -- 2026-11-25
 | plan/pos-2-6-0-E51 | viva | integrado em release/pos-2.6.0 (4329c5e); branch e worktree pos-2-6-0-E51 ainda existem |
 | plan/pos-2-6-0-E43 | viva | integrado em release/pos-2.6.0 (18b8e18); branch e worktree pos-2-6-0-E43 ainda existem |
 | plan/pos-2-6-0-E45 | viva | coordinator parado no pedido de autorização plan:T1@cda5b9f6 (worktree pos-2-6-0-E45) |
+| plan/pos-2-6-0-E52 | viva | execução do plano do E52 no worktree D:/projects/claude-play-wt/pos-2-6-0-E52 |
 <!-- /roadmap:inflight -->
