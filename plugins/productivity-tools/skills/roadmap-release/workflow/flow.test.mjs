@@ -200,6 +200,12 @@ function withCapture(prompt, m, gatesCfg) {
   }
   return { ...m, gates };
 }
+// E43: a read-back prompt hands the script-runner `capture.mjs line`; by default the script refuses it with the nonce and the task asked.
+const LINE_CMD = /capture\.mjs" line --nonce (\S+) --task (\S+) --cwd /;
+function lineRefusal(prompt) {
+  const [, nonce, task] = LINE_CMD.exec(prompt);
+  return { exit: 1, stdout: JSON.stringify({ tool: 'capture', command: 'line', nonce, task, error: `no signed line with this nonce in pt-evidence/${task}` }) };
+}
 // E41 B2 T4: the spec and plan loads run each command by capture.mjs run (and read a cut output by capture.mjs slice). A test still answers the first label
 // (spec-load<k>, plan-load<k>) with the old load answer { checkExit, checkStdout, emitExit, emitStdout, blob, head, clean }; the answers of the labels
 // that follow (-emit, -blob, -head, -porcelain, -<name>-slice<j>) are made from it: the JSON line capture.mjs prints and the slice envelopes of its text.
@@ -279,6 +285,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:sync$/.test(l)) return { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'abc1234', deltaFiles: [] };
     if (/:resync$/.test(l)) return { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'def5678', deltaFiles: ['src/x.js'] };
     if (/test-integrity$/.test(l)) return { deletedTests: [], removedAsserts: 0, skipsAdded: 0, prodChanged: 1, assertsAdded: 1 };
+    if (/:reread-g\d+(-retry\d)?$/.test(l)) return lineRefusal(prompt);
     if (/merge-gates/.test(l)) return gm('e1');
     if (/gates\d/.test(l) && !/fix/.test(l)) return gm(/:regates/.test(l) ? 'a3' : 'a2');
     if (/:evidence/.test(l)) return { headSha: /:evidence1/.test(l) ? 'a2' : 'a3', clean: true, results: [{ ac: 'AC1', command: 'npm test -- a', exit: 0 }] };
@@ -343,13 +350,153 @@ test('E41 B2 T2: a gate with a space in the name and a single quote in the comma
 test('E41 B2 T2: a tests gate runs capture with --tests and a measure whose gate has no valid capture line is retried once and then an infra failure', async () => {
   let n = 0;
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'],
-    over: (l) => (/^E1:gates1-2/.test(l) ? (n++, { ...gm('a2'), gates: gm('a2').gates.map((g) => ({ ...g, capture: 'nothing' })) }) : undefined) });
+    over: (l) => (/^E1:gates1-2(-retry)?$/.test(l) ? (n++, { ...gm('a2'), gates: gm('a2').gates.map((g) => ({ ...g, capture: 'nothing' })) }) : undefined) });
   assert.equal(r.results[0].merged, false);
   assert.ok(labels.includes('E1:gates1-2-retry'), labels.join(','));
   assert.equal(n, 2);
   const unit = calls.find((c) => c.label === 'E1:gates1-2').prompt;
   assert.match(unit, / --tests --cwd /);
   assert.doesNotMatch(calls.find((c) => c.label === 'E1:gates1-1').prompt, / --tests /);
+});
+
+// E43 AC2: a capture line the workflow refuses, or an omitted gate, is read back with capture.mjs line without measuring the gates again.
+// What line prints for the gate def: the signed line with the nonce and the task of the prompt; over changes them (a line of another run or command).
+const reread = (prompt, def, g = { exit: 0 }, over = {}) => {
+  const [, nonce, task] = LINE_CMD.exec(prompt);
+  return { exit: 0, stdout: captureLine({ nonce, task, bash: def.cmd, tests: def.kind === 'tests', ...over }, def, g) };
+};
+const UNIT_COUNTS = { exit: 0, total: 10, skipped: 0, failedNames: [] };
+const preflightOf = (baseline) => ({ ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline });
+// A measure whose capture lines were miscopied: digest and cmdDigest changed.
+const miscopied = (prompt, m) => {
+  const x = withCapture(prompt, m, GATES);
+  return { ...x, gates: x.gates.map((g) => ({ ...g, capture: JSON.stringify({ ...JSON.parse(g.capture), cmdDigest: 'ffffffff', digest: 'ffffffff' }) })) };
+};
+const unreadable = (m) => ({ ...m, gates: m.gates.map((g) => ({ ...g, capture: 'nothing' })) });
+const rereads = (calls) => calls.filter((c) => c.label.includes(':reread-'));
+const invalidBaseline = (r) => r.operatorActions.find((o) => o.kind === 'preflight:baseline-invalid');
+
+test('E43 AC2: a tampered preflight capture is read back and the baseline is accepted without a second measure', async () => {
+  const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (l === 'preflight') return preflightOf(miscopied(p, gm('abc1234')));
+    const m = /^preflight:reread-g(\d)$/.exec(l);
+    return m ? reread(p, GATES[m[1]], UNIT_COUNTS) : undefined;
+  } });
+  assert.equal(invalidBaseline(r), undefined, JSON.stringify(r.operatorActions));
+  assert.equal(r.results[0].merged, true);
+  assert.equal(calls.filter((c) => c.label === 'preflight').length, 1);
+  const back = rereads(calls);
+  assert.deepEqual(back.map((c) => c.label), ['preflight:reread-g0', 'preflight:reread-g1']);
+  for (const [i, c] of back.entries()) {
+    assert.ok(c.prompt.includes(`node "/p/productivity-tools/scripts/capture.mjs" line --nonce ${LINE_CMD.exec(c.prompt)[1]} --task preflight-gates --cwd '/wt/_integracao'\n`), c.prompt);
+    assert.match(LINE_CMD.exec(c.prompt)[1], new RegExp(`:preflight:g${i}$`));
+    assert.doesNotMatch(c.prompt, /capture\.mjs" run /);
+    assert.deepEqual({ agentType: c.opts.agentType, phase: c.opts.phase, model: c.opts.model, effort: c.opts.effort }, { agentType: 'productivity-tools:script-runner', phase: 'Preflight', model: 'haiku', effort: 'low' });
+  }
+});
+
+test('E43 AC2: a wrong copy on a branch gate is read back and no retry measure runs', async () => {
+  const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (l === 'E1:gates1-2') return miscopied(p, gm('a2'));
+    return l === 'E1:gates1-2:reread-g0' ? reread(p, GATES[1], UNIT_COUNTS) : undefined;
+  } });
+  assert.ok(!labels.includes('E1:gates1-2-retry'), labels.join(','));
+  assert.equal(r.results[0].merged, true);
+  const back = rereads(calls);
+  assert.deepEqual(back.map((c) => c.label), ['E1:gates1-2:reread-g0']);
+  assert.ok(back[0].prompt.includes(` --task E1-gates --cwd '/wt/E1'\n`), back[0].prompt);
+});
+
+test('E43 AC2: a read-back of another nonce or cmdDigest is refused with both reasons', async () => {
+  const cases = [
+    [{ nonce: 'other:nonce' }, /gate lint missing from the measure: the output is not JSON; reread: the nonce of the output is not the one of this run, expected \S+:preflight:g0, got other:nonce/],
+    [{ bash: 'npm run other' }, /gate lint missing from the measure: the output is not JSON; reread: the output is not from the expected command, expected \w+, got \w+/],
+  ];
+  for (const [over, why] of cases) {
+    const { r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+      if (l === 'preflight') return preflightOf(unreadable(gm('abc1234')));
+      const m = /^preflight:reread-g(\d)(-retry\d)?$/.exec(l);
+      return m ? reread(p, GATES[m[1]], UNIT_COUNTS, over) : undefined;
+    } });
+    assert.equal(r.status, 'needs-operator');
+    assert.match(invalidBaseline(r).what, why);
+  }
+  // on a branch gate the refused read-back leaves today's path: the retry measure runs and is read back too
+  const { r, labels } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (/^E1:gates1-2(-retry)?$/.test(l)) return unreadable(gm('a2'));
+    return /^E1:gates1-2(-retry)?:reread-g0(-retry\d)?$/.test(l) ? reread(p, GATES[1], UNIT_COUNTS, { nonce: 'other:nonce' }) : undefined;
+  } });
+  assert.equal(r.results[0].merged, false);
+  assert.ok(labels.includes('E1:gates1-2-retry'), labels.join(','));
+  assert.ok(labels.includes('E1:gates1-2-retry:reread-g0'), labels.join(','));
+});
+
+test('E43 AC2: an omitted gate is accepted only when it needs no agent counts', async () => {
+  const [lint, unit] = gm('abc1234').gates;
+  const ok = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (l === 'preflight') return preflightOf({ ...gm('abc1234'), gates: [unit] });
+    return l === 'preflight:reread-g0' ? reread(p, GATES[0]) : undefined;
+  } });
+  assert.equal(invalidBaseline(ok.r), undefined, JSON.stringify(ok.r.operatorActions));
+  assert.equal(ok.r.results[0].merged, true);
+  assert.deepEqual(rereads(ok.calls).map((c) => c.label), ['preflight:reread-g0']);
+  const out = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (l === 'preflight') return preflightOf({ ...gm('abc1234'), gates: [lint] });
+    return /^preflight:reread-g1(-retry\d)?$/.test(l) ? reread(p, GATES[1]) : undefined; // no total: the extract format is unknown
+  } });
+  assert.ok(invalidBaseline(out.r), JSON.stringify(out.r.operatorActions));
+  assert.ok(!out.r.operatorActions.some((o) => o.kind === 'preflight:red-baseline'));
+  assert.match(invalidBaseline(out.r).what, /gate unit missing from the measure: no capture line; reread: the gate needs the agent's counts/);
+  assert.deepEqual(rereads(out.calls).map((c) => c.label), ['preflight:reread-g1']);
+});
+
+test('E43 AC2: the read-back stops on a refusal with its nonce and otherwise tries 5 times', async () => {
+  const bases = ['preflight', 'E1:gates1-2', 'E1:gates1-2-retry'];
+  const run = (answer, badPre) => exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (badPre && l === 'preflight') return preflightOf(unreadable(gm('abc1234')));
+    if (!badPre && /^E1:gates1-2(-retry)?$/.test(l)) return unreadable(gm('a2'));
+    return answer && l.includes(':reread-') ? answer : undefined;
+  } });
+  // a refusal with the nonce asked (the default answer): one call per gate in each measure
+  const pre = await run(null, true);
+  assert.deepEqual(rereads(pre.calls).map((c) => c.label), ['preflight:reread-g0', 'preflight:reread-g1']);
+  assert.match(invalidBaseline(pre.r).what, /the output is not JSON; reread: capture refused: no signed line with this nonce in pt-evidence\/preflight-gates/);
+  const branch = await run(null, false);
+  assert.deepEqual(rereads(branch.calls).map((c) => c.label), bases.slice(1).map((b) => `${b}:reread-g0`));
+  // a usage error has no nonce, and a stdout that is not JSON says nothing: 5 tries per gate in each measure
+  const usage = { exit: 2, stdout: JSON.stringify({ tool: 'capture', error: 'bad usage' }) };
+  for (const [answer, why] of [[usage, /reread: capture refused: bad usage/], [{ exit: 1, stdout: 'boom' }, /reread: the output is not JSON/], [{ exit: 1, stdout: '' }, /reread: no capture line/]]) {
+    for (const badPre of [true, false]) {
+      const x = await run(answer, badPre);
+      const gates = badPre ? ['preflight:reread-g0', 'preflight:reread-g1'] : bases.slice(1).map((b) => `${b}:reread-g0`);
+      const back = rereads(x.calls);
+      assert.deepEqual(back.map((c) => c.label), gates.flatMap((g) => [g, ...[2, 3, 4, 5].map((t) => `${g}-retry${t}`)]));
+      assert.deepEqual(back.map((c) => `${c.opts.model}/${c.opts.effort}`), gates.flatMap(() => ['haiku/low', 'haiku/low', 'sonnet/medium', 'sonnet/medium', 'sonnet/medium']));
+      if (badPre) assert.match(invalidBaseline(x.r).what, why);
+    }
+  }
+});
+
+test('E43 AC2: nothing is read back without a rejected capture', async () => {
+  const none = (x, name) => assert.deepEqual(rereads(x.calls).map((c) => c.label), [], name);
+  const happy = await exec({ cards: [card('E1')], deliverables: ['E1'] });
+  assert.equal(happy.r.results[0].merged, true);
+  none(happy, 'happy path');
+  // a recorded baseline is never read back, whatever copy the preflight returns with it
+  const prep = { targetHead: FULL('abc1234'), gatesKey: PURE_X.fnv1a(JSON.stringify(PURE_X.canon(GATES))), baseline: gm('abc1234') };
+  const recorded = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l) => (l === 'preflight' ? { ...preflightOf(unreadable(gm('abc1234'))), recorded: JSON.stringify(prep) } : undefined) });
+  assert.equal(recorded.r.results[0].merged, true);
+  none(recorded, 'recorded');
+  const foreign = await exec({ cards: [card('E1')], deliverables: ['E1'], over: foreignNoBase });
+  assert.equal(foreign.r.status, 'needs-operator');
+  none(foreign, 'unauthorized foreign checkout');
+  const notRun = await exec({ cards: [card('E1')], deliverables: ['E1'], over: (l, p) => {
+    if (l !== 'preflight') return undefined;
+    const m = withCapture(p, gm('abc1234'), GATES);
+    return preflightOf({ ...m, gates: [{ name: 'lint', ran: false, exit: -1 }, m.gates.find((g) => g.name === 'unit')] });
+  } });
+  assert.ok(notRun.r.operatorActions.some((o) => o.kind === 'preflight:red-baseline'), JSON.stringify(notRun.r.operatorActions)); // lint stays as reported: not run, exit -1
+  none(notRun, 'ran false');
 });
 
 test('happy path merges, persists the log before the re-sync gates, and cleanup is scoped', async () => {
