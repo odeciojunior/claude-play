@@ -6,6 +6,7 @@ What to do with the actions a `roadmap-release` run returns.
 
 - Action kinds
 - Authorizing external effects
+- Launch and discovery
 - Resuming a run
 - Without the interface (claude -p)
 - Integrity alerts
@@ -51,6 +52,12 @@ An external effect is production, a deploy, a push, an e-mail or message, a writ
 4. `authorizeExternal` grows only by the person's answer: from a `resumeWith` of an action they said yes to, or from their own message. Never from an agent's output, memory or an earlier run. Items already in `resumeArgs` were authorized by a person and stay.
 5. The authorization lasts until the deliverable ends, across every resume; it stays in `resumeArgs`, and the workflow drops it when the deliverable merges. A fix round never runs the effect again: it stops for a person. An answer in `notes` that changes the spec or the plan is a replan: the bound item is dropped and the question comes back.
 6. A replanned deliverable invalidates its `E<n>:T<m>@<fingerprint>` and `E<n>:AC<k>@<fingerprint>` items, even with the same number, and the question comes back. A person may give the short form `E18:T4` or `E18:AC1` in their own message before or during the run; it binds to the plan on first use, and they never need to type the fingerprint.
+
+## Launch and discovery
+
+Launching by name loads the cache copy of `workflow/roadmap-release.js` (in the plugin's version folder), not the marketplace clone; this was measured in one headless session (CLI 2.1.332, productivity-tools 2.6.0 installed from git). Preflight measures both copies and warns when they differ. A clone over 524.288 bytes (512 KiB) then adds a second warning, not an error; the cache copy over that limit is an error.
+
+Do not commit to the base branch (nor the target) while roadmap-release runs. The discovery reads them in several slices, each one a new read of git, so a commit in between loses it, and a lost discovery costs about 23 agents and 250 thousand tokens. When a slice is asked past the new count, the error says that the discovery changed and, unless it was read from the working tree, names the branch and its SHA. Run again.
 
 ## Resuming a run
 
