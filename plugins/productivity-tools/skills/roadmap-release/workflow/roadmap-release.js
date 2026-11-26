@@ -1976,6 +1976,39 @@ const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9
 const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
 const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
 ` : ''}For each gate run the line under it${String(dir).startsWith('"<') ? `, with ${dir} replaced by the integration worktree path of step 2 (keep the double quotes) and nothing else changed` : ', unchanged'} (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (no test counts; the capture line is still required, copied literally)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --brief --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. The capture line has no output: take them from the file at its path (Read, offset/limit). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
+// A refused capture line, or a gate left out of the measure, is read back with capture.mjs line (no new measure, no lock); only capturedMeasure
+// accepts it. A refusal of line carrying the nonce asked ends the tries of that gate.
+const rereadMeasure = async (defs, m, nonceOf, dir, task, label, ph) => {
+  const first = capturedMeasure(defs, m, nonceOf)
+  if (!first || typeof first !== 'object' || !Object.keys(first.gateWhy).length || !dir) return first
+  let work = m
+  const after = {}
+  for (const [i, d] of defs.entries()) {
+    if (!Object.hasOwn(first.gateWhy, d.name)) continue
+    const cmd = `node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" line --nonce ${nonceOf(i)} --task ${task} --cwd ${shq(dir)}`
+    const base = `${label}:reread-g${i}`
+    for (let t = 1; t <= 5; t++) {
+      const out = await agent(runPrompt(cmd),
+        { agentType: 'productivity-tools:script-runner', label: t === 1 ? base : `${base}-retry${t}`, phase: ph, schema: S_RUN, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
+      const raw = String(out && out.stdout != null ? out.stdout : '')
+      const old = gateResult(work, d.name), item = { ...(old || { name: d.name, ran: true }), capture: raw || undefined }
+      const copy = { ...work, gates: old ? work.gates.map(g => (g === old ? item : g)) : [...(work.gates || []), item] }
+      const seen = capturedMeasure(defs, copy, nonceOf)
+      if (!Object.hasOwn(seen.gateWhy, d.name)) {
+        // An omitted gate has no counts of the agent to fall back on.
+        if (!old && gateResult(seen, d.name).fallback) after[d.name] = "the gate needs the agent's counts"
+        else work = copy
+        break
+      }
+      after[d.name] = seen.gateWhy[d.name]
+      let o = null
+      try { o = JSON.parse(raw) } catch {}
+      if (o && o.tool === 'capture' && o.command === 'line' && o.error !== undefined && o.nonce === nonceOf(i)) break
+    }
+  }
+  const last = capturedMeasure(defs, work, nonceOf)
+  return { ...last, gateWhy: Object.fromEntries(Object.keys(last.gateWhy).map(n => [n, `${first.gateWhy[n]}; reread: ${after[n]}`])) }
+}
 const FOREIGN_ITEM = 'checkout:' + TARGET
 const foreignOk = authorized(FOREIGN_ITEM)
 const foreignRule = foreignOk
@@ -1995,7 +2028,7 @@ const rawHead = pre && pre.targetHead
 if (pre) pre.targetHead = fullRef(pre.targetHead)
 // Rejected record: no baseline (stop).
 if (pre && MODE === 'run' && pre.recorded) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES)
-else if (pre && MODE === 'run' && pre.baseline) pre.baseline = capturedMeasure(GATES, pre.baseline, i => gateNonce('preflight', i))
+else if (pre && MODE === 'run' && pre.baseline) pre.baseline = await rereadMeasure(GATES, pre.baseline, i => gateNonce('preflight', i), pre.integrationWorktree, 'preflight-gates', 'preflight', 'Preflight')
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
 // Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
@@ -2042,7 +2075,7 @@ Also return changedFiles = git diff --name-only ${range}, and in log the relevan
 // An invalid measure (null agent, dirty tree, wrong commit, exit and names disagreeing) is retried once and then counts as an infra failure, never as green.
 const measuredGroup = async (g, dir, label, ph, exp, range) => {
   for (const suffix of ['', '-retry']) {
-    const r = capturedMeasure(g.defs, await gateOnce(g, dir, label + suffix, ph, range), i => gateNonce(label + suffix, i))
+    const r = await rereadMeasure(g.defs, await gateOnce(g, dir, label + suffix, ph, range), i => gateNonce(label + suffix, i), dir, gateTask(label), label + suffix, ph)
     if (validMeasure(r, exp, g.defs)) return { ...r, headSha: normSha(r.headSha) }
   }
   return null

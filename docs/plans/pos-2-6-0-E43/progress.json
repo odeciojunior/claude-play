@@ -1,0 +1,198 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E43/plan.md",
+    "id": "E43",
+    "digest": "ff7877ab",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.1388ms)\n✔ counts usage once per message id, keeping the largest output (32.4144ms)\n✔ splits cache writes into 5m and 1h (0.9499ms)\n✔ counts agent calls by dominant model family (1.0866ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7797ms)\n✔ estimates cost and keeps unpriced models null (0.7461ms)\n✔ readJsonl tolerates CRLF and a partial last line (8.1651ms)\n✔ classifies every label family of the role table (0.6505ms)\n✔ status, progress, review log and report come out as separate rows (239.6521ms)\n✔ records review rounds per loop (3.1654ms)\n✔ counts tasks and the task loop (2.928ms)\n✔ writes metrics.json and one csv row per run and role (150.2006ms)\n✔ groups sessions of one attempt with --runs (92.5229ms)\n✔ requires --root and --out (149.6963ms)\n✔ refuses --out inside the repository outside tools/measure/out (1620.9542ms)\n✔ real price table is dated and sourced (0.2875ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (469.9027ms)\n✔ privacy scan catches a planted personal path and session id (5.3288ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (25.059ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (16.1427ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (20.9621ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (20.4718ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (10.6933ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (17.9683ms)\n✔ prepare builds the sandbox and stops at authorize (7911.0847ms)\n✔ prepare refuses a work dir inside the repository (125.0439ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (142.0111ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (394.2942ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (250.5387ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.3484ms)\nℹ tests 2660\nℹ suites 11\nℹ pass 2658\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 504573.5014",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T05:24:44.303Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Subcomando line no capture.mjs",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/capture.mjs",
+        "plugins/productivity-tools/scripts/capture.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`capture.mjs line --nonce <n> --task <id> [--cwd <dir>]` now re-signs the highest-seq saved line without tail/tailCut (exit 0); no valid line exits 1 with {tool,command:'line',nonce,task,error} and no digest; bad usage exits 2. Downstream re-reads call it and validate with checkCapture. A shared savedLines(dir) helper now serves `pairs` and `line`; header, dispatch and parseArgs message updated. Test first: 4 new cases failed (50/54), then 54/54; the five targeted files 103/103; lint 0 FAIL. Not",
+      "sha": "c55df7cf21127d85f94fdaec7134750489731d08",
+      "replacedBy": null,
+      "note": "`capture.mjs line --nonce <n> --task <id> [--cwd <dir>]` now re-signs the highest-seq saved line without tail/tailCut (exit 0); no valid line exits 1 with {tool,command:'line',nonce,task,error} and no digest; bad usage exits 2.\nDownstream re-reads call it and validate with checkCapture. A shared savedLines(dir) helper now serves `pairs` and `line`; header, dispatch and parseArgs message updated.\nT",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Releitura da captura recusada no workflow",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js has rereadMeasure(defs, m, nonceOf, dir, task, label, ph), used by the preflight baseline and by measuredGroup (first and -retry measures): a refused capture line or an omitted gate is read back with capture.mjs line (2 haiku, 3 sonnet; labels <label>:reread-g<i>[-retry<t>]), never re-measured. A gate still out carries '<original>; reread: <last reason>' in gateWhy. operator.md has the new sentence; flow.test.mjs has the refusal route and 6 E43 AC2 cases (red 5 fail, green 490",
+      "sha": "5525bf64ac5fbdcc388eb51c50a112c9ea0f6ed7",
+      "replacedBy": null,
+      "note": "roadmap-release.js has rereadMeasure(defs, m, nonceOf, dir, task, label, ph), used by the preflight baseline and by measuredGroup (first and -retry measures): a refused capture line or an omitted gate is read back with capture.mjs line (2 haiku, 3 sonnet; labels <label>:reread-g<i>[-retry<t>]), never re-measured.\nA gate still out carries '<original>; reread: <last reason>' in gateWhy. operator.md ",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T04:49:28.625Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-26T04:49:28.625Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T04:49:34.262Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T04:49:34.262Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T04:49:34.262Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T04:58:23.704Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T05:01:02.924Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T05:01:21.605Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T05:01:21.605Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T05:01:21.605Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T05:09:53.346Z"
+    },
+    {
+      "event": "review-result",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T05:21:56.214Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T05:24:19.331Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T05:24:44.303Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T05:24:44.303Z"
+    }
+  ]
+}
