@@ -914,10 +914,11 @@ function dropConsumedNotes(args, consumed) {
   return Object.keys(kept).length ? { ...rest, notes: kept } : rest
 }
 // ---- Roadmap record through the tracker CLI (E18): pure assembly of the exact commands and verdict over the CLI JSON.
-// POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
+// Safe values go bare, others in POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
 function oneLine(s) { return String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ') }
 function shq(s) {
-  return "'" + oneLine(s).replace(/'/g, "'\\''") + "'"
+  const v = oneLine(s)
+  return /^[A-Za-z0-9_%+=:./-]+$/.test(v) ? v : "'" + v.replace(/'/g, "'\\''") + "'"
 }
 const isPt = lang => /^pt/i.test(String(lang || ''))
 const collapseWs = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim()

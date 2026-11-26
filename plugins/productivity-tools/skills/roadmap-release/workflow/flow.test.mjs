@@ -392,7 +392,7 @@ test('E43 AC2: a tampered preflight capture is read back and the baseline is acc
   const back = rereads(calls);
   assert.deepEqual(back.map((c) => c.label), ['preflight:reread-g0', 'preflight:reread-g1']);
   for (const [i, c] of back.entries()) {
-    assert.ok(c.prompt.includes(`node "/p/productivity-tools/scripts/capture.mjs" line --nonce ${LINE_CMD.exec(c.prompt)[1]} --task preflight-gates --cwd '/wt/_integracao'\n`), c.prompt);
+    assert.ok(c.prompt.includes(`node "/p/productivity-tools/scripts/capture.mjs" line --nonce ${LINE_CMD.exec(c.prompt)[1]} --task preflight-gates --cwd /wt/_integracao\n`), c.prompt);
     assert.match(LINE_CMD.exec(c.prompt)[1], new RegExp(`:preflight:g${i}$`));
     assert.doesNotMatch(c.prompt, /capture\.mjs" run /);
     assert.deepEqual({ agentType: c.opts.agentType, phase: c.opts.phase, model: c.opts.model, effort: c.opts.effort }, { agentType: 'productivity-tools:script-runner', phase: 'Preflight', model: 'haiku', effort: 'low' });
@@ -408,7 +408,7 @@ test('E43 AC2: a wrong copy on a branch gate is read back and no retry measure r
   assert.equal(r.results[0].merged, true);
   const back = rereads(calls);
   assert.deepEqual(back.map((c) => c.label), ['E1:gates1-2:reread-g0']);
-  assert.ok(back[0].prompt.includes(` --task E1-gates --cwd '/wt/E1'\n`), back[0].prompt);
+  assert.ok(back[0].prompt.includes(` --task E1-gates --cwd /wt/E1\n`), back[0].prompt);
 });
 
 test('E43 AC2: a read-back of another nonce or cmdDigest is refused with both reasons', async () => {
@@ -705,7 +705,7 @@ test('E41 T1 F1: a validated finish-merge prunes the capture evidence of the del
   assert.ok(!e1.broken);
   const prune = calls.filter((c) => c.label === 'E1:prune-evidence');
   assert.equal(prune.length, 1, 'the prune call runs once on the finish-merge path');
-  assert.match(prune[0].prompt, /scripts\/capture\.mjs" prune --task-prefix 'E1-' --cwd /);
+  assert.match(prune[0].prompt, /scripts\/capture\.mjs" prune --task-prefix E1- --cwd /);
   assert.ok(!e1.concerns.some((c) => /capture evidence not pruned/.test(c)), e1.concerns.join('; '));
 });
 
@@ -1034,17 +1034,17 @@ test('E10 AC1: discovery dispatches the script-runner with preflight.mjs" discov
   assert.deepEqual(d.opts.schema.required, ['exit', 'stdout']);
   assert.equal(d.opts.model, 'haiku');
   assert.match(d.prompt, /node "\/p\/productivity-tools\/skills\/roadmap-release\/scripts\/preflight\.mjs" discover /);
-  assert.match(d.prompt, /--prefix 'feat\/'/);  // the plan wrote --prefix pf-test: the run token goes in --nonce, the prefix is the branch prefix
-  assert.match(d.prompt, /--nonce 'pf-test'/);
-  assert.match(d.prompt, /--ref 'integracao\/x'/);
-  assert.match(d.prompt, /--today '2026-11-09'/);
+  assert.match(d.prompt, /--prefix feat\/(?!\S)/);  // the plan wrote --prefix pf-test: the run token goes in --nonce, the prefix is the branch prefix
+  assert.match(d.prompt, /--nonce pf-test(?!\S)/);
+  assert.match(d.prompt, /--ref integracao\/x(?!\S)/);
+  assert.match(d.prompt, /--today 2026-11-09(?!\S)/);
   assert.doesNotMatch(d.prompt, /\/wt|_integracao/);
   assert.ok(d.prompt.includes('SHELL: run each command exactly as written'));
   const p = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run', branchPrefix: 'pf-test', targetBranch: undefined, today: undefined } });
-  assert.match(p.calls[0].prompt, /--prefix 'pf-test'/);
+  assert.match(p.calls[0].prompt, /--prefix pf-test(?!\S)/);
   assert.doesNotMatch(p.calls[0].prompt, /--ref|--today/);  // --ref only with PRE_TARGET, --today only with args.today
   const withCfg = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { releaseBranch: 'rel/x' }, args: { mode: 'dry-run', targetBranch: undefined } });
-  assert.match(withCfg.calls[0].prompt, /--ref 'rel\/x'/);
+  assert.match(withCfg.calls[0].prompt, /--ref rel\/x(?!\S)/);
 });
 
 test('a wrong digest retries up to 5 times and stops with discovery failed', async () => {
@@ -1243,7 +1243,7 @@ test('m7: reportPath is null when no report file was written', async () => {
 test('m8: the inflight row is added by the CLI inflight-add command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
-  assert.match(p, /inflight-add '[^']*' 'feat\/E1' --note '/);
+  assert.match(p, /inflight-add (?:'[^']*'|[^\s']+) feat\/E1 --note '/);
   assert.doesNotMatch(p, /type: deliverable/);
 });
 
@@ -1578,7 +1578,7 @@ test('item 2: the discovery prompt restricts the ancestor rule', async () => {
   const { calls } = await exec({ cards: [card('E1')], args: { mode: 'dry-run' }, deliverables: 'next' });
   // E10: the ancestor rule (only a finished code segment counts, the delivery branch never does) is code in preflight.mjs, tested in preflight.test.mjs; the prompt is the command.
   assert.match(calls[0].prompt, /preflight\.mjs" discover/);
-  assert.match(calls[0].prompt, /--prefix 'feat\/'/);
+  assert.match(calls[0].prompt, /--prefix feat\/(?!\S)/);
 });
 
 test('item 14: a closed BLQ yields a decision action and no correction round', async () => {
@@ -3017,7 +3017,7 @@ test('B4: the runToken never comes back in resume args, so a resume must take a 
   assert.equal(!!x.r.resumeArgs && 'runToken' in x.r.resumeArgs, false);
   for (const o of x.r.operatorActions) assert.equal(!!o.resumeWith && 'runToken' in o.resumeWith, false, o.kind);
   assert.equal(x.labels[0], 'discovery');
-  assert.match(x.calls[0].prompt, /--nonce 'pf-test'/);  // E10: the token is the nonce of the discover command
+  assert.match(x.calls[0].prompt, /--nonce pf-test(?!\S)/);  // E10: the token is the nonce of the discover command
   assert.ok(x.calls.slice(1).every((c) => !c.prompt.includes('pf-test')), 'the token is only in the discovery read (the first agent call)');
 });
 
@@ -3242,16 +3242,23 @@ test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
   assert.equal(PU.shq('a$b`c"d'), "'a$b`c\"d'");
   assert.equal(PU.shq('a\nb'), "'a b'");
   assert.equal(PU.shq('a\r\nb'), "'a b'");
+  // E46: only a value outside the safe set is quoted
+  for (const x of ['abc', 'E1', 'docs/plans/r/', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_%+=:./-', '-x', '--flag', '=x']) assert.equal(PU.shq(x), x, x);
+  for (const x of ['a b', 'C:\\x', 'a@b', '@x', 'a,b', 'a(b)', '~x', 'a*', 'é']) assert.equal(PU.shq(x), "'" + x + "'", x);
+  for (const x of ['', null, undefined]) assert.equal(PU.shq(x), "''", String(x));
 });
 
 test('shq: o Git Bash entrega o texto literal', (t) => {
   const bash = gitBash();
   const ok = bash && !/system32|windowsapps/i.test(bash) && spawnSync(bash, ['-c', 'true']).status === 0;
   if (!ok) { t.skip('Git Bash não resolvido por git --exec-path'); return; }
-  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'l1\nl2']) {
+  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'C:\\x', 'l1\nl2', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_%+=:./-', '-x', '--flag', '-', '=x', '@x', 'a,b']) {
     const r = spawnSync(bash, ['-c', 'printf %s ' + PU.shq(x)]);
     assert.equal(r.stdout.toString(), x.replace(/\r?\n/g, ' '), JSON.stringify(x));
   }
+  // The empty value stays an argument: printf delimits each one it receives.
+  const r = spawnSync(bash, ['-c', `printf '[%s]' a ${PU.shq('')} b`]);
+  assert.equal(r.stdout.toString(), '[a][][b]');
 });
 
 test('fitCell: cabe -> igual com espaços juntados; longo -> corta em palavra com o sufixo da origem', () => {
@@ -3281,8 +3288,8 @@ test('fitEvidence: mantém o prefixo cuja junção com crases cabe', () => {
 });
 
 test('cliCmd: caminho entre aspas duplas, pasta por shq, --json no fim', () => {
-  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status 'docs/plans/r/' --json`);
-  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status 'docs/plans/r/' 'E1' 'plano' --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status docs/plans/r/ --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status docs/plans/r/ 'E1' 'plano' --json`);
 });
 
 test('phrases: pt e en, curtas e citam entregável e status', () => {
@@ -3310,18 +3317,18 @@ test('recordCommands: sem rótulo não há --piece; com piece, set-status e bloc
   assert.ok(!a.error);
   assert.deepEqual(verbs(a.commands), ['set-status', 'log']);
   assert.ok(a.commands.every((c) => !/--piece/.test(c)));
-  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status 'docs\/plans\/r\/' 'E1' 'plano' .*--json$/);
-  assert.match(a.commands[0], /--evidence 'docs\/s\.md' --evidence 'docs\/p\.md'/);
+  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status docs\/plans\/r\/ E1 plano .*--json$/);
+  assert.match(a.commands[0], /--evidence docs\/s\.md --evidence docs\/p\.md(?!\S)/);
   const b = PU.recordCommands({ ...RC, piece: 'code' });
-  assert.match(b.commands[0], /--piece 'code'/);
-  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log 'docs\/plans\/r\/' --deliverable 'E1' --what '/);
+  assert.match(b.commands[0], /--piece code(?!\S)/);
+  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log docs\/plans\/r\/ --deliverable E1 --what '/);
   const c = PU.recordCommands({ ...RC, piece: 'code', word: 'bloqueado', logWhat: 'falta credencial' });
   assert.deepEqual(verbs(c.commands), ['block-open']);
-  assert.match(c.commands[0], /--piece 'code'/);
-  assert.match(c.commands[0], /--affects 'E1'/);
+  assert.match(c.commands[0], /--piece code(?!\S)/);
+  assert.match(c.commands[0], /--affects E1(?!\S)/);
   assert.match(c.commands[0], /--what '[^']*falta credencial/);
   assert.match(c.commands[0], /--unblocks '/);
-  assert.match(c.commands[0], /--evidence 'docs\/s\.md'/);
+  assert.match(c.commands[0], /--evidence docs\/s\.md(?!\S)/);
   assert.ok(!c.commands.some((x) => / set-status /.test(x)));
 });
 
@@ -3333,14 +3340,14 @@ test('recordCommands: skipStatus omite set-status e log; a ordem é a do registr
     decisions: [{ text: 'Usar X.', scope: 'local' }, { text: 'Usar Y.', scope: 'contrato' }], pending: ['p1', 'p2'], inflight: { remove: 'feat/E1' },
   });
   assert.deepEqual(verbs(y.commands), ['block-close', 'set-status', 'log', 'add-decision', 'add-decision', 'add-pending', 'add-pending', 'inflight-remove']);
-  assert.match(y.commands[0], /block-close 'docs\/plans\/r\/' 'BLQ-3' --how '/);
-  assert.match(y.commands[3], /--deliverable 'E1' --decision 'Usar X\.' --scope 'local'/);
-  assert.match(y.commands[4], /--scope 'contrato'/);
-  assert.match(y.commands[5], /--owner 'dono' --text 'p1'/);
-  assert.match(y.commands[7], /inflight-remove 'docs\/plans\/r\/' 'feat\/E1' --json$/);
+  assert.match(y.commands[0], /block-close docs\/plans\/r\/ BLQ-3 --how '/);
+  assert.match(y.commands[3], /--deliverable E1 --decision 'Usar X\.' --scope local(?!\S)/);
+  assert.match(y.commands[4], /--scope contrato(?!\S)/);
+  assert.match(y.commands[5], /--owner dono --text p1(?!\S)/);
+  assert.match(y.commands[7], /inflight-remove docs\/plans\/r\/ feat\/E1 --json$/);
   const z = PU.recordCommands({ ...RC, lang: 'en', skipStatus: true, inflight: { add: 'feat/E1', note: 'running' }, pending: ['p'] });
-  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner 'owner'/);
-  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add 'docs\/plans\/r\/' 'feat\/E1' --note 'running' --json$/);
+  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner owner(?!\S)/);
+  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add docs\/plans\/r\/ feat\/E1 --note running --json$/);
 });
 
 test('recordCommands: decisão de 600 caracteres cabe com a frase de alcance e o texto inteiro vai em cuts', () => {
@@ -3592,14 +3599,14 @@ test('AC2 registro de plano e executando pela CLI', async () => {
   const plan = plain(po.calls.find((c) => c.label === 'E1:status-c').prompt);
   const exe = plain(full.calls.find((c) => c.label === 'E1:status-d').prompt);
   for (const p of [plan, exe]) {
-    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' /);
+    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status (?:'[^']*'|[^\s']+) /);
     assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log /);
-    assert.match(p, /--deliverable 'E1'/);
-    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha A\.' --scope 'local'/);
-    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha B' --scope 'contrato'/);
-    assert.match(p, /add-pending '[^']*' --owner 'owner' --text 'precisa de credencial'/);
+    assert.match(p, /--deliverable E1(?!\S)/);
+    assert.match(p, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'escolha A\.' --scope local(?!\S)/);
+    assert.match(p, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'escolha B' --scope contrato(?!\S)/);
+    assert.match(p, /add-pending (?:'[^']*'|[^\s']+) --owner owner --text 'precisa de credencial'/);
   }
-  assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
+  assert.match(exe, /inflight-add (?:'[^']*'|[^\s']+) feat\/E1(?!\S)/);
   assert.doesNotMatch(plan, /inflight-add/);
   for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(plain(c.prompt), /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/, c.label);
   assert.equal(full.r.results[0].merged, true);
@@ -3854,7 +3861,7 @@ test('retomada não repete log: a palavra já gravada tira set-status e log, e o
 
 test('célula com rótulos usa --piece code', async () => {
   const { calls } = await exec({ cards: [card('E1', { status: 'code: c; acceptance: blocked (BLQ-2)' })], deliverables: ['E1'] });
-  assert.match(plain(calls.find((c) => c.label === 'E1:status-d').prompt), /set-status '[^']*' 'E1' 'd' --piece 'code'/);
+  assert.match(plain(calls.find((c) => c.label === 'E1:status-d').prompt), /set-status (?:'[^']*'|[^\s']+) E1 d --piece code(?!\S)/);
 });
 
 test('falta de trackerCli: erro antes de qualquer agente', async () => {
@@ -3892,8 +3899,8 @@ test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', asyn
 test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
   const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
   const p = plain(calls.find((c) => c.label === 'E1:status-blocked').prompt);
-  assert.match(p, /block-open '[^']*' --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
-  assert.match(p, /--affects 'E1'/);
+  assert.match(p, /block-open (?:'[^']*'|[^\s']+) --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
+  assert.match(p, /--affects E1(?!\S)/);
   assert.doesNotMatch(p, / set-status /);
   assert.ok(r.results[0].error);
 });
@@ -3922,9 +3929,9 @@ test('AC2 documentação pela CLI', async () => {
   const humanSpec = specWith({ needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(humanSpec, planRows([{ ac: 'AC1', kind: 'human' }])) });
   const p = calls.find((c) => c.label === 'E1:docs1').prompt;
-  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
-  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
-  assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status (?:'[^']*'|[^\s']+) E1 e /);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log (?:'[^']*'|[^\s']+) --deliverable E1(?!\S)/);
+  assert.match(p, /inflight-remove (?:'[^']*'|[^\s']+) feat\/E1(?!\S)/);
   const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
   assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
   assert.ok(pend.some((c) => /E1: criterion AC1 has no automatic evidence \(human\)/.test(c)), 'critério sem evidência automática');
@@ -4457,7 +4464,7 @@ test('AC6: a common ruling is recorded as pending ratification and the run goes 
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.', alternative: 'No cache', scope: 'local' })] }) });
   assert.ok(labels.includes('E1:t1:impl'));
   const rec = plain(calls.find((c) => /^E1:status-/.test(c.label) && /add-decision/.test(plain(c.prompt))).prompt);
-  assert.match(rec, /add-decision '[^']*' --deliverable 'E1' --decision 'Use the cache\.' --scope 'local' --discarded 'No cache'/);
+  assert.match(rec, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'Use the cache\.' --scope local --discarded 'No cache'/);
   assert.equal(r.results[0].decisions, 1);
 });
 
@@ -5774,8 +5781,8 @@ test('E36 T5 AC1: a spec declaration confirmed by the signed line lets the deliv
   assert.equal(c[0].opts.agentType, 'productivity-tools:script-runner');
   assert.equal(c[0].opts.model, 'haiku');
   const p = c[0].prompt;
-  assert.match(p, /test-extract\.mjs" removed --nonce '[^']*' --spec '\/wt\/E1\/docs\/plans\/x-E1\/spec\.md' --plan '\/wt\/E1\/docs\/plans\/x-E1\/plan\.md' --base '[^']*' --cwd '\/wt\/E1' --output 'p' --sha '0' --gate 'unit' --single-tests-gate/);
-  assert.ok(p.includes(` --base 'abc1234' `), 'the base is the target tip of the baseline (syncAt), a SHA, not the branch name that can move');
+  assert.match(p, /test-extract\.mjs" removed --nonce (?:'[^']*'|[^\s']+) --spec \/wt\/E1\/docs\/plans\/x-E1\/spec\.md --plan \/wt\/E1\/docs\/plans\/x-E1\/plan\.md --base (?:'[^']*'|[^\s']+) --cwd \/wt\/E1 --output p --sha 0 --gate unit --single-tests-gate/);
+  assert.ok(p.includes(` --base abc1234 `), 'the base is the target tip of the baseline (syncAt), a SHA, not the branch name that can move');
   assert.ok(!/old test/.test(p), 'names are never passed by argv');
   const concern = r.results[0].concerns.find((x) => /removed/.test(x));
   assert.ok(concern && /10/.test(concern) && /8/.test(concern) && /2/.test(concern), String(concern));
@@ -5917,7 +5924,7 @@ test('E39 DEC-056: prose checks of a red/green pair and a pairs line with pair t
   assert.equal(pc.length, 1);
   assert.equal(pc[0].label, 'E1:t1:pairs');
   assert.equal(pc[0].opts.agentType, 'productivity-tools:script-runner');
-  assert.match(pc[0].prompt, new RegExp(`capture\.mjs" pairs --nonce [^ ]+ --task E1-T1 --prefix '${TF_PRE}' --cwd `));
+  assert.match(pc[0].prompt, new RegExp(`capture\.mjs" pairs --nonce [^ ]+ --task E1-T1 --prefix ${TF_PRE} --cwd `));
   assert.ok(calls.some((c) => /^E1:t1:spec1$/.test(c.label)));
 });
 
