@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E51 | DEC-034 recorded: gate da onda 4 falhou na guarda do manifest legado; correção estreita no teste | `f74efd4` |
 | 2026-11-25 | E52 | E52 plan written; aprovado com quatro ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E52/plan.md` |
 | 2026-11-25 | E52 | E52 spec written; aprovada com seis ajustes por opus por delegação (DEC-021) | `97db7d7` |
 | 2026-11-25 | E43 | E43 plan written; aprovado com três ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E43/plan.md` |
