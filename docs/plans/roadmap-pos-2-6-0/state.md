@@ -55,5 +55,5 @@ Estratégia v1.3 -- 2026-11-26
 | plan/pos-2-6-0-E47 | viva | integrado em release/pos-2.6.0 (37294bd); branch e worktree pos-2-6-0-E47 ainda existem |
 | plan/pos-2-6-0-E48 | viva | integrado em release/pos-2.6.0 (9b6f08a); branch e worktree pos-2-6-0-E48 ainda existem |
 | plan/pos-2-6-0-E49 | viva | integrado em release/pos-2.6.0 (44da934); branch e worktree pos-2-6-0-E49 ainda existem |
-| plan/pos-2-6-0-E53 | viva | execução do plano do E53 (só o lote-gate) no worktree D:/projects/claude-play-wt/pos-2-6-0-E53 |
+| plan/pos-2-6-0-E53 | viva | lote-gate integrado em release/pos-2.6.0 (d4ac4ee); branch e worktree pos-2-6-0-E53 ainda existem |
 <!-- /roadmap:inflight -->
