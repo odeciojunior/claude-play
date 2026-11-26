@@ -681,7 +681,7 @@ export function batchStopReason(attempts, { lenses = false } = {}) {
 // B4: per seeded entry of the correction, whether the reviewer mentioned it after the fix (reviews of round 2 on; in the restricted
 // mode also an open verdict on the id of the parent finding), and the residues whose parent finding review 1 never made.
 // `entries` is the journal of the attempt; `fixIds` the manifest ids seeded in fixSha. The parent finding of a residue is the
-// finding of review 1 that its own `mention` matches.
+// finding of review 1 that its `parentMention` matches (its `mention` when the entry has no parentMention).
 export function mentionStats(entries, label, fixIds) {
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
   const textOf = (i) => [i?.file, i?.description].filter((x) => typeof x === 'string' && x).join(' ');
@@ -700,7 +700,8 @@ export function mentionStats(entries, label, fixIds) {
       continue;
     }
     const rx = new RegExp(m.mention, 'is');
-    const parents = m.residueOf ? (Array.isArray(first?.issues) ? first.issues : []).filter((i) => rx.test(textOf(i))) : [];
+    const parentRx = new RegExp(m.parentMention ?? m.mention, 'is');
+    const parents = m.residueOf ? (Array.isArray(first?.issues) ? first.issues : []).filter((i) => parentRx.test(textOf(i))) : [];
     if (m.residueOf && parents.length === 0) residuoSemAchadoPai += 1;
     const parentIds = new Set(parents.map((i) => i.id).filter((x) => typeof x === 'string'));
     mentionedAfterFix[m.id] = reviews.some(

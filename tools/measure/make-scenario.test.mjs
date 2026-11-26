@@ -1070,6 +1070,19 @@ test('B1: each artifact has exactly 1 residue and 1 regression in the manifest',
   }
 });
 
+test('B1: parentMention of CR3 compiles with i and s, matches the C5 entry and paraphrases of its parent finding', () => {
+  const cr3 = manifest.find((e) => e.id === 'CR3');
+  const c5 = manifest.find((e) => e.id === 'C5');
+  assert.equal(typeof cr3.parentMention, 'string');
+  const rx = new RegExp(cr3.parentMention, 'is');
+  assert.ok(rx.test(`${c5.file} ${c5.description}`));
+  for (const paraphrase of [
+    'truncate returns an empty string when max is 0',
+    'the RangeError is swallowed inside truncate',
+    'truncate with maximum of 0 returns \'\'',
+  ]) assert.match(paraphrase, rx, paraphrase);
+});
+
 test('B1: a CR or CG whose anchor the suite flags or present cannot tell is refused with a scenario error', async () => {
   const t = tmp('sb');
   try {

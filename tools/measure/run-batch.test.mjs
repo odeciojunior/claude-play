@@ -2821,6 +2821,18 @@ test('B4: capturado requires fix2', async () => {
   }
 });
 
+test('B4: a residue of CR3 finds its parent by parentMention, not by its mention', () => {
+  const ids = ['CR3', 'CG2'];
+  const entries = (...e) => e.map(([l, r]) => entry(l, r));
+  // review 1 reports the C5 defect (truncate swallows the RangeError): the parent of CR3 is found, no residuoSemAchadoPai
+  const C5_TEXT = FOUND('F1', 'truncate swallows the RangeError and returns an empty string when max is 0', 'src/truncate.mjs');
+  const withParent = mentionStats(entries(['E5:task-review1', trv([C5_TEXT])], ['E5:task-review2', trv([])]), 'E5:task-review', ids);
+  assert.equal(withParent.residuoSemAchadoPai, 0);
+  // without that finding in review 1 the residue counts
+  const noParent = mentionStats(entries(['E5:task-review1', trv([F_OTHER])], ['E5:task-review2', trv([])]), 'E5:task-review', ids);
+  assert.equal(noParent.residuoSemAchadoPai, 1);
+});
+
 test('B4: mentionedAfterFix, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai counted on fixture journals', async () => {
   const entries = (...e) => e.map(([l, r]) => entry(l, r));
   const ids = ['CR1', 'CG1'];
