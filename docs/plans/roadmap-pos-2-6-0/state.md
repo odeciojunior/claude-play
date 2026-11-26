@@ -18,7 +18,7 @@ Estratégia v1.3 -- 2026-11-26
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
 | E52 | na-branch | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52`, `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc`, `9062783` | release/pos-2.6.0 (merge 9062783) entra em main na publicação (E54) |
 | E53 | executando | `docs/plans/pos-2-6-0-E53/spec.md`, `57ea4ca`, `docs/plans/pos-2-6-0-E53/plan.md`, `plan/pos-2-6-0-E53` | integrar o lote-gate, revisão final T3 e, com autorização e login do dono, o lote |
-| E54 | nao-iniciado | - | - |
+| E54 | spec | `docs/plans/pos-2-6-0-E54/spec.md`, `a442446` | aguarda o fecho do E53; push e tag só com autorização do dono |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
 | ID | Bloqueio | Afeta | Desde | Desbloqueia quando |
