@@ -22,10 +22,10 @@ export const meta = {
 //
 // ARGS (all optional except config)
 //   config: release config validated by preflight.mjs (gates, install, setup, locks, projectContext, conflictRules...)
-//   runToken: new on each preflight; only in the discovery read (the first agent call), so a resume with resumeFromRunId reruns
-//     everything live; never returned in resumeArgs/resumeWith. Without it no authorized external task is launched
+//   runToken: new on each preflight; in the first agent call (the early measure when it runs, then the discovery read), so a resume
+//     with resumeFromRunId reruns everything live; never returned in resumeArgs/resumeWith. Without it no authorized external task is launched
 //   deliverables: string[] | "next" | "ready" | "all" (default "next")   phase, priority, track: filters on card attributes
-//   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>")
+//   targetBranch: where deliverables merge (default: config.releaseBranch, else the roadmap releaseBranch, else "integracao/<slug>"); with it or config.releaseBranch, plus repo, a run measures the gates before the discovery
 //   baseBranch: where the target is created from when missing (default: the roadmap integrationBranch)
 //   allowIntegrationBranch (false): allows targetBranch == integrationBranch
 //   mode: "run" | "plan-only" | "dry-run"   autoDeps (false)   force (false)
@@ -1608,7 +1608,7 @@ function encArg(obj) {
 
 // ---------------------------------------------------------------- args and config
 // runToken comes fresh from each preflight. On a resume the runtime returns cached results for the unchanged prefix of agent() calls: the token, in the
-// discovery read (the first agent call), makes every call differ on every invocation. It never goes back into resume args.
+// first agent call (the early measure when it runs, then the discovery read), makes every call differ on every invocation. It never goes back into resume args.
 const { runToken: RUN_TOKEN_ARG, ...A } = args || {}
 const RUN_TOKEN = typeof RUN_TOKEN_ARG === 'string' ? RUN_TOKEN_ARG.trim() : ''
 const intArg = (v, d, min) => (Number.isInteger(v) && v >= min ? v : d)
@@ -1723,6 +1723,7 @@ const STR = { type: 'string' }, INT = { type: 'integer' }, BOOL = { type: 'boole
 const STRS = { type: 'array', items: STR }
 const S_GATE = { type: 'object', properties: { name: STR, ran: BOOL, exit: INT, total: INT, skipped: INT, failedNames: STRS, capture: STR }, required: ['name', 'ran', 'exit'] }
 const S_MEASURE = { type: 'object', properties: { headSha: STR, clean: BOOL, gates: { type: 'array', items: S_GATE }, log: STR, changedFiles: STRS }, required: ['headSha', 'clean', 'gates'] }
+const S_EARLY = { ...S_MEASURE, properties: { ...S_MEASURE.properties, skipped: BOOL, integrationWorktree: STR }, required: ['skipped'] }
 const S_PRE = { type: 'object', properties: {
   ok: BOOL, errorKind: { type: 'string', enum: ['dirty', 'setup', 'target', 'other'] }, error: STR,
   integrationWorktree: STR, targetHead: STR, clean: BOOL, envFacts: STR, baseline: S_MEASURE, recorded: STR,
@@ -1826,8 +1827,77 @@ const readBack = async (E, label, phase, cwd, folder, piece) => {
   const r = await readSlices({ label, phase, cmdOf: readCmd, tool: 'verify-run', command: 'read', nonceOf: () => `${RUN_TAG}:${E}:read${++readSeq}`, tries: 5 })
   try { return r.text === undefined ? null : JSON.parse(r.text) } catch { return null }
 }
+// ---- early baseline: with an explicit target and args.repo, a run measures the gates before paying for the discovery
+const MIN_BUDGET = intArg(A.minBudgetPerDeliverable, MODE === 'plan-only' ? 150000 : 700000, 0)
+const lowBudget = () => typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET
+const WT = String(A.wtRoot).replace(/\/+$/, '')
+const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${lockList(def).length ? `, needs lock ${lockList(def).join('+')}` : ''}): ${def.cmd}`
+// The nonce of the capture line of gate i (a gate name may hold spaces: capture takes only ^[A-Za-z0-9:._@-]{1,160}$) and its task.
+const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
+const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
+const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
+` : ''}For each gate run the line under it${String(dir).startsWith('"<') ? `, with ${dir} replaced by the integration worktree path of step 2 (keep the double quotes) and nothing else changed` : ', unchanged'} (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (no test counts; the capture line is still required, copied literally)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --brief --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. The capture line has no output: take them from the file at its path (Read, offset/limit). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
+// A refused capture line, or a gate left out of the measure, is read back with capture.mjs line (no new measure, no lock); only capturedMeasure
+// accepts it. A refusal of line carrying the nonce asked ends the tries of that gate.
+const rereadMeasure = async (defs, m, nonceOf, dir, task, label, ph) => {
+  const first = capturedMeasure(defs, m, nonceOf)
+  if (!first || typeof first !== 'object' || !Object.keys(first.gateWhy).length || !dir) return first
+  let work = m
+  const after = {}
+  for (const [i, d] of defs.entries()) {
+    if (!Object.hasOwn(first.gateWhy, d.name)) continue
+    const cmd = `node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" line --nonce ${nonceOf(i)} --task ${task} --cwd ${shq(dir)}`
+    const base = `${label}:reread-g${i}`
+    for (let t = 1; t <= 5; t++) {
+      const out = await agent(runPrompt(cmd),
+        { agentType: 'productivity-tools:script-runner', label: t === 1 ? base : `${base}-retry${t}`, phase: ph, schema: S_RUN, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
+      const raw = String(out && out.stdout != null ? out.stdout : '')
+      const old = gateResult(work, d.name), item = { ...(old || { name: d.name, ran: true }), capture: raw || undefined }
+      const copy = { ...work, gates: old ? work.gates.map(g => (g === old ? item : g)) : [...(work.gates || []), item] }
+      const seen = capturedMeasure(defs, copy, nonceOf)
+      if (!Object.hasOwn(seen.gateWhy, d.name)) {
+        // An omitted gate has no counts of the agent to fall back on.
+        if (!old && gateResult(seen, d.name).fallback) after[d.name] = "the gate needs the agent's counts"
+        else work = copy
+        break
+      }
+      after[d.name] = seen.gateWhy[d.name]
+      let o = null
+      try { o = JSON.parse(raw) } catch {}
+      if (o && o.tool === 'capture' && o.command === 'line' && o.error !== undefined && o.nonce === nonceOf(i)) break
+    }
+  }
+  const last = capturedMeasure(defs, work, nonceOf)
+  return { ...last, gateWhy: Object.fromEntries(Object.keys(last.gateWhy).map(n => [n, `${first.gateWhy[n]}; reread: ${after[n]}`])) }
+}
+const rereadPreflight = (m, dir) => rereadMeasure(GATES, m, i => gateNonce('preflight', i), dir, 'preflight-gates', 'preflight', 'Preflight')
+const opInvalidBaseline = (m, expectedSha) => op('preflight:baseline-invalid', null, `the baseline measure is invalid: ${measureProblems(m, expectedSha, GATES).join('; ')}`,
+  'Check the integration worktree and the gate commands, then run again', { ...A })
+const EARLY_ON = MODE === 'run' && !!PRE_TARGET && !!A.repo && !lowBudget()
+let EARLY = null  // the accepted early measure
+if (EARLY_ON) {
+  const r = await agent(`EARLY BASELINE (once per run, before the discovery; run token ${RUN_TOKEN}). You HOLD every lock.
+Rules: fix nothing; git history is read-only (nothing is recorded, merged or pushed, and no branch is created, moved or switched; the only git write allowed is the worktree add of step 2); never perform an external effect; asking the user is FORBIDDEN (do not use AskUserQuestion); temporary files only in ${WT}/_tmp/preflight-early/; stop every process you started before returning.
+When a step says skipped=true, return only that and do nothing else.
+1. If git -C "${A.repo}" rev-parse --verify --quiet ${shq('refs/heads/' + PRE_TARGET)} fails: skipped=true.
+2. Integration worktree: if git -C "${A.repo}" worktree list already shows ${PRE_TARGET}, that is its path; otherwise git -C "${A.repo}" worktree add "${WT}/_integracao" ${shq(PRE_TARGET)}. skipped=true if the path is not ${WT}/_integracao (the person's own checkout, authorized or not: touch nothing in it), if a command of this step fails, if a merge is in progress (git rev-parse -q --verify MERGE_HEAD succeeds there) or if git status --porcelain is not empty there (do not abort or clean anything). Never remove, move or recreate a worktree.
+3. In the integration worktree (the path of step 2), in this order: ${SETUP_CMDS.length ? `environment setup, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}; if one fails, skipped=true. Then ` : ''}record clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex); install${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}; measure every gate. ${measureTxt(GATES, i => gateNonce('preflight', i), '"<integration worktree>"', 'preflight-gates')}
+Return skipped=false, integrationWorktree, headSha, clean, gates.
+PROJECT:
+${PROJECT}`,
+    { label: 'preflight-early', phase: 'Preflight', schema: S_EARLY, model: 'sonnet', effort: 'medium' })
+  // Anything but a measure of the own worktree counts as not measured: the preflight measures as usual.
+  if (r && r.skipped === false && isOwnWorktree(r.integrationWorktree, WT)) {
+    const { skipped, integrationWorktree, ...measure } = r
+    EARLY = await rereadPreflight(measure, integrationWorktree)
+    if (!validMeasure(EARLY, null, GATES)) {
+      opInvalidBaseline(EARLY, null)
+      return mkResult('needs-operator')
+    }
+  }
+}
 // The discovery is code: preflight.mjs discover; a script-runner agent only copies its stdout, one signed slice per call (--slice k).
-// The run token is the nonce of slice 0, in the FIRST agent() call, so on a resume nothing comes from the cache.
+// The run token is in the first agent call (the early measure when it runs, then the discovery read) and is the nonce of slice 0, so on a resume nothing comes from the cache.
 const discCmd = nonce => [`node "${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/preflight.mjs" discover --repo ${shq(A.repo || '.')}`, A.roadmap && `--roadmap ${shq(A.roadmap)}`, PRE_TARGET && `--ref ${shq(PRE_TARGET)}`, A.baseBranch && `--base ${shq(A.baseBranch)}`, A.today && `--today ${shq(A.today)}`, `--prefix ${shq(PREFIX)}`, `--nonce ${shq(nonce)}`].filter(Boolean).join(' ')
 let disc = null
 let discWhy = ''
@@ -1865,7 +1935,6 @@ ${disc.cards.map(c => `  * ${c.id}: ${c.title || ''}${(c.acceptance || []).lengt
 
 const TODAY = A.today || disc.today
 const REPO = A.repo || disc.repo
-const WT = String(A.wtRoot).replace(/\/+$/, '')
 const RM = disc.roadmapDir
 const STRAT = disc.strategy
 const INTEG = disc.integrationBranch
@@ -1929,8 +1998,7 @@ if (MODE === 'run' && order.length && interrupted.length) {
   return mkResult('needs-operator', { selection, resumeArgs: resumeWith })
 }
 if (MODE === 'dry-run' || !order.length) return mkResult(order.length ? 'done' : 'partial', { selection })
-const MIN_BUDGET = intArg(A.minBudgetPerDeliverable, MODE === 'plan-only' ? 150000 : 700000, 0)
-if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) {
+if (lowBudget()) {
   return mkResult('partial', { error: `remaining budget (${budget.remaining()}) is below the minimum per deliverable (${MIN_BUDGET})`, selection })
 }
 
@@ -1938,7 +2006,6 @@ if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BU
 blqIds = new Set((disc.blockers || []).map(b => b.id))
 const donotTxt = (disc.donot || []).map(d => `  * ${d}`).join('\n') || '  (none)'
 const blockersTxt = (disc.blockers || []).map(b => `${b.id}: ${b.text}`).join('\n') || '(none)'
-const gateDesc = def => `${def.name} (${def.kind}${def.invariant ? ', invariant' : ''}${lockList(def).length ? `, needs lock ${lockList(def).join('+')}` : ''}): ${def.cmd}`
 const gatesTxt = GATES.map(gateDesc).join('; ')
 // Rule lines shared by the full briefing (COMMON_BASE) and the slim one (COMMON_SLIM_BASE).
 const RULE_GIT = `- Git: commits only on your deliverable branch (or on the target ${TARGET}, only in the record, merge and docs stages). NEVER push, except the effect of a task you were told is external and AUTHORIZED. NEVER touch the branch ${INTEG}${TARGET === INTEG ? ' outside the merge/docs stages' : ''} or the worktree ${REPO}, except the integration worktree of the target when the operator authorized checkout:${TARGET}. NEVER use git stash or git add -A: add only your task's files. Commit messages end with the line "${TRAILER}".`
@@ -1990,64 +2057,29 @@ ${PROJECT}`
 
 // ---------------------------------------------------------------- preflight
 phase('Preflight')
-// The nonce of the capture line of gate i (a gate name may hold spaces: capture takes only ^[A-Za-z0-9:._@-]{1,160}$) and its task.
-const gateNonce = (label, i) => `${RUN_TAG}:${label}:g${i}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
-const gateTask = label => String(label).replace(/:.*/, '').replace(/[^A-Za-z0-9._-]/g, '_') + '-gates'
-const measureTxt = (defs, nonceOf, dir, task) => `${BEFORE_EVIDENCE.length && defs.some(d => lockList(d).length) ? `Before measuring the gates that need a lock, bring the state they depend on up, running in order: ${BEFORE_EVIDENCE.map(c => `"${c}"`).join('; ')}. If one fails, report ran=false for those gates.
-` : ''}For each gate run the line under it${String(dir).startsWith('"<') ? `, with ${dir} replaced by the integration worktree path of step 2 (keep the double quotes) and nothing else changed` : ', unchanged'} (its exit is the gate's), and report { name, ran, exit, capture }, capture being the JSON line it prints, copied literally:\n${defs.map((d, i) => `- ${gateDesc(d)}${d.kind === 'tests' ? '' : ' (no test counts; the capture line is still required, copied literally)'}\n  node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" run --nonce ${nonceOf(i)} --task ${task}${d.kind === 'tests' ? ' --tests' : ''} --cwd ${dir} --brief --bash ${shq(d.cmd)}`).join('\n')}\nFor "tests" gates also report total = tests executed, skipped = tests skipped, failedNames = each failing test as path/of/file::test name (a file that does not even load counts as path/of/file::(collect)); they only count when the output is not node:test or the gate ignores failures when files change. The capture line has no output: take them from the file at its path (Read, offset/limit). A non-zero exit requires failedNames and failedNames require a non-zero exit. ran=false only when the command cannot run at all. Real numbers, never estimates.`
-// A refused capture line, or a gate left out of the measure, is read back with capture.mjs line (no new measure, no lock); only capturedMeasure
-// accepts it. A refusal of line carrying the nonce asked ends the tries of that gate.
-const rereadMeasure = async (defs, m, nonceOf, dir, task, label, ph) => {
-  const first = capturedMeasure(defs, m, nonceOf)
-  if (!first || typeof first !== 'object' || !Object.keys(first.gateWhy).length || !dir) return first
-  let work = m
-  const after = {}
-  for (const [i, d] of defs.entries()) {
-    if (!Object.hasOwn(first.gateWhy, d.name)) continue
-    const cmd = `node "${pluginRootOf(A.trackerCli)}/scripts/capture.mjs" line --nonce ${nonceOf(i)} --task ${task} --cwd ${shq(dir)}`
-    const base = `${label}:reread-g${i}`
-    for (let t = 1; t <= 5; t++) {
-      const out = await agent(runPrompt(cmd),
-        { agentType: 'productivity-tools:script-runner', label: t === 1 ? base : `${base}-retry${t}`, phase: ph, schema: S_RUN, model: t < 3 ? 'haiku' : 'sonnet', effort: t < 3 ? 'low' : 'medium' })
-      const raw = String(out && out.stdout != null ? out.stdout : '')
-      const old = gateResult(work, d.name), item = { ...(old || { name: d.name, ran: true }), capture: raw || undefined }
-      const copy = { ...work, gates: old ? work.gates.map(g => (g === old ? item : g)) : [...(work.gates || []), item] }
-      const seen = capturedMeasure(defs, copy, nonceOf)
-      if (!Object.hasOwn(seen.gateWhy, d.name)) {
-        // An omitted gate has no counts of the agent to fall back on.
-        if (!old && gateResult(seen, d.name).fallback) after[d.name] = "the gate needs the agent's counts"
-        else work = copy
-        break
-      }
-      after[d.name] = seen.gateWhy[d.name]
-      let o = null
-      try { o = JSON.parse(raw) } catch {}
-      if (o && o.tool === 'capture' && o.command === 'line' && o.error !== undefined && o.nonce === nonceOf(i)) break
-    }
-  }
-  const last = capturedMeasure(defs, work, nonceOf)
-  return { ...last, gateWhy: Object.fromEntries(Object.keys(last.gateWhy).map(n => [n, `${first.gateWhy[n]}; reread: ${after[n]}`])) }
-}
 const FOREIGN_ITEM = 'checkout:' + TARGET
 const foreignOk = authorized(FOREIGN_ITEM)
 const foreignRule = foreignOk
   ? `If that path is not ${WT}/_integracao it is the person's own checkout, and the operator AUTHORIZED ${FOREIGN_ITEM}: use it for the steps below.`
   : `If that path is not ${WT}/_integracao it is the person's own checkout and ${FOREIGN_ITEM} is NOT authorized: STOP here and touch nothing in it (no setup, no install, no beforeEvidence and no gates; do not abort a merge or clean anything). Do only step 5 and return ok=true with integrationWorktree = that path, targetHead and envFacts, without a baseline.`
+// Steps 3 and 4 are skipped in plan-only and after an early measure.
+const SKIP = EARLY ? '(skip: the gates were measured before the discovery)' : MODE === 'plan-only' ? '(skip)' : ''
 const pre = await agent(`${COMMON_BASE}
 
 PREFLIGHT (once per run). ${MODE === 'plan-only' ? 'plan-only mode: do only steps 1, 2 and 5.' : 'You HOLD every lock.'}
 1. If the branch ${TARGET} does not exist, create it from ${BASEBR}: git -C "${REPO}" branch ${TARGET} ${BASEBR}. git -C "${REPO}" config rerere.enabled true.
 2. Integration worktree: if git worktree list already shows ${TARGET}, use that path; otherwise git -C "${REPO}" worktree add "${WT}/_integracao" ${TARGET}. ${foreignRule} If a merge is in progress whose message (file of git rev-parse --git-path MERGE_MSG) starts with "merge: E", it is an interrupted previous run: run git merge --abort only in ${WT}/_integracao, never elsewhere. A merge from another origin counts as dirty. It must be clean; if not, do NOT clean it: ok=false, errorKind="dirty", list the files in error.
-3. ${MODE === 'plan-only' ? '(skip)' : SETUP_CMDS.length ? `Only if step 2 did not stop. Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.'}
-4. ${MODE === 'plan-only' ? '(skip)' : `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES, i => gateNonce('preflight', i), '"<integration worktree>"', 'preflight-gates')}`}
+3. ${SKIP || (SETUP_CMDS.length ? `Only if step 2 did not stop. Environment setup, in the integration worktree, in order: ${SETUP_CMDS.map(c => `"${c}"`).join('; ')}. If one fails, ok=false, errorKind="setup", with the output in error.` : 'No setup commands.')}
+4. ${SKIP || `Only if step 2 did not stop. BASELINE in the integration worktree. First run: node "${pluginRootOf(A.trackerCli)}/scripts/run-record.mjs" baseline "${REPO}" ${TARGET} ${GATES_KEY} ${order.map(id => `${PREFIX}${id}:${artifactPaths(disc.roadmapSlug, id).dir}`).join(' ')}. If it prints JSON, that is recorded: skip only the gate measurement. Always, BEFORE any command: clean (git status --porcelain empty) and headSha (the full output of git rev-parse HEAD, 40 hex). Install first in both cases${INSTALL ? ` (${INSTALL})` : ' (nothing to install)'}. Then, unless recorded, measure every gate. ${measureTxt(GATES, i => gateNonce('preflight', i), '"<integration worktree>"', 'preflight-gates')}`}
 5. envFacts (short, factual): available shells, presence and version of the tools the gates need, measured peculiarities (e.g. CRLF, scripts that require bash).
-Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${MODE === 'plan-only' ? '' : `, recorded (raw stdout of step 4's first command, verbatim, as a string; then no baseline) or baseline { headSha, clean, gates } (none when step 2 stopped)`}.`,
+Return ok, errorKind, error, integrationWorktree, targetHead (git rev-parse HEAD of the integration worktree), clean, envFacts${SKIP ? '' : `, recorded (raw stdout of step 4's first command, verbatim, as a string; then no baseline) or baseline { headSha, clean, gates } (none when step 2 stopped)`}.`,
   { label: 'preflight', phase: 'Preflight', schema: S_PRE, model: 'sonnet', effort: 'medium' })
 const rawHead = pre && pre.targetHead
 if (pre) pre.targetHead = fullRef(pre.targetHead)
-// Rejected record: no baseline (stop).
-if (pre && MODE === 'run' && pre.recorded) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES)
-else if (pre && MODE === 'run' && pre.baseline) pre.baseline = await rereadMeasure(GATES, pre.baseline, i => gateNonce('preflight', i), pre.integrationWorktree, 'preflight-gates', 'preflight', 'Preflight')
+// The early measure wins over whatever the preflight returns. Rejected record: no baseline (stop).
+if (pre && EARLY) pre.baseline = EARLY
+else if (pre && MODE === 'run' && pre.recorded) pre.baseline = recordedBaseline(pre.recorded, pre.targetHead, GATES_KEY, GATES)
+else if (pre && MODE === 'run' && pre.baseline) pre.baseline = await rereadPreflight(pre.baseline, pre.integrationWorktree)
 const FOREIGN = !!pre && !!pre.integrationWorktree && !isOwnWorktree(pre.integrationWorktree, WT)
 // Unauthorized foreign checkout: no baseline.
 const foreignHold = FOREIGN && !foreignOk
@@ -2064,8 +2096,7 @@ for (const g of (pre.baseline && pre.baseline.gates) || []) if (g && g.name) BAS
 let lastGood = pre.targetHead || TARGET  // target tip already validated; only changes inside the merge lock
 if (MODE === 'run' && !foreignHold) {
   if (!validMeasure(pre.baseline, pre.targetHead, GATES)) {
-    op('preflight:baseline-invalid', null, `the baseline measure is invalid: ${measureProblems(pre.baseline, pre.targetHead, GATES).join('; ')}`,
-      'Check the integration worktree and the gate commands, then run again', { ...A })
+    opInvalidBaseline(pre.baseline, pre.targetHead)
     return mkResult('needs-operator', { selection })
   }
   const red = isRedBaseline(GATES, BASE)
@@ -3329,7 +3360,7 @@ order.forEach((id, idx) => {
       const why = holdOf(id)
       if (why) return { id, merged: false, ok: false, skipped: true, error: why }
       if (integBroken) return { id, merged: false, ok: false, skipped: true, error: `integration worktree compromised: ${integBroken}` }
-      if (typeof budget !== 'undefined' && budget.total && budget.remaining() < MIN_BUDGET) return { id, merged: false, ok: false, skipped: true, error: 'token budget too low' }
+      if (lowBudget()) return { id, merged: false, ok: false, skipped: true, error: 'token budget too low' }
       let r
       begun.add(id)
       try { r = await runDeliverable(id, idx) } catch (e) { r = { id, merged: false, ok: false, error: `unexpected error: ${e && e.message ? e.message : e}`, failKind: 'infra' } }

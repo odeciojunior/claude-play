@@ -269,6 +269,7 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     const E = (/^(E\d+):/.exec(l) || [])[1];
     if (isDisc(l)) return { exit: 0, stdout: discSlices(prompt, { repo: '/r', today: '2026-11-09', roadmapDir: 'docs/plans/roadmap-x/', strategy: 'docs/plans/roadmap-x/s.md', checker: 'docs/plans/roadmap-x/check.mjs', integrationBranch: 'main', target: 'integracao/x', checkerExists: true, roadmapSlug: 'x', deliverableStatuses: ['a', 'b', 'c', 'd', 'e'], integratedStatuses: ['integrada', 'publicada', 'medida'], language: '', cards: typeof cards === 'function' ? cards() : cards, pendingDecisions: [], ...discOver }) };
     if (l === 'discovery-donot') return { donotHolds: [] };
+    if (l === 'preflight-early') return { skipped: true };
     if (l === 'preflight') return { ok: true, integrationWorktree: '/wt/_integracao', targetHead: FULL('abc1234'), clean: true, envFacts: 'x', baseline: gm('abc1234') };
     if (/:setup$/.test(l)) return { ok: true, worktree: `/wt/${E}`, baseCommit: 'b1', head: 'a1', clean: true, taskCommits: 0, committedTasks: [], nativeSpec: false, nativePlan: false };
     if (/:spec$/.test(l)) return 'spec written';
@@ -6194,4 +6195,194 @@ test('E48 AC2: without generated the behaviour is unchanged and the report has n
   const { calls, peak } = await peakRun({ config: { generated: false }, args: { parallelOk: true, maxParallel: 2 } });
   assert.equal(peak, 2);
   assert.ok(!reportPrompt(calls).includes('GENERATED release.config.json'));
+});
+
+// E49: with an explicit target and args.repo, a run measures the gates (preflight-early) before the discovery.
+// The answer of preflight-early: the fields of the measure at the top level, so withCapture builds the capture lines.
+const earlyOf = (measure, dir = '/wt/_integracao') => ({ skipped: false, integrationWorktree: dir, ...measure });
+// Runs E1 with args.repo (the target is the one of exec()); early is the preflight-early answer, or a function of its prompt.
+const earlyRun = ({ early = earlyOf(gm('abc1234')), also, args = {}, cards = [card('E1')], ...rest } = {}) => exec({ cards, deliverables: ['E1'], args: { repo: '/r', ...args },
+  over: (l, p, o) => (l === 'preflight-early' ? (typeof early === 'function' ? early(p) : early) : also ? also(l, p, o) : undefined), ...rest });
+const callOf = (calls, label) => calls.find((c) => c.label === label);
+const capLines = (prompt) => [...prompt.matchAll(CAP_LINE)];
+const noEarly = (x) => assert.ok(!x.labels.includes('preflight-early'), x.labels.join(' '));
+const stoppedEarly = (x, why) => {
+  assert.equal(x.r.status, 'needs-operator');
+  assert.ok(invalidBaseline(x.r), JSON.stringify(x.r.operatorActions));
+  assert.ok(invalidBaseline(x.r).what.includes(why), invalidBaseline(x.r).what);
+  assert.equal(x.labels[0], 'preflight-early');
+  assert.ok(!x.labels.some((l) => isDisc(l) || l === 'discovery-donot' || l === 'preflight'), x.labels.join(' '));
+  assert.equal(x.r.selection, null);
+};
+const redLint = () => { const m = gm('abc1234'); m.gates[0].exit = 1; return m; };
+
+test('E49 AC1: an unreadable early measure stops with baseline-invalid before any discovery agent', async () => {
+  const x = await earlyRun({ early: earlyOf(unreadable(gm('abc1234'))), discOver: { donot: ['do not migrate X'] } });
+  stoppedEarly(x, 'gate lint missing from the measure');
+  const c = callOf(x.calls, 'preflight-early');
+  assert.doesNotMatch(c.prompt, /merge --abort|branch integracao\/x|commit/);
+  assert.ok(c.prompt.includes('/wt/_tmp/preflight-early/'));
+  assert.ok(c.prompt.includes('Never remove, move or recreate a worktree'));
+  assert.match(c.prompt, /rev-parse --verify --quiet '?refs\/heads\/integracao\/x'?/);
+  const lines = capLines(c.prompt);
+  assert.deepEqual(lines.map((l) => unshq(l[4])), GATES.map((g) => g.cmd));
+  assert.deepEqual(lines.map((l) => l[2]), GATES.map(() => 'preflight-gates'));
+  assert.deepEqual({ model: c.opts.model, effort: c.opts.effort, phase: c.opts.phase }, { model: 'sonnet', effort: 'medium', phase: 'Preflight' });
+  assert.deepEqual(c.opts.schema.required, ['skipped']);
+});
+
+test('E49 AC1: an incoherent early tests gate stops before the discovery', async () => {
+  stoppedEarly(await earlyRun({ early: earlyOf(gm('abc1234', { exit: 1, failedNames: [] })) }), 'gate unit: exit 1 disagrees with its failing names');
+});
+
+test('E49 AC1: a miscopied early measure is read back before the discovery and the preflight does not read it again', async () => {
+  const x = await earlyRun({ early: (p) => earlyOf(miscopied(p, gm('abc1234'))), also: (l, p) => {
+    const m = /^preflight:reread-g(\d)$/.exec(l);
+    return m ? reread(p, GATES[m[1]], UNIT_COUNTS) : undefined;
+  } });
+  assert.equal(invalidBaseline(x.r), undefined, JSON.stringify(x.r.operatorActions));
+  assert.equal(x.r.results[0].merged, true);
+  assert.deepEqual(rereads(x.calls).map((c) => c.label), ['preflight:reread-g0', 'preflight:reread-g1']);
+  assert.deepEqual(x.labels.slice(0, 4), ['preflight-early', 'preflight:reread-g0', 'preflight:reread-g1', 'discovery']);
+});
+
+test('E49 AC1: with a valid early measure the preflight measures nothing and its record and baseline are ignored', async () => {
+  const back = { ...preflightOf({ ...unreadable(gm('fff9999')), clean: false }), recorded: 'rejected' };
+  const x = await earlyRun({ also: (l) => (l === 'preflight' ? back : undefined) });
+  assert.equal(invalidBaseline(x.r), undefined, JSON.stringify(x.r.operatorActions));
+  assert.equal(x.r.results[0].merged, true);
+  assert.deepEqual(rereads(x.calls), []);
+  const p = callOf(x.calls, 'preflight').prompt;
+  assert.deepEqual(capLines(p), []);
+  assert.ok(!p.includes('run-record.mjs" baseline'));
+  assert.ok(p.includes('(skip: the gates were measured before the discovery)'));
+  assert.doesNotMatch(/^Return ok.*$/m.exec(p)[0], /recorded|baseline/);
+  assert.deepEqual(x.labels.slice(0, 3), ['preflight-early', 'discovery', 'preflight']);
+  const prep = payloadOf(callOf(x.calls, 'E1:progress').prompt).prep;
+  assert.equal(prep.baseline.headSha, FULL('abc1234'));
+  assert.ok(!('skipped' in prep.baseline) && !('integrationWorktree' in prep.baseline), JSON.stringify(prep.baseline));
+});
+
+test('E49 AC1: a target that moved after the early measure stops after the discovery', async () => {
+  const x = await earlyRun({ early: earlyOf(gm('fff0001')) });
+  assert.equal(x.r.status, 'needs-operator');
+  assert.match(invalidBaseline(x.r).what, /measured at commit/);
+  assert.ok(x.labels.includes('discovery') && x.labels.includes('preflight'), x.labels.join(' '));
+});
+
+test('E49 AC1: a target given only by config.releaseBranch is measured early', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { releaseBranch: 'rel/x' }, args: { targetBranch: undefined, repo: '/r' } });
+  assert.equal(x.labels[0], 'preflight-early');
+  assert.match(x.calls[0].prompt, /refs\/heads\/rel\/x/);
+});
+
+test('E49 AC1: a red early baseline does not stop before the discovery', async () => {
+  const x = await earlyRun({ early: earlyOf(redLint()) });
+  assert.ok(x.labels.includes('discovery') && x.labels.includes('preflight'), x.labels.join(' '));
+  assert.ok(x.r.operatorActions.some((o) => o.kind === 'preflight:red-baseline'), JSON.stringify(x.r.operatorActions));
+  assert.equal(invalidBaseline(x.r), undefined);
+});
+
+test('E49 AC1: the early prompt carries the setup commands', async () => {
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { setup: ['make env'] }, args: { repo: '/r' } });
+  const p = callOf(x.calls, 'preflight-early').prompt;
+  assert.ok(p.includes('environment setup, in order: "make env"; if one fails, skipped=true. Then record clean'), p);
+  assert.ok(p.includes('install (npm ci)'));
+});
+
+test('E49 AC1: an empty selection after a valid early measure is the partial result without preflight', async () => {
+  const done = card('E1', { status: 'integrada', onTarget: true, mergeFound: true, mergeSha: 'a'.repeat(40) });
+  const x = await earlyRun({ cards: [done] });
+  assert.equal(x.labels[0], 'preflight-early');
+  assert.equal(x.r.status, 'partial');
+  assert.deepEqual(x.r.selection.order, []);
+  assert.ok(!x.labels.includes('preflight'), x.labels.join(' '));
+});
+
+test('E49 AC1: the integrationBranch as target errors after a valid early measure and an invalid one stops first', async () => {
+  const ok = await earlyRun({ args: { targetBranch: 'main' } });
+  assert.equal(ok.labels[0], 'preflight-early');
+  assert.equal(ok.r.status, 'error');
+  assert.match(ok.r.error, /integrationBranch/);
+  assert.ok(ok.labels.includes('discovery') && !ok.labels.includes('preflight'), ok.labels.join(' '));
+  const bad = await earlyRun({ args: { targetBranch: 'main' }, early: earlyOf(unreadable(gm('abc1234'))) });
+  assert.equal(bad.r.status, 'needs-operator');
+  assert.ok(invalidBaseline(bad.r), JSON.stringify(bad.r.operatorActions));
+  assert.ok(!bad.labels.some(isDisc), bad.labels.join(' '));
+});
+
+test('E49 AC2: dry-run measures nothing early', async () => {
+  const x = await earlyRun({ args: { mode: 'dry-run', targetBranch: 'integracao/x' } });
+  noEarly(x);
+  assert.match(x.calls[0].prompt, /preflight\.mjs" discover/);
+  assert.ok(!x.calls.some((c) => c.prompt.includes('capture.mjs" run')));
+});
+
+test('E49 AC2: a target derived from the discovery keeps the measure in the preflight', async () => {
+  const x = await earlyRun({ args: { targetBranch: undefined } });
+  noEarly(x);
+  assert.equal(capLines(callOf(x.calls, 'preflight').prompt).length, GATES.length);
+});
+
+test('E49 AC2: plan-only measures nothing early', async () => {
+  noEarly(await earlyRun({ args: { mode: 'plan-only' } }));
+});
+
+test('E49 AC2: a budget below the minimum measures nothing early', async () => {
+  const x = await earlyRun({ budget: { total: 1e9, remaining: () => 0 } });
+  noEarly(x);
+  assert.ok(x.labels.includes('discovery'), x.labels.join(' '));
+  assert.equal(x.r.status, 'partial');
+  assert.match(x.r.error, /remaining budget/);
+});
+
+test('E49 AC2: a skipped, null, empty or outside-worktree early answer keeps the current order', async () => {
+  const cases = [{ skipped: true }, null, {}, earlyOf(gm('abc1234'), '/r'), earlyOf(unreadable(gm('abc1234')), '/r')];
+  for (const [i, early] of cases.entries()) {
+    const x = await earlyRun({ early });
+    assert.equal(x.labels[0], 'preflight-early', `case ${i}`);
+    assert.equal(x.r.results[0].merged, true, `case ${i}: ${JSON.stringify(x.r.operatorActions)}`);
+    assert.equal(capLines(callOf(x.calls, 'preflight').prompt).length, GATES.length, `case ${i}`);
+    assert.deepEqual(rereads(x.calls), [], `case ${i}`);
+  }
+});
+
+test('E49 AC2: without args.repo nothing is measured early', async () => {
+  noEarly(await exec({ cards: [card('E1')], deliverables: ['E1'] }));
+});
+
+const earlyValid = (l) => (l === 'preflight-early' ? earlyOf(gm('abc1234')) : undefined);
+
+test('E49 retomada: a resume with a new run token measures again live', async () => {
+  const j = makeJournal();
+  const base = { cards: [card('E1')], deliverables: ['E1'], over: earlyValid };
+  await exec({ ...base, args: { repo: '/r', runToken: 'pf-1' }, journal: j.start('discovery') }).catch(() => null);
+  const s2 = j.start();
+  const x = await exec({ ...base, args: { repo: '/r', runToken: 'pf-2' }, journal: s2 });
+  assert.deepEqual(s2.cached, []);
+  const p = callOf(x.calls, 'preflight-early').prompt;
+  assert.ok(p.includes('pf-2') && !p.includes('pf-1'), p);
+});
+
+test('E49 retomada: the run token is in the early measure and in the first discovery read only', async () => {
+  const x = await earlyRun();
+  assert.equal(x.labels[0], 'preflight-early');
+  assert.ok(x.calls[0].prompt.includes('pf-test'));
+  const at = x.labels.findIndex(isDisc);
+  assert.equal(nonceOf(x.calls[at].prompt), 'pf-test');
+  assert.deepEqual(x.calls.slice(at + 1).filter((c) => c.prompt.includes('pf-test')).map((c) => c.label), []);
+});
+
+test('E49 retomada: the early stop resumes without the run token and measures again live', async () => {
+  const j = makeJournal();
+  const over = (l) => (l === 'preflight-early' ? earlyOf(unreadable(gm('abc1234'))) : undefined);
+  const first = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { repo: '/r' }, over, journal: j.start() });
+  const stop = invalidBaseline(first.r);
+  assert.ok(stop, JSON.stringify(first.r.operatorActions));
+  assert.ok(!('runToken' in first.r.resumeArgs) && !('runToken' in stop.resumeWith));
+  assert.equal(stop.resumeWith.repo, '/r');
+  const s2 = j.start();
+  const x = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { ...stop.resumeWith, runToken: 'pf-2' }, over, journal: s2 });
+  assert.deepEqual(s2.cached, []);
+  assert.equal(x.labels[0], 'preflight-early');
 });
