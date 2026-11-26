@@ -10,7 +10,7 @@ Estratégia v1.2 -- 2026-11-25
 | E42 | na-branch | `f30b247`, `docs/plans/pos-2-6-0-E42/spec.md`, `docs/plans/pos-2-6-0-E42/plan.md`, `docs/plans/pos-2-6-0-E42/progress.json`, `38651fb3c74d84d65aa97fde1e5713e54f68bb9f`, `5a48b37e21ec8620603cc5431dbb53041dfb68bc`, `f0119227f102952b3d3aa2502f0e2910be247560`, `13fa3a2e7559e68f98965bc6ad3944d430dbb1fe` | release/pos-2.6.0 (merge b31ba00) entra em main na publicação (E54) |
 | E43 | na-branch | `docs/plans/pos-2-6-0-E43/spec.md`, `45f08d5`, `docs/plans/pos-2-6-0-E43/plan.md`, `plan/pos-2-6-0-E43`, `docs/plans/pos-2-6-0-E43/progress.json`, `c55df7cf21127d85f94fdaec7134750489731d08`, `5525bf64ac5fbdcc388eb51c50a112c9ea0f6ed7`, `18b8e18` | release/pos-2.6.0 (merge 18b8e18) entra em main na publicação (E54) |
 | E44 | na-branch | `8d50af4`, `docs/plans/pos-2-6-0-E44/spec.md`, `docs/plans/pos-2-6-0-E44/plan.md`, `docs/plans/pos-2-6-0-E44/progress.json`, `354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4`, `b88669e2e49cd1d623d6bccc86d24eafb78708e1`, `5fcf32a` | release/pos-2.6.0 entra em main na publicação (E54) |
-| E45 | plano | `bc74c70`, `docs/plans/pos-2-6-0-E45/spec.md`, `docs/plans/pos-2-6-0-E45/plan.md` | executar por último; tarefa 1 paga (DEC-025, DEC-026) |
+| E45 | executando | `bc74c70`, `docs/plans/pos-2-6-0-E45/spec.md`, `docs/plans/pos-2-6-0-E45/plan.md`, `plan/pos-2-6-0-E45` | conferir, rodar o agy e o G1 no merge e integrar em release/pos-2.6.0 |
 | E46 | executando | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md`, `plan/pos-2-6-0-E46` | conferir e integrar em release/pos-2.6.0 depois do coordinator |
 | E47 | spec | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be` | escrever o plano depois do merge do E46 |
 | E48 | nao-iniciado | - | - |
