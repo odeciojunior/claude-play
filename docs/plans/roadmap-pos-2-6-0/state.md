@@ -11,13 +11,13 @@ Estratégia v1.2 -- 2026-11-25
 | E43 | na-branch | `docs/plans/pos-2-6-0-E43/spec.md`, `45f08d5`, `docs/plans/pos-2-6-0-E43/plan.md`, `plan/pos-2-6-0-E43`, `docs/plans/pos-2-6-0-E43/progress.json`, `c55df7cf21127d85f94fdaec7134750489731d08`, `5525bf64ac5fbdcc388eb51c50a112c9ea0f6ed7`, `18b8e18` | release/pos-2.6.0 (merge 18b8e18) entra em main na publicação (E54) |
 | E44 | na-branch | `8d50af4`, `docs/plans/pos-2-6-0-E44/spec.md`, `docs/plans/pos-2-6-0-E44/plan.md`, `docs/plans/pos-2-6-0-E44/progress.json`, `354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4`, `b88669e2e49cd1d623d6bccc86d24eafb78708e1`, `5fcf32a` | release/pos-2.6.0 entra em main na publicação (E54) |
 | E45 | plano | `bc74c70`, `docs/plans/pos-2-6-0-E45/spec.md`, `docs/plans/pos-2-6-0-E45/plan.md` | executar por último; tarefa 1 paga (DEC-025, DEC-026) |
-| E46 | plano | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md` | executar o plano em plan/pos-2-6-0-E46 depois do coordinator do E52 |
-| E47 | nao-iniciado | - | - |
+| E46 | executando | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md`, `plan/pos-2-6-0-E46` | conferir e integrar em release/pos-2.6.0 depois do coordinator |
+| E47 | spec | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be` | escrever o plano depois do merge do E46 |
 | E48 | nao-iniciado | - | - |
 | E49 | nao-iniciado | - | - |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
-| E52 | executando | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52` | conferir, rodar o AC3 no pwsh e integrar em release/pos-2.6.0 |
+| E52 | na-branch | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52`, `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc`, `9062783` | release/pos-2.6.0 (merge 9062783) entra em main na publicação (E54) |
 | E53 | nao-iniciado | - | - |
 | E54 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
@@ -47,5 +47,6 @@ Estratégia v1.2 -- 2026-11-25
 | plan/pos-2-6-0-E51 | viva | integrado em release/pos-2.6.0 (4329c5e); branch e worktree pos-2-6-0-E51 ainda existem |
 | plan/pos-2-6-0-E43 | viva | integrado em release/pos-2.6.0 (18b8e18); branch e worktree pos-2-6-0-E43 ainda existem |
 | plan/pos-2-6-0-E45 | viva | coordinator parado no pedido de autorização plan:T1@cda5b9f6 (worktree pos-2-6-0-E45) |
-| plan/pos-2-6-0-E52 | viva | execução do plano do E52 no worktree D:/projects/claude-play-wt/pos-2-6-0-E52 |
+| plan/pos-2-6-0-E52 | viva | integrado em release/pos-2.6.0 (9062783); branch e worktree pos-2-6-0-E52 ainda existem |
+| plan/pos-2-6-0-E46 | viva | execução do plano do E46 no worktree D:/projects/claude-play-wt/pos-2-6-0-E46 |
 <!-- /roadmap:inflight -->

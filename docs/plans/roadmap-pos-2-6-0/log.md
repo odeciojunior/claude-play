@@ -3,6 +3,12 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E46 | correção: a linha anterior de execução do E46 citou por engano a branch do E52; a branch do E46 é plan/pos-2-6-0-E46 | `plan/pos-2-6-0-E46` |
+| 2026-11-26 | E46 | E46 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
+| 2026-11-26 | E47 | E47 spec written; aprovada com seis ajustes por opus por delegação (DEC-021) | `53f28be` |
+| 2026-11-26 | E52 | E52 criteria compared: none changed | `docs/plans/pos-2-6-0-E52/spec.md` |
+| 2026-11-26 | E52 | E52 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2680, pass 2678, fail 0, skipped 2; G2 58 OK; G4 válido | `9062783` |
+| 2026-11-26 | E52 | E52 fechada pelo estado do coordinator: plano concluído e portão final aprovado | `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc` |
 | 2026-11-26 | E52 | AC3: wsl-health-check pela variante pwsh (pwsh 7.6.10, WSL ubuntu) saiu com exit 0; HEALTH SUMMARY presente | `9f62dff` |
 | 2026-11-26 | E46 | E46 plan written; aprovado com dois ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E46/plan.md` |
 | 2026-11-26 | E52 | E52 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
