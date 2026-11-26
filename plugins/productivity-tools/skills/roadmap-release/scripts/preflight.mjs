@@ -551,7 +551,26 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
   return data;
 }
 
-export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null } = {}) {
+// One warning line when the release.config.json reviewed on `ref` and the one in the working tree differ in some top-level key
+// (key order does not count), else null. The one on `ref` applies. The fast-forward hint, given only when `ref` is a strict
+// ancestor of the base, is text: nothing runs it.
+function configDivergence(root, ref, refCfg, treeCfg, base) {
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (!isObject(refCfg) || !isObject(treeCfg)) return null;
+  const text = (cfg, k) => (Object.hasOwn(cfg, k) ? JSON.stringify(canon(cfg[k])) : undefined);
+  const keys = [...new Set([...Object.keys(refCfg), ...Object.keys(treeCfg)])].filter((k) => text(refCfg, k) !== text(treeCfg, k)).sort();
+  if (keys.length === 0) return null;
+  let line = `release.config.json on ${ref} differs from the working tree in: ${keys.join(', ')}; the one on ${ref} applies`;
+  const refSha = commitOf(root, ref);
+  const baseSha = base ? commitOf(root, base) : '';
+  if (refSha && baseSha && refSha !== baseSha && isAncestor(root, refSha, baseSha)) {
+    const behind = (gitTry(root, ['rev-list', '--count', `${refSha}..${baseSha}`]) || '').trim();
+    if (behind) line += `; ${ref} is ${behind} commits behind ${base}; fast-forward it to take the working-tree config`;
+  }
+  return line;
+}
+
+export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null, base = null } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -563,6 +582,9 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   const onRef = ref ? readRef(root, ref, relFile) : null;
   if (onRef !== null) {
     try { config = JSON.parse(onRef); generated = config.generated === true; } catch { errors.push(`release.config.json on ${ref} is not valid JSON`); }
+    // readJson gives null for an absent or unreadable working-tree file: nothing to compare then.
+    const diverged = configDivergence(root, ref, config, readJson(configPath), base || readJson(join(dir, 'roadmap.config.json'))?.integrationBranch);
+    if (diverged) warnings.push(diverged);
   } else if (existsSync(configPath)) {
     config = readJson(configPath);
     if (config === null) errors.push('release.config.json is not valid JSON');
@@ -712,12 +734,15 @@ else if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.me
   const wi = argv.indexOf("--wt-root");
   const wtRoot = wi >= 0 ? (argv[wi + 1] ?? "") : null;
   if (wi >= 0) argv.splice(wi, 2);
+  const bi = argv.indexOf('--base');
+  const base = bi >= 0 ? (argv[bi + 1] ?? null) : null;
+  if (bi >= 0) argv.splice(bi, 2);
   const folder = argv[0];
   if (!folder) {
-    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>] [--declare-permissions "<text>"] [--wt-root <path>]');
+    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>] [--base <base-branch>] [--declare-permissions "<text>"] [--wt-root <path>]');
     process.exit(2);
   }
-  const result = runPreflight(folder, { ref, declarePermissions, wtRoot: wtRoot || null });
+  const result = runPreflight(folder, { ref, base, declarePermissions, wtRoot: wtRoot || null });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.errors.length ? 1 : 0);
 }

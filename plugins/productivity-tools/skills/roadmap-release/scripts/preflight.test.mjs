@@ -1218,6 +1218,100 @@ test('E45 T2 C2: a discovery read from the working tree has an empty `at` and as
   assert.equal(sliceError(root, 'n-w', envs.length), 'the discovery changed between slices (read from the working tree); do not edit or commit while roadmap-release runs, then run again');
 });
 
+// ---- E45 T3: divergent release.config.json between the target and the working tree ----
+const divergence = (r) => r.warnings.filter((w) => w.startsWith('release.config.json on '));
+const REF_CFG = () => ({ ...good(), generated: false });
+const writeTreeCfg = (dir, cfg) => writeFileSync(join(dir, 'release.config.json'), typeof cfg === 'string' ? cfg : JSON.stringify(cfg));
+const divergentCfg = () => {
+  const { projectContext: _p, ...rest } = REF_CFG();
+  return { ...rest, install: 'pnpm install', setup: 'make' };
+};
+const preflightRel = (dir, extra = {}) => runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), ref: 'rel', configDir: null, ...extra });
+const DIVERGENT = 'release.config.json on rel differs from the working tree in: install, projectContext, setup; the one on rel applies';
+const BEHIND = 'release.config.json on rel differs from the working tree in: install; the one on rel applies; rel is 2 commits behind main; fast-forward it to take the working-tree config';
+
+// rel is a strict ancestor of main, 2 commits behind; the working tree (main) has another config.
+function repoWithTargetBehind() {
+  const repo = repoWithRoadmap(true);
+  git(repo.root, 'merge', '-q', '--ff-only', 'rel');
+  writeTreeCfg(repo.dir, { ...REF_CFG(), install: 'pnpm install' });
+  git(repo.root, 'commit', '-qam', 'new install');
+  git(repo.root, 'commit', '-qm', 'next', '--allow-empty');
+  return repo;
+}
+
+test('E45 T3 AC2: a divergent config warns the sorted keys, also those of one side only, and a target ahead of the base gets no fast-forward hint (C4)', () => {
+  const { dir } = repoWithRoadmap(true);
+  writeTreeCfg(dir, divergentCfg());
+  const r = preflightRel(dir, { base: 'main' });
+  assert.deepEqual(divergence(r), [DIVERGENT]);
+  assert.deepEqual(r.config, REF_CFG());
+  assert.equal(r.generated, false);
+  assert.deepEqual(r.errors, []);
+});
+
+test('E45 T3 C4: a base on the same commit as the target gets no fast-forward hint', () => {
+  const { root, dir } = repoWithRoadmap(true);
+  writeTreeCfg(dir, divergentCfg());
+  git(root, 'branch', 'same', 'rel');
+  for (const base of ['rel', 'same']) assert.deepEqual(divergence(preflightRel(dir, { base })), [DIVERGENT], base);
+});
+
+test('E45 T3: without a base, or with one that names no commit, the warning has no fast-forward hint', () => {
+  const { dir } = repoWithTargetBehind();
+  const line = BEHIND.slice(0, BEHIND.indexOf('; rel is '));
+  assert.deepEqual(divergence(preflightRel(dir)), [line]);
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'no-such-branch' })), [line]);
+});
+
+test('E45 T3 C3: the same config with another key order gives no warning', () => {
+  const { dir } = repoWithRoadmap(true);
+  const reverse = (v) => (Array.isArray(v) ? v.map(reverse) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reverse(x)])) : v);
+  writeTreeCfg(dir, JSON.stringify(reverse(REF_CFG()), null, 2).replace(/\n/g, '\r\n'));
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'main' })), []);
+});
+
+test('E45 T3 C3: without a config in the working tree there is no warning', () => {
+  const { dir } = repoWithRoadmap(true);
+  assert.equal(existsSync(join(dir, 'release.config.json')), false);
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'main' })), []);
+});
+
+test('E45 T3: a working-tree config that is not a JSON object is not compared', () => {
+  const { dir } = repoWithRoadmap(true);
+  for (const text of ['{ broken', '[]', 'null', '"x"']) {
+    writeTreeCfg(dir, text);
+    const r = preflightRel(dir, { base: 'main' });
+    assert.deepEqual(divergence(r), [], text);
+    assert.deepEqual(r.errors, [], text);
+  }
+});
+
+test('E45 T3 AC2: a target behind the base option gets the commit count and the fast-forward hint, and nothing moves', () => {
+  const { root, dir } = repoWithTargetBehind();
+  const before = git(root, 'rev-parse', 'rel', 'main');
+  const r = preflightRel(dir, { base: 'main' });
+  assert.deepEqual(divergence(r), [BEHIND]);
+  assert.deepEqual(r.config, REF_CFG());
+  assert.deepEqual(r.errors, []);
+  assert.equal(git(root, 'rev-parse', 'rel', 'main'), before);
+});
+
+test('E45 T3 AC2: without the base option the base is the integrationBranch of the folder, and the option wins over it', () => {
+  const { dir } = repoWithTargetBehind();
+  writeFileSync(join(dir, 'roadmap.config.json'), JSON.stringify({ strategy: 's.md', integrationBranch: 'main' }));
+  assert.deepEqual(divergence(preflightRel(dir)), [BEHIND]);
+  assert.doesNotMatch(divergence(preflightRel(dir, { base: 'rel' }))[0], /fast-forward/);
+});
+
+test('E45 T3 AC2: the CLI accepts --base and cites it in the usage line', () => {
+  const { dir } = repoWithTargetBehind();
+  assert.deepEqual(divergence(cliJson(dir, '--base', 'main')), [BEHIND]);
+  const usage = spawnSync(process.execPath, [PF_CLI], { encoding: 'utf8' });
+  assert.equal(usage.status, 2);
+  assert.match(usage.stderr, /\[--ref <target-branch>\] \[--base <base-branch>\]/);
+});
+
 // ---- missingDirs (DEC-719): wtRoot must be in permissions.additionalDirectories ----
 import { missingDirs } from './preflight.mjs';
 import { realpathSync } from 'node:fs';
