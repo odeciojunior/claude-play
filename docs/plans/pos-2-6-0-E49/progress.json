@@ -1,0 +1,190 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E49/plan.md",
+    "id": "E49",
+    "digest": "d2f782d7",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": "docs/plans/pos-2-6-0-E49/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "f51a899240f4d860a294743b7a1a1600b3fa351f",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.0616ms)\n✔ counts usage once per message id, keeping the largest output (13.6705ms)\n✔ splits cache writes into 5m and 1h (0.8375ms)\n✔ counts agent calls by dominant model family (1.0844ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7078ms)\n✔ estimates cost and keeps unpriced models null (0.7272ms)\n✔ readJsonl tolerates CRLF and a partial last line (2.0832ms)\n✔ classifies every label family of the role table (0.5377ms)\n✔ status, progress, review log and report come out as separate rows (172.0959ms)\n✔ records review rounds per loop (4.1759ms)\n✔ counts tasks and the task loop (3.3941ms)\n✔ writes metrics.json and one csv row per run and role (609.3475ms)\n✔ groups sessions of one attempt with --runs (564.6613ms)\n✔ requires --root and --out (476.2146ms)\n✔ refuses --out inside the repository outside tools/measure/out (4031.4794ms)\n✔ real price table is dated and sourced (4.4571ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (378.9921ms)\n✔ privacy scan catches a planted personal path and session id (2.2944ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (21.9155ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (15.2712ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (19.0651ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (17.0873ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (6.4333ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (14.0678ms)\n✔ prepare builds the sandbox and stops at authorize (19665.0847ms)\n✔ prepare refuses a work dir inside the repository (344.3346ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (661.9427ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (1286.3652ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (675.78ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.3606ms)\nℹ tests 2335\nℹ suites 11\nℹ pass 2333\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 247210.0116",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T15:42:02.690Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Medida antecipada da base no workflow",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "roadmap-release.js: in run mode with explicit target + args.repo + budget, agent `preflight-early` measures the gates before discovery; invalid measure stops with preflight:baseline-invalid (selection null). An accepted measure (EARLY) makes preflight skip steps 3-4 and is checked against its targetHead; skipped/null/{}/outside-worktree answers keep the old order. New symbols: lowBudget, S_EARLY, rereadPreflight, opInvalidBaseline. flow.test.mjs: default {skipped:true} for preflight-early plus E",
+      "sha": "a764e9cbb4831fef15a8f3728b540cee13c43292",
+      "replacedBy": null,
+      "note": "roadmap-release.js: in run mode with explicit target + args.repo + budget, agent `preflight-early` measures the gates before discovery; invalid measure stops with preflight:baseline-invalid (selection null).\nAn accepted measure (EARLY) makes preflight skip steps 3-4 and is checked against its targetHead; skipped/null/{}/outside-worktree answers keep the old order. New symbols: lowBudget, S_EARLY, ",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Docs da medida antecipada",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Edited only plugins/productivity-tools/skills/roadmap-release/references/operator.md: the preflight:baseline-invalid row of Action kinds, the \"A resume skips\" sentence of Resuming a run, and the \"A resume never uses the Workflow cache\" paragraph of Known limits (appended on the same line) now describe the early measure with explicit target and repo. The text is literal to the brief. Nothing downstream consumes it beyond the docs tests; the orchestrator commits.",
+      "sha": "6de43c83d09a6102d01d420fb393f7134316df04",
+      "replacedBy": null,
+      "note": "Edited only plugins/productivity-tools/skills/roadmap-release/references/operator.md: the preflight:baseline-invalid row of Action kinds, the \"A resume skips\" sentence of Resuming a run, and the \"A resume never uses the Workflow cache\" paragraph of Known limits (appended on the same line) now describe the early measure with explicit target and repo. The text is literal to the brief. Nothing downst",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T15:24:04.971Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T15:24:05.052Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T15:24:10.980Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T15:24:10.980Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T15:28:43.940Z"
+    },
+    {
+      "event": "review-result",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T15:35:46.833Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T15:35:46.833Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T15:36:53.620Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T15:36:53.620Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T15:36:53.620Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T15:41:08.525Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T15:41:43.469Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T15:42:02.690Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T15:42:02.690Z"
+    }
+  ]
+}
