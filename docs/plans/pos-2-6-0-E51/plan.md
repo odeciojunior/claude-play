@@ -1,13 +1,13 @@
 # Plano E51 -- Arnês de medição pronto para a base nova
 
-Spec: `docs/plans/pos-2-6-0-E51/spec.md` (`spec/1`, AC1 a AC3, casos C1 a C5). Todo o trabalho é em `tools/measure/` e `.claude/rules/measure.md`, no worktree `D:/projects/claude-play-wt/pos-2-6-0` (branch `release/pos-2.6.0`). Os caminhos abaixo são relativos à raiz do repositório. Os números de linha são os do estado anterior à Tarefa 1; localize pelo nome do símbolo.
+Spec: `docs/plans/pos-2-6-0-E51/spec.md` (`spec/1`, AC1 a AC3, casos C1 a C5). Todo o trabalho é em `tools/measure/` e `.claude/rules/measure.md`, na branch `plan/pos-2-6-0-E51`, no worktree `D:/projects/claude-play-wt/pos-2-6-0-E51`, com merge em `release/pos-2.6.0` depois da conferência. Os caminhos abaixo são relativos à raiz do repositório. Os números de linha são os do estado anterior à Tarefa 1; localize pelo nome do símbolo.
 
 ## Regras de execução
 
 - Nenhuma execução paga: não rodar `run-batch.mjs`, `run-baseline.mjs` nem `run-trigger.mjs` de verdade. Todo teste usa `exec` simulado (`makeFake`). Os testes que chamam a CLI por `spawnSync` só exercitam recusas que saem antes de qualquer `claude -p`.
-- Não rodar a suíte completa; a linha de base está na spec do E42 (`docs/plans/pos-2-6-0-E42/spec.md`). Rodar só os arquivos de teste das checagens.
+- Não rodar a suíte completa; a linha de base está na spec do E42 (`docs/plans/pos-2-6-0-E42/spec.md`). Rodar só os arquivos de teste das checagens. O portão de onda roda a suíte de `tools/` (`node --test "tools/**/*.test.mjs"`), com linha de base medida em `8ccca3e`: exit 0, tests 541, pass 539, fail 0, skipped 2. A suíte completa roda no merge.
 - `tools/measure/run-batch.test.mjs` compara o HEAD lido ao carregar com o HEAD lido depois: não commitar enquanto ele roda.
-- Medir o tempo de `node --test tools/measure/run-batch.test.mjs` (linha `duration_ms` do resumo) antes da Tarefa 1 e depois da Tarefa 3, e informar os dois números no relato da Tarefa 3.
+- Medir o tempo de `node --test tools/measure/run-batch.test.mjs` (linha `duration_ms` do resumo) antes da Tarefa 1 e depois da Tarefa 3, e informar os dois números no relato da Tarefa 3. Antes da Tarefa 1, já medido em `8ccca3e`: 200 testes, 200 aprovados, `duration_ms` 243293.
 - As tarefas 1 a 6 mexem em `run-batch.mjs` e no teste dele, por isso rodam em cadeia.
 
 ## Tarefas
@@ -172,6 +172,8 @@ Commit: `docs(measure): regras de modelo, transcrições e custo`.
   "spec": "spec.md",
   "roadmap": "docs/plans/roadmap-pos-2-6-0/",
   "constraints": [
+    "Trabalhar só no worktree D:/projects/claude-play-wt/pos-2-6-0-E51, branch plan/pos-2-6-0-E51; autonomia só local: sem push, tag ou comentário em issue (DEC-004).",
+    "Antes da Tarefa 1, node --test tools/measure/run-batch.test.mjs levou duration_ms 243293 (200 testes, 200 aprovados, medido em 8ccca3e); o relato da Tarefa 3 informa esse número e o medido depois dela.",
     "Nenhuma execução paga: não rodar run-batch.mjs, run-baseline.mjs nem run-trigger.mjs de verdade; todo teste é offline, com exec simulado (DEC-004, DEC-021).",
     "Não rodar a suíte completa; rodar só os arquivos de teste das checagens (a linha de base está na spec do E42).",
     "E5_PATHS e as variantes legadas plano-semeado e codigo-semeado ficam congelados (DEC-016).",
