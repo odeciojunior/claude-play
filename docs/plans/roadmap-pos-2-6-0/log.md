@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E47 | E47 criteria compared: none changed | `docs/plans/pos-2-6-0-E47/spec.md` |
+| 2026-11-26 | E47 | E47 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2736, pass 2734, fail 0, skipped 2; inclui agy e run-batch, que valem pela conferência de antes do merge (código igual ao da branch); paridade agy: pendente #13 | `37294bd` |
 | 2026-11-26 | E53 | E53 spec written; aprovada por opus por delegação (DEC-021) com doze ajustes aplicados pelo autor; a aprovação não autoriza o gasto do lote | `57ea4ca` |
 | 2026-11-26 | E47 | plano do E47 escrito (plan-tool check: 0 erros) e aprovado por opus por delegação (DEC-021) com dois ajustes aplicados pelo autor | `51887b1` |
 | 2026-11-26 | E46 | E46 criteria compared: none changed | `docs/plans/pos-2-6-0-E46/spec.md` |
