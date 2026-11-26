@@ -34,7 +34,6 @@ Estratégia v1.2 -- 2026-11-25
 - (executor) fora do escopo: o summary() do test-extract usa a primeira linha de contagem, e stdout de teste pode inflar o total nos caminhos .js e agy (revisão do E52)
 - (executor) E53: passar --model também ao run-baseline.mjs no roteiro do lote (revisão final do E51, achado m1)
 - (executor) fora do escopo: close-from-state recusa plano com muitos commits (célula de evidência acima de 300 caracteres, visto no E51)
-- (owner) autorizar o item plan:T1@cda5b9f6 do E45 (sessão headless paga, DEC-025 e DEC-026); o plano exige que venha de uma pessoa
 - (executor) E43: sem caso de teste para agente de releitura que devolve null (revisão final, achado F2)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
