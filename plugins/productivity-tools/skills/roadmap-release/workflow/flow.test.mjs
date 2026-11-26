@@ -97,6 +97,10 @@ const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfW
 const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
 // What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
 const seenDecisions = new Map();
+// E46: a value as shq writes it, quoted (with the '\'' idiom) or one token without spaces. SHQ_VALUE keeps it in the group that matched (1 quoted, 2 bare); SHQ_SKIP only passes over it.
+const SHQ_VALUE = String.raw`(?:'((?:[^']|'\\'')*)'|([^\s']+))`;
+const SHQ_SKIP = String.raw`(?:'(?:[^']|'\\'')*'|[^\s']+)`;
+const shqValue = (text, flag) => { const m = new RegExp(`${flag} ${SHQ_VALUE}`).exec(text); return m ? m[1] ?? m[2] : undefined; };
 // Decisions the owner ratified between runs: pending-decisions no longer lists them, add-decision still answers existing: true.
 const ratifiedDecisions = new Set();
 // Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
@@ -150,7 +154,7 @@ function makeRecordMock(cardsOf) {
       const runs = promptCommands(prompt).map((command) => {
         const verb = /^node "[^"]*" (\S+)/.exec(command)[1];
         let over = {};
-        if (verb === 'set-status') x.word = /set-status '[^']*' '[^']*' '([^']*)'/.exec(command)[1];
+        if (verb === 'set-status') x.word = shqValue(command, `set-status ${SHQ_SKIP} ${SHQ_SKIP}`);
         if (verb === 'block-open') { x.word = 'blocked'; x.note = 'BLQ-9'; over = { result: { id: 'BLQ-9' }, changed: ['state.md'] }; }
         if (verb === 'add-decision') {
           const key = E + '|' + command;
@@ -176,14 +180,14 @@ function makeRecordMock(cardsOf) {
 
 // E10 T5: the discovery is the stdout of `preflight.mjs discover`, signed the way the script signs it (canon/fnv1a of lib/plan-digest.mjs) over { nonce, data }.
 const discStdout = (nonce, data) => JSON.stringify({ tool: 'release-discovery', nonce, digest: fnv1a(JSON.stringify(canon({ nonce, data }))), data });
-const nonceOf = (prompt) => (/--nonce '([^']*)'/.exec(prompt) || [])[1];
+const nonceOf = (prompt) => shqValue(prompt, '--nonce');
 // E41 B2: the discovery is read in signed slices (discover --slice k); discSlices is the stdout of the slice the prompt asks for.
 const discSlices = (prompt, data) => sliceStdout({ tool: 'release-discovery', command: 'discover', nonce: nonceOf(prompt) }, JSON.stringify(canon(data)), sliceNo(prompt));
 const isDisc = (l) => /^discovery(-redo)?(-slice\d+)?(-retry\d)?$/.test(l);
 
 // E41 B2 T2: a measure answered without capture gets, per gate, the JSON line capture.mjs would print: the nonce (by index), the task and the command (shq undone) are read in the capture lines of the prompt.
-const CAP_LINE = /^\s*node "[^"]*\/capture\.mjs" run --nonce (\S+) --task (\S+)( --tests)? --cwd .* --bash ('(?:[^']|'\\'')*')\s*$/gm;
-const unshq = (q) => q.slice(1, -1).split("'\\''").join("'");
+const CAP_LINE = /^\s*node "[^"]*\/capture\.mjs" run --nonce (\S+) --task (\S+)( --tests)? --cwd .* --bash ('(?:[^']|'\\'')*'|[^\s']+)\s*$/gm;
+const unshq = (q) => (q.startsWith("'") ? q.slice(1, -1).split("'\\''").join("'") : q);
 function captureLine(l, def, g) {
   const base = { tool: 'capture', nonce: l.nonce, task: l.task, cmdDigest: commandDigest({ bash: l.bash }), exit: g.exit, bytes: 0, sha256: '0', lines: 0, path: 'p', stderrBytes: 0, stderrSha256: '0', stderrPath: 'q', tail: '', tailCut: 0 };
   const extract = l.tests ? { format: Number.isInteger(g.total) ? 'node-tap' : 'unknown', exit: g.exit, total: Number.isInteger(g.total) ? g.total : null, pass: null, fail: null, skipped: Number.isInteger(g.skipped) ? g.skipped : 0, failedNames: g.failedNames || [], failedNamesCut: 0 } : undefined;
@@ -215,7 +219,7 @@ function loadAnswer(prompt, name, t) {
   const [exit, raw] = loadTexts(t)[name];
   const text = raw == null ? '' : String(raw);
   const m = /capture\.mjs" run --nonce (\S+) --task (\S+) --cwd (?:'[^']*'|\S+) -- (.*)$/m.exec(prompt);
-  const argv = [...m[3].matchAll(/'((?:[^']|'\\'')*)'/g)].map((x) => x[1].split("'\\''").join("'"));
+  const argv = [...m[3].matchAll(new RegExp(SHQ_VALUE, 'g'))].map((x) => (x[1] ?? x[2]).split("'\\''").join("'"));
   const lines = text === '' ? 0 : text.split('\n').length;
   const base = { tool: 'capture', nonce: m[1], task: m[2], cmdDigest: commandDigest({ argv }), exit, bytes: utf8Length(text), sha256: createHash('sha256').update(text, 'utf8').digest('hex'), lines, path: `/wt/pt-evidence/${m[2]}/${name}.txt`, stderrBytes: 0, stderrSha256: '0', stderrPath: 'q' };
   const whole = signedOut({ ...base, tail: text, tailCut: 0 });
@@ -336,7 +340,7 @@ test('E41 B2 T2: a gate with a space in the name and a single quote in the comma
     assert.equal(quoted, PURE_X.shq(def.cmd));
     assert.equal(unshq(quoted), def.cmd);
     assert.ok(!c.prompt.includes('capture.mjs" run --nonce unit'), 'the nonce never holds the raw gate name');
-    assert.match(lines[0][0], / --cwd (?:'[^']*'|"[^"]*") --brief --bash /, c.label);
+    assert.match(lines[0][0], / --cwd (?:'[^']*'|"[^"]*"|[^\s'"]+) --brief --bash /, c.label);
     assert.ok(c.prompt.includes(`- unit tests (exit): ${def.cmd} (no test counts; the capture line is still required, copied literally)\n`), c.label);
     assert.ok(!c.prompt.includes('only name, ran and exit matter'), c.label);
     assert.ok(c.prompt.includes('The capture line has no output: take them from the file at its path (Read, offset/limit).'), c.label);
@@ -388,7 +392,7 @@ test('E43 AC2: a tampered preflight capture is read back and the baseline is acc
   const back = rereads(calls);
   assert.deepEqual(back.map((c) => c.label), ['preflight:reread-g0', 'preflight:reread-g1']);
   for (const [i, c] of back.entries()) {
-    assert.ok(c.prompt.includes(`node "/p/productivity-tools/scripts/capture.mjs" line --nonce ${LINE_CMD.exec(c.prompt)[1]} --task preflight-gates --cwd '/wt/_integracao'\n`), c.prompt);
+    assert.ok(c.prompt.includes(`node "/p/productivity-tools/scripts/capture.mjs" line --nonce ${LINE_CMD.exec(c.prompt)[1]} --task preflight-gates --cwd /wt/_integracao\n`), c.prompt);
     assert.match(LINE_CMD.exec(c.prompt)[1], new RegExp(`:preflight:g${i}$`));
     assert.doesNotMatch(c.prompt, /capture\.mjs" run /);
     assert.deepEqual({ agentType: c.opts.agentType, phase: c.opts.phase, model: c.opts.model, effort: c.opts.effort }, { agentType: 'productivity-tools:script-runner', phase: 'Preflight', model: 'haiku', effort: 'low' });
@@ -404,7 +408,7 @@ test('E43 AC2: a wrong copy on a branch gate is read back and no retry measure r
   assert.equal(r.results[0].merged, true);
   const back = rereads(calls);
   assert.deepEqual(back.map((c) => c.label), ['E1:gates1-2:reread-g0']);
-  assert.ok(back[0].prompt.includes(` --task E1-gates --cwd '/wt/E1'\n`), back[0].prompt);
+  assert.ok(back[0].prompt.includes(` --task E1-gates --cwd /wt/E1\n`), back[0].prompt);
 });
 
 test('E43 AC2: a read-back of another nonce or cmdDigest is refused with both reasons', async () => {
@@ -701,7 +705,7 @@ test('E41 T1 F1: a validated finish-merge prunes the capture evidence of the del
   assert.ok(!e1.broken);
   const prune = calls.filter((c) => c.label === 'E1:prune-evidence');
   assert.equal(prune.length, 1, 'the prune call runs once on the finish-merge path');
-  assert.match(prune[0].prompt, /scripts\/capture\.mjs" prune --task-prefix 'E1-' --cwd /);
+  assert.match(prune[0].prompt, /scripts\/capture\.mjs" prune --task-prefix E1- --cwd /);
   assert.ok(!e1.concerns.some((c) => /capture evidence not pruned/.test(c)), e1.concerns.join('; '));
 });
 
@@ -1030,17 +1034,17 @@ test('E10 AC1: discovery dispatches the script-runner with preflight.mjs" discov
   assert.deepEqual(d.opts.schema.required, ['exit', 'stdout']);
   assert.equal(d.opts.model, 'haiku');
   assert.match(d.prompt, /node "\/p\/productivity-tools\/skills\/roadmap-release\/scripts\/preflight\.mjs" discover /);
-  assert.match(d.prompt, /--prefix 'feat\/'/);  // the plan wrote --prefix pf-test: the run token goes in --nonce, the prefix is the branch prefix
-  assert.match(d.prompt, /--nonce 'pf-test'/);
-  assert.match(d.prompt, /--ref 'integracao\/x'/);
-  assert.match(d.prompt, /--today '2026-11-09'/);
+  assert.match(d.prompt, /--prefix feat\/(?!\S)/);  // the plan wrote --prefix pf-test: the run token goes in --nonce, the prefix is the branch prefix
+  assert.match(d.prompt, /--nonce pf-test(?!\S)/);
+  assert.match(d.prompt, /--ref integracao\/x(?!\S)/);
+  assert.match(d.prompt, /--today 2026-11-09(?!\S)/);
   assert.doesNotMatch(d.prompt, /\/wt|_integracao/);
   assert.ok(d.prompt.includes('SHELL: run each command exactly as written'));
   const p = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run', branchPrefix: 'pf-test', targetBranch: undefined, today: undefined } });
-  assert.match(p.calls[0].prompt, /--prefix 'pf-test'/);
+  assert.match(p.calls[0].prompt, /--prefix pf-test(?!\S)/);
   assert.doesNotMatch(p.calls[0].prompt, /--ref|--today/);  // --ref only with PRE_TARGET, --today only with args.today
   const withCfg = await exec({ cards: [card('E1')], deliverables: ['E1'], config: { releaseBranch: 'rel/x' }, args: { mode: 'dry-run', targetBranch: undefined } });
-  assert.match(withCfg.calls[0].prompt, /--ref 'rel\/x'/);
+  assert.match(withCfg.calls[0].prompt, /--ref rel\/x(?!\S)/);
 });
 
 test('a wrong digest retries up to 5 times and stops with discovery failed', async () => {
@@ -1054,15 +1058,22 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
   assert.deepEqual(x.labels, ds.map((c) => c.label));
   // another nonce, another tool and a script error are not confirmed either; the fourth attempt is the first that can be confirmed
   let n = 0;
+  const swaps = []; // checked after the run: an assertion inside the agent callback can be swallowed by the workflow
   const flaky = (l, p) => {
     if (l !== 'discovery' && !/^discovery-retry/.test(l)) return undefined;
     n++;
-    if (n === 1) return { exit: 0, stdout: discSlices(p.replace(/--nonce '[^']*'/, "--nonce 'other'"), { cards: [] }) };
+    if (n === 1) {
+      const other = p.replace(new RegExp(`--nonce ${SHQ_SKIP}`), "--nonce 'other'");
+      swaps.push([p, other]);
+      return { exit: 0, stdout: discSlices(other, { cards: [] }) };
+    }
     if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'capture', error: 'no roadmap folder' }) };  // E37 T7: a refusal of the right tool stops; another tool's copy repeats
     if (n === 3) return { exit: 0, stdout: 'not json' };
     return undefined;
   };
   const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, over: flaky });
+  assert.ok(swaps.length >= 1, 'the nonce of the first answer was swapped');
+  for (const [before, after] of swaps) assert.notEqual(after, before);
   assert.equal(y.r.status, 'done');
   assert.equal(y.calls.filter((c) => /^discovery/.test(c.label)).length, 4);
   assert.ok(y.calls.every((c) => nonceOf(c.prompt) === undefined || nonceOf(c.prompt) === 'pf-test'));
@@ -1232,7 +1243,7 @@ test('m7: reportPath is null when no report file was written', async () => {
 test('m8: the inflight row is added by the CLI inflight-add command', async () => {
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'] });
   const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
-  assert.match(p, /inflight-add '[^']*' 'feat\/E1' --note '/);
+  assert.match(p, /inflight-add (?:'[^']*'|[^\s']+) feat\/E1 --note '/);
   assert.doesNotMatch(p, /type: deliverable/);
 });
 
@@ -1567,7 +1578,7 @@ test('item 2: the discovery prompt restricts the ancestor rule', async () => {
   const { calls } = await exec({ cards: [card('E1')], args: { mode: 'dry-run' }, deliverables: 'next' });
   // E10: the ancestor rule (only a finished code segment counts, the delivery branch never does) is code in preflight.mjs, tested in preflight.test.mjs; the prompt is the command.
   assert.match(calls[0].prompt, /preflight\.mjs" discover/);
-  assert.match(calls[0].prompt, /--prefix 'feat\/'/);
+  assert.match(calls[0].prompt, /--prefix feat\/(?!\S)/);
 });
 
 test('item 14: a closed BLQ yields a decision action and no correction round', async () => {
@@ -3006,7 +3017,7 @@ test('B4: the runToken never comes back in resume args, so a resume must take a 
   assert.equal(!!x.r.resumeArgs && 'runToken' in x.r.resumeArgs, false);
   for (const o of x.r.operatorActions) assert.equal(!!o.resumeWith && 'runToken' in o.resumeWith, false, o.kind);
   assert.equal(x.labels[0], 'discovery');
-  assert.match(x.calls[0].prompt, /--nonce 'pf-test'/);  // E10: the token is the nonce of the discover command
+  assert.match(x.calls[0].prompt, /--nonce pf-test(?!\S)/);  // E10: the token is the nonce of the discover command
   assert.ok(x.calls.slice(1).every((c) => !c.prompt.includes('pf-test')), 'the token is only in the discovery read (the first agent call)');
 });
 
@@ -3231,16 +3242,23 @@ test('shq: aspas simples POSIX, quebra de linha vira espaço', () => {
   assert.equal(PU.shq('a$b`c"d'), "'a$b`c\"d'");
   assert.equal(PU.shq('a\nb'), "'a b'");
   assert.equal(PU.shq('a\r\nb'), "'a b'");
+  // E46: only a value outside the safe set is quoted
+  for (const x of ['abc', 'E1', 'docs/plans/r/', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_%+=:./-', '-x', '--flag', '=x']) assert.equal(PU.shq(x), x, x);
+  for (const x of ['a b', 'C:\\x', 'a@b', '@x', 'a,b', 'a(b)', '~x', 'a*', 'é']) assert.equal(PU.shq(x), "'" + x + "'", x);
+  for (const x of ['', null, undefined]) assert.equal(PU.shq(x), "''", String(x));
 });
 
 test('shq: o Git Bash entrega o texto literal', (t) => {
   const bash = gitBash();
   const ok = bash && !/system32|windowsapps/i.test(bash) && spawnSync(bash, ['-c', 'true']).status === 0;
   if (!ok) { t.skip('Git Bash não resolvido por git --exec-path'); return; }
-  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'l1\nl2']) {
+  for (const x of ["it's", 'cost $HOME `id` "q"', "a'b'c", 'x\\y', 'C:\\x', 'l1\nl2', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_%+=:./-', '-x', '--flag', '-', '=x', '@x', 'a,b']) {
     const r = spawnSync(bash, ['-c', 'printf %s ' + PU.shq(x)]);
     assert.equal(r.stdout.toString(), x.replace(/\r?\n/g, ' '), JSON.stringify(x));
   }
+  // The empty value stays an argument: printf delimits each one it receives.
+  const r = spawnSync(bash, ['-c', `printf '[%s]' a ${PU.shq('')} b`]);
+  assert.equal(r.stdout.toString(), '[a][][b]');
 });
 
 test('fitCell: cabe -> igual com espaços juntados; longo -> corta em palavra com o sufixo da origem', () => {
@@ -3270,8 +3288,8 @@ test('fitEvidence: mantém o prefixo cuja junção com crases cabe', () => {
 });
 
 test('cliCmd: caminho entre aspas duplas, pasta por shq, --json no fim', () => {
-  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status 'docs/plans/r/' --json`);
-  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status 'docs/plans/r/' 'E1' 'plano' --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'status', 'docs/plans/r/', []), `node "D:/x/roadmap.mjs" status docs/plans/r/ --json`);
+  assert.equal(PU.cliCmd('D:/x/roadmap.mjs', 'set-status', 'docs/plans/r/', ["'E1'", "'plano'"]), `node "D:/x/roadmap.mjs" set-status docs/plans/r/ 'E1' 'plano' --json`);
 });
 
 test('phrases: pt e en, curtas e citam entregável e status', () => {
@@ -3299,18 +3317,18 @@ test('recordCommands: sem rótulo não há --piece; com piece, set-status e bloc
   assert.ok(!a.error);
   assert.deepEqual(verbs(a.commands), ['set-status', 'log']);
   assert.ok(a.commands.every((c) => !/--piece/.test(c)));
-  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status 'docs\/plans\/r\/' 'E1' 'plano' .*--json$/);
-  assert.match(a.commands[0], /--evidence 'docs\/s\.md' --evidence 'docs\/p\.md'/);
+  assert.match(a.commands[0], /^node "D:\/x\/roadmap\.mjs" set-status docs\/plans\/r\/ E1 plano .*--json$/);
+  assert.match(a.commands[0], /--evidence docs\/s\.md --evidence docs\/p\.md(?!\S)/);
   const b = PU.recordCommands({ ...RC, piece: 'code' });
-  assert.match(b.commands[0], /--piece 'code'/);
-  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log 'docs\/plans\/r\/' --deliverable 'E1' --what '/);
+  assert.match(b.commands[0], /--piece code(?!\S)/);
+  assert.match(b.commands[1], /^node "D:\/x\/roadmap\.mjs" log docs\/plans\/r\/ --deliverable E1 --what '/);
   const c = PU.recordCommands({ ...RC, piece: 'code', word: 'bloqueado', logWhat: 'falta credencial' });
   assert.deepEqual(verbs(c.commands), ['block-open']);
-  assert.match(c.commands[0], /--piece 'code'/);
-  assert.match(c.commands[0], /--affects 'E1'/);
+  assert.match(c.commands[0], /--piece code(?!\S)/);
+  assert.match(c.commands[0], /--affects E1(?!\S)/);
   assert.match(c.commands[0], /--what '[^']*falta credencial/);
   assert.match(c.commands[0], /--unblocks '/);
-  assert.match(c.commands[0], /--evidence 'docs\/s\.md'/);
+  assert.match(c.commands[0], /--evidence docs\/s\.md(?!\S)/);
   assert.ok(!c.commands.some((x) => / set-status /.test(x)));
 });
 
@@ -3322,29 +3340,30 @@ test('recordCommands: skipStatus omite set-status e log; a ordem é a do registr
     decisions: [{ text: 'Usar X.', scope: 'local' }, { text: 'Usar Y.', scope: 'contrato' }], pending: ['p1', 'p2'], inflight: { remove: 'feat/E1' },
   });
   assert.deepEqual(verbs(y.commands), ['block-close', 'set-status', 'log', 'add-decision', 'add-decision', 'add-pending', 'add-pending', 'inflight-remove']);
-  assert.match(y.commands[0], /block-close 'docs\/plans\/r\/' 'BLQ-3' --how '/);
-  assert.match(y.commands[3], /--deliverable 'E1' --decision 'Usar X\.' --scope 'local'/);
-  assert.match(y.commands[4], /--scope 'contrato'/);
-  assert.match(y.commands[5], /--owner 'dono' --text 'p1'/);
-  assert.match(y.commands[7], /inflight-remove 'docs\/plans\/r\/' 'feat\/E1' --json$/);
+  assert.match(y.commands[0], /block-close docs\/plans\/r\/ BLQ-3 --how '/);
+  assert.match(y.commands[3], /--deliverable E1 --decision 'Usar X\.' --scope local(?!\S)/);
+  assert.match(y.commands[4], /--scope contrato(?!\S)/);
+  assert.match(y.commands[5], /--owner dono --text p1(?!\S)/);
+  assert.match(y.commands[7], /inflight-remove docs\/plans\/r\/ feat\/E1 --json$/);
   const z = PU.recordCommands({ ...RC, lang: 'en', skipStatus: true, inflight: { add: 'feat/E1', note: 'running' }, pending: ['p'] });
-  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner 'owner'/);
-  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add 'docs\/plans\/r\/' 'feat\/E1' --note 'running' --json$/);
+  assert.match(z.commands.find((c) => / add-pending /.test(c)), /--owner owner(?!\S)/);
+  assert.match(z.commands.find((c) => / inflight-add /.test(c)), /inflight-add docs\/plans\/r\/ feat\/E1 --note running --json$/);
 });
 
 test('recordCommands: decisão de 600 caracteres cabe com a frase de alcance e o texto inteiro vai em cuts', () => {
   const long = Array.from({ length: 100 }, (_, i) => 'termo' + i).join(' ');
   assert.ok(long.length > 600);
   const r = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: long, scope: 'contrato' }] });
-  const m = /--decision '([^']*)'/.exec(r.commands[0]);
-  assert.ok(m);
-  assert.ok(m[1].length + 1 + 'Alcance: contrato.'.length <= 300);
+  const decision = shqValue(r.commands[0], '--decision');
+  assert.ok(decision);
+  assert.ok(decision.length + 1 + 'Alcance: contrato.'.length <= 300);
   assert.equal(r.cuts.length, 1);
   assert.equal(r.cuts[0].full, long);
   assert.equal(r.cuts[0].source, 'docs/s.md');
   assert.ok(r.cuts[0].where);
   const p = PU.recordCommands({ ...RC, skipStatus: true, pending: [long] });
-  const t = /--text '([^']*)'/.exec(p.commands[0])[1];
+  const t = shqValue(p.commands[0], '--text');
+  assert.ok(t);
   assert.ok(('(dono) ' + t).length <= 300);
   assert.equal(p.cuts[0].full, long);
 });
@@ -3490,11 +3509,16 @@ test('status --deliverable: a releitura e o docs-measure pedem só a linha do E;
     assert.equal(p.deliverable, 'E1', l);
     assert.match(p.cli, /roadmap\.mjs$/, l);
   }
-  for (const c of calls.filter((x) => x.label !== 'discovery')) {
-    for (const m of plain(c.prompt).matchAll(/roadmap\.mjs" status '[^']*'([^\n;]*)/g)) {
+  // The control line proves that the pattern still finds a status command: without it the loop could pass by matching nothing.
+  const control = { label: 'control', prompt: PU.cliCmd(TOOL_PATH, 'status', 'docs/plans/roadmap-x/', ['--deliverable E1']) };
+  let seen = 0;
+  for (const c of [...calls.filter((x) => x.label !== 'discovery'), control]) {
+    for (const m of plain(c.prompt).matchAll(new RegExp(`roadmap\\.mjs" status ${SHQ_SKIP}([^\\n;]*)`, 'g'))) {
+      seen++;
       assert.match(m[1], /--deliverable E\d+ --json/, c.label);
     }
   }
+  assert.ok(seen >= 1);
 });
 
 test('recordVerdict: segmento rotulado, bloqueado com a nota BLQ e id de decisão ausente', () => {
@@ -3575,14 +3599,14 @@ test('AC2 registro de plano e executando pela CLI', async () => {
   const plan = plain(po.calls.find((c) => c.label === 'E1:status-c').prompt);
   const exe = plain(full.calls.find((c) => c.label === 'E1:status-d').prompt);
   for (const p of [plan, exe]) {
-    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' /);
+    assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status (?:'[^']*'|[^\s']+) /);
     assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log /);
-    assert.match(p, /--deliverable 'E1'/);
-    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha A\.' --scope 'local'/);
-    assert.match(p, /add-decision '[^']*' --deliverable 'E1' --decision 'escolha B' --scope 'contrato'/);
-    assert.match(p, /add-pending '[^']*' --owner 'owner' --text 'precisa de credencial'/);
+    assert.match(p, /--deliverable E1(?!\S)/);
+    assert.match(p, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'escolha A\.' --scope local(?!\S)/);
+    assert.match(p, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'escolha B' --scope contrato(?!\S)/);
+    assert.match(p, /add-pending (?:'[^']*'|[^\s']+) --owner owner --text 'precisa de credencial'/);
   }
-  assert.match(exe, /inflight-add '[^']*' 'feat\/E1'/);
+  assert.match(exe, /inflight-add (?:'[^']*'|[^\s']+) feat\/E1(?!\S)/);
   assert.doesNotMatch(plan, /inflight-add/);
   for (const c of [...statusPrompts(po.calls), ...statusPrompts(full.calls)]) assert.doesNotMatch(plain(c.prompt), /roadmap-tracker(?!\/scripts\/roadmap\.mjs)/, c.label);
   assert.equal(full.r.results[0].merged, true);
@@ -3812,7 +3836,7 @@ test('textos longos não viram concern', async () => {
   const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
   let seen = 0;
   for (const cmd of promptCommands(p)) {
-    for (const m of cmd.matchAll(/--(?:decision|text|what|note|next) '((?:[^']|'\\'')*)'/g)) { seen++; assert.ok(m[1].length <= 300, `${cmd.slice(0, 60)} (${m[1].length})`); }
+    for (const m of cmd.matchAll(new RegExp(`--(?:decision|text|what|note|next) ${SHQ_VALUE}`, 'g'))) { const v = m[1] ?? m[2]; seen++; assert.ok(v.length <= 300, `${cmd.slice(0, 60)} (${v.length})`); }
   }
   assert.ok(seen >= 4);
   assert.ok(!r.results[0].concerns.some((x) => /record/.test(x)));
@@ -3837,7 +3861,7 @@ test('retomada não repete log: a palavra já gravada tira set-status e log, e o
 
 test('célula com rótulos usa --piece code', async () => {
   const { calls } = await exec({ cards: [card('E1', { status: 'code: c; acceptance: blocked (BLQ-2)' })], deliverables: ['E1'] });
-  assert.match(plain(calls.find((c) => c.label === 'E1:status-d').prompt), /set-status '[^']*' 'E1' 'd' --piece 'code'/);
+  assert.match(plain(calls.find((c) => c.label === 'E1:status-d').prompt), /set-status (?:'[^']*'|[^\s']+) E1 d --piece code(?!\S)/);
 });
 
 test('falta de trackerCli: erro antes de qualquer agente', async () => {
@@ -3875,8 +3899,8 @@ test('na retomada o trackerCli sai dos argumentos mostrados ao relatório', asyn
 test('bloqueado: o registro vira block-open com o motivo, no melhor esforço', async () => {
   const { calls, r } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: badPlan });
   const p = plain(calls.find((c) => c.label === 'E1:status-blocked').prompt);
-  assert.match(p, /block-open '[^']*' --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
-  assert.match(p, /--affects 'E1'/);
+  assert.match(p, /block-open (?:'[^']*'|[^\s']+) --what 'E1 blocked: automatic execution stopped \(conteudo\)/);
+  assert.match(p, /--affects E1(?!\S)/);
   assert.doesNotMatch(p, / set-status /);
   assert.ok(r.results[0].error);
 });
@@ -3905,9 +3929,9 @@ test('AC2 documentação pela CLI', async () => {
   const humanSpec = specWith({ needsPerson: [np({ id: 'H1', what: 'precisa de credencial' })] });
   const { calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: both(humanSpec, planRows([{ ac: 'AC1', kind: 'human' }])) });
   const p = calls.find((c) => c.label === 'E1:docs1').prompt;
-  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status '[^']*' 'E1' 'e' /);
-  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log '[^']*' --deliverable 'E1'/);
-  assert.match(p, /inflight-remove '[^']*' 'feat\/E1'/);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" set-status (?:'[^']*'|[^\s']+) E1 e /);
+  assert.match(p, /node "\/p\/productivity-tools\/skills\/roadmap-tracker\/scripts\/roadmap\.mjs" log (?:'[^']*'|[^\s']+) --deliverable E1(?!\S)/);
+  assert.match(p, /inflight-remove (?:'[^']*'|[^\s']+) feat\/E1(?!\S)/);
   const pend = promptCommands(p).filter((c) => /add-pending/.test(c));
   assert.ok(pend.some((c) => c.includes('precisa de credencial')), 'entrada humana');
   assert.ok(pend.some((c) => /E1: criterion AC1 has no automatic evidence \(human\)/.test(c)), 'critério sem evidência automática');
@@ -4440,7 +4464,7 @@ test('AC6: a common ruling is recorded as pending ratification and the run goes 
   const { r, labels, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: specWith({ rulings: [ruling({ id: 'R1', decision: 'Use the cache.', alternative: 'No cache', scope: 'local' })] }) });
   assert.ok(labels.includes('E1:t1:impl'));
   const rec = plain(calls.find((c) => /^E1:status-/.test(c.label) && /add-decision/.test(plain(c.prompt))).prompt);
-  assert.match(rec, /add-decision '[^']*' --deliverable 'E1' --decision 'Use the cache\.' --scope 'local' --discarded 'No cache'/);
+  assert.match(rec, /add-decision (?:'[^']*'|[^\s']+) --deliverable E1 --decision 'Use the cache\.' --scope local --discarded 'No cache'/);
   assert.equal(r.results[0].decisions, 1);
 });
 
@@ -4774,9 +4798,12 @@ test('frozen tasks: the previous plan is loaded with --no-spec, the new plan wit
     over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(P0, 'E1') : undefined)) });
   const loads = calls.filter((c) => c.label === 'E1:plan-load1')
   assert.ok(loads.length >= 2)
-  assert.match(loads[0].prompt, /plan-tool\.mjs' 'check' '[^']*' '--no-spec'/)
-  assert.doesNotMatch(loads[0].prompt, /'--spec'/)
-  assert.match(loads[1].prompt, /plan-tool\.mjs' 'check' '[^']*' '--spec'/)
+  const check = (flag) => new RegExp(`plan-tool\\.mjs'? '?check'? ${SHQ_SKIP} '?${flag}'?(?!\\S)`)
+  assert.match(loads[0].prompt, check('--no-spec'))
+  const runLine = /^.*capture\.mjs" run .*$/m.exec(loads[0].prompt)
+  assert.ok(runLine, 'the load prompt has its capture run line')
+  assert.doesNotMatch(runLine[0], /(?<!\S)'?--spec'?(?!\S)/)
+  assert.match(loads[1].prompt, check('--spec'))
 })
 
 test('a native plan reused without owner note calls no author and makes no commit', async () => {
@@ -5726,7 +5753,7 @@ test('E29 C5: taskReview.single given straight to the workflow runs only spec1 a
 
 // ---- E36 T5: a tests gate whose only failure is a lower total stops without gates-fix; removedTests checked by test-extract lift the floor ----
 const RM_ENT = [{ file: 'src/a.test.js', name: 'old test', why: 'obsolete' }];
-const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: (/--base '([^']*)'/.exec(prompt) || [])[1], outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
+const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: shqValue(prompt, '--base'), outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
 const removedOver = ({ total = 8, answer = (p) => ({ exit: 0, stdout: removedLine(p) }), extra } = {}) => (l, p, o) => {
   if (/^E1:(re)?gates1-2$/.test(l)) return gm(/regates/.test(l) ? 'a3' : 'a2', { total });
   if (/^E1:(re)?removed-unit/.test(l)) return answer(p, l);
@@ -5754,8 +5781,8 @@ test('E36 T5 AC1: a spec declaration confirmed by the signed line lets the deliv
   assert.equal(c[0].opts.agentType, 'productivity-tools:script-runner');
   assert.equal(c[0].opts.model, 'haiku');
   const p = c[0].prompt;
-  assert.match(p, /test-extract\.mjs" removed --nonce '[^']*' --spec '\/wt\/E1\/docs\/plans\/x-E1\/spec\.md' --plan '\/wt\/E1\/docs\/plans\/x-E1\/plan\.md' --base '[^']*' --cwd '\/wt\/E1' --output 'p' --sha '0' --gate 'unit' --single-tests-gate/);
-  assert.ok(p.includes(` --base 'abc1234' `), 'the base is the target tip of the baseline (syncAt), a SHA, not the branch name that can move');
+  assert.match(p, /test-extract\.mjs" removed --nonce (?:'[^']*'|[^\s']+) --spec \/wt\/E1\/docs\/plans\/x-E1\/spec\.md --plan \/wt\/E1\/docs\/plans\/x-E1\/plan\.md --base (?:'[^']*'|[^\s']+) --cwd \/wt\/E1 --output p --sha 0 --gate unit --single-tests-gate/);
+  assert.ok(p.includes(` --base abc1234 `), 'the base is the target tip of the baseline (syncAt), a SHA, not the branch name that can move');
   assert.ok(!/old test/.test(p), 'names are never passed by argv');
   const concern = r.results[0].concerns.find((x) => /removed/.test(x));
   assert.ok(concern && /10/.test(concern) && /8/.test(concern) && /2/.test(concern), String(concern));
@@ -5842,7 +5869,7 @@ test('E36 T5: the checker nonce is distinct for the first measurement and the on
   assert.match(a, /:E1:removed:unit:\d+$/);
   assert.match(b, /:E1:removed:reunit:\d+$/);
   assert.notEqual(a, b);
-  const baseOf = (l) => /--base '([^']*)'/.exec(calls.find((c) => c.label === l).prompt)[1];
+  const baseOf = (l) => shqValue(calls.find((c) => c.label === l).prompt, '--base');
   assert.equal(baseOf('E1:removed-unit'), 'abc1234');
   assert.equal(baseOf('E1:reremoved-unit'), 'def5678', 'after the re-sync the base is the new target tip');
 });
@@ -5864,7 +5891,7 @@ test('E36 T5: the merge gates floor drops by the verified n only and the next ba
 test('E36 R8: a re-sync targetTip with a newline is normalized and the declared removal still passes', async () => {
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ extra: (l) => (/:resync$/.test(l) ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'def5678\n', deltaFiles: ['src/x.js'] } : undefined) })) });
   assert.equal(r.results[0].merged, true, r.results[0].error);
-  assert.equal(/--base '([^']*)'/.exec(calls.find((c) => c.label === 'E1:reremoved-unit').prompt)[1], 'def5678');
+  assert.equal(shqValue(calls.find((c) => c.label === 'E1:reremoved-unit').prompt, '--base'), 'def5678');
 });
 
 test('E36 R12: a refusal without this call nonce is an invalid copy and is repeated', async () => {
@@ -5897,7 +5924,7 @@ test('E39 DEC-056: prose checks of a red/green pair and a pairs line with pair t
   assert.equal(pc.length, 1);
   assert.equal(pc[0].label, 'E1:t1:pairs');
   assert.equal(pc[0].opts.agentType, 'productivity-tools:script-runner');
-  assert.match(pc[0].prompt, new RegExp(`capture\.mjs" pairs --nonce [^ ]+ --task E1-T1 --prefix '${TF_PRE}' --cwd `));
+  assert.match(pc[0].prompt, new RegExp(`capture\.mjs" pairs --nonce [^ ]+ --task E1-T1 --prefix ${TF_PRE} --cwd `));
   assert.ok(calls.some((c) => /^E1:t1:spec1$/.test(c.label)));
 });
 
@@ -5929,4 +5956,51 @@ test('E39 DEC-056: a good copy of capture lines dispatches no pairs agent', asyn
   const { r, calls } = await tfExec([{ command: 'node --test x', output: tfLine(1, 1), exit: 1 }, { command: 'node --test x', output: tfLine(2, 0), exit: 0 }], () => { throw new Error('pairs dispatched'); });
   assert.equal(r.results[0].merged, true, r.results[0].error);
   assert.equal(pairCalls(calls).length, 0);
+});
+
+// E46 AC1: with explain, the selection names why each dependency is missing.
+const E46_ST = { integrated: ['integrada', 'publicada', 'medida'], plan: 'c', executing: 'executando', onBranch: 'no branch', discarded: 'discarded', blocked: 'blocked' };
+const E46_PIECES = 'status without a code segment (several pieces)';
+const E46_SKIP = 'dependencies not met on the target and outside the selection: ';
+const e46Pieces = () => card('E1', { status: PURE_X.cardStatus('piece 1: done; piece 2: plan', E46_ST), onTargetEvidence: E46_PIECES });
+const e46Select = (cards, o) => PURE_X.selectDeliverables({ cards, statuses: E46_ST, ...o });
+// The phase filter keeps the dependencies out of the pool, so "ready" lists them as pending.
+const e46Ready = (cards, o = {}) => e46Select(cards, { selector: 'ready', filters: { phase: 'F1' }, ...o });
+
+test('E46 AC1: with explain the skip reason and the outside note name why each dependency is missing', () => {
+  const one = [e46Pieces(), card('E2', { deps: ['E1'], phase: 'F1' })];
+  assert.deepEqual(e46Select(one, { selector: ['E2'], explain: true }).skipped, [{ id: 'E2', reason: E46_SKIP + 'E1: ' + E46_PIECES }]);
+  assert.deepEqual(e46Ready(one, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E1: ' + E46_PIECES + ')']);
+  const two = [e46Pieces(), card('E4', { status: 'spec' }), card('E3', { deps: ['E1', 'E4'], phase: 'F1' })];
+  const both2 = 'E1: ' + E46_PIECES + '; E4: spec';
+  assert.deepEqual(e46Select(two, { selector: ['E3'], explain: true }).skipped, [{ id: 'E3', reason: E46_SKIP + both2 }]);
+  assert.deepEqual(e46Ready(two, { explain: true }).notes, ['E3: outside the selection (pending dependencies: ' + both2 + ')']);
+});
+
+test('E46 AC1: a dependency without a card does not break and reads no card', () => {
+  const cards = [card('E2', { deps: ['E9'], phase: 'F1' })];
+  for (const autoDeps of [false, true]) {
+    const r = e46Select(cards, { selector: ['E2'], autoDeps, explain: true });
+    assert.equal(r.error, undefined);
+    assert.deepEqual(r.skipped, [{ id: 'E2', reason: E46_SKIP + 'E9: no card' }]);
+  }
+  assert.deepEqual(e46Ready(cards, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E9: no card)']);
+});
+
+test('E46 AC1: an interrupted merge reads interrupted merge, not the evidence of the merge', () => {
+  const cards = [card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0', onTargetEvidence: 'merge commit e0 on integracao/x' }), card('E2', { deps: ['E1'], phase: 'F1' })];
+  assert.deepEqual(e46Select(cards, { selector: ['E2'], explain: true }).skipped, [{ id: 'E2', reason: E46_SKIP + 'E1: interrupted merge' }]);
+  assert.deepEqual(e46Ready(cards, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E1: interrupted merge)']);
+});
+
+test('E46 AC1: without explain the reason and the note keep the old text', () => {
+  const cards = [e46Pieces(), card('E3', { deps: ['E1', 'E9'], phase: 'F1' })];
+  assert.deepEqual(e46Select(cards, { selector: ['E3'] }).skipped, [{ id: 'E3', reason: E46_SKIP + 'E1, E9' }]);
+  assert.deepEqual(e46Ready(cards).notes, ['E3: outside the selection (pending dependencies: E1, E9)']);
+});
+
+test('E46 AC1: a dry-run carries the reason of each dependency to the selection', async () => {
+  const cards = [card('E1', { status: 'piece 1: done; piece 2: plan', onTargetEvidence: E46_PIECES }), card('E2', { deps: ['E1', 'E9'] })];
+  const { r } = await exec({ cards, args: { mode: 'dry-run' }, deliverables: ['E2'] });
+  assert.deepEqual(r.selection.skippedUpfront, [{ id: 'E2', reason: E46_SKIP + 'E1: ' + E46_PIECES + '; E9: no card' }]);
 });

@@ -1,0 +1,405 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E46/plan.md",
+    "id": "E46",
+    "digest": "b33d5ce3",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": "docs/plans/pos-2-6-0-E46/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 6,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.0679ms)\n✔ counts usage once per message id, keeping the largest output (2.3585ms)\n✔ splits cache writes into 5m and 1h (0.8115ms)\n✔ counts agent calls by dominant model family (1.0025ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7042ms)\n✔ estimates cost and keeps unpriced models null (0.6855ms)\n✔ readJsonl tolerates CRLF and a partial last line (1.9004ms)\n✔ classifies every label family of the role table (0.4844ms)\n✔ status, progress, review log and report come out as separate rows (3.5526ms)\n✔ records review rounds per loop (3.1086ms)\n✔ counts tasks and the task loop (2.962ms)\n✔ writes metrics.json and one csv row per run and role (451.9323ms)\n✔ groups sessions of one attempt with --runs (549.523ms)\n✔ requires --root and --out (436.4627ms)\n✔ refuses --out inside the repository outside tools/measure/out (3329.0115ms)\n✔ real price table is dated and sourced (0.2369ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (44.1303ms)\n✔ privacy scan catches a planted personal path and session id (6.9001ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (28.609ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (17.5895ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (16.4784ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (12.5181ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (8.546ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (13.7503ms)\n✔ prepare builds the sandbox and stops at authorize (22360.6747ms)\n✔ prepare refuses a work dir inside the repository (322.1218ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (452.4449ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (1418.349ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (605.7149ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.3273ms)\nℹ tests 2283\nℹ suites 11\nℹ pass 2281\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 267581.6977",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T12:56:55.096Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        5
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        6
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Aviso status-no-code no checker",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.mjs",
+        "plugins/productivity-tools/skills/roadmap-planner/references/formats.md",
+        "plugins/productivity-tools/skills/roadmap-tracker/scripts/check-roadmap.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": true,
+      "brief": "briefs/T1.md"
+    },
+    {
+      "n": 2,
+      "title": "Motivo curto no preflight sem segmento code",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": true,
+      "brief": "briefs/T2.md"
+    },
+    {
+      "n": 3,
+      "title": "Motivo por dependência na seleção",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": true,
+      "brief": "briefs/T3.md"
+    },
+    {
+      "n": 4,
+      "title": "Frase sobre gate nos agentes de spec e plano",
+      "wave": 4,
+      "deps": [
+        3
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/agents/spec-author.md",
+        "plugins/productivity-tools/agents/plan-author.md",
+        "plugins/productivity-tools/scripts/agent-contracts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added the E46 AC2 test case to agent-contracts.test.mjs (red first, then green: 10 pass, 0 fail). spec-author.md (step 4) and plan-author.md (step 3, before \"Break the work into\") now state what `gate` is, that it is the tests gate `name` in release.config.json, and when it is required. Nothing downstream consumes an interface from this step. The changes are uncommitted; the orchestrator commits the three files named in the step.</summary> <parameter name=\"concerns\">1) The brief's step 4 asks fo",
+      "sha": "7389b175dd03ba5386680ff835a21ca4d9a72293",
+      "replacedBy": null,
+      "note": "Added the E46 AC2 test case to agent-contracts.test.mjs (red first, then green: 10 pass, 0 fail). spec-author.md (step 4) and plan-author.md (step 3, before \"Break the work into\") now state what `gate` is, that it is the tests gate `name` in release.config.json, and when it is required. Nothing downstream consumes an interface from this step. The changes are uncommitted; the orchestrator commits t",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Testes aceitam valores com e sem aspas",
+      "wave": 5,
+      "deps": [
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/discovery-slices.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/load-slices.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "The extractors in flow.test.mjs, discovery-slices.test.mjs and load-slices.test.mjs (in D:/projects/claude-play-wt/pos-2-6-0-E46/plugins/productivity-tools/skills/roadmap-release/workflow/) now read shq values quoted or bare; roadmap-release.js is unchanged and nothing is committed. With today's shq the three files pass (510/510). With the T6 shq in a throwaway copy, the two slice files pass 15/15 and flow.test.mjs fails 17 of 495, each at an assertion on the T6 literal list (old lines 391, 407,",
+      "sha": "9220849074016f4faa8985a2cd1e15a808993f25",
+      "replacedBy": null,
+      "note": "The extractors in flow.test.mjs, discovery-slices.test.mjs and load-slices.test.mjs (in D:/projects/claude-play-wt/pos-2-6-0-E46/plugins/productivity-tools/skills/roadmap-release/workflow/) now read shq values quoted or bare; roadmap-release.js is unchanged and nothing is committed.\nWith today's shq the three files pass (510/510). With the T6 shq in a throwaway copy, the two slice files pass 15/15",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "shq sem aspas em valores seguros",
+      "wave": 6,
+      "deps": [
+        5
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/prompts.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`shq` in D:/projects/claude-play-wt/pos-2-6-0-E46/plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js now leaves values matching `^[A-Za-z0-9_%+=:./-]+$` bare; empty stays `''`, anything else keeps single quotes with the `'\\''` idiom. No call site changed; size 269800 -> 269884 LF chars (+84, cap 300). flow.test.mjs and prompts.test.mjs (same folder) have the new shq cases and bare-value expectations; folder-skip regexes accept both forms, and values formerly delimited ",
+      "sha": "56caf5a570c26c83f3d11079fb60e498154cac0c",
+      "replacedBy": null,
+      "note": "`shq` in D:/projects/claude-play-wt/pos-2-6-0-E46/plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js now leaves values matching `^[A-Za-z0-9_%+=:./-]+$` bare; empty stays `''`, anything else keeps single quotes with the `'\\''` idiom. No call site changed; size 269800 -> 269884 LF chars (+84, cap 300).\nflow.test.mjs and prompts.test.mjs (same folder) have the new shq case",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T12:21:57.197Z"
+    },
+    {
+      "event": "skip",
+      "step": 1,
+      "value": "outputs",
+      "at": "2026-11-26T12:21:57.276Z"
+    },
+    {
+      "event": "skip",
+      "step": 2,
+      "value": "outputs",
+      "at": "2026-11-26T12:21:57.352Z"
+    },
+    {
+      "event": "skip",
+      "step": 3,
+      "value": "outputs",
+      "at": "2026-11-26T12:21:57.433Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T12:22:02.047Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T12:22:31.838Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T12:22:31.838Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T12:22:31.838Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T12:22:31.838Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-26T12:22:31.838Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-26T12:27:20.166Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-26T12:35:27.946Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T12:35:48.080Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T12:35:48.080Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-26T12:35:48.080Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-26T12:40:17.300Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-26T12:45:44.117Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T12:46:03.892Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T12:46:03.892Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-26T12:46:03.892Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-26T12:50:39.780Z"
+    },
+    {
+      "event": "review-result",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-26T12:56:01.875Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-26T12:56:01.875Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T12:56:55.096Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T12:56:55.096Z"
+    }
+  ]
+}

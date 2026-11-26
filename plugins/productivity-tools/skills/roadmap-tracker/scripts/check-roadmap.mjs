@@ -981,6 +981,15 @@ export function checkRoadmap(r, git, opts = {}) {
       }
     }
 
+    // status-no-code: roadmap-release reads the code status from the "code" segment, or from the only unlabelled one.
+    // The message leaves the cell text out, so the same row is not a new warning each time the cell changes.
+    for (const row of panel) {
+      const segs = segments(row[1]);
+      if (segs.length === 0 || segs.some((s) => s.label === 'code') || (segs.length === 1 && segs[0].label === '')) continue;
+      const id = (row[0].match(/\bE\d+\b/) || [row[0]])[0];
+      add('warning', 'status-no-code', stateFile, `${id} Status has no "code" segment, so roadmap-release cannot tell whether the code is on the target`);
+    }
+
     // blocker-no-restore
     for (const row of blockers) {
       for (const e of idsIn(row[2], /\bE\d+\b/g)) {

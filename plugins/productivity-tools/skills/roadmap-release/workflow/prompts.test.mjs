@@ -500,7 +500,7 @@ test('E41 T3: with ctx.capture the implementer prompt carries the CAPTURE line; 
   assert.ok(!plain.includes('CAPTURE:'));
   const capture = { path: '/plug/scripts/capture.mjs', noncePrefix: 'ab12cd34:E7:T3:', task: 'E7-T3' };
   const p = P.buildImplPrompt({ ...ctx, capture }, task);
-  assert.ok(p.includes('\nCAPTURE: node "/plug/scripts/capture.mjs" run --nonce ab12cd34:E7:T3:<k> --task E7-T3 --cwd \'/wt/E7\' --brief -- <command>'), p);
+  assert.ok(p.includes('\nCAPTURE: node "/plug/scripts/capture.mjs" run --nonce ab12cd34:E7:T3:<k> --task E7-T3 --cwd /wt/E7 --brief -- <command>'), p);
   // the capture line is the only addition
   assert.equal(p.replace(/\nCAPTURE: [^\n]*/, ''), plain);
   assert.equal(P.buildImplPrompt({ ...ctx, capture: undefined }, task), plain);

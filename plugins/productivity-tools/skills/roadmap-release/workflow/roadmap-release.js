@@ -99,13 +99,16 @@ function onTargetEffective(c, statuses) {
   return !!c.mergeFound || (!!c.onTarget && ((statuses.integrated || []).includes(c.status) || c.status === statuses.onBranch))
 }
 
-function selectDeliverables({ cards, statuses, selector, filters, heldBy, overrideDonot, autoDeps, force, maxDeliverables }) {
+function selectDeliverables({ cards, statuses, selector, filters, heldBy, overrideDonot, autoDeps, force, maxDeliverables, explain }) {
   const byId = Object.fromEntries(cards.map(c => [c.id, c]))
   const notes = []
   const skipped = []
   const fail = error => ({ order: [], skipped, notes, error })
   const done = c => !!c && ((c.onTarget && !isUnfinished(c, statuses)) || c.status === statuses.discarded)
   const satisfied = id => done(byId[id])
+  // With explain, each missing dependency carries why it is missing.
+  const why = d => !byId[d] ? 'no card' : isUnfinished(byId[d], statuses) ? 'interrupted merge' : byId[d].onTargetEvidence || byId[d].status
+  const listDeps = ids => explain ? ids.map(d => d + ': ' + why(d)).join('; ') : ids.join(', ')
   const f = filters || {}
   const pool = cards.filter(c => (!f.phase || c.phase === f.phase) && (!f.priority || c.priority === f.priority) && (!f.track || c.track === f.track))
   const held = heldBy instanceof Map ? heldBy : new Map(Object.entries(heldBy || {}))
@@ -150,7 +153,7 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
           if (c.deps.every(d => satisfied(d) || (sel === 'next' && want.has(d)))) { want.add(c.id); changed = true }
         }
       }
-      for (const c of open.filter(c => !want.has(c.id))) notes.push(c.id + ': outside the selection (pending dependencies: ' + c.deps.filter(d => !satisfied(d) && !want.has(d)).join(', ') + ')')
+      for (const c of open.filter(c => !want.has(c.id))) notes.push(c.id + ': outside the selection (pending dependencies: ' + listDeps(c.deps.filter(d => !satisfied(d) && !want.has(d))) + ')')
     }
   } else return fail('invalid deliverables: ' + JSON.stringify(sel))
   for (const id of [...want]) {
@@ -164,7 +167,7 @@ function selectDeliverables({ cards, statuses, selector, filters, heldBy, overri
     for (const id of [...pending]) {
       const deps = byId[id].deps
       const missing = deps.filter(d => !satisfied(d) && !want.has(d))
-      if (missing.length) { pending.delete(id); want.delete(id); skipped.push({ id, reason: 'dependencies not met on the target and outside the selection: ' + missing.join(', ') }); progress = true; continue }
+      if (missing.length) { pending.delete(id); want.delete(id); skipped.push({ id, reason: 'dependencies not met on the target and outside the selection: ' + listDeps(missing) }); progress = true; continue }
       if (deps.every(d => satisfied(d) || order.includes(d))) { order.push(id); pending.delete(id); progress = true }
     }
   }
@@ -911,10 +914,11 @@ function dropConsumedNotes(args, consumed) {
   return Object.keys(kept).length ? { ...rest, notes: kept } : rest
 }
 // ---- Roadmap record through the tracker CLI (E18): pure assembly of the exact commands and verdict over the CLI JSON.
-// POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
+// Safe values go bare, others in POSIX single quotes; line breaks become spaces first (the CLI collapses them anyway). Only valid in the Bash tool shell.
 function oneLine(s) { return String(s == null ? '' : s).replace(/\s*[\r\n]+\s*/g, ' ') }
 function shq(s) {
-  return "'" + oneLine(s).replace(/'/g, "'\\''") + "'"
+  const v = oneLine(s)
+  return /^[A-Za-z0-9_%+=:./-]+$/.test(v) ? v : "'" + v.replace(/'/g, "'\\''") + "'"
 }
 const isPt = lang => /^pt/i.test(String(lang || ''))
 const collapseWs = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim()
@@ -1872,7 +1876,7 @@ const picked = selectDeliverables({
   cards: disc.cards, statuses: STATUSES, selector: A.deliverables,
   filters: { phase: A.phase, priority: A.priority, track: A.track },
   heldBy: MODE === 'plan-only' ? new Map() : heldMap,
-  overrideDonot: A.overrideDonot, autoDeps: !!A.autoDeps, force: !!A.force, maxDeliverables: A.maxDeliverables,
+  overrideDonot: A.overrideDonot, autoDeps: !!A.autoDeps, force: !!A.force, maxDeliverables: A.maxDeliverables, explain: true,
 })
 if (picked.error) return { status: 'error', error: picked.error }
 const order = picked.order

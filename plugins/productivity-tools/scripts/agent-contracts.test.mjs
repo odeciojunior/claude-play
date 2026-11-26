@@ -73,6 +73,18 @@ test('spec-author and plan-author declare removedTests as { file, name, why, gat
   }
 });
 
+test('E46 AC2: spec-author and plan-author say what gate is and when it is required', () => {
+  for (const n of ['spec-author.md', 'plan-author.md']) {
+    const t = read(n);
+    for (const p of [
+      'is the `name` of the tests gate in `release.config.json`',
+      'never the kind `"tests"`',
+      'does not have exactly one `kind: tests` gate without `invariant` nor `ignoreFailuresWhenChanged`',
+      'read the gate names in `release.config.json`',
+    ]) assert.ok(t.includes(p), `${n}: ${p}`);
+  }
+});
+
 test('spec-author and plan-author never search the plugin folder and edit only with Edit or Write (DEC-052)', () => {
   for (const n of ['spec-author.md', 'plan-author.md']) {
     const t = read(n);

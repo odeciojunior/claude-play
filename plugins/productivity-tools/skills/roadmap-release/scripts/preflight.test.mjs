@@ -940,6 +940,16 @@ test('E10 AC1: onTarget by the integrated code segment, never by the delivery br
   assert.equal(noTarget.cards.find((c) => c.id === 'E1').onTarget, true);
 });
 
+test('E46 AC1: onTargetEvidence names why there is no code segment without repeating the cell', () => {
+  const rows = ['| E1 |  | - | - |', '| E2 | piece 1: done; piece 2: plan | - | - |', '| E3 | spec: done | - | - |'];
+  const { root } = discRepo(panelEdit(rows));
+  const d = disc(root);
+  const by = Object.fromEntries(d.cards.map((c) => [c.id, c]));
+  assert.equal(by.E1.onTargetEvidence, 'no status on the panel');
+  assert.equal(by.E2.onTargetEvidence, 'status without a code segment (several pieces)');
+  assert.equal(by.E3.onTargetEvidence, 'status without a code segment');
+});
+
 test('E10 AC1: data has no wtRoot, pendingDecisions is a list, and the always-present fields are there', () => {
   const { root } = pendingRepo();
   const d = disc(root, { ref: 'alvo' });
