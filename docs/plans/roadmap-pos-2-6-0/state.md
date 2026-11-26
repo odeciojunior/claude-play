@@ -13,7 +13,7 @@ Estratégia v1.3 -- 2026-11-26
 | E46 | na-branch | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md`, `plan/pos-2-6-0-E46`, `docs/plans/pos-2-6-0-E46/progress.json`, `26cfb3c` | release/pos-2.6.0 (merge 26cfb3c) entra em main na publicação (E54) |
 | E47 | na-branch | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be`, `docs/plans/pos-2-6-0-E47/plan.md`, `plan/pos-2-6-0-E47`, `docs/plans/pos-2-6-0-E47/progress.json`, `37294bd` | release/pos-2.6.0 (merge 37294bd) entra em main na publicação (E54) |
 | E48 | na-branch | `docs/plans/pos-2-6-0-E48/spec.md`, `92b224f`, `docs/plans/pos-2-6-0-E48/plan.md`, `plan/pos-2-6-0-E48`, `docs/plans/pos-2-6-0-E48/progress.json`, `9b6f08a` | release/pos-2.6.0 (merge 9b6f08a) entra em main na publicação (E54) |
-| E49 | spec | `docs/plans/pos-2-6-0-E49/spec.md`, `b43f5bd` | escrever o plano depois do merge do E48 |
+| E49 | executando | `docs/plans/pos-2-6-0-E49/spec.md`, `b43f5bd`, `docs/plans/pos-2-6-0-E49/plan.md`, `plan/pos-2-6-0-E49` | conferir, revisão T2, G1 no merge e integrar em release/pos-2.6.0 |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
 | E52 | na-branch | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52`, `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc`, `9062783` | release/pos-2.6.0 (merge 9062783) entra em main na publicação (E54) |
@@ -53,4 +53,5 @@ Estratégia v1.3 -- 2026-11-26
 | plan/pos-2-6-0-E46 | viva | integrado em release/pos-2.6.0 (26cfb3c); branch e worktree pos-2-6-0-E46 ainda existem |
 | plan/pos-2-6-0-E47 | viva | integrado em release/pos-2.6.0 (37294bd); branch e worktree pos-2-6-0-E47 ainda existem |
 | plan/pos-2-6-0-E48 | viva | integrado em release/pos-2.6.0 (9b6f08a); branch e worktree pos-2-6-0-E48 ainda existem |
+| plan/pos-2-6-0-E49 | viva | execução do plano do E49 no worktree D:/projects/claude-play-wt/pos-2-6-0-E49 |
 <!-- /roadmap:inflight -->
