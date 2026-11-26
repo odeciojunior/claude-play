@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E48 | E48 criteria compared: none changed | `docs/plans/pos-2-6-0-E48/spec.md` |
+| 2026-11-26 | E48 | E48 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2740, pass 2738, fail 0, skipped 2; paridade agy: pendente #13 | `9b6f08a` |
 | 2026-11-26 | E48 | plano do E48 escrito (plan-tool check: 0 erros) e aprovado por opus por delegação (DEC-021) com dois ajustes aplicados pelo autor | `a3465b7` |
 | 2026-11-26 | E47 | E47 criteria compared: none changed | `docs/plans/pos-2-6-0-E47/spec.md` |
 | 2026-11-26 | E47 | E47 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2736, pass 2734, fail 0, skipped 2; inclui agy e run-batch, que valem pela conferência de antes do merge (código igual ao da branch); paridade agy: pendente #13 | `37294bd` |
