@@ -8,7 +8,8 @@
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+// The transcripts of every attempt with sessions go to private/transcripts/<n>/; SHA256SUMS covers aggregate.json and private/.
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -759,6 +760,45 @@ function sessionFamily(configDir, sessions) {
   for (const m of dedupeMessages(lines)) count[family(m.message.model)] += 1;
   const top = FAMILIES.reduce((best, f) => (count[f] > count[best] ? f : best));
   return count[top] > 0 ? top : null;
+}
+
+// #22: <sid>.jsonl and the <sid>/ folder of each session of attempt k go to destDir, so the run can be audited after the
+// config dir is gone. A session without its .jsonl, or a failed copy, only warns: the status of the attempt stays.
+function copyTranscripts(configDir, sessions, destDir, k) {
+  const root = join(configDir, 'projects');
+  for (const sid of sessions) {
+    const warn = (reason) => console.error(`run-batch: warning: transcript ${sid} of attempt ${k} not copied: ${reason}`);
+    try {
+      const slugs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()) : [];
+      let found = false;
+      for (const slug of slugs) {
+        const file = join(root, slug.name, `${sid}.jsonl`);
+        const folder = join(root, slug.name, sid);
+        if (existsSync(file)) {
+          cpSync(file, join(destDir, `${sid}.jsonl`), { recursive: true });
+          found = true;
+        }
+        if (existsSync(folder)) cpSync(folder, join(destDir, sid), { recursive: true });
+      }
+      if (!found) warn(`no ${sid}.jsonl in the config dir`);
+    } catch (e) {
+      warn(e.message);
+    }
+  }
+}
+
+// #22: SHA256SUMS of aggregate.json and every file under private/, in the sha256sum format, paths relative to dir with "/".
+function writeSums(dir) {
+  const paths = ['aggregate.json'];
+  const walk = (rel) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else paths.push(`${rel}/${e.name}`);
+    }
+  };
+  walk('private');
+  const lines = paths.sort().map((p) => `${createHash('sha256').update(readFileSync(join(dir, p))).digest('hex')}  ${p}\n`);
+  writeFileSync(join(dir, 'SHA256SUMS'), lines.join(''));
 }
 
 // A phase without a family (null) never counts. A requested model of no known family cannot be compared with the phases,
@@ -2559,6 +2599,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         break;
       }
     }
+    // before any exit of this attempt (denied, failed or invalid)
+    copyTranscripts(opts.configDir, sessions, join(priv, 'transcripts', String(k)), k);
     if (denied) {
       attempts.push({ n: k, status: 'denied' });
       if (opts.stopOnDenial) break;
@@ -2766,6 +2808,11 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     ...(stoppedBy ? { stoppedBy } : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
+  try {
+    writeSums(dir);
+  } catch (e) {
+    console.error(`run-batch: warning: SHA256SUMS not written: ${e.message}`);
+  }
   return { dir, aggregate, exitCode: status('denied') + status('invalid') > 0 ? 1 : 0 };
 }
 

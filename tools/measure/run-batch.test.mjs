@@ -44,8 +44,9 @@ const gitIn = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=fab', '-c', 'use
 // and git run for real. Options: journal (fixture name, or a function of the call number), afterRun(cwd, n)
 // (changes the sandbox like the run would), stopResume (the first claude -p waits for the abort and the
 // simulated git log answers with the stop commit on its second query), failOn (call number that fails),
+// failJson (the failOn call also prints the error JSON of the CLI, with its session_id),
 // modelOf(n) (model of the main transcript messages written by call n; undefined keeps the fabricated one).
-function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, noAgentsOn, extraOn1, modelOf } = {}) {
+function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, failJson, noAgentsOn, extraOn1, modelOf } = {}) {
   const calls = [];
   const issued = [];
   let n = 0;
@@ -102,7 +103,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
         return { code: 1, stdout: '' };
       }
       if (afterRun) afterRun(opts.cwd, n);
-      if (failOn === n) return { code: 1, stdout: '' };
+      if (failOn === n) return { code: 1, stdout: failJson ? JSON.stringify({ session_id: id, is_error: true, total_cost_usd: 0.01 }) : '' };
       const denials = denyOn === n ? [{ tool_name: 'Workflow' }] : [];
       return { code: 0, stdout: JSON.stringify({ session_id: id, is_error: false, total_cost_usd: 0.01, permission_denials: denials }) };
     }
@@ -3552,6 +3553,121 @@ test('E51 a denied attempt records neither sessionModels nor modelDivergence', a
   assert.deepEqual(a, { n: 1, status: 'denied' });
   assert.deepEqual(r.aggregate.modelDivergence, []);
   assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+// ---- E51 T3 (#22): transcripts in private/ and SHA256SUMS ----
+const BATCH_DIR = 'completo-20261110-120000'; // folder of a "completo" batch started at NOW
+
+// Every file under base/rel, as paths relative to base with "/".
+const filesUnder = (base, rel) =>
+  readdirSync(join(base, rel), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(base, `${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+
+// SHA256SUMS in the sha256sum format, listing exactly aggregate.json and every file under private/, each hash recomputed here.
+function assertSums(dir) {
+  const text = readFileSync(join(dir, 'SHA256SUMS'), 'utf8');
+  assert.ok(!text.includes('\r'), 'CR in SHA256SUMS');
+  assert.ok(text.endsWith('\n'), 'SHA256SUMS does not end with LF');
+  const lines = text.slice(0, -1).split('\n');
+  for (const line of lines) assert.match(line, /^[0-9a-f]{64}  [^\\]+$/);
+  const listed = lines.map((l) => l.slice(66));
+  assert.deepEqual(listed, [...listed].sort());
+  assert.ok(!listed.includes('SHA256SUMS'));
+  assert.deepEqual(listed, ['aggregate.json', ...filesUnder(dir, 'private')].sort());
+  for (const line of lines) assert.equal(line.slice(0, 64), createHash('sha256').update(readFileSync(join(dir, line.slice(66)))).digest('hex'), line.slice(66));
+  return listed;
+}
+
+// The <sid>.jsonl and the <sid>/ folder of one session, copied byte for byte to private/transcripts/<k>/.
+function assertTranscript(s, dir, k, id) {
+  const from = join(s.configDir, 'projects', 'fab-sandbox');
+  const to = join(dir, 'private', 'transcripts', String(k));
+  assert.deepEqual(readFileSync(join(to, `${id}.jsonl`)), readFileSync(join(from, `${id}.jsonl`)));
+  const copied = filesUnder(to, id).sort();
+  assert.deepEqual(copied, filesUnder(from, id).sort());
+  assert.ok(copied.includes(`${id}/subagents/workflows/wf_fab/agent-afab101.jsonl`), copied.join(', '));
+  for (const f of copied) assert.deepEqual(readFileSync(join(to, f)), readFileSync(join(from, f)), f);
+}
+
+// One batch (one attempt unless extra says otherwise) with stderr captured; check runs before the folders are removed.
+async function transcriptRun({ extra = {}, fake: fakeOptions = {}, ratify = okRatify }, check) {
+  const s = setup();
+  const stderr = captureStderr();
+  try {
+    const fake = makeFake(s.configDir, typeof fakeOptions === 'function' ? fakeOptions(s) : fakeOptions);
+    const r = await runBatch(baseOpts(s, { runs: 1, ...extra }), { exec: fake.exec, now: NOW, ratify });
+    stderr.restore();
+    check({ s, r, stderr: stderr.text() });
+  } finally {
+    stderr.restore();
+    s.done();
+  }
+}
+
+test('E51 AC2: the transcripts of a valid and of an invalid attempt go to private/ and SHA256SUMS matches', async () => {
+  await transcriptRun({ extra: { runs: 2 }, fake: { failOn: 2, failJson: true } }, ({ s, r, stderr }) => {
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['valid', 'invalid']);
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 2, sid(2));
+    assert.deepEqual(readdirSync(join(r.dir, 'private', 'transcripts', '1')).sort(), [sid(1), `${sid(1)}.jsonl`]);
+    assert.deepEqual(readdirSync(join(r.dir, 'private', 'transcripts', '2')).sort(), [sid(2), `${sid(2)}.jsonl`]);
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes(`private/transcripts/2/${sid(2)}.jsonl`), listed.join(', '));
+    assert.doesNotMatch(stderr, /not copied|SHA256SUMS not written/);
+  });
+});
+
+test('E51 C5: a batch without a valid attempt copies the denied and the failed transcripts and writes SHA256SUMS', async () => {
+  await transcriptRun({ extra: { runs: 2 }, fake: { failOn: 1, failJson: true, denyOn: 2 } }, ({ s, r }) => {
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['invalid', 'denied']);
+    assert.equal(r.aggregate.valid, 0);
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 2, sid(2));
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes('aggregate.json') && listed.includes('private/attempts.json'), listed.join(', '));
+    assert.ok(listed.includes(`private/transcripts/2/${sid(2)}.jsonl`), listed.join(', '));
+  });
+});
+
+test('E51 C2: an attempt that fails before the resume has the transcripts of the stop copied', async () => {
+  const options = { extra: { variant: 'parada-retomada', pollMs: 1 }, fake: { stopResume: true, extraOn1: true }, ratify: () => ({ ok: false, reason: 'decisao-pendente-apos-ratificar' }) };
+  await transcriptRun(options, ({ s, r }) => {
+    assert.equal(r.aggregate.attempts[0].reason, 'decisao-pendente-apos-ratificar');
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 1, '00000000-0000-4000-8000-000000000999');
+    assertSums(r.dir);
+  });
+});
+
+test('E51 C3: a session without its .jsonl warns, keeps the status and SHA256SUMS covers what exists', async () => {
+  const fake = (s) => ({ afterRun: () => rmSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(1)}.jsonl`)) });
+  await transcriptRun({ fake }, ({ r, stderr }) => {
+    const [a] = r.aggregate.attempts;
+    // the status the batch already gives: the extractor finds no session, so no agent ran
+    assert.deepEqual([a.status, a.reason], ['invalid', 'sem-agentes']);
+    assert.deepEqual(a.sessionModels, { sessao: null });
+    assert.equal(a.modelDivergence, false);
+    assert.match(stderr, new RegExp(`run-batch: warning: transcript ${sid(1)} of attempt 1 not copied: \\S`));
+    assert.equal(existsSync(join(r.dir, 'private', 'transcripts', '1', `${sid(1)}.jsonl`)), false);
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes(`private/transcripts/1/${sid(1)}/subagents/workflows/wf_fab/agent-afab101.jsonl`), listed.join(', '));
+  });
+});
+
+test('E51 a failed transcript copy and a failed SHA256SUMS only warn', async () => {
+  // a file where the transcripts folder goes and a folder where SHA256SUMS goes
+  const fake = (s) => ({
+    afterRun: () => {
+      writeFileSync(join(s.out, BATCH_DIR, 'private', 'transcripts'), 'not a folder\n');
+      mkdirSync(join(s.out, BATCH_DIR, 'SHA256SUMS'));
+    },
+  });
+  await transcriptRun({ fake }, ({ r, stderr }) => {
+    assert.equal(r.aggregate.attempts[0].status, 'valid');
+    assert.equal(r.exitCode, 0);
+    assert.match(stderr, new RegExp(`run-batch: warning: transcript ${sid(1)} of attempt 1 not copied: \\S`));
+    assert.match(stderr, /run-batch: warning: SHA256SUMS not written: \S/);
+    assert.ok(existsSync(join(r.dir, 'aggregate.json')));
+  });
 });
 
 
