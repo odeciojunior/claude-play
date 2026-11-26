@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | DEC-039 recorded: conferência contra o E39 aceita pelo delegado, com a comparação de sessões depois de cada execução; testes do lote-gate 67 de 67 no candidato; pedido de autorização do lote feito ao dono | `d4ac4ee` |
 | 2026-11-26 | E53 | revisão final T3 (opus high, rodada 1) do candidato d4ac4ee: zero bloqueantes, um importante de operação já coberto pelo plano e quatro menores aceitos; AC1 atendido; relatório docs/reports/2026-11-26-E53-revisao-final.md | `89ff92b` |
 | 2026-11-26 | E53 | conferência offline contra o E39: lote-gate dá 4,3731 e 4,3386; metrics.json dá 2,9626 e 2,9756 (execuções sem transcrições); os quatro iguais aos registrados; a lacuna vai ao delegado antes do pedido de gasto | `d4ac4ee` |
 | 2026-11-26 | E53 | G1 a G5 no candidato verdes: G1 é o do merge (mesma árvore d9548e3), G2 58 OK, G3 15 OK, G4 válido, G5 em dia | `d4ac4ee` |
