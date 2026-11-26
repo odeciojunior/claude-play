@@ -163,6 +163,15 @@ def load_agent_body(root, name):
     return text[m.end():] if m else text
 
 
+# The agent bodies name Claude Code tools; this note maps them to the agy ones. At most 600 characters.
+AGY_TOOL_NOTE = 'HOST TOOLS (Antigravity): the instructions above may name Claude Code tools; use these instead. Read with offset/limit: read_file with StartLine/EndLine. Write: write_file. Edit: edit_file. Bash: run_command, which on Windows is pwsh, so no POSIX syntax such as $(...): run the inner command first (for example git rev-parse --absolute-git-dir) and use its literal output. AskUserQuestion: ask_question. Grep and Glob: the search tools of this host, or run_command. WebSearch: search_web; there is no WebFetch. agentType and subagent dispatch do not exist on this host.'
+
+
+def with_tool_note(body, prompt):
+    """The prompt of an agent call with a body: the agent body, AGY_TOOL_NOTE and the stage prompt."""
+    return body + '\n\n' + AGY_TOOL_NOTE + '\n\n' + prompt
+
+
 def _read_lf(path):
     with open(path, encoding='utf-8-sig') as f:
         return f.read().replace('\r\n', '\n')

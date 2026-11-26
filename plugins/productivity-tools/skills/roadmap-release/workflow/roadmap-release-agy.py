@@ -206,11 +206,12 @@ def call_pure(root, expr, payload):
 
 async def call_agent(role, prompt, schema, model=None, body=None):
     """One cognitive stage: the model comes from STAGE_MODELS unless given (implementer: agyModelFor / nextAgyTier).
-    `body` (the agent .md body from load_agent_body) goes first in the prompt."""
+    `body` (the agent .md body from load_agent_body) goes first in the prompt, then the agy tool note (with_tool_note),
+    then the stage prompt; without a body the prompt goes alone."""
     if schema is None:  # the agy runtime marks schema as required
         raise ValueError('agent() call without a schema: %s' % role)
     m = model or STAGE_MODELS[role]
-    text = (body + '\n\n' + prompt) if body else prompt
+    text = with_tool_note(body, prompt) if body else prompt
     try:
         out = await agent(text, schema, role=role, type_name='self', model=m)
     except Exception as e:  # a failing agent() is a lost return (None); CancelledError is a BaseException and propagates

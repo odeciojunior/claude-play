@@ -95,7 +95,7 @@ test('AC7: agy-bridge.py basename is unique in the plugin', () => {
 // ---- carregamento
 pyTest('AC7: the bridge loads by exec into a fresh globals dict and exposes the contract', () => {
   const names = py(`result = sorted(n for n, v in globals().items() if callable(v) and not n.startswith('_'))`);
-  for (const n of ['plugin_root_from', 'run_cli', 'find_git_bash', 'run_shell', 'call_lib', 'load_agent_body', 'load_js_schemas', 'load_test_integrity', 'run_test_integrity', 'git_snapshot']) {
+  for (const n of ['plugin_root_from', 'run_cli', 'find_git_bash', 'run_shell', 'call_lib', 'load_agent_body', 'with_tool_note', 'load_js_schemas', 'load_test_integrity', 'run_test_integrity', 'git_snapshot']) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
 });
@@ -269,6 +269,67 @@ pyTest('AC7: load_agent_body returns the agent body without the frontmatter', ()
   const m = /^---\n[\s\S]*?\n---\n?([\s\S]*)$/.exec(text);
   assert.equal(r, m[1]);
   assert.ok(!r.startsWith('---'));
+});
+
+// ---- nota de ferramentas do agy
+const AGENTS_DIR = path.join(PLUGIN, 'agents');
+const agentFiles = () => fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith('.md')).sort();
+
+pyTest('E52 AC1: with_tool_note keeps the agent body first, then the note, then the prompt, for the seven agents', () => {
+  const names = agentFiles().map((f) => f.slice(0, -'.md'.length));
+  assert.equal(names.length, 7, names.join(', '));
+  const r = py(
+    `result = {'note': AGY_TOOL_NOTE, 'agents': []}
+for n in args['names']:
+    body = load_agent_body(args['root'], n)
+    result['agents'].append({'name': n, 'body': body, 'text': with_tool_note(body, 'PROMPT')})`,
+    { root: PLUGIN, names },
+  );
+  assert.deepEqual(r.agents.map((a) => a.name), names);
+  for (const a of r.agents) {
+    assert.ok(a.body.length > 0, `${a.name}: empty body`);
+    assert.ok(a.text.startsWith(a.body), `${a.name}: the text does not start with the body`);
+    assert.ok(a.text.indexOf(r.note, a.body.length) >= a.body.length, `${a.name}: no note after the body`);
+    assert.ok(a.text.endsWith('PROMPT'), `${a.name}: the text does not end with the prompt`);
+    assert.equal(a.text, `${a.body}\n\n${r.note}\n\nPROMPT`, a.name);
+  }
+});
+
+pyTest('E52 AC1: AGY_TOOL_NOTE names the agy tools', () => {
+  const note = py(`result = AGY_TOOL_NOTE`);
+  for (const t of ['read_file', 'StartLine', 'EndLine', 'write_file', 'edit_file', 'run_command', 'pwsh', 'search_web']) {
+    assert.ok(note.includes(t), `the note lacks ${t}`);
+  }
+  assert.ok(note.length <= 600, `note has ${note.length} characters`);
+  assert.ok(!note.includes('\n'), 'the note is a single line');
+  for (const t of ['subagent_type', 'System32', "'haiku'", "'sonnet'", "'opus'", 'Do not spawn subagents']) {
+    assert.ok(!note.includes(t), `the note must not contain ${t}`);
+  }
+});
+
+test('E52 AC1: agents stay free of the note and both workflows call with_tool_note in call_agent', () => {
+  for (const f of agentFiles()) {
+    const text = read(path.join(AGENTS_DIR, f));
+    assert.ok(!text.includes('read_file'), `${f} mentions read_file`);
+    assert.ok(!text.includes('AGY_TOOL_NOTE'), `${f} mentions AGY_TOOL_NOTE`);
+  }
+  const workflows = [
+    path.join(PLUGIN, 'skills', 'roadmap-release', 'workflow', 'roadmap-release-agy.py'),
+    path.join(PLUGIN, 'skills', 'plan-coordinator', 'workflow', 'coordinator-agy.py'),
+  ];
+  for (const file of workflows) {
+    const src = read(file);
+    const name = path.basename(file);
+    const start = src.indexOf('async def call_agent(');
+    assert.ok(start >= 0, `${name}: no call_agent`);
+    // a funcao vai ate a proxima linha sem indentacao depois da assinatura
+    const [signature, ...lines] = src.slice(start).split('\n');
+    const end = lines.findIndex((l) => /^\S/.test(l));
+    const fn = [signature, ...(end < 0 ? lines : lines.slice(0, end))].join('\n');
+    assert.ok(fn.includes('with_tool_note('), `${name}: call_agent does not call with_tool_note`);
+    assert.ok(!src.includes(String.raw`body + '\n\n' + prompt`), `${name}: still joins body and prompt directly`);
+    assert.ok(!src.includes(String.raw`BODIES[role] + '\n\n' + prompt`), `${name}: still joins BODIES[role] and prompt directly`);
+  }
 });
 
 // ---- schemas

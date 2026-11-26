@@ -524,7 +524,7 @@ ERRORS = {}  # last agent() failure of each step (text kept for the no-report ev
 
 async def call_agent(role, prompt, schema_name, model, tag=None):
     """A failing agent() (any Exception) is a lost return (None); CancelledError is a BaseException and still propagates."""
-    text = BODIES[role] + '\n\n' + prompt
+    text = with_tool_note(BODIES[role], prompt)
     schema = SCHEMAS[schema_name]
     try:
         out = await agent(text, schema, role=role, type_name='self', model=model)
