@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | conferência offline contra o E39: lote-gate dá 4,3731 e 4,3386; metrics.json dá 2,9626 e 2,9756 (execuções sem transcrições); os quatro iguais aos registrados; a lacuna vai ao delegado antes do pedido de gasto | `d4ac4ee` |
 | 2026-11-26 | E53 | G1 a G5 no candidato verdes: G1 é o do merge (mesma árvore d9548e3), G2 58 OK, G3 15 OK, G4 válido, G5 em dia | `d4ac4ee` |
 | 2026-11-26 | E53 | candidato d4ac4ee1b1201a8232f7df135f47c5e532bc3892; E42 a E52 na-branch, E47, E48 e E49 integrados; esperado pelo E49: preflight-early na parada e na retomada, sonnet cerca de 2 maior, ponderado cerca de 40 maior; E47 e E48 sem efeito no sandbox | `d4ac4ee` |
 | 2026-11-26 | E53 | lote-gate integrado em release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2826, pass 2824, fail 0, skipped 2 | `d4ac4ee` |
