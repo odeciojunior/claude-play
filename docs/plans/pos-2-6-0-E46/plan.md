@@ -446,7 +446,7 @@ Passos:
           "expect": "exit 0"
         },
         {
-          "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs tools/measure/make-scenario.test.mjs tools/measure/run-batch.test.mjs",
+          "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs tools/measure/make-scenario.test.mjs tools/measure/run-batch.test.mjs",
           "expect": "exit 0, depois do commit e com o HEAD estável"
         },
         {
@@ -550,8 +550,8 @@ Passos:
       },
       "checks": [
         {
-          "cmd": "node --test \"plugins/productivity-tools/skills/roadmap-release/workflow/*.test.mjs\"",
-          "expect": "exit 0"
+          "cmd": "node --test \"plugins/productivity-tools/skills/roadmap-release/workflow/!(roadmap-release-agy).test.mjs\"",
+          "expect": "exit 0 (o roadmap-release-agy.test.mjs é do orquestrador antes do merge, DEC-036)"
         },
         {
           "cmd": "node --test plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs plugins/productivity-tools/scripts/agy-bridge.test.mjs plugins/productivity-tools/scripts/copy-budget.test.mjs plugins/productivity-tools/scripts/encoding.test.mjs",
@@ -574,8 +574,8 @@ Passos:
           "expect": "exit 0, sem FAIL"
         },
         {
-          "cmd": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
-          "expect": "exit 0 pelo Git Bash, depois do commit e com o worktree parado; fail 0, tests e pass não menores que o piso do merge do E43 (no mínimo 2660 e 2658)"
+          "cmd": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+          "expect": "exit 0 pelo Git Bash, depois do commit e com o worktree parado; fail 0 (comando do gate da DEC-036; o G1 completo, com o piso do merge anterior, é do orquestrador no merge)"
         }
       ]
     }
