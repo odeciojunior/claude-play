@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E52 | AC3: wsl-health-check pela variante pwsh (pwsh 7.6.10, WSL ubuntu) saiu com exit 0; HEALTH SUMMARY presente | `9f62dff` |
 | 2026-11-26 | E46 | E46 plan written; aprovado com dois ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E46/plan.md` |
 | 2026-11-26 | E52 | E52 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
 | 2026-11-26 | E43 | E43 criteria compared: none changed | `docs/plans/pos-2-6-0-E43/spec.md` |
