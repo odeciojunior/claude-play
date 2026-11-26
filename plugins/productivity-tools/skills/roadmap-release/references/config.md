@@ -27,7 +27,7 @@ Project-specific settings for `roadmap-release`, stored in the roadmap folder ne
 | `testIntegrity` | no | Own test-integrity Node script (receives the target branch as `argv[2]`, prints `{deletedTests, removedAsserts, skipsAdded, prodChanged, assertsAdded}`), or `false` to disable. A built-in script is the default. |
 | `acceptRedBaseline` | no | Accept a red baseline instead of stopping the preflight. |
 | `releaseBranch` | no | Target branch for the run. Order: `args.targetBranch`, this field, the roadmap's `releaseBranch` in `roadmap.config.json`, then `integracao/<slug>`. |
-| `maxParallel` | no | Parallel deliverables. Default 3. Forced to 1 while `generated` is true. |
+| `maxParallel` | no | Parallel deliverables. Default 3. Forced to 1 while `generated` is true, unless the run args carry `parallelOk: true`. |
 | `generated` | no | Set on derived configs. See "Generated config". |
 
 ## Gates
@@ -47,7 +47,7 @@ A red baseline stops the preflight: an `exit` gate with a non-zero code, a `test
 
 When the file does not exist, `scripts/preflight.mjs` derives one from the strategy's `<!-- roadmap:gates -->` table (columns ID, Command, Environment, When, Baseline). `projectContext` is a one-line pointer to the repository's `CLAUDE.md` when that file exists (its content is not copied), and empty otherwise; a hand-written config keeps its own text. Commands that name a test runner (such as `npm test`, `vitest`, `pytest`, `node --test`, `go test`) become `tests`; all others become `exit`. `install` comes from a lockfile at the repository root (for example `package-lock.json` gives `npm ci`); with none it stays empty and the preflight adds a `warnings` entry. The result carries `generated: true`, and the preflight prints it as `config` in its JSON. A row of that table with other than five columns is skipped and the preflight adds a `warnings` entry naming it (a pipe inside a cell is written `\|`). The block is found the way the roadmap checker finds it, so a malformed opening comment gives no rows. The script never writes it: persisting and committing the file on the target branch is the skill's job.
 
-While `generated` is true the run uses `maxParallel: 1`, because an undetected shared resource would corrupt parallel runs. Review `locks` and `needsLock`, then remove the flag to release parallelism.
+While `generated` is true the run uses `maxParallel: 1`, because an undetected shared resource would corrupt parallel runs. Review `locks` and `needsLock`, then remove the flag to release parallelism. To release it with no commit, pass `parallelOk: true` in the run args: only then does `maxParallel` apply, read from the args alone (without it, the default 3); the `maxParallel` of this file is ignored in that release. `parallelOk` written in this file has no effect, and the argument never comes back in `resumeArgs` or `resumeWith`.
 
 ## Permission preflight
 

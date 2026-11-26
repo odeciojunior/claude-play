@@ -6139,3 +6139,59 @@ test('E47 AC2: an acknowledged merge and a merge without deleted test files neve
   const unmeasured = await removedResume({ integ: { removedAsserts: -1 } });
   assert.equal(removedMergeCalls(unmeasured.calls).length, 0);
 });
+
+// E48: peak of concurrent spec authors. The author runs outside withLocks and mergeLock, so the peak is the parallelism of the deliverables.
+function specPeak() {
+  let running = 0, top = 0;
+  const over = (l) => {
+    if (!/^E\d+:spec$/.test(l)) return undefined;
+    top = Math.max(top, ++running);
+    return new Promise((done) => setImmediate(() => { running--; done('spec written'); }));
+  };
+  return { over, peak: () => top };
+}
+const THREE = ['E1', 'E2', 'E3'];
+const peakRun = async ({ config = {}, args = {}, also } = {}) => {
+  const p = specPeak();
+  const out = await exec({ cards: THREE.map((id) => card(id)), deliverables: THREE, config, args: { mode: 'plan-only', ...args }, over: also ? both(also, p.over) : p.over });
+  for (const id of THREE) assert.ok(out.labels.includes(`${id}:spec`), `${id}:spec was not called`);
+  return { ...out, peak: p.peak() };
+};
+const reportPrompt = (calls) => calls.find((c) => c.label === 'report').prompt;
+
+test('E48 AC1: a generated config without parallelOk in the args runs one deliverable at a time', async () => {
+  const bare = await peakRun();
+  assert.equal(bare.peak, 1, 'no parallelOk and no maxParallel');
+  assert.ok(reportPrompt(bare.calls).includes('maxParallel was forced to 1'));
+  assert.ok(reportPrompt(bare.calls).includes('pass parallelOk: true with maxParallel in the run args, never in the config'));
+  assert.equal((await peakRun({ config: { parallelOk: true, maxParallel: 3 } })).peak, 1, 'parallelOk and maxParallel only in the config');
+  assert.equal((await peakRun({ args: { maxParallel: 3 } })).peak, 1, 'maxParallel in the args without parallelOk');
+  assert.equal((await peakRun({ args: { parallelOk: 'true', maxParallel: 3 } })).peak, 1, 'parallelOk as a string');
+});
+
+test('E48 AC2: parallelOk in the args releases maxParallel and never comes back in the resume args', async () => {
+  const boom = (l) => (l === 'E3:spec-commit' ? { ok: false, error: 'boom' } : undefined);
+  const { r, calls, peak } = await peakRun({ args: { parallelOk: true, maxParallel: 2 }, also: boom });
+  assert.equal(peak, 2);
+  assert.ok(!('parallelOk' in r.resumeArgs));
+  assert.equal(r.resumeArgs.maxParallel, 2);
+  const infra = r.operatorActions.find((o) => o.kind === 'infra' && o.deliverable === 'E3');
+  assert.ok(infra && infra.resumeWith, 'the infra action of E3 has resume args');
+  assert.equal(infra.resumeWith.maxParallel, 2);
+  assert.ok(r.operatorActions.every((o) => !o.resumeWith || !('parallelOk' in o.resumeWith)));
+  const prompt = reportPrompt(calls);
+  const shown = JSON.parse(/^Resume args: (.*)$/m.exec(prompt)[1]);
+  assert.ok(!('parallelOk' in shown));
+  assert.equal(shown.maxParallel, 2);
+  assert.ok(prompt.includes('the run argument parallelOk released maxParallel 2 in this run'));
+});
+
+test('E48 AC2: parallelOk without maxParallel releases the default of 3', async () => {
+  assert.equal((await peakRun({ args: { parallelOk: true } })).peak, 3);
+});
+
+test('E48 AC2: without generated the behaviour is unchanged and the report has no generated item', async () => {
+  const { calls, peak } = await peakRun({ config: { generated: false }, args: { parallelOk: true, maxParallel: 2 } });
+  assert.equal(peak, 2);
+  assert.ok(!reportPrompt(calls).includes('GENERATED release.config.json'));
+});

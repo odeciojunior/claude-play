@@ -29,7 +29,8 @@ export const meta = {
 //   baseBranch: where the target is created from when missing (default: the roadmap integrationBranch)
 //   allowIntegrationBranch (false): allows targetBranch == integrationBranch
 //   mode: "run" | "plan-only" | "dry-run"   autoDeps (false)   force (false)
-//   maxParallel (3, forced to 1 while config.generated)   maxFixRounds (2)   keepBranches (false)   maxDeliverables (12)
+//   maxParallel (3, 1 while config.generated unless parallelOk)   maxFixRounds (2)   keepBranches (false)   maxDeliverables (12)
+//   parallelOk (false): with a generated config, true lets maxParallel apply; only from args, never from the config; never returned in resumeArgs/resumeWith
 //   minBudgetPerDeliverable (700000; 150000 in plan-only): only with a token goal; checked before the preflight
 //   overrideDonot: ["E19"] releases a deliverable vetoed by the roadmap "do not" block
 //   acceptRisks: ["E18"] accepts a critical risk on a direct merge into the integrationBranch
@@ -750,10 +751,10 @@ function mergeParentsOk(mg, preSha, validatedSha) {
   return !!mg && !!mg.mergeCommit && gateShaMatch(mg.firstParent, preSha) && gateShaMatch(mg.secondParent, validatedSha)
 }
 // Resume args as shown to the report agent: the config is long and already known to the caller.
-// approveRulings is typed by the person (it names the exact text of each costly ruling): it never goes back in resume args.
+// approveRulings and parallelOk are typed by the person: they never go back in resume args.
 function withoutApprove(args) {
   if (!args || typeof args !== 'object') return args
-  const { approveRulings, ...rest } = args
+  const { approveRulings, parallelOk, ...rest } = args
   return rest
 }
 function withoutConfig(resumeWith) {
@@ -1636,7 +1637,7 @@ if (!A.wtRoot) return { status: 'error', error: 'args.wtRoot is missing: the ski
 // An authorized task is never launched without a run token: fail before paying for discovery, preflight and the plan.
 if (MODE === 'run' && !RUN_TOKEN && AUTH.items.some(i => /^(?!gate:|checkout:)[^:]+:T[1-9]\d*/.test(i))) return { status: 'error', error: 'runToken is missing: run preflight again and pass its runToken (an authorized external task is never launched without it)' }
 const MAXFIX = intArg(A.maxFixRounds, 2, 0)
-const MAXPAR = CFG.generated ? 1 : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1)  // a generated config may hide a shared resource
+const MAXPAR = CFG.generated ? (A.parallelOk === true ? intArg(A.maxParallel, 3, 1) : 1) : intArg(A.maxParallel ?? CFG.maxParallel, 3, 1)  // generated: may hide a shared resource
 const PREFIX = A.branchPrefix || 'feat/'
 const TRAILER = A.trailer || 'Co-Authored-By: Claude <noreply@anthropic.com>'
 const PROJECT = CFG.projectContext || ''
@@ -3413,7 +3414,7 @@ Resume args: ${JSON.stringify(withoutConfig(resumeFinal))}
 Owner review: ${JSON.stringify(ownerReview)}
 Authorizations given for this run: ${JSON.stringify(AUTH.items)}
 External effects authorized and run: ${JSON.stringify(RESULTS.flatMap(r => r.externalRun || []))}${RESULTS.some(r => (r.externalRun || []).some(e => e.reviewed === false)) ? '\nAn entry with reviewed=false ran, or its implementer reported it done, but its task has not passed review in this run (it may not have been reviewed yet): say so, and still never ask for that effect again.' : ''}
-Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured by the docs stage from brief --json (result.checker: errors, warnings, folder, stale): ${JSON.stringify(CHECKERS)}; do not run the checker file yourself; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true), so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3).` : ''}
+Content: (1) a table per deliverable (merged/failed/skipped/plan, merge, gates, spec, plan, review log), with divergences from the git truth highlighted; (2) "Operator actions (strictly necessary)", deduplicated and ordered by deadline, with what to do and the resume args; (3) accepted risks, autonomous decisions to ratify in ${RM}decisions.md, and criteria left open (criteriaOpen) with the human act each needs; the merge of ${TARGET} into ${INTEG} and the push are only for the owner to decide; (4) the roadmap checker result per deliverable, as measured by the docs stage from brief --json (result.checker: errors, warnings, folder, stale): ${JSON.stringify(CHECKERS)}; do not run the checker file yourself; (5) leftovers (strays, worktrees).${CFG.generated ? `\n(6) This run used a GENERATED release.config.json (generated: true)${A.parallelOk === true ? `: the run argument parallelOk released maxParallel ${MAXPAR} in this run. Record this release, and say that the argument does not come back in the resume args: it must be typed again.` : `, so maxParallel was forced to 1 because an undetected shared resource would corrupt parallel runs. Explain how to release parallelism: review "locks" and each gate "needsLock" in release.config.json, commit the file, then remove "generated": true (maxParallel then applies, default 3). Or, with no commit, pass parallelOk: true with maxParallel in the run args, never in the config.`}` : ''}
 Be factual. List an action to take only from Operator actions and the open human items of the results (human, criteria left open): never invent an action or resume args. An effect listed as authorized and run already happened: never ask for it again. A human item marked "[${RAN_MARK}: ...]" names such an effect: report it as already done and never offer that authorization as an action; any other need the item states stays open. Never state where an external effect came from (this run, an earlier run, a given task) unless the data above or a file you read proves it; otherwise say the origin of an external effect is unknown. Return the report text.`,
   { label: 'report', phase: 'Report', schema: { type: 'object', properties: { report: STR, truthStdout: STR }, required: checkCmd ? ['report', 'truthStdout'] : ['report'] }, model: 'sonnet', effort: 'medium' })))
 const report = rep && typeof rep === 'object' ? rep.report : rep
