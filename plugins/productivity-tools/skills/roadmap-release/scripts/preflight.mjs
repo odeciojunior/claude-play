@@ -5,7 +5,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, isAbsolute, relative, sep, dirname, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { pendingDecisions } from '../../roadmap-tracker/scripts/roadmap.mjs';
 import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS, idsIn, shasIn } from '../../../lib/roadmap-format.mjs';
@@ -364,6 +364,38 @@ export function workflowFilePath(from = HERE) {
   return resolve(from, '../workflow/roadmap-release.js').split(sep).join('/');
 }
 
+// Which copy of the workflow a launch by name loads: 'clone' (the marketplace clone), 'cache' (the version folder of the plugin
+// cache) or 'both' (not confirmed). Measured in one headless session: docs/plans/pos-2-6-0-E45/confirmacao.md (CLI 2.1.332,
+// productivity-tools 2.6.0 installed from git).
+export const LOADED_BY_NAME = 'cache';
+
+// Compares each marketplace clone of the workflow with the copy in `wfPath`: a different one is a warning, and one over the launch
+// limit is an error unless the cache copy is the one loaded by name. From a cache install only that marketplace is measured.
+function checkMarketplaceClones({ userBase, trackerFrom, wfPath, loadedByName, errors, warnings }) {
+  const marketplaces = join(userBase, 'plugins', 'marketplaces');
+  const cached = /\/plugins\/cache\/([^/]+)\/productivity-tools\/[^/]+(?=\/|$)/.exec(resolve(trackerFrom).split(sep).join('/'));
+  const names = cached ? [cached[1]] : existsSync(marketplaces) ? readdirSync(marketplaces).sort() : [];
+  const measure = (p) => {
+    const bytes = readFileSync(p);
+    return { size: bytes.length, sha: createHash('sha256').update(bytes).digest('hex') };
+  };
+  const cache = measure(wfPath);
+  for (const name of names) {
+    const path = join(marketplaces, name, 'plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js').split(sep).join('/');
+    if (!existsSync(path)) continue;
+    const clone = measure(path);
+    if (clone.size === cache.size && clone.sha === cache.sha) continue;
+    const loads = loadedByName === 'clone' ? `the clone copy ${path}`
+      : loadedByName === 'cache' ? `the cache copy ${wfPath}`
+        : `either copy (not confirmed): ${path} or ${wfPath}`;
+    warnings.push(`the release workflow clone ${path} differs from the cache copy ${wfPath} (${clone.size} vs ${cache.size} bytes, sha256 ${clone.sha} vs ${cache.sha}); launching by name loads ${loads}`);
+    if (clone.size <= MAX_WORKFLOW_LAUNCH_BYTES) continue;
+    const over = `release workflow clone exceeds 524.288 bytes (512 KiB): ${path} has ${clone.size} bytes (limit is ${MAX_WORKFLOW_LAUNCH_BYTES} bytes)`;
+    if (loadedByName === 'cache') warnings.push(`${over}; launching by name loads the cache copy`);
+    else errors.push(`${over}; launching ${RELEASE_WORKFLOW} by name ${loadedByName === 'clone' ? 'will' : 'may'} fail with 'not found'`);
+  }
+}
+
 // Absolute path (with /) of the tracker CLI shipped next to this skill; an error when it is missing or has a double quote
 // (the workflow wraps the path in double quotes).
 export function trackerCliPath(from = HERE) {
@@ -570,7 +602,7 @@ function configDivergence(root, ref, refCfg, treeCfg, base) {
   return line;
 }
 
-export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null, base = null } = {}) {
+export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null, base = null, loadedByName = LOADED_BY_NAME } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -610,11 +642,13 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   const tracker = trackerCliPath(trackerFrom);
   if (tracker.error) errors.push(tracker.error);
   const wfPath = workflowPath ? resolve(workflowPath).split(sep).join('/') : (existsSync(workflowFilePath(trackerFrom)) ? workflowFilePath(trackerFrom) : workflowFilePath(HERE));
+  const userBase = configDir || join(home, '.claude');
   if (existsSync(wfPath)) {
     const wfSize = statSync(wfPath).size;
     if (wfSize > MAX_WORKFLOW_LAUNCH_BYTES) {
       errors.push(`release workflow file exceeds 524.288 bytes (512 KiB): ${wfPath} has ${wfSize} bytes (limit is ${MAX_WORKFLOW_LAUNCH_BYTES} bytes); launching ${RELEASE_WORKFLOW} by name will fail with 'not found'`);
     }
+    checkMarketplaceClones({ userBase, trackerFrom, wfPath, loadedByName, errors, warnings });
   }
   let missing = [];
   let pending = [];
@@ -651,8 +685,7 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
       else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
-  const userBase = configDir || join(home, ".claude");
-  const wt = (wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
+  const wt =(wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
   const dirEntries = [{ settings: readJson(join(userBase, "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.local.json")) }];
   // Claude Code grants an additional directory only if it exists when the session starts, so a covered but absent wtRoot is still missing. Read-only: never created here.
   const wtExists = existsSync(wt);

@@ -1447,3 +1447,117 @@ test('E34 C3: runPreflight reports both config validation errors and the 524.288
   assert.ok(r.errors.some((e) => /524\.288 bytes \(512 KiB\)/.test(e) && /'not found'/.test(e)));
   rmSync(tmp, { recursive: true, force: true });
 });
+
+// ---- E45 T4 AC3/C5: the marketplace clone of the release workflow, measured against the cache copy ----
+import * as preflightModule from './preflight.mjs';
+import { createHash } from 'node:crypto';
+
+const WF_IN_MARKETPLACE = ['plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js'];
+const BY_NAME = ['clone', 'cache', 'both'];
+const slashed = (p) => p.split(sep).join('/');
+const sha256 = (b) => createHash('sha256').update(b).digest('hex');
+const putFile = (path, content) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); return path; };
+const putClone = (userBase, marketplace, content) => slashed(putFile(join(userBase, 'plugins', 'marketplaces', marketplace, ...WF_IN_MARKETPLACE), content));
+
+// A repository, a fake home and a cache copy of the workflow; `run` never reads the real CLAUDE_CONFIG_DIR.
+function cloneFixture(cacheBytes = Buffer.from('cache copy\n')) {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const wf = slashed(putFile(join(mkdtempSync(join(tmpdir(), 'wfclone-')), 'roadmap-release.js'), cacheBytes));
+  const run = (opts = {}) => runPreflight(dir, { home, configDir: null, ref: 'rel', workflowPath: wf, ...opts });
+  return { home, userBase: join(home, '.claude'), wf, run };
+}
+const aboutClone = (r) => ({ errors: r.errors.filter((e) => e.includes('release workflow clone')), warnings: r.warnings.filter((w) => w.includes('release workflow clone')) });
+const differs = (p, clone, wf, cache, loads) => `the release workflow clone ${p} differs from the cache copy ${wf} (${clone.length} vs ${cache.length} bytes, sha256 ${sha256(clone)} vs ${sha256(cache)}); launching by name loads ${loads}`;
+const loadedCopy = (loadedByName, p, wf) => ({ clone: `the clone copy ${p}`, cache: `the cache copy ${wf}`, both: `either copy (not confirmed): ${p} or ${wf}` }[loadedByName]);
+
+test('E45 T4: LOADED_BY_NAME is one of clone, cache or both', () => {
+  assert.ok(BY_NAME.includes(preflightModule.LOADED_BY_NAME), String(preflightModule.LOADED_BY_NAME));
+});
+
+test('E45 T4 AC3: a different clone of 524289 bytes is an error in clone and both, and a warning without error in cache', () => {
+  const cache = Buffer.from('cache copy\n');
+  const clone = Buffer.alloc(524289, 0x61);
+  const { userBase, wf, run } = cloneFixture(cache);
+  const p = putClone(userBase, 'mk', clone);
+  const over = `release workflow clone exceeds 524.288 bytes (512 KiB): ${p} has 524289 bytes (limit is 524288 bytes)`;
+  for (const [loadedByName, verb] of [['clone', 'will fail'], ['both', 'may fail']]) {
+    const r = run({ loadedByName });
+    assert.deepEqual(r.errors, [`${over}; launching productivity-tools:release-workflow by name ${verb} with 'not found'`], loadedByName);
+    assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, loadedCopy(loadedByName, p, wf))], loadedByName);
+  }
+  const r = run({ loadedByName: 'cache' });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, `the cache copy ${wf}`), `${over}; launching by name loads the cache copy`]);
+});
+
+test('E45 T4 AC3: a different small clone, or one of exactly 524288 bytes, gives only the difference warning, naming the copy loaded by name', () => {
+  const cache = Buffer.from('cache copy\n');
+  // Same size as the cache copy and other bytes: only the sha256 tells them apart.
+  for (const clone of [Buffer.from('clone copy\n'), Buffer.alloc(524288, 0x61)]) {
+    const { userBase, wf, run } = cloneFixture(cache);
+    const p = putClone(userBase, 'mk', clone);
+    for (const loadedByName of BY_NAME) {
+      const r = run({ loadedByName });
+      assert.deepEqual(r.errors, [], loadedByName);
+      assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, loadedCopy(loadedByName, p, wf))], loadedByName);
+    }
+  }
+});
+
+test('E45 T4 AC3: without the option the preflight follows LOADED_BY_NAME', () => {
+  const { userBase, run } = cloneFixture();
+  putClone(userBase, 'mk', Buffer.alloc(524289, 0x61));
+  assert.deepEqual(aboutClone(run()), aboutClone(run({ loadedByName: preflightModule.LOADED_BY_NAME })));
+  assert.equal(aboutClone(run()).warnings.length > 0, true);
+});
+
+test('E45 T4 C5: an identical clone, an absent clone, a local marketplace or the cache copy itself says nothing about the clone', () => {
+  const cache = Buffer.alloc(524289, 0x61);
+  const identical = cloneFixture(cache);
+  putClone(identical.userBase, 'mk', cache);
+  const absent = cloneFixture();
+  mkdirSync(join(absent.userBase, 'plugins', 'marketplaces', 'mk'), { recursive: true });
+  const local = cloneFixture();
+  putFile(join(local.userBase, 'plugins', 'known_marketplaces.json'), JSON.stringify({ mk: { source: { source: 'directory', path: local.home } } }));
+  const self = cloneFixture();
+  const selfPath = putClone(self.userBase, 'mk', 'the only copy\n');
+  for (const loadedByName of BY_NAME) {
+    for (const r of [identical.run({ loadedByName }), absent.run({ loadedByName }), local.run({ loadedByName }), self.run({ loadedByName, workflowPath: selfPath })]) {
+      assert.deepEqual(aboutClone(r), { errors: [], warnings: [] }, loadedByName);
+    }
+  }
+});
+
+test('E45 T4 AC3: from a cache install only the clone of that marketplace is measured; outside the cache, every marketplace', () => {
+  const { userBase, run } = cloneFixture();
+  const mk = putClone(userBase, 'mk', 'clone of mk\n');
+  const other = putClone(userBase, 'other', 'clone of other\n');
+  const plugin = join(userBase, 'plugins', 'cache', 'mk', 'productivity-tools', '9.9.9');
+  putFile(join(plugin, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs'), '// stub\n');
+  const cached = run({ trackerFrom: join(plugin, 'skills', 'roadmap-release', 'scripts') });
+  assert.deepEqual(cached.errors, []);
+  assert.equal(aboutClone(cached).warnings.length, 1);
+  assert.ok(aboutClone(cached).warnings[0].startsWith(`the release workflow clone ${mk} differs `));
+  const outside = aboutClone(run()).warnings;
+  assert.equal(outside.length, 2);
+  assert.ok(outside[0].startsWith(`the release workflow clone ${mk} differs `));
+  assert.ok(outside[1].startsWith(`the release workflow clone ${other} differs `));
+});
+
+test('E45 T4 AC3: the configDir option replaces home/.claude as the root of the marketplaces', () => {
+  const { userBase, run } = cloneFixture();
+  putClone(userBase, 'mk', 'clone under home\n');
+  const configDir = mkdtempSync(join(tmpdir(), 'cfg-'));
+  const p = putClone(configDir, 'mk', 'clone under configDir\n');
+  const warnings = aboutClone(run({ configDir })).warnings;
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0].startsWith(`the release workflow clone ${p} differs `));
+});
+
+test('E45 T4 AC3: the size error of the cache copy stays as it is in every outcome', () => {
+  const { userBase, wf, run } = cloneFixture(Buffer.alloc(524289, 0x62));
+  putClone(userBase, 'mk', 'small clone\n');
+  const own = `release workflow file exceeds 524.288 bytes (512 KiB): ${wf} has 524289 bytes (limit is 524288 bytes); launching productivity-tools:release-workflow by name will fail with 'not found'`;
+  for (const loadedByName of BY_NAME) assert.deepEqual(run({ loadedByName }).errors, [own], loadedByName);
+});
