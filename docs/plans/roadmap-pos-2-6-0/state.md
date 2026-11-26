@@ -39,6 +39,9 @@ Estratégia v1.3 -- 2026-11-26
 - (dono) E53, com o candidato fixado: autorizar o lote (até US$ 18) em DEC que cite o SHA e fazer o login da conta na config descartável; nunca enviar token pelo chat.
 - (executor) fora do escopo (#13): no caminho agy o without_approve do .py não tira parallelOk, que pode voltar em resumeArgs (revisão final do E48, achado F1)
 - (executor) comentário de scripts/preflight.mjs (perto da linha 699) ainda diz que a primeira chamada de agente é a descoberta; com a medida antecipada é preflight-early (revisão final do E49, achado F1)
+- (executor) fora do escopo (T3): o lote-gate ignora subpasta de --out sem o prefixo parada-retomada- e informa custo zero em pasta sem transcrições (achados 2 e 3, aceitos)
+- (executor) fora do escopo (T3): rereadMeasure gasta as cinco tentativas em recusa determinística; a medida antecipada deixa o worktree _integracao quando o alvo é o integrationBranch sem allowIntegrationBranch (achados 4 e 5)
+- (executor) E54: subir a linha 1 do check-roadmap.mjs junto com a versão do plugin (decisão 042 do pós-2.3.0), porque o aviso status-no-code mudou o conteúdo
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
