@@ -1,0 +1,192 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E48/plan.md",
+    "id": "E48",
+    "digest": "e2fe8815",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": "docs/plans/pos-2-6-0-E48/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "b29598ba8b69ee4ecf2a4f91d6f0f1bdcd71317c",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.091ms)\n✔ counts usage once per message id, keeping the largest output (31.9301ms)\n✔ splits cache writes into 5m and 1h (0.9903ms)\n✔ counts agent calls by dominant model family (1.1282ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7656ms)\n✔ estimates cost and keeps unpriced models null (0.6902ms)\n✔ readJsonl tolerates CRLF and a partial last line (8.913ms)\n✔ classifies every label family of the role table (0.6174ms)\n✔ status, progress, review log and report come out as separate rows (196.6943ms)\n✔ records review rounds per loop (3.2352ms)\n✔ counts tasks and the task loop (2.9944ms)\n✔ writes metrics.json and one csv row per run and role (247.6624ms)\n✔ groups sessions of one attempt with --runs (605.8214ms)\n✔ requires --root and --out (386.5302ms)\n✔ refuses --out inside the repository outside tools/measure/out (3478.1728ms)\n✔ real price table is dated and sourced (4.45ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (558.6781ms)\n✔ privacy scan catches a planted personal path and session id (9.842ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (45.0968ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (19.6254ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (41.5105ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (20.5555ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (13.641ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (23.7901ms)\n✔ prepare builds the sandbox and stops at authorize (18874.8307ms)\n✔ prepare refuses a work dir inside the repository (453.2912ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (313.8873ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (1116.8919ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (595.8414ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.4808ms)\nℹ tests 2331\nℹ suites 11\nℹ pass 2329\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 233621.3171",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T14:59:23.780Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Argumento parallelOk no workflow",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "The run argument parallelOk: true (exact boolean, args only) releases args.maxParallel (default 3) under a generated config; otherwise parallelism stays 1, and nothing changes without generated. withoutApprove now strips approveRulings and parallelOk, so resumeArgs/resumeWith never carry it; report item (6) records the release or explains how to pass the argument. Four E48 tests added at the end of flow.test.mjs (red 3 fail, then 512/512 pass); all task checks exit 0; file is 272367 LF chars (de",
+      "sha": "5362db81309189df6e7c04a26a65e48a8d7813f0",
+      "replacedBy": null,
+      "note": "The run argument parallelOk: true (exact boolean, args only) releases args.maxParallel (default 3) under a generated config; otherwise parallelism stays 1, and nothing changes without generated.\nwithoutApprove now strips approveRulings and parallelOk, so resumeArgs/resumeWith never carry it; report item (6) records the release or explains how to pass the argument.\nFour E48 tests added at the end o",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Docs do argumento parallelOk",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/references/config.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md",
+        "plugins/productivity-tools/skills/roadmap-release/SKILL.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Docs for the parallelOk run argument are in config.md (maxParallel row and \"Generated config\"), operator.md (new paragraph after the numbered list, list unchanged) and SKILL.md (two sentences in step 3, one request-to-args item in step 4), with the brief's literal sentences. The text check, the 6 targeted test files (597/597 pass) and the plugin lint (58 OK, 0 FAIL) exit 0. Only those three files under D:/projects/claude-play-wt/pos-2-6-0-E48/plugins/productivity-tools/skills/roadmap-release/ ar",
+      "sha": "6ca38cb10d90269e50e5ad835b6715f5d0e1dc47",
+      "replacedBy": null,
+      "note": "Docs for the parallelOk run argument are in config.md (maxParallel row and \"Generated config\"), operator.md (new paragraph after the numbered list, list unchanged) and SKILL.md (two sentences in step 3, one request-to-args item in step 4), with the brief's literal sentences.\nThe text check, the 6 targeted test files (597/597 pass) and the plugin lint (58 OK, 0 FAIL) exit 0.\nOnly those three files ",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T14:42:34.911Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T14:42:34.976Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T14:42:39.761Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T14:42:39.761Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T14:47:02.013Z"
+    },
+    {
+      "event": "review-result",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T14:51:44.541Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T14:51:44.541Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:52:31.708Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T14:52:31.708Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T14:52:31.708Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T14:57:51.592Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T14:59:04.224Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:59:23.780Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:59:23.780Z"
+    }
+  ]
+}
