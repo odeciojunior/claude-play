@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-25 | E52 | E52 spec written; aprovada com seis ajustes por opus por delegação (DEC-021) | `97db7d7` |
 | 2026-11-25 | E43 | E43 plan written; aprovado com três ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E43/plan.md` |
 | 2026-11-25 | E50 | E50 criteria compared: none changed | `docs/plans/pos-2-6-0-E50/spec.md` |
 | 2026-11-25 | E50 | E50 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2636, pass 2634, fail 0, skipped 2; G2 58 OK; G3 15 OK; G4 válido | `857624a` |

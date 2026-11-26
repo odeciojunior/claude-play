@@ -17,7 +17,7 @@ Estratégia v1.2 -- 2026-11-25
 | E49 | nao-iniciado | - | - |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | plano | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md` | executar o plano (E50 integrado em 857624a); antes, rodar de novo os checks dele (DEC-028) |
-| E52 | nao-iniciado | - | escrever a spec (E44 já em release/pos-2.6.0) |
+| E52 | spec | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7` | escrever o plano com plan-writer |
 | E53 | nao-iniciado | - | - |
 | E54 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
@@ -31,6 +31,7 @@ Estratégia v1.2 -- 2026-11-25
 - (executor) registrar o uso do total do vitest no gateFromCapture como pendente fora do escopo (DEC-033; antes dele, DEC-031)
 - (executor) teste 'discover --page prints each signed page' (preflight.test.mjs:1027) falhou 1 vez no G1 da revisão final do E42 e passou sozinho; investigar se repetir
 - (executor) E43: numa retomada com o mesmo runToken, a releitura pode aceitar a linha de uma execução anterior com o mesmo nonce (revisão do plano); olhar no lote do E53
+- (executor) fora do escopo: o summary() do test-extract usa a primeira linha de contagem, e stdout de teste pode inflar o total nos caminhos .js e agy (revisão do E52)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
