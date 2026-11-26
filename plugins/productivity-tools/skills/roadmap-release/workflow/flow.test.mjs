@@ -5930,3 +5930,50 @@ test('E39 DEC-056: a good copy of capture lines dispatches no pairs agent', asyn
   assert.equal(r.results[0].merged, true, r.results[0].error);
   assert.equal(pairCalls(calls).length, 0);
 });
+
+// E46 AC1: with explain, the selection names why each dependency is missing.
+const E46_ST = { integrated: ['integrada', 'publicada', 'medida'], plan: 'c', executing: 'executando', onBranch: 'no branch', discarded: 'discarded', blocked: 'blocked' };
+const E46_PIECES = 'status without a code segment (several pieces)';
+const E46_SKIP = 'dependencies not met on the target and outside the selection: ';
+const e46Pieces = () => card('E1', { status: PURE_X.cardStatus('piece 1: done; piece 2: plan', E46_ST), onTargetEvidence: E46_PIECES });
+const e46Select = (cards, o) => PURE_X.selectDeliverables({ cards, statuses: E46_ST, ...o });
+// The phase filter keeps the dependencies out of the pool, so "ready" lists them as pending.
+const e46Ready = (cards, o = {}) => e46Select(cards, { selector: 'ready', filters: { phase: 'F1' }, ...o });
+
+test('E46 AC1: with explain the skip reason and the outside note name why each dependency is missing', () => {
+  const one = [e46Pieces(), card('E2', { deps: ['E1'], phase: 'F1' })];
+  assert.deepEqual(e46Select(one, { selector: ['E2'], explain: true }).skipped, [{ id: 'E2', reason: E46_SKIP + 'E1: ' + E46_PIECES }]);
+  assert.deepEqual(e46Ready(one, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E1: ' + E46_PIECES + ')']);
+  const two = [e46Pieces(), card('E4', { status: 'spec' }), card('E3', { deps: ['E1', 'E4'], phase: 'F1' })];
+  const both2 = 'E1: ' + E46_PIECES + '; E4: spec';
+  assert.deepEqual(e46Select(two, { selector: ['E3'], explain: true }).skipped, [{ id: 'E3', reason: E46_SKIP + both2 }]);
+  assert.deepEqual(e46Ready(two, { explain: true }).notes, ['E3: outside the selection (pending dependencies: ' + both2 + ')']);
+});
+
+test('E46 AC1: a dependency without a card does not break and reads no card', () => {
+  const cards = [card('E2', { deps: ['E9'], phase: 'F1' })];
+  for (const autoDeps of [false, true]) {
+    const r = e46Select(cards, { selector: ['E2'], autoDeps, explain: true });
+    assert.equal(r.error, undefined);
+    assert.deepEqual(r.skipped, [{ id: 'E2', reason: E46_SKIP + 'E9: no card' }]);
+  }
+  assert.deepEqual(e46Ready(cards, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E9: no card)']);
+});
+
+test('E46 AC1: an interrupted merge reads interrupted merge, not the evidence of the merge', () => {
+  const cards = [card('E1', { status: 'executando', onTarget: true, mergeFound: true, mergeSha: 'e0', onTargetEvidence: 'merge commit e0 on integracao/x' }), card('E2', { deps: ['E1'], phase: 'F1' })];
+  assert.deepEqual(e46Select(cards, { selector: ['E2'], explain: true }).skipped, [{ id: 'E2', reason: E46_SKIP + 'E1: interrupted merge' }]);
+  assert.deepEqual(e46Ready(cards, { explain: true }).notes, ['E2: outside the selection (pending dependencies: E1: interrupted merge)']);
+});
+
+test('E46 AC1: without explain the reason and the note keep the old text', () => {
+  const cards = [e46Pieces(), card('E3', { deps: ['E1', 'E9'], phase: 'F1' })];
+  assert.deepEqual(e46Select(cards, { selector: ['E3'] }).skipped, [{ id: 'E3', reason: E46_SKIP + 'E1, E9' }]);
+  assert.deepEqual(e46Ready(cards).notes, ['E3: outside the selection (pending dependencies: E1, E9)']);
+});
+
+test('E46 AC1: a dry-run carries the reason of each dependency to the selection', async () => {
+  const cards = [card('E1', { status: 'piece 1: done; piece 2: plan', onTargetEvidence: E46_PIECES }), card('E2', { deps: ['E1', 'E9'] })];
+  const { r } = await exec({ cards, args: { mode: 'dry-run' }, deliverables: ['E2'] });
+  assert.deepEqual(r.selection.skippedUpfront, [{ id: 'E2', reason: E46_SKIP + 'E1: ' + E46_PIECES + '; E9: no card' }]);
+});
