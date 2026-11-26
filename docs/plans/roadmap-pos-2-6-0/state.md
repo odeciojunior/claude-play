@@ -1,7 +1,7 @@
 Estratégia v1.2 -- 2026-11-25
 
 <!-- roadmap:now -->
-1. Executar o plano do E51. Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E50 integrado em 857624a).
+1. Executar o plano do E43 (fila do roadmap-release.js). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: - (E42 e E44 em release/pos-2.6.0).
 2. Executar o plano do E45 por último; a tarefa 1 é paga (DEC-025, DEC-026). Runs: executor. Approves: opus por delegação (DEC-021). Depends on: -.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
@@ -16,7 +16,7 @@ Estratégia v1.2 -- 2026-11-25
 | E48 | nao-iniciado | - | - |
 | E49 | nao-iniciado | - | - |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
-| E51 | plano | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md` | executar o plano (E50 integrado em 857624a); antes, rodar de novo os checks dele (DEC-028) |
+| E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
 | E52 | plano | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md` | executar o plano em plan/pos-2-6-0-E52; o AC3 é conferência manual no pwsh pelo executor |
 | E53 | nao-iniciado | - | - |
 | E54 | nao-iniciado | - | - |
@@ -32,6 +32,8 @@ Estratégia v1.2 -- 2026-11-25
 - (executor) teste 'discover --page prints each signed page' (preflight.test.mjs:1027) falhou 1 vez no G1 da revisão final do E42 e passou sozinho; investigar se repetir
 - (executor) E43: numa retomada com o mesmo runToken, a releitura pode aceitar a linha de uma execução anterior com o mesmo nonce (revisão do plano); olhar no lote do E53
 - (executor) fora do escopo: o summary() do test-extract usa a primeira linha de contagem, e stdout de teste pode inflar o total nos caminhos .js e agy (revisão do E52)
+- (executor) E53: passar --model também ao run-baseline.mjs no roteiro do lote (revisão final do E51, achado m1)
+- (executor) fora do escopo: close-from-state recusa plano com muitos commits (célula de evidência acima de 300 caracteres, visto no E51)
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
@@ -40,4 +42,5 @@ Estratégia v1.2 -- 2026-11-25
 | plan/pos-2-6-0-E44 | viva | integrado em release/pos-2.6.0 (5fcf32a); branch e worktree pos-2-6-0-E44 ainda existem |
 | plan/pos-2-6-0-E42 | viva | integrado em release/pos-2.6.0 (b31ba00); branch e worktree pos-2-6-0-E42 ainda existem |
 | plan/pos-2-6-0-E50 | viva | integrado em release/pos-2.6.0 (857624a); branch e worktree pos-2-6-0-E50 ainda existem |
+| plan/pos-2-6-0-E51 | viva | integrado em release/pos-2.6.0 (4329c5e); branch e worktree pos-2-6-0-E51 ainda existem |
 <!-- /roadmap:inflight -->
