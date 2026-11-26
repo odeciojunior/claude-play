@@ -685,7 +685,7 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
       else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
-  const wt =(wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
+  const wt = (wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
   const dirEntries = [{ settings: readJson(join(userBase, "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.local.json")) }];
   // Claude Code grants an additional directory only if it exists when the session starts, so a covered but absent wtRoot is still missing. Read-only: never created here.
   const wtExists = existsSync(wt);
