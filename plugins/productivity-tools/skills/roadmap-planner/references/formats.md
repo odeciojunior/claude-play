@@ -464,6 +464,7 @@ Warnings:
   - `pending-no-owner`: a `pending` item lacks the `(owner)` prefix.
   - `state-header`: the `state.md` header lacks the strategy version `v<version>`.
   - `blocked-no-blq`: a blocked panel segment cites no `BLQ-n`.
+  - `status-no-code`: a panel Status cell with several segments, or a single labelled one, and no `code` segment, so roadmap-release cannot tell whether the code is on the target.
   - `blocker-no-restore`: a blocker of a blocked deliverable names no status to restore.
   - `source-uncited`: a `SRC-NN` defined in `sources.md` is cited nowhere else.
   - `strategy-plan-suffix`: the strategy file name ends in `-plan.md`.

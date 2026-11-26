@@ -211,10 +211,17 @@ test('duplicate-id', () =>
 test('bad-status', () =>
   expectCode(run(fixture((f) => rep(f, 'state.md', '| E3 | not-started |', '| E3 | bogus |'))), 'bad-status', 'error'));
 
+// The only problem of a several-pieces cell without a code segment is the status-no-code warning.
+function expectOnlyNoCode(problems, id) {
+  assert.deepEqual(codes(problems), ['status-no-code']);
+  assert.equal(problems[0].severity, 'warning');
+  assert.match(problems[0].message, new RegExp(`\\b${id}\\b`));
+}
+
 test('multi-segment status with labels and notes is accepted', () =>
-  assert.deepEqual(
+  expectOnlyNoCode(
     run(fixture((f) => rep(f, 'state.md', '| E2 | not-started |', '| E2 | piece 1: spec (draft); piece 2: not-started |'))),
-    [],
+    'E2',
   ));
 
 test('now-limit', () =>
@@ -632,7 +639,7 @@ test('fix9: no-git and integration-branch-missing name the config file', () => {
 });
 
 test('fix9: balanced nested parentheses in a status note are accepted', () =>
-  assert.deepEqual(run(fixture((f) => rep(f, 'state.md', '| E2 | not-started |', '| E2 | piece 1: spec (see (a) and (b)); piece 2: not-started |'))), []));
+  expectOnlyNoCode(run(fixture((f) => rep(f, 'state.md', '| E2 | not-started |', '| E2 | piece 1: spec (see (a) and (b)); piece 2: not-started |'))), 'E2'));
 
 // ---------- fix-up round 2 ----------
 
@@ -710,7 +717,7 @@ test('final1: per-piece status needs only one integrated SHA; siblings only need
   const dir = repoFixture();
   const { a, b } = withFeatCommit(dir);
   setE1(dir, 'piece 1: integrated; piece 2: on-branch', `\`${a}\` \`${b}\``);
-  assert.deepEqual(run(dir, createGitAdapter(dir)), []);
+  expectOnlyNoCode(run(dir, createGitAdapter(dir)), 'E1');
   setE1(dir, 'piece 1: integrated; piece 2: on-branch', `\`${b}\` \`deadbeef1234\``);
   const codesNow = codes(run(dir, createGitAdapter(dir)));
   assert.ok(codesNow.includes('not-integrated') || codesNow.includes('sha-missing'));
@@ -1528,6 +1535,30 @@ test('blocked-no-blq', () => {
   expectCode(run(fixture((f) => t5BlockE3(f, { blq: false }))), 'blocked-no-blq', 'warning');
   const clean = fixture((f) => t5BlockE3(f, { blq: true, unblock: 'the owner picks a vendor; restores E3 to not-started' }));
   assert.ok(!t5HasCode(clean, 'blocked-no-blq'));
+});
+
+const e46E2Status = (cell) => (f) => rep(f, 'state.md', '| E2 | not-started |', `| E2 | ${cell} |`);
+
+test('E46 AC1: status-no-code warns on several pieces and on a single labelled segment that is not code', () => {
+  for (const cell of ['piece 1: spec (draft); piece 2: not-started', 'spec: spec']) {
+    const dir = fixture(e46E2Status(cell));
+    const hits = run(dir).filter((p) => p.code === 'status-no-code');
+    assert.equal(hits.length, 1, cell);
+    assert.equal(hits[0].severity, 'warning', cell);
+    assert.equal(hits[0].file, 'state.md', cell);
+    assert.match(hits[0].message, /\bE2\b/, cell);
+    assert.match(hits[0].message, /roadmap-release cannot tell whether the code is on the target/, cell);
+    assert.ok(!hits[0].message.includes(cell), `the message repeats the cell: ${hits[0].message}`);
+    const r = cli([dir]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /\[status-no-code\]/);
+  }
+});
+
+test('E46 AC1: status-no-code is silent on an empty cell, an unlabelled status and a code segment', () => {
+  for (const cell of ['', 'not-started', 'code: spec; acceptance: not-started']) {
+    assert.ok(!t5HasCode(fixture(e46E2Status(cell)), 'status-no-code'), `cell "${cell}"`);
+  }
 });
 
 test('blocker-no-restore', () => {
