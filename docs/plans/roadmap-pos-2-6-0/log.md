@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E45 | DEC-037 recorded: gate da onda 2 falhou só no teste de processos with its subtree (ocorrência 1 de 3; isolado passou 6 de 6, arquivo fora do diff); gate relançado por unblock | `1b22814` |
 | 2026-11-26 | E49 | E49 spec written; aprovada por opus por delegação (DEC-021) com quatro ajustes aplicados pelo autor | `b43f5bd` |
 | 2026-11-26 | E48 | E48 spec written; aprovada com dois ajustes por opus por delegação (DEC-021) | `92b224f` |
 | 2026-11-26 | E45 | DEC-036 recorded: gate de onda sem três arquivos lentos; E45 relançado com a autorização do dono | `decisions.md` |

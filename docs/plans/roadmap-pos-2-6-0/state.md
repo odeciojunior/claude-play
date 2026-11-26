@@ -35,6 +35,7 @@ Estratégia v1.2 -- 2026-11-25
 - (executor) E53: passar --model também ao run-baseline.mjs no roteiro do lote (revisão final do E51, achado m1)
 - (executor) fora do escopo: close-from-state recusa plano com muitos commits (célula de evidência acima de 300 caracteres, visto no E51)
 - (executor) E43: sem caso de teste para agente de releitura que devolve null (revisão final, achado F2)
+- (executor) verify-run.test.mjs:648 (processos, neto do listener): a espera fixa de 500 ms após taskkill /T falhou 1x num gate sob carga. Trocar por espera até o processo sumir (prazo de cerca de 5 s), conferindo a data de criação do PID; o finally pode matar um PID reaproveitado.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
