@@ -13,7 +13,7 @@ Estratégia v1.2 -- 2026-11-25
 | E45 | executando | `bc74c70`, `docs/plans/pos-2-6-0-E45/spec.md`, `docs/plans/pos-2-6-0-E45/plan.md`, `plan/pos-2-6-0-E45` | conferir, rodar o agy e o G1 no merge e integrar em release/pos-2.6.0 |
 | E46 | executando | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md`, `plan/pos-2-6-0-E46` | conferir e integrar em release/pos-2.6.0 depois do coordinator |
 | E47 | spec | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be` | escrever o plano depois do merge do E46 |
-| E48 | nao-iniciado | - | - |
+| E48 | spec | `docs/plans/pos-2-6-0-E48/spec.md`, `92b224f` | escrever o plano depois do merge do E47 |
 | E49 | nao-iniciado | - | - |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
