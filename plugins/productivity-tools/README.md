@@ -23,7 +23,7 @@ claude plugin install productivity-tools@claude-play
 | roadmap-release | running several roadmap deliverables (E<n>) unattended into a release branch: "run E18", "execute the next deliverables", "release dry-run". The model does not start it; type `/productivity-tools:roadmap-release <args>` | Runs deliverables end to end with a bundled Workflow (spec, plan, reviewed tasks, gates against a baseline, serialized merge with rollback), then verifies the result with git. One plan with one deliverable stays with `plan-coordinator` |
 | mermaid-designer | a diagram in Markdown or a Mermaid code block (flowchart, sequence, ER, state, class, Gantt, C4) | Mermaid diagram generation for documentation |
 | excalidraw-designer | an `.excalidraw` file or a hand-drawn, sketch or whiteboard look (architecture, flowcharts, mind maps, wireframes) | Hand-drawn style diagrams (.excalidraw files), checked by the bundled Node validator `scripts/validate-excalidraw.mjs` |
-| wsl-health-check | a system or WSL health check, a health report, "is the Linux/WSL machine healthy" | WSL/Linux only. Runs the bundled `scripts/health-report.sh` (no separate install) and summarizes disk, memory, network and services. Key services come from `HEALTH_KEY_SERVICES` (space-separated, default `cron`); `--check-services "<names>"` overrides them for one run |
+| wsl-health-check | a system or WSL health check, a health report, "is the Linux/WSL machine healthy" | Linux or WSL, also from pwsh on Windows with WSL installed; not for Windows without WSL or for macOS. Runs the bundled `scripts/health-report.sh` (no separate install) and summarizes disk, memory, network and services. Key services come from `HEALTH_KEY_SERVICES` (space-separated, default `cron`); `--check-services "<names>"` overrides them for one run |
 
 ## Agents
 
@@ -72,8 +72,21 @@ deep-researcher → report-analyzer → roadmap-planner → plan-coordinator ⇄
 
 - Claude Code with plugin support (`2.1.322+` to launch workflows by name: `plan-coordinator`, `roadmap-release`)
 - Node.js >= 18 for `roadmap-planner`, `roadmap-tracker`, `spec-writer`, `plan-writer`, `plan-coordinator`, `roadmap-release` and `excalidraw-designer`
-- A WSL/Linux shell for wsl-health-check
+- A WSL/Linux shell, or pwsh on Windows with WSL installed, for wsl-health-check
 - No other tools or setup required
+
+## Antigravity (agy)
+
+The skills of this plugin can also be used on Google Antigravity. `<version>` below is the version of your copy of the plugin.
+
+- **Register the skills** in `~/.gemini/config/skills.json`, with a path relative to the `~/.gemini/config/` folder (for example `"vendor/productivity-tools-<version>/skills"`) or an absolute path written with `/`. Never start the path with `~/`: on Windows no skill is discovered.
+- **Headless runs (`agy -p`)**: pass `--add-dir "<plugin folder>"` when the plugin is outside the workspace, because `spec-writer` and `plan-writer` read `agents/*.md` from disk.
+- **Validation**: `agy plugin validate` rejects the `agents/*.md` files, which use the Claude Code format, although `agy plugin install` exposes the skills.
+- **Open gaps**:
+  - the agy workflows have no CAPTURE and no review-package (#13);
+  - `roadmap-release-agy.py` does not handle declared removed tests or the test floors (#15);
+  - there is no native agy package (#16);
+  - `spec-writer` and `plan-writer` read the agent file from disk and get no tool note.
 
 ## License
 
