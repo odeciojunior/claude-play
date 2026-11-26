@@ -665,7 +665,16 @@ def tail_text(s, n=3000):
 
 # ---------------------------------------------------------------- gates: measured by run_shell, judged by the script
 async def read_tests_gate(d, r):
-    """A tests gate: the exit is the script's own; only the numbers inside its output need a reader (flash, no tools). None when unreadable."""
+    """A tests gate: the exit is the script's own; the numbers of its output come first from the deterministic extractor (run_test_extract
+    over the whole stdout), before the flash reader, and the extract stands even when it contradicts the exit (validMeasure refuses it
+    later), as in gateFromCapture of the .js. The flash reader (no tools) runs only for an unknown format, a failed extractor, an extract
+    without total or failedNames, or a gate with ignoreFailuresWhenChanged. None when unreadable."""
+    e = run_test_extract(ROOT, r['stdout'], r['exit'])
+    ign = d.get('ignoreFailuresWhenChanged')
+    if ((ign is None or ign is False) and isinstance(e, dict) and e.get('format') != 'unknown'
+            and type(e.get('total')) is int and isinstance(e.get('failedNames'), list)):
+        sk = e.get('skipped')
+        return {'total': e['total'], 'skipped': sk if type(sk) is int else 0, 'failedNames': [str(x) for x in e['failedNames']]}
     text = tail_text(r['stdout'] + (('\n' + r['stderr']) if r['stderr'].strip() else ''), 4000)
     prompt = ('GATE OUTPUT READER (read-only; run nothing, change nothing, no tools needed). The gate "%s" (kind tests) ran `%s` and exited %s. '
               'Read its output below and return { name, ran: true, exit: %s, total, skipped, failedNames }: total = tests executed, skipped = tests skipped, '

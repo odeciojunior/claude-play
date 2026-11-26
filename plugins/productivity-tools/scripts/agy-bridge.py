@@ -243,6 +243,26 @@ def run_test_integrity(program, wt_dir, base):
     return out
 
 
+def run_test_extract(root, text, exit):
+    """The deterministic test extractor (scripts/test-extract.mjs of root) over a gate output. Returns its JSON object, or None when
+    it fails (no node or no CLI, a non-zero exit, invalid JSON or not an object)."""
+    d = tempfile.mkdtemp(prefix='agy-extract-')  # outside the worktree: it stays clean
+    try:
+        f = os.path.join(d, 'output.txt')
+        with open(f, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(text)
+        r = run_cli(['node', str(root) + '/scripts/test-extract.mjs', f, '--exit', exit])
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    if r['exit'] != 0:
+        return None
+    try:
+        data = json.loads(r['stdout'])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def git_snapshot(root):
     """(HEAD, git status --porcelain) of root: the read-only guard compares it before and after a reviewer."""
     head = run_cli(['git', 'rev-parse', 'HEAD'], cwd=root)

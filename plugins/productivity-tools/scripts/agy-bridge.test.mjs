@@ -95,7 +95,7 @@ test('AC7: agy-bridge.py basename is unique in the plugin', () => {
 // ---- carregamento
 pyTest('AC7: the bridge loads by exec into a fresh globals dict and exposes the contract', () => {
   const names = py(`result = sorted(n for n, v in globals().items() if callable(v) and not n.startswith('_'))`);
-  for (const n of ['plugin_root_from', 'run_cli', 'find_git_bash', 'run_shell', 'call_lib', 'load_agent_body', 'with_tool_note', 'load_js_schemas', 'load_test_integrity', 'run_test_integrity', 'git_snapshot']) {
+  for (const n of ['plugin_root_from', 'run_cli', 'find_git_bash', 'run_shell', 'call_lib', 'load_agent_body', 'with_tool_note', 'load_js_schemas', 'load_test_integrity', 'run_test_integrity', 'run_test_extract', 'git_snapshot']) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
 });
@@ -456,6 +456,30 @@ result = [run_test_integrity(prog, args['wt'], args['base']), run_test_integrity
     assert.deepEqual(r[2], unmeasured);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- run_test_extract
+pyTest('E52 AC2: run_test_extract returns None without the CLI and leaves no agy-extract folder', () => {
+  // A temporary folder of this test only: the other test files run in parallel and also create agy-extract- folders.
+  const own = tmp('agy-ext-tmp-');
+  const nocli = tmp('agy-ext-root-');
+  try {
+    fs.mkdirSync(path.join(nocli, 'scripts'));
+    const r = py(
+      `tempfile.tempdir = args['own']
+def listing():
+    return sorted(n for n in os.listdir(tempfile.gettempdir()) if n.startswith('agy-extract-'))
+before = listing()
+got = [run_test_extract(root, 'ok 1 - a\\n# tests 1\\n', 0) for root in (args['noroot'], args['nocli'])]
+result = {'got': got, 'before': before, 'after': listing()}`,
+      { own, noroot: path.join(own, 'missing-root'), nocli },
+    );
+    assert.deepEqual(r.got, [null, null]);
+    assert.deepEqual(r.after, r.before);
+  } finally {
+    fs.rmSync(own, { recursive: true, force: true });
+    fs.rmSync(nocli, { recursive: true, force: true });
   }
 });
 
