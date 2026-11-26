@@ -1,0 +1,262 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E47/plan.md",
+    "id": "E47",
+    "digest": "a36e9d44",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": "docs/plans/pos-2-6-0-E47/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 3,
+    "worktree": null,
+    "branch": null,
+    "base": "94f4152009180acc246f88204e89e864e6b93f56",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.0869ms)\n✔ counts usage once per message id, keeping the largest output (26.8242ms)\n✔ splits cache writes into 5m and 1h (1.1087ms)\n✔ counts agent calls by dominant model family (1.1453ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7303ms)\n✔ estimates cost and keeps unpriced models null (0.708ms)\n✔ readJsonl tolerates CRLF and a partial last line (6.0903ms)\n✔ classifies every label family of the role table (0.5085ms)\n✔ status, progress, review log and report come out as separate rows (190.1483ms)\n✔ records review rounds per loop (3.0832ms)\n✔ counts tasks and the task loop (2.9054ms)\n✔ writes metrics.json and one csv row per run and role (546.027ms)\n✔ groups sessions of one attempt with --runs (530.2692ms)\n✔ requires --root and --out (542.2987ms)\n✔ refuses --out inside the repository outside tools/measure/out (3383.2817ms)\n✔ real price table is dated and sourced (4.9668ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (576.1472ms)\n✔ privacy scan catches a planted personal path and session id (7.4291ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (32.641ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (14.0142ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (28.7353ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (17.2778ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (13.7162ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (19.2021ms)\n✔ prepare builds the sandbox and stops at authorize (19830.1829ms)\n✔ prepare refuses a work dir inside the repository (331.8121ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (342.5428ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (905.4484ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (607.1769ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.5474ms)\nℹ tests 2308\nℹ suites 11\nℹ pass 2306\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 233448.3236",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T14:21:28.166Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Modo removed --merge no test-extract",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/test-extract.mjs",
+        "plugins/productivity-tools/scripts/test-extract.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`test-extract.mjs removed --merge <sha> --nonce <n> --spec <rel> --plan <rel> --cwd <dir>` existe: confere os pares contra merge^1 e merge, com recusas pelo refuse() (exit 2). Linha assinada: {tool, command, nonce, merge, verified, deletedCovered, unverified, unverifiedCut, digest}; arquivo apagado coberto em parte vira {file, name:'*', reason} no início de unverified; só unverified é cortado. A retomada valida a linha com checkRun(stdout, 'test-extract', nonce) e desconta só deletedCovered; o m",
+      "sha": "e48de6f289a0c5e473fa82bf26dd641270aa626e",
+      "replacedBy": null,
+      "note": "`test-extract.mjs removed --merge <sha> --nonce <n> --spec <rel> --plan <rel> --cwd <dir>` existe: confere os pares contra merge^1 e merge, com recusas pelo refuse() (exit 2).\nLinha assinada: {tool, command, nonce, merge, verified, deletedCovered, unverified, unverifiedCut, digest}; arquivo apagado coberto em parte vira {file, name:'*', reason} no início de unverified; só unverified é cortado.\nA r",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Desconto no ramo finish-merge",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release.js",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/flow.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "The finish-merge resume now discounts deleted test files only through the signed `removed --merge` line for that exact merge SHA; unverified or other hard alerts still break, with a `removed --merge ...` suffix in the merge-rejected `what`. New: pure `integrityNetOfDeclared`, plus `askRemoved` and `unvTxt`, now shared with `removedFloor`; `pluginRoot` is declared before the finish-merge branch. 12 of the 13 new E47 tests failed before the change; flow.test.mjs is now 508/508. Size is 271859 LF c",
+      "sha": "811afa852a7ed2e80b2795fcb9d9aac078b4a6ce",
+      "replacedBy": null,
+      "note": "The finish-merge resume now discounts deleted test files only through the signed `removed --merge` line for that exact merge SHA; unverified or other hard alerts still break, with a `removed --merge ...` suffix in the merge-rejected `what`.\nNew: pure `integrityNetOfDeclared`, plus `askRemoved` and `unvTxt`, now shared with `removedFloor`; `pluginRoot` is declared before the finish-merge branch. 12",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Frase de operação sobre o desconto",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added the brief's sentence, verbatim, at the end of the first paragraph of \"## Integrity alerts\" in plugins/productivity-tools/skills/roadmap-release/references/operator.md. The text now says deleted test files covered by a resumed merge's `removed --merge` line are not an alert, while removed assertions and added skips still are. Text check exit 0; targeted node tests 556/556 pass; lint-plugin reports 0 FAIL. Nothing committed, per the prompt's \"Never commit\" rule.",
+      "sha": "71c86da53b430bc65ac0d5b2cdbbd20dfaf70fbd",
+      "replacedBy": null,
+      "note": "Added the brief's sentence, verbatim, at the end of the first paragraph of \"## Integrity alerts\" in plugins/productivity-tools/skills/roadmap-release/references/operator.md. The text now says deleted test files covered by a resumed merge's `removed --merge` line are not an alert, while removed assertions and added skips still are. Text check exit 0; targeted node tests 556/556 pass; lint-plugin re",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T13:46:25.790Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T13:46:25.873Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T13:46:43.115Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T13:46:43.115Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T13:50:56.585Z"
+    },
+    {
+      "event": "review-result",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T13:56:50.772Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T13:56:50.772Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T13:58:24.205Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T13:58:24.205Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T13:58:24.205Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T14:02:36.152Z"
+    },
+    {
+      "event": "review-result",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T14:11:03.945Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T14:11:03.945Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:12:00.343Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T14:12:00.343Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-26T14:12:00.343Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-26T14:20:32.300Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-26T14:21:09.642Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:21:28.166Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T14:21:28.166Z"
+    }
+  ]
+}
