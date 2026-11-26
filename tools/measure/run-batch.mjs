@@ -1652,6 +1652,9 @@ export function releaseRunValidity(variant, run) {
 //  - 1.7.0: docs/plans/fixed-plan/progress-*.md, Recovery State line "**Baseline:** N passed, F failed (...)". Same rule: N == 0 or F > 0.
 // Neither version records the final gate's own test output (2.0.0 keeps only finalGate.status), so the baseline is the one reliable
 // signal. Nothing recorded (no file, no baseline) is not judged here; sem-agentes and the other checks cover runs that stopped early.
+// The tail is read in three shapes: the TAP summary (`# tests N`), the spec reporter (`ℹ tests N`, with ANSI colour codes stripped
+// first, E51 C4) and a one-line summary (`N tests, N pass, N fail`). The one-line form has an origin not identified (cited only by
+// note S2-15 of the old harness); it is kept so the measured baselines of that harness are judged the same way.
 export function coordinatorGateVazio(dir) {
   const plan = join(dir, 'docs', 'plans', 'fixed-plan');
   const json = join(plan, 'progress.json');
@@ -1659,9 +1662,11 @@ export function coordinatorGateVazio(dir) {
     let b;
     try { b = JSON.parse(readFileSync(json, 'utf8'))?.run?.baseline; } catch { return { vazio: false, why: 'progress.json unreadable' }; }
     if (b && typeof b === 'object') {
-      const tail = String(b.tail ?? '');
+      const tail = String(b.tail ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
       if (b.exit !== 0) return { vazio: true, why: `baseline "${b.test}" exited ${b.exit}` };
-      if (/^# tests 0\b/m.test(tail) || /^# pass 0\b/m.test(tail)) return { vazio: true, why: `baseline "${b.test}" ran no passing test` };
+      if (/^(?:# |ℹ )tests 0\b/m.test(tail) || /^(?:# |ℹ )pass 0\b/m.test(tail)) return { vazio: true, why: `baseline "${b.test}" ran no passing test` };
+      const one = /^\s*(\d+) tests, (\d+) pass, (\d+) fail/m.exec(tail);
+      if (one && (Number(one[1]) === 0 || Number(one[2]) === 0)) return { vazio: true, why: `baseline "${b.test}" ran ${one[1]} tests, ${one[2]} pass` };
     }
   }
   const md = existsSync(plan) ? readdirSync(plan).find((f) => /^progress-.*\.md$/.test(f)) : undefined;

@@ -3918,6 +3918,50 @@ test('coordinatorGateVazio: 1.7.0 baseline with 0 passed or any failed is gate-v
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// E51 T6 (REQ-019, C4): more output shapes of an empty baseline. Each case is a 2.0.0 progress.json with exit 0 and the given tail.
+test('coordinatorGateVazio: reporter spec with ANSI colour codes and `ℹ tests 0` is gate-vazio (C4)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const tail = '\x1b[34mℹ\x1b[39m tests \x1b[33m0\x1b[39m\n\x1b[34mℹ\x1b[39m pass \x1b[33m0\x1b[39m\n';
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: reporter spec without ANSI and `ℹ pass 0` is gate-vazio', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail: 'ℹ tests 2\nℹ pass 0\nℹ fail 2' } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: one-line summary with 0 tests or 0 pass is gate-vazio; with passing tests it is not', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const put = (tail) => writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    put('0 tests, 0 pass, 0 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+    put('3 tests, 0 pass, 3 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+    put('3 tests, 3 pass, 0 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: reporter spec with passing tests (`ℹ tests 3`, `ℹ pass 3`) is not gate-vazio', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const tail = '\x1b[34mℹ\x1b[39m tests 3\n\x1b[34mℹ\x1b[39m pass 3\n\x1b[34mℹ\x1b[39m fail 0\n';
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ---- E27 C2 (T3): options, arms and refusals of the lentes-semeadas task loop ----
 const { prepareHarness } = await import('./run-batch.mjs');
 const lentesOpts = (s, variant, extra = {}) => seededOpts(s, variant, { stage: 'task-review', reviewModel: 'sonnet', ...extra });
