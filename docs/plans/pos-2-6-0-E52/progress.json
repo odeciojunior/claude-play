@@ -1,0 +1,268 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E52/plan.md",
+    "id": "E52",
+    "digest": "3f004cf8",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 3,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/*.test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.082ms)\n✔ counts usage once per message id, keeping the largest output (30.6144ms)\n✔ splits cache writes into 5m and 1h (0.9193ms)\n✔ counts agent calls by dominant model family (1.0359ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7099ms)\n✔ estimates cost and keeps unpriced models null (0.6807ms)\n✔ readJsonl tolerates CRLF and a partial last line (4.8781ms)\n✔ classifies every label family of the role table (0.706ms)\n✔ status, progress, review log and report come out as separate rows (230.4092ms)\n✔ records review rounds per loop (3.0797ms)\n✔ counts tasks and the task loop (2.9577ms)\n✔ writes metrics.json and one csv row per run and role (217.7485ms)\n✔ groups sessions of one attempt with --runs (198.6253ms)\n✔ requires --root and --out (208.9788ms)\n✔ refuses --out inside the repository outside tools/measure/out (1616.4551ms)\n✔ real price table is dated and sourced (0.2042ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (441.3151ms)\n✔ privacy scan catches a planted personal path and session id (7.8078ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (35.2662ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (15.1363ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (23.6126ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (15.5428ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (14.9199ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (14.5312ms)\n✔ prepare builds the sandbox and stops at authorize (11209.6404ms)\n✔ prepare refuses a work dir inside the repository (166.8604ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (199.8409ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (476.4252ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (312.9034ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.343ms)\nℹ tests 2670\nℹ suites 11\nℹ pass 2668\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 550340.7078",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T07:12:02.742Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Nota de ferramentas do agy no prompt dos agentes",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/agy-bridge.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/skills/plan-coordinator/workflow/coordinator-agy.py",
+        "plugins/productivity-tools/scripts/agy-bridge.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "agy-bridge.py now has AGY_TOOL_NOTE (569 chars, identical to the brief) and with_tool_note(body, prompt) -> body, blank line, note, blank line, prompt. Both call_agent functions use it: roadmap-release-agy.py only when there is a body (without one the prompt is unchanged), coordinator-agy.py with BODIES[role]. Three E52 AC1 tests added to agy-bridge.test.mjs; red run then green (22/22), and all task checks exit 0. agents/*.md and load_agent_body are unchanged. Nothing committed; the 4 files in D",
+      "sha": "0d737f0838c8d85d0a6934fe77786d27eff36277",
+      "replacedBy": null,
+      "note": "agy-bridge.py now has AGY_TOOL_NOTE (569 chars, identical to the brief) and with_tool_note(body, prompt) -> body, blank line, note, blank line, prompt.\nBoth call_agent functions use it: roadmap-release-agy.py only when there is a body (without one the prompt is unchanged), coordinator-agy.py with BODIES[role].\nThree E52 AC1 tests added to agy-bridge.test.mjs; red run then green (22/22), and all ta",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Extrator de testes antes do flash no roadmap-release-agy",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/scripts/agy-bridge.py",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.py",
+        "plugins/productivity-tools/scripts/agy-bridge.test.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/roadmap-release-agy.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`run_test_extract(root, text, exit) -> dict | None` is now in agy-bridge.py, and `read_tests_gate` in roadmap-release-agy.py runs it over the whole stdout before the flash reader, which stays for unknown/vitest output, extractor failure or `ignoreFailuresWhenChanged`. Test first: red run 5 fail of 120 (the 3 flash-path cases passed already), green 120/120; all task checks exit 0. Nothing committed: the 4 files of the step are modified in D:/projects/claude-play-wt/pos-2-6-0-E52. The test run wit",
+      "sha": "0b072ac1b7c3745226255bebdfd8951e93ba165e",
+      "replacedBy": null,
+      "note": "`run_test_extract(root, text, exit) -> dict | None` is now in agy-bridge.py, and `read_tests_gate` in roadmap-release-agy.py runs it over the whole stdout before the flash reader, which stays for unknown/vitest output, extractor failure or `ignoreFailuresWhenChanged`.\nTest first: red run 5 fail of 120 (the 3 flash-path cases passed already), green 120/120; all task checks exit 0.\nNothing committed",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Variante pwsh, seção agy do README e fallback search_web",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/wsl-health-check/SKILL.md",
+        "plugins/productivity-tools/README.md",
+        "plugins/productivity-tools/skills/deep-researcher/SKILL.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T3 is edited and staged (not committed): wsl-health-check/SKILL.md keeps the POSIX command and adds the pwsh variant; README.md has the new platform text, prerequisite and `## Antigravity (agy)` section; deep-researcher/SKILL.md has the `search_web` fallback in steps 3 and 4. Task checks and AC3 (new variant run from pwsh with WSL) exit 0. Pending for the orchestrator: commit `docs(productivity-tools): wsl-health-check pelo pwsh, seção agy no README e search_web no deep-researcher (#9, #11, #14)",
+      "sha": "9f62dff3289a66a6ad71812ee462395a89afd3fc",
+      "replacedBy": null,
+      "note": "T3 is edited and staged (not committed): wsl-health-check/SKILL.md keeps the POSIX command and adds the pwsh variant; README.md has the new platform text, prerequisite and `## Antigravity (agy)` section; deep-researcher/SKILL.md has the `search_web` fallback in steps 3 and 4.\nTask checks and AC3 (new variant run from pwsh with WSL) exit 0. Pending for the orchestrator: commit `docs(productivity-to",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T06:03:38.002Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-26T06:03:38.002Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T06:03:54.004Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T06:03:54.004Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T06:03:54.004Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T06:13:25.217Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T06:22:55.301Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T06:23:18.203Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T06:23:18.203Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T06:23:18.203Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T06:32:51.501Z"
+    },
+    {
+      "event": "review-result",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T06:57:47.360Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T06:57:47.360Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T06:58:47.649Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T06:58:47.649Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-26T06:58:47.649Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-26T07:08:47.260Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-26T07:11:41.794Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T07:12:02.742Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T07:12:02.742Z"
+    }
+  ]
+}
