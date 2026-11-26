@@ -1,0 +1,583 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E51/plan.md",
+    "id": "E51",
+    "digest": "d3f2e8b8",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 7,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"tools/**/*.test.mjs\"",
+    "baseline": {
+      "test": "node --test \"tools/**/*.test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.1279ms)\n✔ counts usage once per message id, keeping the largest output (3.4365ms)\n✔ splits cache writes into 5m and 1h (1.1257ms)\n✔ counts agent calls by dominant model family (1.356ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.9841ms)\n✔ estimates cost and keeps unpriced models null (1.0557ms)\n✔ readJsonl tolerates CRLF and a partial last line (2.407ms)\n✔ classifies every label family of the role table (0.7451ms)\n✔ status, progress, review log and report come out as separate rows (4.8701ms)\n✔ records review rounds per loop (4.8256ms)\n✔ counts tasks and the task loop (4.7222ms)\n✔ writes metrics.json and one csv row per run and role (43.7407ms)\n✔ groups sessions of one attempt with --runs (40.4852ms)\n✔ requires --root and --out (75.3812ms)\n✔ refuses --out inside the repository outside tools/measure/out (291.326ms)\n✔ real price table is dated and sourced (0.2318ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (42.0753ms)\n✔ privacy scan catches a planted personal path and session id (1.9899ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (18.2201ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (10.1414ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (14.85ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (10.8423ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (7.422ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (21.4837ms)\n✔ prepare builds the sandbox and stops at authorize (1960.4768ms)\n✔ prepare refuses a work dir inside the repository (39.5677ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (49.9259ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (125.5984ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (87.3758ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.361ms)\nℹ tests 541\nℹ suites 0\nℹ pass 539\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 281227.4005",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T04:26:32.069Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        5,
+        7
+      ]
+    },
+    {
+      "n": 6,
+      "tasks": [
+        6
+      ]
+    },
+    {
+      "n": 7,
+      "tasks": [
+        8
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "--model obrigatório no run-batch",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`run-batch.mjs` now requires `--model`: `parseCli` and `runBatch` (first line) throw `UsageError` on a missing or empty value; USAGE and header list `--model <m>` as mandatory (T1 half of AC1, and C1; modelDivergence is T2). Downstream: every `runBatch` caller must pass `model`; test helpers `baseOpts` and `CLI_BASE` default to 'opus'. `run-baseline.mjs` is unchanged (R2), so a real run of it without `--model` is now refused. run-batch.test.mjs: baseline 200 tests, 243293 ms; now 202/202, 249183",
+      "sha": "b3aff61e8b089db5e8563f94ee24757f2cfec21d",
+      "replacedBy": null,
+      "note": "`run-batch.mjs` now requires `--model`: `parseCli` and `runBatch` (first line) throw `UsageError` on a missing or empty value; USAGE and header list `--model <m>` as mandatory (T1 half of AC1, and C1; modelDivergence is T2).\nDownstream: every `runBatch` caller must pass `model`; test helpers `baseOpts` and `CLI_BASE` default to 'opus'. `run-baseline.mjs` is unchanged (R2), so a real run of it with",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "sessionModels e modelDivergence",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Each non-denied attempt with sessions now records `sessionModels` (`{sessao}` or `{parada, retomada}`, retomada null if the resume never started or left no session) and `modelDivergence`, in `attempts` and `private/attempts.json`; divergence warns on stderr and keeps the status. `aggregate.json` gains `requestedModel` and `modelDivergence` (list of divergent `n`); new internal helpers `sessionFamily` and `divergesFrom` in run-batch.mjs; test `makeFake` takes `modelOf(n)`. run-batch.test.mjs: 210",
+      "sha": "983a162a64bc1235e0b8072e454a2679227cce36",
+      "replacedBy": null,
+      "note": "Each non-denied attempt with sessions now records `sessionModels` (`{sessao}` or `{parada, retomada}`, retomada null if the resume never started or left no session) and `modelDivergence`, in `attempts` and `private/attempts.json`; divergence warns on stderr and keeps the status.\n`aggregate.json` gains `requestedModel` and `modelDivergence` (list of divergent `n`); new internal helpers `sessionFami",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Transcrições em private/ e SHA256SUMS",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "run-batch.mjs now copies <sid>.jsonl and <sid>/ of every attempt with sessions (valid, invalid, denied) to <runDir>/private/transcripts/<k>/; a missing .jsonl or a failed copy only warns on stderr. After aggregate.json it writes <runDir>/SHA256SUMS (aggregate.json plus all of private/, \"<hex>  <path with />\", sorted, LF); anything written under private/ or to aggregate.json must come before writeSums(dir). Its failure only warns. New internal helpers copyTranscripts and writeSums; test makeFake ",
+      "sha": "ba0eaa12b485b783a7afab8b925177832b41e45f",
+      "replacedBy": null,
+      "note": "run-batch.mjs now copies <sid>.jsonl and <sid>/ of every attempt with sessions (valid, invalid, denied) to <runDir>/private/transcripts/<k>/; a missing .jsonl or a failed copy only warns on stderr.\nAfter aggregate.json it writes <runDir>/SHA256SUMS (aggregate.json plus all of private/, \"<hex>  <path with />\", sorted, LF); anything written under private/ or to aggregate.json must come before writeS",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "parentMention no CR3",
+      "wave": 4,
+      "deps": [
+        3
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/defects/manifest.json",
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs",
+        "tools/measure/make-scenario.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "CR3 in tools/measure/defects/manifest.json now has parentMention (the regex from the brief). mentionStats in tools/measure/run-batch.mjs finds the parent finding of a residue with new RegExp(m.parentMention ?? m.mention, 'is'); mention still drives mentionedAfterFix, and the guard, verifyStats and recountWithoutMention are unchanged. The comment is updated. Two new tests: B4 in run-batch.test.mjs (residuoSemAchadoPai 0 with the C5 finding, 1 without) and B1 in make-scenario.test.mjs (parentMenti",
+      "sha": "512f22b1039433dc4e7895f72e7a6377ab84568d",
+      "replacedBy": null,
+      "note": "CR3 in tools/measure/defects/manifest.json now has parentMention (the regex from the brief). mentionStats in tools/measure/run-batch.mjs finds the parent finding of a residue with new RegExp(m.parentMention ?? m.mention, 'is'); mention still drives mentionedAfterFix, and the guard, verifyStats and recountWithoutMention are unchanged. The comment is updated. Two new tests: B4 in run-batch.test.mjs ",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Custo por tentativa (costUsd e cost.total)",
+      "wave": 5,
+      "deps": [
+        4
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T5 implemented in tools/measure/run-batch.mjs and tests in tools/measure/run-batch.test.mjs. Every valid attempt now gets attempt.costUsd = attemptCostUsd(attempt) right after it is built (the lens-branch assignment is removed). aggregate.cost.total is the sum of costUsd over the valid attempts, or null without one. counters.cost keeps its meaning; a comment marks it as the roles-only cost that baseline.mjs and checkpoint.mjs read, while the caps use costUsd. Downstream steps can read aggregate.",
+      "sha": "f45ee58ff2a240bbee6bfe8cc24d69c5298d7264",
+      "replacedBy": null,
+      "note": "T5 implemented in tools/measure/run-batch.mjs and tests in tools/measure/run-batch.test.mjs. Every valid attempt now gets attempt.costUsd = attemptCostUsd(attempt) right after it is built (the lens-branch assignment is removed). aggregate.cost.total is the sum of costUsd over the valid attempts, or null without one. counters.cost keeps its meaning; a comment marks it as the roles-only cost that ba",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    },
+    {
+      "n": 6,
+      "title": "Formatos novos do gate vazio",
+      "wave": 6,
+      "deps": [
+        5
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/run-batch.mjs",
+        "tools/measure/run-batch.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "coordinatorGateVazio in tools/measure/run-batch.mjs now strips ANSI from the baseline tail and recognises `ℹ tests 0` / `ℹ pass 0` and the one-line `N tests, N pass, N fail` form (vazio when tests or pass is 0). The origin of the one-line form is noted in the function comment (S2-15). Four new tests after the 1.7.0 gate test in run-batch.test.mjs cover the six brief cases (C4 ANSI case included). Red round failed on the new cases, green round passes: 223 tests, 0 fail. Nothing committed; no paid",
+      "sha": "c4ccd938dc1e98e6f21ec3354b8e72f33fe1d8da",
+      "replacedBy": null,
+      "note": "coordinatorGateVazio in tools/measure/run-batch.mjs now strips ANSI from the baseline tail and recognises `ℹ tests 0` / `ℹ pass 0` and the one-line `N tests, N pass, N fail` form (vazio when tests or pass is 0). The origin of the one-line form is noted in the function comment (S2-15). Four new tests after the 1.7.0 gate test in run-batch.test.mjs cover the six brief cases (C4 ANSI case included). ",
+      "outputs": null,
+      "brief": "briefs/T6.md",
+      "gated": true
+    },
+    {
+      "n": 7,
+      "title": "Remover a regra inerte do sandbox",
+      "wave": 5,
+      "deps": [
+        4
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "tools/measure/make-scenario.mjs",
+        "tools/measure/make-scenario.test.mjs",
+        "tools/measure/roteiro-e17.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "T7 done: Workflow(productivity-tools:roadmap-release) removed from SANDBOX_RELEASE_RULES in tools/measure/make-scenario.mjs, so the list is now Bash(node:*), Bash(git:*), Workflow, Workflow(productivity-tools:release-workflow), Bash(node *roadmap.mjs\" *). E5_PATHS and the legacy variants are unchanged. Downstream steps can rely on the 5-rule list; roteiro-e17 now requires length >= 5. Tests in make-scenario.test.mjs (two assertions, names kept) and roteiro-e17.test.mjs (>= 5) were updated first.",
+      "sha": "a980b22ccba4b18b48c65e5c48ae4a5ea5791ba8",
+      "replacedBy": null,
+      "note": "T7 done: Workflow(productivity-tools:roadmap-release) removed from SANDBOX_RELEASE_RULES in tools/measure/make-scenario.mjs, so the list is now Bash(node:*), Bash(git:*), Workflow, Workflow(productivity-tools:release-workflow), Bash(node *roadmap.mjs\" *). E5_PATHS and the legacy variants are unchanged. Downstream steps can rely on the 5-rule list; roteiro-e17 now requires length >= 5. Tests in mak",
+      "outputs": null,
+      "brief": "briefs/T7.md",
+      "gated": true
+    },
+    {
+      "n": 8,
+      "title": "Documentar as regras novas do arnês",
+      "wave": 7,
+      "deps": [
+        6,
+        7
+      ],
+      "tier": "haiku",
+      "effort": "low",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        ".claude/rules/measure.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Added one English bullet \"Model, transcripts & cost\" to .claude/rules/measure.md covering: run-batch.mjs requires --model and marks modelDivergence without invalidating the attempt; transcripts in private/transcripts/<k>/; SHA256SUMS at the output root (sha256sum -c run inside it); attempt.costUsd and cost.total are the cap cost, counters.cost covers only roles. Only this file is modified; AGENTS.md untouched. Nothing committed. Downstream steps need nothing from this step.",
+      "sha": "44d3c934798eb794308885e4d19facb8b0f641ec",
+      "replacedBy": null,
+      "note": "Added one English bullet \"Model, transcripts & cost\" to .claude/rules/measure.md covering: run-batch.mjs requires --model and marks modelDivergence without invalidating the attempt; transcripts in private/transcripts/<k>/; SHA256SUMS at the output root (sha256sum -c run inside it); attempt.costUsd and cost.total are the cap cost, counters.cost covers only roles. Only this file is modified; AGENTS.",
+      "outputs": null,
+      "brief": "briefs/T8.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T02:17:57.388Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-26T02:17:57.388Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T02:18:26.655Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T02:18:26.655Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T02:18:26.655Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T02:23:29.110Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T02:34:15.536Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T02:34:34.065Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T02:34:34.065Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T02:34:34.065Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T02:39:07.564Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T02:55:01.043Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T02:55:21.210Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T02:55:21.210Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-26T02:55:21.210Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-26T03:00:05.545Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-26T03:11:40.585Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T03:11:59.829Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T03:11:59.829Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-26T03:11:59.829Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-26T03:16:40.771Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-26T03:26:41.292Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-26T03:26:59.373Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-26T03:26:59.373Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-26T03:35:11.474Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T03:35:18.302Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T03:35:18.302Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5,
+        7
+      ],
+      "at": "2026-11-26T03:35:18.302Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-26T03:40:08.094Z"
+    },
+    {
+      "event": "report",
+      "step": 7,
+      "value": "pass",
+      "at": "2026-11-26T03:40:08.094Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-26T03:55:06.169Z"
+    },
+    {
+      "event": "commit",
+      "step": 7,
+      "at": "2026-11-26T03:55:24.961Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T03:55:44.383Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T03:55:44.383Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        6
+      ],
+      "at": "2026-11-26T03:55:44.383Z"
+    },
+    {
+      "event": "report",
+      "step": 6,
+      "value": "pass",
+      "at": "2026-11-26T04:05:48.218Z"
+    },
+    {
+      "event": "commit",
+      "step": 6,
+      "at": "2026-11-26T04:20:42.986Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T04:21:00.897Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T04:21:00.897Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        8
+      ],
+      "at": "2026-11-26T04:21:00.897Z"
+    },
+    {
+      "event": "report",
+      "step": 8,
+      "value": "pass",
+      "at": "2026-11-26T04:25:54.027Z"
+    },
+    {
+      "event": "commit",
+      "step": 8,
+      "at": "2026-11-26T04:26:14.351Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T04:26:32.069Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T04:26:32.069Z"
+    }
+  ]
+}
