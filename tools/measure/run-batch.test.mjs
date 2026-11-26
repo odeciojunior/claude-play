@@ -43,8 +43,10 @@ const gitIn = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=fab', '-c', 'use
 // Fake executor: claude -p copies fabricated transcripts (and optionally a journal fixture), the extractor
 // and git run for real. Options: journal (fixture name, or a function of the call number), afterRun(cwd, n)
 // (changes the sandbox like the run would), stopResume (the first claude -p waits for the abort and the
-// simulated git log answers with the stop commit on its second query), failOn (call number that fails).
-function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, noAgentsOn, extraOn1 } = {}) {
+// simulated git log answers with the stop commit on its second query), failOn (call number that fails),
+// failJson (the failOn call also prints the error JSON of the CLI, with its session_id),
+// modelOf(n) (model of the main transcript messages written by call n; undefined keeps the fabricated one).
+function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, failJson, noAgentsOn, extraOn1, modelOf } = {}) {
   const calls = [];
   const issued = [];
   let n = 0;
@@ -53,7 +55,20 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
     issued.push(id);
     const proj = join(configDir, 'projects', 'fab-sandbox');
     mkdirSync(proj, { recursive: true });
-    writeFileSync(join(proj, `${id}.jsonl`), readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id));
+    let main = readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id);
+    const model = modelOf?.(n);
+    if (model) {
+      main = main
+        .split('\n')
+        .map((line) => {
+          if (!line.trim()) return line;
+          const o = JSON.parse(line);
+          if (o.message?.model) o.message.model = model;
+          return JSON.stringify(o);
+        })
+        .join('\n');
+    }
+    writeFileSync(join(proj, `${id}.jsonl`), main);
     const wf = join(proj, id, 'subagents', 'workflows', 'wf_fab');
     mkdirSync(wf, { recursive: true });
     for (const a of noAgentsOn === n ? [] : ['afab101', 'afab102']) {
@@ -88,7 +103,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
         return { code: 1, stdout: '' };
       }
       if (afterRun) afterRun(opts.cwd, n);
-      if (failOn === n) return { code: 1, stdout: '' };
+      if (failOn === n) return { code: 1, stdout: failJson ? JSON.stringify({ session_id: id, is_error: true, total_cost_usd: 0.01 }) : '' };
       const denials = denyOn === n ? [{ tool_name: 'Workflow' }] : [];
       return { code: 0, stdout: JSON.stringify({ session_id: id, is_error: false, total_cost_usd: 0.01, permission_denials: denials }) };
     }
@@ -99,7 +114,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
 }
 
 const baseOpts = (s, extra = {}) => ({
-  variant: 'completo', runs: 3, work: s.work, out: s.out, configDir: s.configDir, permissionMode: 'acceptEdits', ...extra,
+  variant: 'completo', runs: 3, work: s.work, out: s.out, configDir: s.configDir, permissionMode: 'acceptEdits', model: 'opus', ...extra,
 });
 
 test('launches n attempts, calls the extractor once per attempt and writes an aggregate', async () => {
@@ -207,10 +222,11 @@ test('requires the mandatory options', () => {
     assert.match(r.stderr, /usage:/);
     const inRepo = spawnSync(
       process.execPath,
-      [script, '--variant', 'completo', '--runs', '1', '--work', join(here, 'work-x'), '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'],
+      [script, '--variant', 'completo', '--runs', '1', '--work', join(here, 'work-x'), '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'],
       { encoding: 'utf8' },
     );
     assert.equal(inRepo.status, 2);
+    assert.match(inRepo.stderr, /inside the repository/);
     assert.ok(!existsSync(join(here, 'work-x')));
   } finally {
     s.done();
@@ -662,7 +678,7 @@ test('harness outcomes come from the sentinels', async () => {
 test('stage and variant must match', async () => {
   const s = setup();
   try {
-    const common = ['--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const common = ['--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'];
     const r = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'spec-review', ...common], { encoding: 'utf8' });
     assert.equal(r.status, 2);
     assert.match(r.stderr, /spec-review/);
@@ -717,7 +733,7 @@ test('harness refuses a current arm template without the source line', async () 
     assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
     const cli = spawnSync(
       process.execPath,
-      [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--arms-dir', armsDir, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'],
+      [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--arms-dir', armsDir, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'],
       { encoding: 'utf8' },
     );
     assert.equal(cli.status, 2);
@@ -894,7 +910,7 @@ test('--from-run on an unseeded variant is a usage error', async () => {
     assert.equal(existsSync(s.work), false);
     assert.equal(existsSync(s.out), false);
     const r = spawnSync(process.execPath, [script, '--variant', 'completo', '--runs', '1', '--work', s.work, '--out', s.out,
-      '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--from-run', folder], { encoding: 'utf8' });
+      '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus', '--from-run', folder], { encoding: 'utf8' });
     assert.equal(r.status, 2);
   } finally {
     s.done();
@@ -1433,7 +1449,7 @@ test('task-review requires a valid --review-model (library and CLI)', async () =
     await assert.rejects(runBatch(taskOpts(s, { reviewModel: undefined }), { exec: fake.exec }), UsageError);
     await assert.rejects(runBatch(taskOpts(s, { reviewModel: 'gpt' }), { exec: fake.exec }), /--review-model/);
     assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
-    const common = ['--variant', 'codigo-semeado-A', '--stage', 'task-review', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const common = ['--variant', 'codigo-semeado-A', '--stage', 'task-review', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'];
     const missing = spawnSync(process.execPath, [script, ...common], { encoding: 'utf8' });
     assert.equal(missing.status, 2);
     assert.match(missing.stderr, /--review-model/);
@@ -1665,7 +1681,7 @@ test('A2: a stale arm against the --plugin-dir workflow is refused before any cl
     const fake = makeFake(s.configDir);
     await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: stale }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /plan-review/.test(e.message));
     assert.equal(claudeCalls(fake).length, 0);
-    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2);
   } finally {
     s.done();
@@ -1799,7 +1815,7 @@ test('A1: --rounds refusals exit 2 before any claude call', async () => {
       ['completo', ['--rounds', 'loop']],
     ];
     for (const [variant, extra] of cases) {
-      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
       assert.equal(cli.status, 2, `${variant} ${extra.join(' ')}: ${cli.stderr}`);
     }
     for (const [pluginDir, opt] of [[noLoop, {}], [noMax, {}], [drift, {}], [good, { stage: 'task-review', reviewModel: 'sonnet', variant: 'codigo-semeado-A' }]]) {
@@ -2140,6 +2156,55 @@ test('A5: without total_cost_usd in the CLI JSON the session cost is null', asyn
   }
 });
 
+// T5 (#23): every claude -p reports a different total_cost_usd, far above the transcript cost, so the CLI cost wins per attempt.
+const cliCostPerCall = (fake, costOf) => {
+  let k = 0;
+  return async (cmd, args, o) => {
+    const r = await fake.exec(cmd, args, o);
+    if (cmd !== 'claude' || args[0] !== '-p') return r;
+    k += 1;
+    if (!r.stdout) return r;
+    return { ...r, stdout: JSON.stringify({ ...JSON.parse(r.stdout), total_cost_usd: costOf(k) }) };
+  };
+};
+
+test('T5: attempt.costUsd is the CLI cost of each valid attempt and aggregate.cost.total sums them', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 2 }), { exec: cliCostPerCall(fake, (k) => 100 * k), now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.costUsd), [100, 200]);
+    assert.equal(r.aggregate.cost.total, 300);
+  } finally {
+    s.done();
+  }
+});
+
+test('T5: a batch without a valid attempt has aggregate.cost.total null', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { failOn: 1 });
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec: cliCostPerCall(fake, () => 100), now: NOW });
+    assert.equal(r.aggregate.valid, 0);
+    assert.equal(r.aggregate.cost.total, null);
+  } finally {
+    s.done();
+  }
+});
+
+test('T5: an invalid attempt in the middle of the batch does not enter cost.total', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { failOn: 2 });
+    const r = await runBatch(baseOpts(s, { runs: 3 }), { exec: cliCostPerCall(fake, (k) => 100 * k), now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['valid', 'invalid', 'valid']);
+    assert.equal(r.aggregate.attempts[1].costUsd, undefined);
+    assert.equal(r.aggregate.cost.total, 400);
+  } finally {
+    s.done();
+  }
+});
+
 // ---- E26 A4: questions arm (T7) ----
 
 const Q = [{ q: '[fab] which file holds the cache?', whyItChangesThePlan: '[fab] adds a task' }];
@@ -2435,7 +2500,7 @@ test('B2: --stage task-review --rounds loop accepts only correcao-semeada-A/B wi
       assert.equal(claudeCalls(fake).length, 0);
     }
     // the same refusals through the CLI end in exit code 2 before any claude call
-    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'task-review', '--review-model', 'sonnet', '--rounds', 'single', '--plugin-dir', good, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'task-review', '--review-model', 'sonnet', '--rounds', 'single', '--plugin-dir', good, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     // restrita outside task-review and adversarial outside final-review are refused too
     for (const [variant, stage, arm] of [['spec-nativo-A', 'spec-review', 'restrita'], ['plano-semeado-A', 'plan-review', 'adversarial']]) {
@@ -2526,7 +2591,7 @@ test('B2: the A1 refusal of task-review loop is narrowed, not removed', async ()
   try {
     const good = taskLoopPlugin(s.base, readFileSync(WORKFLOW, 'utf8'));
     // legacy seeded code in a loop is still refused (exit 2 through the CLI)
-    const cli = spawnSync(process.execPath, [script, '--variant', 'codigo-semeado-A', '--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'codigo-semeado-A', '--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     // and its single round is the frozen script: no loop constants
     const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
@@ -2805,6 +2870,18 @@ test('B4: capturado requires fix2', async () => {
   }
 });
 
+test('B4: a residue of CR3 finds its parent by parentMention, not by its mention', () => {
+  const ids = ['CR3', 'CG2'];
+  const entries = (...e) => e.map(([l, r]) => entry(l, r));
+  // review 1 reports the C5 defect (truncate swallows the RangeError): the parent of CR3 is found, no residuoSemAchadoPai
+  const C5_TEXT = FOUND('F1', 'truncate swallows the RangeError and returns an empty string when max is 0', 'src/truncate.mjs');
+  const withParent = mentionStats(entries(['E5:task-review1', trv([C5_TEXT])], ['E5:task-review2', trv([])]), 'E5:task-review', ids);
+  assert.equal(withParent.residuoSemAchadoPai, 0);
+  // without that finding in review 1 the residue counts
+  const noParent = mentionStats(entries(['E5:task-review1', trv([F_OTHER])], ['E5:task-review2', trv([])]), 'E5:task-review', ids);
+  assert.equal(noParent.residuoSemAchadoPai, 1);
+});
+
 test('B4: mentionedAfterFix, capturadoSemMencao, perdidoDoCorretor, residuoSemAchadoPai counted on fixture journals', async () => {
   const entries = (...e) => e.map(([l, r]) => entry(l, r));
   const ids = ['CR1', 'CG1'];
@@ -2952,7 +3029,7 @@ test("B3: STAGES['final-review'] accepts correcao-semeada-A/B only, loop only, a
       await assert.rejects(runBatch(seededOpts(s, variant, { stage: 'final-review', pluginDir: REAL_PLUGIN, ...extra }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && re.test(e.message), `${variant} ${JSON.stringify(extra)}`);
       assert.equal(claudeCalls(fake).length, 0);
     }
-    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'final-review', '--rounds', 'single', '--plugin-dir', REAL_PLUGIN, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'final-review', '--rounds', 'single', '--plugin-dir', REAL_PLUGIN, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     for (const variant of ['correcao-semeada-A', 'correcao-semeada-B']) {
       for (const arm of ['atual', 'adversarial']) {
@@ -3398,7 +3475,262 @@ test('gate: verifyStats counts refutedRound1', () => {
 });
 
 // ---- E11 preparo: --ratify between|off, parou-por-decisao, --coordinator-fixture
-const CLI_BASE = ['--variant', 'completo', '--runs', '1', '--work', 'w', '--out', 'o', '--config-dir', 'c', '--permission-mode', 'acceptEdits'];
+const CLI_BASE = ['--variant', 'completo', '--runs', '1', '--work', 'w', '--out', 'o', '--config-dir', 'c', '--permission-mode', 'acceptEdits', '--model', 'opus'];
+
+// ---- E51 T1 (#21): --model is mandatory ----
+test('E51 parseCli refuses a missing or empty --model with UsageError', () => {
+  const at = CLI_BASE.indexOf('--model');
+  const without = [...CLI_BASE.slice(0, at), ...CLI_BASE.slice(at + 2)];
+  const refusal = (e) => e instanceof UsageError && /--model is required/.test(e.message);
+  assert.throws(() => parseCli(without), refusal);
+  assert.throws(() => parseCli([...without, '--model', '']), refusal);
+  // the guard comes before the --ratify checks, after the older mandatory ones (those still give the usage text)
+  assert.throws(() => parseCli([...without, '--ratify', 'x']), refusal);
+  assert.equal(parseCli(['--variant', 'completo']), null);
+  // any non-empty string passes as it is: there is no fixed list
+  assert.equal(parseCli([...without, '--model', 'claude-sonnet-x']).model, 'claude-sonnet-x');
+});
+
+test('E51 runBatch refuses a missing or empty --model before any claude call or folder', async () => {
+  const s = setup();
+  try {
+    for (const model of [undefined, '']) {
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(baseOpts(s, { model }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /--model is required/.test(e.message), `model ${JSON.stringify(model)}`);
+      assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+      assert.equal(existsSync(s.out), false);
+      assert.equal(existsSync(s.work), false);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+// ---- E51 T2 (#21): sessionModels and modelDivergence ----
+const OPUS = 'claude-opus-4-1';
+const SONNET = 'claude-sonnet-4-5';
+const DIVERGENCE = /model divergence/;
+
+// One batch (parada-retomada with one attempt unless extra says otherwise), with stderr captured.
+async function modelRun({ extra = {}, fake: fakeOptions = {}, ratify = okRatify } = {}) {
+  const s = setup();
+  const stderr = captureStderr();
+  try {
+    const fake = makeFake(s.configDir, typeof fakeOptions === 'function' ? fakeOptions(s) : fakeOptions);
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1, ...extra }), { exec: fake.exec, now: NOW, ratify });
+    const file = join(r.dir, 'private', 'attempts.json'); // not written when every attempt was denied
+    const priv = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).attempts : [];
+    return { r, a: r.aggregate.attempts[0], priv, stderr: stderr.text() };
+  } finally {
+    stderr.restore();
+    s.done();
+  }
+}
+
+test('E51 AC1: a stop on opus and a resume on sonnet mark modelDivergence and warn, without invalidating the attempt', async () => {
+  const { r, a, priv, stderr } = await modelRun({ fake: { stopResume: true, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: 'sonnet' });
+  assert.equal(a.modelDivergence, true);
+  assert.equal(a.status, 'valid');
+  assert.deepEqual(priv[0].sessionModels, { parada: 'opus', retomada: 'sonnet' });
+  assert.equal(priv[0].modelDivergence, true);
+  assert.equal(r.aggregate.requestedModel, 'opus');
+  assert.deepEqual(r.aggregate.modelDivergence, [1]);
+  assert.match(stderr, /run-batch: warning: attempt 1 model divergence: requested opus, parada opus, retomada sonnet\r?\n/);
+});
+
+test('E51 both phases on the requested family do not diverge and do not warn', async () => {
+  const { r, a, stderr } = await modelRun({ fake: { stopResume: true, modelOf: () => OPUS } });
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: 'opus' });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 a request of family other diverges only when the phases differ among themselves', async () => {
+  const extra = { model: 'custom-model-x' };
+  const same = await modelRun({ extra, fake: { stopResume: true, modelOf: () => OPUS } });
+  assert.deepEqual(same.a.sessionModels, { parada: 'opus', retomada: 'opus' });
+  assert.equal(same.a.modelDivergence, false);
+  assert.equal(same.r.aggregate.requestedModel, 'custom-model-x');
+  assert.deepEqual(same.r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(same.stderr, DIVERGENCE);
+  const differ = await modelRun({ extra, fake: { stopResume: true, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.equal(differ.a.modelDivergence, true);
+  assert.deepEqual(differ.r.aggregate.modelDivergence, [1]);
+  assert.match(differ.stderr, /requested custom-model-x, parada opus, retomada sonnet/);
+});
+
+test('E51 a one-phase variant records sessao and the aggregate lists only the divergent attempts', async () => {
+  const { r, priv, stderr } = await modelRun({ extra: { variant: 'completo', runs: 3 }, fake: { modelOf: (n) => (n === 2 ? SONNET : undefined) } });
+  assert.deepEqual(r.aggregate.attempts.map((a) => a.sessionModels), [{ sessao: 'opus' }, { sessao: 'sonnet' }, { sessao: 'opus' }]);
+  assert.deepEqual(r.aggregate.attempts.map((a) => a.modelDivergence), [false, true, false]);
+  assert.deepEqual(priv.map((a) => a.sessionModels), r.aggregate.attempts.map((a) => a.sessionModels));
+  assert.deepEqual(r.aggregate.modelDivergence, [2]);
+  assert.match(stderr, /run-batch: warning: attempt 2 model divergence: requested opus, sessao sonnet\r?\n/);
+  assert.doesNotMatch(stderr, /attempt [13] model divergence/);
+});
+
+test('E51 the family of a phase counts main messages once per id, without sidechains, ties in FAMILIES order', async () => {
+  const line = (id, model, more = {}) => JSON.stringify({ type: 'assistant', ...more, message: { id, role: 'assistant', model, content: [], usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n';
+  const run = async (...lines) => {
+    const { a } = await modelRun({
+      extra: { variant: 'completo' },
+      fake: (s) => ({ afterRun: () => appendFileSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(1)}.jsonl`), lines.join('')) }),
+    });
+    return a.sessionModels.sessao;
+  };
+  // the fabricated transcript has one opus message
+  assert.equal(await run(line('m_side1', SONNET, { isSidechain: true }), line('m_side2', SONNET, { isSidechain: true })), 'opus');
+  assert.equal(await run(line('m_a', SONNET)), 'sonnet'); // 1 x 1: sonnet comes before opus in FAMILIES
+  assert.equal(await run(line('msg_fab_m2', OPUS), line('m_b', OPUS), line('m_c', SONNET), line('m_c', SONNET), line('m_c', SONNET)), 'opus');
+});
+
+test('E51 C2: a ratification that fails after the stop leaves retomada null, even with two sessions in the first phase', async () => {
+  const { r, a, priv, stderr } = await modelRun({
+    fake: { stopResume: true, extraOn1: true },
+    ratify: () => ({ ok: false, reason: 'decisao-pendente-apos-ratificar' }),
+  });
+  assert.equal(priv[0].sessions.length, 2);
+  assert.equal(a.reason, 'decisao-pendente-apos-ratificar');
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: null });
+  assert.deepEqual(priv[0].sessionModels, { parada: 'opus', retomada: null });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 C2: a resume without session_id leaves retomada null and does not count for the divergence', async () => {
+  const { r, a, stderr } = await modelRun({ fake: { stopResume: true, failOn: 2, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.equal(a.reason, 'retomada-incompleta');
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: null });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 a denied attempt records neither sessionModels nor modelDivergence', async () => {
+  const { r, a, stderr } = await modelRun({ extra: { variant: 'completo' }, fake: { denyOn: 1, modelOf: () => SONNET } });
+  assert.deepEqual(a, { n: 1, status: 'denied' });
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+// ---- E51 T3 (#22): transcripts in private/ and SHA256SUMS ----
+const BATCH_DIR = 'completo-20261110-120000'; // folder of a "completo" batch started at NOW
+
+// Every file under base/rel, as paths relative to base with "/".
+const filesUnder = (base, rel) =>
+  readdirSync(join(base, rel), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(base, `${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+
+// SHA256SUMS in the sha256sum format, listing exactly aggregate.json and every file under private/, each hash recomputed here.
+function assertSums(dir) {
+  const text = readFileSync(join(dir, 'SHA256SUMS'), 'utf8');
+  assert.ok(!text.includes('\r'), 'CR in SHA256SUMS');
+  assert.ok(text.endsWith('\n'), 'SHA256SUMS does not end with LF');
+  const lines = text.slice(0, -1).split('\n');
+  for (const line of lines) assert.match(line, /^[0-9a-f]{64}  [^\\]+$/);
+  const listed = lines.map((l) => l.slice(66));
+  assert.deepEqual(listed, [...listed].sort());
+  assert.ok(!listed.includes('SHA256SUMS'));
+  assert.deepEqual(listed, ['aggregate.json', ...filesUnder(dir, 'private')].sort());
+  for (const line of lines) assert.equal(line.slice(0, 64), createHash('sha256').update(readFileSync(join(dir, line.slice(66)))).digest('hex'), line.slice(66));
+  return listed;
+}
+
+// The <sid>.jsonl and the <sid>/ folder of one session, copied byte for byte to private/transcripts/<k>/.
+function assertTranscript(s, dir, k, id) {
+  const from = join(s.configDir, 'projects', 'fab-sandbox');
+  const to = join(dir, 'private', 'transcripts', String(k));
+  assert.deepEqual(readFileSync(join(to, `${id}.jsonl`)), readFileSync(join(from, `${id}.jsonl`)));
+  const copied = filesUnder(to, id).sort();
+  assert.deepEqual(copied, filesUnder(from, id).sort());
+  assert.ok(copied.includes(`${id}/subagents/workflows/wf_fab/agent-afab101.jsonl`), copied.join(', '));
+  for (const f of copied) assert.deepEqual(readFileSync(join(to, f)), readFileSync(join(from, f)), f);
+}
+
+// One batch (one attempt unless extra says otherwise) with stderr captured; check runs before the folders are removed.
+async function transcriptRun({ extra = {}, fake: fakeOptions = {}, ratify = okRatify }, check) {
+  const s = setup();
+  const stderr = captureStderr();
+  try {
+    const fake = makeFake(s.configDir, typeof fakeOptions === 'function' ? fakeOptions(s) : fakeOptions);
+    const r = await runBatch(baseOpts(s, { runs: 1, ...extra }), { exec: fake.exec, now: NOW, ratify });
+    stderr.restore();
+    check({ s, r, stderr: stderr.text() });
+  } finally {
+    stderr.restore();
+    s.done();
+  }
+}
+
+test('E51 AC2: the transcripts of a valid and of an invalid attempt go to private/ and SHA256SUMS matches', async () => {
+  await transcriptRun({ extra: { runs: 2 }, fake: { failOn: 2, failJson: true } }, ({ s, r, stderr }) => {
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['valid', 'invalid']);
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 2, sid(2));
+    assert.deepEqual(readdirSync(join(r.dir, 'private', 'transcripts', '1')).sort(), [sid(1), `${sid(1)}.jsonl`]);
+    assert.deepEqual(readdirSync(join(r.dir, 'private', 'transcripts', '2')).sort(), [sid(2), `${sid(2)}.jsonl`]);
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes(`private/transcripts/2/${sid(2)}.jsonl`), listed.join(', '));
+    assert.doesNotMatch(stderr, /not copied|SHA256SUMS not written/);
+  });
+});
+
+test('E51 C5: a batch without a valid attempt copies the denied and the failed transcripts and writes SHA256SUMS', async () => {
+  await transcriptRun({ extra: { runs: 2 }, fake: { failOn: 1, failJson: true, denyOn: 2 } }, ({ s, r }) => {
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['invalid', 'denied']);
+    assert.equal(r.aggregate.valid, 0);
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 2, sid(2));
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes('aggregate.json') && listed.includes('private/attempts.json'), listed.join(', '));
+    assert.ok(listed.includes(`private/transcripts/2/${sid(2)}.jsonl`), listed.join(', '));
+  });
+});
+
+test('E51 C2: an attempt that fails before the resume has the transcripts of the stop copied', async () => {
+  const options = { extra: { variant: 'parada-retomada', pollMs: 1 }, fake: { stopResume: true, extraOn1: true }, ratify: () => ({ ok: false, reason: 'decisao-pendente-apos-ratificar' }) };
+  await transcriptRun(options, ({ s, r }) => {
+    assert.equal(r.aggregate.attempts[0].reason, 'decisao-pendente-apos-ratificar');
+    assertTranscript(s, r.dir, 1, sid(1));
+    assertTranscript(s, r.dir, 1, '00000000-0000-4000-8000-000000000999');
+    assertSums(r.dir);
+  });
+});
+
+test('E51 C3: a session without its .jsonl warns, keeps the status and SHA256SUMS covers what exists', async () => {
+  const fake = (s) => ({ afterRun: () => rmSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(1)}.jsonl`)) });
+  await transcriptRun({ fake }, ({ r, stderr }) => {
+    const [a] = r.aggregate.attempts;
+    // the status the batch already gives: the extractor finds no session, so no agent ran
+    assert.deepEqual([a.status, a.reason], ['invalid', 'sem-agentes']);
+    assert.deepEqual(a.sessionModels, { sessao: null });
+    assert.equal(a.modelDivergence, false);
+    assert.match(stderr, new RegExp(`run-batch: warning: transcript ${sid(1)} of attempt 1 not copied: \\S`));
+    assert.equal(existsSync(join(r.dir, 'private', 'transcripts', '1', `${sid(1)}.jsonl`)), false);
+    const listed = assertSums(r.dir);
+    assert.ok(listed.includes(`private/transcripts/1/${sid(1)}/subagents/workflows/wf_fab/agent-afab101.jsonl`), listed.join(', '));
+  });
+});
+
+test('E51 a failed transcript copy and a failed SHA256SUMS only warn', async () => {
+  // a file where the transcripts folder goes and a folder where SHA256SUMS goes
+  const fake = (s) => ({
+    afterRun: () => {
+      writeFileSync(join(s.out, BATCH_DIR, 'private', 'transcripts'), 'not a folder\n');
+      mkdirSync(join(s.out, BATCH_DIR, 'SHA256SUMS'));
+    },
+  });
+  await transcriptRun({ fake }, ({ r, stderr }) => {
+    assert.equal(r.aggregate.attempts[0].status, 'valid');
+    assert.equal(r.exitCode, 0);
+    assert.match(stderr, new RegExp(`run-batch: warning: transcript ${sid(1)} of attempt 1 not copied: \\S`));
+    assert.match(stderr, /run-batch: warning: SHA256SUMS not written: \S/);
+    assert.ok(existsSync(join(r.dir, 'aggregate.json')));
+  });
+});
+
 
 test('E11 parseCli accepts --ratify between|off, default between', () => {
   assert.equal(parseCli(CLI_BASE).ratify, 'between');
@@ -3583,6 +3915,50 @@ test('coordinatorGateVazio: 1.7.0 baseline with 0 passed or any failed is gate-v
       writeFileSync(join(dir, 'docs/plans/fixed-plan/progress-plan.md'), `## Recovery State\n**Test:** node --test\n**Baseline:** ${line}\n`);
       assert.equal(coordinatorGateVazio(dir).vazio, want, line);
     }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// E51 T6 (REQ-019, C4): more output shapes of an empty baseline. Each case is a 2.0.0 progress.json with exit 0 and the given tail.
+test('coordinatorGateVazio: reporter spec with ANSI colour codes and `ℹ tests 0` is gate-vazio (C4)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const tail = '\x1b[34mℹ\x1b[39m tests \x1b[33m0\x1b[39m\n\x1b[34mℹ\x1b[39m pass \x1b[33m0\x1b[39m\n';
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: reporter spec without ANSI and `ℹ pass 0` is gate-vazio', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail: 'ℹ tests 2\nℹ pass 0\nℹ fail 2' } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: one-line summary with 0 tests or 0 pass is gate-vazio; with passing tests it is not', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const put = (tail) => writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    put('0 tests, 0 pass, 0 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+    put('3 tests, 0 pass, 3 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, true);
+    put('3 tests, 3 pass, 0 fail');
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('coordinatorGateVazio: reporter spec with passing tests (`ℹ tests 3`, `ℹ pass 3`) is not gate-vazio', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-'));
+  try {
+    mkdirSync(join(dir, 'docs/plans/fixed-plan'), { recursive: true });
+    const tail = '\x1b[34mℹ\x1b[39m tests 3\n\x1b[34mℹ\x1b[39m pass 3\n\x1b[34mℹ\x1b[39m fail 0\n';
+    writeFileSync(join(dir, 'docs/plans/fixed-plan/progress.json'), JSON.stringify({ run: { baseline: { test: 'node --test', exit: 0, tail } } }));
+    assert.equal(coordinatorGateVazio(dir).vazio, false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

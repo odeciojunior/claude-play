@@ -16,6 +16,8 @@ const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
 const IDS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'];
 // sha256 (LF text) of the manifest as it was before the native C entries were appended.
 const LEGACY_SHA256 = '9846541275be7a2d0b7bfdeceebfaaac55de8ed068441225af01844e26e25bf5';
+// DEC-753 (E51 AC3): the only line added to the legacy text since the hash was pinned; the hash is taken without it.
+const CR3_PARENT_MENTION_LINE = '    "parentMention": "truncate.*(swallow|RangeError|empty string|max(imum)? (is |of |= ?)?0|zero)|(swallow|RangeError|empty string).*truncate",\n';
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const entryOf = (id) => manifest.find((e) => e.id === id && e.set === 'e5-native');
@@ -132,7 +134,13 @@ test('legacy manifest entries stay byte for byte and the native ones come last',
   assert.ok(!manifest.some((e) => e.id === 'C1' && e.set === 'e5-native'), 'C1 must not exist in e5-native');
   assert.equal(manifest.find((e) => e.id === 'C9').replaces, 'C1');
   const legacy = raw.slice(0, at).replace(/,\s*$/, '');
-  assert.equal(createHash('sha256').update(legacy).digest('hex'), LEGACY_SHA256);
+  // The parentMention line (DEC-753) must sit once, inside the CR3 entry, and is the only allowed change to the legacy text.
+  const cr3 = legacy.indexOf('"id": "CR3"');
+  const cr3End = legacy.indexOf('\n  }', cr3);
+  const line = legacy.indexOf(CR3_PARENT_MENTION_LINE);
+  assert.equal(legacy.split(CR3_PARENT_MENTION_LINE).length - 1, 1, 'CR3 parentMention line must appear exactly once');
+  assert.ok(cr3 > 0 && line > cr3 && line < cr3End, 'parentMention line must be inside the CR3 entry');
+  assert.equal(createHash('sha256').update(legacy.replace(CR3_PARENT_MENTION_LINE, '')).digest('hex'), LEGACY_SHA256);
   // E27 C1 appends the e5-lentes entries after the native ones; the native C entries are the last of the rest.
   assert.ok(manifest.filter((e) => e.set !== 'e5-lentes').slice(-IDS.length).every((e) => e.set === 'e5-native' && e.class === 'code'));
 });

@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 // Batch launcher: runs one measurement variant n times in disposable sandboxes and writes an aggregate.
 // Usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir>
-//          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
+//          --permission-mode <modo> --model <m> [--allow <regra>]... [--add-dir <dir>]... [--max-budget-usd <x>]
 //          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>] [--review-model haiku|sonnet|opus (required with task-review)]]
 //          [--rounds loop|single] (loop: the product review loop, spec-review/plan-review with --arm atual; default single)
 //          [--plugin-dir <dir>] (passed to every claude -p; the aggregate records that folder's version and commit)
 // With --stage the batch runs only that review stage on a seeded artifact (review-only.js harness).
 // Exit codes: 0 all attempts ran, 1 a denied or failed attempt, 2 usage error.
 // aggregate.json never holds session ids, personal paths or agent descriptions; those stay in private/.
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+// The transcripts of every attempt with sessions go to private/transcripts/<n>/; SHA256SUMS covers aggregate.json and private/.
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, mkdtempSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { makeScenario, artifactOf, manifestEntries, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
-import { piece3Of } from './session-metrics.mjs';
+import { piece3Of, readJsonl, family, dedupeMessages } from './session-metrics.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 import { parseCimProcs, parsePs } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs';
@@ -680,7 +681,7 @@ export function batchStopReason(attempts, { lenses = false } = {}) {
 // B4: per seeded entry of the correction, whether the reviewer mentioned it after the fix (reviews of round 2 on; in the restricted
 // mode also an open verdict on the id of the parent finding), and the residues whose parent finding review 1 never made.
 // `entries` is the journal of the attempt; `fixIds` the manifest ids seeded in fixSha. The parent finding of a residue is the
-// finding of review 1 that its own `mention` matches.
+// finding of review 1 that its `parentMention` matches (its `mention` when the entry has no parentMention).
 export function mentionStats(entries, label, fixIds) {
   const manifest = JSON.parse(readFileSync(join(here, 'defects', 'manifest.json'), 'utf8'));
   const textOf = (i) => [i?.file, i?.description].filter((x) => typeof x === 'string' && x).join(' ');
@@ -699,7 +700,8 @@ export function mentionStats(entries, label, fixIds) {
       continue;
     }
     const rx = new RegExp(m.mention, 'is');
-    const parents = m.residueOf ? (Array.isArray(first?.issues) ? first.issues : []).filter((i) => rx.test(textOf(i))) : [];
+    const parentRx = new RegExp(m.parentMention ?? m.mention, 'is');
+    const parents = m.residueOf ? (Array.isArray(first?.issues) ? first.issues : []).filter((i) => parentRx.test(textOf(i))) : [];
     if (m.residueOf && parents.length === 0) residuoSemAchadoPai += 1;
     const parentIds = new Set(parents.map((i) => i.id).filter((x) => typeof x === 'string'));
     mentionedAfterFix[m.id] = reviews.some(
@@ -741,6 +743,71 @@ function sessionIds(configDir) {
     for (const n of readdirSync(join(root, slug.name))) if (n.endsWith('.jsonl')) ids.add(n.slice(0, -6));
   }
   return ids;
+}
+
+// #21: the model family a set of sessions really ran on, from their main transcripts (sidechain lines out, one message per
+// id): the family with most messages, ties in the order of FAMILIES; null without a transcript or without a message.
+function sessionFamily(configDir, sessions) {
+  const root = join(configDir, 'projects');
+  if (!existsSync(root)) return null;
+  const lines = [];
+  for (const slug of readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+    for (const sid of sessions) {
+      const file = join(root, slug.name, `${sid}.jsonl`);
+      if (existsSync(file)) lines.push(...readJsonl(file).filter((o) => !o?.isSidechain));
+    }
+  }
+  const count = Object.fromEntries(FAMILIES.map((f) => [f, 0]));
+  for (const m of dedupeMessages(lines)) count[family(m.message.model)] += 1;
+  const top = FAMILIES.reduce((best, f) => (count[f] > count[best] ? f : best));
+  return count[top] > 0 ? top : null;
+}
+
+// #22: <sid>.jsonl and the <sid>/ folder of each session of attempt k go to destDir, so the run can be audited after the
+// config dir is gone. A session without its .jsonl, or a failed copy, only warns: the status of the attempt stays.
+function copyTranscripts(configDir, sessions, destDir, k) {
+  const root = join(configDir, 'projects');
+  for (const sid of sessions) {
+    const warn = (reason) => console.error(`run-batch: warning: transcript ${sid} of attempt ${k} not copied: ${reason}`);
+    try {
+      const slugs = existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()) : [];
+      let found = false;
+      for (const slug of slugs) {
+        const file = join(root, slug.name, `${sid}.jsonl`);
+        const folder = join(root, slug.name, sid);
+        if (existsSync(file)) {
+          cpSync(file, join(destDir, `${sid}.jsonl`), { recursive: true });
+          found = true;
+        }
+        if (existsSync(folder)) cpSync(folder, join(destDir, sid), { recursive: true });
+      }
+      if (!found) warn(`no ${sid}.jsonl in the config dir`);
+    } catch (e) {
+      warn(e.message);
+    }
+  }
+}
+
+// #22: SHA256SUMS of aggregate.json and every file under private/, in the sha256sum format, paths relative to dir with "/".
+function writeSums(dir) {
+  const paths = ['aggregate.json'];
+  const walk = (rel) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else paths.push(`${rel}/${e.name}`);
+    }
+  };
+  walk('private');
+  const lines = paths.sort().map((p) => `${createHash('sha256').update(readFileSync(join(dir, p))).digest('hex')}  ${p}\n`);
+  writeFileSync(join(dir, 'SHA256SUMS'), lines.join(''));
+}
+
+// A phase without a family (null) never counts. A requested model of no known family cannot be compared with the phases,
+// so then the phases are compared among themselves.
+function divergesFrom(requested, sessionModels) {
+  const ran = Object.values(sessionModels).filter((f) => f !== null);
+  const wanted = family(requested);
+  return wanted === 'other' ? new Set(ran).size > 1 : ran.some((f) => f !== wanted);
 }
 
 function parseClaudeJson(stdout) {
@@ -1585,6 +1652,9 @@ export function releaseRunValidity(variant, run) {
 //  - 1.7.0: docs/plans/fixed-plan/progress-*.md, Recovery State line "**Baseline:** N passed, F failed (...)". Same rule: N == 0 or F > 0.
 // Neither version records the final gate's own test output (2.0.0 keeps only finalGate.status), so the baseline is the one reliable
 // signal. Nothing recorded (no file, no baseline) is not judged here; sem-agentes and the other checks cover runs that stopped early.
+// The tail is read in three shapes: the TAP summary (`# tests N`), the spec reporter (`ℹ tests N`, with ANSI colour codes stripped
+// first, E51 C4) and a one-line summary (`N tests, N pass, N fail`). The one-line form has an origin not identified (cited only by
+// note S2-15 of the old harness); it is kept so the measured baselines of that harness are judged the same way.
 export function coordinatorGateVazio(dir) {
   const plan = join(dir, 'docs', 'plans', 'fixed-plan');
   const json = join(plan, 'progress.json');
@@ -1592,9 +1662,11 @@ export function coordinatorGateVazio(dir) {
     let b;
     try { b = JSON.parse(readFileSync(json, 'utf8'))?.run?.baseline; } catch { return { vazio: false, why: 'progress.json unreadable' }; }
     if (b && typeof b === 'object') {
-      const tail = String(b.tail ?? '');
+      const tail = String(b.tail ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
       if (b.exit !== 0) return { vazio: true, why: `baseline "${b.test}" exited ${b.exit}` };
-      if (/^# tests 0\b/m.test(tail) || /^# pass 0\b/m.test(tail)) return { vazio: true, why: `baseline "${b.test}" ran no passing test` };
+      if (/^(?:# |ℹ )tests 0\b/m.test(tail) || /^(?:# |ℹ )pass 0\b/m.test(tail)) return { vazio: true, why: `baseline "${b.test}" ran no passing test` };
+      const one = /^\s*(\d+) tests, (\d+) pass, (\d+) fail/m.exec(tail);
+      if (one && (Number(one[1]) === 0 || Number(one[2]) === 0)) return { vazio: true, why: `baseline "${b.test}" ran ${one[1]} tests, ${one[2]} pass` };
     }
   }
   const md = existsSync(plan) ? readdirSync(plan).find((f) => /^progress-.*\.md$/.test(f)) : undefined;
@@ -2337,7 +2409,13 @@ function blockingHumanInputs(scenario, ref) {
   }
 }
 
+// Without --model each claude -p takes the account default, which can change between the stop and the resume (#21).
+function requireModel(o) {
+  if (!o.model) throw new UsageError('--model is required: every attempt runs claude -p, and the batch must pin the model (#21)');
+}
+
 export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract, pending = pendingE5, scenarioFn = makeScenario, listProcs = exec === defaultExec ? defaultListProcs : () => [], sentinelIntervalMs = 2000 } = {}) {
+  requireModel(opts);
   const { variant, runs } = opts;
   const seeded = /semead[oa]|nativo/.test(variant);
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
@@ -2418,10 +2496,16 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
     let ratified = null;
     let resumeFrom = 1;
+    let resumeStarted = false;
     let pendingAtResume;
     let pendingAfterResume;
+    let sessionModels = null; // #21: family per phase, set after the prompts of an attempt that has sessions and was not denied
+    let modelDivergence = false;
     const ratifyOff = opts.ratify === 'off' && stop !== null && !h;
-    const extra = () => (ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume !== undefined ? { pendingAtResume } : {}), ...(pendingAfterResume !== undefined ? { pendingAfterResume } : {}) } : ratified ? { ratified } : {});
+    const extra = () => ({
+      ...(ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume !== undefined ? { pendingAtResume } : {}), ...(pendingAfterResume !== undefined ? { pendingAfterResume } : {}) } : ratified ? { ratified } : {}),
+      ...(sessionModels ? { sessionModels, modelDivergence } : {}),
+    });
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -2456,7 +2540,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
           }
           ratified = rat.ratified ?? [];
         }
-        resumeFrom = sessions.length; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
+        resumeFrom = sessions.length; resumeStarted = true; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
       }
       const args = promptArgs(scenario.prompts[i], launchOpts);
       const watch = stop !== null && i === 0;
@@ -2521,10 +2605,23 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
         break;
       }
     }
+    // before any exit of this attempt (denied, failed or invalid)
+    copyTranscripts(opts.configDir, sessions, join(priv, 'transcripts', String(k)), k);
     if (denied) {
       attempts.push({ n: k, status: 'denied' });
       if (opts.stopOnDenial) break;
       continue;
+    }
+    if (sessions.length > 0) {
+      const ranOn = (list) => sessionFamily(opts.configDir, list);
+      if (stop === null) sessionModels = { sessao: ranOn(sessions) };
+      else if (resumeStarted) sessionModels = { parada: ranOn(sessions.slice(0, resumeFrom)), retomada: ranOn(sessions.slice(resumeFrom)) };
+      else sessionModels = { parada: ranOn(sessions), retomada: null };
+      modelDivergence = divergesFrom(opts.model, sessionModels);
+      if (modelDivergence) {
+        const phases = Object.entries(sessionModels).filter(([, f]) => f !== null).map(([phase, f]) => `${phase} ${f}`);
+        console.error(`run-batch: warning: attempt ${k} model divergence: requested ${opts.model}, ${phases.join(', ')}`);
+      }
     }
     if (failed || sessions.length === 0) {
       attempts.push({ n: k, ...extra(), status: 'invalid', reason: failReason });
@@ -2651,6 +2748,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const cliCostUsd = sumCliCost(cliCosts);
     const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd), piece3: piece3Of(run) };
+    // T5 (#23): the cost of the attempt that the caps read (costUsd); counters.cost stays the cost of the roles only
+    attempt.costUsd = attemptCostUsd(attempt);
     if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${firstLabel(h)}1`) : reviewCounts(journal.entries, `${firstLabel(h)}1`);
     if (authorCommitted !== null) attempt.authorCommitted = authorCommitted;
     if (h?.lenses && journal && loop) {
@@ -2659,7 +2758,6 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       // loop.loops comes from loopResult without `accepted`: keep each loop's accepted list from the replay (failRiscoAceito, report)
       attempt.loop = { ...compactLoop, loops: compactLoop.loops.map((l, i) => ({ ...l, accepted: loop.lens.loops[i]?.accepted ?? [] })) };
       Object.assign(attempt, lensAttemptStats(h, loop, outcomes, manifestEntries(variant)), { artifact: artifactOf(variant).artifact, startedAt: now().toISOString() });
-      attempt.costUsd = attemptCostUsd(attempt);
     } else if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
@@ -2684,6 +2782,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const invalidReasons = {};
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
   const costs = attempts.filter((a) => a.status === 'valid' && a.counters.cost !== null).map((a) => a.counters.cost);
+  // T5 (#23): cost.total sums costUsd (the CLI cost of each valid attempt); null without a valid attempt. counters.cost (the roles) is not changed.
+  const totalCosts = attempts.filter((a) => a.status === 'valid' && typeof a.costUsd === 'number').map((a) => a.costUsd);
   const sessionCosts = attempts.filter((a) => a.status === 'valid' && a.counters.session.cliCostUsd !== null).map((a) => a.counters.session.cliCostUsd);
   const models = FAMILIES.filter((f) => validRuns.some((r) => r.total.calls[f] > 0));
   const { installPath: _installPath, ...publicPlugin } = plugin;
@@ -2699,13 +2799,17 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     ...(seeded ? { seedSource } : {}),
     cli,
     models,
+    requestedModel: opts.model,
+    modelDivergence: attempts.filter((a) => a.modelDivergence).map((a) => a.n),
     pricesDate: pricesDate(),
     permissionMode: opts.permissionMode,
     attempts,
     roles: sumRoles(validRuns),
     rolesByLabel: sumRolesByLabel(attempts.filter((a) => a.status === 'valid').map((a) => a.rolesByLabel)),
     ...(h ? { harness: h.harness } : {}),
+    // counters.cost (median, min, max) is the cost of the roles only: baseline.mjs and checkpoint.mjs read it. The caps use costUsd.
     cost: {
+      total: totalCosts.length ? totalCosts.reduce((t, c) => t + c, 0) : null,
       ...(costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null }),
       session: sessionCosts.length ? { median: median(sessionCosts), min: Math.min(...sessionCosts), max: Math.max(...sessionCosts) } : { median: null, min: null, max: null },
     },
@@ -2715,11 +2819,16 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     ...(stoppedBy ? { stoppedBy } : {}),
   };
   writeFileSync(join(dir, 'aggregate.json'), JSON.stringify(aggregate, null, 2) + '\n');
+  try {
+    writeSums(dir);
+  } catch (e) {
+    console.error(`run-batch: warning: SHA256SUMS not written: ${e.message}`);
+  }
   return { dir, aggregate, exitCode: status('denied') + status('invalid') > 0 ? 1 : 0 };
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|unica|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> --model <m> [--allow <regra>]... [--add-dir <dir>]... [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|unica|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
 
 export function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -2743,6 +2852,7 @@ export function parseCli(argv) {
   }
   const runs = Number(o.runs);
   if (!o.variant || !o.work || !o.out || !o.configDir || !o.permissionMode || !Number.isInteger(runs) || runs < 1) return null;
+  requireModel(o);
   o.ratify ??= 'between';
   o.coordinatorFixture ??= 'native';
   if (o.ratify !== 'between' && o.ratify !== 'off') throw new UsageError(`--ratify must be between or off (got "${o.ratify}")`);

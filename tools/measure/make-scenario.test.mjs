@@ -346,7 +346,8 @@ test('release run variants carry the permission rules in an excluded settings.lo
         assert.equal(readFileSync(file, 'utf8'), JSON.stringify({ permissions: { allow: SANDBOX_RELEASE_RULES, additionalDirectories: [sc.dir + '-wt'] } }, null, 2) + '\n');
         // Claude Code grants an additional directory only if it exists when the session starts.
         assert.ok(statSync(sc.dir + '-wt').isDirectory());
-        assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
+        assert.deepEqual(SANDBOX_RELEASE_RULES, ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)']);
+        assert.ok(!SANDBOX_RELEASE_RULES.includes('Workflow(productivity-tools:roadmap-release)'));
         assert.ok(git(t.dir, 'check-ignore', '.claude/settings.local.json').length > 0);
         assert.equal(git(t.dir, 'ls-files', '.claude/settings.local.json'), '');
       } else {
@@ -496,7 +497,8 @@ test('E17: sandbox settings leave the 1.7.0 preflight with no missing rule', () 
 });
 
 test('E17: SANDBOX_RELEASE_RULES keeps the 1.6.0 rules first', () => {
-  assert.deepEqual(SANDBOX_RELEASE_RULES.slice(0, 4), ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:roadmap-release)']);
+  assert.deepEqual(SANDBOX_RELEASE_RULES, ['Bash(node:*)', 'Bash(git:*)', 'Workflow', 'Workflow(productivity-tools:release-workflow)', 'Bash(node *roadmap.mjs" *)']);
+  assert.ok(!SANDBOX_RELEASE_RULES.includes('Workflow(productivity-tools:roadmap-release)'));
 });
 
 test('E17: a tree mounted from the archived E15 seed passes the --from-run pre-check', () => {
@@ -1068,6 +1070,19 @@ test('B1: each artifact has exactly 1 residue and 1 regression in the manifest',
       assert.match(MODEL[e.id], new RegExp(e.mention, 'i'), e.id);
     }
   }
+});
+
+test('B1: parentMention of CR3 compiles with i and s, matches the C5 entry and paraphrases of its parent finding', () => {
+  const cr3 = manifest.find((e) => e.id === 'CR3');
+  const c5 = manifest.find((e) => e.id === 'C5');
+  assert.equal(typeof cr3.parentMention, 'string');
+  const rx = new RegExp(cr3.parentMention, 'is');
+  assert.ok(rx.test(`${c5.file} ${c5.description}`));
+  for (const paraphrase of [
+    'truncate returns an empty string when max is 0',
+    'the RangeError is swallowed inside truncate',
+    'truncate with maximum of 0 returns \'\'',
+  ]) assert.match(paraphrase, rx, paraphrase);
 });
 
 test('B1: a CR or CG whose anchor the suite flags or present cannot tell is refused with a scenario error', async () => {

@@ -541,6 +541,7 @@
     "residueOf": "C5",
     "replaces": "CR2",
     "mention": "truncate.*(integer|non-integer|2\\.5|validation)|(integer|non-integer).*truncate",
+    "parentMention": "truncate.*(swallow|RangeError|empty string|max(imum)? (is |of |= ?)?0|zero)|(swallow|RangeError|empty string).*truncate",
     "description": "The fix makes max 0 throw again but truncate still returns '' instead of a RangeError for a non-integer max"
   },
   {
