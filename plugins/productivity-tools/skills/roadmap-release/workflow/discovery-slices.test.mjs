@@ -21,6 +21,9 @@ const N = 30;
 const dataOf = (mark = 'a') => ({ ...META, cards: Array.from({ length: N }, (_, i) => mkCard(i + 1, i === 25 ? mark : 'a')) });
 const SLICES = sliceEnvelopes(HEAD('pf-test'), JSON.stringify(canon(dataOf()))).length;
 
+// E46: the nonce as shq writes it, quoted or one token without spaces; the group that matched.
+const nonceOf = (prompt) => { const m = /--nonce (?:'((?:[^']|'\\'')*)'|([^\s']+))/.exec(prompt); return m[1] ?? m[2]; };
+
 // alt(k, redo) picks the data of the slice (default: the same read); over(label, k, answer, prompt) may replace the answer.
 async function drive({ alt = () => dataOf(), over } = {}) {
   const calls = [];
@@ -28,7 +31,7 @@ async function drive({ alt = () => dataOf(), over } = {}) {
   const agent = async (prompt, o) => {
     calls.push({ label: o.label, prompt, opts: o });
     if (!/^discovery/.test(o.label)) throw new Error(`unexpected call ${o.label}`);
-    const nonce = /--nonce '([^']*)'/.exec(prompt)[1];
+    const nonce = nonceOf(prompt);
     const k = Number(/--slice (\d+)/.exec(prompt)[1]);
     const envs = sliceEnvelopes(HEAD(nonce), JSON.stringify(canon(alt(k, /^discovery-redo/.test(o.label)))));
     let res = k < envs.length ? { exit: 0, stdout: `${JSON.stringify(envs[k])}\n` } : { exit: 1, stdout: JSON.stringify({ tool: 'release-discovery', error: 'no such slice' }) };
@@ -53,7 +56,7 @@ test('a big discovery is read slice by slice, each answer within the copy limit,
   assert.deepEqual(x.labels, sliceLabels(SLICES));
   assert.deepEqual(x.r.selection.order, [`E${N}`], 'the card of the last slice reached the selection');
   assert.ok(x.maxBytes <= MAX_COPY_BYTES, `largest answer ${x.maxBytes}`);
-  const nonces = x.calls.map((c) => /--nonce '([^']*)'/.exec(c.prompt)[1]);
+  const nonces = x.calls.map((c) => nonceOf(c.prompt));
   assert.equal(nonces[0], 'pf-test', 'slice 0 carries the run token and is the first agent() call');
   assert.equal(new Set(nonces).size, nonces.length, 'every slice has its own nonce');
   assert.ok(nonces.slice(1).every((n) => !n.includes('pf-test')), 'the run token stays in the first read');
@@ -91,7 +94,7 @@ test('C2: slices of different reads are refused, the read is dropped and restart
   assert.equal(x.r.status, 'done', JSON.stringify(x.r));
   const redo = ['discovery-redo', ...Array.from({ length: SLICES - 1 }, (_, i) => `discovery-redo-slice${i + 1}`)];
   assert.deepEqual(x.labels, [...sliceLabels(SLICES), ...redo]);
-  assert.equal(/--nonce '([^']*)'/.exec(x.calls[SLICES].prompt)[1], 'pf-test');
+  assert.equal(nonceOf(x.calls[SLICES].prompt), 'pf-test');
   const never = await drive({ alt: (k) => (k >= 2 ? dataOf('b') : dataOf()) });
   assert.equal(never.r.status, 'error');
   assert.match(never.r.error, /^discovery failed: the slices come from different reads/);

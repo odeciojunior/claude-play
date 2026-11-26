@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { canon, sliceEnvelopes, utf8Length, MAX_COPY_BYTES, planDigest } from '../../../lib/plan-digest.mjs';
 import { route } from '../../../lib/routing.mjs';
 import { gitBash } from '../../../scripts/git-bash.mjs';
+import { loadPure } from './load-pure.mjs';
 
 // E41 B2 T4: the spec load and the plan load of roadmap-release.js run each command by capture.mjs run and read an output that does not fit the copy
 // limit back by capture.mjs slice. The fake runner below executes the real capture.mjs on real files of a temporary repository (the spec-tool and
@@ -88,7 +89,8 @@ async function drive({ hook, config = {} } = {}) {
     calls.push({ label: l, prompt, opts: o });
     const E = 'E1';
     if (/^discovery/.test(l)) {
-      const nonce = /--nonce '([^']*)'/.exec(prompt)[1];
+      const nm = /--nonce (?:'((?:[^']|'\\'')*)'|([^\s']+))/.exec(prompt); // E46: shq writes the value quoted or bare
+      const nonce = nm[1] ?? nm[2];
       const k = Number(/--slice (\d+)/.exec(prompt)[1]);
       const envs = sliceEnvelopes(HEAD(nonce), JSON.stringify(canon({ ...META, cards: [CARD] })));
       return { exit: 0, stdout: JSON.stringify(envs[k]) };
@@ -185,7 +187,17 @@ test('capture.mjs run and capture.mjs slice get the same --cwd, the worktree of 
 });
 
 test('a slice of another repository is not found: the slice is refused and the load fails after its five attempts', NEEDS_BASH, async () => {
-  const x = await drive({ hook: ({ cmd, kind, world }) => (kind === 'slice' ? (() => { const r = spawnSync(BASH, ['-c', cmd.replace(/--cwd '[^']*'/, `--cwd '${world.other}'`)], { encoding: 'utf8' }); return { exit: r.status ?? 1, stdout: r.stdout }; })() : undefined) });
+  const { shq } = loadPure();
+  const swaps = []; // checked after the run: an assertion inside the hook can be swallowed by the workflow
+  const x = await drive({ hook: ({ cmd, kind, world }) => {
+    if (kind !== 'slice') return undefined;
+    const other = cmd.replace(/--cwd (?:'(?:[^']|'\\'')*'|[^\s']+)/, () => `--cwd ${shq(world.other)}`);
+    swaps.push([cmd, other]);
+    const r = spawnSync(BASH, ['-c', other], { encoding: 'utf8' });
+    return { exit: r.status ?? 1, stdout: r.stdout };
+  } });
+  assert.ok(swaps.length >= 1, 'the --cwd of a slice command was swapped');
+  for (const [before, after] of swaps) assert.notEqual(after, before);
   assert.match(x.r.results[0].error, /spec load/);
   assert.ok(!x.labels.includes('E1:spec-commit'));
   assert.deepEqual(loadLabels(x.labels).filter((l) => /^E1:spec-load\d$/.test(l)), [1, 2, 3, 4, 5].map((k) => `E1:spec-load${k}`));

@@ -97,6 +97,10 @@ const ruling = (o) => ({ id: 'R1', decision: 'Use X.', alternative: 'Y', costIfW
 const specWith = (o, E = 'E1', acceptance = [{ id: 'AC1', text: 'works' }]) => (l) => (/:spec-load\d$/.test(l) ? specLoadOk(E, { acceptance, ...o }) : undefined);
 // What the tracker CLI answers to an add-decision it has already seen (same text, same deliverable): the same id, existing: true.
 const seenDecisions = new Map();
+// E46: a value as shq writes it, quoted (with the '\'' idiom) or one token without spaces. SHQ_VALUE keeps it in the group that matched (1 quoted, 2 bare); SHQ_SKIP only passes over it.
+const SHQ_VALUE = String.raw`(?:'((?:[^']|'\\'')*)'|([^\s']+))`;
+const SHQ_SKIP = String.raw`(?:'(?:[^']|'\\'')*'|[^\s']+)`;
+const shqValue = (text, flag) => { const m = new RegExp(`${flag} ${SHQ_VALUE}`).exec(text); return m ? m[1] ?? m[2] : undefined; };
 // Decisions the owner ratified between runs: pending-decisions no longer lists them, add-decision still answers existing: true.
 const ratifiedDecisions = new Set();
 // Answers of the record stage as the CLI would give them: the commands come from the numbered lines of the prompt.
@@ -150,7 +154,7 @@ function makeRecordMock(cardsOf) {
       const runs = promptCommands(prompt).map((command) => {
         const verb = /^node "[^"]*" (\S+)/.exec(command)[1];
         let over = {};
-        if (verb === 'set-status') x.word = /set-status '[^']*' '[^']*' '([^']*)'/.exec(command)[1];
+        if (verb === 'set-status') x.word = shqValue(command, `set-status ${SHQ_SKIP} ${SHQ_SKIP}`);
         if (verb === 'block-open') { x.word = 'blocked'; x.note = 'BLQ-9'; over = { result: { id: 'BLQ-9' }, changed: ['state.md'] }; }
         if (verb === 'add-decision') {
           const key = E + '|' + command;
@@ -176,14 +180,14 @@ function makeRecordMock(cardsOf) {
 
 // E10 T5: the discovery is the stdout of `preflight.mjs discover`, signed the way the script signs it (canon/fnv1a of lib/plan-digest.mjs) over { nonce, data }.
 const discStdout = (nonce, data) => JSON.stringify({ tool: 'release-discovery', nonce, digest: fnv1a(JSON.stringify(canon({ nonce, data }))), data });
-const nonceOf = (prompt) => (/--nonce '([^']*)'/.exec(prompt) || [])[1];
+const nonceOf = (prompt) => shqValue(prompt, '--nonce');
 // E41 B2: the discovery is read in signed slices (discover --slice k); discSlices is the stdout of the slice the prompt asks for.
 const discSlices = (prompt, data) => sliceStdout({ tool: 'release-discovery', command: 'discover', nonce: nonceOf(prompt) }, JSON.stringify(canon(data)), sliceNo(prompt));
 const isDisc = (l) => /^discovery(-redo)?(-slice\d+)?(-retry\d)?$/.test(l);
 
 // E41 B2 T2: a measure answered without capture gets, per gate, the JSON line capture.mjs would print: the nonce (by index), the task and the command (shq undone) are read in the capture lines of the prompt.
-const CAP_LINE = /^\s*node "[^"]*\/capture\.mjs" run --nonce (\S+) --task (\S+)( --tests)? --cwd .* --bash ('(?:[^']|'\\'')*')\s*$/gm;
-const unshq = (q) => q.slice(1, -1).split("'\\''").join("'");
+const CAP_LINE = /^\s*node "[^"]*\/capture\.mjs" run --nonce (\S+) --task (\S+)( --tests)? --cwd .* --bash ('(?:[^']|'\\'')*'|[^\s']+)\s*$/gm;
+const unshq = (q) => (q.startsWith("'") ? q.slice(1, -1).split("'\\''").join("'") : q);
 function captureLine(l, def, g) {
   const base = { tool: 'capture', nonce: l.nonce, task: l.task, cmdDigest: commandDigest({ bash: l.bash }), exit: g.exit, bytes: 0, sha256: '0', lines: 0, path: 'p', stderrBytes: 0, stderrSha256: '0', stderrPath: 'q', tail: '', tailCut: 0 };
   const extract = l.tests ? { format: Number.isInteger(g.total) ? 'node-tap' : 'unknown', exit: g.exit, total: Number.isInteger(g.total) ? g.total : null, pass: null, fail: null, skipped: Number.isInteger(g.skipped) ? g.skipped : 0, failedNames: g.failedNames || [], failedNamesCut: 0 } : undefined;
@@ -215,7 +219,7 @@ function loadAnswer(prompt, name, t) {
   const [exit, raw] = loadTexts(t)[name];
   const text = raw == null ? '' : String(raw);
   const m = /capture\.mjs" run --nonce (\S+) --task (\S+) --cwd (?:'[^']*'|\S+) -- (.*)$/m.exec(prompt);
-  const argv = [...m[3].matchAll(/'((?:[^']|'\\'')*)'/g)].map((x) => x[1].split("'\\''").join("'"));
+  const argv = [...m[3].matchAll(new RegExp(SHQ_VALUE, 'g'))].map((x) => (x[1] ?? x[2]).split("'\\''").join("'"));
   const lines = text === '' ? 0 : text.split('\n').length;
   const base = { tool: 'capture', nonce: m[1], task: m[2], cmdDigest: commandDigest({ argv }), exit, bytes: utf8Length(text), sha256: createHash('sha256').update(text, 'utf8').digest('hex'), lines, path: `/wt/pt-evidence/${m[2]}/${name}.txt`, stderrBytes: 0, stderrSha256: '0', stderrPath: 'q' };
   const whole = signedOut({ ...base, tail: text, tailCut: 0 });
@@ -336,7 +340,7 @@ test('E41 B2 T2: a gate with a space in the name and a single quote in the comma
     assert.equal(quoted, PURE_X.shq(def.cmd));
     assert.equal(unshq(quoted), def.cmd);
     assert.ok(!c.prompt.includes('capture.mjs" run --nonce unit'), 'the nonce never holds the raw gate name');
-    assert.match(lines[0][0], / --cwd (?:'[^']*'|"[^"]*") --brief --bash /, c.label);
+    assert.match(lines[0][0], / --cwd (?:'[^']*'|"[^"]*"|[^\s'"]+) --brief --bash /, c.label);
     assert.ok(c.prompt.includes(`- unit tests (exit): ${def.cmd} (no test counts; the capture line is still required, copied literally)\n`), c.label);
     assert.ok(!c.prompt.includes('only name, ran and exit matter'), c.label);
     assert.ok(c.prompt.includes('The capture line has no output: take them from the file at its path (Read, offset/limit).'), c.label);
@@ -1054,15 +1058,22 @@ test('a wrong digest retries up to 5 times and stops with discovery failed', asy
   assert.deepEqual(x.labels, ds.map((c) => c.label));
   // another nonce, another tool and a script error are not confirmed either; the fourth attempt is the first that can be confirmed
   let n = 0;
+  const swaps = []; // checked after the run: an assertion inside the agent callback can be swallowed by the workflow
   const flaky = (l, p) => {
     if (l !== 'discovery' && !/^discovery-retry/.test(l)) return undefined;
     n++;
-    if (n === 1) return { exit: 0, stdout: discSlices(p.replace(/--nonce '[^']*'/, "--nonce 'other'"), { cards: [] }) };
+    if (n === 1) {
+      const other = p.replace(new RegExp(`--nonce ${SHQ_SKIP}`), "--nonce 'other'");
+      swaps.push([p, other]);
+      return { exit: 0, stdout: discSlices(other, { cards: [] }) };
+    }
     if (n === 2) return { exit: 1, stdout: JSON.stringify({ tool: 'capture', error: 'no roadmap folder' }) };  // E37 T7: a refusal of the right tool stops; another tool's copy repeats
     if (n === 3) return { exit: 0, stdout: 'not json' };
     return undefined;
   };
   const y = await exec({ cards: [card('E1')], deliverables: ['E1'], args: { mode: 'dry-run' }, over: flaky });
+  assert.ok(swaps.length >= 1, 'the nonce of the first answer was swapped');
+  for (const [before, after] of swaps) assert.notEqual(after, before);
   assert.equal(y.r.status, 'done');
   assert.equal(y.calls.filter((c) => /^discovery/.test(c.label)).length, 4);
   assert.ok(y.calls.every((c) => nonceOf(c.prompt) === undefined || nonceOf(c.prompt) === 'pf-test'));
@@ -3336,15 +3347,16 @@ test('recordCommands: decisão de 600 caracteres cabe com a frase de alcance e o
   const long = Array.from({ length: 100 }, (_, i) => 'termo' + i).join(' ');
   assert.ok(long.length > 600);
   const r = PU.recordCommands({ ...RC, skipStatus: true, decisions: [{ text: long, scope: 'contrato' }] });
-  const m = /--decision '([^']*)'/.exec(r.commands[0]);
-  assert.ok(m);
-  assert.ok(m[1].length + 1 + 'Alcance: contrato.'.length <= 300);
+  const decision = shqValue(r.commands[0], '--decision');
+  assert.ok(decision);
+  assert.ok(decision.length + 1 + 'Alcance: contrato.'.length <= 300);
   assert.equal(r.cuts.length, 1);
   assert.equal(r.cuts[0].full, long);
   assert.equal(r.cuts[0].source, 'docs/s.md');
   assert.ok(r.cuts[0].where);
   const p = PU.recordCommands({ ...RC, skipStatus: true, pending: [long] });
-  const t = /--text '([^']*)'/.exec(p.commands[0])[1];
+  const t = shqValue(p.commands[0], '--text');
+  assert.ok(t);
   assert.ok(('(dono) ' + t).length <= 300);
   assert.equal(p.cuts[0].full, long);
 });
@@ -3490,11 +3502,16 @@ test('status --deliverable: a releitura e o docs-measure pedem só a linha do E;
     assert.equal(p.deliverable, 'E1', l);
     assert.match(p.cli, /roadmap\.mjs$/, l);
   }
-  for (const c of calls.filter((x) => x.label !== 'discovery')) {
-    for (const m of plain(c.prompt).matchAll(/roadmap\.mjs" status '[^']*'([^\n;]*)/g)) {
+  // The control line proves that the pattern still finds a status command: without it the loop could pass by matching nothing.
+  const control = { label: 'control', prompt: PU.cliCmd(TOOL_PATH, 'status', 'docs/plans/roadmap-x/', ['--deliverable E1']) };
+  let seen = 0;
+  for (const c of [...calls.filter((x) => x.label !== 'discovery'), control]) {
+    for (const m of plain(c.prompt).matchAll(new RegExp(`roadmap\\.mjs" status ${SHQ_SKIP}([^\\n;]*)`, 'g'))) {
+      seen++;
       assert.match(m[1], /--deliverable E\d+ --json/, c.label);
     }
   }
+  assert.ok(seen >= 1);
 });
 
 test('recordVerdict: segmento rotulado, bloqueado com a nota BLQ e id de decisão ausente', () => {
@@ -3812,7 +3829,7 @@ test('textos longos não viram concern', async () => {
   const p = plain(calls.find((c) => c.label === 'E1:status-d').prompt);
   let seen = 0;
   for (const cmd of promptCommands(p)) {
-    for (const m of cmd.matchAll(/--(?:decision|text|what|note|next) '((?:[^']|'\\'')*)'/g)) { seen++; assert.ok(m[1].length <= 300, `${cmd.slice(0, 60)} (${m[1].length})`); }
+    for (const m of cmd.matchAll(new RegExp(`--(?:decision|text|what|note|next) ${SHQ_VALUE}`, 'g'))) { const v = m[1] ?? m[2]; seen++; assert.ok(v.length <= 300, `${cmd.slice(0, 60)} (${v.length})`); }
   }
   assert.ok(seen >= 4);
   assert.ok(!r.results[0].concerns.some((x) => /record/.test(x)));
@@ -4774,9 +4791,12 @@ test('frozen tasks: the previous plan is loaded with --no-spec, the new plan wit
     over: both(planSetup({ taskCommits: 1, committedTasks: [1], nativeSpec: true, nativePlan: true }), (l) => (l === 'E1:plan-load1' ? planLoadOf(P0, 'E1') : undefined)) });
   const loads = calls.filter((c) => c.label === 'E1:plan-load1')
   assert.ok(loads.length >= 2)
-  assert.match(loads[0].prompt, /plan-tool\.mjs' 'check' '[^']*' '--no-spec'/)
-  assert.doesNotMatch(loads[0].prompt, /'--spec'/)
-  assert.match(loads[1].prompt, /plan-tool\.mjs' 'check' '[^']*' '--spec'/)
+  const check = (flag) => new RegExp(`plan-tool\\.mjs'? '?check'? ${SHQ_SKIP} '?${flag}'?(?!\\S)`)
+  assert.match(loads[0].prompt, check('--no-spec'))
+  const runLine = /^.*capture\.mjs" run .*$/m.exec(loads[0].prompt)
+  assert.ok(runLine, 'the load prompt has its capture run line')
+  assert.doesNotMatch(runLine[0], /(?<!\S)'?--spec'?(?!\S)/)
+  assert.match(loads[1].prompt, check('--spec'))
 })
 
 test('a native plan reused without owner note calls no author and makes no commit', async () => {
@@ -5726,7 +5746,7 @@ test('E29 C5: taskReview.single given straight to the workflow runs only spec1 a
 
 // ---- E36 T5: a tests gate whose only failure is a lower total stops without gates-fix; removedTests checked by test-extract lift the floor ----
 const RM_ENT = [{ file: 'src/a.test.js', name: 'old test', why: 'obsolete' }];
-const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: (/--base '([^']*)'/.exec(prompt) || [])[1], outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
+const removedLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), gate: 'unit', base: shqValue(prompt, '--base'), outputSha: '0', verified: 2, unverified: [], unverifiedCut: 0, ...o });
 const removedOver = ({ total = 8, answer = (p) => ({ exit: 0, stdout: removedLine(p) }), extra } = {}) => (l, p, o) => {
   if (/^E1:(re)?gates1-2$/.test(l)) return gm(/regates/.test(l) ? 'a3' : 'a2', { total });
   if (/^E1:(re)?removed-unit/.test(l)) return answer(p, l);
@@ -5842,7 +5862,7 @@ test('E36 T5: the checker nonce is distinct for the first measurement and the on
   assert.match(a, /:E1:removed:unit:\d+$/);
   assert.match(b, /:E1:removed:reunit:\d+$/);
   assert.notEqual(a, b);
-  const baseOf = (l) => /--base '([^']*)'/.exec(calls.find((c) => c.label === l).prompt)[1];
+  const baseOf = (l) => shqValue(calls.find((c) => c.label === l).prompt, '--base');
   assert.equal(baseOf('E1:removed-unit'), 'abc1234');
   assert.equal(baseOf('E1:reremoved-unit'), 'def5678', 'after the re-sync the base is the new target tip');
 });
@@ -5864,7 +5884,7 @@ test('E36 T5: the merge gates floor drops by the verified n only and the next ba
 test('E36 R8: a re-sync targetTip with a newline is normalized and the declared removal still passes', async () => {
   const { r, calls } = await exec({ cards: [card('E1')], deliverables: ['E1'], over: withSpecRemoved(removedOver({ extra: (l) => (/:resync$/.test(l) ? { ok: true, head: 'a2', conflictsResolved: 0, targetTip: 'def5678\n', deltaFiles: ['src/x.js'] } : undefined) })) });
   assert.equal(r.results[0].merged, true, r.results[0].error);
-  assert.equal(/--base '([^']*)'/.exec(calls.find((c) => c.label === 'E1:reremoved-unit').prompt)[1], 'def5678');
+  assert.equal(shqValue(calls.find((c) => c.label === 'E1:reremoved-unit').prompt, '--base'), 'def5678');
 });
 
 test('E36 R12: a refusal without this call nonce is an invalid copy and is repeated', async () => {
