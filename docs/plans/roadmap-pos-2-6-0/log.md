@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E46 | DEC-035 recorded: coordinator parou na Tarefa 1; guarda das variantes legadas ajustada no teste, fora dos arquivos da tarefa | `d028632` |
 | 2026-11-26 | E46 | correção: a linha anterior de execução do E46 citou por engano a branch do E52; a branch do E46 é plan/pos-2-6-0-E46 | `plan/pos-2-6-0-E46` |
 | 2026-11-26 | E46 | E46 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
 | 2026-11-26 | E47 | E47 spec written; aprovada com seis ajustes por opus por delegação (DEC-021) | `53f28be` |
