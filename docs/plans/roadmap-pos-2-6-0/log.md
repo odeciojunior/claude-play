@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E46 | E46 plan written; aprovado com dois ajustes por opus por delegação (DEC-021) | `docs/plans/pos-2-6-0-E46/plan.md` |
 | 2026-11-26 | E52 | E52 execution started (plan-coordinator) | `plan/pos-2-6-0-E52` |
 | 2026-11-26 | E43 | E43 criteria compared: none changed | `docs/plans/pos-2-6-0-E43/spec.md` |
 | 2026-11-26 | E43 | E43 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2670, pass 2668, fail 0, skipped 2; G2 58 OK; G4 válido; G5 em dia; roadmap-release.js 269471 LF | `18b8e18` |
