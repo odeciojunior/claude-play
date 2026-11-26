@@ -1106,13 +1106,27 @@ test('B1: a CR or CG whose anchor the suite flags or present cannot tell is refu
   }
 });
 
+// E46 (DEC-035): the vendored checker follows the roadmap-tracker source, so the legacy guard hashes the seeded
+// tree without it and checks its bytes against the source instead.
+const SANDBOX_CHECKER = 'docs/plans/roadmap-sandbox/check-roadmap.mjs';
+const CHECKER_SRC = join(here, '..', '..', 'plugins', 'productivity-tools', 'skills', 'roadmap-tracker', 'scripts', 'check-roadmap.mjs');
+function legacyTree(dir, commit) {
+  const strip = (s) => s.replace(/\r/g, '').trim();
+  assert.equal(strip(git(dir, 'show', commit + ':' + SANDBOX_CHECKER)), strip(readFileSync(CHECKER_SRC, 'utf8')), 'vendored checker');
+  const env = { ...process.env, GIT_INDEX_FILE: join(dir, '.git', 'legacy-guard.idx') };
+  const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', env }).trim();
+  g('read-tree', commit + '^{tree}');
+  g('rm', '-q', '--cached', SANDBOX_CHECKER);
+  return g('write-tree');
+}
+
 test('B1: legacy variants are unchanged', async () => {
-  const TREES = { 'codigo-semeado-A': 'd44dd835d51589b3196ce8ad0303726beb83b91c', 'codigo-semeado-B': '49f3cee70d2b5f4b0987cbea53c7a7e791ae9c22' };
+  const TREES = { 'codigo-semeado-A': '997fde152925b0a1fff2c554fa33cd00d73905e3', 'codigo-semeado-B': 'b24567ee6192f2127b940f494dc179ed1dd3a6a3' };
   for (const [v, tree] of Object.entries(TREES)) {
     const t = tmp('sb');
     try {
       const s = await makeScenario(t.dir, v);
-      assert.equal(git(t.dir, 'rev-parse', s.seededCommit + '^{tree}'), tree, v);
+      assert.equal(legacyTree(t.dir, s.seededCommit), tree, v);
       assert.equal(s.fixSha, null);
       assert.deepEqual(s.fixEntries, []);
     } finally {
@@ -1549,12 +1563,12 @@ test('C1: a seed whose anchor the suite flags or present cannot tell is refused 
 });
 
 test('C1: legacy variants are unchanged', async () => {
-  const TREE = 'd44dd835d51589b3196ce8ad0303726beb83b91c'; // codigo-semeado-A and correcao-semeada-A share the seeded tree
+  const TREE = '997fde152925b0a1fff2c554fa33cd00d73905e3'; // codigo-semeado-A and correcao-semeada-A share the seeded tree (checker left out)
   for (const v of ['codigo-semeado-A', 'correcao-semeada-A']) {
     const t = tmp('sb');
     try {
       const s = await makeScenario(t.dir, v);
-      assert.equal(git(t.dir, 'rev-parse', s.seededCommit + '^{tree}'), TREE, v);
+      assert.equal(legacyTree(t.dir, s.seededCommit), TREE, v);
     } finally {
       t.done();
     }
