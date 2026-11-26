@@ -502,7 +502,10 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
     if (merge.found) { onTarget = true; why = `merge commit ${merge.sha} on ${gitRef}`; }
     else if (merge.reverted) why = `merge: ${c.id} was reverted on ${gitRef}`;
     else if (!gitRef) why = 'no target or base branch to check';
-    else if (word === null) why = `status "${status}" has no single code segment`;
+    else if (word === null) {
+      const pieces = parseStatusSegments(status).length;
+      why = pieces === 0 ? 'no status on the panel' : pieces > 1 ? 'status without a code segment (several pieces)' : 'status without a code segment';
+    }
     else if (integrated.includes(word) && integrationBranch && isAncestor(root, integrationBranch, gitRef)) { onTarget = true; why = `code segment ${word} and ${integrationBranch} is an ancestor of ${gitRef}`; }
     else if ((integrated.includes(word) || word === (vocab.deliverableStatuses || [])[4]) && mergeCommit && refExists(root, mergeCommit) && isAncestor(root, mergeCommit, gitRef)) { onTarget = true; why = `code segment ${word} and ${mergeCommit} is an ancestor of ${gitRef}`; }
     else why = `no merge commit and no finished code segment with an ancestor on ${gitRef}`;
