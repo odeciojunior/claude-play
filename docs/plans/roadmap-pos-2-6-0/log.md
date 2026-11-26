@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | plano do E53 escrito (plan-tool check: 0 erros) e aprovado por opus por delegação (DEC-021) com três ajustes; a Tarefa 2, paga, é pulada no coordinator e não está autorizada | `8b3536e` |
 | 2026-11-26 | E49 | E49 criteria compared: none changed | `docs/plans/pos-2-6-0-E49/spec.md` |
 | 2026-11-26 | E49 | E49 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2759, pass 2757, fail 0, skipped 2; paridade agy: pendente #13 | `44da934` |
 | 2026-11-26 | E49 | plano do E49 escrito (plan-tool check: 0 erros) e aprovado por opus por delegação (DEC-021) com dois ajustes aplicados pelo autor | `f0e1fac` |
