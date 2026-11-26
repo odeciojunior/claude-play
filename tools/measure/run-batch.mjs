@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Batch launcher: runs one measurement variant n times in disposable sandboxes and writes an aggregate.
 // Usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir>
-//          --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>]
+//          --permission-mode <modo> --model <m> [--allow <regra>]... [--add-dir <dir>]... [--max-budget-usd <x>]
 //          [--stage spec-review|plan-review|task-review [--arm <nome>] [--arms-dir <dir>] [--review-model haiku|sonnet|opus (required with task-review)]]
 //          [--rounds loop|single] (loop: the product review loop, spec-review/plan-review with --arm atual; default single)
 //          [--plugin-dir <dir>] (passed to every claude -p; the aggregate records that folder's version and commit)
@@ -2337,7 +2337,13 @@ function blockingHumanInputs(scenario, ref) {
   }
 }
 
+// Without --model each claude -p takes the account default, which can change between the stop and the resume (#21).
+function requireModel(o) {
+  if (!o.model) throw new UsageError('--model is required: every attempt runs claude -p, and the batch must pin the model (#21)');
+}
+
 export async function runBatch(opts, { exec = defaultExec, now = () => new Date(), ratify = ratifyE5Contract, pending = pendingE5, scenarioFn = makeScenario, listProcs = exec === defaultExec ? defaultListProcs : () => [], sentinelIntervalMs = 2000 } = {}) {
+  requireModel(opts);
   const { variant, runs } = opts;
   const seeded = /semead[oa]|nativo/.test(variant);
   if (opts.fromRun && !seeded) throw new UsageError(`--from-run only applies to seeded variants (got "${variant}")`);
@@ -2719,7 +2725,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
 }
 
 const USAGE =
-  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> [--allow <regra>]... [--add-dir <dir>]... [--model <m>] [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|unica|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
+  'usage: node tools/measure/run-batch.mjs --variant <v> --runs <n> --work <dir> --out <dir> --config-dir <dir> --permission-mode <modo> --model <m> [--allow <regra>]... [--add-dir <dir>]... [--max-budget-usd <x>] [--stage <spec-review|plan-review|task-review|final-review> [--arm <nome|atual|restrita|unica|adversarial>] [--arms-dir <dir>] [--review-model <haiku|sonnet|opus>: required with task-review] [--rounds loop|single]] [--plugin-dir <dir>] [--from-run <pasta>] [--ratify between|off] [--coordinator-fixture native|legacy] [--stop-on-denial]';
 
 export function parseCli(argv) {
   const o = { allow: [], addDir: [] };
@@ -2743,6 +2749,7 @@ export function parseCli(argv) {
   }
   const runs = Number(o.runs);
   if (!o.variant || !o.work || !o.out || !o.configDir || !o.permissionMode || !Number.isInteger(runs) || runs < 1) return null;
+  requireModel(o);
   o.ratify ??= 'between';
   o.coordinatorFixture ??= 'native';
   if (o.ratify !== 'between' && o.ratify !== 'off') throw new UsageError(`--ratify must be between or off (got "${o.ratify}")`);

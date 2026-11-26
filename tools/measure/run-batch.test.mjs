@@ -99,7 +99,7 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
 }
 
 const baseOpts = (s, extra = {}) => ({
-  variant: 'completo', runs: 3, work: s.work, out: s.out, configDir: s.configDir, permissionMode: 'acceptEdits', ...extra,
+  variant: 'completo', runs: 3, work: s.work, out: s.out, configDir: s.configDir, permissionMode: 'acceptEdits', model: 'opus', ...extra,
 });
 
 test('launches n attempts, calls the extractor once per attempt and writes an aggregate', async () => {
@@ -207,10 +207,11 @@ test('requires the mandatory options', () => {
     assert.match(r.stderr, /usage:/);
     const inRepo = spawnSync(
       process.execPath,
-      [script, '--variant', 'completo', '--runs', '1', '--work', join(here, 'work-x'), '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'],
+      [script, '--variant', 'completo', '--runs', '1', '--work', join(here, 'work-x'), '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'],
       { encoding: 'utf8' },
     );
     assert.equal(inRepo.status, 2);
+    assert.match(inRepo.stderr, /inside the repository/);
     assert.ok(!existsSync(join(here, 'work-x')));
   } finally {
     s.done();
@@ -662,7 +663,7 @@ test('harness outcomes come from the sentinels', async () => {
 test('stage and variant must match', async () => {
   const s = setup();
   try {
-    const common = ['--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const common = ['--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'];
     const r = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'spec-review', ...common], { encoding: 'utf8' });
     assert.equal(r.status, 2);
     assert.match(r.stderr, /spec-review/);
@@ -717,7 +718,7 @@ test('harness refuses a current arm template without the source line', async () 
     assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
     const cli = spawnSync(
       process.execPath,
-      [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--arms-dir', armsDir, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'],
+      [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--arms-dir', armsDir, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'],
       { encoding: 'utf8' },
     );
     assert.equal(cli.status, 2);
@@ -894,7 +895,7 @@ test('--from-run on an unseeded variant is a usage error', async () => {
     assert.equal(existsSync(s.work), false);
     assert.equal(existsSync(s.out), false);
     const r = spawnSync(process.execPath, [script, '--variant', 'completo', '--runs', '1', '--work', s.work, '--out', s.out,
-      '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--from-run', folder], { encoding: 'utf8' });
+      '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus', '--from-run', folder], { encoding: 'utf8' });
     assert.equal(r.status, 2);
   } finally {
     s.done();
@@ -1433,7 +1434,7 @@ test('task-review requires a valid --review-model (library and CLI)', async () =
     await assert.rejects(runBatch(taskOpts(s, { reviewModel: undefined }), { exec: fake.exec }), UsageError);
     await assert.rejects(runBatch(taskOpts(s, { reviewModel: 'gpt' }), { exec: fake.exec }), /--review-model/);
     assert.equal(fake.calls.filter((c) => c.cmd === 'claude' && c.args[0] === '-p').length, 0);
-    const common = ['--variant', 'codigo-semeado-A', '--stage', 'task-review', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'];
+    const common = ['--variant', 'codigo-semeado-A', '--stage', 'task-review', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'];
     const missing = spawnSync(process.execPath, [script, ...common], { encoding: 'utf8' });
     assert.equal(missing.status, 2);
     assert.match(missing.stderr, /--review-model/);
@@ -1665,7 +1666,7 @@ test('A2: a stale arm against the --plugin-dir workflow is refused before any cl
     const fake = makeFake(s.configDir);
     await assert.rejects(runBatch(seededOpts(s, 'plano-semeado-A', { stage: 'plan-review', pluginDir: stale }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /plan-review/.test(e.message));
     assert.equal(claudeCalls(fake).length, 0);
-    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'plano-semeado-A', '--stage', 'plan-review', '--plugin-dir', stale, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2);
   } finally {
     s.done();
@@ -1799,7 +1800,7 @@ test('A1: --rounds refusals exit 2 before any claude call', async () => {
       ['completo', ['--rounds', 'loop']],
     ];
     for (const [variant, extra] of cases) {
-      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+      const cli = spawnSync(process.execPath, [script, '--variant', variant, ...extra, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
       assert.equal(cli.status, 2, `${variant} ${extra.join(' ')}: ${cli.stderr}`);
     }
     for (const [pluginDir, opt] of [[noLoop, {}], [noMax, {}], [drift, {}], [good, { stage: 'task-review', reviewModel: 'sonnet', variant: 'codigo-semeado-A' }]]) {
@@ -2435,7 +2436,7 @@ test('B2: --stage task-review --rounds loop accepts only correcao-semeada-A/B wi
       assert.equal(claudeCalls(fake).length, 0);
     }
     // the same refusals through the CLI end in exit code 2 before any claude call
-    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'task-review', '--review-model', 'sonnet', '--rounds', 'single', '--plugin-dir', good, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'task-review', '--review-model', 'sonnet', '--rounds', 'single', '--plugin-dir', good, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     // restrita outside task-review and adversarial outside final-review are refused too
     for (const [variant, stage, arm] of [['spec-nativo-A', 'spec-review', 'restrita'], ['plano-semeado-A', 'plan-review', 'adversarial']]) {
@@ -2526,7 +2527,7 @@ test('B2: the A1 refusal of task-review loop is narrowed, not removed', async ()
   try {
     const good = taskLoopPlugin(s.base, readFileSync(WORKFLOW, 'utf8'));
     // legacy seeded code in a loop is still refused (exit 2 through the CLI)
-    const cli = spawnSync(process.execPath, [script, '--variant', 'codigo-semeado-A', '--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'codigo-semeado-A', '--stage', 'task-review', '--review-model', 'sonnet', '--plugin-dir', good, '--rounds', 'loop', '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     // and its single round is the frozen script: no loop constants
     const fake = makeFake(s.configDir, { journal: taskJournal(), afterRun: mergeE5 });
@@ -2952,7 +2953,7 @@ test("B3: STAGES['final-review'] accepts correcao-semeada-A/B only, loop only, a
       await assert.rejects(runBatch(seededOpts(s, variant, { stage: 'final-review', pluginDir: REAL_PLUGIN, ...extra }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && re.test(e.message), `${variant} ${JSON.stringify(extra)}`);
       assert.equal(claudeCalls(fake).length, 0);
     }
-    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'final-review', '--rounds', 'single', '--plugin-dir', REAL_PLUGIN, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits'], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [script, '--variant', 'correcao-semeada-A', '--stage', 'final-review', '--rounds', 'single', '--plugin-dir', REAL_PLUGIN, '--runs', '1', '--work', s.work, '--out', s.out, '--config-dir', s.configDir, '--permission-mode', 'acceptEdits', '--model', 'opus'], { encoding: 'utf8' });
     assert.equal(cli.status, 2, cli.stderr);
     for (const variant of ['correcao-semeada-A', 'correcao-semeada-B']) {
       for (const arm of ['atual', 'adversarial']) {
@@ -3398,7 +3399,37 @@ test('gate: verifyStats counts refutedRound1', () => {
 });
 
 // ---- E11 preparo: --ratify between|off, parou-por-decisao, --coordinator-fixture
-const CLI_BASE = ['--variant', 'completo', '--runs', '1', '--work', 'w', '--out', 'o', '--config-dir', 'c', '--permission-mode', 'acceptEdits'];
+const CLI_BASE = ['--variant', 'completo', '--runs', '1', '--work', 'w', '--out', 'o', '--config-dir', 'c', '--permission-mode', 'acceptEdits', '--model', 'opus'];
+
+// ---- E51 T1 (#21): --model is mandatory ----
+test('E51 parseCli refuses a missing or empty --model with UsageError', () => {
+  const at = CLI_BASE.indexOf('--model');
+  const without = [...CLI_BASE.slice(0, at), ...CLI_BASE.slice(at + 2)];
+  const refusal = (e) => e instanceof UsageError && /--model is required/.test(e.message);
+  assert.throws(() => parseCli(without), refusal);
+  assert.throws(() => parseCli([...without, '--model', '']), refusal);
+  // the guard comes before the --ratify checks, after the older mandatory ones (those still give the usage text)
+  assert.throws(() => parseCli([...without, '--ratify', 'x']), refusal);
+  assert.equal(parseCli(['--variant', 'completo']), null);
+  // any non-empty string passes as it is: there is no fixed list
+  assert.equal(parseCli([...without, '--model', 'claude-sonnet-x']).model, 'claude-sonnet-x');
+});
+
+test('E51 runBatch refuses a missing or empty --model before any claude call or folder', async () => {
+  const s = setup();
+  try {
+    for (const model of [undefined, '']) {
+      const fake = makeFake(s.configDir);
+      await assert.rejects(runBatch(baseOpts(s, { model }), { exec: fake.exec, now: NOW }), (e) => e instanceof UsageError && /--model is required/.test(e.message), `model ${JSON.stringify(model)}`);
+      assert.equal(fake.calls.filter((c) => c.cmd === 'claude').length, 0);
+      assert.equal(existsSync(s.out), false);
+      assert.equal(existsSync(s.work), false);
+    }
+  } finally {
+    s.done();
+  }
+});
+
 
 test('E11 parseCli accepts --ratify between|off, default between', () => {
   assert.equal(parseCli(CLI_BASE).ratify, 'between');
