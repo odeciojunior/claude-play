@@ -1,6 +1,6 @@
 # Plano E45 -- Diagnósticos do preflight
 
-Spec: `docs/plans/pos-2-6-0-E45/spec.md`. Roadmap: `docs/plans/roadmap-pos-2-6-0/`. Todos os caminhos deste plano são relativos à raiz do repositório. O bloco de dados no fim é o contrato.
+Spec: `docs/plans/pos-2-6-0-E45/spec.md`. Roadmap: `docs/plans/roadmap-pos-2-6-0/`. Branch `plan/pos-2-6-0-E45`, no worktree `D:/projects/claude-play-wt/pos-2-6-0-E45`, com merge em `release/pos-2.6.0` depois da conferência. Todos os caminhos deste plano são relativos à raiz do repositório, e todo comando e check roda com o diretório atual na raiz desse worktree. Linha de base do G1, medida no merge do E51 (`4329c5e`): exit 0, tests 2660, pass 2658, fail 0, skipped 2. O bloco de dados no fim é o contrato.
 
 ## Ordem
 
@@ -157,7 +157,8 @@ O contorno não afrouxa a regra do passo 4: uma negação de permissão continua
     "A única sessão claude paga é a da tarefa 1: no máximo 2 tentativas, sem deixar a descoberta rodar, com CLAUDE_CONFIG_DIR descartável, apagado ao fim (DEC-025, DEC-026); qualquer outro gasto volta ao dono via opus.",
     "O ~/.claude real nunca é editado; o valor de uma credencial nunca é impresso nem gravado no repositório.",
     "A tarefa 1 roda num subagente opus; as tarefas de código são T1.",
-    "Antes do merge, o G1 e o G4 da estratégia ficam verdes (linha de base na spec do E42)."
+    "Antes do merge, o G1 e o G4 da estratégia ficam verdes; linha de base do G1 no merge do E51 (4329c5e): exit 0, tests 2660, pass 2658, fail 0, skipped 2.",
+    "Trabalhar só no worktree D:/projects/claude-play-wt/pos-2-6-0-E45, branch plan/pos-2-6-0-E45; todo comando e check roda com o diretório atual na raiz dele. Autonomia só local: sem push, tag ou comentário em issue (DEC-004)."
   ],
   "tasks": [
     {

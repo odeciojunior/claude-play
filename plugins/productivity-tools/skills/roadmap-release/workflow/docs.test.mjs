@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LOADED_BY_NAME } from '../scripts/preflight.mjs';
+
+// What the docs must say for each measured value of LOADED_BY_NAME.
+const LOADED_SENTENCES = {
+  clone: [/Launching by name loads the marketplace clone copy/, /session copy/],
+  cache: [/Launching by name loads the cache copy/],
+  both: [/Which copy launching by name loads is not confirmed/, /session copy/],
+};
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.join(HERE, '..');
@@ -68,12 +76,30 @@ test('SKILL.md step 2 keeps DEC-218 with the owner-resume exception', () => {
 test('the scriptPath fallback states the dialog limit', () => {
   const m = /\n4\. \*\*Run the workflow\.\*\*[\s\S]*?\n5\. \*\*/.exec(skillMd);
   assert.ok(m, 'step 4');
+  const loaded = LOADED_SENTENCES[LOADED_BY_NAME];
+  assert.ok(loaded, `unknown LOADED_BY_NAME ${LOADED_BY_NAME}`);
   for (const [name, text] of [['SKILL.md step 4', m[0]], ['operator.md', operatorMd]]) {
     assert.ok(text.includes('213.337'), `${name} cites 213.337`);
     assert.match(text, /not measured/i, `${name} says not measured`);
     assert.match(text, /approval dialog/i, `${name} names the dialog`);
     assert.match(text, /supported path is the name/i, `${name} says the name is supported`);
+    assert.match(text, /marketplace clone/, `${name} names the marketplace clone`);
+    assert.match(text, /\bcache\b/, `${name} names the cache`);
+    assert.match(text, /preflight measures both copies and warns when they differ/i, `${name} says preflight compares the copies`);
+    for (const sentence of loaded) assert.match(text, sentence, `${name} states the ${LOADED_BY_NAME} outcome`);
   }
+  const step2 = /\n2\. \*\*Preflight\.\*\*[\s\S]*?\n3\. \*\*/.exec(skillMd);
+  assert.ok(step2, 'step 2');
+  const configMd = read(path.join(SKILL, 'references', 'config.md'));
+  for (const [name, text] of [['SKILL.md step 2', step2[0]], ['operator.md', operatorMd]]) {
+    assert.match(text, /do not commit/i, `${name} says not to commit during a run`);
+  }
+  for (const [name, text] of [['SKILL.md step 2', step2[0]], ['config.md', configMd]]) {
+    assert.match(text, /differs from the working-tree one[^.\n]{0,80} in `warnings`/, `${name} puts the config divergence in warnings`);
+    assert.match(text, /fast-forward hint[^.\n]{0,80}only text/, `${name} says the fast-forward hint is only text`);
+  }
+  assert.ok(step2[0].includes('--base <args.baseBranch>'), 'step 2 passes --base');
+  assert.ok(configMd.includes('[--base <b>]'), 'config.md usage line cites --base');
 });
 
 test('SKILL.md forbids adding approveRulings from doNow or resumeArgs', () => {

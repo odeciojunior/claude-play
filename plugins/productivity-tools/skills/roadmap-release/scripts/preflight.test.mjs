@@ -1101,6 +1101,217 @@ test('E41 T9: --slice with --page is refused with exit 2', () => {
   assert.match(JSON.parse(r.stdout).error, /slice/);
 });
 
+// ---- E45 T2: the branch changes during the discovery ----
+const sliceArgs = (root, nonce) => ['--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', nonce];
+// Every envelope of one read, each one inside the byte cap and signed (the extra `at` header included).
+function readAllSlices(root, nonce) {
+  const envs = [];
+  do {
+    const k = envs.length;
+    const r = discCli(...sliceArgs(root, nonce), '--slice', String(k));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const e = JSON.parse(r.stdout);
+    assert.ok(utf8Length(JSON.stringify(e)) <= SLICE_BYTES);
+    assert.deepEqual(checkSlice(e, { tool: 'release-discovery', command: 'discover', nonce, slice: k }), { ok: true, why: null });
+    envs.push(e);
+  } while (envs.length < envs[0].slices);
+  return envs;
+}
+function sliceError(root, nonce, k) {
+  const r = discCli(...sliceArgs(root, nonce), '--slice', String(k));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(o).sort(), ['error', 'tool']);
+  assert.equal(o.tool, 'release-discovery');
+  return o.error;
+}
+const headOf = (root, ref = 'main') => git(root, 'rev-parse', ref).trim();
+const commitState = (root, edit, message) => {
+  const path = join(root, 'docs', 'plans', 'roadmap-x', 'state.md');
+  writeFileSync(path, edit(readFileSync(path, 'utf8')));
+  git(root, 'commit', '-q', '-am', message);
+};
+const addBlockers = (from, n) => (text) => text.replace('<!-- /roadmap:blockers -->', `${Array.from({ length: n }, (_, i) => `| B${from + i} | added ${'y'.repeat(200)} | E1 | 2026-01-02 | later |`).join('\n')}\n<!-- /roadmap:blockers -->`);
+const dropBlockers = (keep) => (text) => text.replace(/^\| B(\d+) \|.*\n/gm, (line, n) => (Number(n) <= keep ? line : ''));
+const changedMsg = (ref, from, to) => `the branch ${ref} changed during the discovery (from ${from} (previous reflog entry) to ${to}); do not commit to it while roadmap-release runs, then run again`;
+const nowAtMsg = (ref, to) => `the branch ${ref} changed during the discovery (now at ${to}; the SHA read first is in slice 0); do not commit to it while roadmap-release runs, then run again`;
+
+test('E45 T2: discoverRoadmap fills seen.refs with the ref read and the merges ref, without repeating, and returns the same data', () => {
+  const { root } = discRepo();
+  const seen = {};
+  const data = discoverRoadmap({ repo: root, roadmap: DISC_ROADMAP, prefix: 'pf-', today: '2026-01-05' }, seen);
+  assert.equal(data.readFrom, 'main');
+  assert.deepEqual(seen.refs, ['main']);
+  assert.deepEqual(data, disc(root));
+});
+
+test('E45 T2 AC1: a commit that grows the discovery between slices names the branch and the SHA before and after', () => {
+  const { root } = discRepo(bigBlockers(20));
+  const before = headOf(root);
+  const first = discCli(...sliceArgs(root, 'n-g'), '--slice', '0');
+  assert.equal(first.status, 0, first.stderr);
+  const e0 = JSON.parse(first.stdout);
+  assert.deepEqual(e0.at, [{ ref: 'main', sha: before }]);
+  commitState(root, addBlockers(21, 20), 'grow');
+  const after = headOf(root);
+  const envs = readAllSlices(root, 'n-g');
+  assert.ok(envs.length > e0.slices, `${envs.length} > ${e0.slices}`);
+  assert.deepEqual(envs[0].at, [{ ref: 'main', sha: after }]);
+  assert.equal(sliceError(root, 'n-g', envs.length), changedMsg('main', before, after));
+});
+
+test('E45 T2 AC1: a commit that shrinks the discovery makes the last old slice report the SHA before and after (#4)', () => {
+  const { root } = discRepo(bigBlockers(40));
+  const before = headOf(root);
+  const old = readAllSlices(root, 'n-r');
+  commitState(root, dropBlockers(2), 'shrink');
+  const after = headOf(root);
+  assert.ok(readAllSlices(root, 'n-r').length < old.length);
+  assert.equal(sliceError(root, 'n-r', old.length - 1), changedMsg('main', before, after));
+});
+
+test('E45 T2: a commit that keeps the slice count changes `at`, and the old slice 0 does not join the new ones', () => {
+  const { root } = discRepo(bigBlockers(20));
+  const old = readAllSlices(root, 'n-c');
+  assert.ok(old.length > 1);
+  commitState(root, (text) => text.replace('blocked by é', 'blocked BY é'), 'same size'); // a cell the discovery reads
+  const now = readAllSlices(root, 'n-c');
+  assert.equal(now.length, old.length);
+  assert.deepEqual(now[0].at, [{ ref: 'main', sha: headOf(root) }]);
+  assert.notDeepEqual(now[0].at, old[0].at);
+  assert.deepEqual(joinSlices([old[0], ...now.slice(1)]), { ok: false, why: 'the slices come from different reads' });
+});
+
+test('E45 T2 C1: without a reflog the message gives the current SHA and says the SHA read first is in slice 0', () => {
+  const { root } = discRepo(bigBlockers(20));
+  git(root, 'config', 'core.logAllRefUpdates', 'false');
+  rmSync(join(root, '.git', 'logs'), { recursive: true, force: true });
+  const old = readAllSlices(root, 'n-n');
+  commitState(root, dropBlockers(1), 'shrink');
+  assert.ok(!existsSync(join(root, '.git', 'logs')));
+  assert.equal(sliceError(root, 'n-n', old.length - 1), nowAtMsg('main', headOf(root)));
+});
+
+test('E45 T2: two refs (texts from the base, merges from the target) give one clause each, joined by ". "', () => {
+  const { root } = discRepo();
+  // the target exists but has no roadmap folder: the texts come from main, the merges from the target
+  const tree = git(root, 'mktree').trim();
+  const lone = git(root, 'commit-tree', tree, '-m', 'lone').trim();
+  git(root, 'update-ref', '--create-reflog', 'refs/heads/release/sample', lone);
+  const mainBefore = headOf(root);
+  const [e0] = readAllSlices(root, 'n-2');
+  assert.deepEqual(e0.at, [{ ref: 'main', sha: mainBefore }, { ref: 'release/sample', sha: lone }]);
+  commitState(root, addBlockers(1, 1), 'main moves');
+  const next = git(root, 'commit-tree', tree, '-p', lone, '-m', 'next').trim();
+  git(root, 'update-ref', 'refs/heads/release/sample', next);
+  const count = readAllSlices(root, 'n-2').length;
+  assert.equal(sliceError(root, 'n-2', count), `${changedMsg('main', mainBefore, headOf(root))}. ${changedMsg('release/sample', lone, next)}`);
+});
+
+test('E45 T2 C2: a discovery read from the working tree has an empty `at` and asks not to edit or commit', () => {
+  const { root } = discRepo((n, t) => (n === 'roadmap.config.json' ? t.replace(/"integrationBranch":\s*"main"/, '"integrationBranch": "no-such-branch"') : t));
+  const seen = {};
+  assert.equal(discoverRoadmap({ repo: root, roadmap: DISC_ROADMAP, prefix: 'pf-', today: '2026-01-05' }, seen).readFrom, 'working tree');
+  assert.deepEqual(seen.refs, []);
+  const envs = readAllSlices(root, 'n-w');
+  for (const e of envs) assert.deepEqual(e.at, []);
+  assert.equal(sliceError(root, 'n-w', envs.length), 'the discovery changed between slices (read from the working tree); do not edit or commit while roadmap-release runs, then run again');
+});
+
+// ---- E45 T3: divergent release.config.json between the target and the working tree ----
+const divergence = (r) => r.warnings.filter((w) => w.startsWith('release.config.json on '));
+const REF_CFG = () => ({ ...good(), generated: false });
+const writeTreeCfg = (dir, cfg) => writeFileSync(join(dir, 'release.config.json'), typeof cfg === 'string' ? cfg : JSON.stringify(cfg));
+const divergentCfg = () => {
+  const { projectContext: _p, ...rest } = REF_CFG();
+  return { ...rest, install: 'pnpm install', setup: 'make' };
+};
+const preflightRel = (dir, extra = {}) => runPreflight(dir, { home: mkdtempSync(join(tmpdir(), 'home-')), ref: 'rel', configDir: null, ...extra });
+const DIVERGENT = 'release.config.json on rel differs from the working tree in: install, projectContext, setup; the one on rel applies';
+const BEHIND = 'release.config.json on rel differs from the working tree in: install; the one on rel applies; rel is 2 commits behind main; fast-forward it to take the working-tree config';
+
+// rel is a strict ancestor of main, 2 commits behind; the working tree (main) has another config.
+function repoWithTargetBehind() {
+  const repo = repoWithRoadmap(true);
+  git(repo.root, 'merge', '-q', '--ff-only', 'rel');
+  writeTreeCfg(repo.dir, { ...REF_CFG(), install: 'pnpm install' });
+  git(repo.root, 'commit', '-qam', 'new install');
+  git(repo.root, 'commit', '-qm', 'next', '--allow-empty');
+  return repo;
+}
+
+test('E45 T3 AC2: a divergent config warns the sorted keys, also those of one side only, and a target ahead of the base gets no fast-forward hint (C4)', () => {
+  const { dir } = repoWithRoadmap(true);
+  writeTreeCfg(dir, divergentCfg());
+  const r = preflightRel(dir, { base: 'main' });
+  assert.deepEqual(divergence(r), [DIVERGENT]);
+  assert.deepEqual(r.config, REF_CFG());
+  assert.equal(r.generated, false);
+  assert.deepEqual(r.errors, []);
+});
+
+test('E45 T3 C4: a base on the same commit as the target gets no fast-forward hint', () => {
+  const { root, dir } = repoWithRoadmap(true);
+  writeTreeCfg(dir, divergentCfg());
+  git(root, 'branch', 'same', 'rel');
+  for (const base of ['rel', 'same']) assert.deepEqual(divergence(preflightRel(dir, { base })), [DIVERGENT], base);
+});
+
+test('E45 T3: without a base, or with one that names no commit, the warning has no fast-forward hint', () => {
+  const { dir } = repoWithTargetBehind();
+  const line = BEHIND.slice(0, BEHIND.indexOf('; rel is '));
+  assert.deepEqual(divergence(preflightRel(dir)), [line]);
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'no-such-branch' })), [line]);
+});
+
+test('E45 T3 C3: the same config with another key order gives no warning', () => {
+  const { dir } = repoWithRoadmap(true);
+  const reverse = (v) => (Array.isArray(v) ? v.map(reverse) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reverse(x)])) : v);
+  writeTreeCfg(dir, JSON.stringify(reverse(REF_CFG()), null, 2).replace(/\n/g, '\r\n'));
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'main' })), []);
+});
+
+test('E45 T3 C3: without a config in the working tree there is no warning', () => {
+  const { dir } = repoWithRoadmap(true);
+  assert.equal(existsSync(join(dir, 'release.config.json')), false);
+  assert.deepEqual(divergence(preflightRel(dir, { base: 'main' })), []);
+});
+
+test('E45 T3: a working-tree config that is not a JSON object is not compared', () => {
+  const { dir } = repoWithRoadmap(true);
+  for (const text of ['{ broken', '[]', 'null', '"x"']) {
+    writeTreeCfg(dir, text);
+    const r = preflightRel(dir, { base: 'main' });
+    assert.deepEqual(divergence(r), [], text);
+    assert.deepEqual(r.errors, [], text);
+  }
+});
+
+test('E45 T3 AC2: a target behind the base option gets the commit count and the fast-forward hint, and nothing moves', () => {
+  const { root, dir } = repoWithTargetBehind();
+  const before = git(root, 'rev-parse', 'rel', 'main');
+  const r = preflightRel(dir, { base: 'main' });
+  assert.deepEqual(divergence(r), [BEHIND]);
+  assert.deepEqual(r.config, REF_CFG());
+  assert.deepEqual(r.errors, []);
+  assert.equal(git(root, 'rev-parse', 'rel', 'main'), before);
+});
+
+test('E45 T3 AC2: without the base option the base is the integrationBranch of the folder, and the option wins over it', () => {
+  const { dir } = repoWithTargetBehind();
+  writeFileSync(join(dir, 'roadmap.config.json'), JSON.stringify({ strategy: 's.md', integrationBranch: 'main' }));
+  assert.deepEqual(divergence(preflightRel(dir)), [BEHIND]);
+  assert.doesNotMatch(divergence(preflightRel(dir, { base: 'rel' }))[0], /fast-forward/);
+});
+
+test('E45 T3 AC2: the CLI accepts --base and cites it in the usage line', () => {
+  const { dir } = repoWithTargetBehind();
+  assert.deepEqual(divergence(cliJson(dir, '--base', 'main')), [BEHIND]);
+  const usage = spawnSync(process.execPath, [PF_CLI], { encoding: 'utf8' });
+  assert.equal(usage.status, 2);
+  assert.match(usage.stderr, /\[--ref <target-branch>\] \[--base <base-branch>\]/);
+});
+
 // ---- missingDirs (DEC-719): wtRoot must be in permissions.additionalDirectories ----
 import { missingDirs } from './preflight.mjs';
 import { realpathSync } from 'node:fs';
@@ -1235,4 +1446,118 @@ test('E34 C3: runPreflight reports both config validation errors and the 524.288
   assert.ok(r.errors.some((e) => /gates must be a non-empty list/.test(e)));
   assert.ok(r.errors.some((e) => /524\.288 bytes \(512 KiB\)/.test(e) && /'not found'/.test(e)));
   rmSync(tmp, { recursive: true, force: true });
+});
+
+// ---- E45 T4 AC3/C5: the marketplace clone of the release workflow, measured against the cache copy ----
+import * as preflightModule from './preflight.mjs';
+import { createHash } from 'node:crypto';
+
+const WF_IN_MARKETPLACE = ['plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js'];
+const BY_NAME = ['clone', 'cache', 'both'];
+const slashed = (p) => p.split(sep).join('/');
+const sha256 = (b) => createHash('sha256').update(b).digest('hex');
+const putFile = (path, content) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); return path; };
+const putClone = (userBase, marketplace, content) => slashed(putFile(join(userBase, 'plugins', 'marketplaces', marketplace, ...WF_IN_MARKETPLACE), content));
+
+// A repository, a fake home and a cache copy of the workflow; `run` never reads the real CLAUDE_CONFIG_DIR.
+function cloneFixture(cacheBytes = Buffer.from('cache copy\n')) {
+  const { dir } = repoWithRoadmap(true);
+  const home = mkdtempSync(join(tmpdir(), 'home-'));
+  const wf = slashed(putFile(join(mkdtempSync(join(tmpdir(), 'wfclone-')), 'roadmap-release.js'), cacheBytes));
+  const run = (opts = {}) => runPreflight(dir, { home, configDir: null, ref: 'rel', workflowPath: wf, ...opts });
+  return { home, userBase: join(home, '.claude'), wf, run };
+}
+const aboutClone = (r) => ({ errors: r.errors.filter((e) => e.includes('release workflow clone')), warnings: r.warnings.filter((w) => w.includes('release workflow clone')) });
+const differs = (p, clone, wf, cache, loads) => `the release workflow clone ${p} differs from the cache copy ${wf} (${clone.length} vs ${cache.length} bytes, sha256 ${sha256(clone)} vs ${sha256(cache)}); launching by name loads ${loads}`;
+const loadedCopy = (loadedByName, p, wf) => ({ clone: `the clone copy ${p}`, cache: `the cache copy ${wf}`, both: `either copy (not confirmed): ${p} or ${wf}` }[loadedByName]);
+
+test('E45 T4: LOADED_BY_NAME is one of clone, cache or both', () => {
+  assert.ok(BY_NAME.includes(preflightModule.LOADED_BY_NAME), String(preflightModule.LOADED_BY_NAME));
+});
+
+test('E45 T4 AC3: a different clone of 524289 bytes is an error in clone and both, and a warning without error in cache', () => {
+  const cache = Buffer.from('cache copy\n');
+  const clone = Buffer.alloc(524289, 0x61);
+  const { userBase, wf, run } = cloneFixture(cache);
+  const p = putClone(userBase, 'mk', clone);
+  const over = `release workflow clone exceeds 524.288 bytes (512 KiB): ${p} has 524289 bytes (limit is 524288 bytes)`;
+  for (const [loadedByName, verb] of [['clone', 'will fail'], ['both', 'may fail']]) {
+    const r = run({ loadedByName });
+    assert.deepEqual(r.errors, [`${over}; launching productivity-tools:release-workflow by name ${verb} with 'not found'`], loadedByName);
+    assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, loadedCopy(loadedByName, p, wf))], loadedByName);
+  }
+  const r = run({ loadedByName: 'cache' });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, `the cache copy ${wf}`), `${over}; launching by name loads the cache copy`]);
+});
+
+test('E45 T4 AC3: a different small clone, or one of exactly 524288 bytes, gives only the difference warning, naming the copy loaded by name', () => {
+  const cache = Buffer.from('cache copy\n');
+  // Same size as the cache copy and other bytes: only the sha256 tells them apart.
+  for (const clone of [Buffer.from('clone copy\n'), Buffer.alloc(524288, 0x61)]) {
+    const { userBase, wf, run } = cloneFixture(cache);
+    const p = putClone(userBase, 'mk', clone);
+    for (const loadedByName of BY_NAME) {
+      const r = run({ loadedByName });
+      assert.deepEqual(r.errors, [], loadedByName);
+      assert.deepEqual(aboutClone(r).warnings, [differs(p, clone, wf, cache, loadedCopy(loadedByName, p, wf))], loadedByName);
+    }
+  }
+});
+
+test('E45 T4 AC3: without the option the preflight follows LOADED_BY_NAME', () => {
+  const { userBase, run } = cloneFixture();
+  putClone(userBase, 'mk', Buffer.alloc(524289, 0x61));
+  assert.deepEqual(aboutClone(run()), aboutClone(run({ loadedByName: preflightModule.LOADED_BY_NAME })));
+  assert.equal(aboutClone(run()).warnings.length > 0, true);
+});
+
+test('E45 T4 C5: an identical clone, an absent clone, a local marketplace or the cache copy itself says nothing about the clone', () => {
+  const cache = Buffer.alloc(524289, 0x61);
+  const identical = cloneFixture(cache);
+  putClone(identical.userBase, 'mk', cache);
+  const absent = cloneFixture();
+  mkdirSync(join(absent.userBase, 'plugins', 'marketplaces', 'mk'), { recursive: true });
+  const local = cloneFixture();
+  putFile(join(local.userBase, 'plugins', 'known_marketplaces.json'), JSON.stringify({ mk: { source: { source: 'directory', path: local.home } } }));
+  const self = cloneFixture();
+  const selfPath = putClone(self.userBase, 'mk', 'the only copy\n');
+  for (const loadedByName of BY_NAME) {
+    for (const r of [identical.run({ loadedByName }), absent.run({ loadedByName }), local.run({ loadedByName }), self.run({ loadedByName, workflowPath: selfPath })]) {
+      assert.deepEqual(aboutClone(r), { errors: [], warnings: [] }, loadedByName);
+    }
+  }
+});
+
+test('E45 T4 AC3: from a cache install only the clone of that marketplace is measured; outside the cache, every marketplace', () => {
+  const { userBase, run } = cloneFixture();
+  const mk = putClone(userBase, 'mk', 'clone of mk\n');
+  const other = putClone(userBase, 'other', 'clone of other\n');
+  const plugin = join(userBase, 'plugins', 'cache', 'mk', 'productivity-tools', '9.9.9');
+  putFile(join(plugin, 'skills', 'roadmap-tracker', 'scripts', 'roadmap.mjs'), '// stub\n');
+  const cached = run({ trackerFrom: join(plugin, 'skills', 'roadmap-release', 'scripts') });
+  assert.deepEqual(cached.errors, []);
+  assert.equal(aboutClone(cached).warnings.length, 1);
+  assert.ok(aboutClone(cached).warnings[0].startsWith(`the release workflow clone ${mk} differs `));
+  const outside = aboutClone(run()).warnings;
+  assert.equal(outside.length, 2);
+  assert.ok(outside[0].startsWith(`the release workflow clone ${mk} differs `));
+  assert.ok(outside[1].startsWith(`the release workflow clone ${other} differs `));
+});
+
+test('E45 T4 AC3: the configDir option replaces home/.claude as the root of the marketplaces', () => {
+  const { userBase, run } = cloneFixture();
+  putClone(userBase, 'mk', 'clone under home\n');
+  const configDir = mkdtempSync(join(tmpdir(), 'cfg-'));
+  const p = putClone(configDir, 'mk', 'clone under configDir\n');
+  const warnings = aboutClone(run({ configDir })).warnings;
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0].startsWith(`the release workflow clone ${p} differs `));
+});
+
+test('E45 T4 AC3: the size error of the cache copy stays as it is in every outcome', () => {
+  const { userBase, wf, run } = cloneFixture(Buffer.alloc(524289, 0x62));
+  putClone(userBase, 'mk', 'small clone\n');
+  const own = `release workflow file exceeds 524.288 bytes (512 KiB): ${wf} has 524289 bytes (limit is 524288 bytes); launching productivity-tools:release-workflow by name will fail with 'not found'`;
+  for (const loadedByName of BY_NAME) assert.deepEqual(run({ loadedByName }).errors, [own], loadedByName);
 });

@@ -5,7 +5,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, isAbsolute, relative, sep, dirname, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { pendingDecisions } from '../../roadmap-tracker/scripts/roadmap.mjs';
 import { parseRoadmapTexts, parseStatusSegments, EXECUTABLE_KINDS, idsIn, shasIn } from '../../../lib/roadmap-format.mjs';
@@ -364,6 +364,38 @@ export function workflowFilePath(from = HERE) {
   return resolve(from, '../workflow/roadmap-release.js').split(sep).join('/');
 }
 
+// Which copy of the workflow a launch by name loads: 'clone' (the marketplace clone), 'cache' (the version folder of the plugin
+// cache) or 'both' (not confirmed). Measured in one headless session: docs/plans/pos-2-6-0-E45/confirmacao.md (CLI 2.1.332,
+// productivity-tools 2.6.0 installed from git).
+export const LOADED_BY_NAME = 'cache';
+
+// Compares each marketplace clone of the workflow with the copy in `wfPath`: a different one is a warning, and one over the launch
+// limit is an error unless the cache copy is the one loaded by name. From a cache install only that marketplace is measured.
+function checkMarketplaceClones({ userBase, trackerFrom, wfPath, loadedByName, errors, warnings }) {
+  const marketplaces = join(userBase, 'plugins', 'marketplaces');
+  const cached = /\/plugins\/cache\/([^/]+)\/productivity-tools\/[^/]+(?=\/|$)/.exec(resolve(trackerFrom).split(sep).join('/'));
+  const names = cached ? [cached[1]] : existsSync(marketplaces) ? readdirSync(marketplaces).sort() : [];
+  const measure = (p) => {
+    const bytes = readFileSync(p);
+    return { size: bytes.length, sha: createHash('sha256').update(bytes).digest('hex') };
+  };
+  const cache = measure(wfPath);
+  for (const name of names) {
+    const path = join(marketplaces, name, 'plugins', 'productivity-tools', 'skills', 'roadmap-release', 'workflow', 'roadmap-release.js').split(sep).join('/');
+    if (!existsSync(path)) continue;
+    const clone = measure(path);
+    if (clone.size === cache.size && clone.sha === cache.sha) continue;
+    const loads = loadedByName === 'clone' ? `the clone copy ${path}`
+      : loadedByName === 'cache' ? `the cache copy ${wfPath}`
+        : `either copy (not confirmed): ${path} or ${wfPath}`;
+    warnings.push(`the release workflow clone ${path} differs from the cache copy ${wfPath} (${clone.size} vs ${cache.size} bytes, sha256 ${clone.sha} vs ${cache.sha}); launching by name loads ${loads}`);
+    if (clone.size <= MAX_WORKFLOW_LAUNCH_BYTES) continue;
+    const over = `release workflow clone exceeds 524.288 bytes (512 KiB): ${path} has ${clone.size} bytes (limit is ${MAX_WORKFLOW_LAUNCH_BYTES} bytes)`;
+    if (loadedByName === 'cache') warnings.push(`${over}; launching by name loads the cache copy`);
+    else errors.push(`${over}; launching ${RELEASE_WORKFLOW} by name ${loadedByName === 'clone' ? 'will' : 'may'} fail with 'not found'`);
+  }
+}
+
 // Absolute path (with /) of the tracker CLI shipped next to this skill; an error when it is missing or has a double quote
 // (the workflow wraps the path in double quotes).
 export function trackerCliPath(from = HERE) {
@@ -422,6 +454,20 @@ function gitTry(root, args) {
 }
 const refExists = (root, ref) => Boolean(ref) && gitTry(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) !== null;
 const isAncestor = (root, a, b) => gitTry(root, ['merge-base', '--is-ancestor', a, b]) !== null;
+// SHA of the commit a revision names now, or '' when it names none.
+const commitOf = (root, rev) => (gitTry(root, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`]) || '').trim();
+
+// Why a slice past the end was asked: each call reads the discovery again, so its slice count changed since the first one.
+// at = [{ ref, sha }] of this read. X is only the previous reflog entry; without one, the SHA read first is the `at` of slice 0.
+function changedBetweenSlices(root, at) {
+  if (at.length === 0) return 'the discovery changed between slices (read from the working tree); do not edit or commit while roadmap-release runs, then run again';
+  const clause = (ref, detail) => `the branch ${ref} changed during the discovery (${detail}); do not commit to it while roadmap-release runs, then run again`;
+  const moved = at.map((a) => ({ ...a, was: commitOf(root, `${a.ref}@{1}`) })).filter((a) => a.was && a.was !== a.sha);
+  const clauses = moved.length
+    ? moved.map((a) => clause(a.ref, `from ${a.was} (previous reflog entry) to ${a.sha}`))
+    : at.map((a) => clause(a.ref, `now at ${a.sha}; the SHA read first is in slice 0`));
+  return clauses.join('. ');
+}
 
 // The status word of the code piece of a Status cell: the segment labeled "code", or the only segment without a label.
 // A cell with several other pieces (piece 1, piece 2) or no segment has none.
@@ -450,7 +496,8 @@ function mergeOf(root, ref, id) {
 
 // Read-only discovery of the roadmap for the release workflow: the same parser as the checker, the git rules in code.
 // Throws an Error when the folder or the strategy is not readable.
-export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}) {
+// seen (out): seen.refs = the refs this read depended on (texts, then merges); empty when the texts came from the working tree.
+export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}, seen = {}) {
   void prefix; // the delivery branch <prefix><id> is born from the target and never counts as evidence
   const root = repoRoot(resolve(repo || '.')).split(sep).join('/');
   let dir;
@@ -488,6 +535,7 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
   const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
   const dirPath = `${rel}/`;
   const gitRef = targetExists ? target : refExists(root, baseBranch) ? baseBranch : null;
+  seen.refs = texts.from === 'working tree' ? [] : [...new Set([texts.from, gitRef].filter(Boolean))];
   const integrated = vocab.integratedStatuses || [];
   const discarded = vocab.discardedStatus || 'discarded';
   const panel = new Map(parsed.blocks.state.panel.rows.map((r) => [(String(r[0] || '').match(/\bE\d+\b/) || [String(r[0] || '').trim()])[0], r]));
@@ -535,7 +583,26 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
   return data;
 }
 
-export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null } = {}) {
+// One warning line when the release.config.json reviewed on `ref` and the one in the working tree differ in some top-level key
+// (key order does not count), else null. The one on `ref` applies. The fast-forward hint, given only when `ref` is a strict
+// ancestor of the base, is text: nothing runs it.
+function configDivergence(root, ref, refCfg, treeCfg, base) {
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (!isObject(refCfg) || !isObject(treeCfg)) return null;
+  const text = (cfg, k) => (Object.hasOwn(cfg, k) ? JSON.stringify(canon(cfg[k])) : undefined);
+  const keys = [...new Set([...Object.keys(refCfg), ...Object.keys(treeCfg)])].filter((k) => text(refCfg, k) !== text(treeCfg, k)).sort();
+  if (keys.length === 0) return null;
+  let line = `release.config.json on ${ref} differs from the working tree in: ${keys.join(', ')}; the one on ${ref} applies`;
+  const refSha = commitOf(root, ref);
+  const baseSha = base ? commitOf(root, base) : '';
+  if (refSha && baseSha && refSha !== baseSha && isAncestor(root, refSha, baseSha)) {
+    const behind = (gitTry(root, ['rev-list', '--count', `${refSha}..${baseSha}`]) || '').trim();
+    if (behind) line += `; ${ref} is ${behind} commits behind ${base}; fast-forward it to take the working-tree config`;
+  }
+  return line;
+}
+
+export function runPreflight(folder,{ home = homedir(), ref = null, configDir = process.env.CLAUDE_CONFIG_DIR || null, trackerFrom = HERE, declarePermissions = null, wtRoot = null, platform = process.platform, workflowPath = null, base = null, loadedByName = LOADED_BY_NAME } = {}) {
   const dir = resolve(folder);
   const configPath = join(dir, 'release.config.json');
   const root = repoRoot(dir);
@@ -547,6 +614,9 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   const onRef = ref ? readRef(root, ref, relFile) : null;
   if (onRef !== null) {
     try { config = JSON.parse(onRef); generated = config.generated === true; } catch { errors.push(`release.config.json on ${ref} is not valid JSON`); }
+    // readJson gives null for an absent or unreadable working-tree file: nothing to compare then.
+    const diverged = configDivergence(root, ref, config, readJson(configPath), base || readJson(join(dir, 'roadmap.config.json'))?.integrationBranch);
+    if (diverged) warnings.push(diverged);
   } else if (existsSync(configPath)) {
     config = readJson(configPath);
     if (config === null) errors.push('release.config.json is not valid JSON');
@@ -572,11 +642,13 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
   const tracker = trackerCliPath(trackerFrom);
   if (tracker.error) errors.push(tracker.error);
   const wfPath = workflowPath ? resolve(workflowPath).split(sep).join('/') : (existsSync(workflowFilePath(trackerFrom)) ? workflowFilePath(trackerFrom) : workflowFilePath(HERE));
+  const userBase = configDir || join(home, '.claude');
   if (existsSync(wfPath)) {
     const wfSize = statSync(wfPath).size;
     if (wfSize > MAX_WORKFLOW_LAUNCH_BYTES) {
       errors.push(`release workflow file exceeds 524.288 bytes (512 KiB): ${wfPath} has ${wfSize} bytes (limit is ${MAX_WORKFLOW_LAUNCH_BYTES} bytes); launching ${RELEASE_WORKFLOW} by name will fail with 'not found'`);
     }
+    checkMarketplaceClones({ userBase, trackerFrom, wfPath, loadedByName, errors, warnings });
   }
   let missing = [];
   let pending = [];
@@ -613,7 +685,6 @@ export function runPreflight(folder,{ home = homedir(), ref = null, configDir = 
       else warnings.push(`gate ${g.name} is restricted and runs only with authorizeExternal ["gate:${g.name}"]; ${rulesTxt}`);
     }
   }
-  const userBase = configDir || join(home, ".claude");
   const wt = (wtRoot ? resolve(wtRoot) : `${mainCheckout(dir)}-wt`).split(sep).join("/");
   const dirEntries = [{ settings: readJson(join(userBase, "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.json")) }, { settings: readJson(join(root, ".claude", "settings.local.json")) }];
   // Claude Code grants an additional directory only if it exists when the session starts, so a covered but absent wtRoot is still missing. Read-only: never created here.
@@ -663,8 +734,16 @@ function discoverCli(argv) {
   if (slice !== null && (!Number.isInteger(slice) || slice < 0)) return out({ tool: 'release-discovery', error: `${usage} (--slice must be a whole number from 0)` }, 2);
   if (slice !== null) {
     let envs;
-    try { envs = sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: opts.nonce }, JSON.stringify(canon(discoverRoadmap(opts)))); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
-    if (slice >= envs.length) return out({ tool: 'release-discovery', error: `slice ${slice} does not exist: the discovery has ${envs.length} slice(s), numbered from 0` }, 1);
+    let root;
+    let at;
+    try {
+      const seen = {};
+      const data = discoverRoadmap(opts, seen);
+      root = data.repo;
+      at = seen.refs.map((ref) => ({ ref, sha: commitOf(root, ref) }));
+      envs = sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: opts.nonce, at }, JSON.stringify(canon(data)));
+    } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+    if (slice >= envs.length) return out({ tool: 'release-discovery', error: changedBetweenSlices(root, at) }, 1);
     return out(envs[slice], 0);
   }
   const page = opts.page === undefined ? 0 : Number(opts.page);
@@ -688,12 +767,15 @@ else if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.me
   const wi = argv.indexOf("--wt-root");
   const wtRoot = wi >= 0 ? (argv[wi + 1] ?? "") : null;
   if (wi >= 0) argv.splice(wi, 2);
+  const bi = argv.indexOf('--base');
+  const base = bi >= 0 ? (argv[bi + 1] ?? null) : null;
+  if (bi >= 0) argv.splice(bi, 2);
   const folder = argv[0];
   if (!folder) {
-    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>] [--declare-permissions "<text>"] [--wt-root <path>]');
+    console.error('usage: node preflight.mjs <roadmap-folder> [--ref <target-branch>] [--base <base-branch>] [--declare-permissions "<text>"] [--wt-root <path>]');
     process.exit(2);
   }
-  const result = runPreflight(folder, { ref, declarePermissions, wtRoot: wtRoot || null });
+  const result = runPreflight(folder, { ref, base, declarePermissions, wtRoot: wtRoot || null });
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.errors.length ? 1 : 0);
 }

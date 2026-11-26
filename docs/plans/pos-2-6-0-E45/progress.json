@@ -1,0 +1,424 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E45/plan.md",
+    "id": "E45",
+    "digest": "cda5b9f6",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": null
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 5,
+    "worktree": null,
+    "branch": null,
+    "base": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.0879ms)\n✔ counts usage once per message id, keeping the largest output (29.0543ms)\n✔ splits cache writes into 5m and 1h (0.8998ms)\n✔ counts agent calls by dominant model family (0.9974ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7932ms)\n✔ estimates cost and keeps unpriced models null (0.7132ms)\n✔ readJsonl tolerates CRLF and a partial last line (2.2488ms)\n✔ classifies every label family of the role table (0.5429ms)\n✔ status, progress, review log and report come out as separate rows (212.9689ms)\n✔ records review rounds per loop (4.9224ms)\n✔ counts tasks and the task loop (3.4062ms)\n✔ writes metrics.json and one csv row per run and role (485.8992ms)\n✔ groups sessions of one attempt with --runs (410.9193ms)\n✔ requires --root and --out (423.7634ms)\n✔ refuses --out inside the repository outside tools/measure/out (3146.96ms)\n✔ real price table is dated and sourced (4.4395ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (466.1857ms)\n✔ privacy scan catches a planted personal path and session id (5.3051ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (18.3242ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (9.1723ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (14.7687ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (15.79ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (12.1703ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (14.7933ms)\n✔ prepare builds the sandbox and stops at authorize (17036.7798ms)\n✔ prepare refuses a work dir inside the repository (386.4651ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (319.6899ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (881.4407ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (551.8133ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.3877ms)\nℹ tests 2261\nℹ suites 11\nℹ pass 2259\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 246570.8726",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T11:45:12.539Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    },
+    {
+      "n": 3,
+      "tasks": [
+        3
+      ]
+    },
+    {
+      "n": 4,
+      "tasks": [
+        4
+      ]
+    },
+    {
+      "n": 5,
+      "tasks": [
+        5
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Confirmar em sessão headless a cópia que o nome carrega",
+      "wave": 1,
+      "deps": [],
+      "tier": "opus",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [
+        "docs/plans/pos-2-6-0-E45/confirmacao.md"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": "pass",
+      "authorized": "2026-11-26T10:27:06.616Z",
+      "handoff": "Result: LOADED_BY_NAME=cache, from one conclusive attempt. The premise that a Workflow called by name loads the marketplace clone is false. The workflow script of headless session 5fbf13cf-1a53-47a6-9595-a3acca131afa (Claude Code CLI 2.1.332, productivity-tools 2.6.0 installed from git into a throwaway CLAUDE_CONFIG_DIR) had only the cache marker, E45-MARCA-CACHE. Both source files still had their markers afterwards. The session returned the expected error 'args.config is missing or has no gates",
+      "sha": "5b60977ed5657109fb991a97dc900c4b4073d697",
+      "replacedBy": null,
+      "note": "Result: LOADED_BY_NAME=cache, from one conclusive attempt. The premise that a Workflow called by name loads the marketplace clone is false. The workflow script of headless session 5fbf13cf-1a53-47a6-9595-a3acca131afa (Claude Code CLI 2.1.332, productivity-tools 2.6.0 installed from git into a throwaway CLAUDE_CONFIG_DIR) had only the cache marker, E45-MARCA-CACHE. Both source files still had their",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Mensagem de X para Y quando o branch muda durante a descoberta",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`discover --slice` envelopes now carry a signed header `at: [{ref, sha}]` (empty when read from the working tree); `discoverRoadmap(opts, seen)` fills `seen.refs`. A slice index past the new count exits 1 with the X-to-Y, \"now at Y / slice 0\", or working-tree message; `--page` and the returned data are unchanged. Files (uncommitted): D:/projects/claude-play-wt/pos-2-6-0-E45/plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs and preflight.test.mjs (7 new E45 T2 tests). Final ",
+      "sha": "1b22814e7068572bebc98940d6de1a25979c1689",
+      "replacedBy": null,
+      "note": "`discover --slice` envelopes now carry a signed header `at: [{ref, sha}]` (empty when read from the working tree); `discoverRoadmap(opts, seen)` fills `seen.refs`. A slice index past the new count exits 1 with the X-to-Y, \"now at Y / slice 0\", or working-tree message; `--page` and the returned data are unchanged.\nFiles (uncommitted): D:/projects/claude-play-wt/pos-2-6-0-E45/plugins/productivity-to",
+      "outputs": null,
+      "brief": "briefs/T2.md",
+      "gated": true
+    },
+    {
+      "n": 3,
+      "title": "Aviso de config divergente e dica de fast-forward",
+      "wave": 3,
+      "deps": [
+        2
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`runPreflight(folder, { ..., base })` now adds one warning when release.config.json on `--ref` differs from the working-tree one (sorted top-level keys; `the one on <ref> applies`); `config`, `generated` and `errors` are unchanged. If the ref is a strict ancestor of the base (`--base`, else the folder's `integrationBranch`), the line also gets the commit count and a text-only fast-forward hint. The CLI accepts `--base <base-branch>` and its usage line cites it. Files (uncommitted): D:/projects/c",
+      "sha": "6531632a0763539ff886752f38ef17a67c052a15",
+      "replacedBy": null,
+      "note": "`runPreflight(folder, { ..., base })` now adds one warning when release.config.json on `--ref` differs from the working-tree one (sorted top-level keys; `the one on <ref> applies`); `config`, `generated` and `errors` are unchanged.\nIf the ref is a strict ancestor of the base (`--base`, else the folder's `integrationBranch`), the line also gets the commit count and a text-only fast-forward hint. Th",
+      "outputs": null,
+      "brief": "briefs/T3.md",
+      "gated": true
+    },
+    {
+      "n": 4,
+      "title": "Medir o clone do marketplace e dar o erro de 524.288 bytes",
+      "wave": 4,
+      "deps": [
+        1,
+        3
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.mjs",
+        "plugins/productivity-tools/skills/roadmap-release/scripts/preflight.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "`preflight.mjs` now exports `LOADED_BY_NAME = 'cache'` (from confirmacao.md), and `runPreflight(folder, { ..., loadedByName })` compares each marketplace clone of `roadmap-release.js` (under `<configDir|home/.claude>/plugins/marketplaces`; only `<mkt>` from a cache install) with `wfPath`. A different clone adds a warning with both paths, byte sizes and sha256; above 524288 bytes it adds an error in `clone`/`both`, and a second warning in `cache` (the shipped default). Absent or identical clones ",
+      "sha": "0b37386b946e3149ed271a9ed45b9a7d4c634e64",
+      "replacedBy": null,
+      "note": "`preflight.mjs` now exports `LOADED_BY_NAME = 'cache'` (from confirmacao.md), and `runPreflight(folder, { ..., loadedByName })` compares each marketplace clone of `roadmap-release.js` (under `<configDir|home/.claude>/plugins/marketplaces`; only `<mkt>` from a cache install) with `wfPath`.\nA different clone adds a warning with both paths, byte sizes and sha256; above 524288 bytes it adds an error i",
+      "outputs": null,
+      "brief": "briefs/T4.md",
+      "gated": true
+    },
+    {
+      "n": 5,
+      "title": "Documentar o aviso de commit, a config do alvo e a cópia carregada",
+      "wave": 5,
+      "deps": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "sonnet",
+      "gate": false,
+      "external": false,
+      "files": [
+        "plugins/productivity-tools/skills/roadmap-release/SKILL.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/operator.md",
+        "plugins/productivity-tools/skills/roadmap-release/references/config.md",
+        "plugins/productivity-tools/skills/roadmap-release/workflow/docs.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "SKILL.md (steps 2 and 4), references/operator.md (new section \"Launch and discovery\") and references/config.md (Permission preflight) now document `--base`, the config divergence line in `warnings` with its text-only fast-forward hint, the do-not-commit note, and that a launch by name loads the cache copy while preflight compares it with the marketplace clone. The test `the scriptPath fallback states the dialog limit` in workflow/docs.test.mjs now checks that text, picking the outcome sentence f",
+      "sha": "ff376dc6bb009a0717bcd59170263c8edb636c6c",
+      "replacedBy": null,
+      "note": "SKILL.md (steps 2 and 4), references/operator.md (new section \"Launch and discovery\") and references/config.md (Permission preflight) now document `--base`, the config divergence line in `warnings` with its text-only fast-forward hint, the do-not-commit note, and that a launch by name loads the cache copy while preflight compares it with the marketplace clone.\nThe test `the scriptPath fallback sta",
+      "outputs": null,
+      "brief": "briefs/T5.md",
+      "gated": true
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T04:48:06.864Z"
+    },
+    {
+      "event": "default",
+      "what": "base",
+      "value": "fb371abe30cd0f70616df45d0587a08e4d5a6eb0",
+      "at": "2026-11-26T04:48:06.864Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T04:48:24.935Z"
+    },
+    {
+      "event": "prelaunch-review",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T04:48:24.935Z"
+    },
+    {
+      "event": "authorize",
+      "step": 1,
+      "at": "2026-11-26T10:27:06.616Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T10:27:06.616Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T10:27:06.616Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T10:31:39.510Z"
+    },
+    {
+      "event": "review-result",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T10:35:17.172Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T10:35:17.172Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T10:36:12.277Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T10:36:12.277Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        2
+      ],
+      "at": "2026-11-26T10:36:12.277Z"
+    },
+    {
+      "event": "report",
+      "step": 2,
+      "value": "pass",
+      "at": "2026-11-26T10:40:02.150Z"
+    },
+    {
+      "event": "commit",
+      "step": 2,
+      "at": "2026-11-26T11:06:45.620Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "fail",
+      "at": "2026-11-26T11:07:05.414Z"
+    },
+    {
+      "event": "block",
+      "at": "2026-11-26T11:07:05.414Z"
+    },
+    {
+      "event": "unblock",
+      "at": "2026-11-26T11:15:56.128Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T11:16:01.500Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T11:16:01.500Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        3
+      ],
+      "at": "2026-11-26T11:16:01.500Z"
+    },
+    {
+      "event": "report",
+      "step": 3,
+      "value": "pass",
+      "at": "2026-11-26T11:20:32.192Z"
+    },
+    {
+      "event": "commit",
+      "step": 3,
+      "at": "2026-11-26T11:24:40.031Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T11:24:59.801Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T11:24:59.801Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        4
+      ],
+      "at": "2026-11-26T11:24:59.801Z"
+    },
+    {
+      "event": "report",
+      "step": 4,
+      "value": "pass",
+      "at": "2026-11-26T11:29:45.770Z"
+    },
+    {
+      "event": "commit",
+      "step": 4,
+      "at": "2026-11-26T11:34:36.339Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T11:34:55.243Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T11:34:55.243Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        5
+      ],
+      "at": "2026-11-26T11:34:55.243Z"
+    },
+    {
+      "event": "report",
+      "step": 5,
+      "value": "pass",
+      "at": "2026-11-26T11:39:35.163Z"
+    },
+    {
+      "event": "commit",
+      "step": 5,
+      "at": "2026-11-26T11:44:53.066Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T11:45:12.539Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T11:45:12.539Z"
+    }
+  ]
+}
