@@ -1,7 +1,7 @@
 Estratégia v1.3 -- 2026-11-26
 
 <!-- roadmap:now -->
-1. Escrever e executar o plano do E53: lote-gate, revisão final T3 da branch e, depois da autorização e do login do dono, o lote pago. Runs: executor. Approves: opus por delegação (DEC-021); gasto e login: dono. Depends on: - (E49 integrado em 44da934).
+1. E53: preparar o lote sem gasto, receber o login do dono na config descartável e rodar as execuções pagas, uma por vez (DEC-040, regras da DEC-017). Runs: executor. Approves: opus por delegação (DEC-021); login: dono. Depends on: login do dono.
 <!-- /roadmap:now -->
 <!-- roadmap:panel -->
 | Entregável | Status | Evidência | Próximo passo |
@@ -17,7 +17,7 @@ Estratégia v1.3 -- 2026-11-26
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
 | E52 | na-branch | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52`, `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc`, `9062783` | release/pos-2.6.0 (merge 9062783) entra em main na publicação (E54) |
-| E53 | executando | `docs/plans/pos-2-6-0-E53/spec.md`, `57ea4ca`, `docs/plans/pos-2-6-0-E53/plan.md`, `plan/pos-2-6-0-E53` | integrar o lote-gate, revisão final T3 e, com autorização e login do dono, o lote |
+| E53 | executando | `docs/plans/pos-2-6-0-E53/spec.md`, `57ea4ca`, `docs/plans/pos-2-6-0-E53/plan.md`, `plan/pos-2-6-0-E53` | preparar o lote (DEC-040), login do dono na config descartável e execuções pagas |
 | E54 | spec | `docs/plans/pos-2-6-0-E54/spec.md`, `a442446` | aguarda o fecho do E53; push e tag só com autorização do dono |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
@@ -36,7 +36,7 @@ Estratégia v1.3 -- 2026-11-26
 - (executor) E43: sem caso de teste para agente de releitura que devolve null (revisão final, achado F2)
 - (executor) verify-run.test.mjs:648 (processos, neto do listener): a espera fixa de 500 ms após taskkill /T falhou 1x num gate sob carga. Trocar por espera até o processo sumir (prazo de cerca de 5 s), conferindo a data de criação do PID; o finally pode matar um PID reaproveitado.
 - (executor) fora do escopo: no dev loop, o aviso de clone do preflight chama o arquivo do repositório de cópia do cache (revisão final do E45, achado F3; segue o ruling R6 da spec)
-- (dono) E53, com o candidato fixado: autorizar o lote (até US$ 18) em DEC que cite o SHA e fazer o login da conta na config descartável; nunca enviar token pelo chat.
+- (dono) E53: fazer o login da conta na config descartável D:/claude-e53-cfg, depois da preparação; nunca enviar token pelo chat.
 - (executor) fora do escopo (#13): no caminho agy o without_approve do .py não tira parallelOk, que pode voltar em resumeArgs (revisão final do E48, achado F1)
 - (executor) comentário de scripts/preflight.mjs (perto da linha 699) ainda diz que a primeira chamada de agente é a descoberta; com a medida antecipada é preflight-early (revisão final do E49, achado F1)
 - (executor) fora do escopo (T3): o lote-gate ignora subpasta de --out sem o prefixo parada-retomada- e informa custo zero em pasta sem transcrições (achados 2 e 3, aceitos)

@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | DEC-040 recorded: o dono autorizou no chat o lote pago do candidato d4ac4ee, teto US$ 18; plugins/ e tools/measure/ sem mudança entre d4ac4ee e c02bbe5; falta o login na config descartável | `decisions.md` |
 | 2026-11-26 | E54 | E54 spec written (só o documento); aprovada por opus por delegação (DEC-021) com três ajustes aplicados; push, tag, main e issues só com autorização do próprio dono (ruling R7) | `a442446` |
 | 2026-11-26 | E53 | DEC-039 recorded: conferência contra o E39 aceita pelo delegado, com a comparação de sessões depois de cada execução; testes do lote-gate 67 de 67 no candidato; pedido de autorização do lote feito ao dono | `d4ac4ee` |
 | 2026-11-26 | E53 | revisão final T3 (opus high, rodada 1) do candidato d4ac4ee: zero bloqueantes, um importante de operação já coberto pelo plano e quatro menores aceitos; AC1 atendido; relatório docs/reports/2026-11-26-E53-revisao-final.md | `89ff92b` |
