@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | preparação do lote sem gasto: worktree destacado no candidato e limpo; config descartável nova com superpowers 7.0.0 (bb92a77) e autoUpdate falso; claude 2.1.332; settings.json sha256 7a4ce0b8...099adb (o do E39 indisponível); lote-gate com saída vazia: pode-seguir 3.00; falta o login | `d4ac4ee` |
 | 2026-11-26 | E53 | DEC-040 recorded: o dono autorizou no chat o lote pago do candidato d4ac4ee, teto US$ 18; plugins/ e tools/measure/ sem mudança entre d4ac4ee e c02bbe5; falta o login na config descartável | `decisions.md` |
 | 2026-11-26 | E54 | E54 spec written (só o documento); aprovada por opus por delegação (DEC-021) com três ajustes aplicados; push, tag, main e issues só com autorização do próprio dono (ruling R7) | `a442446` |
 | 2026-11-26 | E53 | DEC-039 recorded: conferência contra o E39 aceita pelo delegado, com a comparação de sessões depois de cada execução; testes do lote-gate 67 de 67 no candidato; pedido de autorização do lote feito ao dono | `d4ac4ee` |
