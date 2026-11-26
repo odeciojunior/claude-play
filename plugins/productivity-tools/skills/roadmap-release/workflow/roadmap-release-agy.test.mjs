@@ -1783,3 +1783,56 @@ pyTest('guard: _main() resets ROOT and all module globals before AGY_REQUEST_RE 
   assert.deepEqual(s.RESULTS, []);
   assert.deepEqual(s.R, {});
 });
+
+// ---- read_tests_gate on its own: the deterministic extractor before the flash reader (E52 AC2). GATE_READ is the flash answer.
+const GATE_SNIPPET = (d, r) => `
+ROOT = ${JSON.stringify(PLUGIN.replace(/\\/g, '/'))}
+_load_bridge(ROOT)
+SCHEMAS = load_js_schemas(ROOT + '/' + RELEASE_JS_REL)
+async def snip():
+    return await read_tests_gate(json.loads(${JSON.stringify(JSON.stringify(d))}), json.loads(${JSON.stringify(JSON.stringify(r))}))
+`;
+const UNIT_GATE = { name: 'unit', cmd: 'node --test', kind: 'tests' };
+const gateRead = (stdout, exit = 0, d = UNIT_GATE) => runWorkflow(undefined, { gates: GATE_READ }, WORKFLOW, GATE_SNIPPET(d, { exit, stdout, stderr: '', ran: true }));
+const FLASH_ANSWER = { total: 3, skipped: 0, failedNames: [] };
+const okLines = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => `ok ${from + i} - passing test number ${from + i}\n`).join('');
+const tapSummary = (tests, fail) => `# tests ${tests}\n# pass ${tests - fail}\n# fail ${fail}\n# skipped 0\n`;
+const GREEN_TAP = `TAP version 13\n${okLines(1, 5)}${tapSummary(5, 0)}`;
+
+function assertFlashRead(r) {
+  assert.deepEqual(roles(r.calls), ['gates']);
+  assert.deepEqual(r.snip, FLASH_ANSWER);
+}
+
+pyTest('E52 AC2: a TAP failure before the last 4000 characters is seen without the flash reader', () => {
+  const stdout = `TAP version 13\nnot ok 1 - early failure\n${okLines(2, 200)}${tapSummary(200, 1)}`;
+  assert.ok(stdout.slice(stdout.indexOf('not ok')).split('\n').slice(1).join('\n').length > 4000, 'the failure sits before the tail of 4000 characters');
+  const r = gateRead(stdout, 1);
+  assert.deepEqual(r.snip, { total: 200, skipped: 0, failedNames: ['early failure'] });
+  assert.deepEqual(r.calls, []);
+});
+
+pyTest('E52 AC2: a green node-spec output is read without the flash reader', () => {
+  const r = gateRead('✔ first (1.5ms)\n✔ second (0.5ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\n');
+  assert.deepEqual(r.snip, { total: 2, skipped: 0, failedNames: [] });
+  assert.deepEqual(r.calls, []);
+});
+
+pyTest('E52 AC2: an output of unknown format goes to the flash reader', () => {
+  assertFlashRead(gateRead('tests 3 pass 3\n'));
+});
+
+pyTest('E52 AC2: a vitest summary goes to the flash reader', () => {
+  assertFlashRead(gateRead(' Test Files  1 passed (1)\n      Tests  97 passed (97)\n'));
+});
+
+pyTest('E52 AC2: a gate with ignoreFailuresWhenChanged goes to the flash reader', () => {
+  // an empty object is a set key too: only an absent key, null or false lets the extract stand
+  for (const ignoreFailuresWhenChanged of [true, {}]) assertFlashRead(gateRead(GREEN_TAP, 0, { ...UNIT_GATE, ignoreFailuresWhenChanged }));
+});
+
+pyTest('E52 AC2: an extract that contradicts the exit stands and does not go to the flash reader', () => {
+  const r = gateRead(GREEN_TAP, 1);
+  assert.deepEqual(r.snip, { total: 5, skipped: 0, failedNames: [] });
+  assert.deepEqual(r.calls, []);
+});

@@ -1,6 +1,6 @@
 ---
 name: wsl-health-check
-description: "Runs the bundled WSL/Linux health-report script and summarizes disk, memory, network and services in a fixed table. Use when the user asks for a system or WSL health check, a health report, whether a Linux/WSL machine is healthy, or a narrow question such as disk space, memory or service status there. Not for Windows-native or macOS hosts."
+description: "Runs the bundled WSL/Linux health-report script and summarizes disk, memory, network and services in a fixed table. Use when the user asks for a system or WSL health check, a health report, whether a Linux/WSL machine is healthy, or a narrow question such as disk space, memory or service status there. Also works from pwsh on Windows when WSL is installed. Not for Windows without WSL, nor for macOS hosts."
 ---
 
 # System Health Check
@@ -10,6 +10,9 @@ Run the bundled script and produce a structured summary.
 ## Workflow
 
 1. Run: `bash "${CLAUDE_SKILL_DIR}/scripts/health-report.sh" --full --no-color` (if `${CLAUDE_SKILL_DIR}` is empty or not expanded, use the folder this SKILL.md was loaded from)
+   - That command is for Linux and WSL. From pwsh on Windows with WSL installed, run this one instead: `wsl -e bash -lc 'p=$(wslpath -u "$1"); exec bash "$p" --full --no-color' -- "${CLAUDE_SKILL_DIR}/scripts/health-report.sh"`
+   - In pwsh, replace the `${CLAUDE_SKILL_DIR}` placeholder with the absolute folder of this skill, written with `/`, before running it (if it is empty or not expanded, use the folder this SKILL.md was loaded from). Copied literally, pwsh reads it as one of its own variables, expands it to nothing without an error, and the path becomes `/scripts/health-report.sh`.
+   - Never call bare `bash` from pwsh: it resolves to the System32 launcher and exits 127.
 2. Parse each section (see Parsing Guide below)
 3. Classify each category using the Thresholds table
 4. Output EXACTLY the format shown in Output Format

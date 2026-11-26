@@ -12,8 +12,8 @@ Run comprehensive, multi-source investigations on any domain and save a structur
 0. **Confirm the scope** when the request is ambiguous (question, depth, audience)
 1. **Deconstruct** the research request into core questions, sub-questions, and implicit information needs
 2. **Plan** the search strategy: identify domains, source types, and multiple angles to explore
-3. **Search broadly** using varied, specific queries via WebSearch to uncover different facets
-4. **Fetch and verify** the most promising sources via WebFetch, following citation trails
+3. **Search broadly** using varied, specific queries via WebSearch (`search_web` where WebSearch is absent, as on Antigravity) to uncover different facets
+4. **Fetch and verify** the most promising sources via WebFetch, following citation trails. Where WebFetch is absent, use the results and links returned by `search_web` and mark every source you did not read in full as unverified
 5. **Synthesize** findings into a structured deliverable with clear source attribution
 6. **Assess gaps** and acknowledge what couldn't be determined or needs further investigation
 7. **Write the report** to `docs/reports/YYYY-MM-DD-<topic-slug>.md`. Use the structure in [references/report-template.md](references/report-template.md). Write the report incrementally; if research is cut short, mark the report Partial and list the open questions.
