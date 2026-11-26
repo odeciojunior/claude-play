@@ -1101,6 +1101,123 @@ test('E41 T9: --slice with --page is refused with exit 2', () => {
   assert.match(JSON.parse(r.stdout).error, /slice/);
 });
 
+// ---- E45 T2: the branch changes during the discovery ----
+const sliceArgs = (root, nonce) => ['--repo', root, '--roadmap', DISC_ROADMAP, '--today', '2026-01-05', '--prefix', 'pf-', '--nonce', nonce];
+// Every envelope of one read, each one inside the byte cap and signed (the extra `at` header included).
+function readAllSlices(root, nonce) {
+  const envs = [];
+  do {
+    const k = envs.length;
+    const r = discCli(...sliceArgs(root, nonce), '--slice', String(k));
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const e = JSON.parse(r.stdout);
+    assert.ok(utf8Length(JSON.stringify(e)) <= SLICE_BYTES);
+    assert.deepEqual(checkSlice(e, { tool: 'release-discovery', command: 'discover', nonce, slice: k }), { ok: true, why: null });
+    envs.push(e);
+  } while (envs.length < envs[0].slices);
+  return envs;
+}
+function sliceError(root, nonce, k) {
+  const r = discCli(...sliceArgs(root, nonce), '--slice', String(k));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(o).sort(), ['error', 'tool']);
+  assert.equal(o.tool, 'release-discovery');
+  return o.error;
+}
+const headOf = (root, ref = 'main') => git(root, 'rev-parse', ref).trim();
+const commitState = (root, edit, message) => {
+  const path = join(root, 'docs', 'plans', 'roadmap-x', 'state.md');
+  writeFileSync(path, edit(readFileSync(path, 'utf8')));
+  git(root, 'commit', '-q', '-am', message);
+};
+const addBlockers = (from, n) => (text) => text.replace('<!-- /roadmap:blockers -->', `${Array.from({ length: n }, (_, i) => `| B${from + i} | added ${'y'.repeat(200)} | E1 | 2026-01-02 | later |`).join('\n')}\n<!-- /roadmap:blockers -->`);
+const dropBlockers = (keep) => (text) => text.replace(/^\| B(\d+) \|.*\n/gm, (line, n) => (Number(n) <= keep ? line : ''));
+const changedMsg = (ref, from, to) => `the branch ${ref} changed during the discovery (from ${from} (previous reflog entry) to ${to}); do not commit to it while roadmap-release runs, then run again`;
+const nowAtMsg = (ref, to) => `the branch ${ref} changed during the discovery (now at ${to}; the SHA read first is in slice 0); do not commit to it while roadmap-release runs, then run again`;
+
+test('E45 T2: discoverRoadmap fills seen.refs with the ref read and the merges ref, without repeating, and returns the same data', () => {
+  const { root } = discRepo();
+  const seen = {};
+  const data = discoverRoadmap({ repo: root, roadmap: DISC_ROADMAP, prefix: 'pf-', today: '2026-01-05' }, seen);
+  assert.equal(data.readFrom, 'main');
+  assert.deepEqual(seen.refs, ['main']);
+  assert.deepEqual(data, disc(root));
+});
+
+test('E45 T2 AC1: a commit that grows the discovery between slices names the branch and the SHA before and after', () => {
+  const { root } = discRepo(bigBlockers(20));
+  const before = headOf(root);
+  const first = discCli(...sliceArgs(root, 'n-g'), '--slice', '0');
+  assert.equal(first.status, 0, first.stderr);
+  const e0 = JSON.parse(first.stdout);
+  assert.deepEqual(e0.at, [{ ref: 'main', sha: before }]);
+  commitState(root, addBlockers(21, 20), 'grow');
+  const after = headOf(root);
+  const envs = readAllSlices(root, 'n-g');
+  assert.ok(envs.length > e0.slices, `${envs.length} > ${e0.slices}`);
+  assert.deepEqual(envs[0].at, [{ ref: 'main', sha: after }]);
+  assert.equal(sliceError(root, 'n-g', envs.length), changedMsg('main', before, after));
+});
+
+test('E45 T2 AC1: a commit that shrinks the discovery makes the last old slice report the SHA before and after (#4)', () => {
+  const { root } = discRepo(bigBlockers(40));
+  const before = headOf(root);
+  const old = readAllSlices(root, 'n-r');
+  commitState(root, dropBlockers(2), 'shrink');
+  const after = headOf(root);
+  assert.ok(readAllSlices(root, 'n-r').length < old.length);
+  assert.equal(sliceError(root, 'n-r', old.length - 1), changedMsg('main', before, after));
+});
+
+test('E45 T2: a commit that keeps the slice count changes `at`, and the old slice 0 does not join the new ones', () => {
+  const { root } = discRepo(bigBlockers(20));
+  const old = readAllSlices(root, 'n-c');
+  assert.ok(old.length > 1);
+  commitState(root, (text) => text.replace('blocked by é', 'blocked BY é'), 'same size'); // a cell the discovery reads
+  const now = readAllSlices(root, 'n-c');
+  assert.equal(now.length, old.length);
+  assert.deepEqual(now[0].at, [{ ref: 'main', sha: headOf(root) }]);
+  assert.notDeepEqual(now[0].at, old[0].at);
+  assert.deepEqual(joinSlices([old[0], ...now.slice(1)]), { ok: false, why: 'the slices come from different reads' });
+});
+
+test('E45 T2 C1: without a reflog the message gives the current SHA and says the SHA read first is in slice 0', () => {
+  const { root } = discRepo(bigBlockers(20));
+  git(root, 'config', 'core.logAllRefUpdates', 'false');
+  rmSync(join(root, '.git', 'logs'), { recursive: true, force: true });
+  const old = readAllSlices(root, 'n-n');
+  commitState(root, dropBlockers(1), 'shrink');
+  assert.ok(!existsSync(join(root, '.git', 'logs')));
+  assert.equal(sliceError(root, 'n-n', old.length - 1), nowAtMsg('main', headOf(root)));
+});
+
+test('E45 T2: two refs (texts from the base, merges from the target) give one clause each, joined by ". "', () => {
+  const { root } = discRepo();
+  // the target exists but has no roadmap folder: the texts come from main, the merges from the target
+  const tree = git(root, 'mktree').trim();
+  const lone = git(root, 'commit-tree', tree, '-m', 'lone').trim();
+  git(root, 'update-ref', '--create-reflog', 'refs/heads/release/sample', lone);
+  const mainBefore = headOf(root);
+  const [e0] = readAllSlices(root, 'n-2');
+  assert.deepEqual(e0.at, [{ ref: 'main', sha: mainBefore }, { ref: 'release/sample', sha: lone }]);
+  commitState(root, addBlockers(1, 1), 'main moves');
+  const next = git(root, 'commit-tree', tree, '-p', lone, '-m', 'next').trim();
+  git(root, 'update-ref', 'refs/heads/release/sample', next);
+  const count = readAllSlices(root, 'n-2').length;
+  assert.equal(sliceError(root, 'n-2', count), `${changedMsg('main', mainBefore, headOf(root))}. ${changedMsg('release/sample', lone, next)}`);
+});
+
+test('E45 T2 C2: a discovery read from the working tree has an empty `at` and asks not to edit or commit', () => {
+  const { root } = discRepo((n, t) => (n === 'roadmap.config.json' ? t.replace(/"integrationBranch":\s*"main"/, '"integrationBranch": "no-such-branch"') : t));
+  const seen = {};
+  assert.equal(discoverRoadmap({ repo: root, roadmap: DISC_ROADMAP, prefix: 'pf-', today: '2026-01-05' }, seen).readFrom, 'working tree');
+  assert.deepEqual(seen.refs, []);
+  const envs = readAllSlices(root, 'n-w');
+  for (const e of envs) assert.deepEqual(e.at, []);
+  assert.equal(sliceError(root, 'n-w', envs.length), 'the discovery changed between slices (read from the working tree); do not edit or commit while roadmap-release runs, then run again');
+});
+
 // ---- missingDirs (DEC-719): wtRoot must be in permissions.additionalDirectories ----
 import { missingDirs } from './preflight.mjs';
 import { realpathSync } from 'node:fs';

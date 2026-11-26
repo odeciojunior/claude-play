@@ -422,6 +422,20 @@ function gitTry(root, args) {
 }
 const refExists = (root, ref) => Boolean(ref) && gitTry(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) !== null;
 const isAncestor = (root, a, b) => gitTry(root, ['merge-base', '--is-ancestor', a, b]) !== null;
+// SHA of the commit a revision names now, or '' when it names none.
+const commitOf = (root, rev) => (gitTry(root, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`]) || '').trim();
+
+// Why a slice past the end was asked: each call reads the discovery again, so its slice count changed since the first one.
+// at = [{ ref, sha }] of this read. X is only the previous reflog entry; without one, the SHA read first is the `at` of slice 0.
+function changedBetweenSlices(root, at) {
+  if (at.length === 0) return 'the discovery changed between slices (read from the working tree); do not edit or commit while roadmap-release runs, then run again';
+  const clause = (ref, detail) => `the branch ${ref} changed during the discovery (${detail}); do not commit to it while roadmap-release runs, then run again`;
+  const moved = at.map((a) => ({ ...a, was: commitOf(root, `${a.ref}@{1}`) })).filter((a) => a.was && a.was !== a.sha);
+  const clauses = moved.length
+    ? moved.map((a) => clause(a.ref, `from ${a.was} (previous reflog entry) to ${a.sha}`))
+    : at.map((a) => clause(a.ref, `now at ${a.sha}; the SHA read first is in slice 0`));
+  return clauses.join('. ');
+}
 
 // The status word of the code piece of a Status cell: the segment labeled "code", or the only segment without a label.
 // A cell with several other pieces (piece 1, piece 2) or no segment has none.
@@ -450,7 +464,8 @@ function mergeOf(root, ref, id) {
 
 // Read-only discovery of the roadmap for the release workflow: the same parser as the checker, the git rules in code.
 // Throws an Error when the folder or the strategy is not readable.
-export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}) {
+// seen (out): seen.refs = the refs this read depended on (texts, then merges); empty when the texts came from the working tree.
+export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}, seen = {}) {
   void prefix; // the delivery branch <prefix><id> is born from the target and never counts as evidence
   const root = repoRoot(resolve(repo || '.')).split(sep).join('/');
   let dir;
@@ -488,6 +503,7 @@ export function discoverRoadmap({ repo, roadmap, ref, base, today, prefix } = {}
   const parsed = parseRoadmapTexts({ strategy: texts.strategy, files: texts.files });
   const dirPath = `${rel}/`;
   const gitRef = targetExists ? target : refExists(root, baseBranch) ? baseBranch : null;
+  seen.refs = texts.from === 'working tree' ? [] : [...new Set([texts.from, gitRef].filter(Boolean))];
   const integrated = vocab.integratedStatuses || [];
   const discarded = vocab.discardedStatus || 'discarded';
   const panel = new Map(parsed.blocks.state.panel.rows.map((r) => [(String(r[0] || '').match(/\bE\d+\b/) || [String(r[0] || '').trim()])[0], r]));
@@ -663,8 +679,16 @@ function discoverCli(argv) {
   if (slice !== null && (!Number.isInteger(slice) || slice < 0)) return out({ tool: 'release-discovery', error: `${usage} (--slice must be a whole number from 0)` }, 2);
   if (slice !== null) {
     let envs;
-    try { envs = sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: opts.nonce }, JSON.stringify(canon(discoverRoadmap(opts)))); } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
-    if (slice >= envs.length) return out({ tool: 'release-discovery', error: `slice ${slice} does not exist: the discovery has ${envs.length} slice(s), numbered from 0` }, 1);
+    let root;
+    let at;
+    try {
+      const seen = {};
+      const data = discoverRoadmap(opts, seen);
+      root = data.repo;
+      at = seen.refs.map((ref) => ({ ref, sha: commitOf(root, ref) }));
+      envs = sliceEnvelopes({ tool: 'release-discovery', command: 'discover', nonce: opts.nonce, at }, JSON.stringify(canon(data)));
+    } catch (e) { return out({ tool: 'release-discovery', error: e.message }, 1); }
+    if (slice >= envs.length) return out({ tool: 'release-discovery', error: changedBetweenSlices(root, at) }, 1);
     return out(envs[slice], 0);
   }
   const page = opts.page === undefined ? 0 : Number(opts.page);
