@@ -5,6 +5,10 @@
 // Uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")
 //        --brief: a linha impressa omite tail e tailCut (com --tests, failedNames e cortado como sem --brief, com tail vazio); o digest assina o objeto impresso. cmdDigest nao depende dos flags.
 //        Grava tambem <seq>-line.json, a linha assinada identica a impressa, ao lado de <seq>-stdout.txt.
+//      node capture.mjs line --nonce <n> --task <id> [--cwd <dir>]
+//        Reimprime em forma brief a linha gravada, sem rodar comando: le os *-line.json de pt-evidence/<task>, descarta os que nao parseiam,
+//        de digest errado ou com outro nonce, e do de maior seq imprime o objeto sem digest, tail e tailCut, assinado de novo (exit 0).
+//        Sem linha valida (ou pasta inexistente): {tool,command:'line',nonce,task,error} sem digest (exit 1).
 //      node capture.mjs pairs --nonce <n> --task <id> --prefix <prefixo de nonce> [--cwd <dir>]
 //        Le os *-line.json de pt-evidence/<task> em ordem de seq, descarta os que nao parseiam, de digest errado ou com nonce fora do prefixo,
 //        e imprime {tool,command:'pairs',nonce,task,runs,pair,red,green,cmdDigest,digest} (exit 0). pair: um exit != 0 seguido (seq maior) de um
@@ -40,6 +44,7 @@ const TASK_RE = /^[A-Za-z0-9._-]+$/;
 const NONCE_RE = /^[A-Za-z0-9:._@-]{1,160}$/;
 const USAGE = 'uso: node capture.mjs run --nonce <n> --task <id> [--cwd <dir>] [--tests] [--brief] (-- <programa> [args...] | --bash "<string>")';
 const PAIRS_USAGE = 'uso: node capture.mjs pairs --nonce <n> --task <id> --prefix <prefixo de nonce> [--cwd <dir>]';
+const LINE_USAGE = 'uso: node capture.mjs line --nonce <n> --task <id> [--cwd <dir>]';
 const PRUNE_USAGE = 'uso: node capture.mjs prune (--task-prefix <p> | --older-than <dias>) [--nonce <n>] [--cwd <dir>] (exatamente um dos dois)';
 
 class UsageError extends Error {}
@@ -55,7 +60,7 @@ function countLines(buf) {
 }
 
 function parseArgs(argv) {
-  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou slice, pairs, prune, list (ver o cabeçalho de capture.mjs)`);
+  if (argv[0] !== 'run') throw new UsageError(`${USAGE}; ou line, slice, pairs, prune, list (ver o cabeçalho de capture.mjs)`);
   const opts = { nonce: null, task: null, cwd: null, tests: false, brief: false, program: null, bash: null };
   let i = 1;
   const value = (flag) => {
@@ -98,14 +103,8 @@ function gitDirOrThrow(cwdOpt) {
 const MSYS_MSG = 'caminho no estilo msys (/tmp/...) não é aceito no Windows; use C:/...';
 const isMsys = (p) => /^\/(?![/\\])/.test(p);
 
-function runPairs(argv, platform) {
-  const o = parseFlags(argv, { '--nonce': 'nonce', '--task': 'task', '--prefix': 'prefix', '--cwd': 'cwd' });
-  if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
-  if (o.task === undefined || !TASK_RE.test(o.task)) throw new UsageError(`--task ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras). ${PAIRS_USAGE}`);
-  if (o.prefix === undefined || o.prefix === '') throw new UsageError(`--prefix ausente. ${PAIRS_USAGE}`);
-  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
-  const { gitDir } = gitDirOrThrow(o.cwd);
-  const dir = path.join(gitDir, 'pt-evidence', o.task);
+// Os <seq>-line.json de dir em ordem de seq, sem os que nao parseiam, nao sao linha do capture ou tem digest errado.
+function savedLines(dir) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch { /* sem pasta */ }
   const valid = [];
@@ -115,9 +114,34 @@ function runPairs(argv, platform) {
     if (!line || typeof line !== 'object' || Array.isArray(line) || line.tool !== 'capture') continue;
     const { digest, ...rest } = line;
     if (digest !== fnv1a(JSON.stringify(canon(rest)))) continue;
-    if (typeof line.nonce !== 'string' || !line.nonce.startsWith(o.prefix)) continue;
     valid.push(line);
   }
+  return valid;
+}
+
+function runLine(argv, platform) {
+  const o = parseFlags(argv, { '--nonce': 'nonce', '--task': 'task', '--cwd': 'cwd' });
+  if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
+  if (o.task === undefined || !TASK_RE.test(o.task)) throw new UsageError(`--task ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras). ${LINE_USAGE}`);
+  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
+  const { gitDir } = gitDirOrThrow(o.cwd);
+  const found = savedLines(path.join(gitDir, 'pt-evidence', o.task)).filter((l) => l.nonce === o.nonce).at(-1);
+  if (!found) {
+    return { code: 1, line: JSON.stringify({ tool: 'capture', command: 'line', nonce: o.nonce, task: o.task, error: `no signed line with this nonce in pt-evidence/${o.task}` }) };
+  }
+  const { digest, tail, tailCut, ...brief } = found;
+  return { code: 0, line: JSON.stringify(sign(brief)) };
+}
+
+function runPairs(argv, platform) {
+  const o = parseFlags(argv, { '--nonce': 'nonce', '--task': 'task', '--prefix': 'prefix', '--cwd': 'cwd' });
+  if (o.nonce === undefined || !NONCE_RE.test(o.nonce)) throw new UsageError('--nonce ausente ou fora de ^[A-Za-z0-9:._@-]{1,160}$');
+  if (o.task === undefined || !TASK_RE.test(o.task)) throw new UsageError(`--task ausente ou fora de ^[A-Za-z0-9._-]+$ (sem barras). ${PAIRS_USAGE}`);
+  if (o.prefix === undefined || o.prefix === '') throw new UsageError(`--prefix ausente. ${PAIRS_USAGE}`);
+  if (platform === 'win32' && o.cwd !== undefined && isMsys(o.cwd)) throw new UsageError(MSYS_MSG);
+  const { gitDir } = gitDirOrThrow(o.cwd);
+  const valid = savedLines(path.join(gitDir, 'pt-evidence', o.task))
+    .filter((l) => typeof l.nonce === 'string' && l.nonce.startsWith(o.prefix));
   let red = null;
   let green = null;
   for (let i = 0; i < valid.length && green === null; i++) {
@@ -406,6 +430,7 @@ export function runCapture(argv, { platform = process.platform, env = process.en
   try {
     if (argv[0] === 'slice') return runSlice(argv, platform);
     if (argv[0] === 'pairs') return runPairs(argv, platform);
+    if (argv[0] === 'line') return runLine(argv, platform);
     if (argv[0] === 'prune') return runPrune(argv, platform, now);
     if (argv[0] === 'list') return runList(argv, platform);
     const opts = parseArgs(argv);

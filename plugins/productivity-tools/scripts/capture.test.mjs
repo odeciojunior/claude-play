@@ -846,6 +846,102 @@ test('run grava <seq>-line.json igual a linha impressa, com e sem --brief', () =
   });
 });
 
+const lineCli = (repo, nonce, task = 'E43-L') => runCli(['line', '--nonce', nonce, '--task', task, '--cwd', fwd(repo)]);
+const refusal = (nonce, task) => ({ tool: 'capture', command: 'line', nonce, task, error: `no signed line with this nonce in pt-evidence/${task}` });
+
+test('E43 AC1: line reimprime em forma brief a linha gravada, com e sem --brief', () => {
+  withRepo((repo) => {
+    const file = path.join(repo, 'big.test.js');
+    fs.writeFileSync(file, SUITE_63);
+    const brief = runCli(['run', '--nonce', 'LB', '--task', 'E43-L', '--cwd', fwd(repo), '--brief', '--bash', 'echo oi; exit 4']);
+    const full = runCli(['run', '--nonce', 'LF', '--task', 'E43-L', '--cwd', fwd(repo), '--tests', '--', 'node', '--test', file]);
+    assert.equal(brief.code, 4, brief.stderr + brief.stdout);
+    assert.equal(full.code, 1, full.stderr + full.stdout);
+    const dir = taskDirOf(repo, 'E43-L');
+    const reread = (nonce, cmdDigest) => {
+      const r = lineCli(repo, nonce);
+      assert.equal(r.code, 0, r.stderr + r.stdout);
+      const chk = checkCapture(r.stdout, { nonce, cmdDigest });
+      assert.equal(chk.ok, true, chk.why);
+      const o = JSON.parse(r.stdout);
+      assert.ok(!('tail' in o) && !('tailCut' in o), r.stdout);
+      return r.stdout.replace(/\n$/, '');
+    };
+    const b = reread('LB', commandDigest({ bash: 'echo oi; exit 4' }));
+    assert.equal(b, brief.stdout.replace(/\n$/, ''));
+    assert.equal(b, fs.readFileSync(path.join(dir, '0001-line.json'), 'utf8'));
+    const f = reread('LF', commandDigest({ argv: ['node', '--test', file] }));
+    const saved = JSON.parse(fs.readFileSync(path.join(dir, '0002-line.json'), 'utf8'));
+    assert.ok('tail' in saved && 'tailCut' in saved);
+    const { digest, tail, tailCut, ...rest } = saved;
+    assert.equal(f, JSON.stringify({ ...rest, digest: fnv1a(JSON.stringify(canon(rest))) }));
+    assert.deepEqual(JSON.parse(f).extract.failedNames, ['FAIL_A', 'FAIL_B', 'FAIL_C']);
+  });
+});
+
+test('E43 AC1: com o mesmo nonce vale a maior seq e o arquivo de digest errado é ignorado', () => {
+  withRepo((repo) => {
+    const run = (bash) => runCli(['run', '--nonce', 'LS', '--task', 'E43-L', '--cwd', fwd(repo), '--brief', '--bash', bash]);
+    const first = run('echo um');
+    const second = run('echo dois; exit 2');
+    const dir = taskDirOf(repo, 'E43-L');
+    const tamper = (name) => {
+      const p = path.join(dir, name);
+      const o = JSON.parse(fs.readFileSync(p, 'utf8'));
+      fs.writeFileSync(p, JSON.stringify({ ...o, exit: o.exit + 1 }));
+    };
+    let r = lineCli(repo, 'LS');
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.equal(r.stdout, second.stdout);
+    tamper('0002-line.json');
+    r = lineCli(repo, 'LS');
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    assert.equal(r.stdout, first.stdout);
+    fs.writeFileSync(path.join(dir, '0003-line.json'), 'nao e json');
+    fs.writeFileSync(path.join(dir, '0004-line.json'), 'null');
+    assert.equal(lineCli(repo, 'LS').stdout, first.stdout);
+    tamper('0001-line.json');
+    r = lineCli(repo, 'LS');
+    assert.equal(r.code, 1, r.stderr + r.stdout);
+    assert.deepEqual(JSON.parse(r.stdout), refusal('LS', 'E43-L'));
+  });
+});
+
+test('E43 AC1: nonce sem linha e task sem pasta saem 1 com o nonce do pedido', () => {
+  withRepo((repo) => {
+    runCli(['run', '--nonce', 'LA', '--task', 'E43-L', '--cwd', fwd(repo), '--brief', '--bash', 'echo oi']);
+    for (const [nonce, task] of [['OUTRO', 'E43-L'], ['LA', 'sem-pasta']]) {
+      const r = lineCli(repo, nonce, task);
+      assert.equal(r.code, 1, r.stderr + r.stdout);
+      assert.equal(r.stdout, `${JSON.stringify(refusal(nonce, task))}\n`);
+    }
+    assert.equal(fs.existsSync(taskDirOf(repo, 'sem-pasta')), false);
+  });
+});
+
+test('E43 AC1: uso errado de line sai 2 sem nonce', () => {
+  withRepo((repo) => {
+    const cwd = ['--cwd', fwd(repo)];
+    const cases = [
+      [['line', '--nonce', 'bad nonce', '--task', 't', ...cwd], /--nonce/],
+      [['line', '--task', 't', ...cwd], /--nonce/],
+      [['line', '--nonce', 'n', '--task', 'a/b', ...cwd], /--task/],
+      [['line', '--nonce', 'n', ...cwd], /--task/],
+      [['line', '--nonce', 'n', '--task', 't', '--prefix', 'p', ...cwd], /argumento desconhecido/],
+      [['line', '--nonce', 'n', '--task', 't', '--cwd', '/tmp/x'], /msys/],
+      [['outro'], /line/],
+    ];
+    for (const [args, re] of cases) {
+      const res = runCapture(args, { platform: 'win32', env: cleanEnv() });
+      assert.equal(res.code, 2, args.join(' '));
+      const o = JSON.parse(res.line);
+      assert.deepEqual(Object.keys(o), ['tool', 'error']);
+      assert.equal(o.tool, 'capture');
+      assert.match(o.error, re);
+    }
+  });
+});
+
 const pairsRun = (repo, nonce, bash) => runCli(['run', '--nonce', nonce, '--task', 'E39-P', '--cwd', fwd(repo), '--brief', '--bash', bash]);
 const pairsCli = (repo, prefix = 'P', extra = []) => {
   const r = runCli(['pairs', '--nonce', 'PN', '--task', 'E39-P', '--prefix', prefix, '--cwd', fwd(repo), ...extra]);
