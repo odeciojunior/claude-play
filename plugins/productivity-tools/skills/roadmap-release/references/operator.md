@@ -20,7 +20,7 @@ Each entry of `operatorActions` has `kind`, `deliverable`, `what`, `doNow` and `
 | Kind | Meaning | What to do |
 |---|---|---|
 | `preflight:<errorKind>` | The preflight agent failed (`dirty`, `setup`, `target`, `other`). No deliverable ran. | Clean the integration worktree, fix the setup command or the environment, run again. |
-| `preflight:baseline-invalid` | The baseline measure was unusable. | Fix the environment and run again. |
+| `preflight:baseline-invalid` | The baseline measure was unusable. With an explicit target and `repo`, a `run` measures the gates before the discovery, so this stop can come before any discovery agent. | Fix the environment and run again. |
 | `preflight:red-baseline` | The baseline of the target is red. | Fix the target, or pass `acceptRedBaseline: true` if a person accepts it. A `tests` gate that measured no tests is not offered this: fix its command or set `kind: exit`. |
 | `unfinished-merge` | A merge on the target has no post-merge status and is outside the selection. No deliverable ran. | Run with `resumeWith`, which validates it first, or revert the merge. That exit replaces the panel row with the post-merge status, so an open blocker note or per-piece status on that row is lost. For a merge already validated, keep the row: write its Status cell as `code: <post-merge status>; <the existing segments>`, which the workflow reads as finished, then run again. |
 | `infra` | Environment or tooling failure in a deliverable (null agent, unexpected error). | Run again with `resumeWith`; spec, plan and commits are reused. |
@@ -67,7 +67,7 @@ The result carries `resumeArgs`, the args to pass back. Run the Workflow again w
 - `notes` is `{ "E19": "owner instruction or answer" }`. Put the real answer there. Leaving the template text in place is rejected. Never put a secret (credential, token, key) in `notes`: set an environment variable and name it in `notes`. The workflow does not copy `notes` into the roadmap record, the docs stage, the review log or the committed report, but the spec and plan agents merge the answer into the committed spec and plan, so anything in `notes` can end up in the repository. It tells every agent that receives it not to write or quote a secret.
 - `overrideDonot`, `acceptRisks` and `acceptRedBaseline` are decisions of the person. Add them only when the person asked for them.
 
-A resume skips the spec, plan and final reviews whose values are those of `run.json`, and reuses the gate measurements when the target is unchanged.
+A resume skips the spec, plan and final reviews whose values are those of `run.json`, and reuses the gate measurements when the target is unchanged, except in a run that measures before the discovery (explicit target and `repo`), which measures every gate again.
 
 ## Without the interface (claude -p)
 
@@ -103,7 +103,7 @@ Every command run through `capture.mjs run` keeps its output in `<absolute git-d
 
 ## Known limits
 
-A resume never uses the Workflow cache: the `runToken` of each preflight sits in the first agent call, so even with `resumeFromRunId` every stage runs again. Each stop for a person therefore costs, on the resume, the discovery, the preflight (reusing the gate baseline from `run.json` when the target and gates are unchanged, or re-measuring every gate otherwise), the setup and the reading of the spec and the plan, before the work goes on where it stopped.
+A resume never uses the Workflow cache: the `runToken` of each preflight sits in the first agent call, so even with `resumeFromRunId` every stage runs again. Each stop for a person therefore costs, on the resume, the discovery, the preflight (reusing the gate baseline from `run.json` when the target and gates are unchanged, or re-measuring every gate otherwise), the setup and the reading of the spec and the plan, before the work goes on where it stopped. With an explicit target (`args.targetBranch`, or `releaseBranch` in `release.config.json`) and `repo`, a `run` measures the gates before the discovery, and that measure does not reuse the baseline in `run.json`: such a resume measures every gate again. The `releaseBranch` of `roadmap.config.json` arrives through the discovery, so pass `targetBranch` to measure before it. Nothing is measured early, and the run works as described above, when the target branch does not exist, its worktree is not the run's own `_integracao`, a git or setup command fails, a merge is in progress, the tree is dirty or the token budget is below the minimum.
 
 An external task runs in the deliverable worktree, before the merge, and leaves empty commits on the deliverable branch; the newest one decides what a resume does:
 
