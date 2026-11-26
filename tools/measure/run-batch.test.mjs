@@ -43,8 +43,9 @@ const gitIn = (cwd, ...a) => spawnSync('git', ['-c', 'user.name=fab', '-c', 'use
 // Fake executor: claude -p copies fabricated transcripts (and optionally a journal fixture), the extractor
 // and git run for real. Options: journal (fixture name, or a function of the call number), afterRun(cwd, n)
 // (changes the sandbox like the run would), stopResume (the first claude -p waits for the abort and the
-// simulated git log answers with the stop commit on its second query), failOn (call number that fails).
-function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, noAgentsOn, extraOn1 } = {}) {
+// simulated git log answers with the stop commit on its second query), failOn (call number that fails),
+// modelOf(n) (model of the main transcript messages written by call n; undefined keeps the fabricated one).
+function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, noAgentsOn, extraOn1, modelOf } = {}) {
   const calls = [];
   const issued = [];
   let n = 0;
@@ -53,7 +54,20 @@ function makeFake(configDir, { denyOn, journal, afterRun, stopResume, failOn, no
     issued.push(id);
     const proj = join(configDir, 'projects', 'fab-sandbox');
     mkdirSync(proj, { recursive: true });
-    writeFileSync(join(proj, `${id}.jsonl`), readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id));
+    let main = readFileSync(join(FIX, `${SRC_SID}.jsonl`), 'utf8').split(SRC_SID).join(id);
+    const model = modelOf?.(n);
+    if (model) {
+      main = main
+        .split('\n')
+        .map((line) => {
+          if (!line.trim()) return line;
+          const o = JSON.parse(line);
+          if (o.message?.model) o.message.model = model;
+          return JSON.stringify(o);
+        })
+        .join('\n');
+    }
+    writeFileSync(join(proj, `${id}.jsonl`), main);
     const wf = join(proj, id, 'subagents', 'workflows', 'wf_fab');
     mkdirSync(wf, { recursive: true });
     for (const a of noAgentsOn === n ? [] : ['afab101', 'afab102']) {
@@ -3428,6 +3442,116 @@ test('E51 runBatch refuses a missing or empty --model before any claude call or 
   } finally {
     s.done();
   }
+});
+
+// ---- E51 T2 (#21): sessionModels and modelDivergence ----
+const OPUS = 'claude-opus-4-1';
+const SONNET = 'claude-sonnet-4-5';
+const DIVERGENCE = /model divergence/;
+
+// One batch (parada-retomada with one attempt unless extra says otherwise), with stderr captured.
+async function modelRun({ extra = {}, fake: fakeOptions = {}, ratify = okRatify } = {}) {
+  const s = setup();
+  const stderr = captureStderr();
+  try {
+    const fake = makeFake(s.configDir, typeof fakeOptions === 'function' ? fakeOptions(s) : fakeOptions);
+    const r = await runBatch(baseOpts(s, { variant: 'parada-retomada', runs: 1, pollMs: 1, ...extra }), { exec: fake.exec, now: NOW, ratify });
+    const file = join(r.dir, 'private', 'attempts.json'); // not written when every attempt was denied
+    const priv = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).attempts : [];
+    return { r, a: r.aggregate.attempts[0], priv, stderr: stderr.text() };
+  } finally {
+    stderr.restore();
+    s.done();
+  }
+}
+
+test('E51 AC1: a stop on opus and a resume on sonnet mark modelDivergence and warn, without invalidating the attempt', async () => {
+  const { r, a, priv, stderr } = await modelRun({ fake: { stopResume: true, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: 'sonnet' });
+  assert.equal(a.modelDivergence, true);
+  assert.equal(a.status, 'valid');
+  assert.deepEqual(priv[0].sessionModels, { parada: 'opus', retomada: 'sonnet' });
+  assert.equal(priv[0].modelDivergence, true);
+  assert.equal(r.aggregate.requestedModel, 'opus');
+  assert.deepEqual(r.aggregate.modelDivergence, [1]);
+  assert.match(stderr, /run-batch: warning: attempt 1 model divergence: requested opus, parada opus, retomada sonnet\r?\n/);
+});
+
+test('E51 both phases on the requested family do not diverge and do not warn', async () => {
+  const { r, a, stderr } = await modelRun({ fake: { stopResume: true, modelOf: () => OPUS } });
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: 'opus' });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 a request of family other diverges only when the phases differ among themselves', async () => {
+  const extra = { model: 'custom-model-x' };
+  const same = await modelRun({ extra, fake: { stopResume: true, modelOf: () => OPUS } });
+  assert.deepEqual(same.a.sessionModels, { parada: 'opus', retomada: 'opus' });
+  assert.equal(same.a.modelDivergence, false);
+  assert.equal(same.r.aggregate.requestedModel, 'custom-model-x');
+  assert.deepEqual(same.r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(same.stderr, DIVERGENCE);
+  const differ = await modelRun({ extra, fake: { stopResume: true, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.equal(differ.a.modelDivergence, true);
+  assert.deepEqual(differ.r.aggregate.modelDivergence, [1]);
+  assert.match(differ.stderr, /requested custom-model-x, parada opus, retomada sonnet/);
+});
+
+test('E51 a one-phase variant records sessao and the aggregate lists only the divergent attempts', async () => {
+  const { r, priv, stderr } = await modelRun({ extra: { variant: 'completo', runs: 3 }, fake: { modelOf: (n) => (n === 2 ? SONNET : undefined) } });
+  assert.deepEqual(r.aggregate.attempts.map((a) => a.sessionModels), [{ sessao: 'opus' }, { sessao: 'sonnet' }, { sessao: 'opus' }]);
+  assert.deepEqual(r.aggregate.attempts.map((a) => a.modelDivergence), [false, true, false]);
+  assert.deepEqual(priv.map((a) => a.sessionModels), r.aggregate.attempts.map((a) => a.sessionModels));
+  assert.deepEqual(r.aggregate.modelDivergence, [2]);
+  assert.match(stderr, /run-batch: warning: attempt 2 model divergence: requested opus, sessao sonnet\r?\n/);
+  assert.doesNotMatch(stderr, /attempt [13] model divergence/);
+});
+
+test('E51 the family of a phase counts main messages once per id, without sidechains, ties in FAMILIES order', async () => {
+  const line = (id, model, more = {}) => JSON.stringify({ type: 'assistant', ...more, message: { id, role: 'assistant', model, content: [], usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n';
+  const run = async (...lines) => {
+    const { a } = await modelRun({
+      extra: { variant: 'completo' },
+      fake: (s) => ({ afterRun: () => appendFileSync(join(s.configDir, 'projects', 'fab-sandbox', `${sid(1)}.jsonl`), lines.join('')) }),
+    });
+    return a.sessionModels.sessao;
+  };
+  // the fabricated transcript has one opus message
+  assert.equal(await run(line('m_side1', SONNET, { isSidechain: true }), line('m_side2', SONNET, { isSidechain: true })), 'opus');
+  assert.equal(await run(line('m_a', SONNET)), 'sonnet'); // 1 x 1: sonnet comes before opus in FAMILIES
+  assert.equal(await run(line('msg_fab_m2', OPUS), line('m_b', OPUS), line('m_c', SONNET), line('m_c', SONNET), line('m_c', SONNET)), 'opus');
+});
+
+test('E51 C2: a ratification that fails after the stop leaves retomada null, even with two sessions in the first phase', async () => {
+  const { r, a, priv, stderr } = await modelRun({
+    fake: { stopResume: true, extraOn1: true },
+    ratify: () => ({ ok: false, reason: 'decisao-pendente-apos-ratificar' }),
+  });
+  assert.equal(priv[0].sessions.length, 2);
+  assert.equal(a.reason, 'decisao-pendente-apos-ratificar');
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: null });
+  assert.deepEqual(priv[0].sessionModels, { parada: 'opus', retomada: null });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 C2: a resume without session_id leaves retomada null and does not count for the divergence', async () => {
+  const { r, a, stderr } = await modelRun({ fake: { stopResume: true, failOn: 2, modelOf: (n) => (n === 1 ? OPUS : SONNET) } });
+  assert.equal(a.reason, 'retomada-incompleta');
+  assert.deepEqual(a.sessionModels, { parada: 'opus', retomada: null });
+  assert.equal(a.modelDivergence, false);
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
+});
+
+test('E51 a denied attempt records neither sessionModels nor modelDivergence', async () => {
+  const { r, a, stderr } = await modelRun({ extra: { variant: 'completo' }, fake: { denyOn: 1, modelOf: () => SONNET } });
+  assert.deepEqual(a, { n: 1, status: 'denied' });
+  assert.deepEqual(r.aggregate.modelDivergence, []);
+  assert.doesNotMatch(stderr, DIVERGENCE);
 });
 
 

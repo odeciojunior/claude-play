@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { makeScenario, artifactOf, manifestEntries, seedSourceOf, excludeFromGit, E5_PATHS } from './make-scenario.mjs';
-import { piece3Of } from './session-metrics.mjs';
+import { piece3Of, readJsonl, family, dedupeMessages } from './session-metrics.mjs';
 import { loadPure } from '../../plugins/productivity-tools/skills/roadmap-release/workflow/load-pure.mjs';
 import { STOP_RESUME } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/make-sandbox.mjs';
 import { parseCimProcs, parsePs } from '../../plugins/productivity-tools/skills/roadmap-release/scripts/verify-run.mjs';
@@ -741,6 +741,32 @@ function sessionIds(configDir) {
     for (const n of readdirSync(join(root, slug.name))) if (n.endsWith('.jsonl')) ids.add(n.slice(0, -6));
   }
   return ids;
+}
+
+// #21: the model family a set of sessions really ran on, from their main transcripts (sidechain lines out, one message per
+// id): the family with most messages, ties in the order of FAMILIES; null without a transcript or without a message.
+function sessionFamily(configDir, sessions) {
+  const root = join(configDir, 'projects');
+  if (!existsSync(root)) return null;
+  const lines = [];
+  for (const slug of readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+    for (const sid of sessions) {
+      const file = join(root, slug.name, `${sid}.jsonl`);
+      if (existsSync(file)) lines.push(...readJsonl(file).filter((o) => !o?.isSidechain));
+    }
+  }
+  const count = Object.fromEntries(FAMILIES.map((f) => [f, 0]));
+  for (const m of dedupeMessages(lines)) count[family(m.message.model)] += 1;
+  const top = FAMILIES.reduce((best, f) => (count[f] > count[best] ? f : best));
+  return count[top] > 0 ? top : null;
+}
+
+// A phase without a family (null) never counts. A requested model of no known family cannot be compared with the phases,
+// so then the phases are compared among themselves.
+function divergesFrom(requested, sessionModels) {
+  const ran = Object.values(sessionModels).filter((f) => f !== null);
+  const wanted = family(requested);
+  return wanted === 'other' ? new Set(ran).size > 1 : ran.some((f) => f !== wanted);
 }
 
 function parseClaudeJson(stdout) {
@@ -2424,10 +2450,16 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     const stop = scenario.stopResume ?? (variant === 'parada-retomada' ? STOP_RESUME : null);
     let ratified = null;
     let resumeFrom = 1;
+    let resumeStarted = false;
     let pendingAtResume;
     let pendingAfterResume;
+    let sessionModels = null; // #21: family per phase, set after the prompts of an attempt that has sessions and was not denied
+    let modelDivergence = false;
     const ratifyOff = opts.ratify === 'off' && stop !== null && !h;
-    const extra = () => (ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume !== undefined ? { pendingAtResume } : {}), ...(pendingAfterResume !== undefined ? { pendingAfterResume } : {}) } : ratified ? { ratified } : {});
+    const extra = () => ({
+      ...(ratifyOff ? { ratify: 'off', ratified: [], ...(pendingAtResume !== undefined ? { pendingAtResume } : {}), ...(pendingAfterResume !== undefined ? { pendingAfterResume } : {}) } : ratified ? { ratified } : {}),
+      ...(sessionModels ? { sessionModels, modelDivergence } : {}),
+    });
     let launchOpts = opts;
     if (h) {
       gitOut(scenario.dir, 'checkout', '-q', 'feat/E5'); // makeScenario leaves the root on main; the harness reviews and fixes on feat/E5
@@ -2462,7 +2494,7 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
           }
           ratified = rat.ratified ?? [];
         }
-        resumeFrom = sessions.length; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
+        resumeFrom = sessions.length; resumeStarted = true; // sessions of the first phase (the abort may leave more than one) stay out of the resume set
       }
       const args = promptArgs(scenario.prompts[i], launchOpts);
       const watch = stop !== null && i === 0;
@@ -2531,6 +2563,17 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       attempts.push({ n: k, status: 'denied' });
       if (opts.stopOnDenial) break;
       continue;
+    }
+    if (sessions.length > 0) {
+      const ranOn = (list) => sessionFamily(opts.configDir, list);
+      if (stop === null) sessionModels = { sessao: ranOn(sessions) };
+      else if (resumeStarted) sessionModels = { parada: ranOn(sessions.slice(0, resumeFrom)), retomada: ranOn(sessions.slice(resumeFrom)) };
+      else sessionModels = { parada: ranOn(sessions), retomada: null };
+      modelDivergence = divergesFrom(opts.model, sessionModels);
+      if (modelDivergence) {
+        const phases = Object.entries(sessionModels).filter(([, f]) => f !== null).map(([phase, f]) => `${phase} ${f}`);
+        console.error(`run-batch: warning: attempt ${k} model divergence: requested ${opts.model}, ${phases.join(', ')}`);
+      }
     }
     if (failed || sessions.length === 0) {
       attempts.push({ n: k, ...extra(), status: 'invalid', reason: failReason });
@@ -2705,6 +2748,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     ...(seeded ? { seedSource } : {}),
     cli,
     models,
+    requestedModel: opts.model,
+    modelDivergence: attempts.filter((a) => a.modelDivergence).map((a) => a.n),
     pricesDate: pricesDate(),
     permissionMode: opts.permissionMode,
     attempts,
