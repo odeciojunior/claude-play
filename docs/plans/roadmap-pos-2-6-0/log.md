@@ -3,6 +3,8 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E46 | E46 criteria compared: none changed | `docs/plans/pos-2-6-0-E46/spec.md` |
+| 2026-11-26 | E46 | E46 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2713, pass 2711, fail 0, skipped 2; claude plugin validate válido; paridade agy: pendente #13 | `26cfb3c` |
 | 2026-11-26 | - | strategy v1.3: absorbs DEC-036, DEC-038; aprovada por opus por delegação (DEC-021, DEC-029) com quatro ajustes aplicados | `docs/plans/2026-11-25-roadmap-pos-2-6-0.md` |
 | 2026-11-26 | E45 | E45 criteria compared: critério 3 revisto pela v1.3 (DEC-038 e ruling R7 da spec); a spec fica sem edição | `docs/plans/pos-2-6-0-E45/spec.md` |
 | 2026-11-26 | E45 | E45 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2704, pass 2702, fail 0, skipped 2; claude plugin validate válido | `8b559c8` |
