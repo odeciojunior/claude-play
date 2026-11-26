@@ -1,0 +1,170 @@
+{
+  "schema": "progress/1",
+  "plan": {
+    "path": "docs/plans/pos-2-6-0-E53/plan.md",
+    "id": "E53",
+    "digest": "a0432a63",
+    "maxWidth": 4,
+    "roadmap": "docs/plans/roadmap-pos-2-6-0/",
+    "spec": "docs/plans/pos-2-6-0-E53/spec.md"
+  },
+  "piece": null,
+  "run": {
+    "status": "completed",
+    "wave": 2,
+    "worktree": null,
+    "branch": null,
+    "base": "41f114574376d3e4af56c06c113ce1566a593b98",
+    "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+    "baseline": {
+      "test": "node --test \"plugins/**/!(roadmap-release-agy).test.mjs\" \".claude/hooks/*.test.mjs\" \"tools/**/!(run-batch|make-scenario).test.mjs\"",
+      "exit": 0,
+      "tail": "✔ wordCount is 0 for empty text (0.0713ms)\n✔ counts usage once per message id, keeping the largest output (22.3358ms)\n✔ splits cache writes into 5m and 1h (0.9011ms)\n✔ counts agent calls by dominant model family (1.0923ms)\n✔ measures prompt bytes as UTF-8 of the first user message (0.7023ms)\n✔ estimates cost and keeps unpriced models null (0.6777ms)\n✔ readJsonl tolerates CRLF and a partial last line (5.0121ms)\n✔ classifies every label family of the role table (0.4558ms)\n✔ status, progress, review log and report come out as separate rows (198.7753ms)\n✔ records review rounds per loop (3.4117ms)\n✔ counts tasks and the task loop (3.5756ms)\n✔ writes metrics.json and one csv row per run and role (676.5839ms)\n✔ groups sessions of one attempt with --runs (685.2566ms)\n✔ requires --root and --out (713.9796ms)\n✔ refuses --out inside the repository outside tools/measure/out (4381.0887ms)\n✔ real price table is dated and sourced (5.0587ms)\n✔ tools/measure holds no session id, personal path or unfabricated text (399.0927ms)\n✔ privacy scan catches a planted personal path and session id (4.7248ms)\n✔ task fixers and final reviews carry the roles and rounds of the real labels (18.945ms)\n✔ piece3Of counts taskFixByTask from the E5:t<n>:<kind>-fix<k> labels (11.0373ms)\n✔ piece3Of counts gateFix only for gates-fix<k>, never gates-fix<k>-review (17.8045ms)\n✔ piece3Of reads planAuthorModel from the dominant model of the <E>:plan agent; null without it; zeros without labels (14.8841ms)\n✔ rolesByLabel keeps the gates role that joins gate and gate-fix (11.6572ms)\n✔ E38 AC1 (B10): isFixLabel rejects *-fix-review and *-fix-probe while matching real fixers (14.2817ms)\n✔ prepare builds the sandbox and stops at authorize (21997.9994ms)\n✔ prepare refuses a work dir inside the repository (612.2023ms)\n✔ summarize prints the table row and exits 0 for 6 runs at authorize within US$ 1 (397.186ms)\n✔ summarize exits 1 on a failed run or a sum above US$ 1 (1170.3848ms)\n✔ summarize adds aborted runs to the cost without counting them as runs (676.6654ms)\n✔ the script has 3 runs with context-mode on and 3 off, with budget, config and plugin-dir (0.3377ms)\nℹ tests 2354\nℹ suites 11\nℹ pass 2352\nℹ fail 0\nℹ cancelled 0\nℹ skipped 2\nℹ todo 0\nℹ duration_ms 264310.4342",
+      "failedNames": []
+    },
+    "commits": "per-step",
+    "waveGateOwed": null,
+    "question": null,
+    "updated": "2026-11-26T16:33:47.067Z"
+  },
+  "waves": [
+    {
+      "n": 1,
+      "tasks": [
+        1
+      ]
+    },
+    {
+      "n": 2,
+      "tasks": [
+        2
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Script de conferência do lote (lote-gate)",
+      "wave": 1,
+      "deps": [],
+      "tier": "sonnet",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": false,
+      "files": [
+        "tools/measure/lote-gate.mjs",
+        "tools/measure/lote-gate.test.mjs"
+      ],
+      "noCommit": false,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "pass",
+      "attempts": 1,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": "Criados tools/measure/lote-gate.mjs e lote-gate.test.mjs (67 testes, entram no piso do G1), sem commit; só a parte do AC2 conferida por script e os casos C1 a C5. Uso: node tools/measure/lote-gate.mjs --out <lote> --commit <sha de 40 hex> --autorizacao <DEC-NNN> --decisions <decisions.md>; códigos 0 pode-seguir, 2 uso, 3 fechar, 4 parar. Saída em uma linha JSON (executions, valid, invalid, accumulatedUsd, verdict, reason, nextMaxBudgetUsd); cada execução tem folder, class, status e costUsd, e as",
+      "sha": "f61e8801cdd7b9669b8dd4f5a2f1c085d7f72613",
+      "replacedBy": null,
+      "note": "Criados tools/measure/lote-gate.mjs e lote-gate.test.mjs (67 testes, entram no piso do G1), sem commit; só a parte do AC2 conferida por script e os casos C1 a C5.\nUso: node tools/measure/lote-gate.mjs --out <lote> --commit <sha de 40 hex> --autorizacao <DEC-NNN> --decisions <decisions.md>; códigos 0 pode-seguir, 2 uso, 3 fechar, 4 parar.\nSaída em uma linha JSON (executions, valid, invalid, accumul",
+      "outputs": null,
+      "brief": "briefs/T1.md",
+      "gated": true
+    },
+    {
+      "n": 2,
+      "title": "Efeitos externos do lote (só orquestrador e dono)",
+      "wave": 2,
+      "deps": [
+        1
+      ],
+      "tier": "opus",
+      "effort": "medium",
+      "reviewTier": "opus",
+      "gate": true,
+      "external": true,
+      "files": [],
+      "noCommit": true,
+      "mode": "delegated",
+      "agent": "general-purpose",
+      "status": "skip",
+      "attempts": 0,
+      "rounds": 0,
+      "agentId": null,
+      "preLaunchReview": null,
+      "authorized": null,
+      "handoff": null,
+      "sha": null,
+      "replacedBy": null,
+      "note": null,
+      "outputs": false,
+      "brief": "briefs/T2.md"
+    }
+  ],
+  "finalGate": {
+    "status": "pass",
+    "rounds": 1,
+    "lastVerdict": "pass"
+  },
+  "manual": [],
+  "history": [
+    {
+      "event": "init",
+      "at": "2026-11-26T16:20:42.619Z"
+    },
+    {
+      "event": "skip",
+      "step": 2,
+      "value": "no-outputs",
+      "at": "2026-11-26T16:20:42.696Z"
+    },
+    {
+      "event": "approve-map",
+      "at": "2026-11-26T16:20:46.512Z"
+    },
+    {
+      "event": "baseline",
+      "at": "2026-11-26T16:20:51.442Z"
+    },
+    {
+      "event": "launch",
+      "steps": [
+        1
+      ],
+      "at": "2026-11-26T16:20:51.442Z"
+    },
+    {
+      "event": "report",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T16:25:40.843Z"
+    },
+    {
+      "event": "review-result",
+      "step": 1,
+      "value": "pass",
+      "at": "2026-11-26T16:32:21.732Z"
+    },
+    {
+      "event": "commit",
+      "step": 1,
+      "at": "2026-11-26T16:32:21.732Z"
+    },
+    {
+      "event": "wave-gate",
+      "value": "pass",
+      "at": "2026-11-26T16:33:47.067Z"
+    },
+    {
+      "event": "advance",
+      "at": "2026-11-26T16:33:47.067Z"
+    },
+    {
+      "event": "final-gate",
+      "value": "pass",
+      "at": "2026-11-26T16:33:47.067Z"
+    }
+  ]
+}
