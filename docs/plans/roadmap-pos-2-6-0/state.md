@@ -11,7 +11,7 @@ Estratégia v1.3 -- 2026-11-26
 | E44 | na-branch | `8d50af4`, `docs/plans/pos-2-6-0-E44/spec.md`, `docs/plans/pos-2-6-0-E44/plan.md`, `docs/plans/pos-2-6-0-E44/progress.json`, `354392a8dac1cebc1ab5cfefdc4ca0d6bef844c4`, `b88669e2e49cd1d623d6bccc86d24eafb78708e1`, `5fcf32a` | release/pos-2.6.0 entra em main na publicação (E54) |
 | E45 | na-branch | `bc74c70`, `docs/plans/pos-2-6-0-E45/spec.md`, `docs/plans/pos-2-6-0-E45/plan.md`, `plan/pos-2-6-0-E45`, `docs/plans/pos-2-6-0-E45/progress.json`, `8b559c8` | release/pos-2.6.0 (merge 8b559c8) entra em main na publicação (E54) |
 | E46 | na-branch | `docs/plans/pos-2-6-0-E46/spec.md`, `16a1d81`, `docs/plans/pos-2-6-0-E46/plan.md`, `plan/pos-2-6-0-E46`, `docs/plans/pos-2-6-0-E46/progress.json`, `26cfb3c` | release/pos-2.6.0 (merge 26cfb3c) entra em main na publicação (E54) |
-| E47 | spec | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be` | escrever o plano depois do merge do E46 |
+| E47 | executando | `docs/plans/pos-2-6-0-E47/spec.md`, `53f28be`, `docs/plans/pos-2-6-0-E47/plan.md`, `plan/pos-2-6-0-E47` | conferir, rodar o agy, o run-batch e o G1 no merge e integrar em release/pos-2.6.0 |
 | E48 | spec | `docs/plans/pos-2-6-0-E48/spec.md`, `92b224f` | escrever o plano depois do merge do E47 |
 | E49 | spec | `docs/plans/pos-2-6-0-E49/spec.md`, `b43f5bd` | escrever o plano depois do merge do E48 |
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
@@ -49,4 +49,5 @@ Estratégia v1.3 -- 2026-11-26
 | plan/pos-2-6-0-E52 | viva | integrado em release/pos-2.6.0 (9062783); branch e worktree pos-2-6-0-E52 ainda existem |
 | plan/pos-2-6-0-E45 | viva | integrado em release/pos-2.6.0 (8b559c8); branch e worktree pos-2-6-0-E45 ainda existem |
 | plan/pos-2-6-0-E46 | viva | integrado em release/pos-2.6.0 (26cfb3c); branch e worktree pos-2-6-0-E46 ainda existem |
+| plan/pos-2-6-0-E47 | viva | execução do plano do E47 no worktree D:/projects/claude-play-wt/pos-2-6-0-E47 |
 <!-- /roadmap:inflight -->
