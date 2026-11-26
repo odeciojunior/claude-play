@@ -2743,6 +2743,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     }
     const cliCostUsd = sumCliCost(cliCosts);
     const attempt = { n: k, ...extra(), status: 'valid', counters: { ...toAttemptCounters(run), session: { cliCostUsd } }, outcomes, rolesByLabel: rolesByLabel(run, cliCostUsd), piece3: piece3Of(run) };
+    // T5 (#23): the cost of the attempt that the caps read (costUsd); counters.cost stays the cost of the roles only
+    attempt.costUsd = attemptCostUsd(attempt);
     if (h && journal) attempt.review = h.arm === 'perguntas' ? questionCount(journal.entries, `${firstLabel(h)}1`) : reviewCounts(journal.entries, `${firstLabel(h)}1`);
     if (authorCommitted !== null) attempt.authorCommitted = authorCommitted;
     if (h?.lenses && journal && loop) {
@@ -2751,7 +2753,6 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
       // loop.loops comes from loopResult without `accepted`: keep each loop's accepted list from the replay (failRiscoAceito, report)
       attempt.loop = { ...compactLoop, loops: compactLoop.loops.map((l, i) => ({ ...l, accepted: loop.lens.loops[i]?.accepted ?? [] })) };
       Object.assign(attempt, lensAttemptStats(h, loop, outcomes, manifestEntries(variant)), { artifact: artifactOf(variant).artifact, startedAt: now().toISOString() });
-      attempt.costUsd = attemptCostUsd(attempt);
     } else if (h && journal && loop) {
       attempt.loop = loop;
       attempt.afterFirstFix = await afterFirstFix(h, variant, scenario, journal, outcomes, reachable);
@@ -2776,6 +2777,8 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
   const invalidReasons = {};
   for (const a of attempts) if (a.status === 'invalid') invalidReasons[a.reason] = (invalidReasons[a.reason] ?? 0) + 1;
   const costs = attempts.filter((a) => a.status === 'valid' && a.counters.cost !== null).map((a) => a.counters.cost);
+  // T5 (#23): cost.total sums costUsd (the CLI cost of each valid attempt); null without a valid attempt. counters.cost (the roles) is not changed.
+  const totalCosts = attempts.filter((a) => a.status === 'valid' && typeof a.costUsd === 'number').map((a) => a.costUsd);
   const sessionCosts = attempts.filter((a) => a.status === 'valid' && a.counters.session.cliCostUsd !== null).map((a) => a.counters.session.cliCostUsd);
   const models = FAMILIES.filter((f) => validRuns.some((r) => r.total.calls[f] > 0));
   const { installPath: _installPath, ...publicPlugin } = plugin;
@@ -2799,7 +2802,9 @@ export async function runBatch(opts, { exec = defaultExec, now = () => new Date(
     roles: sumRoles(validRuns),
     rolesByLabel: sumRolesByLabel(attempts.filter((a) => a.status === 'valid').map((a) => a.rolesByLabel)),
     ...(h ? { harness: h.harness } : {}),
+    // counters.cost (median, min, max) is the cost of the roles only: baseline.mjs and checkpoint.mjs read it. The caps use costUsd.
     cost: {
+      total: totalCosts.length ? totalCosts.reduce((t, c) => t + c, 0) : null,
       ...(costs.length ? { median: median(costs), min: Math.min(...costs), max: Math.max(...costs) } : { median: null, min: null, max: null }),
       session: sessionCosts.length ? { median: median(sessionCosts), min: Math.min(...sessionCosts), max: Math.max(...sessionCosts) } : { median: null, min: null, max: null },
     },

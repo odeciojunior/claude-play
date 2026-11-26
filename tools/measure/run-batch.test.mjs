@@ -2156,6 +2156,55 @@ test('A5: without total_cost_usd in the CLI JSON the session cost is null', asyn
   }
 });
 
+// T5 (#23): every claude -p reports a different total_cost_usd, far above the transcript cost, so the CLI cost wins per attempt.
+const cliCostPerCall = (fake, costOf) => {
+  let k = 0;
+  return async (cmd, args, o) => {
+    const r = await fake.exec(cmd, args, o);
+    if (cmd !== 'claude' || args[0] !== '-p') return r;
+    k += 1;
+    if (!r.stdout) return r;
+    return { ...r, stdout: JSON.stringify({ ...JSON.parse(r.stdout), total_cost_usd: costOf(k) }) };
+  };
+};
+
+test('T5: attempt.costUsd is the CLI cost of each valid attempt and aggregate.cost.total sums them', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir);
+    const r = await runBatch(baseOpts(s, { runs: 2 }), { exec: cliCostPerCall(fake, (k) => 100 * k), now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.costUsd), [100, 200]);
+    assert.equal(r.aggregate.cost.total, 300);
+  } finally {
+    s.done();
+  }
+});
+
+test('T5: a batch without a valid attempt has aggregate.cost.total null', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { failOn: 1 });
+    const r = await runBatch(baseOpts(s, { runs: 1 }), { exec: cliCostPerCall(fake, () => 100), now: NOW });
+    assert.equal(r.aggregate.valid, 0);
+    assert.equal(r.aggregate.cost.total, null);
+  } finally {
+    s.done();
+  }
+});
+
+test('T5: an invalid attempt in the middle of the batch does not enter cost.total', async () => {
+  const s = setup();
+  try {
+    const fake = makeFake(s.configDir, { failOn: 2 });
+    const r = await runBatch(baseOpts(s, { runs: 3 }), { exec: cliCostPerCall(fake, (k) => 100 * k), now: NOW });
+    assert.deepEqual(r.aggregate.attempts.map((a) => a.status), ['valid', 'invalid', 'valid']);
+    assert.equal(r.aggregate.attempts[1].costUsd, undefined);
+    assert.equal(r.aggregate.cost.total, 400);
+  } finally {
+    s.done();
+  }
+});
+
 // ---- E26 A4: questions arm (T7) ----
 
 const Q = [{ q: '[fab] which file holds the cache?', whyItChangesThePlan: '[fab] adds a task' }];
