@@ -338,6 +338,366 @@ function removedRepo(specObj, planObj, { output = TAP } = {}) {
   return { dir, base, args, call };
 }
 
+// E47: repositorio com merge de dois pais. A branch apaga ou muda testes e versiona spec e plano em docs/plans/x/;
+// o ramo principal ganha um commit proprio antes do git merge --no-ff. Em `branch`, null apaga o arquivo.
+const SPEC_REL = 'docs/plans/x/spec.md';
+const PLAN_REL = 'docs/plans/x/plan.md';
+
+function mergeRepo({ base, branch, spec = [], plan = [] }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'te-merge-'));
+  const repo = path.join(dir, 'repo');
+  fs.mkdirSync(repo);
+  const put = (files) => {
+    for (const [rel, text] of Object.entries(files)) {
+      const file = path.join(repo, rel);
+      if (text === null) { fs.rmSync(file); continue; }
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, text);
+    }
+  };
+  const commit = (message) => {
+    sh(repo, 'add', '-A');
+    sh(repo, 'commit', '-q', '-m', message);
+    return sh(repo, 'rev-parse', 'HEAD');
+  };
+  const doc = (v) => (typeof v === 'string' ? v : dataFile({ removedTests: v }));
+  sh(repo, 'init', '-q');
+  put({ 'README.md': 'x\n', ...base });
+  const root = commit('base');
+  const main = sh(repo, 'symbolic-ref', '--short', 'HEAD');
+  sh(repo, 'checkout', '-q', '-b', 'feat');
+  put({ ...branch, [SPEC_REL]: doc(spec), [PLAN_REL]: doc(plan) });
+  commit('branch');
+  sh(repo, 'checkout', '-q', main);
+  put({ 'main.txt': 'main\n' });
+  commit('main');
+  sh(repo, 'merge', '-q', '--no-ff', '-m', 'merge', 'feat');
+  const merge = sh(repo, 'rev-parse', 'HEAD');
+  const call = ({ extra = [], ...over } = {}) => {
+    const opt = { merge, nonce: 'n-1', spec: SPEC_REL, plan: PLAN_REL, cwd: repo, ...over };
+    const args = Object.entries(opt).flatMap(([k, v]) => [`--${k}`, v]);
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const r = spawnSync(process.execPath, [SELF, 'removed', ...args, ...extra], { encoding: 'utf8', env });
+    return { code: r.status, stdout: r.stdout, json: JSON.parse(r.stdout) };
+  };
+  return { dir, root, merge, call };
+}
+
+function withMergeRepo(setup, body) {
+  const r = mergeRepo(setup);
+  try {
+    body(r);
+  } finally {
+    fs.rmSync(r.dir, { recursive: true, force: true });
+  }
+}
+
+const src = (...lines) => [...lines, ''].join('\n');
+const IMPORT_TEST = "import { test } from 'node:test';";
+const MERGE_KEYS = ['tool', 'command', 'nonce', 'merge', 'verified', 'deletedCovered', 'unverified', 'unverifiedCut', 'digest'];
+const reasons = (list) => Object.fromEntries(list.map((u) => [`${u.file}::${u.name}`, u.reason]));
+const partial = (why) => `cobertura parcial: ${why}`;
+const uncovered = (n, line) => partial(`${n} chamada(s) de teste sem par verificado (1ª na linha ${line})`);
+
+test('E47 (a): arquivo apagado e inteiro coberto sai em deletedCovered, com digest que confere', () => {
+  withMergeRepo({
+    base: {
+      'tests/z.test.mjs': src(IMPORT_TEST, T('z one')),
+      'tests/gone.test.mjs': [
+        "import { test, after } from 'node:test';",
+        'after(() => {});',
+        T('gone one'),
+        'test("gone two", () => {});',
+        '',
+      ].join('\r\n'),
+      'tests/kept.test.mjs': src(IMPORT_TEST, T('kept'), T('dropped')),
+    },
+    branch: {
+      'tests/z.test.mjs': null,
+      'tests/gone.test.mjs': null,
+      'tests/kept.test.mjs': src(IMPORT_TEST, T('kept')),
+    },
+    spec: [
+      ENTRY('tests/z.test.mjs', 'z one'),
+      ENTRY('tests/gone.test.mjs', 'gone one'),
+      ENTRY('tests/kept.test.mjs', 'dropped'),
+    ],
+    plan: [
+      ENTRY('tests/gone.test.mjs', 'gone one', { gate: 'tests' }),
+      ENTRY('tests/gone.test.mjs', 'gone two', { gate: 'integration' }),
+    ],
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.deepEqual(Object.keys(json), MERGE_KEYS);
+    assert.equal(json.tool, 'test-extract');
+    assert.equal(json.command, 'removed');
+    assert.equal(json.nonce, 'n-1');
+    assert.equal(json.merge, r.merge);
+    assert.equal(json.verified, 4);
+    assert.deepEqual(json.deletedCovered, ['tests/gone.test.mjs', 'tests/z.test.mjs']);
+    assert.deepEqual(json.unverified, []);
+    assert.equal(json.unverifiedCut, 0);
+    const c = checkRun(stdout, 'test-extract', 'n-1');
+    assert.equal(c.ok, true, c.why);
+    const { digest, ...rest } = json;
+    assert.equal(digest, fnv1a(JSON.stringify(canon(rest))));
+    assert.equal(checkRun(stdout, 'test-extract', 'outro').ok, false);
+    const short = r.call({ merge: r.merge.slice(0, 8) });
+    assert.equal(short.code, 0, short.stdout);
+    assert.equal(short.json.merge, r.merge.slice(0, 8));
+    assert.deepEqual(short.json.deletedCovered, json.deletedCovered);
+  });
+});
+
+test('E47 (b): arquivo apagado com uma chamada não declarada fica fora de deletedCovered', () => {
+  withMergeRepo({
+    base: { 'tests/half.test.mjs': src(IMPORT_TEST, T('half one'), T('half two')) },
+    branch: { 'tests/half.test.mjs': null },
+    spec: [ENTRY('tests/half.test.mjs', 'half one')],
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.equal(json.verified, 1);
+    assert.deepEqual(json.deletedCovered, []);
+    assert.deepEqual(json.unverified, [{ file: 'tests/half.test.mjs', name: '*', reason: uncovered(1, 3) }]);
+  });
+});
+
+test('E47 (c): cada checagem do par vai para unverified com o seu motivo', () => {
+  const f = 'tests/kept.test.mjs';
+  withMergeRepo({
+    base: {
+      [f]: src(
+        "import { test, describe } from 'node:test';",
+        T('stays'),
+        T('dup'),
+        T('dup'),
+        "describe('grupo', () => {});",
+        "test('pre ' + 'fixo', () => {});",
+        "test('sem mais'  );",
+      ),
+    },
+    branch: { [f]: src(IMPORT_TEST, T('stays')) },
+    spec: [
+      ENTRY('tests/nao-existe.test.mjs', 'qualquer'),
+      ENTRY(f, 'never there'),
+      ENTRY(f, 'dup'),
+      ENTRY(f, 'grupo'),
+      ENTRY(f, 'pre '),
+      ENTRY(f, 'stays'),
+      ENTRY(f, 'sem mais'),
+    ],
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.equal(json.verified, 1);
+    assert.deepEqual(json.deletedCovered, []);
+    assert.deepEqual(reasons(json.unverified), {
+      'tests/nao-existe.test.mjs::qualquer': 'arquivo ausente em merge^1',
+      [`${f}::never there`]: 'nenhum literal do nome em merge^1 (teste gerado em laço ou nome diferente)',
+      [`${f}::dup`]: 'o nome aparece 2 vezes em merge^1',
+      [`${f}::grupo`]: 'o literal não é o 1º argumento de test( ou it(',
+      [`${f}::pre `]: 'o literal não é o argumento inteiro (depois dele só , ou ))',
+      [`${f}::stays`]: 'o nome continua no arquivo em merge',
+    });
+  });
+});
+
+test('E47 (d): cobertura parcial reprova o arquivo apagado; /re/.test(s) não conta como chamada', () => {
+  const cases = {
+    'tests/each.test.mjs': {
+      text: src("import { test, it } from 'node:test';", T('each ok'), "it.each([1, 2])('each %s', () => {});"),
+      names: ['each ok'],
+      reason: uncovered(1, 3),
+    },
+    'tests/tpl.test.mjs': {
+      text: src(IMPORT_TEST, T('tpl ok'), 'test(`tpl ${process.pid}`, () => {});'),
+      names: ['tpl ok'],
+      reason: uncovered(1, 3),
+    },
+    'tests/for.test.mjs': {
+      text: src(IMPORT_TEST, T('for ok'), 'for (const i of [1, 2]) {', "  test('caso ' + i, () => {});", '}'),
+      names: ['for ok', 'caso '],
+      reason: partial('o arquivo tem laço'),
+    },
+    'tests/foreach.test.mjs': {
+      text: src(IMPORT_TEST, '[1].forEach(() => {', "  test('unico no forEach', () => {});", '});'),
+      names: ['unico no forEach'],
+      reason: partial('o arquivo tem laço'),
+    },
+    'tests/sub.test.mjs': {
+      text: src(IMPORT_TEST, "test('outer sub', async (t) => {", "  await t.test('sub', () => {});", '});'),
+      names: ['outer sub'],
+      reason: uncovered(1, 3),
+    },
+    'tests/subvar.test.mjs': {
+      text: src(IMPORT_TEST, "test('outer var', async (t) => {", '  await t.test(name, () => {});', '});'),
+      names: ['outer var'],
+      reason: uncovered(1, 3),
+    },
+    'tests/renamed.test.mjs': {
+      text: src("import { test as check, it } from 'node:test';", "it('it declarado', () => {});", "check('outro', () => {});"),
+      names: ['it declarado'],
+      reason: partial('o arquivo não importa test ou it de node:test sem renomear'),
+    },
+    'tests/xit.test.mjs': {
+      text: src(IMPORT_TEST, T('xit ok'), "xit('desligado', () => {});"),
+      names: ['xit ok'],
+      reason: partial('o arquivo chama xit, fit ou specify'),
+    },
+    'tests/none.test.mjs': {
+      text: src(IMPORT_TEST, "const nome = 'sem chamada';"),
+      names: ['sem chamada'],
+      reason: partial('nenhuma chamada de teste'),
+    },
+  };
+  const regex = 'tests/regex.test.mjs';
+  const files = Object.keys(cases);
+  withMergeRepo({
+    base: {
+      ...Object.fromEntries(files.map((f) => [f, cases[f].text])),
+      [regex]: src(
+        "const test = require('node:test');",
+        '// for (const x of y) em comentário de linha não é laço',
+        "test('usa regex', () => { const s = 'abc'; /re/.test(s); });",
+      ),
+    },
+    branch: Object.fromEntries([...files, regex].map((f) => [f, null])),
+    spec: [...files.flatMap((f) => cases[f].names.map((n) => ENTRY(f, n))), ENTRY(regex, 'usa regex')],
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.deepEqual(json.deletedCovered, [regex]);
+    assert.equal(json.unverifiedCut, 0);
+    const why = reasons(json.unverified);
+    for (const f of files) assert.equal(why[`${f}::*`], cases[f].reason, f);
+    assert.equal(why['tests/for.test.mjs::caso '], 'o literal não é o argumento inteiro (depois dele só , ou ))');
+    assert.deepEqual(json.unverified.slice(0, files.length).map((u) => u.name), files.map(() => '*'));
+    assert.equal(json.unverified.length, files.length + 2);
+    assert.equal(why['tests/none.test.mjs::sem chamada'], 'o literal não é o 1º argumento de test( ou it(');
+    assert.equal(json.verified, files.length);
+  });
+});
+
+test('E47 (d): cláusula de import de node:test, aceita e recusada', () => {
+  const make = (i, line) => [`tests/imp${i}.test.mjs`, src(line, T(`imp ${i}`).replace(/^test/, line.includes(' it ') ? 'it' : 'test'))];
+  const good = [
+    "import test from 'node:test';",
+    "import test, { describe, mock as fake } from 'node:test';",
+    "import { default as test, before } from 'node:test';",
+    "const { test, after: depois } = require('node:test');",
+    "const { it } = require('node:test');",
+  ];
+  const bad = [
+    "import * as test from 'node:test';",
+    "import runner, { test } from 'node:test';",
+    "import { default as runner, test } from 'node:test';",
+    "import { it as test } from 'node:test';",
+    "const { test, describe: it } = require('node:test');",
+    "import { describe } from 'node:test';",
+    "import { test } from 'vitest';",
+  ];
+  const all = [...good, ...bad].map((line, i) => make(i, line));
+  withMergeRepo({
+    base: Object.fromEntries(all),
+    branch: Object.fromEntries(all.map(([f]) => [f, null])),
+    spec: all.map(([f], i) => ENTRY(f, `imp ${i}`)),
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.deepEqual(json.deletedCovered, all.slice(0, good.length).map(([f]) => f).sort());
+    assert.deepEqual(
+      reasons(json.unverified),
+      Object.fromEntries(all.slice(good.length).map(([f]) => [`${f}::*`, partial('o arquivo não importa test ou it de node:test sem renomear')])),
+    );
+  });
+});
+
+test('E47 (e): recusas assinadas com nonce, sem digest e exit 2', () => {
+  withMergeRepo({
+    base: { 'tests/gone.test.mjs': src(IMPORT_TEST, T('gone one')) },
+    branch: { 'tests/gone.test.mjs': null },
+    spec: [ENTRY('tests/gone.test.mjs', 'gone one')],
+  }, (r) => {
+    const refused = (opts, error) => {
+      const { code, json, stdout } = r.call(opts);
+      assert.equal(code, 2, stdout);
+      assert.deepEqual(Object.keys(json), ['tool', 'command', 'nonce', 'error']);
+      assert.equal(json.tool, 'test-extract');
+      assert.equal(json.command, 'removed');
+      assert.equal(json.nonce, 'n-1');
+      assert.match(json.error, error);
+    };
+    for (const name of ['output', 'sha', 'base', 'gate']) {
+      refused({ extra: [`--${name}`, 'x'] }, new RegExp(`^--${name} não vale com --merge$`));
+    }
+    for (const name of ['spec', 'plan', 'cwd']) refused({ [name]: '' }, new RegExp(`^falta --${name}$`));
+    refused({ merge: '' }, /^falta --merge$/);
+    const invalid = /^merge inválido \(não resolve para um commit com primeiro pai\)$/;
+    refused({ merge: 'nao-existe' }, invalid);
+    refused({ merge: r.root }, invalid);
+    refused({ spec: 'docs/plans/x/nao.md' }, /^spec ausente no merge$/);
+    refused({ plan: 'docs/plans/x/nao.md' }, /^plano ausente no merge$/);
+  });
+});
+
+test('E47 (e): --merge sem valor entra no modo novo e recusa', () => {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const p = spawnSync(process.execPath, [SELF, 'removed', '--nonce', 'n-1', '--merge'], { encoding: 'utf8', env });
+  assert.equal(p.status, 2, p.stdout);
+  assert.deepEqual(JSON.parse(p.stdout), { tool: 'test-extract', command: 'removed', nonce: 'n-1', error: 'falta --merge' });
+});
+
+test('E47 (e): bloco removedTests ilegível ou inválido no merge recusa', () => {
+  for (const [setup, error] of [
+    [{ spec: dataFile({ removedTests: 'x' }) }, /^spec: field-type removedTests: /],
+    [{ plan: dataFile({ removedTests: [{ file: 'a' }] }) }, /^plano: field-type removedTests\[1\]: /],
+    [{ spec: 'sem bloco' }, /^spec: nenhum bloco/],
+  ]) {
+    withMergeRepo({ base: {}, branch: {}, ...setup }, (r) => {
+      const { code, json } = r.call();
+      assert.equal(code, 2);
+      assert.deepEqual(Object.keys(json), ['tool', 'command', 'nonce', 'error']);
+      assert.match(json.error, error);
+    });
+  }
+});
+
+test('E47 corte: unverified é cortado do fim para caber em MAX_COPY_BYTES', () => {
+  const names = Array.from({ length: 80 }, (_, i) => 'inexistente '.repeat(8) + i);
+  withMergeRepo({
+    base: { 'tests/a.test.mjs': src(IMPORT_TEST, T('stays')) },
+    branch: {},
+    spec: names.map((n) => ENTRY('tests/a.test.mjs', n)),
+  }, (r) => {
+    const { code, json, stdout } = r.call();
+    assert.equal(code, 0, stdout);
+    assert.equal(json.verified, 0);
+    assert.ok(Buffer.byteLength(stdout.trim()) <= MAX_COPY_BYTES, String(Buffer.byteLength(stdout)));
+    assert.ok(json.unverifiedCut > 0);
+    assert.equal(json.unverified.length + json.unverifiedCut, 80);
+    assert.deepEqual(json.unverified.map((u) => u.name), names.slice(0, json.unverified.length));
+    assert.equal(checkRun(stdout, 'test-extract', 'n-1').ok, true);
+  });
+});
+
+test('E47 corte: deletedCovered que sozinho passa do limite recusa', () => {
+  const files = Array.from({ length: 60 }, (_, i) => `tests/${'longo-'.repeat(10)}${i}.test.mjs`);
+  assert.ok(Buffer.byteLength(JSON.stringify(files)) > MAX_COPY_BYTES);
+  withMergeRepo({
+    base: Object.fromEntries(files.map((f, i) => [f, src(IMPORT_TEST, T(`longo ${i}`))])),
+    branch: Object.fromEntries(files.map((f) => [f, null])),
+    spec: files.map((f, i) => ENTRY(f, `longo ${i}`)),
+  }, (r) => {
+    const { code, json } = r.call();
+    assert.equal(code, 2);
+    assert.deepEqual(json, { tool: 'test-extract', command: 'removed', nonce: 'n-1', error: 'a linha passa do limite de cópia' });
+  });
+});
+
 const SPEC_ENTRIES = {
   removedTests: [
     ENTRY('tests/a.test.mjs', 'single removed'),

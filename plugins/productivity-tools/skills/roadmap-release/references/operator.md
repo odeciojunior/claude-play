@@ -79,7 +79,7 @@ The default permission mode is the supported one; `bypassPermissions` is not the
 
 ## Integrity alerts
 
-Before the merge, test integrity is measured on the branch and shown to the final reviewers. A hard alert stops a run only when it finishes a merge already on the target (an interrupted run). The merge stays on the target, later merges stop, and the action is `merge-rejected`; nothing is rolled back. A later fix does not clear the alert. `doNow` carries the full merge SHA.
+Before the merge, test integrity is measured on the branch and shown to the final reviewers. A hard alert stops a run only when it finishes a merge already on the target (an interrupted run). The merge stays on the target, later merges stop, and the action is `merge-rejected`; nothing is rolled back. A later fix does not clear the alert. `doNow` carries the full merge SHA. Test files deleted by a resumed merge, declared in `removedTests` in the spec or the plan of that merge and verified by `test-extract.mjs removed --merge`, are not an alert when the whole file is covered; removed assertions and added skips still are.
 
 - Accept: the person adds `acceptIntegrityAlerts: { "E18": "<SHA from doNow>" }` and runs with `deliverables: ["E18"]`. It applies only to exactly that merge of that deliverable; another SHA is ignored, and the alerts then become a concern in the report.
 - Undo: `git revert -m 1 <SHA>` on the target, delete the deliverable's branch and worktree, run again (it restarts from scratch). Reverting without deleting the branch misbehaves: the branch is still an ancestor of the target.

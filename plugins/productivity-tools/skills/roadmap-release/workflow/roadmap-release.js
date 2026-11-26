@@ -725,6 +725,10 @@ function integrityHardAlerts(integ) {
     ...(integ.skipsAdded > 0 ? [integ.skipsAdded + ' tests skipped, focused or commented out'] : []),
   ]
 }
+// The measure without the deleted test files in covered (exact strings only); every other figure stays.
+function integrityNetOfDeclared(integ, covered) {
+  return integ && { ...integ, deletedTests: (integ.deletedTests || []).filter(f => !covered.includes(f)) }
+}
 function integrityHeuristicAlerts(integ) {
   if (!integ || integ.removedAsserts < 0) return []
   return integ.prodChanged > 0 && integ.assertsAdded === 0 ? [integ.prodChanged + ' code files changed with no new assertion'] : []
@@ -1764,6 +1768,16 @@ const ONE_CMD = 'One command per call; never append `; echo exit=$?`.'
 const S_RUN = { type: 'object', properties: { exit: INT, stdout: STR }, required: ['exit', 'stdout'] }
 // The prompt of a script-runner call: one command, run once, its exit and stdout back literal.
 const runPrompt = (cmd, extra = '') => `Run this command once and return its exit code and its full stdout, literal (change no file). Answer only after the Bash result has arrived, never in the same message as the Bash call, never a placeholder:\n${cmd}\n${extra}${ONE_CMD} ${BASH_RUN}`
+// A `test-extract removed` line: up to three tries of the same command; the first valid line, or a refusal carrying the nonce, ends it.
+const askRemoved = async (cmd, nonce, label, phase) => {
+  for (let t = 1; t <= 3; t++) {
+    const m = t < 3 ? 'haiku' : 'sonnet', o = await agent(runPrompt(cmd), { agentType: 'productivity-tools:script-runner', label: t === 1 ? label : `${label}-retry${t}`, phase, schema: S_RUN, model: m, effort: effortFor(m) })
+    const v = checkRun(o && o.stdout, 'test-extract', nonce)
+    if (v.ok || (/ refused:/.test(v.why) && String(o.stdout).includes(nonce))) return v
+  }
+  return { ok: false, why: 'bad copy' }
+}
+const unvTxt = d => (d.unverified || []).map(x => `; ${x.file}::${x.name} (${x.reason})`).join('') + (d.unverifiedCut > 0 ? `; ${d.unverifiedCut} more` : '')
 const RUN_TAG = fnv1a(RUN_TOKEN)
 const VERIFY_RUN =`${pluginRootOf(A.trackerCli) || ''}/skills/roadmap-release/scripts/verify-run.mjs`
 // A copy above the limit never reaches the agent whole: refused before any JSON.parse.
@@ -2436,6 +2450,7 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
     return null
   }
 
+  const pluginRoot = pluginRootOf(A.trackerCli)
   // A merge already on the target without a post-merge status: validate and document, do not redo the deliverable.
   if (resumeAction(card, STATUSES) === 'finish-merge' && MODE === 'run') {
     log(`${E}: merge ${card.mergeSha || '?'} already on the target without a record; validating and documenting`)
@@ -2456,13 +2471,26 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
       const integ = TEST_INTEGRITY ? await agent(`Measurement; changes no branch. First, ignoring errors: git -C "${REPO}" worktree remove --force "${integWt}". Then git -C "${REPO}" worktree add --detach "${integWt}" ${card.mergeSha}. Write this Node program to ${WT}/_tmp/${E}-integrity.cjs, run exactly: cd "${integWt}" && node "${WT}/_tmp/${E}-integrity.cjs" "${card.mergeSha}^1" (with HEAD at the merge it measures ${card.mergeSha}^1..${card.mergeSha}). Always, even if the program fails: delete the file and run git -C "${REPO}" worktree remove --force "${integWt}". Return the fields of the printed JSON. If the program fails, do not invent numbers: return removedAsserts=-1 and zero for the others:\n${TEST_INTEGRITY}\n`,
         { label: `${E}:resume-test-integrity`, phase: 'Merge', schema: S_INTEG, model: 'haiku', effort: 'low' }) : null
       if (!integ || integ.removedAsserts < 0) out.concerns.push(`resume: the test-count floor was not verified for the merge ${card.mergeSha} (test integrity ${TEST_INTEGRITY ? 'not measured' : 'disabled'})`)
-      for (const a of integrityHeuristicAlerts(integ)) out.concerns.push(`resume: test integrity of the merge ${card.mergeSha}: ${a}`)
-      const hardAlerts = integrityHardAlerts(integ)
+      // Deleted test files are discounted only through the line test-extract signs for this exact merge (declared in removedTests and verified).
+      let covered = [], declNote = ''
+      if (integ && integ.removedAsserts >= 0 && (integ.deletedTests || []).length && !integrityAckMatches(A.acceptIntegrityAlerts, E, card.mergeSha)) {
+        const nonce = `${RUN_TAG}:${E}:removed-merge`.replace(/[^A-Za-z0-9:._@-]/g, '_')
+        const cmd = `node "${pluginRoot}/scripts/test-extract.mjs" removed ${Object.entries({ merge: card.mergeSha, nonce, spec: AP.spec, plan: AP.plan, cwd: INTWT }).map(([a, v]) => `--${a} ${shq(v)}`).join(' ')}`
+        const v = pluginRoot ? await askRemoved(cmd, nonce, `${E}:resume-removed`, 'Merge') : { why: 'the plugin root cannot be derived from trackerCli' }, d = v.data
+        const why = !v.ok ? v.why : d.merge === card.mergeSha && Array.isArray(d.deletedCovered) && d.deletedCovered.every(f => typeof f === 'string') ? '' : 'wrong line'
+        if (!why) covered = d.deletedCovered
+        declNote = why ? `; removed --merge not verified: ${why}` : `; removed --merge verified deletedCovered: ${covered.join(', ') || 'none'}${unvTxt(d)}`
+      }
+      const net = integrityNetOfDeclared(integ, covered)
+      const off = covered.length ? integ.deletedTests.filter(f => covered.includes(f)) : []
+      if (off.length) out.concerns.push(`resume: deleted test files declared in removedTests and verified at the merge ${card.mergeSha}: ${off.join(', ')}`)
+      for (const a of integrityHeuristicAlerts(net)) out.concerns.push(`resume: test integrity of the merge ${card.mergeSha}: ${a}`)
+      const hardAlerts = integrityHardAlerts(net)
       if (hardAlerts.length) {
         if (integrityAckMatches(A.acceptIntegrityAlerts, E, card.mergeSha)) out.concerns.push(`the operator accepted (acceptIntegrityAlerts) the test integrity alerts of the merge ${card.mergeSha}: ${hardAlerts.join('; ')}`)
         else {
           const ack = { ...(A.acceptIntegrityAlerts || {}), [E]: card.mergeSha }
-          return markBroken(`the merge ${card.mergeSha} weakened the tests: ${hardAlerts.join('; ')}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch); or, only if you decide to accept the merge as it is, add acceptIntegrityAlerts:${JSON.stringify(ack)} yourself to the args and run again with deliverables:["${E}"] (the resume args below leave it out on purpose, so they re-measure and stay broken)`)
+          return markBroken(`the merge ${card.mergeSha} weakened the tests: ${hardAlerts.join('; ')}${declNote}`, 'conteudo', `These alerts come from the merge itself, so a later fix does not clear them on a re-run. Check each one, then either undo it: git -C "${INTWT}" revert -m 1 ${card.mergeSha}, delete the branch ${br} and the worktree ${wt}, and run again (the deliverable restarts from scratch); or, only if you decide to accept the merge as it is, add acceptIntegrityAlerts:${JSON.stringify(ack)} yourself to the args and run again with deliverables:["${E}"] (the resume args below leave it out on purpose, so they re-measure and stay broken)`)
         }
       }
       return postMerge(card.mergeSha, 0, markBroken, null)  // commits may exist after the merge
@@ -2477,7 +2505,6 @@ Review (read-only) the commits that sit on ${TARGET} after the merge ${mergeSha}
   }
 
   // ---------- Setup
-  const pluginRoot = pluginRootOf(A.trackerCli)
   const RR = `${pluginRoot}/scripts/run-record.mjs`
   const recAt = (stages, tip) => recordCmd(RR, wt, AP.dir, E, stages, tip, { trailer: TRAILER, ...(MODE !== 'plan-only' && pre.baseline ? { prep: { targetHead: pre.targetHead, gatesKey: GATES_KEY, baseline: pre.baseline } } : {}) }, n => { if (!out.concerns.some(c => c.startsWith('run record: prep left out'))) out.concerns.push(`run record: prep left out of run.json, the approve command had ${n} characters, above CMD_CAP; the next run measures the baseline again`) })
   const setup = await setupLock(() => agent(`${C()}
@@ -3130,17 +3157,10 @@ ${rows.map(p => `${p.ac}: ${p.command}`).join('\n') || '(none)'}${rows.some(p =>
       const r = gateResult(g.m, name), can = declared().some(e => e.gate === undefined || e.gate === name)
       const nonce = `${RUN_TAG}:${E}:removed:${tag}${name}:${k + 1}`.replace(/[^A-Za-z0-9:._@-]/g, '_')
       const cmd = `node "${pluginRoot}/scripts/test-extract.mjs" removed ${Object.entries({ nonce, spec: specAbs, plan: planAbs, base: syncAt, cwd: wt, output: r.outPath, sha: r.outSha, gate: name }).map(([a, v]) => `--${a} ${shq(v)}`).join(' ')}${one ? ' --single-tests-gate' : ''}`
-      let why = can ? 'bad copy' : 'none', unv = ''
-      n[name] = 0
-      for (let t = 1; can && t <= 3; t++) {
-        const m = t < 3 ? 'haiku' : 'sonnet', o = await agent(runPrompt(cmd), { agentType: 'productivity-tools:script-runner', label: `${E}:${tag}removed-${name}${t > 1 ? '-retry' + t : ''}`, phase: 'Gates', schema: S_RUN, model: m, effort: effortFor(m) })
-        const v = checkRun(o && o.stdout, 'test-extract', nonce), d = v.data
-        if (!v.ok) { if (/ refused:/.test(v.why) && String(o.stdout).includes(nonce)) { why = v.why; break } continue }
-        why = d.outputSha === r.outSha && d.gate === name && d.base === syncAt && Number.isInteger(d.verified) ? '' : 'wrong line'
-        if (!why) { n[name] = d.verified; unv = (d.unverified || []).map(x => `; ${x.file}::${x.name} (${x.reason})`).join('') + (d.unverifiedCut > 0 ? `; ${d.unverifiedCut} more` : '') }
-        break
-      }
-      notes.push(`${name}: baseline ${myBase[name].total}, branch ${r.total}, verified ${n[name]}${why && ` (${why})`}${unv}`)
+      const v = can ? await askRemoved(cmd, nonce, `${E}:${tag}removed-${name}`, 'Gates') : { why: 'none' }, d = v.data
+      const why = !v.ok ? v.why : d.outputSha === r.outSha && d.gate === name && d.base === syncAt && Number.isInteger(d.verified) ? '' : 'wrong line'
+      n[name] = why ? 0 : d.verified
+      notes.push(`${name}: baseline ${myBase[name].total}, branch ${r.total}, verified ${n[name]}${why ? ` (${why})` : unvTxt(d)}`)
     }
     const msg = `only the total fell: ${notes.join(' | ')}`
     return allPass(GATES, g.m, myBase, g.m.changedFiles, n).ok ? { ok: true, n, msg } : { ok: false, msg: `${msg}. Declare them in removedTests and resume, or restore them` }

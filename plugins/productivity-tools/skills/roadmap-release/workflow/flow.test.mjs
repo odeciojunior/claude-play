@@ -301,6 +301,8 @@ async function exec({ cards, over, deliverables, config = {}, args = {}, discOve
     if (/:merge-fix-probe$/.test(l)) return { commits: [], rangeOk: true };
     if (/:merge-locate$/.test(l)) return { mergeSha: 'e0', rangeOk: true, secondParent: 'b9', branchTip: 'b9' };
     if (/:resume-fix-review$/.test(l)) return { issues: [], headSha: 'e9', clean: true, commitsInRange: 1 };
+    // E47: by default the verification of the declared removed tests is unavailable.
+    if (/:resume-removed(-retry[23])?$/.test(l)) return null;
     if (/:merge-risks$/.test(l)) return { head: 'e1', commit: 'e1' };
     if (/:cleanup$/.test(l)) return { ok: true };
     if (/:prune-evidence$/.test(l)) return { exit: 0, stdout: JSON.stringify({ tool: 'capture', command: 'prune', removed: [] }) }; // what the script-runner returns for capture.mjs prune
@@ -6003,4 +6005,137 @@ test('E46 AC1: a dry-run carries the reason of each dependency to the selection'
   const cards = [card('E1', { status: 'piece 1: done; piece 2: plan', onTargetEvidence: E46_PIECES }), card('E2', { deps: ['E1', 'E9'] })];
   const { r } = await exec({ cards, args: { mode: 'dry-run' }, deliverables: ['E2'] });
   assert.deepEqual(r.selection.skippedUpfront, [{ id: 'E2', reason: E46_SKIP + 'E1: ' + E46_PIECES + '; E9: no card' }]);
+});
+
+// ---- E47 T2: a resumed merge discounts the deleted test files that test-extract removed --merge verifies against removedTests ----
+// The line the new mode signs, for the nonce and the merge of the command asked.
+const mergeLine = (prompt, o = {}) => signedOut({ tool: 'test-extract', command: 'removed', nonce: nonceOf(prompt), merge: shqValue(prompt, '--merge'), verified: 1, deletedCovered: ['t/a.test.js'], unverified: [], unverifiedCut: 0, ...o });
+const asLine = (o) => (p) => ({ exit: 0, stdout: mergeLine(p, o) });
+const removedResume = ({ integ = {}, answer = asLine(), args = {} } = {}) => resumeArgs(args, (l, p) => {
+  if (/:resume-test-integrity$/.test(l)) return { deletedTests: ['t/a.test.js'], removedAsserts: 0, skipsAdded: 0, prodChanged: 0, assertsAdded: 1, ...integ };
+  return /^E1:resume-removed/.test(l) ? answer(p) : undefined;
+});
+const removedMergeCalls = (calls) => calls.filter((c) => /:resume-removed/.test(c.label));
+const rejectedWhat = (r) => {
+  assert.equal(e1Of(r).broken, true);
+  return r.operatorActions.find((x) => x.deliverable === 'E1' && x.kind === 'merge-rejected').what;
+};
+const declaredConcern = (r) => e1Of(r).concerns.filter((c) => /declared in removedTests and verified/.test(c));
+const has = (text, ...parts) => { for (const s of parts) assert.ok(text.includes(s), `missing "${s}" in: ${text}`); };
+
+test('E47 AC1: deleted test files covered by the signed removed --merge line do not break the resumed merge', async () => {
+  const { r, calls } = await removedResume();
+  assert.equal(e1Of(r).merged, true, e1Of(r).error);
+  assert.ok(!e1Of(r).broken && !e1Of(r).error);
+  assert.deepEqual(declaredConcern(r), ['resume: deleted test files declared in removedTests and verified at the merge e0: t/a.test.js']);
+  const c = removedMergeCalls(calls);
+  assert.deepEqual(c.map((x) => x.label), ['E1:resume-removed']);
+  assert.equal(c[0].opts.agentType, 'productivity-tools:script-runner');
+  assert.equal(c[0].opts.model, 'haiku');
+  assert.equal(c[0].opts.phase, 'Merge');
+  const p = c[0].prompt;
+  assert.match(p, /node "\/p\/productivity-tools\/scripts\/test-extract\.mjs" removed --merge \S+ --nonce \S+ --spec \S+ --plan \S+ --cwd \S+\n/);
+  assert.equal(shqValue(p, '--merge'), 'e0');
+  assert.equal(nonceOf(p), `${fnv1a('pf-test')}:E1:removed-merge`);
+  assert.equal(shqValue(p, '--spec'), 'docs/plans/x-E1/spec.md');
+  assert.equal(shqValue(p, '--plan'), 'docs/plans/x-E1/plan.md');
+  assert.equal(shqValue(p, '--cwd'), '/wt/_integracao');
+});
+
+test('E47 AC1: integrityNetOfDeclared removes only exact entries and keeps every other field', () => {
+  const pure = loadPure();
+  const integ = { deletedTests: ['t/a.test.js', 'x/t/a.test.js'], removedAsserts: 2, skipsAdded: 1, prodChanged: 3, assertsAdded: 4 };
+  assert.deepEqual(pure.integrityNetOfDeclared(integ, ['t/a.test.js']), { ...integ, deletedTests: ['x/t/a.test.js'] });
+  assert.deepEqual(pure.integrityNetOfDeclared(integ, ['a.test.js', './t/a.test.js']), integ);
+  assert.deepEqual(integ.deletedTests, ['t/a.test.js', 'x/t/a.test.js'], 'the measure is not changed');
+  assert.equal(pure.integrityNetOfDeclared(null, []), null);
+});
+
+test('E47 AC2: a line that covers no file keeps the merge broken and lists what was not verified', async () => {
+  const { r, calls } = await removedResume({ answer: asLine({ verified: 0, deletedCovered: [], unverified: [{ file: 't/a.test.js', name: 'old test', reason: 'the name is still at the merge' }], unverifiedCut: 2 }) });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge verified deletedCovered: none; t/a.test.js::old test (the name is still at the merge); 2 more');
+  assert.deepEqual(declaredConcern(r), []);
+  assert.equal(removedMergeCalls(calls).length, 1);
+});
+
+test('E47 AC2: a line of another merge is refused as a wrong line and discounts nothing', async () => {
+  const { r, calls } = await removedResume({ answer: asLine({ merge: 'f9' }) });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: wrong line');
+  assert.deepEqual(declaredConcern(r), []);
+  assert.equal(removedMergeCalls(calls).length, 1);
+});
+
+test('E47 AC2: a deletedCovered that is not a list of strings is a wrong line', async () => {
+  for (const deletedCovered of ['t/a.test.js', ['t/a.test.js', 1], null]) {
+    const { r, calls } = await removedResume({ answer: asLine({ deletedCovered }) });
+    has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: wrong line');
+    assert.equal(removedMergeCalls(calls).length, 1, JSON.stringify(deletedCovered));
+  }
+});
+
+test('E47 AC2: a valid line of another nonce is a bad copy, tried three times', async () => {
+  const { r, calls } = await removedResume({ answer: asLine({ nonce: 'other:E1:removed-merge' }) });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: bad copy');
+  assert.deepEqual(declaredConcern(r), []);
+  assert.equal(removedMergeCalls(calls).length, 3);
+});
+
+test('E47 AC2: with two deleted files and one covered, only the other breaks the merge', async () => {
+  const { r, calls } = await removedResume({ integ: { deletedTests: ['t/a.test.js', 't/b.test.js'] } });
+  const what = rejectedWhat(r);
+  has(what, 'deleted test files: t/b.test.js', '; removed --merge verified deletedCovered: t/a.test.js');
+  assert.ok(!what.includes('deleted test files: t/a.test.js'), what);
+  assert.deepEqual(declaredConcern(r), ['resume: deleted test files declared in removedTests and verified at the merge e0: t/a.test.js']);
+  assert.equal(removedMergeCalls(calls).length, 1);
+});
+
+test('E47 AC2: a wrong digest in the three tries is a bad copy (haiku, haiku, sonnet)', async () => {
+  const { r, calls } = await removedResume({ answer: (p) => ({ exit: 0, stdout: mergeLine(p, { deletedCovered: [] }).replace('"deletedCovered":[]', '"deletedCovered":["t/a.test.js"]') }) });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: bad copy');
+  const c = removedMergeCalls(calls);
+  assert.deepEqual(c.map((x) => x.label), ['E1:resume-removed', 'E1:resume-removed-retry2', 'E1:resume-removed-retry3']);
+  assert.deepEqual(c.map((x) => x.opts.model), ['haiku', 'haiku', 'sonnet']);
+  assert.equal(new Set(c.map((x) => x.prompt)).size, 1, 'the same command each time');
+});
+
+test('E47 AC2: a null runner in the three tries is a bad copy', async () => {
+  const { r, calls } = await removedResume({ answer: () => null });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: bad copy');
+  assert.equal(removedMergeCalls(calls).length, 3);
+});
+
+test('E47 AC2: a refusal of the script with this nonce is not repeated and its reason is shown', async () => {
+  const answer = (p) => ({ exit: 2, stdout: JSON.stringify({ tool: 'test-extract', command: 'removed', nonce: nonceOf(p), error: 'spec ausente no merge' }) });
+  const { r, calls } = await removedResume({ answer });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: test-extract refused: spec ausente no merge');
+  assert.equal(removedMergeCalls(calls).length, 1);
+});
+
+test('E47 AC2: a covered file is discounted but removed assertions still break the merge', async () => {
+  const { r, calls } = await removedResume({ integ: { removedAsserts: 1 } });
+  const what = rejectedWhat(r);
+  has(what, '1 assertions removed', '; removed --merge verified deletedCovered: t/a.test.js');
+  assert.ok(!what.includes('deleted test files'), what);
+  assert.equal(declaredConcern(r).length, 1, 'the discount is recorded even when another alert breaks');
+  assert.equal(removedMergeCalls(calls).length, 1);
+});
+
+test('E47 AC2: without a plugin root there is no call and the reason says so', async () => {
+  const { r, calls } = await removedResume({ args: { trackerCli: '/p/elsewhere/roadmap.mjs' } });
+  has(rejectedWhat(r), 'deleted test files: t/a.test.js', '; removed --merge not verified: the plugin root cannot be derived from trackerCli');
+  assert.equal(removedMergeCalls(calls).length, 0);
+});
+
+test('E47 AC2: an acknowledged merge and a merge without deleted test files never call the runner', async () => {
+  const ack = await removedResume({ args: { acceptIntegrityAlerts: { E1: 'e0' } } });
+  assert.equal(e1Of(ack.r).merged, true);
+  assert.ok(!e1Of(ack.r).broken && !e1Of(ack.r).error);
+  assert.ok(e1Of(ack.r).concerns.some((c) => /operator/i.test(c) && /acceptIntegrityAlerts/.test(c) && /t\/a\.test\.js/.test(c)));
+  assert.deepEqual(declaredConcern(ack.r), []);
+  assert.equal(removedMergeCalls(ack.calls).length, 0);
+  const none = await removedResume({ integ: { deletedTests: [] } });
+  assert.equal(e1Of(none.r).merged, true);
+  assert.equal(removedMergeCalls(none.calls).length, 0);
+  const unmeasured = await removedResume({ integ: { removedAsserts: -1 } });
+  assert.equal(removedMergeCalls(unmeasured.calls).length, 0);
 });
