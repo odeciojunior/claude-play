@@ -17,7 +17,7 @@ Estratégia v1.3 -- 2026-11-26
 | E50 | na-branch | `6f69b0c`, `docs/plans/pos-2-6-0-E50/spec.md`, `docs/plans/pos-2-6-0-E50/plan.md`, `plan/pos-2-6-0-E50`, `docs/plans/pos-2-6-0-E50/progress.json`, `e05e78dca19aab0fc5b70abfb4e02ec047110065`, `6b0814f435f24979765c548d774d1af76af29881`, `857624a` | release/pos-2.6.0 (merge 857624a) entra em main na publicação (E54) |
 | E51 | na-branch | `e65a0aa`, `docs/plans/pos-2-6-0-E51/spec.md`, `docs/plans/pos-2-6-0-E51/plan.md`, `docs/plans/pos-2-6-0-E51/progress.json`, `4329c5e` | release/pos-2.6.0 (merge 4329c5e) entra em main na publicação (E54) |
 | E52 | na-branch | `docs/plans/pos-2-6-0-E52/spec.md`, `97db7d7`, `docs/plans/pos-2-6-0-E52/plan.md`, `plan/pos-2-6-0-E52`, `docs/plans/pos-2-6-0-E52/progress.json`, `0d737f0838c8d85d0a6934fe77786d27eff36277`, `0b072ac1b7c3745226255bebdfd8951e93ba165e`, `9f62dff3289a66a6ad71812ee462395a89afd3fc`, `9062783` | release/pos-2.6.0 (merge 9062783) entra em main na publicação (E54) |
-| E53 | nao-iniciado | - | - |
+| E53 | spec | `docs/plans/pos-2-6-0-E53/spec.md`, `57ea4ca` | escrever o plano depois do merge do E49 (ou do descarte dele) |
 | E54 | nao-iniciado | - | - |
 <!-- /roadmap:panel -->
 <!-- roadmap:blockers -->
@@ -36,6 +36,7 @@ Estratégia v1.3 -- 2026-11-26
 - (executor) E43: sem caso de teste para agente de releitura que devolve null (revisão final, achado F2)
 - (executor) verify-run.test.mjs:648 (processos, neto do listener): a espera fixa de 500 ms após taskkill /T falhou 1x num gate sob carga. Trocar por espera até o processo sumir (prazo de cerca de 5 s), conferindo a data de criação do PID; o finally pode matar um PID reaproveitado.
 - (executor) fora do escopo: no dev loop, o aviso de clone do preflight chama o arquivo do repositório de cópia do cache (revisão final do E45, achado F3; segue o ruling R6 da spec)
+- (dono) E53, com o candidato fixado: autorizar o lote (até US$ 18) em DEC que cite o SHA e fazer o login da conta na config descartável; nunca enviar token pelo chat.
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |

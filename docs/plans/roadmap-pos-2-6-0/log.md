@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E53 | E53 spec written; aprovada por opus por delegação (DEC-021) com doze ajustes aplicados pelo autor; a aprovação não autoriza o gasto do lote | `57ea4ca` |
 | 2026-11-26 | E47 | plano do E47 escrito (plan-tool check: 0 erros) e aprovado por opus por delegação (DEC-021) com dois ajustes aplicados pelo autor | `51887b1` |
 | 2026-11-26 | E46 | E46 criteria compared: none changed | `docs/plans/pos-2-6-0-E46/spec.md` |
 | 2026-11-26 | E46 | E46 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2713, pass 2711, fail 0, skipped 2; claude plugin validate válido; paridade agy: pendente #13 | `26cfb3c` |
