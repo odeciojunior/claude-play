@@ -3,6 +3,7 @@
 <!-- roadmap:log -->
 | Data | Entregável | O que aconteceu | Evidência |
 |---|---|---|---|
+| 2026-11-26 | E43 | E43 execution started (plan-coordinator) | `plan/pos-2-6-0-E43` |
 | 2026-11-26 | E51 | E51 criteria compared: none changed | `docs/plans/pos-2-6-0-E51/spec.md` |
 | 2026-11-26 | E51 | E51 merged into release/pos-2.6.0; G1 na árvore do merge: exit 0, tests 2660, pass 2658, fail 0, skipped 2; claude plugin validate válido | `4329c5e` |
 | 2026-11-26 | E51 | E51 fechada pelo estado do coordinator: plano concluído e portão final aprovado; commits no progress.json | `docs/plans/pos-2-6-0-E51/progress.json` |
