@@ -42,6 +42,9 @@ Estratégia v1.3 -- 2026-11-26
 - (executor) fora do escopo (T3): o lote-gate ignora subpasta de --out sem o prefixo parada-retomada- e informa custo zero em pasta sem transcrições (achados 2 e 3, aceitos)
 - (executor) fora do escopo (T3): rereadMeasure gasta as cinco tentativas em recusa determinística; a medida antecipada deixa o worktree _integracao quando o alvo é o integrationBranch sem allowIntegrationBranch (achados 4 e 5)
 - (executor) E54: subir a linha 1 do check-roadmap.mjs junto com a versão do plugin (decisão 042 do pós-2.3.0), porque o aviso status-no-code mudou o conteúdo
+- (executor) E53: o preflight-early do E49 segue sem medida paga; os limites da base não cobrem alvo explícito nem retomada por resumeArgs (DEC-042)
+- (executor) #8: a medida antecipada não liga com releaseBranch só no roadmap.config.json, mas o resumeArgs leva targetBranch e liga na retomada; decidir passar o alvo ou documentar (mexe na DEC-018; candidato novo)
+- (executor) errata da spec do E53: o releaseBranch do sandbox está no roadmap.config.json, não no release.config.json; o relatório do lote registra
 <!-- /roadmap:pending -->
 <!-- roadmap:inflight -->
 | Branch | Tipo | Nota |
